@@ -16,6 +16,7 @@ export interface AgentRow {
   added_by: number | null;
   addedby_admin_id: number | null;
   admin_point_of_contact: boolean;
+  is_contact_only: boolean;
   first_name: string | null;
   last_name: string | null;
   email: string | null;
@@ -23,6 +24,14 @@ export interface AgentRow {
   position: string | null;
   is_public: boolean;
   meta: Record<string, unknown> | null;
+  job_title: string | null;
+  department: string | null;
+  linkedin_url: string | null;
+  other_url: string | null;
+  tags: string[];
+  preferred_channel: string | null;
+  is_primary: boolean;
+  notes: string | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -58,6 +67,7 @@ const AGENT_COLUMNS = [
   "agents.added_by",
   "agents.addedby_admin_id",
   "agents.admin_point_of_contact",
+  "agents.is_contact_only",
   "agents.first_name",
   "agents.last_name",
   "agents.email",
@@ -65,6 +75,14 @@ const AGENT_COLUMNS = [
   "agents.position",
   "agents.is_public",
   "agents.meta",
+  "agents.job_title",
+  "agents.department",
+  "agents.linkedin_url",
+  "agents.other_url",
+  "agents.tags",
+  "agents.preferred_channel",
+  "agents.is_primary",
+  "agents.notes",
   "agents.created_at",
   "agents.updated_at",
 ] as const;
@@ -233,17 +251,45 @@ export async function insertAgent(db: Knex, data: {
   added_by?: number | null;
   addedby_admin_id?: number | null;
   admin_point_of_contact?: boolean;
+  is_contact_only?: boolean;
   first_name?: string | null;
   last_name?: string | null;
   email?: string | null;
   phone?: string | null;
   position?: string | null;
+  job_title?: string | null;
+  department?: string | null;
+  linkedin_url?: string | null;
+  other_url?: string | null;
+  tags?: string[];
+  preferred_channel?: string | null;
+  is_primary?: boolean;
+  notes?: string | null;
 }) {
+  // Upserts on platform_user_id (unique): accepting an invite for someone who already has a
+  // dormant "Add Contact" row (or a soft-deleted former agent) promotes that same row instead of
+  // colliding with it — mirrors institution addMember's onConflict merge. admin_point_of_contact
+  // is deliberately excluded from the merge: a pre-existing Contact's POC flag must survive
+  // accepting an invite (they can be both a real user and a point of contact at once), so only
+  // the caller's `data.admin_point_of_contact` on the initial INSERT path (a brand-new row)
+  // applies — accepting never clears (or sets) it on an existing row.
+  const { admin_point_of_contact: _initialOnly, ...mergeData } = data;
   const [row] = await db("agents")
     .insert({ ...data, created_at: db.fn.now(), updated_at: db.fn.now() })
+    .onConflict("platform_user_id")
+    .merge({ ...mergeData, updated_at: db.fn.now(), deleted_at: null })
     .returning("*");
   const role = await db<RoleRow>("roles").where({ id: row.role_id }).first();
   return { ...row, role: role!.name, role_display: role!.display_name };
+}
+
+/** Clears is_primary on every other agent — called before setting a new primary contact,
+ * mirroring the old business_contacts "only one primary" invariant (frontend-enforced, no DB
+ * constraint). Runs inside the caller's transaction when one is provided. */
+export async function resetPrimaryAgents(db: Knex, excludeId?: number) {
+  const query = db("agents").where({ is_primary: true }).whereNull("deleted_at");
+  if (excludeId !== undefined) query.whereNot("id", excludeId);
+  await query.update({ is_primary: false });
 }
 
 export async function updateAgent(db: Knex, id: number, data: {
@@ -253,6 +299,17 @@ export async function updateAgent(db: Knex, id: number, data: {
   is_owner?: boolean;
   position?: string | null;
   is_public?: boolean;
+  first_name?: string | null;
+  last_name?: string | null;
+  phone?: string | null;
+  job_title?: string | null;
+  department?: string | null;
+  linkedin_url?: string | null;
+  other_url?: string | null;
+  tags?: string[];
+  preferred_channel?: string | null;
+  is_primary?: boolean;
+  notes?: string | null;
 }) {
   const [row] = await db("agents")
     .where({ id })
@@ -277,9 +334,16 @@ function applyAgentSearch(query: Knex.QueryBuilder, search?: string): Knex.Query
   });
 }
 
+// Excludes rows that have never been through a real invite-accept (is_contact_only) — a dormant
+// "Add Contact" row. A row that HAS accepted an invite shows here even if it's also flagged
+// admin_point_of_contact — Contacts and Users aren't mutually exclusive (see listContactRows).
+function excludeContacts(query: Knex.QueryBuilder) {
+  return query.where({ "agents.is_contact_only": false });
+}
+
 export async function listAgents(db: Knex, limit: number, offset: number, search?: string) {
   return applyAgentSearch(
-    withRole(db<AgentRow>("agents")).whereNull("agents.deleted_at"),
+    excludeContacts(withRole(db<AgentRow>("agents")).whereNull("agents.deleted_at")),
     search,
   )
     .select(AGENT_COLUMNS as unknown as string[])
@@ -288,8 +352,29 @@ export async function listAgents(db: Knex, limit: number, offset: number, search
     .offset(offset);
 }
 
+/** Contacts tab — the mirror of listAgents' exclusion: only point-of-contact-flagged rows. */
+export async function listContactRows(db: Knex, limit: number, offset: number, search?: string) {
+  return applyAgentSearch(
+    withRole(db<AgentRow>("agents")).whereNull("agents.deleted_at").where({ "agents.admin_point_of_contact": true }),
+    search,
+  )
+    .select(AGENT_COLUMNS as unknown as string[])
+    .orderBy("agents.is_primary", "desc")
+    .orderBy("agents.first_name", "asc")
+    .limit(limit)
+    .offset(offset);
+}
+
+export async function countContactRows(db: Knex, search?: string): Promise<number> {
+  const [{ count }] = await applyAgentSearch(db("agents").whereNull("deleted_at").where({ admin_point_of_contact: true }), search).count("id as count");
+  return Number(count);
+}
+
 export async function countAgents(db: Knex, search?: string): Promise<number> {
-  const [{ count }] = await applyAgentSearch(db("agents").whereNull("deleted_at"), search).count("id as count");
+  const [{ count }] = await applyAgentSearch(
+    db("agents").whereNull("deleted_at").where({ is_contact_only: false }),
+    search,
+  ).count("id as count");
   return Number(count);
 }
 

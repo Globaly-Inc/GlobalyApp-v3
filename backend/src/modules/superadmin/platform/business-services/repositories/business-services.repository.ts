@@ -2,6 +2,7 @@
 // plus its schema_field_values (dynamic per-category fields, e.g. Degree Level).
 
 import { getKnex } from "../../../../../core/db/pool-manager.js";
+import { NotFoundError } from "../../../../../shared/errors.js";
 
 const SERVICE_COLUMNS = [
   "uuid as id", "service_category_id", "name", "description", "price", "is_published", "public_visibility", "created_at",
@@ -61,6 +62,14 @@ export async function getService(businessId: number, schemaName: string, service
   return serviceWithCategory(db).where("s.uuid", serviceId).first();
 }
 
+/** Materializes a real business_services row under an EXPLICIT uuid — used to promote a
+ * read-only extraction stand-in (whose id the frontend already has and every sub-resource
+ * request already carries) into a real, writable row on first edit. */
+export async function materializeService(businessId: number, schemaName: string, uuid: string, data: Record<string, unknown>) {
+  const db = await getKnex(businessId, schemaName);
+  await db("business_services").insert({ ...data, uuid }).onConflict("uuid").ignore();
+}
+
 export async function createService(businessId: number, schemaName: string, data: Record<string, unknown>) {
   const db = await getKnex(businessId, schemaName);
   const [{ uuid: id }] = await db("business_services").insert(data).returning("uuid");
@@ -69,7 +78,8 @@ export async function createService(businessId: number, schemaName: string, data
 
 export async function updateService(businessId: number, schemaName: string, serviceId: string, data: Record<string, unknown>) {
   const db = await getKnex(businessId, schemaName);
-  await db("business_services").where({ uuid: serviceId }).update({ ...data, updated_at: db.fn.now() });
+  const patch = "public_visibility" in data ? { ...data, public_visibility: JSON.stringify(data.public_visibility) } : data;
+  await db("business_services").where({ uuid: serviceId }).update({ ...patch, updated_at: db.fn.now() });
   return serviceWithCategory(db).where("s.uuid", serviceId).first();
 }
 
@@ -109,4 +119,168 @@ export async function upsertServiceFieldValues(
     }
   });
   return getServiceFieldValues(businessId, schemaName, serviceId);
+}
+
+// ─── Service fees ──────────────────────────────────────────────────────────
+
+export async function listServiceFees(businessId: number, schemaName: string, serviceId: string) {
+  const db = await getKnex(businessId, schemaName);
+  return db("service_fees").where({ service_id: serviceId }).orderBy("created_at", "asc");
+}
+
+// installments is jsonb — the pg driver stringifies top-level query params but not nested
+// arrays/objects inside them, so an un-stringified array lands as "[object Object]" and pg
+// rejects it as invalid JSON (see schema_field_values' same JSON.stringify(value) above).
+function withStringifiedInstallments(data: Record<string, unknown>) {
+  return "installments" in data ? { ...data, installments: JSON.stringify(data.installments) } : data;
+}
+
+export async function createServiceFee(businessId: number, schemaName: string, serviceId: string, data: Record<string, unknown>) {
+  const db = await getKnex(businessId, schemaName);
+  const [row] = await db("service_fees").insert({ ...withStringifiedInstallments(data), service_id: serviceId }).returning("*");
+  return row;
+}
+
+export async function updateServiceFee(businessId: number, schemaName: string, serviceId: string, feeId: number, data: Record<string, unknown>) {
+  const db = await getKnex(businessId, schemaName);
+  const [row] = await db("service_fees").where({ id: feeId, service_id: serviceId }).update({ ...withStringifiedInstallments(data), updated_at: db.fn.now() }).returning("*");
+  if (!row) throw new NotFoundError("Fee not found");
+  return row;
+}
+
+export async function deleteServiceFee(businessId: number, schemaName: string, serviceId: string, feeId: number) {
+  const db = await getKnex(businessId, schemaName);
+  const deleted = await db("service_fees").where({ id: feeId, service_id: serviceId }).delete();
+  if (!deleted) throw new NotFoundError("Fee not found");
+}
+
+// ─── Service intakes ───────────────────────────────────────────────────────
+
+export async function listServiceIntakes(businessId: number, schemaName: string, serviceId: string) {
+  const db = await getKnex(businessId, schemaName);
+  return db("service_intakes").where({ service_id: serviceId }).orderBy("created_at", "asc");
+}
+
+export async function createServiceIntake(businessId: number, schemaName: string, serviceId: string, data: Record<string, unknown>) {
+  const db = await getKnex(businessId, schemaName);
+  const [row] = await db("service_intakes").insert({ ...data, service_id: serviceId }).returning("*");
+  return row;
+}
+
+export async function updateServiceIntake(businessId: number, schemaName: string, serviceId: string, intakeId: number, data: Record<string, unknown>) {
+  const db = await getKnex(businessId, schemaName);
+  const [row] = await db("service_intakes").where({ id: intakeId, service_id: serviceId }).update({ ...data, updated_at: db.fn.now() }).returning("*");
+  if (!row) throw new NotFoundError("Intake not found");
+  return row;
+}
+
+export async function deleteServiceIntake(businessId: number, schemaName: string, serviceId: string, intakeId: number) {
+  const db = await getKnex(businessId, schemaName);
+  const deleted = await db("service_intakes").where({ id: intakeId, service_id: serviceId }).delete();
+  if (!deleted) throw new NotFoundError("Intake not found");
+}
+
+// ─── Service eligibility requirements ──────────────────────────────────────
+
+export async function listServiceEligibility(businessId: number, schemaName: string, serviceId: string) {
+  const db = await getKnex(businessId, schemaName);
+  return db("service_eligibility_requirements").where({ service_id: serviceId }).orderBy("created_at", "asc");
+}
+
+// academic_tests/language_tests are jsonb — same JSON.stringify requirement as installments above.
+function withStringifiedTests(data: Record<string, unknown>) {
+  const next = { ...data };
+  if ("academic_tests" in next) next.academic_tests = JSON.stringify(next.academic_tests);
+  if ("language_tests" in next) next.language_tests = JSON.stringify(next.language_tests);
+  return next;
+}
+
+export async function createServiceEligibility(businessId: number, schemaName: string, serviceId: string, data: Record<string, unknown>) {
+  const db = await getKnex(businessId, schemaName);
+  const [row] = await db("service_eligibility_requirements").insert({ ...withStringifiedTests(data), service_id: serviceId }).returning("*");
+  return row;
+}
+
+export async function updateServiceEligibility(businessId: number, schemaName: string, serviceId: string, eligibilityId: number, data: Record<string, unknown>) {
+  const db = await getKnex(businessId, schemaName);
+  const [row] = await db("service_eligibility_requirements").where({ id: eligibilityId, service_id: serviceId }).update({ ...withStringifiedTests(data), updated_at: db.fn.now() }).returning("*");
+  if (!row) throw new NotFoundError("Eligibility requirement not found");
+  return row;
+}
+
+export async function deleteServiceEligibility(businessId: number, schemaName: string, serviceId: string, eligibilityId: number) {
+  const db = await getKnex(businessId, schemaName);
+  const deleted = await db("service_eligibility_requirements").where({ id: eligibilityId, service_id: serviceId }).delete();
+  if (!deleted) throw new NotFoundError("Eligibility requirement not found");
+}
+
+// ─── Service study options ──────────────────────────────────────────────────
+
+export async function listServiceStudyOptions(businessId: number, schemaName: string, serviceId: string) {
+  const db = await getKnex(businessId, schemaName);
+  return db("service_study_options").where({ service_id: serviceId }).orderBy("created_at", "asc");
+}
+
+export async function createServiceStudyOption(businessId: number, schemaName: string, serviceId: string, data: Record<string, unknown>) {
+  const db = await getKnex(businessId, schemaName);
+  const [row] = await db("service_study_options").insert({ ...data, service_id: serviceId }).returning("*");
+  return row;
+}
+
+export async function updateServiceStudyOption(businessId: number, schemaName: string, serviceId: string, optionId: number, data: Record<string, unknown>) {
+  const db = await getKnex(businessId, schemaName);
+  const [row] = await db("service_study_options").where({ id: optionId, service_id: serviceId }).update({ ...data, updated_at: db.fn.now() }).returning("*");
+  if (!row) throw new NotFoundError("Study option not found");
+  return row;
+}
+
+export async function deleteServiceStudyOption(businessId: number, schemaName: string, serviceId: string, optionId: number) {
+  const db = await getKnex(businessId, schemaName);
+  const deleted = await db("service_study_options").where({ id: optionId, service_id: serviceId }).delete();
+  if (!deleted) throw new NotFoundError("Study option not found");
+}
+
+// ─── Service study units ────────────────────────────────────────────────────
+
+export async function listServiceStudyUnits(businessId: number, schemaName: string, serviceId: string) {
+  const db = await getKnex(businessId, schemaName);
+  return db("service_study_units").where({ service_id: serviceId }).orderBy("created_at", "asc");
+}
+
+export async function createServiceStudyUnit(businessId: number, schemaName: string, serviceId: string, data: Record<string, unknown>) {
+  const db = await getKnex(businessId, schemaName);
+  const [row] = await db("service_study_units").insert({ ...data, service_id: serviceId }).returning("*");
+  return row;
+}
+
+export async function updateServiceStudyUnit(businessId: number, schemaName: string, serviceId: string, unitId: number, data: Record<string, unknown>) {
+  const db = await getKnex(businessId, schemaName);
+  const [row] = await db("service_study_units").where({ id: unitId, service_id: serviceId }).update({ ...data, updated_at: db.fn.now() }).returning("*");
+  if (!row) throw new NotFoundError("Study unit not found");
+  return row;
+}
+
+export async function deleteServiceStudyUnit(businessId: number, schemaName: string, serviceId: string, unitId: number) {
+  const db = await getKnex(businessId, schemaName);
+  const deleted = await db("service_study_units").where({ id: unitId, service_id: serviceId }).delete();
+  if (!deleted) throw new NotFoundError("Study unit not found");
+}
+
+// ─── Service accreditations ─────────────────────────────────────────────────
+
+export async function listServiceAccreditations(businessId: number, schemaName: string, serviceId: string) {
+  const db = await getKnex(businessId, schemaName);
+  return db("service_accreditations").where({ service_id: serviceId }).orderBy("created_at", "asc");
+}
+
+export async function createServiceAccreditation(businessId: number, schemaName: string, serviceId: string, accreditationId: number) {
+  const db = await getKnex(businessId, schemaName);
+  const [row] = await db("service_accreditations").insert({ service_id: serviceId, accreditation_id: accreditationId }).returning("*");
+  return row;
+}
+
+export async function deleteServiceAccreditation(businessId: number, schemaName: string, serviceId: string, accreditationRowId: number) {
+  const db = await getKnex(businessId, schemaName);
+  const deleted = await db("service_accreditations").where({ id: accreditationRowId, service_id: serviceId }).delete();
+  if (!deleted) throw new NotFoundError("Accreditation not found");
 }

@@ -3,7 +3,7 @@ import { z } from "zod";
 import { buildPaginatedResponse, paginationToOffset } from "../../../shared/pagination.js";
 import { requireBusinessContext, requireBusinessOrInstitutionContext } from "../../../core/plugins/auth.plugin.js";
 import {
-  ServiceFieldValuesInputSchema, ServiceInputSchema, ServicePatchInputSchema, ServiceSearchQuerySchema,
+  ServiceAiAssistSchema, ServiceFieldValuesInputSchema, ServiceInputSchema, ServicePatchInputSchema, ServiceSearchQuerySchema,
 } from "../../superadmin/platform/business-services/schemas/business-services.schema.js";
 import * as service from "../../superadmin/platform/business-services/services/business-services.service.js";
 import * as coursesRepo from "../../superadmin/data-extraction/repositories/courses.repository.js";
@@ -23,12 +23,12 @@ const SubIdSchema = z.object({ subId: z.string().uuid() });
 function courseToBusinessService(c: {
   id: string; name: string; description: string | null; subject_area: string | null;
   degree_level: string | null; duration_weeks: number | null; domestic_fee_total: string | number | null;
-  domestic_currency: string | null; created_at: Date;
+  domestic_currency: string | null; created_at: Date; course_category: string | null;
 }) {
   return {
     id: c.id,
     service_category_id: null,
-    category_name: c.subject_area,
+    category_name: c.course_category === "short_course" ? "Short Course" : "Academic Course",
     name: c.name,
     description: c.description,
     price: c.domestic_fee_total != null ? `${c.domestic_currency ?? ""} ${c.domestic_fee_total}`.trim() : null,
@@ -38,6 +38,7 @@ function courseToBusinessService(c: {
     degree_level: c.degree_level,
     area_of_study: c.subject_area,
     duration: c.duration_weeks != null ? `${c.duration_weeks} weeks` : null,
+    course_category: c.course_category === "short_course" ? "short_course" : "academic",
   };
 }
 
@@ -94,13 +95,22 @@ export async function businessServicesRoutes(app: FastifyInstance) {
   });
 
   app.get("/services/search", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
-    const { search, ...pagination } = ServiceSearchQuerySchema.parse(req.query);
+    const { search, course_category, ...pagination } = ServiceSearchQuerySchema.parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
     const sourceJobId = await servicesSourceJobId(req);
     const { rows, total } = sourceJobId
-      ? await searchInstitutionCourses(sourceJobId, limit, offset, { search })
+      ? await searchInstitutionCourses(sourceJobId, limit, offset, { search, courseCategory: course_category })
       : await service.searchServices(Number(req.business!.id), limit, offset, search);
     return reply.send(buildPaginatedResponse(rows, total, pagination));
+  });
+
+  app.post("/services/ai-assist", {
+    preHandler: requireBusinessContext,
+    config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+  }, async (req, reply) => {
+    const input = ServiceAiAssistSchema.parse(req.body);
+    const result = await service.generateServiceDescription(input);
+    return reply.send(result);
   });
 
   app.post("/services", { preHandler: requireBusinessContext }, async (req, reply) => {

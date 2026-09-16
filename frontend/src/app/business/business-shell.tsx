@@ -52,7 +52,10 @@ function institutionsAsOrgs(institutions: AuthMeInstitution[]): SwitcherOrg[] {
   }));
 }
 
-const INSTITUTION_BUSINESS_ITEMS = new Set(["Business Profile", "Branches", "Representative", "Team", "Services"]);
+// "Representative" is hidden for institutions for now — not a removal, just not shown here yet.
+// Order is explicit (Profile, Branches, Services, Scholarships, Team) rather than following
+// BUSINESS_NAV_GROUPS' own item order, which is tuned for the plain-business sidebar instead.
+const INSTITUTION_BUSINESS_ITEM_ORDER = ["Business Profile", "Branches", "Services", "Scholarships", "Team"];
 // Enquiries and Messages used to be hidden here: both called requireBusinessContext routes and
 // just produced a 403 for an institution. They now serve either org kind, because an enquiry
 // nobody represents falls back to the institution that owns the course and it works that lead in
@@ -60,7 +63,9 @@ const INSTITUTION_BUSINESS_ITEMS = new Set(["Business Profile", "Branches", "Rep
 // requests, so it stays — so outside the Business group there is nothing left to filter.
 const INSTITUTION_NAV_GROUPS = BUSINESS_NAV_GROUPS.map((group) => {
   if (group.label !== "Business") return group;
-  return { ...group, items: [...group.items.filter((item) => INSTITUTION_BUSINESS_ITEMS.has(item.label)), INSTITUTION_SCHOLARSHIPS_ITEM] };
+  const byLabel = new Map([...group.items, INSTITUTION_SCHOLARSHIPS_ITEM].map((item) => [item.label, item]));
+  const items = INSTITUTION_BUSINESS_ITEM_ORDER.map((label) => byLabel.get(label)).filter((item) => item !== undefined);
+  return { ...group, items };
 }).filter((group) => group.items.length > 0);
 
 export function BusinessShell({ children }: Readonly<{ children: React.ReactNode }>) {

@@ -7,6 +7,7 @@ import * as repo from "../repositories/courses.repository.js";
 import { CourseListQuery } from "../schemas/search.schema.js";
 import { courseSlug } from "../utils/slug.js";
 import { withCardFields } from "../utils/course-card-fields.js";
+import { resolvePreviewSchemaName } from "../utils/preview-auth.js";
 
 const SlugParam = z.object({ slug: z.string().min(1) });
 
@@ -21,7 +22,7 @@ export async function searchCoursesRoutes(app: FastifyInstance) {
   // destination country's seasonal weather.
   app.get("/search/courses/:slug", async (req, reply) => {
     const { slug } = SlugParam.parse(req.params);
-    const course = await repo.findPublicCourseBySlug(slug);
+    const course = await repo.findPublicCourseBySlug(slug, resolvePreviewSchemaName(req));
     if (!course) throw new NotFoundError("Course not found");
 
     const {

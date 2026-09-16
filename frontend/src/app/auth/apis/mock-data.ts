@@ -75,4 +75,10 @@ export const authMockApi = {
     if (mockUser) mockUser = { ...mockUser, orgId: org_id };
     return { access_token: "mock-access-token" };
   },
+
+  mintPreviewToken: async (): Promise<{ preview_token: string }> => {
+    console.log("[mock] POST /auth/preview-token");
+    await delay(200);
+    return { preview_token: "mock-preview-token" };
+  },
 };

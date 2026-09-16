@@ -265,7 +265,7 @@ export function BusinessDetailView({ id }: Readonly<{ id: number }>) {
                 <PartnersTab businessId={business.id} businessName={business.business_name} readOnly={readOnly} />
               )}
               {tab === "members" && <MembersTab businessId={business.id} readOnly={readOnly} />}
-              {tab === "contacts" && <ContactsTab businessId={business.id} readOnly={readOnly} />}
+              {tab === "contacts" && <ContactsTab kind="business" id={business.id} countries={countries} readOnly={readOnly} />}
               {tab === "services" && <ServicesTab businessId={business.id} readOnly={readOnly} />}
               {tab === "activity" && <ActivityTab businessId={business.id} />}
             </CardContent>

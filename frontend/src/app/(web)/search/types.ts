@@ -197,11 +197,14 @@ export type CourseDetail = SearchCourse & {
   englishRequirements: CourseEnglishRequirement[];
   study_units: CourseStudyUnit[];
   study_options: CourseStudyOption[];
+  /** Photos an admin uploaded through the service editor's Media tab — separate from the single
+   * scraped `image_url`. */
+  media: { id: number; url: string; mime_type: string }[];
   institution: CourseInstitution | null;
   campuses: InstitutionCampus[];
   weather: CourseWeather | null;
   /** Full payment schedule, when the fee splits — `[{ name?, amount }]`. */
-  domestic_fee_installments: FeeInstallment[] | null;
+domestic_fee_installments: FeeInstallment[] | null;
   international_fee_installments: FeeInstallment[] | null;
   /** The platform's city page for the campus city, when one is published. */
   city_link: { name: string; href: string } | null;

@@ -21,12 +21,13 @@ import { PageViews } from "../../components/page-views";
 
 type InstitutionPageProps = Readonly<{
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ page?: string; search?: string; level?: string }>;
+  searchParams: Promise<{ page?: string; search?: string; level?: string; preview_token?: string }>;
 }>;
 
-export async function generateMetadata({ params }: InstitutionPageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: InstitutionPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const institution = await getInstitutionBySlug(slug);
+  const { preview_token } = await searchParams;
+  const institution = await getInstitutionBySlug(slug, preview_token);
   if (!institution) return { title: "Institution — Globaly" };
   return {
     title: `${institution.business_name} — Globaly`,
@@ -98,15 +99,15 @@ function toProfileData(institution: InstitutionDetail): ProfileData {
 
 export default async function InstitutionPage({ params, searchParams }: InstitutionPageProps) {
   const { slug } = await params;
-  const { page: pageParam, search, level } = await searchParams;
+  const { page: pageParam, search, level, preview_token } = await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
 
-  const institution = await getInstitutionBySlug(slug);
+  const institution = await getInstitutionBySlug(slug, preview_token);
   if (!institution) notFound();
 
   // The catalog scrolls inside its card rather than paging, so ask for the whole first page of
   // it — 100 is the API cap. Past that the section falls back to showing its pager.
-  const { data: courses, meta } = await getInstitutionCourses(slug, { page, search, degree_level: level, limit: 100 });
+  const { data: courses, meta } = await getInstitutionCourses(slug, { page, search, degree_level: level, limit: 100 }, preview_token);
   const profile = toProfileData(institution);
   // The stats and the subject grid count the whole catalog; `meta.total` counts only the
   // level/search currently shown.

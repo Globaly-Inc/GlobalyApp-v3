@@ -17,11 +17,15 @@ import { CourseAwardedByCard, CourseConnectCard } from "./components/course-side
 import { CourseEntryRequirementsCard } from "./components/course-entry-requirements-card";
 import { PageViews } from "../../components/page-views";
 
-type CoursePageProps = Readonly<{ params: Promise<{ slug: string }> }>;
+type CoursePageProps = Readonly<{
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ preview_token?: string }>;
+}>;
 
-export async function generateMetadata({ params }: CoursePageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: CoursePageProps): Promise<Metadata> {
   const { slug } = await params;
-  const course = await getCourseBySlug(slug);
+  const { preview_token } = await searchParams;
+  const course = await getCourseBySlug(slug, preview_token);
   if (!course) return { title: "Course — Globaly" };
   return {
     title: `${course.name} — Globaly`,
@@ -45,14 +49,21 @@ function toLocations(course: CourseDetail): ProfileLocation[] {
   }));
 }
 
-/** The course's own image first, then the awarding institution's photos. */
+/** The course's own scraped image first, then photos an admin uploaded through the service
+ * editor's Media tab, then the awarding institution's photos. */
 function courseGallery(course: CourseDetail) {
-  return toGalleryItems([course.image_url, ...(course.institution?.gallery_image_urls ?? [])], null);
+  const uploadedImages = course.media.filter((m) => m.mime_type.startsWith("image/")).map((m) => m.url);
+  const uploadedVideos = course.media.filter((m) => m.mime_type.startsWith("video/")).map((m) => m.url);
+  return toGalleryItems(
+    [course.image_url, ...uploadedImages, ...(course.institution?.gallery_image_urls ?? [])],
+    uploadedVideos,
+  );
 }
 
-export default async function CoursePage({ params }: CoursePageProps) {
+export default async function CoursePage({ params, searchParams }: CoursePageProps) {
   const { slug } = await params;
-  const [course, tests] = await Promise.all([getCourseBySlug(slug), getTests()]);
+  const { preview_token } = await searchParams;
+  const [course, tests] = await Promise.all([getCourseBySlug(slug, preview_token), getTests()]);
   if (!course) notFound();
 
   return (

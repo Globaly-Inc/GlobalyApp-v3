@@ -30,6 +30,8 @@ const INSTITUTION_COLUMNS = [
   "i.gallery_images", "i.video_urls", "i.company_size", "i.created_at",
   // Read to decide which sections go out; stripped from the response before sending.
   "i.public_visibility",
+  // Read to authorize the owner-preview bypass in findPublicInstitutionBySlug; stripped before sending.
+  "i.schema_name",
 ];
 
 /**
@@ -495,18 +497,32 @@ export async function countPublicVisaServiceProviders(filters: VisaServiceFilter
   return Number(row.count) + real.length;
 }
 
-export async function findPublicInstitutionBySlug(slug: string) {
+/**
+ * `previewSchemaName` lets the route bypass the `is_published` gate for exactly one caller: the
+ * institution's own owner/member, previewing their own unpublished profile (see the "Preview"
+ * button in the self-service portal). It's verified by the route from the caller's JWT — never
+ * take it from an unauthenticated source.
+ */
+export async function findPublicInstitutionBySlug(slug: string, previewSchemaName?: string) {
   const fragment = parseCourseIdFragment(slug);
   if (!fragment) return null;
 
   // The fragment is the institution's integer id, zero-padded to the 6 chars the slug scheme expects.
-  const institution = await institutionsQuery({})
+  const q = masterKnex("institutions as i")
+    .leftJoin("countries as c", "c.id", "i.country_id")
+    .whereNull("i.deleted_at")
     .whereRaw("lpad(i.id::text, 6, '0') = ?", [fragment])
-    .select(...INSTITUTION_COLUMNS)
-    .first();
+    .select(...INSTITUTION_COLUMNS);
+  if (previewSchemaName) {
+    q.where((b) => b.where("i.is_published", true).orWhere("i.schema_name", previewSchemaName));
+  } else {
+    q.where("i.is_published", true);
+  }
+  const institution = await q.first();
   if (!institution) return null;
 
-  return withSlug({ ...institution, id: businessIdFragment(institution.id) });
+  const { schema_name: _schemaName, ...rest } = institution;
+  return withSlug({ ...rest, id: businessIdFragment(institution.id) });
 }
 
 /**

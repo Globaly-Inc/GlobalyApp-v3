@@ -56,8 +56,23 @@ export const replaceDefaultServices = repo.replaceDefaultServices;
 export const listServiceCategories = repo.listServiceCategories;
 export const countServiceCategories = repo.countServiceCategories;
 
-export function createServiceCategory(data: CategoryInput) {
-  return repo.insertServiceCategory(data);
+// Standard "Course details" fields every service category gets on creation — the service form
+// writes/reads values keyed by a real schema_fields id, and silently drops the selection when
+// none exists for the category. Also reused (not duplicated) by
+// service_category_course_fields_seeder.ts to backfill this onto every category that existed
+// before this field set did.
+export const STANDARD_COURSE_FIELDS: SchemaFieldInput[] = [
+  { key: "degree_level", label: "Degree level", type: "text" },
+  { key: "area_of_study", label: "Area of study", type: "text" },
+  { key: "awarded_by", label: "Awarded by", type: "text" },
+];
+
+export async function createServiceCategory(data: CategoryInput) {
+  const category = await repo.insertServiceCategory(data);
+  await Promise.all(
+    STANDARD_COURSE_FIELDS.map((f) => repo.insertSchemaField("service_categories", category.id, { ...f, is_default: true })),
+  );
+  return category;
 }
 
 export function updateServiceCategory(id: number, data: Partial<CategoryInput>) {

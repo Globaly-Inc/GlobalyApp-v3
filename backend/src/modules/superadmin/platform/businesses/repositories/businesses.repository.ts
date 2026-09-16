@@ -156,14 +156,11 @@ export async function countBusinesses(search?: string, status?: string, category
 // the same card. `kind` is what tells them apart — every row carries it, so a caller can route
 // a click to the right detail screen.
 
-/** The 'institutions' business category. Institutions have no category column of their own — they
- *  ARE that category — so it is reported as a constant to keep the row shape identical. */
-const INSTITUTION_CATEGORY_SLUG = "institutions";
-
 function institutionListQuery() {
   return masterKnex("institutions as i")
     .leftJoin("platform_users as owner", "owner.id", "i.platform_user_id")
     .leftJoin("countries as c", "c.id", "i.country_id")
+    .leftJoin("business_categories as cat", "cat.id", "i.business_category_id")
     .whereNull("i.deleted_at");
 }
 
@@ -186,10 +183,6 @@ function applyInstitutionFilters<T extends ReturnType<typeof institutionListQuer
 export async function listInstitutions(
   limit: number, offset: number, search?: string, status?: string, sort: BusinessSort = "name_asc",
 ) {
-  const category = await masterKnex("business_categories")
-    .where({ slug: INSTITUTION_CATEGORY_SLUG })
-    .first("id", "name");
-
   const rows = await applySort(
     applyInstitutionFilters(institutionListQuery(), search, status).select(
       "i.id",
@@ -202,8 +195,8 @@ export async function listInstitutions(
       "i.platform_user_id as owner_id", "i.schema_name", "i.source_job_id",
       // See listBusinesses' matching comment — same "owner has actually logged in" rule.
       masterKnex.raw("(i.platform_user_id IS NULL OR (owner.is_email_verified IS NOT TRUE AND i.claim_status != 'claimed')) as is_unclaimed"),
-      masterKnex.raw("?::int as business_category_id", [category?.id ?? null]),
-      masterKnex.raw("?::text as category_name", [category?.name ?? "Institutions"]),
+      "i.business_category_id",
+      "cat.name as category_name",
       "c.name as country_name",
       "owner.first_name as owner_first_name", "owner.last_name as owner_last_name", "owner.email as owner_email",
     ),
@@ -247,7 +240,6 @@ export async function countInstitutions(search?: string, status?: string) {
 }
 
 export async function findInstitutionDetail(id: number) {
-  const category = await masterKnex("business_categories").where({ slug: INSTITUTION_CATEGORY_SLUG }).first("id", "name");
   const row = await institutionListQuery()
     .where("i.id", id)
     .select(
@@ -267,8 +259,8 @@ export async function findInstitutionDetail(id: number) {
       "i.platform_user_id as owner_id", "i.schema_name", "i.source_job_id",
       // See listBusinesses' matching comment — same "owner has actually logged in" rule.
       masterKnex.raw("(i.platform_user_id IS NULL OR (owner.is_email_verified IS NOT TRUE AND i.claim_status != 'claimed')) as is_unclaimed"),
-      masterKnex.raw("?::int as business_category_id", [category?.id ?? null]),
-      masterKnex.raw("?::text as category_name", [category?.name ?? "Institutions"]),
+      "i.business_category_id",
+      "cat.name as category_name",
       "c.name as country_name",
       "owner.first_name as owner_first_name", "owner.last_name as owner_last_name", "owner.email as owner_email",
     )
@@ -298,7 +290,10 @@ export async function listInstitutionMembers(
 ) {
   const db = await getKnex(institutionId, schemaName);
   const base = () => {
-    const q = db("members as m").whereNull("m.deleted_at");
+    // Excludes rows that have never been through a real invite-accept (is_contact_only) — a
+    // dormant "Add Contact" row. A row that HAS accepted an invite shows here even if it's also
+    // flagged admin_point_of_contact — Contacts and Users aren't mutually exclusive.
+    const q = db("members as m").whereNull("m.deleted_at").where({ "m.is_contact_only": false });
     if (opts.search) {
       q.where((qb) => {
         qb.whereILike("m.first_name", `%${opts.search}%`)
@@ -310,7 +305,7 @@ export async function listInstitutionMembers(
   };
   const [{ count }] = await base().count<{ count: string }[]>("m.id as count");
   const rows = await base()
-    .select("m.id", "m.platform_user_id", "m.is_owner", "m.account_status", "m.role", "m.created_at")
+    .select("m.id", "m.platform_user_id", "m.is_owner", "m.account_status", "m.admin_point_of_contact", "m.role", "m.created_at")
     .orderBy("m.is_owner", "desc")
     .orderBy("m.created_at")
     .limit(opts.limit)
@@ -326,7 +321,7 @@ export async function listInstitutionMembers(
       platform_user_id: r.platform_user_id,
       is_owner: r.is_owner,
       account_status: r.account_status,
-      admin_point_of_contact: false,
+      admin_point_of_contact: r.admin_point_of_contact,
       created_at: r.created_at,
       role_name: r.role,
       role_display_name: null,
@@ -411,8 +406,13 @@ export async function listBusinessMembers(
 ) {
   const db = await getKnex(businessId, schemaName);
   const base = () => {
-    const q = db("agents as a").whereNull("a.deleted_at");
-    if (opts.pointOfContact) q.where("a.admin_point_of_contact", true);
+    // point_of_contact=true (the Contacts tab) shows only POC-flagged rows, whether or not
+    // they're also a real accepted agent. Otherwise (the Users tab), only rows that have never
+    // been through a real invite-accept (is_contact_only) are excluded — a real agent stays
+    // visible here even if they're also flagged as a point of contact.
+    const q = db("agents as a").whereNull("a.deleted_at").where(
+      opts.pointOfContact ? { "a.admin_point_of_contact": true } : { "a.is_contact_only": false },
+    );
     if (opts.search) {
       q.where((qb) => {
         qb.whereILike("a.first_name", `%${opts.search}%`)

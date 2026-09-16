@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Eye } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
@@ -25,9 +26,12 @@ export function PageViews({
   // count — so the guard remembers which page it counted, not merely that it ran.
   const counted = useRef("");
   const key = `${type}:${id}`;
+  // The owner previewing their own unpublished page (see the self-service Preview button, which
+  // carries `preview_token`) must not inflate the real public view count — this is a read-only visit.
+  const isPreview = !!useSearchParams().get("preview_token");
 
   useEffect(() => {
-    if (counted.current === key) return;
+    if (isPreview || counted.current === key) return;
     counted.current = key;
     fetch(`${API_BASE}/page-views/${key.replace(":", "/")}`, { method: "POST" })
       .then((res) => (res.ok ? res.json() : null))

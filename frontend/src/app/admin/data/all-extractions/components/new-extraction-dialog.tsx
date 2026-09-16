@@ -27,6 +27,16 @@ const STEPS = ["Categories", "Source", "Review"];
 
 const cleanUrls = (urls: string[] | undefined) => (urls ?? []).map((u) => u.trim()).filter(Boolean);
 
+// ponytail: extraction only actually supports Institutions right now — the other business
+// categories (Education Agency, Visa Services, Accreditation Body, Migration Agents, Immigration
+// Departments) still exist in the catalog and stay selectable everywhere else, but are hidden
+// from just this picker so they can't be picked for a job type extraction doesn't handle yet.
+// Remove this filter (and the one in handleBusinessSearch below) once those are supported.
+const ONLY_BUSINESS_CATEGORY = "Institutions";
+function extractionSupportedCategories(categories: Category[]): Category[] {
+  return categories.filter((c) => c.name === ONLY_BUSINESS_CATEGORY);
+}
+
 const SEARCH_DEBOUNCE_MS = 300;
 
 const toOptions = (categories: Category[]) =>
@@ -89,7 +99,7 @@ export function NewExtractionDialog({
       categoriesApi.getServiceCategories({ limit: 10, active: true }),
     ])
       .then(([business, service]) => {
-        setBusinessOptions(business.data);
+        setBusinessOptions(extractionSupportedCategories(business.data));
         setServiceOptions(service.data);
       })
       .catch(() => toast.error("Couldn't load categories"))
@@ -100,7 +110,7 @@ export function NewExtractionDialog({
     if (businessSearchRef.current) clearTimeout(businessSearchRef.current);
     businessSearchRef.current = setTimeout(async () => {
       const { data } = await categoriesApi.getBusinessCategories({ search: query.trim() || undefined, limit: 10, active: true });
-      setBusinessOptions(data);
+      setBusinessOptions(extractionSupportedCategories(data));
     }, SEARCH_DEBOUNCE_MS);
   };
 

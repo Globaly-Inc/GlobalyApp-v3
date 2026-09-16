@@ -103,6 +103,7 @@ export const PublishedPatchSchema = z.object({ is_published: z.boolean() });
 
 export const InstitutionPatchSchema = z.object({
   business_name: z.string().min(1),
+  business_category_id: z.number().int().positive().nullable(),
   description: z.string().nullable(),
   email: z.string().email().nullable(),
   phone: z.string().nullable(),
@@ -114,6 +115,12 @@ export const InstitutionPatchSchema = z.object({
   postcode: z.string().nullable(),
   logo_url: z.string().nullable(),
   cover_url: z.string().nullable(),
+  linkedin_url: z.string().nullable(),
+  facebook_url: z.string().nullable(),
+  instagram_url: z.string().nullable(),
+  twitter_url: z.string().nullable(),
+  youtube_url: z.string().nullable(),
+  whatsapp_url: z.string().nullable(),
 }).partial().strict();
 
 export const EnquirySettingsPatchSchema = z.object({
