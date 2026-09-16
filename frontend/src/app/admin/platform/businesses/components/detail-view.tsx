@@ -21,6 +21,7 @@ import { BusinessOverviewDialog } from "./business-detail/business-overview-dial
 import { InstitutionHeaderCard } from "./institution-header-card";
 import { InstitutionHeaderDialog } from "./institution-header-dialog";
 import { InstitutionOverviewDialog } from "./institution-overview-dialog";
+import { SocialMediaDialog } from "./social-media-dialog";
 import { DetailSidebar } from "./detail-sidebar";
 import { DetailTabs } from "./detail-tabs";
 
@@ -40,6 +41,7 @@ export function DetailView({ kind, id }: Readonly<{ kind: "business" | "institut
   const [publishBusy, setPublishBusy] = useState(false);
   const [headerOpen, setHeaderOpen] = useState(false);
   const [overviewOpen, setOverviewOpen] = useState(false);
+  const [socialOpen, setSocialOpen] = useState(false);
 
   const fetchedRef = useRef<string | null>(null);
   useEffect(() => {
@@ -144,10 +146,10 @@ export function DetailView({ kind, id }: Readonly<{ kind: "business" | "institut
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Button variant="ghost" className="gap-1.5" onClick={() => router.back()}>
+        <Button variant="ghost" className="gap-1.5" onClick={() => router.push("/admin/platform/businesses")}>
           <ArrowLeft className="h-4 w-4" /> Back
         </Button>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-start gap-2">
           {detail.status !== "verified" && (
             <div className="text-right">
               <Button className="h-10" variant="outline" onClick={() => runStatus("verified")} disabled={!canVerify}>
@@ -189,6 +191,15 @@ export function DetailView({ kind, id }: Readonly<{ kind: "business" | "institut
           statusColor={STATUS_COLORS[detail.status]}
           sourceLabel={detail.is_unclaimed ? "Pre-seeded" : "Claimed"}
           readOnly={readOnly}
+          social={{
+            linkedin_url: detail.linkedin_url,
+            facebook_url: detail.facebook_url,
+            instagram_url: detail.instagram_url,
+            twitter_url: detail.twitter_url,
+            youtube_url: detail.youtube_url,
+            whatsapp_url: detail.whatsapp_url,
+          }}
+          onEditSocial={() => setSocialOpen(true)}
           enquiry={
             kind === "business" && business
               ? {
@@ -214,6 +225,21 @@ export function DetailView({ kind, id }: Readonly<{ kind: "business" | "institut
           <InstitutionOverviewDialog open={overviewOpen} onOpenChange={setOverviewOpen} institution={institution!} onSave={handleSave} saving={saving} />
         </>
       )}
+
+      <SocialMediaDialog
+        open={socialOpen}
+        onOpenChange={setSocialOpen}
+        values={{
+          linkedin_url: detail.linkedin_url,
+          facebook_url: detail.facebook_url,
+          instagram_url: detail.instagram_url,
+          twitter_url: detail.twitter_url,
+          youtube_url: detail.youtube_url,
+          whatsapp_url: detail.whatsapp_url,
+        }}
+        onSave={handleSave}
+        saving={saving}
+      />
     </div>
   );
 }

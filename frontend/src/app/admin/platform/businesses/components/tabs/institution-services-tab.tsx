@@ -10,10 +10,10 @@ import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import {
-  deleteInstitutionServiceThunk, fetchInstitutionServices, toggleInstitutionServicePublished, updateInstitutionService,
+  deleteInstitutionServiceThunk, fetchInstitutionServices, toggleInstitutionServicePublished,
 } from "../../store/institution-detail-slice";
 import type { BusinessService } from "../../apis/types";
-import { PriceEditPopover } from "../services/price-edit-popover";
+import { CourseDetailsLinkButton } from "../services/course-details-link-button";
 import { DeleteServiceDialog } from "../services/delete-service-dialog";
 
 const PAGE_SIZE = 10;
@@ -74,15 +74,6 @@ export function InstitutionServicesTab({
     }
   };
 
-  const handlePriceSave = async (serviceId: string, price: number) => {
-    try {
-      await dispatch(updateInstitutionService({ id: institutionId, serviceId, patch: { price } })).unwrap();
-      toast.success("Price updated");
-    } catch (e) {
-      toast.error("Couldn't update price", { description: (e as Error).message });
-    }
-  };
-
   let list: React.ReactNode;
   if (status === "loading") {
     list = (
@@ -138,7 +129,7 @@ export function InstitutionServicesTab({
                   >
                     <Pencil className="h-4 w-4" />
                   </Button>
-                  <PriceEditPopover price={s.price} onSave={(next) => handlePriceSave(s.id, next)} />
+                  <CourseDetailsLinkButton onClick={() => router.push(`/admin/platform/institutions/${institutionId}/services/${s.id}/edit`)} />
                   <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => setDeletingService(s)} aria-label="Delete service">
                     <Trash2 className="h-4 w-4" />
                   </Button>

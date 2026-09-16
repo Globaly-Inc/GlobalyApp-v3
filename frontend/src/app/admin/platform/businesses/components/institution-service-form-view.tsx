@@ -2,17 +2,28 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, FileText, GraduationCap, Loader2, Save, Sparkles } from "lucide-react";
+import { ArrowLeft, Eye, EyeOff, FileText, Link2, Loader2, Pencil, Save, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Switch } from "@/components/ui/switch";
+import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Combobox } from "@/components/combobox";
 import { DynamicIcon } from "@/components/dynamic-icon";
-import { SectionCard } from "@/app/personal/profile/section-card";
+import { CourseDetailsCard } from "./services/course-details-card";
+import { CategoryExtraFields } from "./services/category-extra-fields";
+import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs";
+import { ServiceFeesTab } from "./services/service-fees-tab";
+import { ServiceIntakesTab } from "./services/service-intakes-tab";
+import { ServiceEligibilityTab } from "./services/service-eligibility-tab";
+import { ServiceStudyOptionsTab } from "./services/service-study-options-tab";
+import { ServiceStudyUnitsTab } from "./services/service-study-units-tab";
+import { ServiceAccreditationsTab } from "./services/service-accreditations-tab";
+import { ServicePreviewView } from "./services/service-preview-view";
+import { PublicBadge, ServiceSummaryBodyExtras, ServiceSummarySidebarExtras } from "./services/service-summary-extras";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { categoriesApi } from "@/app/admin/platform/categories/apis";
 import { fetchAccreditations, fetchLookup, fetchServiceCategoryOptions } from "@/app/admin/platform/categories/store/categories-slice";
@@ -52,9 +63,19 @@ export function InstitutionServiceFormView({ institutionId, serviceId }: Readonl
     const existing = serviceId ? services.find((s) => s.id === serviceId) : undefined;
     return existing ? toForm(existing) : EMPTY_FORM;
   });
+  const [isPublished, setIsPublished] = useState(() => {
+    const existing = serviceId ? services.find((s) => s.id === serviceId) : undefined;
+    return existing?.is_published ?? false;
+  });
+  const [publishing, setPublishing] = useState(false);
   const [fieldValues, setFieldValues] = useState<Record<number, unknown>>({});
+  const [tab, setTab] = useState<"summary" | "fees" | "intakes" | "eligibility" | "study-options" | "study-units" | "accreditations">("summary");
   const [saving, setSaving] = useState(false);
   const [generatingDescription, setGeneratingDescription] = useState(false);
+  const [editingDescription, setEditingDescription] = useState(!isEdit);
+  const [savingDescription, setSavingDescription] = useState(false);
+  const [previewMode, setPreviewMode] = useState(false);
+  const savedNameRef = useRef(form.name);
 
   const [courseSearchResults, setCourseSearchResults] = useState<Record<string, { value: string; label: string }[]>>({});
   const [courseSearchLoading, setCourseSearchLoading] = useState<Record<string, boolean>>({});
@@ -80,7 +101,7 @@ export function InstitutionServiceFormView({ institutionId, serviceId }: Readonl
       if (!services.some((s) => s.id === serviceId)) {
         businessesApi.getInstitutionServices(institutionId).then((all) => {
           const found = all.find((s) => s.id === serviceId);
-          if (found) setForm(toForm(found));
+          if (found) { setForm(toForm(found)); setIsPublished(found.is_published); }
         });
       }
       dispatch(fetchInstitutionServiceFieldValues({ id: institutionId, serviceId })).then((res) => {
@@ -93,6 +114,12 @@ export function InstitutionServiceFormView({ institutionId, serviceId }: Readonl
     }
   }, []);
 
+  useEffect(() => {
+    if (isEdit || form.service_category_id || serviceCategories.length === 0) return;
+    const courses = serviceCategories.find((c) => c.slug === "courses");
+    if (courses) set("service_category_id", courses.id);
+  }, [isEdit, form.service_category_id, serviceCategories]);
+
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((f) => ({ ...f, [key]: value }));
 
   const canSave = form.name.trim().length >= 2 && !!form.service_category_id;
@@ -103,18 +130,20 @@ export function InstitutionServiceFormView({ institutionId, serviceId }: Readonl
     awarded_by: accreditations.map((a) => ({ value: String(a.id), label: a.name })),
   };
 
-  const schemaFieldIdByKey: Record<string, number> = {};
-  for (const c of serviceCategories) {
-    for (const f of c.schema_fields) {
-      if (!(f.key in schemaFieldIdByKey)) schemaFieldIdByKey[f.key] = f.id;
-    }
-  }
-  const COURSE_FIELDS = [
-    { key: "degree_level", label: "Degree level" },
-    { key: "area_of_study", label: "Area of study" },
-    { key: "awarded_by", label: "Awarded by" },
-  ];
+  // Scoped to the SELECTED category: schema_fields are per-category rows (their own ids), so a
+  // "degree_level" field on Academic Courses has a different id than one on, say, Diplomas —
+  // merging across every category picked whichever category came first, silently mismatching
+  // the id a value was saved under and leaving the combobox blank on edit.
+  const selectedCategory = serviceCategories.find((c) => c.id === form.service_category_id);
+  // Matches V1's BusinessServiceEditor.tsx: a single hardcoded category slug gates the
+  // course-only tabs/cards (Intakes/Eligibility/Study Options/Study Units/Accreditations/Course
+  // details) — every other category only ever gets Summary + Fees plus its own schema_fields.
+  const isCourse = selectedCategory?.slug === "courses";
 
+  const schemaFieldIdByKey: Record<string, number> = {};
+  for (const f of selectedCategory?.schema_fields ?? []) {
+    schemaFieldIdByKey[f.key] = f.id;
+  }
   const searchCourseField = async (key: string, query: string) => {
     setCourseSearchLoading((s) => ({ ...s, [key]: true }));
     try {
@@ -167,6 +196,9 @@ export function InstitutionServiceFormView({ institutionId, serviceId }: Readonl
     }
   };
 
+  // Edit mode no longer has a global save: every card persists itself (name on blur, description
+  // and course details via their own Save buttons, category/publish immediately on change). This
+  // only handles the initial creation of a brand-new service, which still needs one explicit action.
   const handleSubmit = async () => {
     if (!canSave || !form.service_category_id) return;
     setSaving(true);
@@ -176,9 +208,7 @@ export function InstitutionServiceFormView({ institutionId, serviceId }: Readonl
         service_category_id: form.service_category_id,
         description: form.description || null,
       };
-      const result = isEdit && serviceId
-        ? await dispatch(updateInstitutionService({ id: institutionId, serviceId, patch: input })).unwrap()
-        : await dispatch(createInstitutionService({ id: institutionId, input })).unwrap();
+      const result = await dispatch(createInstitutionService({ id: institutionId, input })).unwrap();
 
       const values = Object.entries(fieldValues).map(([schema_field_id, value]) => ({
         schema_field_id: Number(schema_field_id),
@@ -188,13 +218,81 @@ export function InstitutionServiceFormView({ institutionId, serviceId }: Readonl
         await dispatch(updateInstitutionServiceFieldValues({ id: institutionId, serviceId: result.id, values })).unwrap();
       }
 
-      toast.success(isEdit ? "Service updated" : "Service created");
+      toast.success("Service created");
       router.push(`/admin/platform/businesses/${institutionId}?kind=institution&tab=services`);
     } catch (e) {
       const err = e as ApiError;
-      toast.error(isEdit ? "Couldn't update service" : "Couldn't create service", { description: err.message });
+      toast.error("Couldn't create service", { description: err.message });
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handleTogglePublish = async (next: boolean) => {
+    if (!serviceId) return;
+    setPublishing(true);
+    try {
+      await businessesApi.setInstitutionServicePublished(institutionId, serviceId, next);
+      setIsPublished(next);
+      toast.success(next ? "Service published" : "Service unpublished");
+    } catch (e) {
+      toast.error("Couldn't update publish status", { description: (e as ApiError).message });
+    } finally {
+      setPublishing(false);
+    }
+  };
+
+  // Auto-saves like handleTogglePublish — a category pick that's silently lost on refresh
+  // (nothing persists until Save Changes is clicked) is confusing, so it persists immediately
+  // once the service exists, same fix as the business twin.
+  const handleCategoryChange = async (categoryId: number | null) => {
+    set("service_category_id", categoryId);
+    // Otherwise the old category's field values stay in local state and would ride along on the
+    // next Save under the new category's (now-invalid) field ids — the backend now also rejects
+    // that, but there's no reason to still show/resubmit them client-side either.
+    setFieldValues({});
+    const nextIsCourse = serviceCategories.find((c) => c.id === categoryId)?.slug === "courses";
+    if (!nextIsCourse && tab !== "summary" && tab !== "fees") setTab("summary");
+    if (!isEdit || !serviceId || !categoryId) return;
+    try {
+      await dispatch(updateInstitutionService({ id: institutionId, serviceId, patch: { service_category_id: categoryId } })).unwrap();
+    } catch (e) {
+      toast.error("Couldn't update category", { description: (e as ApiError).message });
+    }
+  };
+
+  const handleNameBlur = async () => {
+    if (!isEdit || !serviceId || form.name === savedNameRef.current || !form.name.trim()) return;
+    savedNameRef.current = form.name;
+    try {
+      await dispatch(updateInstitutionService({ id: institutionId, serviceId, patch: { name: form.name } })).unwrap();
+    } catch (e) {
+      toast.error("Couldn't update name", { description: (e as ApiError).message });
+    }
+  };
+
+  const handleSaveDescription = async () => {
+    if (!serviceId) { setEditingDescription(false); return; }
+    setSavingDescription(true);
+    try {
+      await dispatch(updateInstitutionService({ id: institutionId, serviceId, patch: { description: form.description || null } })).unwrap();
+      setEditingDescription(false);
+    } catch (e) {
+      toast.error("Couldn't update description", { description: (e as ApiError).message });
+    } finally {
+      setSavingDescription(false);
+    }
+  };
+
+  const handleSaveCourseDetails = async () => {
+    if (!serviceId) return;
+    const values = Object.entries(fieldValues).map(([schema_field_id, value]) => ({ schema_field_id: Number(schema_field_id), value }));
+    if (values.length === 0) return;
+    try {
+      await dispatch(updateInstitutionServiceFieldValues({ id: institutionId, serviceId, values })).unwrap();
+      toast.success("Course details updated");
+    } catch (e) {
+      toast.error("Couldn't update course details", { description: (e as ApiError).message });
     }
   };
 
@@ -209,19 +307,49 @@ export function InstitutionServiceFormView({ institutionId, serviceId }: Readonl
           <ArrowLeft className="h-4 w-4" />
           Back to services
         </Button>
-        <Button className="cursor-pointer gap-1.5" disabled={!canSave || saving} onClick={handleSubmit}>
-          <Save className="h-3.5 w-3.5" />
-          {saving ? (isEdit ? "Saving…" : "Creating…") : isEdit ? "Save changes" : "Create service"}
-        </Button>
+        <div className="flex items-center gap-3">
+          {isEdit && serviceId && (
+            <>
+              <Button variant="outline" size="sm" onClick={() => setPreviewMode((v) => !v)}>
+                {previewMode ? <EyeOff className="mr-1 h-4 w-4" /> : <Eye className="mr-1 h-4 w-4" />}
+                {previewMode ? "Exit preview" : "Preview"}
+              </Button>
+              <div className="flex items-center gap-2">
+                <Label className="text-sm text-muted-foreground">{isPublished ? "Published" : "Unpublished"}</Label>
+                <Switch checked={isPublished} disabled={publishing} onCheckedChange={handleTogglePublish} />
+              </div>
+            </>
+          )}
+          {!isEdit && (
+            <Button className="cursor-pointer gap-1.5" disabled={!canSave || saving} onClick={handleSubmit}>
+              <Save className="h-3.5 w-3.5" />
+              {saving ? "Creating…" : "Create service"}
+            </Button>
+          )}
+        </div>
       </div>
 
+      {previewMode && (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-primary/30 bg-primary/5 px-4 py-3 text-sm text-primary">
+          <span>You are previewing the public page</span>
+          <Button variant="outline" size="sm" onClick={() => setPreviewMode(false)}>
+            <ArrowLeft className="mr-1 h-3.5 w-3.5" /> Back to service profile
+          </Button>
+        </div>
+      )}
+
+      {previewMode && serviceId ? (
+        <ServicePreviewView kind="institution" orgId={institutionId} serviceId={serviceId} embedded />
+      ) : (
+      <>
+
       <div className="overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm">
-        <div className="relative h-40 bg-linear-to-br from-primary to-primary/70 sm:h-48">
+        <div className="relative h-40 bg-gradient-to-br from-primary to-primary/60 sm:h-48">
           {institution?.cover_url && (
             // eslint-disable-next-line @next/next/no-img-element
             <img src={institution.cover_url} alt="" className="absolute inset-0 h-full w-full object-cover" />
           )}
-          <Avatar className="absolute -bottom-12 left-10 size-24 rounded-xl border-4 border-background bg-white shadow-lg">
+          <Avatar className="absolute -bottom-12 left-6 size-24 rounded-xl border-4 border-background bg-white shadow-lg">
             {institution?.logo_url && (
               <AvatarImage src={institution.logo_url} alt={institution.business_name} className="rounded-lg object-contain p-1" />
             )}
@@ -230,89 +358,184 @@ export function InstitutionServiceFormView({ institutionId, serviceId }: Readonl
             </AvatarFallback>
           </Avatar>
         </div>
-        <CardContent>
-          <div className="ml-8 flex items-start gap-4 pt-16">
-            <div className="m-2 flex flex-1 flex-col gap-1.5">
-              <Combobox
-                options={serviceCategories.map((c) => ({
-                  value: String(c.id),
-                  label: c.name,
-                  icon: <DynamicIcon name={c.icon} fallback="GraduationCap" className="h-3.5 w-3.5" />,
-                }))}
-                value={form.service_category_id ? String(form.service_category_id) : ""}
-                onChange={(v) => set("service_category_id", v ? Number(v) : null)}
-                placeholder="Select category"
-                searchPlaceholder="Search categories..."
-                className="h-7 w-fit min-w-0 rounded-full border-primary/30 bg-primary/5 px-3 text-xs font-medium text-primary"
-              />
-              <Input
-                value={form.name}
-                onChange={(e) => set("name", e.target.value)}
-                placeholder="Untitled service"
-                className="h-10 border-none p-0 text-xl font-bold text-foreground shadow-none focus-visible:ring-0"
-              />
-              <p className="text-sm text-muted-foreground">{institution?.business_name ?? "Institution"}</p>
-            </div>
+        <CardContent className="ml-8 mb-8 flex flex-col gap-1.5 pt-16">
+          <Combobox
+            options={serviceCategories.map((c) => ({
+              value: String(c.id),
+              label: c.name,
+              icon: <DynamicIcon name={c.icon} fallback="GraduationCap" className="h-3.5 w-3.5" />,
+            }))}
+            value={form.service_category_id ? String(form.service_category_id) : ""}
+            onChange={(v) => handleCategoryChange(v ? Number(v) : null)}
+            placeholder="Select category"
+            searchPlaceholder="Search categories..."
+            className="h-7 w-fit min-w-0 rounded-full border-primary/30 bg-primary/5 px-3 text-xs font-medium text-primary"
+          />
+          <Input
+            value={form.name}
+            onChange={(e) => set("name", e.target.value)}
+            onBlur={handleNameBlur}
+            placeholder="Untitled service"
+            className="h-10 border-none p-0 text-xl font-bold text-foreground shadow-none focus-visible:ring-0"
+          />
+          <div className="mt-1.5 flex flex-wrap items-center gap-2">
+            <p className="text-sm text-muted-foreground">{institution?.business_name ?? "Institution"}</p>
+            {institution && [institution.linkedin_url, institution.facebook_url, institution.instagram_url, institution.twitter_url].some(Boolean) && (
+              <div className="ml-1 flex items-center gap-1.5">
+                {[institution.linkedin_url, institution.facebook_url, institution.instagram_url, institution.twitter_url].filter(Boolean).map((url) => (
+                  <a
+                    key={url}
+                    href={url!}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex h-7 w-7 items-center justify-center rounded-full border text-muted-foreground transition-colors hover:text-foreground"
+                  >
+                    <Link2 className="h-3.5 w-3.5" />
+                  </a>
+                ))}
+              </div>
+            )}
           </div>
         </CardContent>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <Card className="gap-3 lg:col-span-2">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-4 w-4 text-muted-foreground" />
-              Description
-            </CardTitle>
-            <CardAction>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="gap-1.5 text-primary"
-                disabled={generatingDescription}
-                onClick={handleWriteWithAi}
-              >
-                {generatingDescription ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                Write with AI
-              </Button>
-            </CardAction>
-          </CardHeader>
-          <CardContent>
-            <Textarea
-              value={form.description}
-              onChange={(e) => set("description", e.target.value)}
-              placeholder="Describe the service..."
-              rows={8}
-              className="min-h-20"
-            />
-          </CardContent>
-        </Card>
+      {isEdit && (
+        <AdminSegmentedTabs
+          options={[
+            { value: "summary", label: "Summary" },
+            { value: "fees", label: isCourse ? "Course Fees" : "Fees" },
+            ...(isCourse ? [
+              { value: "intakes", label: "Intakes" },
+              { value: "eligibility", label: "Eligibility" },
+              { value: "study-options", label: "Study Options" },
+              { value: "study-units", label: "Study Units" },
+              { value: "accreditations", label: "Accreditations" },
+            ] as const : []),
+          ]}
+          value={tab}
+          onChange={setTab}
+        />
+      )}
 
-        <SectionCard icon={GraduationCap} title="Course details">
-          <div className="space-y-4">
-            {COURSE_FIELDS.map((field) => {
-              const fieldId = schemaFieldIdByKey[field.key];
-              const value = fieldId != null && fieldValues[fieldId] != null ? String(fieldValues[fieldId]) : "";
-              return (
-                <div key={field.key} className="flex flex-col gap-2">
-                  <Label>{field.label}</Label>
-                  <Combobox
-                    options={courseFieldOptions(field.key, value)}
-                    value={value}
-                    onChange={(v) => {
-                      if (fieldId != null) setFieldValues((f) => ({ ...f, [fieldId]: v }));
-                    }}
-                    onQueryChange={(query) => debouncedSearchCourseField(field.key, query)}
-                    loading={courseSearchLoading[field.key] ?? false}
-                    placeholder={`Select ${field.label.toLowerCase()}`}
-                    searchPlaceholder={`Search ${field.label.toLowerCase()}...`}
-                  />
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+        <div className="flex flex-col gap-4 lg:col-span-2">
+          {tab === "summary" ? (
+            <>
+              <Card className="gap-0 overflow-hidden">
+                <div className="flex items-center justify-between border-b px-5 py-4">
+                  <div className="flex items-center gap-2">
+                    <FileText className="h-5 w-5 text-primary" />
+                    <h2 className="text-sm font-semibold">Description</h2>
+                    <PublicBadge />
+                  </div>
+                  {isEdit && (
+                    <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingDescription((v) => !v)} aria-label="Edit description">
+                      <Pencil className="h-3.5 w-3.5" />
+                    </Button>
+                  )}
                 </div>
-              );
-            })}
-          </div>
-        </SectionCard>
+                <CardContent className="p-5">
+                  {editingDescription ? (
+                    <div className="space-y-3">
+                      <div className="flex justify-end">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="gap-1.5 text-primary"
+                          disabled={generatingDescription}
+                          onClick={handleWriteWithAi}
+                        >
+                          {generatingDescription ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                          Write with AI
+                        </Button>
+                      </div>
+                      <Textarea
+                        value={form.description}
+                        onChange={(e) => set("description", e.target.value)}
+                        placeholder="Describe the service..."
+                        rows={8}
+                        className="min-h-20"
+                      />
+                      {isEdit && (
+                        <div className="flex justify-end gap-2">
+                          <Button variant="outline" size="sm" disabled={savingDescription} onClick={() => setEditingDescription(false)}>Cancel</Button>
+                          <Button size="sm" disabled={savingDescription} onClick={handleSaveDescription}>{savingDescription ? "Saving…" : "Save"}</Button>
+                        </div>
+                      )}
+                    </div>
+                  ) : form.description ? (
+                    <p className="whitespace-pre-wrap text-sm leading-relaxed">{form.description}</p>
+                  ) : (
+                    <div>
+                      <p className="text-xs text-muted-foreground">Description</p>
+                      <p className="text-sm italic text-muted-foreground">Not set</p>
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+
+              {isEdit && serviceId && (
+                <ServiceSummaryBodyExtras kind="institution" orgId={institutionId} serviceId={serviceId} isCourse={isCourse} onNavigateTab={setTab} />
+              )}
+            </>
+          ) : tab === "fees" ? (
+            isEdit && serviceId && <ServiceFeesTab kind="institution" orgId={institutionId} serviceId={serviceId} isCourse={isCourse} />
+          ) : tab === "intakes" ? (
+            isEdit && serviceId && <ServiceIntakesTab kind="institution" orgId={institutionId} serviceId={serviceId} />
+          ) : tab === "eligibility" ? (
+            isEdit && serviceId && <ServiceEligibilityTab kind="institution" orgId={institutionId} serviceId={serviceId} />
+          ) : tab === "study-options" ? (
+            isEdit && serviceId && <ServiceStudyOptionsTab kind="institution" orgId={institutionId} serviceId={serviceId} />
+          ) : tab === "study-units" ? (
+            isEdit && serviceId && <ServiceStudyUnitsTab kind="institution" orgId={institutionId} serviceId={serviceId} />
+          ) : (
+            isEdit && serviceId && <ServiceAccreditationsTab kind="institution" orgId={institutionId} serviceId={serviceId} />
+          )}
+        </div>
+
+        <div className="flex flex-col gap-4">
+          {isCourse && (
+          <CourseDetailsCard
+            degreeLevelValue={schemaFieldIdByKey.degree_level != null && fieldValues[schemaFieldIdByKey.degree_level] != null ? String(fieldValues[schemaFieldIdByKey.degree_level]) : ""}
+            areaOfStudyValue={schemaFieldIdByKey.area_of_study != null && fieldValues[schemaFieldIdByKey.area_of_study] != null ? String(fieldValues[schemaFieldIdByKey.area_of_study]) : ""}
+            awardedByValue={schemaFieldIdByKey.awarded_by != null && fieldValues[schemaFieldIdByKey.awarded_by] != null ? String(fieldValues[schemaFieldIdByKey.awarded_by]) : ""}
+            degreeLevels={degreeLevels}
+            areasOfStudy={areasOfStudy}
+            accreditations={accreditations}
+            onChangeDegreeLevel={(v) => { const id = schemaFieldIdByKey.degree_level; if (id != null) setFieldValues((f) => ({ ...f, [id]: v })); }}
+            onChangeAreaOfStudy={(v) => { const id = schemaFieldIdByKey.area_of_study; if (id != null) setFieldValues((f) => ({ ...f, [id]: v })); }}
+            onChangeAwardedBy={(v) => { const id = schemaFieldIdByKey.awarded_by; if (id != null) setFieldValues((f) => ({ ...f, [id]: v })); }}
+            onSearchDegreeLevel={(q) => debouncedSearchCourseField("degree_level", q)}
+            onSearchAreaOfStudy={(q) => debouncedSearchCourseField("area_of_study", q)}
+            onSearchAwardedBy={(q) => debouncedSearchCourseField("awarded_by", q)}
+            degreeLevelOptions={courseFieldOptions("degree_level", schemaFieldIdByKey.degree_level != null ? String(fieldValues[schemaFieldIdByKey.degree_level] ?? "") : "")}
+            areaOfStudyOptions={courseFieldOptions("area_of_study", schemaFieldIdByKey.area_of_study != null ? String(fieldValues[schemaFieldIdByKey.area_of_study] ?? "") : "")}
+            awardedByOptions={courseFieldOptions("awarded_by", schemaFieldIdByKey.awarded_by != null ? String(fieldValues[schemaFieldIdByKey.awarded_by] ?? "") : "")}
+            loadingDegreeLevel={courseSearchLoading.degree_level ?? false}
+            loadingAreaOfStudy={courseSearchLoading.area_of_study ?? false}
+            loadingAwardedBy={courseSearchLoading.awarded_by ?? false}
+            onSave={handleSaveCourseDetails}
+          />
+          )}
+
+          <CategoryExtraFields
+            fields={(selectedCategory?.schema_fields ?? []).filter((f) => !["degree_level", "area_of_study", "awarded_by"].includes(f.key))}
+            values={fieldValues}
+            onChangeField={(id, v) => setFieldValues((f) => ({ ...f, [id]: v }))}
+            onSave={handleSaveCourseDetails}
+          />
+
+          {isEdit && serviceId && (
+            <ServiceSummarySidebarExtras
+              kind="institution" orgId={institutionId} serviceId={serviceId}
+              name={form.name} hasCategory={!!form.service_category_id} description={form.description}
+              isCourse={isCourse} onNavigateTab={setTab}
+            />
+          )}
+        </div>
       </div>
+      </>
+      )}
     </div>
   );
 }

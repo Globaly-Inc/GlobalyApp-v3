@@ -1,7 +1,7 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { businessesApi } from "../apis";
 import type {
-  BusinessService, BusinessStatus, InstitutionBranch, InstitutionBranchListParams, InstitutionDetail, InstitutionInvitation,
+  BusinessService, BusinessStatus, Contact, ContactInput, ContactListParams, ContactPatch, InstitutionBranch, InstitutionBranchListParams, InstitutionDetail, InstitutionInvitation,
   InstitutionInvitationListParams, InstitutionInviteInput, InstitutionPartnerInput, InstitutionPartnerListParams, InstitutionPartnerPatch, InstitutionPartnerRow,
   InstitutionPatch, InstitutionPermission, InstitutionRole, InstitutionRoleCreateInput, InstitutionRolePatch, Member, MemberListParams,
   SchemaFieldValue, ServiceInput, ServicePatch, ServiceSearchParams,
@@ -64,6 +64,28 @@ export const deleteInstitutionServiceThunk = createAsyncThunk(
   async ({ id, serviceId }: { id: number; serviceId: string }) => {
     await businessesApi.deleteInstitutionService(id, serviceId);
     return serviceId;
+  },
+);
+
+// ── Contacts ──────────────────────────────────────────────────────────────────
+export const fetchInstitutionContacts = createAsyncThunk(
+  "institutionDetail/fetchContacts",
+  ({ id, params }: { id: number; params?: ContactListParams }) => businessesApi.getInstitutionContacts(id, params),
+);
+export const createInstitutionContact = createAsyncThunk(
+  "institutionDetail/createContact",
+  ({ id, input }: { id: number; input: ContactInput }) => businessesApi.createInstitutionContact(id, input),
+);
+export const updateInstitutionContact = createAsyncThunk(
+  "institutionDetail/updateContact",
+  ({ id, contactId, patch }: { id: number; contactId: string; patch: ContactPatch }) =>
+    businessesApi.updateInstitutionContact(id, contactId, patch),
+);
+export const deleteInstitutionContactThunk = createAsyncThunk(
+  "institutionDetail/deleteContact",
+  async ({ id, contactId }: { id: number; contactId: string }) => {
+    await businessesApi.deleteInstitutionContact(id, contactId);
+    return contactId;
   },
 );
 
@@ -176,6 +198,7 @@ type InstitutionDetailState = {
   branches: PagedState<InstitutionBranch>;
   partners: PagedState<InstitutionPartnerRow>;
   services: PagedState<BusinessService>;
+  contacts: PagedState<Contact>;
   roles: PagedState<InstitutionRole>;
   permissions: InstitutionPermission[];
 };
@@ -191,6 +214,7 @@ const initialState: InstitutionDetailState = {
   branches: emptyPaged(),
   partners: emptyPaged(),
   services: emptyPaged(),
+  contacts: emptyPaged(),
   roles: emptyPaged(),
   permissions: [],
 };
@@ -328,6 +352,29 @@ const institutionDetailSlice = createSlice({
         const wasPresent = state.services.items.some((s) => s.id === action.payload);
         state.services.items = state.services.items.filter((s) => s.id !== action.payload);
         if (wasPresent) state.services.total = Math.max(0, state.services.total - 1);
+      })
+      .addCase(fetchInstitutionContacts.pending, (state) => { state.contacts.status = "loading"; })
+      .addCase(fetchInstitutionContacts.fulfilled, (state, action) => {
+        state.contacts = { items: action.payload.data, total: action.payload.total, status: "idle", error: null };
+      })
+      .addCase(fetchInstitutionContacts.rejected, (state, action) => {
+        state.contacts.status = "failed";
+        state.contacts.error = action.error.message ?? "Failed to load contacts.";
+      })
+      .addCase(createInstitutionContact.fulfilled, (state, action) => {
+        if (action.payload.is_primary) for (const c of state.contacts.items) c.is_primary = false;
+        state.contacts.items.unshift(action.payload);
+        state.contacts.total += 1;
+      })
+      .addCase(updateInstitutionContact.fulfilled, (state, action) => {
+        if (action.payload.is_primary) for (const c of state.contacts.items) c.is_primary = false;
+        const i = state.contacts.items.findIndex((c) => c.id === action.payload.id);
+        if (i >= 0) state.contacts.items[i] = action.payload;
+      })
+      .addCase(deleteInstitutionContactThunk.fulfilled, (state, action) => {
+        const wasPresent = state.contacts.items.some((c) => c.id === action.payload);
+        state.contacts.items = state.contacts.items.filter((c) => c.id !== action.payload);
+        if (wasPresent) state.contacts.total = Math.max(0, state.contacts.total - 1);
       });
   },
 });

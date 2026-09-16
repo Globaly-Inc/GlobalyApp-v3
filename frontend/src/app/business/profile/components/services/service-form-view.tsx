@@ -118,11 +118,14 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
     awarded_by: accreditations.map((a) => ({ value: String(a.id), label: a.name })),
   };
 
+  // Scoped to the SELECTED category: schema_fields are per-category rows (their own ids), so a
+  // "degree_level" field on Academic Courses has a different id than one on, say, Diplomas —
+  // merging across every category picked whichever category came first, silently mismatching
+  // the id a value was saved under and leaving the combobox blank on edit.
+  const selectedCategory = serviceCategories.find((c) => c.id === form.service_category_id);
   const schemaFieldIdByKey: Record<string, number> = {};
-  for (const c of serviceCategories) {
-    for (const f of c.schema_fields) {
-      if (!(f.key in schemaFieldIdByKey)) schemaFieldIdByKey[f.key] = f.id;
-    }
+  for (const f of selectedCategory?.schema_fields ?? []) {
+    schemaFieldIdByKey[f.key] = f.id;
   }
 
   const searchCourseField = async (key: string, query: string) => {

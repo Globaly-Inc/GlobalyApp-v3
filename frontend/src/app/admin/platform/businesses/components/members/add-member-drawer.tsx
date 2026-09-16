@@ -10,7 +10,7 @@ import { Label } from "@/components/ui/label";
 import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { flagFromIso2 } from "@/app/admin/platform/categories/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { fetchContacts, fetchMemberRoles, fetchMembers, inviteMember, updateMember } from "../../store/businesses-slice";
+import { fetchMemberRoles, fetchMembers, inviteMember, updateMember } from "../../store/businesses-slice";
 import { isValidEmail } from "../../utils";
 import type { Member } from "../../apis/types";
 
@@ -110,7 +110,6 @@ export function AddMemberDrawer({
         toast.success("Invitation sent", { description: `${form.email} will appear here once they accept.` });
       }
       dispatch(fetchMembers({ id: businessId }));
-      dispatch(fetchContacts({ id: businessId }));
       handleClose();
     } catch (e) {
       toast.error(isEdit ? "Couldn't update member" : "Couldn't send invitation", { description: (e as Error).message });
@@ -121,7 +120,7 @@ export function AddMemberDrawer({
 
   const heading = isEdit
     ? `Edit ${editingMember?.user ? `${editingMember.user.first_name} ${editingMember.user.last_name}` : "member"}`
-    : (title ?? "Add Member");
+    : (title ?? "Add User");
   const subheading = isEdit
     ? "Name, email, and phone belong to this person's own account and can't be edited here."
     : (description ?? "Invites this person to join the business — they land in the team once they accept.");
