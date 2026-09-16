@@ -75,7 +75,13 @@ export type Segment =
   | { kind: "link"; href: string; label: string }
   | { kind: "strong" | "em" | "del"; value: string };
 
-const URL_PATTERN = /(?:https?:\/\/|www\.)[^\s<]+[^\s<.,!?;:'")\]]/gi;
+// `[label](href)` first, so a markdown link is not read as the bare URL inside it.
+const LINK_PATTERN = /\[([^\]\n]+)\]\(([^\s)]+)\)|(?:https?:\/\/|www\.)[^\s<]+[^\s<.,!?;:'")\]]/gi;
+
+/** A typed target like `globalyapp.com/x` is a host, not a relative path — give it a scheme. */
+function toHref(url: string): string {
+  return /^(?:https?:\/\/|\/|mailto:|tel:)/i.test(url) ? url : `https://${url}`;
+}
 
 /** V2's `truncateUrl` — a bare link renders as `host/path`, capped. */
 export function truncateUrl(url: string, maxLength = 40): string {
@@ -113,12 +119,14 @@ function parseEmphasis(text: string): Segment[] {
 function parseLinks(text: string): Segment[] {
   const out: Segment[] = [];
   let cursor = 0;
-  for (const match of text.matchAll(URL_PATTERN)) {
-    const url = match[0];
+  for (const match of text.matchAll(LINK_PATTERN)) {
+    const [raw, label, href] = match;
     const at = match.index;
     if (at > cursor) out.push(...parseEmphasis(text.slice(cursor, at)));
-    out.push({ kind: "link", href: url.startsWith("www.") ? `https://${url}` : url, label: truncateUrl(url) });
-    cursor = at + url.length;
+    // A markdown link shows its own label verbatim; a bare URL is truncated to host/path.
+    const url = href ?? raw;
+    out.push({ kind: "link", href: toHref(url), label: label ?? truncateUrl(url) });
+    cursor = at + raw.length;
   }
   if (cursor < text.length) out.push(...parseEmphasis(text.slice(cursor)));
   return out;
