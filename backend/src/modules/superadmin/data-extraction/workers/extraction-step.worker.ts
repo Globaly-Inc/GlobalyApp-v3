@@ -13,6 +13,7 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { scrapeRenderedHtml, mapUrlsDetailed } from "../lib/scraper.js";
 import { getPage, getDocument, isPdfUrl } from "../lib/page-store.js";
+import { snapshotSite } from "../lib/site-snapshot.js";
 import { truncateMarkdown, domainOf, extractSocialLinks, extractHrefsFromHtml, extractDomainEmails, fixMalformedAbsoluteUrl } from "../lib/html-utils.js";
 import { extractJson, setLlmContext } from "../lib/llm-client.js";
 import {
@@ -106,6 +107,16 @@ async function markStepProgress(jobId: string, step: string, status: string) {
     pipeline_progress: JSON.stringify(progress),
     updated_at: masterKnex.fn.now(),
   });
+}
+
+/** The job worker passes the discovered URL list; an admin re-run passes none, so fall back to
+ *  every URL this job has queued. */
+async function handleSiteSnapshotStep(jobId: string, urls?: string[], batch?: { index: number; total: number }) {
+  if (!urls?.length) {
+    const rows = await masterKnex(`${S}.extraction_queue`).where({ job_id: jobId }).select("url");
+    urls = rows.map((r: { url: string }) => r.url);
+  }
+  await snapshotSite(jobId, urls, batch);
 }
 
 async function scrapeUrl(url: string): Promise<string | null> {
@@ -1729,9 +1740,10 @@ async function handleVisaServiceDataStep(jobId: string, visaServiceId: string) {
 // ── Main consumer ───────────────────────────────────────────────────────────
 
 await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
-  let jobId: string, step: string, courseId: string | undefined, dataType: string | undefined, visaServiceId: string | undefined;
+  let jobId: string, step: string, courseId: string | undefined, dataType: string | undefined, visaServiceId: string | undefined,
+    urls: string[] | undefined, batch: { index: number; total: number } | undefined;
   try {
-    ({ jobId, step, courseId, dataType, visaServiceId } = JSON.parse(msg!.content.toString()));
+    ({ jobId, step, courseId, dataType, visaServiceId, urls, batch } = JSON.parse(msg!.content.toString()));
   } catch {
     logger.error("Malformed queue message, discarding", { raw: msg?.content.toString().slice(0, 200) });
     return;
@@ -1751,6 +1763,7 @@ await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
       case "course_data":       await handleCourseDataStep(jobId, courseId!, dataType as CourseDataType); break;
       case "visa_services":     await handleVisaServicesStep(jobId); break;
       case "visa_service_data": await handleVisaServiceDataStep(jobId, visaServiceId!); break;
+      case "site_snapshot":     await handleSiteSnapshotStep(jobId, urls, batch); break;
       default:
         logger.warn("Unknown step", { step });
     }

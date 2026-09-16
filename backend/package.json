@@ -12,6 +12,8 @@
     "seed:tenants": "node --import tsx src/workers/seed-runner.ts",
     "import:v2": "node --import tsx scripts/import-v2.ts",
     "embed:backfill": "node --import tsx scripts/embed-backfill.ts",
+    "sitemap:list": "node --import tsx scripts/list-sitemap.ts",
+    "test:site-snapshot-path": "node --import tsx tests/site-snapshot-path.ts",
     "backfill:widget-site-index": "node --import tsx scripts/backfill-widget-site-index.ts",
     "chunk:backfill": "node --import tsx scripts/chunk-backfill.ts",
     "fees:normalise": "node --import tsx scripts/normalise-course-fees.ts",

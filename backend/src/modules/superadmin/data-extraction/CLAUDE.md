@@ -531,6 +531,30 @@ The centralized error handler maps these to HTTP responses.
    when a job has nothing queued yet to resume from — no V2 equivalent to
    port, this is a cost fix.
 
+## Site snapshot to GCS (2026-09-16)
+
+Not a V2 behavior — explicitly requested. Right after URL discovery, the job worker publishes a
+`site_snapshot` step (`extraction-step.worker.ts`, `lib/site-snapshot.ts`) carrying the same-site,
+non-asset, blocklist-filtered URL list, capped at `page_cap`. The step fetches each URL through
+`getPage` (so `extraction_pages` is warmed and the page worker later hits the cache instead of
+re-scraping) and uploads one Markdown file PER PAGE, grouped per site, to GCS at
+`extraction/www/<site domain>/<hostname>/<path slug>.md` with a small front-matter header
+(url, job_id, scraped_at) and, when the page links to any, a trailing "Linked files" list of its
+image/document URLs (`fileLinksOf`) — discovery drops asset URLs from the crawl list, so the
+per-page file is where they are recorded. Paths are deterministic (`snapshotPathFor`, pure,
+`npm run test:site-snapshot-path`), so a rerun overwrites. Runs on the STEPS queue (consumers are
+concurrent, so it holds neither the JOBS consumer nor other steps) in batches of
+`SNAPSHOT_BATCH_SIZE` (100) URLs per message, so a crash mid-step loses one batch and batches run in
+parallel; one `site_snapshot_uploaded` job event per batch records counts. Hardening (2026-09-16):
+every 25 pages the step re-reads the job and halts on `stop_requested` / paused / failed / declined
+(the event says so); the heartbeat is keyed on pages processed, not uploaded. No per-page retry: the
+Scrapling path already walks get → stealthy_fetch → browser fetch, and a Firecrawl escalation was
+removed because the deployment is Scrapling-only and Firecrawl credits may be absent. Skipped with a warning when
+`GCS_BUCKET_NAME` is unset. Admin re-run of the step with no URL list falls back to the job's
+queued URLs. `npm run sitemap:list -- <url> [--discover]` prints what discovery sees for a site.
+Same pass: `edu.np` added to `MULTI_LABEL_SUFFIXES`, since `siteOf` was reducing `ku.edu.np` to
+`edu.np`.
+
 ## AgentCIS product staging shares the resolveDurationWeeks resolver (2026-09-15)
 
 `agentcis-product-staging.ts`'s `stageProduct` computed `duration_weeks` with a hand-rolled

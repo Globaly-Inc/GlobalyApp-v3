@@ -10,6 +10,7 @@ import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { discoverUrlsForCrawl } from "../lib/scraper.js";
+import { SNAPSHOT_BATCH_SIZE } from "../lib/site-snapshot.js";
 import { getPage } from "../lib/page-store.js";
 import { looksLikeCourseUrl, looksLikeVisaServiceUrl, filterUrls, truncateMarkdown, domainOf, collectGuidedUrls } from "../lib/html-utils.js";
 import { extractJson, isConfigured, setLlmContext } from "../lib/llm-client.js";
@@ -179,6 +180,19 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
       message: `Discovered ${allUrls.length} URLs via ${discovery.method}`,
       data: { method: discovery.method, count: allUrls.length },
     });
+
+    // Site snapshot: every discovered page → .md in GCS, on the step worker so this consumer
+    // isn't held for hundreds of scrapes. Bounded by the job's page_cap, same budget as queueing,
+    // and split into batches so a crash mid-way loses one batch rather than the whole site.
+    const snapshotUrls = allUrls.slice(0, Number(job.page_cap) || 500);
+    const batches = Math.ceil(snapshotUrls.length / SNAPSHOT_BATCH_SIZE);
+    for (let i = 0; i < batches; i++) {
+      await queueService.publish(EXTRACTION_QUEUES.STEPS, {
+        jobId, step: "site_snapshot",
+        urls: snapshotUrls.slice(i * SNAPSHOT_BATCH_SIZE, (i + 1) * SNAPSHOT_BATCH_SIZE),
+        batch: { index: i + 1, total: batches },
+      });
+    }
 
     // Heuristic filter: keep only URLs that look like course (or visa service) pages
     let courseUrls = allUrls.filter(isVisaService ? looksLikeVisaServiceUrl : looksLikeCourseUrl);

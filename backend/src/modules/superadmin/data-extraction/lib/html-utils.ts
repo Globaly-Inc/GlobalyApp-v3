@@ -222,7 +222,7 @@ const ASSET_EXTS = new Set([
 const MULTI_LABEL_SUFFIXES = new Set([
   "edu.au", "ac.uk", "edu.sg", "ac.nz", "edu.my", "ac.in", "edu.in",
   "edu.cn", "ac.jp", "edu.hk", "co.nz", "com.au", "org.au", "ac.za",
-  "edu.ph", "ac.th", "edu.vn", "edu.pk", "ac.ir", "edu.tr", "com.br",
+  "edu.ph", "ac.th", "edu.vn", "edu.pk", "ac.ir", "edu.tr", "com.br", "edu.np",
 ]);
 
 /**
