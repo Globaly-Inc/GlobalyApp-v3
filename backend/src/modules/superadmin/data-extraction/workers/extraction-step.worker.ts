@@ -13,6 +13,8 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { scrapeRenderedHtml, mapUrlsDetailed } from "../lib/scraper.js";
 import { getPage, getDocument, isPdfUrl } from "../lib/page-store.js";
+import { snapshotSite, snapshotRunOutcome } from "../lib/site-snapshot.js";
+import type { SnapshotBatch } from "../lib/site-snapshot.js";
 import { truncateMarkdown, domainOf, extractSocialLinks, extractHrefsFromHtml, extractDomainEmails, fixMalformedAbsoluteUrl } from "../lib/html-utils.js";
 import { extractJson, setLlmContext } from "../lib/llm-client.js";
 import {
@@ -106,6 +108,20 @@ async function markStepProgress(jobId: string, step: string, status: string) {
     pipeline_progress: JSON.stringify(progress),
     updated_at: masterKnex.fn.now(),
   });
+}
+
+/** The job worker passes the discovered URL list; an admin re-run passes none, so fall back to
+ *  every URL this job has queued. */
+async function handleSiteSnapshotStep(
+  jobId: string, urls?: string[], batch?: SnapshotBatch,
+): Promise<"done" | "failed" | "pending"> {
+  if (!urls?.length) {
+    const rows = await masterKnex(`${S}.extraction_queue`).where({ job_id: jobId }).select("url");
+    urls = rows.map((r: { url: string }) => r.url);
+  }
+  await snapshotSite(jobId, urls, batch);
+  // One unbatched message (an admin re-run) is the whole step; a batch only speaks for itself.
+  return batch ? snapshotRunOutcome(jobId, batch) : "done";
 }
 
 async function scrapeUrl(url: string): Promise<string | null> {
@@ -1729,9 +1745,10 @@ async function handleVisaServiceDataStep(jobId: string, visaServiceId: string) {
 // ── Main consumer ───────────────────────────────────────────────────────────
 
 await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
-  let jobId: string, step: string, courseId: string | undefined, dataType: string | undefined, visaServiceId: string | undefined;
+  let jobId: string, step: string, courseId: string | undefined, dataType: string | undefined, visaServiceId: string | undefined,
+    urls: string[] | undefined, batch: SnapshotBatch | undefined;
   try {
-    ({ jobId, step, courseId, dataType, visaServiceId } = JSON.parse(msg!.content.toString()));
+    ({ jobId, step, courseId, dataType, visaServiceId, urls, batch } = JSON.parse(msg!.content.toString()));
   } catch {
     logger.error("Malformed queue message, discarding", { raw: msg?.content.toString().slice(0, 200) });
     return;
@@ -1739,6 +1756,9 @@ await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
   logger.info("Received step", { jobId, step, courseId, dataType, visaServiceId });
   setLlmContext({ jobId, kind: `step:${step}` });
 
+  // Every step is one message that owns its whole step — except site_snapshot, whose batches run
+  // concurrently and must not each report the step done.
+  let outcome: "done" | "failed" | "pending" = "done";
   try {
     switch (step as PipelineStep) {
       case "institution":       await handleInstitutionStep(jobId); break;
@@ -1751,11 +1771,12 @@ await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
       case "course_data":       await handleCourseDataStep(jobId, courseId!, dataType as CourseDataType); break;
       case "visa_services":     await handleVisaServicesStep(jobId); break;
       case "visa_service_data": await handleVisaServiceDataStep(jobId, visaServiceId!); break;
+      case "site_snapshot":     outcome = await handleSiteSnapshotStep(jobId, urls, batch); break;
       default:
         logger.warn("Unknown step", { step });
     }
 
-    await markStepProgress(jobId, step, "done");
+    if (outcome !== "pending") await markStepProgress(jobId, step, outcome);
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     logger.error("Step failed", { jobId, step, error: errMsg });
@@ -1763,7 +1784,10 @@ await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
     await writeJobEvent(jobId, "step_error", {
       level: "error", phase: step,
       message: `Step "${step}" failed: ${errMsg}`,
-      data: { step, courseId, dataType, visaServiceId },
+      // `index` (spread from batch) is what snapshotRunOutcome dedupes a redelivered batch on;
+      // without it a batch that keeps failing is counted once per delivery and can complete the
+      // run on its own. Absent for every unbatched step, which is what that path expects.
+      data: { step, courseId, dataType, visaServiceId, ...(batch ?? {}) },
     });
   }
 });

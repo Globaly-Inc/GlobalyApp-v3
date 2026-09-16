@@ -1,6 +1,8 @@
 // URL filtering and markdown utilities.
 // Scrapers return markdown, so we mostly work with URLs and text — not raw HTML.
 
+import { getDomain } from "tldts";
+
 
 // Local-parts that name a narrow mailbox rather than a general point of contact — a same-domain
 // scan turns these up constantly (footer privacy notices, webmaster credits) but they're a worse
@@ -214,16 +216,14 @@ const ASSET_EXTS = new Set([
   ".ico", ".woff", ".woff2", ".ttf", ".eot",
 ]);
 
-/**
- * Multi-label public suffixes we actually meet in this domain. Without these, "last
- * two labels" turns torrens.edu.au into edu.au and would scope a crawl to every
- * Australian university. Not the full PSL — just the education-bearing suffixes.
- */
-const MULTI_LABEL_SUFFIXES = new Set([
-  "edu.au", "ac.uk", "edu.sg", "ac.nz", "edu.my", "ac.in", "edu.in",
-  "edu.cn", "ac.jp", "edu.hk", "co.nz", "com.au", "org.au", "ac.za",
-  "edu.ph", "ac.th", "edu.vn", "edu.pk", "ac.ir", "edu.tr", "com.br",
-]);
+// Registrable domains come from the real Public Suffix List (tldts, data bundled — no runtime
+// fetch). This replaced a hand-kept list of "suffixes we actually meet", which was wrong twice in
+// review: a suffix missing from it (ac.id, edu.pl, co.uk) collapsed an institution to the REGISTRY
+// — "%.ac.id" asks a certificate log for every Indonesian university, and filterUrls scopes the
+// crawl to all of them. A shape heuristic patched the two-letter-ccTLD cases and still missed
+// private suffixes like blogspot.com / github.io / wixsite.com, where the tenants are unrelated
+// organisations. Every suffix the old list did carry resolves identically here, so nothing that
+// was already correct moves.
 
 /**
  * The site a URL belongs to, for crawl scope: its registrable domain.
@@ -235,18 +235,27 @@ const MULTI_LABEL_SUFFIXES = new Set([
  */
 export function siteOf(url: string): string {
   const host = new URL(url).hostname.toLowerCase().replace(/^www\./i, "");
-  const labels = host.split(".");
-  if (labels.length <= 2) return host;
-
-  const lastTwo = labels.slice(-2).join(".");
-  const keep = MULTI_LABEL_SUFFIXES.has(lastTwo) ? 3 : 2;
-  return labels.slice(-keep).join(".");
+  // Private suffixes included on purpose: two tenants of blogspot.com / github.io / wixsite.com
+  // are unrelated organisations, so tenant.blogspot.com is its own site, not part of a shared one.
+  // null means the host IS a public suffix (someone entered "https://ac.id") — fall back to the
+  // host itself rather than a truncation, and let isRegistrySuffix refuse the outward lookups.
+  return getDomain(host, { allowPrivateDomains: true }) ?? host;
 }
 
 /** Same site if it is the bare host or any subdomain of it. */
 export function isSameSite(candidate: string, site: string): boolean {
   const host = candidate.replace(/^www\./i, "").toLowerCase();
   return host === site || host.endsWith(`.${site}`);
+}
+
+/**
+ * True when a host is itself a public suffix (`ac.id`, `co.uk`, `blogspot.com`) rather than a
+ * registrable domain. Scoping anything OUTWARD to such a value covers every organisation in the
+ * registry — a certificate-log lookup on "%.ac.id" returns every Indonesian university — so a
+ * caller that reaches out must refuse instead of treating it as one institution.
+ */
+export function isRegistrySuffix(site: string): boolean {
+  return getDomain(site, { allowPrivateDomains: true }) === null;
 }
 
 /**
