@@ -155,6 +155,38 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
     const origin = new URL(job.institution_url).origin;
     let allUrls = filterUrls(discovery.urls, origin);
 
+    // Related domains: an admin-curated hint for a multi-campus institution whose country
+    // site is a genuinely different registrable domain (monash.edu.my vs monash.edu) — no
+    // automated technique reliably links those without a human confirming the match, so this
+    // is opt-in config, not discovery. Same table/key shape as the blocklist below.
+    const relatedDomainsRow = await masterKnex(`${S}.extraction_additional_info`)
+      .where({ job_id: jobId, key: "related_domains" })
+      .select("value")
+      .first();
+    let relatedDomains: string[] = [];
+    if (relatedDomainsRow?.value) {
+      try {
+        relatedDomains = JSON.parse(relatedDomainsRow.value);
+      } catch { /* ignore malformed related-domains config */ }
+    }
+    // ponytail: cap admin input, not correctness — a typo'd huge list shouldn't multiply a
+    // job's discovery cost by accident; bump if a real institution needs more than 10.
+    for (const domain of relatedDomains.slice(0, 10)) {
+      try {
+        const relatedSeed = domain.includes("://") ? domain : `https://${domain}`;
+        const relatedDiscovery = await discoverUrlsForCrawl(relatedSeed, { limit: 10000 });
+        const relatedUrls = filterUrls(relatedDiscovery.urls, new URL(relatedSeed).origin);
+        allUrls = [...new Set([...allUrls, ...relatedUrls])];
+        await writeJobEvent(jobId, "related_domain_discovered", {
+          phase: "course_discovery",
+          message: `Discovered ${relatedUrls.length} URLs from related domain ${domain} via ${relatedDiscovery.method}`,
+          data: { domain, method: relatedDiscovery.method, count: relatedUrls.length },
+        });
+      } catch (err) {
+        logger.warn("Related-domain discovery failed", { jobId, domain, err: String(err) });
+      }
+    }
+
     // ponytail: apply URL blocklist before heuristic filter
     const blocklistRow = await masterKnex(`${S}.extraction_additional_info`)
       .where({ job_id: jobId, key: "url_blocklist_patterns" })

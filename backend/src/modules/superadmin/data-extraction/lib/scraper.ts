@@ -5,7 +5,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { config } from "../../../../config.js";
 import { createChildLogger } from "../../../../shared/logger.js";
-import { siteOf } from "./html-utils.js";
+import { isSameSite, siteOf } from "./html-utils.js";
 import { assertPublicUrl, safeFetch, UnsafeUrlError } from "../../../../shared/public-url.js";
 
 const logger = createChildLogger("scraper");
@@ -730,6 +730,22 @@ async function sitemapsFromLinkedHosts(links: string[], limit: number): Promise<
   return found.flat();
 }
 
+/** Try a sitemap first; a real content host that just 404s on sitemap.xml (Stanford's
+ *  explorecourses/bulletin) still gets handed to the crawler as a live entry point instead
+ *  of nothing at all. Shared by the wordlist probe below and the cert-log probe. */
+async function sitemapOrRootFor(root: string, limit: number): Promise<string[]> {
+  try {
+    const urls = await fetchSitemapUrls(root, limit);
+    if (urls.length) return urls;
+  } catch { /* fall through to the reachability probe */ }
+  try {
+    const res = await safeFetch(root, { method: "GET", signal: AbortSignal.timeout(10_000) });
+    return res.ok ? [res.url || root] : [];
+  } catch {
+    return [];
+  }
+}
+
 /** Sitemaps from any catalogue subdomain that resolves. */
 async function fetchCatalogueSitemaps(seedUrl: string, limit: number): Promise<string[]> {
   let site: string;
@@ -739,26 +755,117 @@ async function fetchCatalogueSitemaps(seedUrl: string, limit: number): Promise<s
   } catch {
     return [];
   }
-
   const found = await Promise.all(
-    CATALOGUE_SUBDOMAINS.map(async (sub) => {
-      const root = `https://${sub}.${site}`;
-      try {
-        const urls = await fetchSitemapUrls(root, limit);
-        if (urls.length) return urls;
-      } catch { /* fall through to the reachability probe */ }
-
-      // Stanford's explorecourses and bulletin answer on / but 404 on sitemap.xml.
-      // Returning the root still hands the crawler a real entry point instead of
-      // nothing at all.
-      try {
-        const res = await safeFetch(root, { method: "GET", signal: AbortSignal.timeout(10_000) });
-        return res.ok ? [res.url || root] : [];
-      } catch {
-        return [];
-      }
-    }),
+    CATALOGUE_SUBDOMAINS.map((sub) => sitemapOrRootFor(`https://${sub}.${site}`, limit)),
   );
+  return found.flat();
+}
+
+/** Infra hosts a cert-transparency lookup returns alongside real content hosts — DNS/mail/CI
+ *  plumbing, never a course catalogue. Matched against the leftmost label only. */
+const INFRA_SUBDOMAIN_PREFIXES = new Set([
+  "mail", "webmail", "autodiscover", "autoconfig", "ns", "ns1", "ns2", "ns3", "ns4",
+  "mx", "mx1", "mx2", "smtp", "imap", "pop", "pop3", "ftp", "sftp", "vpn", "cpanel",
+  "whm", "webdisk", "cname", "git", "svn", "jenkins", "jira", "confluence",
+  "grafana", "kibana", "status", "monitor", "cdn",
+]);
+
+/** Leftmost label of a same-site host is DNS/mail/CI plumbing, never a course catalogue. */
+function isInfraHost(host: string, site: string): boolean {
+  if (host === site) return false;
+  const prefix = host.slice(0, -(site.length + 1)).split(".")[0];
+  return INFRA_SUBDOMAIN_PREFIXES.has(prefix);
+}
+
+/** Clean, same-site, non-infra hostnames named in one crt.sh `name_value` SAN blob (it can list
+ *  several, newline-separated, and any of them may carry a wildcard prefix). */
+function hostsFromNameValue(nameValue: string, site: string): string[] {
+  return nameValue
+    .split("\n")
+    .map((name) => name.trim().toLowerCase().replace(/^\*\./, ""))
+    .filter((host) => host && isSameSite(host, site) && !isInfraHost(host, site));
+}
+
+/**
+ * crt.sh's JSON response → cleaned, same-site, non-infra hostnames, RANKED (catalogue-like
+ * names first, via the same CATALOGUE_HOST_RE used for linked-host discovery) but NOT capped —
+ * capping is the caller's job (see capCertLogHosts), kept separate so ranking stays testable on
+ * its own. Pure — no network, so it degrades to [] on anything malformed rather than throwing.
+ *
+ * CATALOGUE_SUBDOMAINS above is a fixed 9-word list: it can never find a content host whose
+ * name isn't one of those words (academic.stanford.edu, datascience.<institution>.com — seen
+ * live, neither guessable nor linked from the pages already crawled). Every public TLS
+ * certificate is logged permanently in Certificate Transparency logs, so this finds a real
+ * subdomain regardless of what it's named or whether anything on the site links to it.
+ */
+export function parseCertLogHosts(raw: unknown, site: string): string[] {
+  if (!Array.isArray(raw)) return [];
+  const hosts = new Set<string>();
+  for (const entry of raw) {
+    const nameValue = (entry as { name_value?: string } | null)?.name_value;
+    if (typeof nameValue === "string") {
+      for (const host of hostsFromNameValue(nameValue, site)) hosts.add(host);
+    }
+  }
+  // A big institution's cert history is mostly infra/CDN/marketing noise ahead of the one host
+  // that matters (seen live: img/cdn hosts outnumber a real coursecatalog. host in crt.sh's own
+  // order). Sort is stable, so within each group crt.sh's original order is kept.
+  return [...hosts].sort((a, b) => Number(CATALOGUE_HOST_RE.test(b)) - Number(CATALOGUE_HOST_RE.test(a)));
+}
+
+/** ponytail: cap PROBES, not correctness — a large institution's cert history can run into the
+ *  hundreds of hosts, and each one costs a real network fetch. Safe to cap hard because
+ *  parseCertLogHosts already ranks catalogue-like names first — this can only ever trim the
+ *  low-confidence tail, never the host that actually matters. Bump if a real site's course
+ *  subdomain still isn't among the first N. */
+const CERT_LOG_HOST_CAP = 25;
+
+/** Pure split at the probe cap, so "did this actually drop something" is testable without a
+ *  network call — the caller logs when `dropped` is non-empty instead of the cap firing silently. */
+export function capCertLogHosts(ranked: string[], cap = CERT_LOG_HOST_CAP): { kept: string[]; dropped: string[] } {
+  return { kept: ranked.slice(0, cap), dropped: ranked.slice(cap) };
+}
+
+/** politeFetch already retries a 429/503 with backoff; the gap is a thrown timeout/connection
+ *  error, which isn't retried at all. crt.sh's real failure mode is slowness under a large
+ *  query more often than a sustained outage, so one extra attempt after a short pause is cheap
+ *  insurance — if the second attempt also throws, it propagates to the caller as before. */
+async function fetchCrtSh(site: string): Promise<Response> {
+  const url = `https://crt.sh/?q=%25.${site}&output=json`;
+  try {
+    return await politeFetch(url, { signal: AbortSignal.timeout(15_000) });
+  } catch {
+    await politeDelay(1000, 2000);
+    return await politeFetch(url, { signal: AbortSignal.timeout(15_000) });
+  }
+}
+
+/** Subdomains Certificate Transparency logs know about that neither the wordlist nor the
+ *  already-linked-hosts path would ever find. */
+async function fetchCertLogSitemaps(seedUrl: string, limit: number): Promise<string[]> {
+  let site: string;
+  try {
+    site = siteOf(seedUrl);
+  } catch {
+    return [];
+  }
+  let kept: string[];
+  try {
+    const res = await fetchCrtSh(site);
+    if (!res.ok) return [];
+    const ranked = parseCertLogHosts(await res.json(), site);
+    const capped = capCertLogHosts(ranked);
+    kept = capped.kept;
+    if (capped.dropped.length) {
+      logger.warn(`crt.sh probe cap reached for ${site} — dropping ${capped.dropped.length} lower-confidence hosts`, {
+        site, kept: kept.length, dropped: capped.dropped.length, sample: capped.dropped.slice(0, 5),
+      });
+    }
+  } catch (err) {
+    logger.warn(`crt.sh lookup failed for ${site}`, { error: err });
+    return [];
+  }
+  const found = await Promise.all(kept.map((h) => sitemapOrRootFor(`https://${h}`, limit)));
   return found.flat();
 }
 
@@ -773,12 +880,15 @@ export async function discoverUrlsForCrawl(seedUrl: string, opts: MapOptions = {
   if (map.success && map.links.length > 1) {
     return { urls: map.links, method: "map" };
   }
-  // 2. sitemap.xml — the seed's, plus any catalogue subdomain that has one
-  const [sitemap, catalogue] = await Promise.all([
+  // 2. sitemap.xml — the seed's, any catalogue subdomain that has one, plus anything
+  // Certificate Transparency logs surface that the wordlist and already-linked-hosts
+  // paths below could never find on their own (see fetchCertLogSitemaps).
+  const [sitemap, catalogue, certLog] = await Promise.all([
     fetchSitemapUrls(seedUrl, limit),
     fetchCatalogueSitemaps(seedUrl, limit),
+    fetchCertLogSitemaps(seedUrl, limit),
   ]);
-  const merged = [...new Set([...sitemap, ...catalogue])];
+  const merged = [...new Set([...sitemap, ...catalogue, ...certLog])];
   if (merged.length > 1) {
     return { urls: merged, method: "sitemap", error: map.error };
   }

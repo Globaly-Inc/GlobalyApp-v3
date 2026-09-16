@@ -151,10 +151,22 @@ async function reclaimStaleQueueItems() {
     try {
       await queueService.publish(EXTRACTION_QUEUES.PAGES, { jobId: item.job_id, queueItemId: item.id, url: item.url, ...publishOpts });
       logger.info("Reclaimed stale queue item for retry", { queueItemId: item.id, jobId: item.job_id, url: item.url, attempt: staleReclaims + 1, strategy });
+      // Published successfully — clear awaiting_publish. Without this, a healthy message that's
+      // simply waiting its turn behind a big backlog (thousands of other items, ~10 workers) looks
+      // identical to an abandoned one once it's been sitting more than 5 minutes (applyDueCondition
+      // has no retry_after_ms for this path, so it collapses to just the grace period) — and gets
+      // wrongly re-reclaimed, over and over, until it's falsely marked "failed" despite no page
+      // worker ever having touched it. Conditioned on still being unclaimed (attempt_token still
+      // null, set by our own flip above): if a consumer claimed it first, the claim's own atomic
+      // strip already removed this key, making this a harmless no-op rather than a race.
+      await masterKnex(`${S}.extraction_queue`)
+        .where({ id: item.id, status: "pending" })
+        .whereRaw(`processing_meta->>'attempt_token' is null`)
+        .update({ processing_meta: masterKnex.raw(`processing_meta - 'awaiting_publish'`) });
     } catch (err) {
-      // Row stays "pending" — since pending rows are in scope above, the next sweep re-selects it
-      // (still stale) and retries the publish itself, rather than waiting on a queue drain that
-      // was never going to happen.
+      // Row stays "pending" AND awaiting_publish (never cleared, since we never got here) — since
+      // pending+awaiting_publish rows are in scope above, the next sweep re-selects it and retries
+      // the publish itself, rather than waiting on a queue drain that was never going to happen.
       logger.warn("Reclaim publish failed, item stays pending for the next sweep", {
         queueItemId: item.id, error: err instanceof Error ? err.message : String(err),
       });
