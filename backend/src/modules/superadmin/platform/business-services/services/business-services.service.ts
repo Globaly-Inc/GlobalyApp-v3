@@ -14,9 +14,9 @@ function courseAsService(c: {
   domestic_fee_total: string | null; international_fee_total: string | null; created_at: string;
 }) {
   return {
-    id: c.id, service_category_id: null, category_name: c.subject_area, name: c.name,
-    description: c.description, price: c.international_fee_total ?? c.domestic_fee_total,
-    is_published: true, public_visibility: true, created_at: c.created_at,
+    id: c.id, service_category_id: null, category_name: c.subject_area, category_slug: null, category_icon: null,
+    name: c.name, description: c.description, price: c.international_fee_total ?? c.domestic_fee_total,
+    is_published: true, public_visibility: true, created_at: c.created_at, updated_at: c.created_at,
     degree_level: null, area_of_study: null, duration: null,
   };
 }
