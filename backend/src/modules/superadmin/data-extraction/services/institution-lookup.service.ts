@@ -5,7 +5,7 @@
 // path (institution-tab.tsx's saveField), never writes anything itself.
 import { NotFoundError, BadRequestError } from "../../../../shared/errors.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
-import { scrapeMarkdown } from "../lib/scraper.js";
+import { getPage } from "../lib/page-store.js";
 import { truncateMarkdown } from "../lib/html-utils.js";
 import { extractJson } from "../lib/llm-client.js";
 import { findOverviewByJobId } from "../repositories/promote.repository.js";
@@ -53,7 +53,7 @@ export async function findMissingOverviewFields(jobId: string): Promise<{ fields
   const missing = pickMissingFields(overview as unknown as Record<string, unknown> | undefined);
   if (missing.length === 0) return { fields: [] };
 
-  const homepage = await scrapeMarkdown(job.institution_url, { onlyMainContent: false });
+  const homepage = await getPage(job.institution_url, { onlyMainContent: false });
   let origin = "";
   try {
     origin = new URL(job.institution_url).origin;
@@ -63,7 +63,7 @@ export async function findMissingOverviewFields(jobId: string): Promise<{ fields
   if (origin) {
     for (const path of ["/contact", "/contact-us", "/about/contact", "/about-us/contact"]) {
       const url = `${origin}${path}`;
-      const page = await scrapeMarkdown(url, { onlyMainContent: false }).catch(() => null);
+      const page = await getPage(url, { onlyMainContent: false }).catch(() => null);
       if (page?.markdown && page.markdown.length > 50) {
         contact = { url, markdown: page.markdown };
         break;

@@ -11,9 +11,10 @@ import { queueService } from "../../../../shared/queue/queueService.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
-import { scrapeMarkdown, scrapeRenderedHtml, mapUrlsDetailed } from "../lib/scraper.js";
+import { scrapeRenderedHtml, mapUrlsDetailed } from "../lib/scraper.js";
+import { getPage, getDocument, isPdfUrl } from "../lib/page-store.js";
 import { truncateMarkdown, domainOf, extractSocialLinks, extractHrefsFromHtml, extractDomainEmails, fixMalformedAbsoluteUrl } from "../lib/html-utils.js";
-import { extractJson } from "../lib/llm-client.js";
+import { extractJson, setLlmContext } from "../lib/llm-client.js";
 import {
   institutionExtractionPrompt, INSTITUTION_EXTRACTION_SYSTEM,
   campusExtractionPrompt, CAMPUS_EXTRACTION_SYSTEM,
@@ -108,23 +109,22 @@ async function markStepProgress(jobId: string, step: string, status: string) {
 }
 
 async function scrapeUrl(url: string): Promise<string | null> {
-  const r = await scrapeMarkdown(url, { onlyMainContent: true });
+  const r = await getPage(url, { onlyMainContent: true });
   return r.markdown && r.markdown.length > 50 ? r.markdown : null;
 }
 
-/** Like scrapeUrl but falls back to Gemini vision for PDF URLs. */
+/** Like scrapeUrl but falls back to Gemini vision for PDF URLs — through the snapshot store,
+ *  so one fees PDF is read by Vision once per freshness window, not once per step. */
 async function scrapeUrlOrPdf(url: string): Promise<string | null> {
-  if (/\.pdf(\?|#|$)/i.test(url)) {
-    const docExtractor = createDocumentExtractor();
-    const fileName = url.split("/").pop()?.split("?")[0] || "fees.pdf";
-    const result = await docExtractor.extract({ file_url: url, file_name: fileName });
-    return result.text && result.text.length >= 50 ? result.text : null;
+  if (isPdfUrl(url)) {
+    const r = await getDocument(url);
+    return r.markdown.length >= 50 ? r.markdown : null;
   }
   return scrapeUrl(url);
 }
 
 async function scrapeInstitutionPage(url: string): Promise<{ markdown: string; links: string[] } | null> {
-  const r = await scrapeMarkdown(url, { onlyMainContent: false, withLinks: true });
+  const r = await getPage(url, { onlyMainContent: false, withLinks: true });
   return r.markdown && r.markdown.length > 50 ? { markdown: r.markdown, links: r.links } : null;
 }
 
@@ -673,7 +673,7 @@ async function handleAgentsStep(jobId: string) {
     await heartbeat(jobId);
 
     // Scrape markdown (with links for pagination detection)
-    const scrapeResult = await scrapeMarkdown(seedUrl, { onlyMainContent: false, withLinks: true });
+    const scrapeResult = await getPage(seedUrl, { onlyMainContent: false, withLinks: true });
     const markdown = scrapeResult.markdown && scrapeResult.markdown.length > 50 ? scrapeResult.markdown : null;
 
     // ── 1. Provider detection (AscentOne, StudyLink, iframe) ──
@@ -1731,6 +1731,7 @@ await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
     return;
   }
   logger.info("Received step", { jobId, step, courseId, dataType, visaServiceId });
+  setLlmContext({ jobId, kind: `step:${step}` });
 
   try {
     switch (step as PipelineStep) {

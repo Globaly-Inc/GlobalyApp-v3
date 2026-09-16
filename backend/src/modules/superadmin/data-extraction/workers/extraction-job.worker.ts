@@ -9,9 +9,10 @@ import { queueService } from "../../../../shared/queue/queueService.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
-import { scrapeMarkdown, discoverUrlsForCrawl } from "../lib/scraper.js";
+import { discoverUrlsForCrawl } from "../lib/scraper.js";
+import { getPage } from "../lib/page-store.js";
 import { looksLikeCourseUrl, looksLikeVisaServiceUrl, filterUrls, truncateMarkdown, domainOf, collectGuidedUrls } from "../lib/html-utils.js";
-import { extractJson, isConfigured } from "../lib/llm-client.js";
+import { extractJson, isConfigured, setLlmContext } from "../lib/llm-client.js";
 import {
   siteAnalysisPrompt, urlDiscoveryPrompt, SITE_ANALYSIS_SYSTEM,
   visaServiceSiteAnalysisPrompt, visaServiceUrlDiscoveryPrompt,
@@ -47,6 +48,7 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
     return;
   }
   logger.info("Received job", { jobId, resumed: !!resumed });
+  setLlmContext({ jobId, kind: "site_analysis" });
 
   const job = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).first();
   if (!job) {
@@ -82,7 +84,7 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
 
   try {
     // ── Phase 1: Scrape homepage → LLM analysis ──
-    const homepage = await scrapeMarkdown(job.institution_url, { withLinks: true, onlyMainContent: false });
+    const homepage = await getPage(job.institution_url, { withLinks: true, onlyMainContent: false });
 
     if (!homepage.markdown && homepage.error) {
       throw new Error(`Failed to scrape homepage: ${homepage.error}`);

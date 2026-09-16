@@ -1,6 +1,8 @@
 // Extraction jobs service — CRUD, status transitions, pipeline control.
 
 import { NotFoundError, ConflictError, BadRequestError } from "../../../../shared/errors.js";
+import { jobUsageByModel } from "../lib/llm-store.js";
+import { costUsd, totalCostUsd } from "../lib/llm-pricing.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { queueService } from "../../../../shared/queue/queueService.js";
@@ -78,11 +80,22 @@ export async function getJob(id: string) {
   if (!job) throw new NotFoundError("Extraction job not found");
   // Same title fallback the list uses — the overview row is already loaded here.
   // The overview carries its own editor: the Institution tab is edited field-by-field.
-  const [jobWithActors, overviewWithActors] = await Promise.all([
+  const [jobWithActors, overviewWithActors, usageRows] = await Promise.all([
     withActorNamesOne({ ...job, institution_name: job.institution_name ?? overview?.name ?? null }),
     withActorNamesOne(overview),
+    jobUsageByModel(id),
   ]);
-  return { job: jobWithActors, overview: overviewWithActors };
+  // Tokens are the record; dollars are derived here from LLM_MODEL_PRICES and null when any
+  // model in the mix is unpriced — see llm-pricing.ts.
+  const usage = {
+    by_model: usageRows.map((r) => ({ ...r, cost_usd: costUsd(r.model, r.prompt_tokens, r.output_tokens) })),
+    calls: usageRows.reduce((n, r) => n + r.calls, 0),
+    cache_hits: usageRows.reduce((n, r) => n + r.cache_hits, 0),
+    prompt_tokens: usageRows.reduce((n, r) => n + r.prompt_tokens, 0),
+    output_tokens: usageRows.reduce((n, r) => n + r.output_tokens, 0),
+    cost_usd: totalCostUsd(usageRows),
+  };
+  return { job: { ...jobWithActors, usage }, overview: overviewWithActors };
 }
 
 export async function getTabCounts(jobId: string) {

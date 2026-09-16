@@ -3,6 +3,8 @@
 import type { Knex } from "knex";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 
+import { jobUsageTotalsSubquery } from "../lib/llm-store.js";
+
 const T = "superadmin.extraction_jobs";
 const T_OVERVIEW = "superadmin.extraction_institution_overview";
 const T_EVENTS = "superadmin.extraction_job_events";
@@ -12,9 +14,13 @@ const T_COURSES = "superadmin.extraction_courses";
 
 const OVERVIEW_NAME = `(select o.name from ${T_OVERVIEW} o where o.job_id = ${T}.id order by o.created_at desc limit 1)`;
 
+/** LLM spend per job, as list columns: usage_calls, usage_cache_hits, usage_prompt_tokens, usage_output_tokens. */
+const USAGE_COLUMNS = ["u.usage_calls", "u.usage_cache_hits", "u.usage_prompt_tokens", "u.usage_output_tokens"];
+
 export async function listJobs(opts: { status?: string; q?: string; limit: number }) {
   const query = masterKnex(T)
-    .select(`${T}.*`)
+    .leftJoin(jobUsageTotalsSubquery(), "u.job_id", `${T}.id`)
+    .select(`${T}.*`, ...USAGE_COLUMNS)
     .select(masterKnex.raw(`${OVERVIEW_NAME} as overview_name`))
     .orderBy(`${T}.created_at`, "desc")
     .limit(opts.limit);
@@ -118,7 +124,8 @@ export async function countJobsFiltered(opts: JobFilterOpts) {
 
 export async function listJobsFiltered(opts: JobFilterOpts & { limit: number; offset: number; sort?: JobSort }) {
   const query = filteredJobsQuery(opts)
-    .select(`${T}.*`)
+    .leftJoin(jobUsageTotalsSubquery(), "u.job_id", `${T}.id`)
+    .select(`${T}.*`, ...USAGE_COLUMNS)
     .select(masterKnex.raw(`${OVERVIEW_NAME} as overview_name`))
     .limit(opts.limit)
     .offset(opts.offset);

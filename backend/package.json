@@ -84,7 +84,9 @@
     "test:public-course-links": "node --import tsx tests/public-course-links.ts",
     "test:course-duration-study-options": "node --import tsx tests/course-duration-study-options.ts",
     "test:otp-log-redaction": "node --import tsx tests/otp-log-redaction.ts",
-    "test:integration-settings": "node --import tsx tests/integration-settings.ts"
+    "test:integration-settings": "node --import tsx tests/integration-settings.ts",
+    "test:llm-usage-cache": "node --import tsx tests/llm-usage-cache.ts",
+    "test:page-store": "node --import tsx tests/page-store.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",
