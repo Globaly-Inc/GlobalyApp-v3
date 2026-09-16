@@ -7,6 +7,7 @@
 // Run with: npm run job:extraction-pages
 
 import "dotenv/config";
+import { randomUUID } from "node:crypto";
 import { queueService } from "../../../../shared/queue/queueService.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
@@ -29,6 +30,7 @@ import {
   type ExtractedCourse, type ExtractedCampus, type ExtractedStudyUnit, type ExtractedFee, type ExtractedVisaService,
 } from "../lib/staging-writer.js";
 import { loadLookupLists, resolveCountryCode } from "../lib/lookup-catalog.js";
+import { checkAllPagesDone } from "../lib/queue-completion.js";
 import { recallMemory, rememberMemory, buildSystemAddendum } from "../lib/memory-client.js";
 import { classifyFailure, type FailureClass } from "../lib/classify-failure.js";
 
@@ -87,31 +89,6 @@ interface ExtractionResult {
 
 interface VisaServiceExtractionResult {
   visa_services: ExtractedVisaService[];
-}
-
-// ponytail: merge duplicate campuses created by parallel workers (race condition)
-async function deduplicateCampuses(jobId: string) {
-  const campuses = await masterKnex(`${S}.extraction_campuses`).where({ job_id: jobId });
-  const groups = new Map<string, typeof campuses>();
-  for (const c of campuses) {
-    const key = normaliseCampusName(c.name);
-    const arr = groups.get(key) || [];
-    arr.push(c);
-    groups.set(key, arr);
-  }
-  for (const [, dupes] of groups) {
-    if (dupes.length <= 1) continue;
-    const keep = dupes[0];
-    const removeIds = dupes.slice(1).map(d => d.id);
-    // Re-point junction rows to the kept campus
-    await masterKnex(`${S}.extraction_course_campuses`)
-      .whereIn("campus_id", removeIds)
-      .update({ campus_id: keep.id });
-    await masterKnex(`${S}.extraction_campuses`)
-      .whereIn("id", removeIds)
-      .delete();
-    logger.info("Merged duplicate campuses", { kept: keep.name, removed: removeIds.length });
-  }
 }
 
 // ponytail: bound worst-case secondary-fetch cost per page scrape (a listing page can
@@ -235,49 +212,6 @@ async function extractSecondaryPageInner(opts: {
   }
 }
 
-/**
- * Check if all queue items are done and trigger verification if so.
- * "Done" = no items in a state that could still produce work (pending, processing).
- * Items in paused/ignored/stopped are treated as terminal — admin chose to skip them.
- */
-async function checkAllPagesDone(jobId: string) {
-  const remaining = await masterKnex(`${S}.extraction_queue`)
-    .where({ job_id: jobId })
-    .whereIn("status", ["pending", "processing"])
-    .count("id as count")
-    .first();
-
-  if (Number(remaining?.count) === 0) {
-    // Guard: only transition once — avoid duplicate verification dispatches from parallel workers
-    const updated = await masterKnex(`${S}.extraction_jobs`)
-      .where({ id: jobId, status: "processing" })
-      .update({
-        status: "extracting",
-        pipeline_progress: JSON.stringify({ site_mapping: "done", course_discovery: "done", data_extraction: "done", verification: "processing" }),
-        updated_at: masterKnex.fn.now(),
-      });
-
-    if (updated === 0) {
-      // Another worker already transitioned this job — skip
-      return;
-    }
-
-    logger.info("All pages processed, dispatching verification", { jobId });
-    await deduplicateCampuses(jobId);
-    await writeJobEvent(jobId, "extraction_complete", {
-      phase: "data_extraction", message: "All pages extracted, starting verification",
-    });
-    await queueService.publish(EXTRACTION_QUEUES.VERIFY, { jobId });
-    const job = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).first();
-    if (!job?.source_type || job.source_type === "institution") {
-      const hasCampuses = await masterKnex(`${S}.extraction_campuses`).where({ job_id: jobId }).first();
-      if (!hasCampuses) {
-        await queueService.publish(EXTRACTION_QUEUES.STEPS, { jobId, step: "branches" });
-      }
-    }
-  }
-}
-
 await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
   let jobId: string, queueItemId: string, url: string, forceFirecrawl: boolean | undefined, mobile: boolean | undefined,
     proxy: "stealth" | "auto" | undefined, expandCollapsed: boolean | undefined;
@@ -334,10 +268,33 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
   // for the same item — e.g. two admins hitting Rerun at once, each re-dispatching the same
   // pending/failed pages — die here instead of double-scraping and double-billing Gemini.
   // Also honours a pause/stop that landed between publish and consume.
+  //
+  // attemptToken fences this specific claim: extraction-queue-reclaim.worker.ts clears
+  // processing_meta.attempt_token to null the instant it reclaims a "processing" row, and any
+  // fresh claim (including by a reclaimed republish) always sets a brand new one. Every write this
+  // attempt makes below is conditioned on the token still matching (writeIfOwned), so a worker that
+  // was merely slow — not dead — and eventually resumes after being reclaimed and re-processed by
+  // someone else finds its own writes silently rejected instead of overwriting a newer, possibly
+  // already-terminal, state with stale results.
+  // Every claim strips awaiting_publish/retry_after_ms unconditionally, atomically, in the same
+  // statement that sets the new token — not just the deferred-retry path's own cleanup. A message
+  // being claimed at all means it's no longer "awaiting publish" by definition, no matter how it
+  // got here; deriving that from the claim itself (which every consumption already goes through)
+  // means there's no separate cleanup step left to race a fast consumer for. A prior design cleared
+  // the marker in a follow-up write after publish resolved, which a fast claim could beat — leaving
+  // the new attempt's row still tagged, for the reclaim sweep to misread using stale leftover data.
+  const attemptToken = randomUUID();
   const claimed = await masterKnex(`${S}.extraction_queue`)
     .where({ id: queueItemId })
     .whereIn("status", ["pending", "failed"])
-    .update({ status: "processing", updated_at: masterKnex.fn.now() });
+    .update({
+      status: "processing",
+      updated_at: masterKnex.fn.now(),
+      processing_meta: masterKnex.raw(
+        `(coalesce(processing_meta, '{}'::jsonb) - 'awaiting_publish' - 'retry_after_ms') || ?::jsonb`,
+        [JSON.stringify({ attempt_token: attemptToken })],
+      ),
+    });
   if (claimed === 0) {
     logger.info("Queue item already claimed or in a terminal state, skipping duplicate message", { jobId, queueItemId, url });
     return;
@@ -345,6 +302,28 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
   await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
     processing_heartbeat_at: masterKnex.fn.now(),
   });
+
+  // Every extraction_queue write for THIS item, for the rest of this function, must go through
+  // this instead of a bare .where({ id: queueItemId }).update(...) — see attemptToken above.
+  // Returns false if we've been fenced out; callers must stop rather than act further on the row.
+  async function writeIfOwned(update: Record<string, unknown>): Promise<boolean> {
+    const n = await masterKnex(`${S}.extraction_queue`)
+      .where({ id: queueItemId })
+      .whereRaw(`processing_meta->>'attempt_token' = ?`, [attemptToken])
+      .update(update);
+    return n > 0;
+  }
+
+  // Re-checked right after the AI call, before writing any course/campus/intake/visa-service data
+  // below — a reclaim can land at any point (it isn't a lock), and this is the cheapest place to
+  // catch it: after the one AI call this attempt is ever going to make, but before any of that
+  // call's results get committed. Doesn't stop a slow-but-alive attempt from redundantly re-
+  // scraping/re-billing a model call once reclaimed (nothing short of a hard lock around the whole
+  // attempt could), but does stop it from writing duplicate rows once it's already been superseded.
+  async function stillOwned(): Promise<boolean> {
+    const row = await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).select("processing_meta").first();
+    return row?.processing_meta?.attempt_token === attemptToken;
+  }
 
   try {
     // ── Scrape page to markdown ──
@@ -396,10 +375,11 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       if (!page.notFound && retries < 2) {
         meta.retry_strategy = retries === 0 ? "browser_render" : "mobile";
         const retryProxy = retries === 0 ? "auto" : "stealth";
-        await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).update({
+        const owned = await writeIfOwned({
           status: "pending", failure_class: failureClass, retry_count: retries + 1,
           processing_meta: JSON.stringify(meta), updated_at: masterKnex.fn.now(),
         });
+        if (!owned) { logger.info("Fenced out — a newer attempt owns this item, dropping stale retry", { jobId, queueItemId, url }); return; }
         await queueService.publish(EXTRACTION_QUEUES.PAGES, {
           jobId, queueItemId, url, forceFirecrawl: true, mobile: meta.retry_strategy === "mobile", proxy: retryProxy,
           expandCollapsed: true,
@@ -408,7 +388,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       } else {
         // Exhausted retries (or a dead URL that can't benefit from any) — mark failed so
         // it's visible in the admin queue panel with the real reason, not a generic one.
-        await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).update({
+        const owned = await writeIfOwned({
           status: "failed",
           error: page.notFound
             ? `Page does not exist on the source site (404)${page.error ? `: ${page.error}` : ""}`
@@ -416,6 +396,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
           failure_class: failureClass, retry_count: retries,
           processing_meta: JSON.stringify(meta), updated_at: masterKnex.fn.now(),
         });
+        if (!owned) { logger.info("Fenced out — a newer attempt owns this item, dropping stale failure", { jobId, queueItemId, url }); return; }
         await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).increment("pages_failed", 1);
         await writeJobEvent(jobId, "page_error", {
           level: "warn", phase: "data_extraction",
@@ -486,6 +467,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
         maxTokens: 65536,
       });
       extractedForMemory = extracted;
+      if (!(await stillOwned())) { logger.info("Fenced out — a newer attempt owns this item, dropping AI result", { jobId, queueItemId, url }); return; }
 
       // Deliberately assigned to NO course. upsertIntake is keyed on job + name + month + year, so
       // a calendar's "Autumn 2026-2027" lands on the row 38 courses are already linked to and
@@ -506,6 +488,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
         maxTokens: 65536,
       });
       extractedForMemory = extracted;
+      if (!(await stillOwned())) { logger.info("Fenced out — a newer attempt owns this item, dropping AI result", { jobId, queueItemId, url }); return; }
 
       // Flat table, no child/junction tables — writeVisaService dedups by name per job.
       if (extracted.visa_services?.length) {
@@ -529,6 +512,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
         maxTokens: 65536,
       });
       extractedForMemory = extracted;
+      if (!(await stillOwned())) { logger.info("Fenced out — a newer attempt owns this item, dropping AI result", { jobId, queueItemId, url }); return; }
 
       // ── Write campuses first (courses reference them) ──
       const campusIdMap = new Map<string, string>();
@@ -767,13 +751,21 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
     }
 
     // ── Mark complete + update counters ──
-    await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).update({
+    // Fenced: if a reclaim has since republished and a newer attempt already finished (or is
+    // still running) this same item, writeIfOwned is a no-op here and everything below — the
+    // counters, job event, and checkAllPagesDone — is skipped rather than double-counted or run
+    // against a state a newer attempt already owns.
+    const owned = await writeIfOwned({
       status: "completed",
       extracted_data: JSON.stringify({ courses_found: entitiesWritten, campuses_found: campusCount, scraper: page.scraper, from_snapshot: page.fromCache }),
       page_id: page.pageId,
       page_content_hash: page.contentHash,
       updated_at: masterKnex.fn.now(),
     });
+    if (!owned) {
+      logger.info("Fenced out — a newer attempt owns this item, dropping stale completion", { jobId, queueItemId, url });
+      return;
+    }
 
     if (entitiesWritten > 0) {
       await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).increment("courses_extracted", entitiesWritten);
@@ -818,9 +810,13 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
     const failureClass = classifyFailure(errMsg);
     const item = await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).select("retry_count", "processing_meta").first();
     const retries = item?.retry_count ?? 0;
-    const meta = { ...(item?.processing_meta ?? {}), last_error: errMsg, last_failure_class: failureClass };
+    const meta: Record<string, unknown> = { ...(item?.processing_meta ?? {}), last_error: errMsg, last_failure_class: failureClass };
 
     let nextStatus = "failed";
+    // llm-client's withRetry tags a provider-mandated wait too long to safely block a worker slot
+    // on (see INLINE_RETRY_CEILING_MS there) with the real, never-truncated delay it asked for.
+    const deferredMatch = errMsg.match(/retry_after_ms=(\d+)/);
+    const deferredMs = deferredMatch ? Number(deferredMatch[1]) : null;
 
     if (failureClass === "anti_bot" && retries < 2) {
       nextStatus = "pending";
@@ -828,10 +824,17 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
     } else if (failureClass === "ai_5xx" && retries < 3) {
       nextStatus = "pending";
       meta.retry_strategy = "default";
-      meta.retry_after_ms = Math.min(60_000, 1000 * 2 ** retries);
+      if (deferredMs != null) {
+        // Released, not held: status goes to "pending" now instead of misrepresenting this as
+        // "processing" for however long the provider's throttle lasts. awaiting_publish marks it
+        // recoverable by extraction-queue-reclaim.worker.ts's pending-sweep if this process dies
+        // before the deferred republish below actually fires.
+        meta.awaiting_publish = true;
+        meta.retry_after_ms = deferredMs;
+      }
     }
 
-    await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).update({
+    const owned = await writeIfOwned({
       status: nextStatus,
       error: nextStatus === "failed" ? errMsg : null,
       failure_class: failureClass,
@@ -839,16 +842,60 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       processing_meta: JSON.stringify(meta),
       updated_at: masterKnex.fn.now(),
     });
+    if (!owned) {
+      logger.info("Fenced out — a newer attempt owns this item, dropping stale failure/retry", { jobId, queueItemId, url });
+      return;
+    }
 
     if (nextStatus === "pending") {
-      // Re-publish for retry with strategy hint
-      await queueService.publish(EXTRACTION_QUEUES.PAGES, {
+      const publishOpts = {
         jobId, queueItemId, url,
         forceFirecrawl: meta.retry_strategy !== "default",
         mobile: meta.retry_strategy === "mobile",
         expandCollapsed: failureClass === "anti_bot",
-      });
-      logger.info("Re-queued for retry", { jobId, queueItemId, failureClass, retries: retries + 1, strategy: meta.retry_strategy });
+      };
+      if (meta.awaiting_publish) {
+        // In-process deferred retry, not an immediate republish — .unref() so this timer never
+        // blocks a graceful shutdown; if the process exits before it fires, the row is left
+        // "pending" + awaiting_publish for the reclaim sweep to pick up instead.
+        logger.info("Deferred retry scheduled (provider rate limit)", { jobId, queueItemId, retryAfterMs: deferredMs, retries: retries + 1 });
+        setTimeout(() => {
+          // Detached and unawaited: nothing consumes this chain's result, so EVERY failure inside
+          // it — including the recovery write in the catch block below — must be caught here.
+          // Letting any of it reject unhandled would crash the whole page-worker process under
+          // Node's default unhandled-rejection behaviour, taking down every other in-flight page
+          // over what should at worst be one item staying stuck a bit longer.
+          (async () => {
+            try {
+              await queueService.publish(EXTRACTION_QUEUES.PAGES, publishOpts);
+              // NOT responsible for clearing awaiting_publish/retry_after_ms — the claim itself
+              // does that atomically the moment anyone actually claims this message (see the claim
+              // query above), so there's no separate cleanup step here for a fast consumer to race.
+              // This is just a best-effort updated_at refresh for the case where the message is
+              // still sitting unclaimed in a busy queue: if writeIfOwned finds 0 rows, a consumer
+              // already claimed it (and thus already cleared the marker as part of claiming) —
+              // nothing to do, not an error.
+              await writeIfOwned({ updated_at: masterKnex.fn.now() });
+            } catch (e) {
+              logger.error("Deferred retry publish failed", { queueItemId, error: e instanceof Error ? e.message : String(e) });
+              try {
+                await writeIfOwned({
+                  processing_meta: masterKnex.raw(`coalesce(processing_meta, '{}'::jsonb) || '{"awaiting_publish":true,"retry_after_ms":0}'::jsonb`),
+                  updated_at: masterKnex.fn.now(),
+                });
+              } catch (e2) {
+                logger.error("Deferred retry recovery write also failed — leaving row for the reclaim sweep", {
+                  queueItemId, error: e2 instanceof Error ? e2.message : String(e2),
+                });
+              }
+            }
+          })();
+        }, deferredMs!).unref();
+      } else {
+        // Re-publish for retry with strategy hint
+        await queueService.publish(EXTRACTION_QUEUES.PAGES, publishOpts);
+        logger.info("Re-queued for retry", { jobId, queueItemId, failureClass, retries: retries + 1, strategy: meta.retry_strategy });
+      }
     } else {
       await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).increment("pages_failed", 1);
     }

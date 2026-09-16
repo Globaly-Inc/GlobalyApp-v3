@@ -10,6 +10,15 @@ import { assertPublicUrl, safeFetch, UnsafeUrlError } from "../../../../shared/p
 
 const logger = createChildLogger("scraper");
 
+// Crawl4AI/Firecrawl calls below used a bare fetch() with no AbortSignal — a hung TCP connection
+// (network partition, a stalled proxy, the provider itself wedging) held the page worker's queue
+// item "processing" forever with nothing to time it out, which is the actual unbounded-hang case
+// extraction-queue-reclaim.worker.ts exists to recover from. Bounding every external fetch here is
+// the real fix for that; the reclaim sweep is then a backstop for a crashed process, not the only
+// thing standing between a wedged socket and a stuck-forever job.
+const EXTERNAL_FETCH_TIMEOUT_MS = 60_000;
+const MAP_FETCH_TIMEOUT_MS = 120_000; // mapUrlsDetailed crawls a whole site (limit up to 10k URLs)
+
 // ─── Types ──────────────────────────────────────────────────────────────────
 
 export interface ScrapeOptions {
@@ -236,6 +245,7 @@ async function crawl4aiScrape(
       method: "POST",
       headers,
       body: JSON.stringify({ urls: [url], content_format: filter === "fit" ? "fit_markdown" : "raw_markdown" }),
+      signal: AbortSignal.timeout(EXTERNAL_FETCH_TIMEOUT_MS),
     });
     if (newRes.ok) {
       const data: any = await newRes.json().catch(() => ({}));
@@ -248,6 +258,7 @@ async function crawl4aiScrape(
       method: "POST",
       headers,
       body: JSON.stringify({ url, f: filter }),
+      signal: AbortSignal.timeout(EXTERNAL_FETCH_TIMEOUT_MS),
     });
     const data: any = await res.json().catch(() => ({}));
     if (!res.ok) return { markdown: "", error: data?.detail || data?.error || `HTTP ${res.status}` };
@@ -415,6 +426,7 @@ async function firecrawlScrape(
           { type: "wait", milliseconds: 1500 },
         ] } : {}),
       }),
+      signal: AbortSignal.timeout(EXTERNAL_FETCH_TIMEOUT_MS),
     });
     const data: any = await res.json().catch(() => ({}));
     if (!res.ok) return { markdown: "", links: [], error: data?.error || `HTTP ${res.status}` };
@@ -460,6 +472,7 @@ export async function scrapeRenderedHtml(
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({ url, formats: ["rawHtml"], onlyMainContent: false, waitFor: opts.waitFor ?? 8000 }),
+      signal: AbortSignal.timeout(EXTERNAL_FETCH_TIMEOUT_MS),
     });
     const data: any = await res.json().catch(() => ({}));
     if (!res.ok) return { html: "", error: data?.error || `HTTP ${res.status}` };
@@ -599,6 +612,7 @@ export async function mapUrlsDetailed(
         method: "POST",
         headers: { Authorization: `Bearer ${fcKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({ url, limit: opts.limit ?? 10000, includeSubdomains: opts.includeSubdomains ?? false }),
+        signal: AbortSignal.timeout(MAP_FETCH_TIMEOUT_MS),
       });
       const data: any = await res.json().catch(() => ({}));
       if (!res.ok) {

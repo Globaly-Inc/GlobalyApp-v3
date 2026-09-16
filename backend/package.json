@@ -58,6 +58,7 @@
     "job:extraction-verify": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-verify.worker.ts",
     "job:extraction-step": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-step.worker.ts",
     "job:extraction-schedule": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-schedule.worker.ts",
+    "job:extraction-queue-reclaim": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-queue-reclaim.worker.ts",
     "job:extraction-agentcis": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-agentcis.worker.ts",
     "job:extraction-course-bulk-delete": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-course-bulk-delete.worker.ts",
     "job:import-v2": "node --import tsx src/modules/superadmin/data-extraction/workers/import-v2.worker.ts",
