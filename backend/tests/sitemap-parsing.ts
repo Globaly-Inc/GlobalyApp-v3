@@ -8,8 +8,9 @@
  */
 import { gzipSync } from "node:zlib";
 import {
-  decodeSitemapBody, sitemapIndexChildren, sitemapLocs, sitemapUrlsFromRobots,
+  decodeSitemapBody, sitemapIndexChildren, sitemapLocs, sitemapUrlsFromRobots, updateHostHealth,
 } from "../src/modules/superadmin/data-extraction/lib/scraper.js";
+import type { HostHealth } from "../src/modules/superadmin/data-extraction/lib/scraper.js";
 
 let passed = 0;
 let failed = 0;
@@ -57,6 +58,32 @@ eq(sitemapLocs(decodeSitemapBody(gz)), ["https://x.edu/a", "https://x.edu/b"], "
 eq(decodeSitemapBody(Buffer.from(urlsetXml, "utf8")), urlsetXml, "leaves plain XML untouched");
 eq(decodeSitemapBody(Buffer.from([0x1f, 0x8b, 0x00, 0x01])), "", "corrupt gzip degrades to empty, not a throw");
 eq(decodeSitemapBody(Buffer.alloc(0)), "", "empty body is empty");
+
+// ── host health ─────────────────────────────────────────────────────────────
+// This bookkeeping has been wrong twice: first it condemned a live host because one concurrent
+// path timed out, then it could never retire a host that went bad — 20 hanging robots declarations
+// (or 200 index children) at two attempts x 15s each is a job standing still for 10-107 minutes.
+const fresh = (): HostHealth | undefined => undefined;
+
+// Never answered: one failure is enough, there is nothing to give it credit for.
+eq(updateHostHealth(fresh(), false), { alive: false, failures: 1, dead: true }, "unknown host dies on first failure");
+
+// Answered once, then one path fails — must NOT be condemned, that was the earlier bug.
+const answered = updateHostHealth(fresh(), true);
+eq(answered, { alive: true, failures: 0, dead: false }, "an answer marks the host alive");
+const oneFail = updateHostHealth(answered, false);
+eq(oneFail, { alive: true, failures: 1, dead: false }, "a live host survives one failed path");
+const twoFail = updateHostHealth(oneFail, false);
+eq(twoFail, { alive: true, failures: 2, dead: false }, "...and a second");
+eq(updateHostHealth(twoFail, false), { alive: true, failures: 3, dead: true }, "but is retired at the limit");
+
+// Any answer resets the streak, so a flaky-but-working host keeps working.
+eq(updateHostHealth(twoFail, true), { alive: true, failures: 0, dead: false }, "an answer clears accumulated failures");
+
+// A 404 is an answer — the server replied, so the host is up.
+eq(updateHostHealth(updateHostHealth(fresh(), false), true), { alive: true, failures: 0, dead: false }, "a later answer revives a host that had failed");
+
+eq(updateHostHealth(answered, false, 1), { alive: true, failures: 1, dead: true }, "the limit is tunable");
 
 console.log(`${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

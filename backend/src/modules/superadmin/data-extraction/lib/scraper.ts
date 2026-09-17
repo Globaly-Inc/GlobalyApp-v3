@@ -701,16 +701,56 @@ type SitemapFetch =
  * serve (dev boxes, decommissioned sites), and retrying each of 5 candidates on a dead host is 10
  * waits for nothing. So the caller is told whether the host answered AT ALL and bails on it.
  */
-async function fetchSitemapDoc(url: string, seedUrl: string): Promise<SitemapFetch> {
-  for (let attempt = 0; attempt < 2; attempt++) {
+/**
+ * Consecutive transport failures that retire a host even after it has answered.
+ *
+ * A host that answered is not condemned by one failed path — that was a real bug — but it cannot
+ * be trusted indefinitely either: if its declared sitemaps or index children all hang, each costs
+ * two attempts at a 15s timeout. At the caps above that is ~10 minutes for 20 robots declarations
+ * and ~107 minutes for 200 index children, all of it a job sitting still.
+ */
+const HOST_FAILURE_LIMIT = 3;
+
+export interface HostHealth {
+  /** Something on this host has answered at least once. */
+  alive: boolean;
+  /** Transport failures since the last answer. */
+  failures: number;
+  /** Stop fetching from this host. */
+  dead: boolean;
+}
+
+/**
+ * Host health after one fetch result. Pure — the bookkeeping this encodes has now been wrong twice
+ * (first condemning a live host on one failed path, then never retiring a host that went bad), so
+ * it is testable on its own rather than buried in a closure.
+ *
+ * `answered` means the server replied AT ALL: a 404 proves the host is up just as well as a 200.
+ */
+export function updateHostHealth(
+  prev: HostHealth | undefined,
+  answered: boolean,
+  limit = HOST_FAILURE_LIMIT,
+): HostHealth {
+  if (answered) return { alive: true, failures: 0, dead: false };
+  const failures = (prev?.failures ?? 0) + 1;
+  const alive = prev?.alive ?? false;
+  // Never answered → dead on the first failure. Answered once → allowed `limit` failures before
+  // being retired, so a single flaky path can't cost us a live host's declarations.
+  return { alive, failures, dead: !alive || failures >= limit };
+}
+
+async function fetchSitemapDoc(url: string, seedUrl: string, opts: { retry?: boolean } = {}): Promise<SitemapFetch> {
+  const attempts = opts.retry === false ? 1 : 2;
+  for (let attempt = 0; attempt < attempts; attempt++) {
     try {
       await politeDelay(200, 800);
       const res = await politeFetch(url, { signal: AbortSignal.timeout(SITEMAP_FETCH_TIMEOUT_MS) }, { referer: seedUrl });
       if (!res.ok) return { ok: false, reachable: true };
       return { ok: true, text: decodeSitemapBody(Buffer.from(await res.arrayBuffer())) };
     } catch (err) {
-      if (attempt === 1) {
-        logger.warn(`Sitemap fetch failed after retry: ${url}`, { error: String(err) });
+      if (attempt === attempts - 1) {
+        logger.warn(`Sitemap fetch failed${attempts > 1 ? " after retry" : ""}: ${url}`, { error: String(err) });
         return { ok: false, reachable: false };
       }
       await politeDelay(500, 1500);
@@ -742,24 +782,21 @@ export async function fetchSitemapUrls(seedUrl: string, max = 10000): Promise<st
    *  used to condemn the origin while robots.txt was busy returning its authoritative list of
    *  sitemaps, which were then all skipped. Any answer at all (a 404 counts: the server replied)
    *  clears the host and keeps it cleared. */
-  const deadHosts = new Set<string>();
-  const aliveHosts = new Set<string>();
+  const health = new Map<string, HostHealth>();
 
   const hostOf = (url: string) => { try { return new URL(url).host; } catch { return url; } };
 
   function noteHostHealth(url: string, r: SitemapFetch) {
     const host = hostOf(url);
-    if (r.ok || r.reachable) {
-      aliveHosts.add(host);
-      deadHosts.delete(host);
-    } else if (!aliveHosts.has(host)) {
-      deadHosts.add(host);
-    }
+    health.set(host, updateHostHealth(health.get(host), r.ok || r.reachable));
   }
 
   async function fetchDoc(url: string): Promise<string | null> {
-    if (deadHosts.has(hostOf(url))) return null;
-    const r = await fetchSitemapDoc(url, seedUrl);
+    const host = hostOf(url);
+    if (health.get(host)?.dead) return null;
+    // A host that has already failed once this run doesn't get a second attempt per URL either —
+    // that halves what a retiring host costs before HOST_FAILURE_LIMIT stops it entirely.
+    const r = await fetchSitemapDoc(url, seedUrl, { retry: !health.get(host)?.failures });
     noteHostHealth(url, r);
     return r.ok ? r.text : null;
   }
@@ -807,10 +844,10 @@ export async function fetchSitemapUrls(seedUrl: string, max = 10000): Promise<st
   // Only if nothing has been found yet: the other conventional spellings, and the gzipped form.
   // Skipped entirely for a host that never answered — that was costing 5 candidates x 2 attempts
   // of pure waiting per dead crt.sh host, with up to 25 of them per job.
-  if (seen.size === 0 && !deadHosts.has(hostOf(origin))) {
+  if (seen.size === 0 && !health.get(hostOf(origin))?.dead) {
     for (const url of [`${origin}/sitemap_index.xml`, `${origin}/sitemap-index.xml`, `${origin}/sitemap.xml.gz`]) {
       await consume(url);
-      if (seen.size > 0 || deadHosts.has(hostOf(origin))) break;
+      if (seen.size > 0 || health.get(hostOf(origin))?.dead) break;
     }
   }
   return [...seen];
