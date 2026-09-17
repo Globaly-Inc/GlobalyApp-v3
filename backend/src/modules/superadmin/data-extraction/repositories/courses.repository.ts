@@ -44,7 +44,11 @@ export async function countCoursesByJob(jobId: string, filters: CourseListFilter
 export type CourseFeeListFilters = { search?: string };
 
 function filteredCourseFeesQuery(jobId: string, { search }: CourseFeeListFilters) {
-  const q = masterKnex(`${S}.extraction_course_fees`).where({ job_id: jobId });
+  // A fee an admin adds from a course without "Save for reuse" belongs to that course only and
+  // stays out of this list. Extracted fees (no creator) are always listed — this is where they
+  // get edited.
+  const q = masterKnex(`${S}.extraction_course_fees`).where({ job_id: jobId })
+    .where((b) => b.where("save_for_reuse", true).orWhereNull("created_by_platform_user_id"));
   if (search) q.where((b) => b.whereILike("name", `%${search}%`).orWhereILike("description", `%${search}%`));
   return q;
 }

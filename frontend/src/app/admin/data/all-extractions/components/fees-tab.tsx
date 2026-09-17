@@ -198,7 +198,9 @@ export function FeesTab({
 
   const saveField = useFieldSaver(jobId, load);
   const { confirm, dialog } = useConfirmDelete();
-  const fees = links?.course_fees ?? [];
+  // A fee added from a course without "Save this for future uses" belongs to that course only.
+  // Extracted fees (no creator) are always listed — this tab is where they get edited.
+  const fees = (links?.course_fees ?? []).filter((f) => f.save_for_reuse || f.created_by_platform_user_id == null);
   const allSelected = fees.length > 0 && selectedIds.length === fees.length;
   const totalPages = Math.max(1, Math.ceil(fees.length / pageSize));
   const currentPage = Math.min(page, totalPages);
