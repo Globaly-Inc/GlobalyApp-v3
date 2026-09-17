@@ -8,7 +8,7 @@
 // Pure — no network. Run it directly:
 //   node --import tsx tests/subdomain-cert-log.ts
 import { capCertLogHosts, parseCertLogHosts } from "../src/modules/superadmin/data-extraction/lib/scraper.js";
-import { isRegistrySuffix, siteOf } from "../src/modules/superadmin/data-extraction/lib/html-utils.js";
+import { classifierDistrusted, isRegistrySuffix, siteOf } from "../src/modules/superadmin/data-extraction/lib/html-utils.js";
 
 let passed = 0;
 let failed = 0;
@@ -107,6 +107,24 @@ for (const suffix of ["ac.id", "co.uk", "edu.np", "blogspot.com", "github.io", "
 for (const [seed] of sites) {
   eq(isRegistrySuffix(siteOf(seed)), false, `allows real institution ${seed} (siteOf -> "${siteOf(seed)}")`);
 }
+
+// The URL classifier NARROWS a noisy heuristic list; returning a small fraction of it is a
+// failure, not a tighter answer — and the answer is cached on the exact prompt, so an unguarded
+// bad narrowing is permanent and free on every re-run.
+eq(classifierDistrusted(1363, 154), true, "the real Yale case: 154 of 1,363 is distrusted");
+eq(classifierDistrusted(1363, 1200), false, "a mild narrowing is trusted");
+eq(classifierDistrusted(1000, 250), false, "exactly at the 25% floor is trusted");
+eq(classifierDistrusted(1000, 249), true, "just under the floor is distrusted");
+eq(classifierDistrusted(1363, 0), true, "returning nothing at all is distrusted, not obeyed");
+eq(classifierDistrusted(0, 0), false, "an empty heuristic list can't be distrusted (no baseline)");
+eq(classifierDistrusted(600, 100, 0.1), false, "the floor is tunable per call");
+
+// Batches are judged INDIVIDUALLY, not just in aggregate. 1,363 URLs split 800 + 563: if the first
+// batch behaves and the second returns nothing, the total (700 of 1,363 = 51%) clears the floor
+// while 563 URLs vanish. Per-batch is the only check that catches it.
+eq(classifierDistrusted(800, 700), false, "a healthy batch is trusted on its own input");
+eq(classifierDistrusted(563, 0), true, "a batch that returned nothing is distrusted on its own input");
+eq(classifierDistrusted(1363, 700), false, "...while the AGGREGATE of those two batches looks fine");
 
 console.log(`${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

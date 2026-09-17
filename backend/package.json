@@ -36,6 +36,7 @@
     "test:partial-date": "node --import tsx tests/partial-date.ts",
     "test:fee-scope": "node --import tsx tests/fee-scope.ts",
     "test:subdomain-cert-log": "node --import tsx tests/subdomain-cert-log.ts",
+    "test:sitemap-parsing": "node --import tsx tests/sitemap-parsing.ts",
     "test:agentcis-duration": "node --import tsx tests/agentcis-duration.ts",
     "test:agentcis-fields": "node --import tsx tests/agentcis-fields.ts",
     "test:agentcis-intakes": "node --import tsx tests/agentcis-intakes.ts",

@@ -137,6 +137,36 @@ export function fixMalformedAbsoluteUrl(value: string | null | undefined, pageUr
   }
 }
 
+/** Floor under what the LLM URL classifier may keep before we stop believing it. */
+export const MIN_CLASSIFIER_KEEP_RATIO = 0.25;
+
+/**
+ * Below this much scraped markdown a page is navigation chrome, not content, and a course
+ * extraction call on it is spend with no chance of a return.
+ *
+ * ponytail: tuned against one real run (Yale, 266 extractions) rather than guessed — at 4,000 it
+ * skipped 74 zero-yield calls and lost 2 productive pages; 2,500 saved only 32; 5,000 saved 19
+ * more but cost 6. Re-measure against `extraction_pages` before moving it.
+ */
+export const MIN_EXTRACTABLE_CHARS = 4000;
+
+/**
+ * Has the URL classifier failed rather than filtered? It exists to NARROW a noisy heuristic list,
+ * so returning a small fraction of it is a failure signal, not a tighter answer.
+ *
+ * Live on Yale it returned 154 of 1,363 — keeping 151 catalog.yale.edu pages and dropping ~1,180
+ * siblings of identical shape — and because `extraction_llm_cache` keys on the exact prompt, every
+ * re-run replayed that answer for free and the job looked permanently stuck at 158 pages.
+ */
+export function classifierDistrusted(
+  heuristicCount: number,
+  classifierCount: number,
+  floor = MIN_CLASSIFIER_KEEP_RATIO,
+): boolean {
+  if (heuristicCount <= 0) return false;
+  return classifierCount < heuristicCount * floor;
+}
+
 /** Heuristic: does this URL look like a course detail or listing page? */
 export function looksLikeCourseUrl(url: string): boolean {
   const signals = [

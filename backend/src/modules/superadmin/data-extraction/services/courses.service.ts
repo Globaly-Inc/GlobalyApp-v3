@@ -26,8 +26,15 @@ export async function listCourses(
   return { ...buildPaginatedResponse(await withActorNames(courses), total, pagination), statusCounts };
 }
 
+// The entity tables carry created_by ids; the *_assignments rows don't. Names are attached
+// here so the Fees/Intakes/Units tabs and the course panel can say who added a row — without
+// this every fee read as "Extracted automatically", admin-added or not.
+const ACTOR_KEYS = ["course_fees", "intakes", "study_options", "study_units", "eligibility_requirements"] as const;
+
 export async function getCourseLinks(jobId: string) {
-  return repo.getCourseLinks(jobId);
+  const links = await repo.getCourseLinks(jobId);
+  const named = await Promise.all(ACTOR_KEYS.map(async (k) => [k, await withActorNames(links[k] ?? [])] as const));
+  return { ...links, ...Object.fromEntries(named) };
 }
 
 export async function listStudyUnits(
