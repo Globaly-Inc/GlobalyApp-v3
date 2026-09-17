@@ -2488,18 +2488,49 @@ export function normaliseQueueUrl(url: string): string {
   }
 }
 
-export async function insertQueueItem(jobId: string, url: string): Promise<string | null> {
+/**
+ * Why an insert did not happen. A bare null conflates two opposite facts: "this page is already
+ * covered" and "this page was thrown away". Reporting the second when it was the first told an
+ * operator that a re-dispatch of a full queue had discarded 500 URLs, when in truth all 500 were
+ * already there — see the `urls_not_queued` event in extraction-job.worker.ts.
+ */
+export type QueueInsertOutcome = { id: string; reason: null } | { id: null; reason: "duplicate" | "page_cap" };
+
+/** The reason comes from the SAME statement that made the decision — asking `atPageCap` afterwards
+ *  is a different question at a different moment, and answers for every URL at once. */
+export async function insertQueueItemDetailed(jobId: string, url: string): Promise<QueueInsertOutcome> {
   url = normaliseQueueUrl(url);
   const { rows } = await masterKnex.raw(
-    `INSERT INTO ${S}.extraction_queue (job_id, url, status)
-     SELECT :jobId, :url, 'pending'
-     WHERE (SELECT count(*) FROM ${S}.extraction_queue WHERE job_id = :jobId)
-         < (SELECT page_cap FROM ${S}.extraction_jobs WHERE id = :jobId)
-     ON CONFLICT (job_id, url) DO NOTHING
-     RETURNING id`,
+    // Existence is checked INDEPENDENTLY of the cap, and that is the whole point. Gating it behind
+    // `has_room` means a re-dispatch of a queue that is already full reports every URL as
+    // discarded — including the 500 that are sitting in the table — which is the misreport this
+    // function exists to prevent.
+    `WITH existing AS (
+       SELECT 1 FROM ${S}.extraction_queue WHERE job_id = :jobId AND url = :url
+     ), cap AS (
+       SELECT (SELECT count(*) FROM ${S}.extraction_queue WHERE job_id = :jobId)
+            < (SELECT page_cap FROM ${S}.extraction_jobs WHERE id = :jobId) AS has_room
+     ), ins AS (
+       INSERT INTO ${S}.extraction_queue (job_id, url, status)
+       SELECT :jobId, :url, 'pending'
+       WHERE NOT EXISTS (SELECT 1 FROM existing) AND (SELECT has_room FROM cap)
+       ON CONFLICT (job_id, url) DO NOTHING
+       RETURNING id
+     )
+     SELECT (SELECT id FROM ins) AS id,
+            EXISTS (SELECT 1 FROM existing) AS already,
+            (SELECT has_room FROM cap) AS has_room`,
     { jobId, url },
   );
-  return rows[0]?.id ?? null;
+  const id = rows[0]?.id ?? null;
+  if (id) return { id, reason: null };
+  // has_room with no insert means a concurrent worker won the race for this exact URL — also a
+  // duplicate, not a discard. Only "no room AND not already present" is a page genuinely dropped.
+  return { id: null, reason: rows[0]?.already || rows[0]?.has_room ? "duplicate" : "page_cap" };
+}
+
+export async function insertQueueItem(jobId: string, url: string): Promise<string | null> {
+  return (await insertQueueItemDetailed(jobId, url)).id;
 }
 
 /**

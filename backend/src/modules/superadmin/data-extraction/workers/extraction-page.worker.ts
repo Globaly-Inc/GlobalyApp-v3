@@ -32,7 +32,7 @@ import {
 import { loadLookupLists, resolveCountryCode } from "../lib/lookup-catalog.js";
 import { checkAllPagesDone } from "../lib/queue-completion.js";
 import { recallMemory, rememberMemory, buildSystemAddendum } from "../lib/memory-client.js";
-import { classifyFailure, type FailureClass } from "../lib/classify-failure.js";
+import { classifyFailure, isScraperInfraFailure, type FailureClass } from "../lib/classify-failure.js";
 
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
@@ -344,8 +344,39 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
 
     if (page.blocked || page.markdown.length < 50) {
       const reason = page.notFound ? "not_found" : page.blocked ? "blocked" : "minimal_content";
-      const failureClass: FailureClass = page.notFound ? "not_found" : "anti_bot";
-      logger.warn("Page blocked, not found, or empty", { url, scraper: page.scraper, error: page.error });
+      // "Empty page" has two completely different causes that used to share one label. A target
+      // defending itself is `anti_bot` — escalate proxies, slow down. OUR stack failing is
+      // `scraper_down` — go look at the container. Hardcoding `anti_bot` here is what made a
+      // Chromium-leaked Scrapling container read as a Yale WAF block for hours.
+      const infraFailure = isScraperInfraFailure(page.error);
+      const failureClass: FailureClass = page.notFound
+        ? "not_found"
+        : infraFailure ? "scraper_down" : "anti_bot";
+      logger.warn("Page blocked, not found, or empty", { url, scraper: page.scraper, error: page.error, failureClass });
+
+      // Say it once per job, loudly: a scraper outage is an operational problem and every page
+      // after this one will fail the same way until someone looks. Deduped on the job's own
+      // events so 500 failing pages don't write 500 identical warnings.
+      if (infraFailure) {
+        // An outage fails every in-flight page at once, so a plain read-then-insert lets every
+        // concurrent consumer see "no event yet" and write its own — one warning per worker, on
+        // the timeline of a job that already has 500 red rows. There is no unique constraint on
+        // (job_id, kind) to conflict against, and adding one would also forbid ever recording a
+        // SECOND, genuinely separate outage later in the same job. A transaction-scoped advisory
+        // lock keyed on the job makes check-and-write atomic with no schema change and no such
+        // side effect; it is released automatically when the transaction ends, including on error.
+        await masterKnex.transaction(async (trx) => {
+          await trx.raw("SELECT pg_advisory_xact_lock(hashtext(?))", [`scraper_unavailable:${jobId}`]);
+          const alreadyWarned = await trx(`${S}.extraction_job_events`)
+            .where({ job_id: jobId, kind: "scraper_unavailable" }).first();
+          if (alreadyWarned) return;
+          await trx(`${S}.extraction_job_events`).insert({
+            job_id: jobId, kind: "scraper_unavailable", level: "error", phase: "data_extraction",
+            message: `Scraper stack unavailable — this is OUR infrastructure, not the target site. Check the Scrapling container (docker stats scrapling-mcp). First seen on ${url}: ${page.error ?? "no detail"}`,
+            data: JSON.stringify({ url, scraper: page.scraper, error: page.error ?? null }),
+          });
+        });
+      }
 
       // Route through retry logic instead of silently completing
       const item = await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).select("retry_count", "processing_meta").first();
@@ -373,7 +404,15 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       // A not_found page skips retries entirely — every proxy/mobile tier hits the exact
       // same 404 on the source site, so retrying only delays the (unchanged) failure.
       if (!page.notFound && retries < 2) {
-        meta.retry_strategy = retries === 0 ? "browser_render" : "mobile";
+        // Escalating to a paid proxy tier answers "the site is defending itself". It is the wrong
+        // answer to "our own scraper is down", and actively harmful: forceFirecrawl SKIPS Scrapling
+        // entirely, so a container that has merely leaked its Chromium processes is never retried
+        // against, and every retry burns Firecrawl quota that may not exist. Seen live: 308 pages
+        // failed as "blocked after 2 retries (firecrawl): Insufficient credits" while the real
+        // fault was ours. An infra failure retries through the NORMAL cascade instead, which tries
+        // Scrapling first (it may have recovered) and still reaches Firecrawl on its own if not.
+        const infraRetry = failureClass === "scraper_down";
+        meta.retry_strategy = infraRetry ? "cascade" : retries === 0 ? "browser_render" : "mobile";
         const retryProxy = retries === 0 ? "auto" : "stealth";
         const owned = await writeIfOwned({
           status: "pending", failure_class: failureClass, retry_count: retries + 1,
@@ -381,10 +420,11 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
         });
         if (!owned) { logger.info("Fenced out — a newer attempt owns this item, dropping stale retry", { jobId, queueItemId, url }); return; }
         await queueService.publish(EXTRACTION_QUEUES.PAGES, {
-          jobId, queueItemId, url, forceFirecrawl: true, mobile: meta.retry_strategy === "mobile", proxy: retryProxy,
+          jobId, queueItemId, url, forceFirecrawl: !infraRetry, mobile: meta.retry_strategy === "mobile", proxy: retryProxy,
           expandCollapsed: true,
         });
-        logger.info("Blocked page re-queued for Firecrawl retry", { url, retries: retries + 1, proxy: retryProxy });
+        logger.info(infraRetry ? "Scraper-down page re-queued through the normal cascade" : "Blocked page re-queued for Firecrawl retry",
+          { url, retries: retries + 1, proxy: retryProxy, failureClass });
       } else {
         // Exhausted retries (or a dead URL that can't benefit from any) — mark failed so
         // it's visible in the admin queue panel with the real reason, not a generic one.

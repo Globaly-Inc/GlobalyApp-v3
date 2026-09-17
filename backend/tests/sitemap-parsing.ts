@@ -8,12 +8,13 @@
  */
 import { gzipSync } from "node:zlib";
 import {
-  decodeSitemapBody, sitemapIndexChildren, sitemapLocs, sitemapUrlsFromRobots, updateHostHealth,
+  decodeSitemapBody, nextHostSlot, throttleForHost, sitemapIndexChildren, sitemapLocs, sitemapUrlsFromRobots, updateHostHealth,
 } from "../src/modules/superadmin/data-extraction/lib/scraper.js";
 import type { HostHealth } from "../src/modules/superadmin/data-extraction/lib/scraper.js";
 
 let passed = 0;
 let failed = 0;
+function fail(msg: string) { failed++; console.error(`FAIL ${msg}`); }
 function eq(actual: unknown, expected: unknown, label: string) {
   const a = JSON.stringify(actual);
   const e = JSON.stringify(expected);
@@ -84,6 +85,56 @@ eq(updateHostHealth(twoFail, true), { alive: true, failures: 0, dead: false }, "
 eq(updateHostHealth(updateHostHealth(fresh(), false), true), { alive: true, failures: 0, dead: false }, "a later answer revives a host that had failed");
 
 eq(updateHostHealth(answered, false, 1), { alive: true, failures: 1, dead: true }, "the limit is tunable");
+
+// ── per-host pacing ─────────────────────────────────────────────────────────
+// The slot must be reserved before the caller sleeps. Read-sleep-write paces sequential callers
+// but lets N concurrent ones read the same timestamp and fire together — which is how 500 queued
+// pages against catalog.yale.edu produced 478 anti_bot failures in one second.
+const GAP = 800;
+
+// A host never hit: go now.
+eq(nextHostSlot(undefined, 1_000, GAP), 1_000, "first request to a host goes immediately");
+
+// Sequential caller after the gap has elapsed: go now (no artificial delay).
+eq(nextHostSlot(1_000, 5_000, GAP), 5_000, "a request long after the last slot is not delayed");
+
+// Sequential caller inside the gap: wait out the remainder — same as the old behaviour.
+eq(nextHostSlot(1_000, 1_200, GAP), 1_800, "a request inside the gap waits for the slot");
+
+// THE FIX: concurrent callers at the same instant get DIFFERENT slots, spaced by the gap.
+let slot: number | undefined = undefined;
+const burst: number[] = [];
+for (let i = 0; i < 5; i++) {
+  slot = nextHostSlot(slot, 1_000, GAP); // every caller sees the same `now` — a true burst
+  burst.push(slot);
+}
+eq(burst, [1_000, 1_800, 2_600, 3_400, 4_200], "a burst of 5 is spread across 5 slots, not collapsed onto one");
+
+// The arithmetic above cannot prove the real fix: `Math.max(now, last + gap)` and the old
+// `gap - (now - last)` form are algebraically identical. The bug was WRITE ORDERING — reserving
+// the slot after the sleep instead of before — which only shows up with concurrent callers.
+// So measure actual concurrency against a real gap.
+{
+  const gap = Number(process.env.HOST_THROTTLE_MS) || 800;
+  const started = Date.now();
+  const finishedAt = await Promise.all(
+    Array.from({ length: 4 }, () => throttleForHost("https://throttle-test.example/x").then(() => Date.now() - started)),
+  );
+  // Reserved slots: caller i waits ~i*gap. Read-sleep-write would release all four at ~0-gap.
+  const spread = Math.max(...finishedAt) - Math.min(...finishedAt);
+  if (spread < gap * 2) {
+    fail(`concurrent callers were not serialised: released within ${spread}ms, expected >= ${gap * 2}ms of spread (${finishedAt.join(", ")})`);
+  } else {
+    passed++;
+  }
+  // throttleForHost reserves its slot in the SHARED table, so this test writes a row to whatever
+  // database it runs against. Clean it up: a stray host row is harmless but it is still test
+  // residue sitting in a real schema, and it made the table look like it had scraped a domain
+  // nobody has ever crawled.
+  const { masterKnex } = await import("../src/core/db/master-pool.js");
+  await masterKnex("superadmin.extraction_host_slots").where({ host: "throttle-test.example" }).del().catch(() => {});
+  await masterKnex.destroy().catch(() => {});
+}
 
 console.log(`${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

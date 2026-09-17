@@ -22,7 +22,7 @@ import {
 import {
   writeInstitutionOverview,
   writeSiteIntelligence,
-  insertQueueItem,
+  insertQueueItemDetailed,
   writeJobEvent,
 } from "../lib/staging-writer.js";
 
@@ -356,11 +356,37 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
 
     // ── Phase 3: Queue each page for extraction ──
     let queued = 0;
+    let duplicates = 0;
+    let cappedOut = 0;
     for (const url of courseUrls) {
-      const queueItemId = await insertQueueItem(jobId, url);
-      if (!queueItemId) continue; // already queued (e.g. duplicate JOBS message) — its owner dispatches it
-      await queueService.publish(EXTRACTION_QUEUES.PAGES, { jobId, queueItemId, url });
+      // The two refusal reasons are opposites and must be counted apart: a duplicate is a page
+      // ALREADY COVERED, a cap refusal is a page THROWN AWAY. Collapsing them let a re-dispatch of
+      // a full queue report "0 queued, 500 discarded" when all 500 rows already existed.
+      const { id, reason } = await insertQueueItemDetailed(jobId, url);
+      if (!id) { if (reason === "page_cap") cappedOut++; else duplicates++; continue; }
+      await queueService.publish(EXTRACTION_QUEUES.PAGES, { jobId, queueItemId: id, url });
       queued++;
+    }
+
+    // The single largest loss in the pipeline, and it was invisible: the operator saw
+    // "1367 course pages identified", then 500 in the queue, with nothing explaining the gap.
+    // Cost is a real reason to cap, but an unreported cap is indistinguishable from a bug.
+    if (duplicates > 0 || cappedOut > 0) {
+      const parts = [`${queued} newly queued`];
+      if (duplicates > 0) parts.push(`${duplicates} already covered`);
+      if (cappedOut > 0) parts.push(`${cappedOut} DISCARDED at the page cap`);
+      await writeJobEvent(jobId, "urls_not_queued", {
+        // Only a discard is a warning. A duplicate means the page is already accounted for, which
+        // is the normal outcome of a re-dispatch and must not read like data loss.
+        level: cappedOut > 0 ? "warn" : "info",
+        phase: "course_discovery",
+        message: `${courseUrls.length} course URLs: ${parts.join(", ")}.`
+          + (cappedOut > 0 ? " Raise page_cap or use Deep Scrape to cover the rest." : ""),
+        data: {
+          queued, duplicates, discarded_at_cap: cappedOut, course_urls: courseUrls.length,
+          at_page_cap: cappedOut > 0, page_cap: Number(job.page_cap) || 500,
+        },
+      });
     }
 
     // Nothing published means nothing advances the job — a re-dispatch whose URLs are all

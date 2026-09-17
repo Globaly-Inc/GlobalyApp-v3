@@ -167,8 +167,69 @@ export function classifierDistrusted(
   return classifierCount < heuristicCount * floor;
 }
 
+/**
+ * Paths that are university INFRASTRUCTURE, never a programme a student can apply to.
+ *
+ * Measured over every page this pipeline has crawled: these markers appear on 250+ queued pages
+ * and produced ONE course between them. They are here because a catalogue HOST short-circuits
+ * `looksLikeCourseUrl` to true before any path is examined — so `catalog.yale.edu/departmental_
+ * academic_support/appxtender` (a help page for a document-management product) was queued,
+ * scraped at 325,703 characters and sent to Gemini, as were 146 of its siblings. One institution
+ * spent roughly $2 of its $6.55 on pages of this kind.
+ *
+ * The bar for entry is deliberately high: observed with ZERO courses AND administrative at any
+ * institution, not merely unproductive on one site. Things kept OUT despite low yield, because
+ * they are genuinely academic somewhere: `/search` (explorecourses.stanford.edu/search IS a
+ * course search), `/people/` (20 pages, 43 courses), `/registrar`, `/alumni`, `financial-aid`,
+ * `scholarship`, `tuition-and-fees`, and every institution-specific slug (`arts-science`,
+ * `global-affairs`) that happened to yield nothing on a single job.
+ *
+ * `courseleaf` and `/wen/` are the CourseLeaf (Leepfrog) CMS's own admin surface, which much of
+ * the US sector runs — so those two generalise well beyond the site they were found on.
+ *
+ * Deliberately NOT applied to guided URLs: the job worker unions those in AFTER this filter, so
+ * an academic calendar an operator adds under Context → Intakes still reaches the crawl even
+ * though `/calendar` is denied here.
+ */
+const NON_COURSE_PATH_MARKERS = [
+  // CMS / vendor admin surfaces
+  "courseleaf", "/wen/", "appxtender",
+  // Student-services and staff infrastructure
+  "academic_support", "academic-support", "resources-services",
+  "faculty-staff", "handbook-instructor",
+  // Registry process pages (the act of enrolling, not a thing to enrol in)
+  "registration_", "add_drop", "add-drop",
+  // Institutional boilerplate. EVERY marker here is a compound phrase, never a bare word, and
+  // that is not stylistic. A first cut of this list carried "library", "privacy", "accessibility",
+  // "calendar" and "/directory" — 26 pages of real benefit — and substring-matched
+  // `/library-and-information-science`, `/privacy-law-llm`, `/web-accessibility-certificate` and
+  // `/calendar-and-event-management`: eight of eleven real degree shapes, thrown away to save
+  // 10% of the list's value. Bare "policy" is the same trap, matching 76 pages that carry 20
+  // courses because "public-policy" and "policy-studies" are subjects people enrol in.
+  // A denied page costs a few cents; a denied PROGRAMME costs a course that will never appear.
+  "/policies", "policy-statements",
+];
+
+/** Is this URL university infrastructure rather than a programme page? Path-only, like the
+ *  positive signals — a marker matching a HOSTNAME by coincidence is the bug that turned a whole
+ *  admissions subdomain into "course pages". */
+export function looksLikeNonCourseUrl(url: string): boolean {
+  let path: string;
+  try {
+    path = new URL(url).pathname.toLowerCase();
+  } catch {
+    path = url.toLowerCase();
+  }
+  return NON_COURSE_PATH_MARKERS.some((m) => path.includes(m));
+}
+
 /** Heuristic: does this URL look like a course detail or listing page? */
 export function looksLikeCourseUrl(url: string): boolean {
+  // Checked BEFORE everything else, including the catalogue-host short-circuit below — that
+  // short-circuit returning true on the hostname alone is precisely how a catalogue's admin
+  // documentation got queued as course pages.
+  if (looksLikeNonCourseUrl(url)) return false;
+
   const signals = [
     "/course", "/program", "/degree", "/bachelor", "/master",
     "/diploma", "/certificate", "/undergraduate",
