@@ -14,7 +14,7 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { scrapeRenderedHtml } from "../lib/scraper.js";
 import { getPage, getDocument, isPdfUrl } from "../lib/page-store.js";
-import { truncateMarkdown, domainOf } from "../lib/html-utils.js";
+import { truncateMarkdown, domainOf, MIN_EXTRACTABLE_CHARS } from "../lib/html-utils.js";
 import { courseLinksByName, looksLikeCourseList, parseCourseList } from "../lib/courselist-parser.js";
 import { extractJson, setLlmContext, withLlmKind } from "../lib/llm-client.js";
 import {
@@ -434,6 +434,32 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
           pages_total: masterKnex.raw("pages_total + ?", [queued]),
         });
       }
+    }
+
+    // ── Too thin to be worth a model call ──
+    // Measured on a live Yale run: 65% of course_extraction calls returned zero courses, and the
+    // thing that predicted it was page SIZE, not URL shape (the same /ycps/courses/* family both
+    // yields and doesn't, so no pattern blocklist can separate them). Under this threshold a page
+    // is navigation chrome — "/ycps/courses/litr" is 2,074 chars of menu. On that run the cut
+    // skips 74 wasted Flash calls and loses 2 productive pages; 5,000 would save 19 more but cost
+    // 6, so the knee is here. Pagination above still ran, so a thin LISTING has already queued its
+    // siblings — this only declines to ask the model about the page itself.
+    if (page.markdown.length < MIN_EXTRACTABLE_CHARS) {
+      logger.info("Page too thin for extraction, skipping model call", { jobId, url, chars: page.markdown.length });
+      await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).update({
+        status: "completed",
+        extracted_data: JSON.stringify({ skipped: true, reason: "too_thin", chars: page.markdown.length }),
+        page_id: page.pageId,
+        page_content_hash: page.contentHash,
+        updated_at: masterKnex.fn.now(),
+      });
+      await writeJobEvent(jobId, "page_skipped_thin", {
+        phase: "data_extraction",
+        message: `Skipped model call: ${url} has ${page.markdown.length} chars (under ${MIN_EXTRACTABLE_CHARS})`,
+        data: { url, chars: page.markdown.length, threshold: MIN_EXTRACTABLE_CHARS },
+      });
+      await checkAllPagesDone(jobId);
+      return;
     }
 
     // ── LLM extraction with memory-augmented prompt ──

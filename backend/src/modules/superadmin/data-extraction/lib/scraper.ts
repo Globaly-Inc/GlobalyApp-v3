@@ -1,6 +1,7 @@
 // Scraper — Scrapling (via its own MCP server) primary, Crawl4AI then Firecrawl fallback.
 // Crawl4AI/Firecrawl cascade is a direct port of V1 supabase/functions/_shared/crawl4ai.ts.
 
+import { gunzipSync } from "node:zlib";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { config } from "../../../../config.js";
@@ -67,6 +68,13 @@ export interface DiscoveryResult {
   method: "map" | "sitemap" | "page-links" | "seed-only";
   error?: string;
   insufficientCredits?: boolean;
+  /**
+   * How many URLs each source contributed, before dedupe. The "sitemap" method merges three
+   * independent sources and each one swallows its own failure as `[]` — so a single total hides
+   * which one died. A live Yale job logged a healthy "3252 URLs" while the course catalogue
+   * (1,335 pages, ~98% of the useful ones) contributed zero, and nothing said so.
+   */
+  sources?: Record<string, number>;
 }
 
 const MIN_CONTENT_LEN = 200;
@@ -629,6 +637,88 @@ export async function mapUrlsDetailed(
   return { success: false, links: [], error: "firecrawl network error" };
 }
 
+/** `Sitemap:` declarations in a robots.txt — the site's own authoritative list, often several and
+ *  often at non-conventional paths. Anchored to line start so a URL containing "sitemap:" or a
+ *  commented-out line can't masquerade as one. Pure. */
+export function sitemapUrlsFromRobots(txt: string): string[] {
+  return [...txt.matchAll(/^\s*sitemap:\s*(\S+)/gim)]
+    .map((m) => m[1].trim())
+    .filter((u) => /^https?:\/\//i.test(u));
+}
+
+/** Child sitemap URLs inside a `<sitemapindex>`. Pure. */
+export function sitemapIndexChildren(xml: string): string[] {
+  return [...xml.matchAll(/<sitemap>[\s\S]*?<loc>([^<]+)<\/loc>[\s\S]*?<\/sitemap>/gi)].map((m) => m[1].trim());
+}
+
+/** Page URLs inside a `<urlset>`. Pure. */
+export function sitemapLocs(xml: string): string[] {
+  return [...xml.matchAll(/<url>[\s\S]*?<loc>([^<]+)<\/loc>[\s\S]*?<\/url>/gi)]
+    .map((m) => m[1].trim())
+    .filter((loc) => /^https?:\/\//i.test(loc));
+}
+
+/**
+ * A sitemap body, decompressed when it is gzip. Pure.
+ *
+ * `fetch` transparently handles `Content-Encoding: gzip`, but NOT a gzipped FILE
+ * (`sitemap.xml.gz`, served as application/gzip) — which large sites commonly publish as their
+ * only sitemap. Reading that through `res.text()` yields binary, parses to zero URLs, and says
+ * nothing. Detected by magic bytes rather than the extension, since servers disagree on both.
+ */
+export function decodeSitemapBody(buf: Buffer): string {
+  if (buf.length > 2 && buf[0] === 0x1f && buf[1] === 0x8b) {
+    try { return gunzipSync(buf).toString("utf8"); } catch { return ""; }
+  }
+  return buf.toString("utf8");
+}
+
+/** A sitemap index can legitimately list hundreds of children; `max` is the real budget, so this
+ *  is only a runaway guard. Was 25, which silently truncated any site with per-faculty sitemaps. */
+const SITEMAP_INDEX_CHILD_CAP = 200;
+/** Indexes of indexes are real; bounded by `max` regardless. */
+const SITEMAP_MAX_DEPTH = 3;
+/** robots.txt may declare several; was 5. */
+const ROBOTS_SITEMAP_CAP = 20;
+
+/** A sitemap fetch had no timeout at all, so one hanging host (studies.yale.edu, seen live) stalls
+ *  discovery for as long as the socket stays open — multiplied by every candidate and retry. */
+const SITEMAP_FETCH_TIMEOUT_MS = 15_000;
+
+type SitemapFetch =
+  | { ok: true; text: string }
+  /** The server answered, just not with a document — a 404 is a real answer, never retried. */
+  | { ok: false; reachable: true }
+  /** Nothing answered: DNS failure, refused, or a hang. Retrying the same HOST is near-useless. */
+  | { ok: false; reachable: false };
+
+/**
+ * One sitemap document. Retries ONCE on a thrown error — politeFetch retries 429/503, but a
+ * timeout or connection reset throws, and the old `catch { /* try next *␘/ }` swallowed it. That
+ * is the failure that cost a live Yale job its course catalogue.
+ *
+ * The retry is deliberately NOT free: crt.sh hands back hosts that hold certificates but no longer
+ * serve (dev boxes, decommissioned sites), and retrying each of 5 candidates on a dead host is 10
+ * waits for nothing. So the caller is told whether the host answered AT ALL and bails on it.
+ */
+async function fetchSitemapDoc(url: string, seedUrl: string): Promise<SitemapFetch> {
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      await politeDelay(200, 800);
+      const res = await politeFetch(url, { signal: AbortSignal.timeout(SITEMAP_FETCH_TIMEOUT_MS) }, { referer: seedUrl });
+      if (!res.ok) return { ok: false, reachable: true };
+      return { ok: true, text: decodeSitemapBody(Buffer.from(await res.arrayBuffer())) };
+    } catch (err) {
+      if (attempt === 1) {
+        logger.warn(`Sitemap fetch failed after retry: ${url}`, { error: String(err) });
+        return { ok: false, reachable: false };
+      }
+      await politeDelay(500, 1500);
+    }
+  }
+  return { ok: false, reachable: false };
+}
+
 export async function fetchSitemapUrls(seedUrl: string, max = 10000): Promise<string[]> {
   // Same guard: sitemapsFromLinkedHosts derives the host from a page's own links.
   try {
@@ -643,56 +733,64 @@ export async function fetchSitemapUrls(seedUrl: string, max = 10000): Promise<st
   let origin = "";
   try { origin = new URL(seedUrl).origin; } catch { return []; }
   const seen = new Set<string>();
-  const candidates = [`${origin}/sitemap.xml`, `${origin}/sitemap_index.xml`, `${origin}/sitemap-index.xml`, `${origin}/robots.txt`];
-  const sitemapsFromRobots: string[] = [];
+  const tried = new Set<string>();
+  /** Hosts that answered nothing at all. crt.sh surfaces plenty of them; once a host has failed to
+   *  respond, every remaining candidate on it is a wait for nothing. */
+  const deadHosts = new Set<string>();
+
+  const hostOf = (url: string) => { try { return new URL(url).host; } catch { return url; } };
+
+  async function fetchDoc(url: string): Promise<string | null> {
+    if (deadHosts.has(hostOf(url))) return null;
+    const r = await fetchSitemapDoc(url, seedUrl);
+    if (!r.ok && !r.reachable) deadHosts.add(hostOf(url));
+    return r.ok ? r.text : null;
+  }
 
   async function parse(xml: string, depth: number) {
-    if (depth > 2 || seen.size >= max) return;
-    const isIndex = /<sitemapindex[\s>]/i.test(xml);
-    if (isIndex) {
-      const locs = [...xml.matchAll(/<sitemap>[\s\S]*?<loc>([^<]+)<\/loc>[\s\S]*?<\/sitemap>/gi)]
-        .map((m) => m[1].trim()).slice(0, 25);
-      for (const sub of locs) {
-        try {
-          await politeDelay(200, 800);
-          const r = await politeFetch(sub, {}, { referer: seedUrl });
-          if (!r.ok) continue;
-          await parse(await r.text(), depth + 1);
-          if (seen.size >= max) return;
-        } catch { /* skip */ }
+    if (depth > SITEMAP_MAX_DEPTH || seen.size >= max) return;
+    if (/<sitemapindex[\s>]/i.test(xml)) {
+      for (const sub of sitemapIndexChildren(xml).slice(0, SITEMAP_INDEX_CHILD_CAP)) {
+        if (seen.size >= max) return;
+        if (tried.has(sub)) continue;
+        tried.add(sub);
+        const child = await fetchDoc(sub);
+        if (child) await parse(child, depth + 1);
       }
       return;
     }
-    for (const m of xml.matchAll(/<url>[\s\S]*?<loc>([^<]+)<\/loc>[\s\S]*?<\/url>/gi)) {
-      const loc = m[1].trim();
-      if (loc && /^https?:\/\//i.test(loc)) seen.add(loc);
+    for (const loc of sitemapLocs(xml)) {
+      seen.add(loc);
       if (seen.size >= max) return;
     }
   }
 
-  for (const url of candidates) {
-    try {
-      await politeDelay(200, 800);
-      const res = await politeFetch(url, {}, { referer: seedUrl });
-      if (!res.ok) continue;
-      const txt = await res.text();
-      if (url.endsWith("robots.txt")) {
-        for (const m of txt.matchAll(/sitemap:\s*(\S+)/gi)) sitemapsFromRobots.push(m[1].trim());
-        continue;
-      }
-      await parse(txt, 0);
-      if (seen.size > 0) break;
-    } catch { /* try next */ }
+  async function consume(url: string) {
+    if (seen.size >= max || tried.has(url)) return;
+    tried.add(url);
+    const doc = await fetchDoc(url);
+    if (doc) await parse(doc, 0);
   }
-  if (seen.size === 0 && sitemapsFromRobots.length) {
-    for (const sm of sitemapsFromRobots.slice(0, 5)) {
-      try {
-        await politeDelay(200, 800);
-        const r = await politeFetch(sm, {}, { referer: seedUrl });
-        if (!r.ok) continue;
-        await parse(await r.text(), 0);
-        if (seen.size > 0) break;
-      } catch { /* skip */ }
+
+  // robots.txt is read ALWAYS, not as a last resort. It is the site's own declaration of where its
+  // sitemaps live — frequently several, frequently not at /sitemap.xml — and the old code broke
+  // out of the candidate loop as soon as /sitemap.xml returned anything, so those declarations
+  // were never seen on any site that also had a conventional (possibly partial) sitemap.
+  const [robots] = await Promise.all([
+    fetchSitemapDoc(`${origin}/robots.txt`, seedUrl),
+    consume(`${origin}/sitemap.xml`),
+  ]);
+  if (!robots.ok && !robots.reachable) deadHosts.add(hostOf(origin));
+  const declared = robots.ok ? sitemapUrlsFromRobots(robots.text).slice(0, ROBOTS_SITEMAP_CAP) : [];
+  for (const url of declared) await consume(url);
+
+  // Only if nothing has been found yet: the other conventional spellings, and the gzipped form.
+  // Skipped entirely for a host that never answered — that was costing 5 candidates x 2 attempts
+  // of pure waiting per dead crt.sh host, with up to 25 of them per job.
+  if (seen.size === 0 && !deadHosts.has(hostOf(origin))) {
+    for (const url of [`${origin}/sitemap_index.xml`, `${origin}/sitemap-index.xml`, `${origin}/sitemap.xml.gz`]) {
+      await consume(url);
+      if (seen.size > 0 || deadHosts.has(hostOf(origin))) break;
     }
   }
   return [...seen];
@@ -886,7 +984,7 @@ export async function discoverUrlsForCrawl(seedUrl: string, opts: MapOptions = {
   // 1. Firecrawl map
   const map = await mapUrlsDetailed(seedUrl, mapOpts);
   if (map.success && map.links.length > 1) {
-    return { urls: map.links, method: "map" };
+    return { urls: map.links, method: "map", sources: { map: map.links.length } };
   }
   // 2. sitemap.xml — the seed's, any catalogue subdomain that has one, plus anything
   // Certificate Transparency logs surface that the wordlist and already-linked-hosts
@@ -898,7 +996,10 @@ export async function discoverUrlsForCrawl(seedUrl: string, opts: MapOptions = {
   ]);
   const merged = [...new Set([...sitemap, ...catalogue, ...certLog])];
   if (merged.length > 1) {
-    return { urls: merged, method: "sitemap", error: map.error };
+    return {
+      urls: merged, method: "sitemap", error: map.error,
+      sources: { seed_sitemap: sitemap.length, catalogue: catalogue.length, cert_log: certLog.length },
+    };
   }
   // 3. Scrape seed page for links.
   const res = await scrapeMarkdown(seedUrl, { withLinks: true, onlyMainContent: false });

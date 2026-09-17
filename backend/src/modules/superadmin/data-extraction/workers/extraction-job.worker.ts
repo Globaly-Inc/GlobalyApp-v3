@@ -13,7 +13,7 @@ import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { discoverUrlsForCrawl } from "../lib/scraper.js";
 import { SNAPSHOT_BATCH_SIZE } from "../lib/site-snapshot.js";
 import { getPage } from "../lib/page-store.js";
-import { looksLikeCourseUrl, looksLikeVisaServiceUrl, filterUrls, truncateMarkdown, domainOf, collectGuidedUrls } from "../lib/html-utils.js";
+import { looksLikeCourseUrl, looksLikeVisaServiceUrl, filterUrls, truncateMarkdown, domainOf, collectGuidedUrls, classifierDistrusted, MIN_CLASSIFIER_KEEP_RATIO } from "../lib/html-utils.js";
 import { extractJson, isConfigured, setLlmContext } from "../lib/llm-client.js";
 import {
   siteAnalysisPrompt, urlDiscoveryPrompt, SITE_ANALYSIS_SYSTEM,
@@ -29,6 +29,7 @@ import {
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
 const logger = createChildLogger("extraction-job-worker");
+
 
 interface SiteAnalysisResult {
   institution: Record<string, unknown>;
@@ -219,10 +220,17 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
       }
     }
 
+    // Per-source counts, not just a total: each discovery source swallows its own failure as [],
+    // so one healthy-looking number can hide the loss of the source that mattered. A zero next to
+    // "catalogue" is the difference between "this site has no catalogue" and "we lost 1,335 pages".
+    const sourceNote = discovery.sources
+      ? ` (${Object.entries(discovery.sources).map(([k, v]) => `${k}: ${v}`).join(", ")})`
+      : "";
     await writeJobEvent(jobId, "urls_discovered_raw", {
       phase: "course_discovery",
-      message: `Discovered ${allUrls.length} URLs via ${discovery.method}`,
-      data: { method: discovery.method, count: allUrls.length },
+      level: discovery.sources && Object.values(discovery.sources).some((n) => n === 0) ? "warn" : "info",
+      message: `Discovered ${allUrls.length} URLs via ${discovery.method}${sourceNote}`,
+      data: { method: discovery.method, count: allUrls.length, sources: discovery.sources ?? null },
     });
 
     // Site snapshot: every discovered page → .md in GCS, on the step worker so this consumer
@@ -267,20 +275,42 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
     if (courseUrls.length > 500) {
       // ponytail: chunk URLs into batches of 800 for LLM filtering so we don't lose pages
       const LLM_BATCH = 800;
-      const classified: string[] = [...guidedUrls];
-      for (let i = 0; i < courseUrls.length; i += LLM_BATCH) {
-        const batch = courseUrls.slice(i, i + LLM_BATCH);
+      const heuristicUrls = courseUrls;
+      const picked: string[] = [];
+      for (let i = 0; i < heuristicUrls.length; i += LLM_BATCH) {
+        const batch = heuristicUrls.slice(i, i + LLM_BATCH);
         const urlResult = await extractJson<UrlDiscoveryResult>({
           system: SITE_ANALYSIS_SYSTEM,
           prompt: buildUrlDiscoveryPrompt(batch, patterns),
           maxTokens: 65536,
           tier: "lite",
         });
-        if (urlResult.course_urls?.length) classified.push(...urlResult.course_urls);
+        if (urlResult.course_urls?.length) picked.push(...urlResult.course_urls);
         // Heartbeat between batches
         await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({ processing_heartbeat_at: masterKnex.fn.now() });
       }
-      courseUrls = [...new Set(classified)];
+
+      // This step exists to NARROW a noisy heuristic list, not to replace it wholesale. Live on
+      // Yale it returned 154 of 1,363 — keeping 151 catalog.yale.edu pages and discarding ~1,180
+      // siblings of identical shape — and because the answer is cached on the exact prompt, every
+      // re-run served the same 158 for free and the job looked permanently broken. Same rule the
+      // module already applies to scores and partial dates: never silently choose between two
+      // stated answers. Below the floor we keep the heuristic's list, which is the conservative
+      // direction here (page_cap still bounds what actually gets queued).
+      const distinctPicked = new Set(picked).size;
+      if (classifierDistrusted(heuristicUrls.length, distinctPicked)) {
+        logger.warn("URL classifier kept implausibly few — keeping the heuristic's list", {
+          jobId, heuristic: heuristicUrls.length, classifier: distinctPicked,
+        });
+        await writeJobEvent(jobId, "url_classifier_distrusted", {
+          level: "warn", phase: "course_discovery",
+          message: `URL classifier returned ${distinctPicked} of ${heuristicUrls.length} — below the ${Math.round(MIN_CLASSIFIER_KEEP_RATIO * 100)}% floor, keeping the heuristic's list`,
+          data: { heuristic: heuristicUrls.length, classifier: distinctPicked, floor: MIN_CLASSIFIER_KEEP_RATIO },
+        });
+        courseUrls = [...new Set([...heuristicUrls, ...guidedUrls])];
+      } else {
+        courseUrls = [...new Set([...guidedUrls, ...picked])];
+      }
     }
 
     // If heuristic found nothing, send all non-asset URLs to LLM for classification
