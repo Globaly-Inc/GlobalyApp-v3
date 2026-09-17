@@ -391,6 +391,8 @@ export type CourseFee = ActorFields & {
   total_amount: number | null;
   installments?: FeeInstallment[] | null;
   save_for_reuse?: boolean;
+  /** Null on extracted fees, set on admin-added ones. */
+  created_by_platform_user_id?: number | null;
   created_at: string;
   updated_at?: string;
 };
