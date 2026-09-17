@@ -531,6 +531,119 @@ The centralized error handler maps these to HTTP responses.
    when a job has nothing queued yet to resume from — no V2 equivalent to
    port, this is a cost fix.
 
+## Site snapshot to GCS (2026-09-16)
+
+Not a V2 behavior — explicitly requested. Right after URL discovery, the job worker publishes a
+`site_snapshot` step (`extraction-step.worker.ts`, `lib/site-snapshot.ts`) carrying the same-site,
+non-asset, blocklist-filtered URL list, capped at `page_cap`. The step fetches each URL through
+`getPage` (so `extraction_pages` is warmed and the page worker later hits the cache instead of
+re-scraping) and uploads one Markdown file PER PAGE, grouped per site, to GCS at
+`extraction/www/<site domain>/<hostname>/<path slug>-<url digest>.md` with a small front-matter
+header (url, job_id, scraped_at) and, when the page links to any, a trailing "Linked files" list of
+its image/document URLs (`fileLinksOf`) — discovery drops asset URLs from the crawl list, so the
+per-page file is where they are recorded. Paths are deterministic (`snapshotPathFor`, pure,
+`npm run test:site-snapshot-path`), so a rerun overwrites.
+
+**The slug alone is not an identity** (review fix, 2026-09-16). It lowercases, drops extensions,
+collapses punctuation to `-` and truncates at 180 chars, so `/a-b` and `/a_b`, two `?page=`
+variants and two paths differing only past the truncation all produced ONE object name — and an
+upload overwrites, so one page's snapshot was silently lost. The name now carries an 8-char sha256
+of the NORMALISED url (`page-store.normaliseUrl`, the same key `extraction_pages` uses), and the
+hostname directory is normalised too, so `example.edu` and `www.example.edu` stop writing the same
+page twice. The readable slug is kept purely so a human can find a page in the bucket. Snapshots
+uploaded before this change keep their old, digest-less names and are orphaned until re-run or
+purged. Runs on the STEPS queue (consumers are
+concurrent, so it holds neither the JOBS consumer nor other steps) in batches of
+`SNAPSHOT_BATCH_SIZE` (100) URLs per message, so a crash mid-step loses one batch and batches run in
+parallel; one `site_snapshot_uploaded` job event per batch records counts.
+
+**A batch does not speak for the step** (review fix, 2026-09-16). Batches are consumed
+concurrently, and the step worker's dispatcher marks `pipeline_progress[step] = "done"` after every
+message — so the FIRST batch home reported the whole step finished, and whichever batch finished
+LAST set the final status, a later success erasing an earlier batch's failure. Each batch now asks
+`snapshotRunOutcome` whether every batch of THIS run has reported — counted from the durable job
+events each batch already writes (`site_snapshot_uploaded` on success, `step_error` on a throw)
+rather than an incrementing counter, which concurrent batches would lose to a read-modify-write
+race. Only the batch that completes the set writes the status, and it writes `failed` if any batch
+of the run errored. The run is identified by a `runId` the batch message carries (see below), not
+by any stored marker.
+A batch whose worker dies writes neither event, so the step stays `processing` rather than falsely
+reporting done; that is the stuck-worker case the reclaim sweep exists for. Verdict arithmetic and
+event tallying are pure and tested (`snapshotVerdict` / `tallySnapshotEvents`,
+`npm run test:site-snapshot-path`).
+
+Follow-up review fixes on that same mechanism, worth not re-deriving:
+**There is no stored run marker, and there should not be one.** Three review rounds landed on this.
+It first lived in `extraction_jobs.pipeline_progress` — a blob the job worker rewrites as a WHOLE
+literal at three points, one of them ~100 lines after the snapshot dispatch in the same function —
+so it was destroyed on every run before any batch finished, leaving `snapshotRunOutcome` with no
+boundary and counting a PREVIOUS run's events (the premature-completion bug straight back, and
+invisible because a job's first-ever run still behaved). Moving it to `extraction_additional_info`
+fixed that but not the next one: two overlapping dispatches for one job could both DELETE the row
+before either inserted (no unique on `(job_id, key)`; a transaction gives atomicity, not mutual
+exclusion), leaving two markers, one read arbitrarily — and since both runs number their batches
+1..N, one run's events satisfied the other's count. **Overlapping dispatches are reachable by
+design**: the job worker rejects only `paused/declined/failed/exported`, deliberately tolerating a
+second message for a job already `processing` so redelivery works.
+The batch message now carries `runId` (minted per dispatch, `SnapshotBatch`) alongside `index` and
+`total`, and both event writes spread `...batch` into `data`, so every event names its run.
+`tallySnapshotEvents(events, runId)` counts only this run's batches. No shared row to race over, no
+timestamp window, and two runs' batch 3 no longer collapse onto one key — a unique constraint on the
+marker would have fixed the duplicate rows and NOT that collision. Events and in-flight messages
+predating `runId` both read as undefined, so they pair with each other and the deploy window needs
+no special case.
+The wholesale-rewrite hazard still applies to the step's DISPLAYED status for a site that finishes
+before the job worker reaches that later `pipeline_progress` write — pre-existing for every step,
+not fixed here.
+**Count distinct batches, not event rows.** Delivery is at-least-once, so a worker that dies
+between writing its batch event and acking gets the batch redelivered and writes a SECOND event for
+the same index; counting rows let that duplicate stand in for a batch still outstanding.
+`tallySnapshotEvents` keys on the batch index (falling back to the event row id for an unbatched
+admin re-run, so those don't collapse onto one key), and the step worker's `step_error` write now
+carries `...batch` so a repeatedly-failing batch is deduped the same way. A batch that errored and
+then succeeded on redelivery counts once in `reported` and still counts in `errored`, so the run
+reports failed with both events on the timeline — conservative on purpose. Hardening (2026-09-16):
+every 25 pages the step re-reads the job and halts on `stop_requested` / paused / failed / declined
+(the event says so); the heartbeat is keyed on pages processed, not uploaded. No per-page retry: the
+Scrapling path already walks get → stealthy_fetch → browser fetch, and a Firecrawl escalation was
+removed because the deployment is Scrapling-only and Firecrawl credits may be absent. Skipped with a warning when
+`GCS_BUCKET_NAME` is unset. Admin re-run of the step with no URL list falls back to the job's
+queued URLs. `npm run sitemap:list -- <url> [--discover]` prints what discovery sees for a site.
+Same pass: `edu.np` added to `MULTI_LABEL_SUFFIXES`, since `siteOf` was reducing `ku.edu.np` to
+`edu.np`. **That list is gone** — see "Registrable domains come from the Public Suffix List" below.
+
+## Registrable domains come from the Public Suffix List (2026-09-17)
+
+`siteOf` decides crawl scope (`filterUrls`), the catalogue-subdomain probe, the crt.sh query and
+the GCS snapshot path. It used to take "the last two labels, or three if the suffix is in
+`MULTI_LABEL_SUFFIXES`" — a hand-kept list of ~22 education suffixes. Any suffix missing from it
+collapsed an institution to its REGISTRY: `ui.ac.id` → `ac.id`, `example.co.uk` → `co.uk`. The
+consequences were not cosmetic — `%.ac.id` asks a certificate log for every Indonesian university,
+and `isSameSite` then accepts all of them into the crawl and into one job's extracted data.
+
+Review caught this twice. A shape heuristic (`<registry-word>.<2-letter ccTLD>`) patched the
+ccTLD cases and still missed PRIVATE suffixes — `blogspot.com`, `github.io`, `wixsite.com`,
+`wordpress.com` — where separate tenants are unrelated organisations and small providers really do
+host. Two failed hand-rolled attempts is the signal that a few lines cannot do this job, so it now
+uses the real PSL via **`tldts`** (`getDomain(host, { allowPrivateDomains: true })`, data bundled,
+no runtime fetch, one dependency).
+
+- **Private suffixes are included on purpose:** `tenant.blogspot.com` is its OWN site, so a
+  sibling tenant is correctly off-site rather than "the same institution".
+- **`null` means the host IS a public suffix** (someone entered `https://ac.id`). `siteOf` falls
+  back to the host itself rather than a truncation, and `isRegistrySuffix` — now an exact PSL
+  question, not a word list — makes the outward-reaching callers refuse.
+- **Nothing that was already correct moved.** Every suffix the old list carried resolves
+  identically (`stanford.edu`, `mit.edu`, `ku.edu.np`, `torrens.edu.au`, `ox.ac.uk` all verified),
+  so GCS snapshot paths change only for domains whose scope was wrong to begin with.
+- This also closed the pre-existing half flagged in earlier rounds: `filterUrls` scoped crawls with
+  the same too-broad value, and fixing `siteOf` fixed every call site at once instead of bolting a
+  guard onto one caller at a time.
+
+Guarded by `npm run test:subdomain-cert-log`, which asserts the resolved registrable domain for
+each shape (unchanged cases, previously-collapsed cases, private suffixes) rather than only the
+guard downstream of it.
+
 ## AgentCIS product staging shares the resolveDurationWeeks resolver (2026-09-15)
 
 `agentcis-product-staging.ts`'s `stageProduct` computed `duration_weeks` with a hand-rolled

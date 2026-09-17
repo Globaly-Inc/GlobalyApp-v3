@@ -5,11 +5,13 @@
 // Run with: npm run job:extraction
 
 import "dotenv/config";
+import { randomUUID } from "node:crypto";
 import { queueService } from "../../../../shared/queue/queueService.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { discoverUrlsForCrawl } from "../lib/scraper.js";
+import { SNAPSHOT_BATCH_SIZE } from "../lib/site-snapshot.js";
 import { getPage } from "../lib/page-store.js";
 import { looksLikeCourseUrl, looksLikeVisaServiceUrl, filterUrls, truncateMarkdown, domainOf, collectGuidedUrls } from "../lib/html-utils.js";
 import { extractJson, isConfigured, setLlmContext } from "../lib/llm-client.js";
@@ -154,6 +156,49 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
     const origin = new URL(job.institution_url).origin;
     let allUrls = filterUrls(discovery.urls, origin);
 
+    // Related domains: an admin-curated hint for a multi-campus institution whose country
+    // site is a genuinely different registrable domain (monash.edu.my vs monash.edu) — no
+    // automated technique reliably links those without a human confirming the match, so this
+    // is opt-in config, not discovery. Same table/key shape as the blocklist below.
+    const relatedDomainsRow = await masterKnex(`${S}.extraction_additional_info`)
+      .where({ job_id: jobId, key: "related_domains" })
+      .select("value")
+      .first();
+    let relatedDomains: string[] = [];
+    if (relatedDomainsRow?.value) {
+      try {
+        // Hand-edited config: an object, bare string or number all PARSE, then either throw on
+        // .slice (failing the whole job for a typo) or iterate character by character as bogus
+        // domains. Shape-check before use; a malformed row costs its own feature, not the job.
+        const parsed: unknown = JSON.parse(relatedDomainsRow.value);
+        if (Array.isArray(parsed)) {
+          relatedDomains = parsed
+            .filter((d): d is string => typeof d === "string")
+            .map((d) => d.trim())
+            .filter(Boolean);
+        } else {
+          logger.warn("related_domains is not an array — ignoring", { jobId, got: typeof parsed });
+        }
+      } catch { /* ignore malformed related-domains config */ }
+    }
+    // ponytail: cap admin input, not correctness — a typo'd huge list shouldn't multiply a
+    // job's discovery cost by accident; bump if a real institution needs more than 10.
+    for (const domain of relatedDomains.slice(0, 10)) {
+      try {
+        const relatedSeed = domain.includes("://") ? domain : `https://${domain}`;
+        const relatedDiscovery = await discoverUrlsForCrawl(relatedSeed, { limit: 10000 });
+        const relatedUrls = filterUrls(relatedDiscovery.urls, new URL(relatedSeed).origin);
+        allUrls = [...new Set([...allUrls, ...relatedUrls])];
+        await writeJobEvent(jobId, "related_domain_discovered", {
+          phase: "course_discovery",
+          message: `Discovered ${relatedUrls.length} URLs from related domain ${domain} via ${relatedDiscovery.method}`,
+          data: { domain, method: relatedDiscovery.method, count: relatedUrls.length },
+        });
+      } catch (err) {
+        logger.warn("Related-domain discovery failed", { jobId, domain, err: String(err) });
+      }
+    }
+
     // ponytail: apply URL blocklist before heuristic filter
     const blocklistRow = await masterKnex(`${S}.extraction_additional_info`)
       .where({ job_id: jobId, key: "url_blocklist_patterns" })
@@ -179,6 +224,24 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
       message: `Discovered ${allUrls.length} URLs via ${discovery.method}`,
       data: { method: discovery.method, count: allUrls.length },
     });
+
+    // Site snapshot: every discovered page → .md in GCS, on the step worker so this consumer
+    // isn't held for hundreds of scrapes. Bounded by the job's page_cap, same budget as queueing,
+    // and split into batches so a crash mid-way loses one batch rather than the whole site.
+    const snapshotUrls = allUrls.slice(0, Number(job.page_cap) || 500);
+    const batches = Math.ceil(snapshotUrls.length / SNAPSHOT_BATCH_SIZE);
+    // Batches are consumed CONCURRENTLY, so no single one knows the step is finished. Each
+    // carries the id of THIS dispatch, so the step worker can tell its own run's batch events
+    // from those of a dispatch overlapping it — the job worker deliberately tolerates a second
+    // message for a job already "processing", so two runs numbering batches 1..N is reachable.
+    const runId = randomUUID();
+    for (let i = 0; i < batches; i++) {
+      await queueService.publish(EXTRACTION_QUEUES.STEPS, {
+        jobId, step: "site_snapshot",
+        urls: snapshotUrls.slice(i * SNAPSHOT_BATCH_SIZE, (i + 1) * SNAPSHOT_BATCH_SIZE),
+        batch: { runId, index: i + 1, total: batches },
+      });
+    }
 
     // Heuristic filter: keep only URLs that look like course (or visa service) pages
     let courseUrls = allUrls.filter(isVisaService ? looksLikeVisaServiceUrl : looksLikeCourseUrl);
