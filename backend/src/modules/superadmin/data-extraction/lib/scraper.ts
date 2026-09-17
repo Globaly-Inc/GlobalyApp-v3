@@ -735,15 +735,32 @@ export async function fetchSitemapUrls(seedUrl: string, max = 10000): Promise<st
   const seen = new Set<string>();
   const tried = new Set<string>();
   /** Hosts that answered nothing at all. crt.sh surfaces plenty of them; once a host has failed to
-   *  respond, every remaining candidate on it is a wait for nothing. */
+   *  respond, every remaining candidate on it is a wait for nothing.
+   *
+   *  A host is only dead until something on it answers. One path can time out on a perfectly live
+   *  server — and since robots.txt and /sitemap.xml are fetched CONCURRENTLY, a slow /sitemap.xml
+   *  used to condemn the origin while robots.txt was busy returning its authoritative list of
+   *  sitemaps, which were then all skipped. Any answer at all (a 404 counts: the server replied)
+   *  clears the host and keeps it cleared. */
   const deadHosts = new Set<string>();
+  const aliveHosts = new Set<string>();
 
   const hostOf = (url: string) => { try { return new URL(url).host; } catch { return url; } };
+
+  function noteHostHealth(url: string, r: SitemapFetch) {
+    const host = hostOf(url);
+    if (r.ok || r.reachable) {
+      aliveHosts.add(host);
+      deadHosts.delete(host);
+    } else if (!aliveHosts.has(host)) {
+      deadHosts.add(host);
+    }
+  }
 
   async function fetchDoc(url: string): Promise<string | null> {
     if (deadHosts.has(hostOf(url))) return null;
     const r = await fetchSitemapDoc(url, seedUrl);
-    if (!r.ok && !r.reachable) deadHosts.add(hostOf(url));
+    noteHostHealth(url, r);
     return r.ok ? r.text : null;
   }
 
@@ -776,11 +793,14 @@ export async function fetchSitemapUrls(seedUrl: string, max = 10000): Promise<st
   // sitemaps live — frequently several, frequently not at /sitemap.xml — and the old code broke
   // out of the candidate loop as soon as /sitemap.xml returned anything, so those declarations
   // were never seen on any site that also had a conventional (possibly partial) sitemap.
+  const robotsUrl = `${origin}/robots.txt`;
   const [robots] = await Promise.all([
-    fetchSitemapDoc(`${origin}/robots.txt`, seedUrl),
+    fetchSitemapDoc(robotsUrl, seedUrl),
     consume(`${origin}/sitemap.xml`),
   ]);
-  if (!robots.ok && !robots.reachable) deadHosts.add(hostOf(origin));
+  // After BOTH land, so a robots.txt that answered clears any dead mark its concurrent
+  // /sitemap.xml sibling left behind — otherwise the declarations below are skipped on a live host.
+  noteHostHealth(robotsUrl, robots);
   const declared = robots.ok ? sitemapUrlsFromRobots(robots.text).slice(0, ROBOTS_SITEMAP_CAP) : [];
   for (const url of declared) await consume(url);
 

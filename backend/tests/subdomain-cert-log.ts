@@ -119,5 +119,12 @@ eq(classifierDistrusted(1363, 0), true, "returning nothing at all is distrusted,
 eq(classifierDistrusted(0, 0), false, "an empty heuristic list can't be distrusted (no baseline)");
 eq(classifierDistrusted(600, 100, 0.1), false, "the floor is tunable per call");
 
+// Batches are judged INDIVIDUALLY, not just in aggregate. 1,363 URLs split 800 + 563: if the first
+// batch behaves and the second returns nothing, the total (700 of 1,363 = 51%) clears the floor
+// while 563 URLs vanish. Per-batch is the only check that catches it.
+eq(classifierDistrusted(800, 700), false, "a healthy batch is trusted on its own input");
+eq(classifierDistrusted(563, 0), true, "a batch that returned nothing is distrusted on its own input");
+eq(classifierDistrusted(1363, 700), false, "...while the AGGREGATE of those two batches looks fine");
+
 console.log(`${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

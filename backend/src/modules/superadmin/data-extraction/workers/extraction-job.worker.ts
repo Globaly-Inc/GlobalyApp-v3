@@ -277,6 +277,7 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
       const LLM_BATCH = 800;
       const heuristicUrls = courseUrls;
       const picked: string[] = [];
+      let batchesDistrusted = 0;
       for (let i = 0; i < heuristicUrls.length; i += LLM_BATCH) {
         const batch = heuristicUrls.slice(i, i + LLM_BATCH);
         const urlResult = await extractJson<UrlDiscoveryResult>({
@@ -285,32 +286,46 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
           maxTokens: 65536,
           tier: "lite",
         });
-        if (urlResult.course_urls?.length) picked.push(...urlResult.course_urls);
+        const batchPicked = urlResult.course_urls?.length ? [...new Set(urlResult.course_urls)] : [];
+        // Judge EVERY batch against its own input, not just the total. One batch returning nothing
+        // while the others do fine leaves the aggregate above the floor, and its whole slice — up
+        // to 800 URLs — would be dropped without a trace.
+        if (classifierDistrusted(batch.length, batchPicked.length)) {
+          batchesDistrusted++;
+          picked.push(...batch);
+        } else {
+          picked.push(...batchPicked);
+        }
         // Heartbeat between batches
         await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({ processing_heartbeat_at: masterKnex.fn.now() });
       }
-
       // This step exists to NARROW a noisy heuristic list, not to replace it wholesale. Live on
       // Yale it returned 154 of 1,363 — keeping 151 catalog.yale.edu pages and discarding ~1,180
       // siblings of identical shape — and because the answer is cached on the exact prompt, every
       // re-run served the same 158 for free and the job looked permanently broken. Same rule the
       // module already applies to scores and partial dates: never silently choose between two
-      // stated answers. Below the floor we keep the heuristic's list, which is the conservative
-      // direction here (page_cap still bounds what actually gets queued).
+      // stated answers. Keeping the heuristic's URLs is the conservative direction (page_cap still
+      // bounds what actually gets queued).
+      //
+      // No aggregate re-check follows: every batch is already judged against its own input above,
+      // so a batch keeping at least the floor means the total does too — an aggregate test here
+      // could never fire, and dead code that looks like a safety net is worse than none.
       const distinctPicked = new Set(picked).size;
-      if (classifierDistrusted(heuristicUrls.length, distinctPicked)) {
-        logger.warn("URL classifier kept implausibly few — keeping the heuristic's list", {
-          jobId, heuristic: heuristicUrls.length, classifier: distinctPicked,
+      if (batchesDistrusted > 0) {
+        const totalBatches = Math.ceil(heuristicUrls.length / LLM_BATCH);
+        logger.warn("URL-classifier batches returned implausibly few — kept their heuristic URLs", {
+          jobId, batchesDistrusted, totalBatches, heuristic: heuristicUrls.length, kept: distinctPicked,
         });
         await writeJobEvent(jobId, "url_classifier_distrusted", {
           level: "warn", phase: "course_discovery",
-          message: `URL classifier returned ${distinctPicked} of ${heuristicUrls.length} — below the ${Math.round(MIN_CLASSIFIER_KEEP_RATIO * 100)}% floor, keeping the heuristic's list`,
-          data: { heuristic: heuristicUrls.length, classifier: distinctPicked, floor: MIN_CLASSIFIER_KEEP_RATIO },
+          message: `${batchesDistrusted} of ${totalBatches} URL-classifier batches returned under the ${Math.round(MIN_CLASSIFIER_KEEP_RATIO * 100)}% floor — kept the heuristic's URLs for those batches (${distinctPicked} of ${heuristicUrls.length} total)`,
+          data: {
+            batches_distrusted: batchesDistrusted, batches_total: totalBatches,
+            heuristic: heuristicUrls.length, kept: distinctPicked, floor: MIN_CLASSIFIER_KEEP_RATIO,
+          },
         });
-        courseUrls = [...new Set([...heuristicUrls, ...guidedUrls])];
-      } else {
-        courseUrls = [...new Set([...guidedUrls, ...picked])];
       }
+      courseUrls = [...new Set([...guidedUrls, ...picked])];
     }
 
     // If heuristic found nothing, send all non-asset URLs to LLM for classification
