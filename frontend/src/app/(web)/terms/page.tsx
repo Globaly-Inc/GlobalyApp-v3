@@ -43,7 +43,7 @@ export default function TermsPage() {
       <LegalHero
         icon={FileText}
         title="Terms and Conditions"
-        description="The ground rules for using globaly.app — plain, straightforward, and worth a read before you dive in."
+        description="The ground rules for using Globalyapp — plain, straightforward, and worth a read before you dive in."
         lastUpdated="20 February 2026"
       />
 
@@ -53,17 +53,17 @@ export default function TermsPage() {
         <div className="min-w-0">
           <p className="mb-6 text-muted-foreground">
             Thank you for visiting{" "}
-            <a href="https://globaly.app" className="text-primary hover:underline">
-              globaly.app
+            <a href="https://globalyapp.com" className="text-primary hover:underline">
+              globalyapp.com
             </a>
             . These Terms and Conditions outline the rules and regulations for using our website
-            (&quot;globaly.app&quot;). By accessing or using the Website, you agree to be bound by these Terms.
+            (&quot;Globalyapp&quot;). By accessing or using the Website, you agree to be bound by these Terms.
           </p>
 
           <LegalSection id="use-of-website" icon={Globe} title="Use of Website">
             <p>
-              <a href="https://globaly.app" className="text-primary hover:underline">
-                globaly.app
+              <a href="https://globalyapp.com" className="text-primary hover:underline">
+                globalyapp.com
               </a>{" "}
               provides a platform for students to search for courses, universities, educational services, and
               connect with education counselors and providers.
@@ -80,7 +80,7 @@ export default function TermsPage() {
           </LegalSection>
 
           <LegalSection id="user-accounts" icon={Users} title="User Accounts">
-            <p className="font-medium text-foreground">There are three types of user accounts on globaly.app:</p>
+            <p className="font-medium text-foreground">There are three types of user accounts on Globalyapp:</p>
             <ul>
               <li>
                 <strong>Students:</strong> Students can create profiles to search for educational opportunities,

@@ -4,6 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { UrlList } from "./url-list";
+import { DegreeLevelPicker, type DegreeLevelOption } from "./degree-level-picker";
 import type { GuidedUrlCategory } from "../const";
 
 /** Step 2 of NewExtractionDialog — the seed URL + guided-URL fields, swapped between the
@@ -19,6 +20,8 @@ export function ExtractionSourceStep({
   onGuidedUrlsChange,
   guidanceNotes,
   onGuidanceNotesChange,
+  degreeLevels,
+  onDegreeLevelsChange,
 }: Readonly<{
   isVisaServiceSource: boolean;
   guidedUrlCategories: readonly GuidedUrlCategory[];
@@ -30,6 +33,8 @@ export function ExtractionSourceStep({
   onGuidedUrlsChange: (next: Record<string, string[]>) => void;
   guidanceNotes: string;
   onGuidanceNotesChange: (next: string) => void;
+  degreeLevels: DegreeLevelOption[];
+  onDegreeLevelsChange: (next: DegreeLevelOption[]) => void;
 }>) {
   return (
     <div className="flex max-h-[65vh] flex-col gap-4 overflow-y-auto pr-1">
@@ -45,6 +50,17 @@ export function ExtractionSourceStep({
           onChange={(e) => onInstitutionUrlChange(e.target.value)}
         />
       </div>
+
+      {!isVisaServiceSource && (
+        <div className="flex flex-col gap-2">
+          <Label>Degree levels to extract</Label>
+          <DegreeLevelPicker value={degreeLevels} onChange={onDegreeLevelsChange} />
+          <p className="text-xs text-muted-foreground">
+            Leave empty for every level. Pick some and only courses at those levels are saved —
+            anything else the site publishes is skipped.
+          </p>
+        </div>
+      )}
 
       <p className="text-xs text-muted-foreground">
         Everything below is optional — leave it blank and the AI discovers pages itself. Pointing it at

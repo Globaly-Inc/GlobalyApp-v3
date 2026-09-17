@@ -6,7 +6,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
 import { ThreadMembersSection } from "./thread-members-section";
 import { fileExtension, formatFileSize, initials, isImageFile, isPdfFile, isVideoFile, previewText } from "./utils";
-import type { EnquiryMessage } from "./types";
+import type { EnquiryMessage, ThreadMembersApi } from "./types";
 
 /**
  * The right-hand info panel — GlobalyOS V2's `ChatRightPanelEnhanced`, reduced to the
@@ -17,10 +17,11 @@ import type { EnquiryMessage } from "./types";
  * Shared Files below it is V2's too: the same square thumbnail grid with a filename
  * overlay on hover, collecting every attachment in the thread.
  *
- * V2's Members section IS reproduced now, but only on the business side. An enquiry thread stopped
- * being exactly two parties when it gained a roster: the agency's staff are members of it, the
- * owner administers it. The student still sees only the pinned/files half — showing them the
- * agency's internal roster would disclose staff they never asked about.
+ * V2's Members section is reproduced on BOTH sides. An enquiry thread stopped being exactly two
+ * parties when it gained a roster: the agency's staff are members of it, the owner administers it,
+ * and the student is the party it is all with — so the student appears in it too. What differs is
+ * the payload, not the panel: `listMembersAsStudent` withholds staff emails, roles and assignment
+ * source, so a student sees who is replying without seeing how the agency staffs itself.
  *
  * Both lists are derived from the thread already in the store rather than fetched (V2 has
  * separate `/pinned` and `/files` endpoints because it paginates its history; ours arrives
@@ -68,13 +69,23 @@ export function ChatInfoPanel({
   onJumpToMessage,
   distributionId,
   showMembers = false,
+  membersApi,
+  leaveDescription,
   onLeft,
 }: Readonly<{
   messages: EnquiryMessage[];
   onJumpToMessage: (messageId: number) => void;
-  /** Required to load the roster; omit alongside `showMembers` on the student side. */
+  /** Required to load the roster; omit alongside `showMembers`. */
   distributionId?: string;
   showMembers?: boolean;
+  /**
+   * Which portal's roster endpoints to read. Omitted means the business ones — the side this
+   * panel was built for. Pass a module-level singleton, not an object literal: the roster
+   * refetches when this identity changes.
+   */
+  membersApi?: ThreadMembersApi;
+  /** What leaving costs — the two portals lose different things, so each says its own. */
+  leaveDescription?: string;
   /** Drilled to the roster's Leave action — the thread stops existing for this viewer. */
   onLeft?: () => void;
 }>) {
@@ -98,7 +109,12 @@ export function ChatInfoPanel({
       <div className="min-h-0 flex-1 overflow-y-auto">
         {/* Above the pinned items, as in V2: who is in the room comes before what was said in it. */}
         {showMembers && distributionId && (
-          <ThreadMembersSection distributionId={distributionId} onLeft={onLeft} />
+          <ThreadMembersSection
+            distributionId={distributionId}
+            api={membersApi}
+            leaveDescription={leaveDescription}
+            onLeft={onLeft}
+          />
         )}
 
         <SectionHeader

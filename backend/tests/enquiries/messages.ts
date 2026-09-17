@@ -36,7 +36,7 @@ import * as distributions from "../../src/modules/enquiries/services/distributio
 import * as messages from "../../src/modules/enquiries/services/messages.service.js";
 import * as media from "../../src/modules/enquiries/services/message-media.service.js";
 import * as creditService from "../../src/modules/ai-counsellor/services/credit.service.js";
-import { UNLOCK_GREETING } from "../../src/modules/enquiries/services/messages.service.js";
+import { unlockGreeting } from "../../src/modules/enquiries/services/messages.service.js";
 
 /** The services now address a recipient (business or institution) rather than a bare id. */
 const asBiz = (id: number) => ({ kind: "business" as const, id });
@@ -516,7 +516,10 @@ async function main() {
 
       const [greeting, ...rest] = await messages.listForStudent(distId, s.studentId);
       eq(rest.length, 0, "exactly one message");
-      eq(greeting!.body, UNLOCK_GREETING, "the greeting text");
+      // makeStudent gives the student the first name "Msg" — the greeting must address them
+      // by it, not open with a bare "Hi!".
+      eq(greeting!.body, unlockGreeting("Msg"), "the greeting text");
+      if (!greeting!.body.startsWith("Hi Msg!")) throw new Error("greeting does not name the student");
       // Sent as the agent who unlocked, not a synthetic system user — so it renders
       // like any other business message on both sides.
       eq(greeting!.sender_id, s.agentId, "sent by the unlocking agent");
@@ -571,7 +574,7 @@ async function main() {
       const distId = await s.dist(0);
 
       const seeded = (await messages.listThreadsForStudent(s.studentId))[0]!;
-      eq(seeded.last_message_body, UNLOCK_GREETING, "the greeting is the first preview");
+      eq(seeded.last_message_body, unlockGreeting("Msg"), "the greeting is the first preview");
       eq(seeded.last_message_is_mine, false, "sent by the business");
 
       await messages.sendAsStudent(distId, s.studentId, "What are the fees?");

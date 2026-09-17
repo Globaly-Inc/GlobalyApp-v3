@@ -129,3 +129,55 @@ export interface StarredMessage extends EnquiryMessage {
   counterpart_name: string;
   course_name: string;
 }
+
+// ── Thread roster ──
+// Shared because both portals render the same roster through ThreadMembersSection. They differ in
+// what the server puts in it, not in its shape: see listMembersAsStudent for what the student's
+// copy withholds.
+
+export type ThreadRole = "admin" | "member";
+
+export type ThreadMember = {
+  platform_user_id: number;
+  role: ThreadRole;
+  /**
+   * 'auto' = the owner or the agent who unlocked. Structural, so not removable.
+   * 'student' = the enquiry's student, folded in by the server rather than a membership row —
+   * a party to the conversation, not a seat the agency administers, so nothing can act on them.
+   */
+  source: "auto" | "manual" | "student";
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  photo_url: string | null;
+  created_at: string;
+};
+
+export type ThreadMembersResult = {
+  /** The caller's own role, so the UI need not find itself in the list. */
+  my_role: ThreadRole;
+  /** Which row in `members` is the caller — the roster offers Leave there and manage elsewhere. */
+  my_user_id: number;
+  can_manage: boolean;
+  /** False while an open thread still needs them — the last member, or the last admin. */
+  can_leave: boolean;
+  /**
+   * Null when they can leave. Otherwise the exact sentence the leave endpoint would throw, so the
+   * panel never has to reason about the rules itself and cannot contradict the server.
+   */
+  leave_blocked_reason: string | null;
+  members: ThreadMember[];
+};
+
+/**
+ * What ThreadMembersSection needs from whichever portal mounts it.
+ *
+ * Only `listMembers` and `leaveThread` are required: every management action is business-only, and
+ * the student's payload reports can_manage false, so those handlers are never reachable there.
+ */
+export interface ThreadMembersApi {
+  listMembers: (distributionId: string) => Promise<ThreadMembersResult>;
+  leaveThread: (distributionId: string) => Promise<void>;
+  setMemberRole?: (distributionId: string, userId: number, role: ThreadRole) => Promise<void>;
+  removeMember?: (distributionId: string, userId: number) => Promise<void>;
+}

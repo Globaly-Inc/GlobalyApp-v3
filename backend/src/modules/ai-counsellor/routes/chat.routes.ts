@@ -49,9 +49,7 @@ export async function chatRoutes(app: FastifyInstance) {
       : undefined;
 
     // Phase 2: credit gate (user wallet) — embed messages are business-paid
-    // ponytail: gate disabled while testing RAG results — re-enable before launch
-    const CREDIT_GATE_ENABLED = false;
-    if (CREDIT_GATE_ENABLED && !embed) {
+    if (!embed) {
       const hasCredits = await creditService.checkBalance(userId);
       if (!hasCredits) throw new PaymentRequiredError();
     }

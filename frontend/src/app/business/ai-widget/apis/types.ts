@@ -1,8 +1,10 @@
-/** Wire types for the business AI-widget (embed config) API. */
+/** Wire types for the AI-widget (embed config) API. A widget is owned by a business or an
+ *  institution — exactly one of the two ids is set. */
 
 export type EmbedConfig = {
   id: number;
-  business_id: number;
+  business_id: number | null;
+  institution_id: number | null;
   embed_key: string;
   display_name: string | null;
   logo_url: string | null;

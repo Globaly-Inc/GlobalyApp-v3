@@ -62,7 +62,7 @@ export async function findEntityRow(table: string, id: string) {
   return masterKnex(`${S}.${table}`).where({ id }).first();
 }
 
-export async function patchEntityRow(table: string, id: string, patch: Record<string, unknown>) {
+export async function patchEntityRow(table: string, id: string, patch: Record<string, unknown>, adminId: number) {
   const serialized = Object.fromEntries(
     Object.entries(patch).map(([key, value]) => [
       key,
@@ -73,7 +73,9 @@ export async function patchEntityRow(table: string, id: string, patch: Record<st
   // Tables with updated_at get it stamped; some don't have it
   const hasUpdatedAt = !["extraction_accreditations"].includes(table);
   const data = hasUpdatedAt ? { ...serialized, updated_at: masterKnex.fn.now() } : serialized;
-  await masterKnex(`${S}.${table}`).where({ id }).update(data);
+  await masterKnex(`${S}.${table}`)
+    .where({ id })
+    .update({ ...data, updated_by_platform_user_id: adminId });
 }
 
 export async function insertMemory(data: Record<string, unknown>) {

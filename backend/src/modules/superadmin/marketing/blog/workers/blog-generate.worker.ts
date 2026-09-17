@@ -17,7 +17,7 @@ import { config } from "../../../../../config.js";
 import { createChildLogger } from "../../../../../shared/logger.js";
 // Same cross-module embedding client the ai-counsellor RAG service and the ai-knowledge
 // crawl worker both use — one embedding client for the platform, not duplicated here.
-import { embed, isConfigured as embeddingConfigured } from "../../../data-extraction/lib/llm-client.js";
+import { embed, isEmbedConfigured as embeddingConfigured } from "../../../data-extraction/lib/llm-client.js";
 import { matchKnowledgeChunks } from "../../../../ai-counsellor/repositories/knowledge.repository.js";
 import * as jobsRepo from "../repositories/generation-jobs.repository.js";
 import type { GenerationJobRow } from "../repositories/generation-jobs.repository.js";

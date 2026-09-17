@@ -167,6 +167,13 @@ export async function enquiriesRoutes(app: FastifyInstance) {
     return reply.send({ is_favorite });
   });
 
+  // Read-only, and narrower than the business roster it mirrors — see listMembersAsStudent for
+  // what is withheld. There is no student-side counterpart to the add/role/remove routes.
+  app.get("/enquiry-messages/:id/members", async (req, reply) => {
+    const { id } = DistributionIdParamSchema.parse(req.params);
+    return reply.send(await threadMembersService.listMembersAsStudent(id, Number(req.auth.sub)));
+  });
+
   // 409 while the enquiry is still open — a student cannot walk out on a lead an agency is
   // actively working. The UI hides the action then, but the rule is enforced here.
   app.post("/enquiry-messages/:id/leave", async (req, reply) => {

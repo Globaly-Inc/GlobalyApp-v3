@@ -15,10 +15,21 @@ function prettify(value: string): string {
   return value.replace(/_/g, " ").trim().replace(/^\w/, (c) => c.toUpperCase());
 }
 
+// Currency is nullable in the extraction data — an unlabelled figure beats "null 35,970",
+// and the period comes from the card rather than being assumed annual: the same 1,090 is a
+// per-credit rate at one institution and a semester's tuition at another.
+const FEE_PERIOD_SUFFIX: Record<string, string> = {
+  "per year": "/yr",
+  "per semester": "/sem",
+  "per trimester": "/tri",
+  "per credit": "/credit",
+  total: " total",
+};
+
 function formatFee(amount: number | null, currency: string): string | null {
   const n = Number(amount);
   if (!Number.isFinite(n) || n <= 0) return null;
-  return `${currency} ${n.toLocaleString("en-US")}`;
+  return [currency, n.toLocaleString("en-US")].filter(Boolean).join(" ");
 }
 
 function degreeLevelOf(card: CourseCardType): string {
@@ -48,6 +59,7 @@ export function CourseCard({ card }: CourseCardProps) {
   const added = compare.has(compareItem.id);
 
   const fee = formatFee(card.annual_tuition_fee, card.currency);
+  const feeSuffix = card.fee_period ? FEE_PERIOD_SUFFIX[card.fee_period] ?? ` ${card.fee_period}` : null;
   const place = [card.city, card.country].filter(Boolean).join(", ");
   const nextIntake = card.intakes[0] ?? null;
   const studyMode = card.study_modes?.[0] ? prettify(card.study_modes[0]) : null;
@@ -164,7 +176,10 @@ export function CourseCard({ card }: CourseCardProps) {
           </div>
           {fee && (
             <span className="shrink-0 text-sm font-bold tabular-nums text-white">
-              {fee}<span className="ml-0.5 text-[10px] font-normal text-white/70">/yr</span>
+              {fee}
+              {feeSuffix && (
+                <span className="ml-0.5 text-[10px] font-normal text-white/70">{feeSuffix}</span>
+              )}
             </span>
           )}
         </div>

@@ -17,9 +17,9 @@ export function CityCta({ cityName, country }: Readonly<{ cityName: string; coun
         <Button
           variant="outline"
           className="h-10 border-primary-foreground/40 bg-transparent text-primary-foreground hover:bg-primary-foreground/10 hover:text-primary-foreground"
-          render={<Link href={`/country/${country.slug}`} />}
+          render={<Link href={`/search?tab=courses&country=${encodeURIComponent(country.name)}&city=${encodeURIComponent(cityName)}`} />}
         >
-          Back to {country.name}
+          Browse Courses
         </Button>
       </div>
     </section>

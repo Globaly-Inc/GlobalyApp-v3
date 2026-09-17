@@ -81,7 +81,8 @@ export const OnboardingBusinessSchema = z.object({
 // Institution accounts — subdomain is auto-generated from institution_name (same as registerBusiness)
 export const OnboardingInstitutionSchema = z.object({
   institution_name: z.string().min(1).max(200),
-  institution_type: z.string().optional(),
+  // Ownership sector — the only two values the institutions search filter derives from.
+  institution_type: z.enum(["Public", "Private"]).optional(),
   phone: z.string().max(50).optional(),
   email: z.string().email().optional(),
   country_id: z.number().int().positive().optional(),

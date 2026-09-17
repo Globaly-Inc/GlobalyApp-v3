@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { externalUrl } from "../../components/profile/profile-section";
 import { getScholarshipBySlug } from "../api";
+import { amountLabel } from "@/lib/utils";
 
 export async function generateMetadata({
   params,
@@ -140,7 +141,7 @@ export default async function ScholarshipDetailPage({ params }: Readonly<{ param
                     <Award className="h-3.5 w-3.5" /> Award value
                   </p>
                   <p className="mt-1.5 text-2xl font-bold tabular-nums text-foreground">
-                    {scholarship.coverage_currency} {Number(scholarship.coverage_amount).toLocaleString()}
+                    {amountLabel(scholarship.coverage_amount, scholarship.coverage_currency)}
                   </p>
                   {scholarship.coverage_description && (
                     <p className="mt-1.5 text-xs text-muted-foreground">{scholarship.coverage_description}</p>

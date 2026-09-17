@@ -25,11 +25,14 @@ export interface CourseResult {
 
 export interface FeeResult {
   id: string;
+  /** Short label — "Semester Fee", "Tuition Fee". The page's own wording is in description. */
   name: string | null;
+  description: string | null;
   student_type: string;
   period_type: string | null;
-  currency: string;
-  total_amount: number;
+  /** Both nullable since 20260826_002 — null is "unknown", never a confirmed zero or AUD. */
+  currency: string | null;
+  total_amount: number | null;
 }
 
 export interface StudyOptionResult {
@@ -320,7 +323,8 @@ export async function searchCourses(opts: {
     masterKnex(`${SA}.extraction_course_fee_assignments as cfa`)
       .join(`${SA}.extraction_course_fees as f`, "cfa.course_fee_id", "f.id")
       .whereIn("cfa.course_id", courseIds)
-      .select("cfa.course_id", "f.id", "f.name", "f.student_type", "f.period_type", "f.currency", "f.total_amount"),
+      .select("cfa.course_id", "f.id", "f.name", "f.description", "f.student_type", "f.period_type",
+        "f.currency", "f.total_amount"),
     masterKnex(`${SA}.extraction_course_study_option_assignments as csoa`)
       .join(`${SA}.extraction_study_options as so`, "csoa.study_option_id", "so.id")
       .whereIn("csoa.course_id", courseIds)
@@ -375,6 +379,57 @@ export async function searchInstitutions(opts: {
       if (opts.country) q.whereILike("country", `%${opts.country}%`);
     })
     .limit(opts.limit ?? DEFAULT_LIMIT);
+}
+
+/**
+ * The widget owner's OWN institutional profile — overview row, campuses and accreditations
+ * for the extraction jobs the embed context resolved.
+ *
+ * Fetched whole, not keyword-searched, unlike `searchInstitutions`. A visitor asking
+ * "where are you based?" or "how do I contact you?" shares no keyword with the name/
+ * country/description columns that search matches on, so search reliably MISSED the one
+ * institution the widget exists to talk about. It is a single row per job — cheap enough
+ * to always have on hand.
+ *
+ * Accreditations have no job_id of their own; they hang off the course-assignment
+ * junction, so they are reached through it and de-duplicated.
+ *
+ * Everything is read from ONE job — the identity job — not from all of `jobIds`. A
+ * business widget resolves its scope by domain substring, which can match several
+ * institutions' jobs; merging their campuses and accreditations while showing only the
+ * first institution's name printed one university's phone numbers and accreditations
+ * under another's brand.
+ */
+export async function ownerProfileByJobs(jobIds: string[]): Promise<{
+  overview: InstitutionResult[];
+  campuses: Array<{ name: string | null; address: string | null; city: string | null; state: string | null; country: string | null; phone: string | null; email: string | null }>;
+  accreditations: Array<{ name: string; issuing_organization: string | null }>;
+}> {
+  if (!jobIds.length) return { overview: [], campuses: [], accreditations: [] };
+
+  // Pick the identity first, then read only that job's satellites. Oldest job wins so the
+  // choice is stable across turns instead of drifting with row order.
+  const identity = await masterKnex(`${SA}.extraction_institution_overview`)
+    .select("id", "job_id", "name", "website", "phone", "email", "address", "city", "state", "country", "description", "logo_url")
+    .whereIn("job_id", jobIds)
+    .orderBy("created_at", "asc")
+    .first();
+  if (!identity) return { overview: [], campuses: [], accreditations: [] };
+
+  const [campuses, accreditations] = await Promise.all([
+    masterKnex(`${SA}.extraction_campuses`)
+      .select("name", "address", "city", "state", "country", "phone", "email")
+      .where({ job_id: identity.job_id })
+      .orderBy("created_at", "asc")
+      .limit(12),
+    masterKnex(`${SA}.extraction_accreditations as a`)
+      .join(`${SA}.extraction_course_accreditation_assignments as j`, "j.extraction_accreditation_id", "a.id")
+      .where("j.job_id", identity.job_id)
+      .distinct("a.name", "a.issuing_organization")
+      .orderBy("a.name", "asc")
+      .limit(12),
+  ]);
+  return { overview: [identity], campuses, accreditations };
 }
 
 export async function searchVisas(opts: {
@@ -520,14 +575,23 @@ export async function searchCountryGuides(opts: { query: string; limit?: number 
  * matches the question far better than a whole-page vector, and the full chunk
  * fits in the prompt where a whole page had to be truncated.
  */
+/**
+ * Semantic rack retrieval.
+ *
+ * `institutionId` decides which corpus is visible, and the SQL function enforces it:
+ * omitted → global knowledge only, given → that institution's own crawled website only.
+ * A widget therefore reads everything on the site it is installed on and nothing from
+ * anyone else's, and a private site index never bleeds into the global counsellor.
+ */
 export async function matchKnowledgeChunks(
   embedding: number[],
   count = 8,
   countryCode?: string | null,
+  institutionId?: number | null,
 ): Promise<KnowledgeChunkResult[]> {
   const { rows } = await masterKnex.raw(
-    `SELECT * FROM ${SA}.match_ai_knowledge_chunks(?::vector, ?, NULL, ?)`,
-    [`[${embedding.join(",")}]`, count, countryCode ?? null],
+    `SELECT * FROM ${SA}.match_ai_knowledge_chunks(?::vector, ?, NULL, ?, ?)`,
+    [`[${embedding.join(",")}]`, count, countryCode ?? null, institutionId ?? null],
   );
   return rows as KnowledgeChunkResult[];
 }
@@ -562,7 +626,8 @@ export async function getCourseDetails(courseId: string): Promise<CourseDetailRe
       masterKnex(`${SA}.extraction_course_fee_assignments as cfa`)
         .join(`${SA}.extraction_course_fees as f`, "cfa.course_fee_id", "f.id")
         .where("cfa.course_id", courseId)
-        .select("f.id", "f.name", "f.student_type", "f.period_type", "f.currency", "f.total_amount"),
+        .select("f.id", "f.name", "f.description", "f.student_type", "f.period_type", "f.currency",
+          "f.total_amount"),
 
       masterKnex(`${SA}.extraction_course_eligibility_assignments as cea`)
         .join(`${SA}.extraction_eligibility_requirements as e`, "cea.eligibility_requirement_id", "e.id")

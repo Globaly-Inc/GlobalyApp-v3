@@ -58,7 +58,7 @@ export function PartnershipsSection() {
               Get Discovered. Build <span className="highlight-text active">Direct Partnerships.</span>
             </h2>
             <p className="text-muted-foreground mb-8">
-              With Globaly.app, you&apos;re in control. List your verified profile, connect directly with
+              With Globalyapp, you&apos;re in control. List your verified profile, connect directly with
               universities and colleges worldwide, and expand your reach without relying on intermediaries or
               aggregators.
             </p>

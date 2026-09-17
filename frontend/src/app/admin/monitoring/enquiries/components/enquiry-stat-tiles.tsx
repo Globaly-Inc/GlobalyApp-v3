@@ -17,7 +17,7 @@ function countOf(stats: AdminEnquiryStats | null, statuses: readonly string[]): 
 
 /**
  * The funnel in three numbers: what came in, what someone paid for, what is finished.
- * Unlocks are the only point money changes hands, so the coin figure sits with them.
+ * Unlocks are the only point money changes hands, so the credit figure sits with them.
  */
 export function EnquiryStatTiles({ stats }: Readonly<{ stats: AdminEnquiryStats | null }>) {
   const total = stats?.total ?? 0;
@@ -31,7 +31,7 @@ export function EnquiryStatTiles({ stats }: Readonly<{ stats: AdminEnquiryStats 
       <Tile
         label="Unlocked"
         value={String(unlocked)}
-        hint={`of ${distributions} sent to businesses · ${stats?.distributions.coins_spent ?? 0} coins spent`}
+        hint={`of ${distributions} sent to businesses · ${stats?.distributions.coins_spent ?? 0} credits spent`}
       />
       <Tile
         label="Closed"

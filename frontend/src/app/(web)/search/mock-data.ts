@@ -206,23 +206,23 @@ const MOCK_COURSES: SearchCourse[] = MOCK_COURSE_SEEDS.map((c) => ({
 // courses — enough to exercise every section of the course detail page.
 const MOCK_COURSE_INTAKES: Record<string, CourseDetail["intakes"]> = {
   c1: [
-    { id: "i1", intake_name: "February 2026", start_date: "2026-02-02", admission_deadline: "2025-12-15", intake_month: 2, intake_year: 2026 },
-    { id: "i2", intake_name: "July 2026", start_date: "2026-07-06", admission_deadline: "2026-05-15", intake_month: 7, intake_year: 2026 },
+    { id: "i1", intake_name: "February 2026", start_date: "2026-02-02", admission_deadline: "2025-12-15", intake_month: 2, intake_year: 2026, end_date: null },
+    { id: "i2", intake_name: "July 2026", start_date: "2026-07-06", admission_deadline: "2026-05-15", intake_month: 7, intake_year: 2026, end_date: null },
   ],
   c2: [
-    { id: "i3", intake_name: "February 2026", start_date: "2026-02-02", admission_deadline: "2025-12-15", intake_month: 2, intake_year: 2026 },
+    { id: "i3", intake_name: "February 2026", start_date: "2026-02-02", admission_deadline: "2025-12-15", intake_month: 2, intake_year: 2026, end_date: null },
   ],
 };
 
 const MOCK_COURSE_ELIGIBILITY: Record<string, CourseDetail["eligibility"]> = {
   c1: [
     {
-      id: "e1", applicable_to: "domestic", min_degree_level: "diploma", min_score_percent: "65",
+      id: "e1", name: null, min_score: null, score_type: null, applicable_to: "domestic", min_degree_level: "diploma", min_score_percent: "65",
       min_score_grade: null, description: "Completion of a relevant diploma or equivalent work experience.",
       academic_tests: [], language_tests: [],
     },
     {
-      id: "e2", applicable_to: "international", min_degree_level: "diploma", min_score_percent: "70",
+      id: "e2", name: null, min_score: null, score_type: null, applicable_to: "international", min_degree_level: "diploma", min_score_percent: "70",
       min_score_grade: null, description: "Completion of a relevant diploma; international qualifications assessed individually.",
       academic_tests: [], language_tests: [{ test_type_name: "IELTS Academic", overall_score: "6.5" }],
     },
@@ -365,8 +365,10 @@ function matchesCommon(
   return true;
 }
 
-function paginate<T>(rows: T[], params: SearchFilterParams): Paginated<T> {
-  const limit = 10;
+function paginate<T>(rows: T[], params: SearchFilterParams & { limit?: number }): Paginated<T> {
+  // Mirrors the API: a caller that asks for a bigger page gets one (the institution catalog asks
+  // for 100 so its in-card scroller holds the whole level), otherwise the API default of 10.
+  const limit = params.limit && params.limit > 0 ? params.limit : 10;
   const page = params.page && params.page > 0 ? params.page : 1;
   const start = (page - 1) * limit;
   return {
@@ -465,7 +467,7 @@ export function mockGetCourseBySlug(slug: string): CourseDetail | null {
     intakes: MOCK_COURSE_INTAKES[course.id] ?? [],
     eligibility: MOCK_COURSE_ELIGIBILITY[course.id] ?? [],
     englishRequirements: MOCK_COURSE_ENGLISH_REQUIREMENTS[course.id] ?? [],
-    institution: null, campuses: [], weather: null,
+    institution: null, campuses: [], weather: null, study_units: [], study_options: [],
     domestic_fee_installments: null, international_fee_installments: null, city_link: null,
   };
 }
@@ -479,7 +481,7 @@ export function mockGetInstitutionBySlug(slug: string): InstitutionDetail | null
     registration_number: null, registration_licenses: null,
     facebook_url: null, instagram_url: null, twitter_url: null, linkedin_url: null, youtube_url: null,
     company_size: null, created_at: null, video_urls: null,
-    campuses: [], members: [], subject_areas: [], degree_levels: [],
+    campuses: [], representatives: [], members: [], subject_areas: [], degree_levels: [],
   };
 }
 
@@ -492,6 +494,7 @@ export function mockGetVisaServiceProviderBySlug(slug: string): VisaServiceProvi
     logo_url: provider.logo_url, description: provider.description, address: null,
     city: provider.city, state: null, country_name: provider.country_name,
     website: provider.website, email: provider.email, phone: null, source_url: null, services: [],
+    facebook_url: null, instagram_url: null, twitter_url: null, linkedin_url: null, youtube_url: null,
   };
 }
 
@@ -515,7 +518,7 @@ export function mockGetBusinessBySubdomain(subdomain: string): BusinessDetail | 
 }
 
 export function mockGetInstitutionCourses(
-  slug: string, params: Pick<SearchFilterParams, "page" | "search">,
+  slug: string, params: Pick<SearchFilterParams, "page" | "search"> & { limit?: number },
 ): Paginated<SearchCourse> {
   console.log("[mock] getInstitutionCourses", slug, params);
   const institution = MOCK_BUSINESSES.institutions.find((b) => b.slug === slug);

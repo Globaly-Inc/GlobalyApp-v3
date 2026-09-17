@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { ArrowUpRight, Sparkles } from "lucide-react";
-import { GREETINGS, STARTER_CATEGORIES } from "../const";
+import { GREETINGS, STARTER_CATEGORIES, type StarterCategory } from "../const";
 import { cn } from "@/lib/utils";
 
 type SuggestedStartersProps = {
@@ -11,19 +11,35 @@ type SuggestedStartersProps = {
   name?: string | null;
   /** Rendered between the greeting and the chips — the composer, on the full-page surface. */
   children?: ReactNode;
+  /** Override the marketplace starters — the embed panel asks about its own owner instead. */
+  categories?: StarterCategory[];
 };
 
-export function SuggestedStarters({ onSelect, name, children }: Readonly<SuggestedStartersProps>) {
-  // Categories collapse to one chip each; "Course Search" opens by default so the hero shows
+export function SuggestedStarters({ onSelect, name, children, categories = STARTER_CATEGORIES }: Readonly<SuggestedStartersProps>) {
+  // Categories collapse to one chip each; the first one opens by default so the hero shows
   // recommended questions immediately instead of an empty row of chips.
-  const [openLabel, setOpenLabel] = useState<string | null>(STARTER_CATEGORIES[0]?.label ?? null);
+  //
+  // Three states, not two: `undefined` is "the visitor hasn't touched a chip", which is what the
+  // default below resolves. `null` is "the visitor closed the open chip" and must survive. The
+  // embed renders once with NO categories while its config loads, so seeding this from
+  // categories[0] would have locked in null — the collapse state — before there was anything to
+  // open, and the panel would have shown a row of chips with no questions under it.
+  const [openLabel, setOpenLabel] = useState<string | null | undefined>(undefined);
   // Picked once per mount (useState initializer), not per render — and only on the client,
   // so SSR/hydration can't disagree about which greeting was drawn.
   const [greeting, setGreeting] = useState<string | null>(null);
   useEffect(() => {
     setGreeting(GREETINGS[Math.floor(Math.random() * GREETINGS.length)] ?? null);
   }, []);
-  const openQuestions = STARTER_CATEGORIES.find((c) => c.label === openLabel)?.questions ?? [];
+  // The embed panel swaps its categories once the owner kind resolves, so a label picked from the
+  // previous set can go stale — fall back to the first chip rather than show a row of chips with
+  // no questions under it. Untouched (undefined) resolves to that same default; an explicit null
+  // does not, or closing the open chip would immediately reopen the first one.
+  const activeLabel =
+    openLabel === null || (openLabel !== undefined && categories.some((c) => c.label === openLabel))
+      ? openLabel
+      : categories[0]?.label ?? null;
+  const openQuestions = categories.find((c) => c.label === activeLabel)?.questions ?? [];
 
   return (
     <div className="relative isolate flex min-h-full flex-col justify-center px-4 py-10">
@@ -45,17 +61,19 @@ export function SuggestedStarters({ onSelect, name, children }: Readonly<Suggest
         {children}
 
         <div className="flex flex-wrap justify-center gap-2.5">
-          {STARTER_CATEGORIES.map(({ label, Icon }) => (
+          {categories.map(({ label, Icon }) => (
             <button
               key={label}
               type="button"
-              onClick={() => setOpenLabel((cur) => (cur === label ? null : label))}
-              aria-pressed={openLabel === label}
+              // Compared against activeLabel, not the raw state: the chip the visitor sees open
+              // while openLabel is still undefined has to close on the first click, not open.
+              onClick={() => setOpenLabel(activeLabel === label ? null : label)}
+              aria-pressed={activeLabel === label}
               className={cn(
                 "flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium shadow-sm backdrop-blur-sm transition-all",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
                 "active:scale-95",
-                openLabel === label
+                activeLabel === label
                   ? "border-primary bg-primary text-primary-foreground shadow-md shadow-primary/20"
                   : "border-border/70 bg-card/85 text-foreground hover:border-primary/50 hover:bg-accent hover:shadow-md",
               )}

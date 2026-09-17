@@ -55,10 +55,11 @@ export async function stopAll(jobId: string) {
 // in this UPDATE, not in a prior SELECT — a concurrent promotion could flip the job to
 // exported between a check and the increment, mutating a job the worker will then ignore.
 // undefined = job is exported (or gone); the caller must refuse, not report success.
-export async function raisePageCap(jobId: string, by: number) {
+export async function raisePageCap(jobId: string, by: number, adminId: number) {
   const [row] = await masterKnex(T_JOBS)
     .where({ id: jobId })
     .whereNot("status", "exported")
+    .update({ updated_by_platform_user_id: adminId })
     .increment("page_cap", by)
     .returning("page_cap");
   return row?.page_cap as number | undefined;
@@ -79,18 +80,35 @@ export async function countRetryableQueueItems(jobId: string) {
 // clear that so a resumed rerun's re-dispatched queue items actually get processed
 // instead of silently skipped. Always stamps updated_at/heartbeat so a resumed rerun
 // shows as fresh activity on the job row regardless of its current status.
-export async function reactivateJob(jobId: string) {
+export async function reactivateJob(jobId: string, adminId: number) {
   return masterKnex(T_JOBS)
     .where({ id: jobId })
     .update({
       status: masterKnex.raw("CASE WHEN status IN ('paused', 'failed', 'declined') THEN 'processing' ELSE status END"),
       processing_heartbeat_at: masterKnex.fn.now(),
       updated_at: masterKnex.fn.now(),
+      updated_by_platform_user_id: adminId,
     });
 }
 
+// Enrich-from-web: the "done" guard lives in THIS update, not a prior SELECT, so two
+// concurrent requests can't both observe "done" and both dispatch a full crawl — only one
+// wins the atomic status flip to "processing"; the other affects 0 rows and its caller must
+// refuse rather than report success (same shape as raisePageCap's exported guard above).
+export async function claimDoneJob(jobId: string, adminId: number) {
+  const count = await masterKnex(T_JOBS)
+    .where({ id: jobId, status: "done" })
+    .update({
+      status: "processing",
+      processing_heartbeat_at: masterKnex.fn.now(),
+      updated_at: masterKnex.fn.now(),
+      updated_by_platform_user_id: adminId,
+    });
+  return count > 0;
+}
+
 // C9: reset-pipeline
-export async function resetPipeline(jobId: string) {
+export async function resetPipeline(jobId: string, adminId: number) {
   const jobCount = await masterKnex(T_JOBS)
     .where({ id: jobId })
     .update({
@@ -107,6 +125,7 @@ export async function resetPipeline(jobId: string) {
         verification: "waiting",
       }),
       updated_at: masterKnex.fn.now(),
+      updated_by_platform_user_id: adminId,
     });
   if (!jobCount) return false;
   await deleteAllQueueForJob(jobId);

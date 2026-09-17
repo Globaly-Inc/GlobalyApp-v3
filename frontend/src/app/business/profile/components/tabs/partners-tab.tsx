@@ -14,7 +14,11 @@ import { ViewInstitutionDrawer } from "../partners/view-institution-drawer";
 
 const PAGE_SIZE = 10;
 
-export function PartnersTab({ businessId, businessName }: Readonly<{ businessId: number; businessName?: string }>) {
+export function PartnersTab({
+  businessId,
+  businessName,
+  isInstitution,
+}: Readonly<{ businessId: number; businessName?: string; isInstitution: boolean }>) {
   const dispatch = useAppDispatch();
   const { items: partners, status, total: relationsTotal } = useAppSelector((state) => state.businessProfileDetail.relations);
   const [addOpen, setAddOpen] = useState(false);
@@ -54,8 +58,12 @@ export function PartnersTab({ businessId, businessName }: Readonly<{ businessId:
     list = (
       <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-12 text-center">
         <Handshake className="h-10 w-10 text-muted-foreground/40" />
-        <p className="text-sm font-medium">No consultancies linked yet</p>
-        <p className="text-xs text-muted-foreground">Link a consultancy authorised to represent this institution.</p>
+        <p className="text-sm font-medium">No {isInstitution ? "education agencies" : "institutions"} linked yet</p>
+        <p className="text-xs text-muted-foreground">
+          {isInstitution
+            ? "Link a verified education agency authorised to represent this institution."
+            : "Link a verified institution this education agency represents."}
+        </p>
       </div>
     );
   } else {
@@ -104,10 +112,14 @@ export function PartnersTab({ businessId, businessName }: Readonly<{ businessId:
             <span className="text-sm font-semibold">Partnerships</span>
             <Badge variant="secondary">{partners.length}</Badge>
           </div>
-          <p className="text-xs text-muted-foreground">Educational consultancies authorised to represent this institution.</p>
+          <p className="text-xs text-muted-foreground">
+            {isInstitution
+              ? "Verified education agencies authorised to represent this institution."
+              : "Verified institutions this education agency represents."}
+          </p>
         </div>
         <Button className="h-10" onClick={() => setAddOpen(true)}>
-          <Plus className="mr-1.5 h-3.5 w-3.5" /> Link consultancy
+          <Plus className="mr-1.5 h-3.5 w-3.5" /> {isInstitution ? "Link education agency" : "Link institution"}
         </Button>
       </div>
 
@@ -115,12 +127,19 @@ export function PartnersTab({ businessId, businessName }: Readonly<{ businessId:
 
       {relationsTotal > 0 && <Pagination page={page} total={relationsTotal} limit={PAGE_SIZE} onPageChange={handlePageChange} />}
 
-      <LinkConsultancyDialog open={addOpen} onOpenChange={setAddOpen} businessId={businessId} businessName={businessName} />
+      <LinkConsultancyDialog
+        open={addOpen}
+        onOpenChange={setAddOpen}
+        businessId={businessId}
+        businessName={businessName}
+        isInstitution={isInstitution}
+      />
       <LinkConsultancyDialog
         open={!!editingRelation}
         onOpenChange={(open) => { if (!open) setEditingRelation(null); }}
         businessId={businessId}
         businessName={businessName}
+        isInstitution={isInstitution}
         editRelation={editingRelation}
       />
       <ViewInstitutionDrawer

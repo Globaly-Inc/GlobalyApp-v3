@@ -1,9 +1,8 @@
 "use client";
 
-import { z } from "zod";
 import { useEffect, useState } from "react";
-import { DollarSign, Loader2, Plus, Save, Trash2, X } from "lucide-react";
-import { toast } from "sonner";
+import { DollarSign, Link2, Loader2, Save, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -13,143 +12,99 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { categoriesApi } from "@/app/admin/platform/categories/apis";
-import { CURRENCY_OPTIONS, PERIOD_TYPE_OPTIONS, STUDENT_TYPE_OPTIONS } from "../const";
-import type { CourseFee, CourseFeeParams, FeeInstallment } from "../apis/types";
-
-type Line = { fee_type: string; amount: string };
-type Installment = { label: string; lines: Line[] };
-
-const emptyInstallment = (index: number): Installment => ({
-  label: `Semester ${index + 1}`,
-  lines: [{ fee_type: "", amount: "" }],
-});
-
-const toInstallments = (fee?: CourseFee): Installment[] =>
-  fee?.installments?.length
-    ? fee.installments.map((i) => ({
-        label: i.label,
-        lines: i.lines?.length
-          ? i.lines.map((l) => ({ fee_type: l.fee_type, amount: String(l.amount) }))
-          : [{ fee_type: "", amount: String(i.amount ?? "") }],
-      }))
-    : [emptyInstallment(0)];
-
-const sumLines = (lines: Line[]) => lines.reduce((total, l) => total + (Number(l.amount) || 0), 0);
-
-const feeSchema = z.object({
-  studentType: z.string().min(1, "Please select who the fee applies to"),
-  periodType: z.string().trim().min(1, "Period type is required"),
-  currency: z.string().trim().min(1, "Currency is required"),
-  name: z.string().trim().transform((v) => v || null),
-  installments: z.array(
-    z.object({
-      label: z.string(),
-      lines: z.array(
-        z.object({
-          fee_type: z.string(),
-          amount: z.string(),
-        })
-      ),
-    })
-  ).refine((insts) => {
-    let totalLinesCount = 0;
-    let missingType = false;
-    let missingAmount = false;
-    insts.forEach((inst) => {
-      inst.lines.forEach((line) => {
-        const hasType = Boolean(line.fee_type.trim());
-        const amt = Number(line.amount);
-        const hasAmount = Boolean(line.amount.trim()) && !isNaN(amt) && amt > 0;
-        if (hasType || hasAmount) {
-          totalLinesCount++;
-          if (!hasType) missingType = true;
-          if (!hasAmount) missingAmount = true;
-        }
-      });
-    });
-    return totalLinesCount > 0 && !missingType && !missingAmount;
-  }, {
-    message: "At least one valid fee line with a fee type and amount (> 0) is required",
-  }),
-});
+import { geoApi } from "@/app/geo/apis";
+import { Textarea } from "@/components/ui/textarea";
+import { CURRENCY_OPTIONS, ENABLED_FEE_TYPES, PERIOD_TYPE_OPTIONS, STUDENT_TYPE_OPTIONS } from "../const";
+import { buildFeePayloads, emptyFeeInstallment, feeInstallmentsFromFee } from "../utils";
+import { CourseLinkPicker } from "./course-link-picker";
+import { FeeInstallmentsEditor } from "./fee-installments-editor";
+import type { CourseFee, CourseFeeParams } from "../apis/types";
+import type { FeeFormInstallment } from "../types";
 
 export function FeeForm({
+  jobId,
   fee,
   saving,
   onCancel,
   onSave,
 }: Readonly<{
+  jobId: string;
   fee?: CourseFee;
   saving: boolean;
   onCancel: () => void;
-  onSave: (values: CourseFeeParams) => void;
+  /** One entry normally; two — domestic then international — when the split toggle is on. */
+  onSave: (values: CourseFeeParams[]) => void;
 }>) {
   const [studentType, setStudentType] = useState(fee?.student_type ?? "both");
   const [periodType, setPeriodType] = useState(fee?.period_type ?? "Per Year");
   const [currency, setCurrency] = useState(fee?.currency ?? "AUD");
   const [name, setName] = useState(fee?.name ?? "");
-  const [installments, setInstallments] = useState<Installment[]>(() => toInstallments(fee));
+  const [description, setDescription] = useState(fee?.description ?? "");
+  const [installments, setInstallments] = useState<FeeFormInstallment[]>(() => feeInstallmentsFromFee(fee));
+  // Offered on add only: splitting an EXISTING row would have to pick which of the two fees on
+  // screen is the one being edited, and the rows carry no pairing key to pick with.
+  const [split, setSplit] = useState(false);
+  const [intlInstallments, setIntlInstallments] = useState<FeeFormInstallment[]>(() => [emptyFeeInstallment(0)]);
   const [saveForReuse, setSaveForReuse] = useState(fee?.save_for_reuse ?? false);
+  const [courses, setCourses] = useState<{ id: string; name: string | null }[]>([]);
   const [feeTypes, setFeeTypes] = useState<{ value: string; label: string }[]>([]);
+  const [currencyOptions, setCurrencyOptions] = useState(CURRENCY_OPTIONS);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
+    // A fee being edited keeps whatever type its lines already carry, even a disabled one —
+    // dropping it from the options would blank that line and save the fee back without it.
+    const inUse = feeInstallmentsFromFee(fee).flatMap((i) => i.lines.map((l) => l.fee_type));
     categoriesApi.getFeeTypes({ limit: 100 })
-      .then((res) => setFeeTypes(res.data.map((f) => ({ value: f.name, label: f.name }))))
+      .then((res) => setFeeTypes(
+        res.data
+          .filter((f) => ENABLED_FEE_TYPES.includes(f.name) || inUse.includes(f.name))
+          .map((f) => ({ value: f.name, label: f.name })),
+      ))
       .catch(() => setFeeTypes([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- the fee's own types, read once on mount
   }, []);
 
-  const total = installments.reduce((sum, i) => sum + sumLines(i.lines), 0);
+  // Currencies come from the countries table — CURRENCY_OPTIONS is only the offline fallback.
+  useEffect(() => {
+    geoApi.getCountries()
+      .then((countries) => {
+        const byCode = new Map(
+          countries
+            .filter((c) => c.currency)
+            .map((c) => [c.currency!, `${c.currency}${c.currencySymbol ? ` (${c.currencySymbol})` : ""}`]),
+        );
+        if (byCode.size === 0) return;
+        setCurrencyOptions(
+          [...byCode].sort(([a], [b]) => a.localeCompare(b)).map(([value, label]) => ({ value, label })),
+        );
+      })
+      .catch(() => setCurrencyOptions(CURRENCY_OPTIONS));
+  }, []);
 
   const clearError = (key: string) => {
     if (errors[key]) setErrors((prev) => ({ ...prev, [key]: "" }));
   };
 
-  const patchInstallment = (index: number, patch: Partial<Installment>) => {
-    clearError("installments");
-    setInstallments((list) => list.map((item, i) => (i === index ? { ...item, ...patch } : item)));
-  };
-
-  const patchLine = (index: number, lineIndex: number, patch: Partial<Line>) => {
-    clearError("installments");
-    patchInstallment(index, {
-      lines: installments[index]!.lines.map((l, i) => (i === lineIndex ? { ...l, ...patch } : l)),
-    });
-  };
-
   const submit = () => {
-    const result = feeSchema.safeParse({ studentType, periodType, currency, name, installments });
-    if (!result.success) {
-      const errs: Record<string, string> = {};
-      for (const issue of result.error.issues) {
-        const key = String(issue.path[0]);
-        if (!errs[key]) errs[key] = issue.message;
-      }
+    const { errors: errs, values } = buildFeePayloads(
+      { periodType, currency, name, description, saveForReuse },
+      split
+        ? [
+            { studentType: "domestic", installments, errorKey: "installments" },
+            { studentType: "international", installments: intlInstallments, errorKey: "intlInstallments" },
+          ]
+        : [{ studentType, installments, errorKey: "installments" }],
+    );
+
+    if (Object.keys(errs).length > 0) {
       setErrors(errs);
       return;
     }
-
     setErrors({});
-    const d = result.data;
-    const payload: FeeInstallment[] = d.installments
-      .map((i) => {
-        const lines = i.lines
-          .filter((l) => l.fee_type.trim() && Boolean(l.amount.trim()))
-          .map((l) => ({ fee_type: l.fee_type.trim(), amount: Number(l.amount) || 0 }));
-        const amount = lines.reduce((sum, l) => sum + l.amount, 0);
-        return { label: i.label.trim() || "Installment", amount, lines };
-      })
-      .filter((i) => i.lines.length > 0);
-
-    onSave({
-      name: d.name,
-      student_type: d.studentType,
-      period_type: d.periodType,
-      currency: d.currency,
-      total_amount: total,
-      installments: payload,
-      save_for_reuse: saveForReuse,
-    });
+    // Junction write, create-only — an update goes through save-and-learn, which would try to
+    // patch it as a column.
+    onSave(fee ? values : values.map((v) => ({ ...v, course_ids: courses.map((c) => c.id) })));
   };
 
   return (
@@ -161,25 +116,58 @@ export function FeeForm({
         </CardTitle>
       </CardHeader>
       <CardContent className="flex max-h-[70vh] flex-col gap-5 overflow-y-auto">
-        <div className="flex flex-col gap-2">
-          <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-            Fee structure <span className="text-destructive">*</span>
-          </Label>
-          <div className="flex flex-wrap items-center gap-6">
-            {STUDENT_TYPE_OPTIONS.map((option) => (
-              <label key={option.value} className="flex cursor-pointer items-center gap-2 text-sm">
-                <Checkbox
-                  checked={studentType === option.value}
-                  onCheckedChange={() => {
-                    setStudentType(option.value);
-                    clearError("studentType");
-                  }}
-                />
-                {option.label}
-              </label>
-            ))}
+        {!fee && (
+          <div className="flex items-center justify-between gap-3 rounded-lg border border-border px-3 py-2.5">
+            <div>
+              <span className="text-sm">Separate domestic &amp; international amounts</span>
+              <p className="text-xs text-muted-foreground">Fill both below and save once — adds one fee for each.</p>
+            </div>
+            <Switch checked={split} onCheckedChange={setSplit} />
           </div>
-          <FieldError message={errors.studentType} />
+        )}
+
+        {!split && (
+          <div className="flex flex-col gap-2">
+            <Label className="text-xs uppercase tracking-wide text-muted-foreground">
+              Fee structure <span className="text-destructive">*</span>
+            </Label>
+            <div className="flex flex-wrap items-center gap-6">
+              {STUDENT_TYPE_OPTIONS.map((option) => (
+                <label key={option.value} className="flex cursor-pointer items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={studentType === option.value}
+                    onCheckedChange={() => {
+                      setStudentType(option.value);
+                      clearError("studentType");
+                    }}
+                  />
+                  {option.label}
+                </label>
+              ))}
+            </div>
+            <FieldError message={errors.studentType} />
+          </div>
+        )}
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="fee-name">Fee Name</Label>
+          <Input
+            id="fee-name"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            placeholder="e.g. Semester Fee, Tuition Fee, Application Fee"
+          />
+        </div>
+
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="fee-description">Description</Label>
+          <Textarea
+            id="fee-description"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={2}
+            placeholder="What the page says about this fee — per-credit breakdown, range, what it covers"
+          />
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -207,7 +195,7 @@ export function FeeForm({
             </Label>
             <Combobox
               id="fee-currency"
-              options={CURRENCY_OPTIONS}
+              options={currencyOptions}
               value={currency}
               onChange={(v) => {
                 setCurrency(v);
@@ -221,96 +209,58 @@ export function FeeForm({
           </div>
         </div>
 
-        <div className="flex flex-col gap-2">
-          <Label className="text-xs uppercase tracking-wide text-muted-foreground">
-            Installments <span className="text-destructive">*</span>
-          </Label>
-          <FieldError message={errors.installments} />
+        <FeeInstallmentsEditor
+          heading={split ? "Domestic Students" : undefined}
+          installments={installments}
+          setInstallments={setInstallments}
+          currency={currency}
+          feeTypes={feeTypes}
+          error={errors.installments}
+          onDirty={() => clearError("installments")}
+        />
 
-          {installments.map((installment, index) => (
-            <div key={index} className="flex flex-col gap-2 rounded-lg border border-border p-3">
-              <div className="flex items-center gap-2">
-                <Input
-                  value={installment.label}
-                  onChange={(e) => patchInstallment(index, { label: e.target.value })}
-                  placeholder="Installment name"
-                  className="flex-1"
-                />
-                <span className="shrink-0 text-sm text-muted-foreground">
-                  {currency} {sumLines(installment.lines)}
-                </span>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  className="shrink-0 cursor-pointer text-destructive hover:text-destructive"
-                  title="Remove installment"
-                  disabled={installments.length === 1}
-                  onClick={() => setInstallments((list) => list.filter((_, i) => i !== index))}
-                >
-                  <Trash2 className="h-3.5 w-3.5" />
-                </Button>
+        {split && (
+          <FeeInstallmentsEditor
+            heading="International Students"
+            installments={intlInstallments}
+            setInstallments={setIntlInstallments}
+            currency={currency}
+            feeTypes={feeTypes}
+            error={errors.intlInstallments}
+            onDirty={() => clearError("intlInstallments")}
+          />
+        )}
+
+        {/* Linking here saves the round trip of creating the fee, finding the course and
+            linking it there. Editing keeps using the card's own link editor. */}
+        {!fee && (
+          <div className="flex flex-col gap-1.5">
+            <Label>Link to Courses</Label>
+            {courses.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {courses.map((course) => (
+                  <Badge key={course.id} className="gap-1 bg-primary/10 text-xs text-primary">
+                    <Link2 className="h-3 w-3" />
+                    {course.name ?? "Unnamed course"}
+                    <button
+                      type="button"
+                      className="cursor-pointer"
+                      title="Remove course"
+                      onClick={() => setCourses((prev) => prev.filter((c) => c.id !== course.id))}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </Badge>
+                ))}
               </div>
-
-              {installment.lines.map((line, lineIndex) => (
-                <div key={lineIndex} className="flex items-center gap-2 pl-3">
-                  <Combobox
-                    options={feeTypes}
-                    value={line.fee_type}
-                    onChange={(v) => patchLine(index, lineIndex, { fee_type: v })}
-                    placeholder="Fee type"
-                    searchPlaceholder="Search or type a fee type…"
-                    className="h-10 flex-1 text-xs"
-                    creatable
-                  />
-                  <span className="shrink-0 text-xs text-muted-foreground">{currency}</span>
-                  <Input
-                    value={line.amount}
-                    onChange={(e) => patchLine(index, lineIndex, { amount: e.target.value })}
-                    inputMode="decimal"
-                    placeholder="0"
-                    className="h-10 w-28"
-                  />
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="shrink-0 cursor-pointer"
-                    title="Remove fee type"
-                    disabled={installment.lines.length === 1}
-                    onClick={() =>
-                      patchInstallment(index, { lines: installment.lines.filter((_, i) => i !== lineIndex) })
-                    }
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              ))}
-
-              <Button
-                variant="ghost"
-                size="sm"
-                className="h-7 w-fit gap-1.5 text-xs text-primary hover:text-primary cursor-pointer"
-                onClick={() => patchInstallment(index, { lines: [...installment.lines, { fee_type: "", amount: "" }] })}
-              >
-                <Plus className="h-3 w-3" />
-                Add Fee Type
-              </Button>
-            </div>
-          ))}
-
-          <Button
-            variant="outline"
-            className="w-full gap-1.5 cursor-pointer"
-            onClick={() => setInstallments((list) => [...list, emptyInstallment(list.length)])}
-          >
-            <Plus className="h-4 w-4" />
-            Add New Installment
-          </Button>
-        </div>
-
-        <div className="flex items-center justify-between rounded-lg bg-muted/50 px-3 py-2.5">
-          <span className="text-sm text-muted-foreground">Total Fees</span>
-          <span className="font-semibold">{currency} {total}</span>
-        </div>
+            )}
+            <CourseLinkPicker
+              jobId={jobId}
+              excludeIds={courses.map((c) => c.id)}
+              onSelect={(id, courseName) => setCourses((prev) => [...prev, { id, name: courseName }])}
+            />
+          </div>
+        )}
 
         <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
           <span className="text-sm">Save this for future uses</span>
@@ -324,7 +274,7 @@ export function FeeForm({
         </Button>
         <Button className="gap-1.5 cursor-pointer" onClick={submit} disabled={saving}>
           {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-          Save Fee
+          {split ? "Save Both Fees" : "Save Fee"}
         </Button>
       </CardFooter>
     </Card>

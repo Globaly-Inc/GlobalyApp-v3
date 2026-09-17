@@ -3,6 +3,7 @@
 import { NotFoundError } from "../../../../shared/errors.js";
 import { buildPaginatedResponse, type PaginationInput } from "../../../../shared/pagination.js";
 import { logAudit } from "../shared/audit.js";
+import { withActorNames } from "../shared/actor-names.js";
 import * as repo from "../repositories/review.repository.js";
 import type { PatchAgentInput, PatchCampusInput } from "../schemas/review.schema.js";
 
@@ -10,7 +11,8 @@ import type { PatchAgentInput, PatchCampusInput } from "../schemas/review.schema
 
 // repo returns { agents, agent_locations } — already the wire shape.
 export async function listAgents(jobId: string) {
-  return repo.listAgentsByJob(jobId);
+  const { agents, agent_locations } = await repo.listAgentsByJob(jobId);
+  return { agents: await withActorNames(agents), agent_locations };
 }
 
 export async function listAgentsFiltered(
@@ -24,7 +26,7 @@ export async function listAgentsFiltered(
     repo.listAgentsByJobPaged(jobId, limit, offset, filters),
     repo.countAgentsByJob(jobId, filters),
   ]);
-  return buildPaginatedResponse(agents, total, pagination);
+  return buildPaginatedResponse(await withActorNames(agents), total, pagination);
 }
 
 export async function listMaraAgents(jobId: string) {
@@ -32,21 +34,21 @@ export async function listMaraAgents(jobId: string) {
 }
 
 export async function patchAgent(id: string, input: PatchAgentInput, adminId: number) {
-  const found = await repo.updateAgent(id, input);
+  const found = await repo.updateAgent(id, input, adminId);
   if (!found) throw new NotFoundError("Agent not found");
   await logAudit(adminId, "AGENT_PATCH", { entityType: "extraction_agents", entityId: id });
   return { updated: true };
 }
 
 export async function approveAgent(id: string, adminId: number) {
-  const found = await repo.updateAgent(id, { source_status: "active" });
+  const found = await repo.updateAgent(id, { source_status: "active" }, adminId);
   if (!found) throw new NotFoundError("Agent not found");
   await logAudit(adminId, "AGENT_APPROVE", { entityType: "extraction_agents", entityId: id });
   return { updated: true };
 }
 
 export async function rejectAgent(id: string, adminId: number) {
-  const found = await repo.updateAgent(id, { source_status: "archived" });
+  const found = await repo.updateAgent(id, { source_status: "archived" }, adminId);
   if (!found) throw new NotFoundError("Agent not found");
   await logAudit(adminId, "AGENT_REJECT", { entityType: "extraction_agents", entityId: id });
   return { updated: true };
@@ -55,7 +57,7 @@ export async function rejectAgent(id: string, adminId: number) {
 // ── Campuses ──
 
 export async function listCampuses(jobId: string) {
-  return { campuses: await repo.listCampusesByJob(jobId) };
+  return { campuses: await withActorNames(await repo.listCampusesByJob(jobId)) };
 }
 
 export async function listCampusesFiltered(
@@ -69,11 +71,11 @@ export async function listCampusesFiltered(
     repo.listCampusesByJobPaged(jobId, limit, offset, filters),
     repo.countCampusesByJob(jobId, filters),
   ]);
-  return buildPaginatedResponse(campuses, total, pagination);
+  return buildPaginatedResponse(await withActorNames(campuses), total, pagination);
 }
 
 export async function patchCampus(id: string, input: PatchCampusInput, adminId: number) {
-  const found = await repo.updateCampus(id, input);
+  const found = await repo.updateCampus(id, input, adminId);
   if (!found) throw new NotFoundError("Campus not found");
   await logAudit(adminId, "CAMPUS_PATCH", { entityType: "extraction_campuses", entityId: id });
   return { updated: true };

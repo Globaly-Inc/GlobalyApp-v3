@@ -46,13 +46,18 @@ const MODES: { id: Mode; label: string; Icon: typeof Search }[] = [
   { id: "search", label: "Search", Icon: Search },
 ];
 
+/**
+ * "light" restyles only the Try row below the card: on the landing heroes the bar sits on a
+ * page-coloured wash, where white-on-nothing would disappear. All four heroes pass it today —
+ * "dark" is kept as the default for a bar dropped on a dark scrim, which is what the Try row's
+ * white-on-black chips are built for.
+ */
+type Tone = "dark" | "light";
+
 export function UnifiedSearchBar({
-  defaultTabSlug, aiRing = false,
-}: Readonly<{
-  defaultTabSlug?: string;
-  /** Home only: the animated AI ring. The other heroes keep a plain card. */
-  aiRing?: boolean;
-}> = {}) {
+  defaultTabSlug,
+  tone = "dark",
+}: Readonly<{ defaultTabSlug?: string; tone?: Tone }> = {}) {
   const router = useRouter();
   const [mode, setMode] = useState<Mode>("ai");
   // Courses everywhere except the pages that are about something else: a Search from the
@@ -107,7 +112,7 @@ export function UnifiedSearchBar({
 
   return (
     <div className="w-full">
-      <div className={cn("max-w-3xl mx-auto rounded-2xl bg-white shadow-lg p-3 text-left", aiRing && "ai-ring")}>
+      <div className="max-w-3xl mx-auto rounded-2xl bg-white shadow-lg p-3 text-left ai-ring">
         <input
           type="text"
           value={query}
@@ -119,21 +124,28 @@ export function UnifiedSearchBar({
 
         <div className="flex items-center gap-2 mt-2">
           <div className="flex items-center gap-1 bg-slate-100 rounded-full p-1 flex-shrink-0">
-            {MODES.map((m) => (
-              <button
-                key={m.id}
-                type="button"
-                onClick={() => setMode(m.id)}
-                aria-pressed={mode === m.id}
-                className={cn(
-                  "flex items-center gap-1.5 h-8 px-3 rounded-full text-sm font-medium transition-colors duration-200 cursor-pointer",
-                  mode === m.id ? "bg-white text-primary shadow-sm" : "text-slate-500 hover:text-slate-900",
-                )}
-              >
-                <m.Icon className="h-4 w-4" />
-                <span>{m.label}</span>
-              </button>
-            ))}
+            {MODES.map((m) => {
+              // Only the selected Ask AI gets the gradient: on the unselected pill it would be
+              // colour competing with the mode actually in use, and Search is not the AI feature.
+              const gradient = mode === m.id && m.id === "ai";
+              return (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => setMode(m.id)}
+                  aria-pressed={mode === m.id}
+                  className={cn(
+                    "flex items-center gap-1.5 h-8 px-3 rounded-full text-sm font-medium transition-colors duration-200 cursor-pointer",
+                    mode === m.id ? "bg-white text-primary shadow-sm" : "text-slate-500 hover:text-slate-900",
+                  )}
+                >
+                  {/* The glyph is stroked, not filled, so it cannot take the clipped gradient —
+                      it holds the ramp's opening cyan instead and the text carries on from there. */}
+                  <m.Icon className={cn("h-4 w-4", gradient && "text-[hsl(196_88%_38%)]")} />
+                  <span className={cn(gradient && "ai-gradient-text")}>{m.label}</span>
+                </button>
+              );
+            })}
           </div>
 
           <div className="flex-1" />
@@ -203,13 +215,27 @@ export function UnifiedSearchBar({
       </div>
 
       <div className="mt-5 max-w-3xl mx-auto flex flex-wrap items-center justify-center gap-2">
-        <span className="text-sm font-medium text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]">Try:</span>
+        <span
+          className={cn(
+            "text-sm font-medium",
+            tone === "light"
+              ? "text-muted-foreground"
+              : "text-white drop-shadow-[0_1px_2px_rgba(0,0,0,0.5)]",
+          )}
+        >
+          Try:
+        </span>
         {suggestions.map((suggestion) => (
           <button
             key={suggestion}
             type="button"
             onClick={() => submit(suggestion)}
-            className="rounded-full border border-white/60 bg-black/35 backdrop-blur-xl px-3.5 py-1.5 text-sm font-medium text-white shadow-md transition-colors duration-200 hover:bg-black/50 hover:border-white cursor-pointer"
+            className={cn(
+              "rounded-full border backdrop-blur-xl px-3.5 py-1.5 text-sm font-medium shadow-md transition-colors duration-200 cursor-pointer",
+              tone === "light"
+                ? "border-border bg-card/80 text-foreground/80 hover:bg-card hover:border-primary/30 hover:text-primary"
+                : "border-white/60 bg-black/35 text-white hover:bg-black/50 hover:border-white",
+            )}
           >
             {suggestion}
           </button>

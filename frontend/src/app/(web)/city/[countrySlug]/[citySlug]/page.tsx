@@ -1,10 +1,11 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { getCityBySlug } from "../../api";
+import { getCourses, getEducationAgencies, getInstitutions } from "../../../search/api";
+import { PlaceCounselors, PlaceInstitutions, PlaceServices } from "../../../components/place-sections";
 import { CityHero } from "../../components/city-hero";
 import { CityKeyFacts } from "../../components/city-key-facts";
 import { CityAbout } from "../../components/city-about";
-import { CityInstitutions } from "../../components/city-institutions";
 import { CityCta } from "../../components/city-cta";
 
 type Params = { countrySlug: string; citySlug: string };
@@ -27,14 +28,23 @@ export default async function CityPage({ params }: Readonly<{ params: Promise<Pa
   const city = await getCityBySlug(citySlug, countrySlug);
   if (!city) notFound();
 
+  const emptyPage = { data: [], meta: { page: 1, limit: 6, total: 0, totalPages: 0 } };
+  const [institutionsRes, agentsRes, coursesRes] = await Promise.all([
+    getInstitutions({ city: city.name }).catch(() => emptyPage),
+    getEducationAgencies({ city: city.name }).catch(() => emptyPage),
+    getCourses({ city: city.name }).catch(() => emptyPage),
+  ]);
+
   return (
     <div>
       <CityHero city={city} />
       <CityKeyFacts city={city} />
 
-      <div className="container mx-auto space-y-20 px-4 py-16">
+      <div className="container mx-auto space-y-12 px-4 py-10 md:space-y-20 md:py-16">
         <CityAbout city={city} />
-        <CityInstitutions cityName={city.name} />
+        <PlaceInstitutions placeName={city.name} scope="city" countryName={city.country.name} institutions={institutionsRes.data.slice(0, 6)} />
+        <PlaceServices placeName={city.name} scope="city" countryName={city.country.name} courses={coursesRes.data.slice(0, 6)} />
+        <PlaceCounselors placeName={city.name} scope="city" countryName={city.country.name} agents={agentsRes.data.slice(0, 6)} />
         <CityCta cityName={city.name} country={city.country} />
       </div>
     </div>

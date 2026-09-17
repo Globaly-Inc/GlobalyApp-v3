@@ -130,7 +130,7 @@ export function CourseForm({
           </div>
           <div className="flex flex-col gap-1.5">
             <Label>Study mode</Label>
-            <Combobox options={STUDY_MODE_OPTIONS} value={studyMode} onChange={setStudyMode} placeholder="Select" creatable />
+            <Combobox options={STUDY_MODE_OPTIONS} value={studyMode} onChange={setStudyMode} placeholder="Select" />
           </div>
 
           <div className="flex flex-col gap-1.5">

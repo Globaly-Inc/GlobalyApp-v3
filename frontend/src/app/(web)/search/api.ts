@@ -192,6 +192,8 @@ export async function getCourseBySlug(slug: string): Promise<CourseDetail | null
   return {
     ...data,
     campuses: data.campuses ?? [],
+    study_units: data.study_units ?? [],
+    study_options: data.study_options ?? [],
     institution: data.institution ? { ...data.institution, gallery_image_urls: data.institution.gallery_image_urls ?? [] } : null,
     weather: data.weather ?? null,
     city_link: data.city_link ?? null,
@@ -209,6 +211,7 @@ export async function getInstitutionBySlug(slug: string): Promise<InstitutionDet
   return {
     ...data,
     campuses: data.campuses ?? [],
+    representatives: data.representatives ?? [],
     members: data.members ?? [],
     subject_areas: data.subject_areas ?? [],
     degree_levels: data.degree_levels ?? [],

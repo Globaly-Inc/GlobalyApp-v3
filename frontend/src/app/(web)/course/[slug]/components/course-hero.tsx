@@ -19,6 +19,8 @@ export function CourseHero({ course }: Readonly<{ course: CourseDetail }>) {
   // The institution's crest only — `course.image_url` is the course's own scraped photo, which
   // would put an unrelated picture in the crest slot. No crest means initials.
   const logo = institution?.logo_url ?? course.institution_logo_url;
+  // The course's own cover when it has one; the awarding institution's is only the stand-in.
+  const cover = course.image_url ?? institution?.cover_url;
   const initials = (name ?? course.name).split(" ").map((w) => w[0]).join("").toUpperCase().slice(0, 2);
   const socials = institution ? toProfileSocials(institution) : [];
   const degreeLabel = course.degree_level ? DEGREE_LABEL[course.degree_level] ?? course.degree_level : null;
@@ -26,9 +28,9 @@ export function CourseHero({ course }: Readonly<{ course: CourseDetail }>) {
   return (
     <div className="relative isolate rounded-xl border border-border bg-card">
       <div className="relative z-0 h-32 overflow-hidden rounded-t-xl bg-gradient-to-br from-primary/20 via-primary/10 to-background md:h-40">
-        {institution?.cover_url && (
+        {cover && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={institution.cover_url} alt="" className="absolute inset-0 h-full w-full object-cover" />
+          <img src={cover} alt="" className="absolute inset-0 h-full w-full object-cover" />
         )}
       </div>
 
@@ -96,7 +98,7 @@ export function CourseHero({ course }: Readonly<{ course: CourseDetail }>) {
               <GraduationCap className="h-3.5 w-3.5" />Check Eligibility
             </a> */}
             <Link href={`/personal/enquiries?course_id=${course.id}`} className="flex-1 sm:flex-none">
-              <Button size="sm" className="h-9 w-full text-xs">Enquire</Button>
+              <Button className="h-11 w-full px-8 text-sm">Enquire</Button>
             </Link>
           </div>
         </div>

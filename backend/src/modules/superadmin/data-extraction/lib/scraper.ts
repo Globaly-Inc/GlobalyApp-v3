@@ -5,9 +5,19 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { config } from "../../../../config.js";
 import { createChildLogger } from "../../../../shared/logger.js";
-import { siteOf } from "./html-utils.js";
+import { isRegistrySuffix, isSameSite, siteOf } from "./html-utils.js";
+import { assertPublicUrl, safeFetch, UnsafeUrlError } from "../../../../shared/public-url.js";
 
 const logger = createChildLogger("scraper");
+
+// Crawl4AI/Firecrawl calls below used a bare fetch() with no AbortSignal — a hung TCP connection
+// (network partition, a stalled proxy, the provider itself wedging) held the page worker's queue
+// item "processing" forever with nothing to time it out, which is the actual unbounded-hang case
+// extraction-queue-reclaim.worker.ts exists to recover from. Bounding every external fetch here is
+// the real fix for that; the reclaim sweep is then a backstop for a crashed process, not the only
+// thing standing between a wedged socket and a stuck-forever job.
+const EXTERNAL_FETCH_TIMEOUT_MS = 60_000;
+const MAP_FETCH_TIMEOUT_MS = 120_000; // mapUrlsDetailed crawls a whole site (limit up to 10k URLs)
 
 // ─── Types ──────────────────────────────────────────────────────────────────
 
@@ -167,7 +177,10 @@ export async function politeFetch(
   while (attempt <= maxRetries) {
     await throttleForHost(url);
     const headers = { ...humanHeaders(opts.referer), ...(init.headers as Record<string, string> | undefined) };
-    const res = await fetch(url, { ...init, headers });
+    // safeFetch, not fetch: the URLs reaching here come from remote content — a sitemap index's
+    // <loc> children and robots.txt's Sitemap: lines — and bare fetch follows redirects, so a
+    // guard on the seed alone protects neither.
+    const res = await safeFetch(url, { ...init, headers });
     lastRes = res;
     if (res.status !== 429 && res.status !== 503) return res;
     const retryAfter = parseInt(res.headers.get("retry-after") ?? "", 10);
@@ -232,6 +245,7 @@ async function crawl4aiScrape(
       method: "POST",
       headers,
       body: JSON.stringify({ urls: [url], content_format: filter === "fit" ? "fit_markdown" : "raw_markdown" }),
+      signal: AbortSignal.timeout(EXTERNAL_FETCH_TIMEOUT_MS),
     });
     if (newRes.ok) {
       const data: any = await newRes.json().catch(() => ({}));
@@ -244,6 +258,7 @@ async function crawl4aiScrape(
       method: "POST",
       headers,
       body: JSON.stringify({ url, f: filter }),
+      signal: AbortSignal.timeout(EXTERNAL_FETCH_TIMEOUT_MS),
     });
     const data: any = await res.json().catch(() => ({}));
     if (!res.ok) return { markdown: "", error: data?.detail || data?.error || `HTTP ${res.status}` };
@@ -296,15 +311,35 @@ interface ScraplingToolResult {
 }
 
 const SCRAPLING_TIERS: { tool: string; timeoutMs: number; args: Record<string, unknown> }[] = [
-  { tool: "get", timeoutMs: 22_000, args: { timeout: 10 } },
+  // follow_redirects "safe" is Scrapling's own SSRF guard — it follows redirects but refuses ones
+  // aiming at private or link-local addresses. It is the default, set explicitly so a Scrapling
+  // upgrade changing that default cannot silently reopen the hole. assertPublicUrl only validates
+  // the URL we hand over; this is what covers the hops after it.
+  //
+  // The two browser tiers below take no such option — a browser follows redirects natively — and
+  // they run in a container ON THIS HOST, so a catalogue that makes tier 1 fail can still escalate
+  // to one and be redirected inward. Egress policy on the Scrapling container (deny RFC1918 and
+  // 169.254.0.0/16) is the control for that; it cannot be closed from here.
+  { tool: "get", timeoutMs: 22_000, args: { timeout: 10, follow_redirects: "safe", max_redirects: 5 } },
   { tool: "stealthy_fetch", timeoutMs: 30_000, args: { timeout: 25_000, network_idle: true, solve_cloudflare: true } },
   { tool: "fetch", timeoutMs: 35_000, args: { timeout: 30_000, network_idle: true } },
 ];
 
+/**
+ * `mainContentOnly` maps to Scrapling's own `main_content_only`, which DEFAULTS TO TRUE on its
+ * side. Never passing it cost us two silent failures:
+ *   - `scrapeRenderedHtml` came back with the page's tab panels emptied, so a CourseLeaf
+ *     catalogue's `table.sc_courselist` curriculum vanished — Johns Hopkins' Civil Engineering
+ *     page returns 330,489 characters with 23 of those tables to curl and 236,634 characters
+ *     with ZERO to us;
+ *   - `ScrapeOptions.onlyMainContent` did nothing at all on the Scrapling path, which is why
+ *     asking for the full page and asking for main content returned byte-identical markdown.
+ */
 async function scraplingScrape(
   url: string,
   cfg: { baseUrl: string; apiKey?: string },
   extractionType: ScraplingExtractionType,
+  mainContentOnly: boolean,
 ): Promise<{ content: string; tierUsed?: string; error?: string }> {
   let client: Client;
   try {
@@ -321,7 +356,12 @@ async function scraplingScrape(
     logger.info(`scrapling mcp: calling tool "${tier.tool}" for ${url}`);
     try {
       const result = await client.callTool(
-        { name: tier.tool, arguments: { url, extraction_type: extractionType, ...tier.args } },
+        {
+          name: tier.tool,
+          arguments: {
+            url, extraction_type: extractionType, main_content_only: mainContentOnly, ...tier.args,
+          },
+        },
         undefined,
         { timeout: tier.timeoutMs },
       );
@@ -386,6 +426,7 @@ async function firecrawlScrape(
           { type: "wait", milliseconds: 1500 },
         ] } : {}),
       }),
+      signal: AbortSignal.timeout(EXTERNAL_FETCH_TIMEOUT_MS),
     });
     const data: any = await res.json().catch(() => ({}));
     if (!res.ok) return { markdown: "", links: [], error: data?.error || `HTTP ${res.status}` };
@@ -401,9 +442,22 @@ export async function scrapeRenderedHtml(
   url: string,
   opts: { waitFor?: number } = {},
 ): Promise<{ html: string; error?: string }> {
+  // Guarded like scrapeMarkdown: this URL can come from a catalogue page's own anchors, so a
+  // hostile or compromised source could otherwise aim it at localhost or the metadata endpoint.
+  try {
+    await assertPublicUrl(url);
+  } catch (err) {
+    if (err instanceof UnsafeUrlError) {
+      logger.warn(`Refusing to fetch a non-public address: ${url} (${err.message})`);
+      return { html: "", error: err.message };
+    }
+    throw err;
+  }
   const scrapling = getScraplingConfig();
   if (scrapling) {
-    const s = await scraplingScrape(url, scrapling, "html");
+    // The WHOLE document: this exists to be parsed, and Scrapling's main-content extraction
+    // strips exactly the tabbed panels a catalogue keeps its curriculum in.
+    const s = await scraplingScrape(url, scrapling, "html", false);
     if (isUsableContent(s.content)) {
       logger.info(`scrapling OK (rendered html) for ${url} (tier: ${s.tierUsed ?? "unknown"}, ${s.content.length} chars)`);
       return { html: s.content };
@@ -418,6 +472,7 @@ export async function scrapeRenderedHtml(
       method: "POST",
       headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
       body: JSON.stringify({ url, formats: ["rawHtml"], onlyMainContent: false, waitFor: opts.waitFor ?? 8000 }),
+      signal: AbortSignal.timeout(EXTERNAL_FETCH_TIMEOUT_MS),
     });
     const data: any = await res.json().catch(() => ({}));
     if (!res.ok) return { html: "", error: data?.error || `HTTP ${res.status}` };
@@ -433,15 +488,33 @@ export async function scrapeRenderedHtml(
 /**
  * Scrape a URL to markdown.
  * Cascade: Scrapling → Crawl4AI fit → Crawl4AI raw → Firecrawl.
+ *
+ * Every URL is SSRF-checked here rather than only at the callers. This is the single
+ * choke point through which user- and LLM-supplied URLs reach the network: the widget
+ * site index, the admin rack crawler (an admin could add any URL as a source), and the
+ * extraction pipeline's discovered links. A guard per caller would leave whichever one
+ * gets added next unprotected.
  */
 export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Promise<ScrapeResult> {
+  try {
+    await assertPublicUrl(url);
+  } catch (err) {
+    if (err instanceof UnsafeUrlError) {
+      logger.warn(`Refusing to scrape a non-public address: ${url} (${err.message})`);
+      // "none" is the existing all-scrapers-failed value; callers already treat it as
+      // "no content" and skip the page, which is exactly the behaviour wanted here.
+      return { markdown: "", links: [], scraper: "none" };
+    }
+    throw err;
+  }
+
   const fcKey = getFirecrawlKey();
   const scrapling = opts.forceFirecrawl ? null : getScraplingConfig();
   const c4 = opts.forceFirecrawl ? null : getCrawl4aiConfig();
 
   // Path 0: Scrapling available
   if (scrapling) {
-    const s = await scraplingScrape(url, scrapling, "markdown");
+    const s = await scraplingScrape(url, scrapling, "markdown", opts.onlyMainContent ?? true);
     if (isUsableContent(s.content)) {
       logger.info(`scrapling OK for ${url} (tier: ${s.tierUsed ?? "unknown"}, ${s.content.length} chars)`);
       return {
@@ -539,6 +612,7 @@ export async function mapUrlsDetailed(
         method: "POST",
         headers: { Authorization: `Bearer ${fcKey}`, "Content-Type": "application/json" },
         body: JSON.stringify({ url, limit: opts.limit ?? 10000, includeSubdomains: opts.includeSubdomains ?? false }),
+        signal: AbortSignal.timeout(MAP_FETCH_TIMEOUT_MS),
       });
       const data: any = await res.json().catch(() => ({}));
       if (!res.ok) {
@@ -556,6 +630,16 @@ export async function mapUrlsDetailed(
 }
 
 export async function fetchSitemapUrls(seedUrl: string, max = 10000): Promise<string[]> {
+  // Same guard: sitemapsFromLinkedHosts derives the host from a page's own links.
+  try {
+    await assertPublicUrl(seedUrl);
+  } catch (err) {
+    if (err instanceof UnsafeUrlError) {
+      logger.warn(`Refusing to fetch a sitemap from a non-public address: ${seedUrl}`);
+      return [];
+    }
+    throw err;
+  }
   let origin = "";
   try { origin = new URL(seedUrl).origin; } catch { return []; }
   const seen = new Set<string>();
@@ -625,6 +709,43 @@ const CATALOGUE_SUBDOMAINS = [
   "courses", "programs", "handbook", "study", "studies",
 ];
 
+const CATALOGUE_HOST_RE = /catalog|catalogue|bulletin|explorecourses|handbook|curriculum|programs?\b|courses?\b/i;
+
+/** The list above matches an exact prefix, so e-catalogue.jhu.edu is never probed. Match the
+ *  hosts the site actually links to instead. */
+async function sitemapsFromLinkedHosts(links: string[], limit: number): Promise<string[]> {
+  const hosts = new Set<string>();
+  for (const link of links) {
+    try {
+      const { hostname } = new URL(link);
+      if (CATALOGUE_HOST_RE.test(hostname)) hosts.add(hostname);
+    } catch { /* not a URL */ }
+  }
+  if (!hosts.size) return [];
+  const found = await Promise.all(
+    [...hosts].slice(0, 5).map(async (h) => {
+      try { return await fetchSitemapUrls(`https://${h}`, limit); } catch { return []; }
+    }),
+  );
+  return found.flat();
+}
+
+/** Try a sitemap first; a real content host that just 404s on sitemap.xml (Stanford's
+ *  explorecourses/bulletin) still gets handed to the crawler as a live entry point instead
+ *  of nothing at all. Shared by the wordlist probe below and the cert-log probe. */
+async function sitemapOrRootFor(root: string, limit: number): Promise<string[]> {
+  try {
+    const urls = await fetchSitemapUrls(root, limit);
+    if (urls.length) return urls;
+  } catch { /* fall through to the reachability probe */ }
+  try {
+    const res = await safeFetch(root, { method: "GET", signal: AbortSignal.timeout(10_000) });
+    return res.ok ? [res.url || root] : [];
+  } catch {
+    return [];
+  }
+}
+
 /** Sitemaps from any catalogue subdomain that resolves. */
 async function fetchCatalogueSitemaps(seedUrl: string, limit: number): Promise<string[]> {
   let site: string;
@@ -634,26 +755,125 @@ async function fetchCatalogueSitemaps(seedUrl: string, limit: number): Promise<s
   } catch {
     return [];
   }
-
   const found = await Promise.all(
-    CATALOGUE_SUBDOMAINS.map(async (sub) => {
-      const root = `https://${sub}.${site}`;
-      try {
-        const urls = await fetchSitemapUrls(root, limit);
-        if (urls.length) return urls;
-      } catch { /* fall through to the reachability probe */ }
-
-      // Stanford's explorecourses and bulletin answer on / but 404 on sitemap.xml.
-      // Returning the root still hands the crawler a real entry point instead of
-      // nothing at all.
-      try {
-        const res = await fetch(root, { method: "GET", redirect: "follow", signal: AbortSignal.timeout(10_000) });
-        return res.ok ? [res.url || root] : [];
-      } catch {
-        return [];
-      }
-    }),
+    CATALOGUE_SUBDOMAINS.map((sub) => sitemapOrRootFor(`https://${sub}.${site}`, limit)),
   );
+  return found.flat();
+}
+
+/** Infra hosts a cert-transparency lookup returns alongside real content hosts — DNS/mail/CI
+ *  plumbing, never a course catalogue. Matched against the leftmost label only. */
+const INFRA_SUBDOMAIN_PREFIXES = new Set([
+  "mail", "webmail", "autodiscover", "autoconfig", "ns", "ns1", "ns2", "ns3", "ns4",
+  "mx", "mx1", "mx2", "smtp", "imap", "pop", "pop3", "ftp", "sftp", "vpn", "cpanel",
+  "whm", "webdisk", "cname", "git", "svn", "jenkins", "jira", "confluence",
+  "grafana", "kibana", "status", "monitor", "cdn",
+]);
+
+/** Leftmost label of a same-site host is DNS/mail/CI plumbing, never a course catalogue. */
+function isInfraHost(host: string, site: string): boolean {
+  if (host === site) return false;
+  const prefix = host.slice(0, -(site.length + 1)).split(".")[0];
+  return INFRA_SUBDOMAIN_PREFIXES.has(prefix);
+}
+
+/** Clean, same-site, non-infra hostnames named in one crt.sh `name_value` SAN blob (it can list
+ *  several, newline-separated, and any of them may carry a wildcard prefix). */
+function hostsFromNameValue(nameValue: string, site: string): string[] {
+  return nameValue
+    .split("\n")
+    .map((name) => name.trim().toLowerCase().replace(/^\*\./, ""))
+    .filter((host) => host && isSameSite(host, site) && !isInfraHost(host, site));
+}
+
+/**
+ * crt.sh's JSON response → cleaned, same-site, non-infra hostnames, RANKED (catalogue-like
+ * names first, via the same CATALOGUE_HOST_RE used for linked-host discovery) but NOT capped —
+ * capping is the caller's job (see capCertLogHosts), kept separate so ranking stays testable on
+ * its own. Pure — no network, so it degrades to [] on anything malformed rather than throwing.
+ *
+ * CATALOGUE_SUBDOMAINS above is a fixed 9-word list: it can never find a content host whose
+ * name isn't one of those words (academic.stanford.edu, datascience.<institution>.com — seen
+ * live, neither guessable nor linked from the pages already crawled). Every public TLS
+ * certificate is logged permanently in Certificate Transparency logs, so this finds a real
+ * subdomain regardless of what it's named or whether anything on the site links to it.
+ */
+export function parseCertLogHosts(raw: unknown, site: string): string[] {
+  if (!Array.isArray(raw)) return [];
+  const hosts = new Set<string>();
+  for (const entry of raw) {
+    const nameValue = (entry as { name_value?: string } | null)?.name_value;
+    if (typeof nameValue === "string") {
+      for (const host of hostsFromNameValue(nameValue, site)) hosts.add(host);
+    }
+  }
+  // A big institution's cert history is mostly infra/CDN/marketing noise ahead of the one host
+  // that matters (seen live: img/cdn hosts outnumber a real coursecatalog. host in crt.sh's own
+  // order). Sort is stable, so within each group crt.sh's original order is kept.
+  return [...hosts].sort((a, b) => Number(CATALOGUE_HOST_RE.test(b)) - Number(CATALOGUE_HOST_RE.test(a)));
+}
+
+/** ponytail: cap PROBES, not correctness — a large institution's cert history can run into the
+ *  hundreds of hosts, and each one costs a real network fetch. Safe to cap hard because
+ *  parseCertLogHosts already ranks catalogue-like names first — this can only ever trim the
+ *  low-confidence tail, never the host that actually matters. Bump if a real site's course
+ *  subdomain still isn't among the first N. */
+const CERT_LOG_HOST_CAP = 25;
+
+/** Pure split at the probe cap, so "did this actually drop something" is testable without a
+ *  network call — the caller logs when `dropped` is non-empty instead of the cap firing silently. */
+export function capCertLogHosts(ranked: string[], cap = CERT_LOG_HOST_CAP): { kept: string[]; dropped: string[] } {
+  return { kept: ranked.slice(0, cap), dropped: ranked.slice(cap) };
+}
+
+/** politeFetch already retries a 429/503 with backoff; the gap is a thrown timeout/connection
+ *  error, which isn't retried at all. crt.sh's real failure mode is slowness under a large
+ *  query more often than a sustained outage, so one extra attempt after a short pause is cheap
+ *  insurance — if the second attempt also throws, it propagates to the caller as before. */
+async function fetchCrtSh(site: string): Promise<Response> {
+  const url = `https://crt.sh/?q=%25.${site}&output=json`;
+  try {
+    return await politeFetch(url, { signal: AbortSignal.timeout(15_000) });
+  } catch {
+    await politeDelay(1000, 2000);
+    return await politeFetch(url, { signal: AbortSignal.timeout(15_000) });
+  }
+}
+
+/** Subdomains Certificate Transparency logs know about that neither the wordlist nor the
+ *  already-linked-hosts path would ever find. */
+async function fetchCertLogSitemaps(seedUrl: string, limit: number): Promise<string[]> {
+  let site: string;
+  try {
+    site = siteOf(seedUrl);
+  } catch {
+    return [];
+  }
+  // siteOf reduces a suffix it doesn't know to the registry itself (ui.ac.id -> "ac.id"), and
+  // "%.ac.id" asks crt.sh for every Indonesian university. isSameSite would then accept all of
+  // them, so we would probe and merge unrelated institutions into this job. Refuse, and name the
+  // missing suffix — the real repair is one entry in MULTI_LABEL_SUFFIXES.
+  if (isRegistrySuffix(site)) {
+    logger.warn(`Skipping crt.sh: "${site}" is a registry suffix, not an institution — add it to MULTI_LABEL_SUFFIXES`, { seedUrl, site });
+    return [];
+  }
+  let kept: string[];
+  try {
+    const res = await fetchCrtSh(site);
+    if (!res.ok) return [];
+    const ranked = parseCertLogHosts(await res.json(), site);
+    const capped = capCertLogHosts(ranked);
+    kept = capped.kept;
+    if (capped.dropped.length) {
+      logger.warn(`crt.sh probe cap reached for ${site} — dropping ${capped.dropped.length} lower-confidence hosts`, {
+        site, kept: kept.length, dropped: capped.dropped.length, sample: capped.dropped.slice(0, 5),
+      });
+    }
+  } catch (err) {
+    logger.warn(`crt.sh lookup failed for ${site}`, { error: err });
+    return [];
+  }
+  const found = await Promise.all(kept.map((h) => sitemapOrRootFor(`https://${h}`, limit)));
   return found.flat();
 }
 
@@ -668,18 +888,25 @@ export async function discoverUrlsForCrawl(seedUrl: string, opts: MapOptions = {
   if (map.success && map.links.length > 1) {
     return { urls: map.links, method: "map" };
   }
-  // 2. sitemap.xml — the seed's, plus any catalogue subdomain that has one
-  const [sitemap, catalogue] = await Promise.all([
+  // 2. sitemap.xml — the seed's, any catalogue subdomain that has one, plus anything
+  // Certificate Transparency logs surface that the wordlist and already-linked-hosts
+  // paths below could never find on their own (see fetchCertLogSitemaps).
+  const [sitemap, catalogue, certLog] = await Promise.all([
     fetchSitemapUrls(seedUrl, limit),
     fetchCatalogueSitemaps(seedUrl, limit),
+    fetchCertLogSitemaps(seedUrl, limit),
   ]);
-  const merged = [...new Set([...sitemap, ...catalogue])];
+  const merged = [...new Set([...sitemap, ...catalogue, ...certLog])];
   if (merged.length > 1) {
     return { urls: merged, method: "sitemap", error: map.error };
   }
-  // 3. Scrape seed page for links
+  // 3. Scrape seed page for links.
   const res = await scrapeMarkdown(seedUrl, { withLinks: true, onlyMainContent: false });
   if (res.links.length > 1) {
+    const linked = await sitemapsFromLinkedHosts(res.links, limit);
+    if (linked.length) {
+      return { urls: [...new Set([...linked, ...res.links])], method: "sitemap", error: map.error };
+    }
     return { urls: res.links, method: "page-links", error: map.error };
   }
   // 4. Seed URL only

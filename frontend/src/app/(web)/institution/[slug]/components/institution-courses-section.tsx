@@ -60,17 +60,26 @@ export function InstitutionCoursesSection({
         {courses.length === 0 ? (
           <SearchEmptyState name="courses" />
         ) : (
-          <div className="grid gap-3 sm:grid-cols-2">
-            {courses.map((course) => <InstitutionCourseTile key={course.id} course={course} />)}
+          // The whole level scrolls inside the card instead of paging: max-h caps it at about
+          // three rows and the bar only shows on hover. pr-1 keeps a hovered tile clear of the
+          // gutter scrollbar-gutter reserves.
+          <div className="scroll-on-hover max-h-80 pr-1">
+            <div className="grid gap-2 sm:grid-cols-2">
+              {courses.map((course) => <InstitutionCourseTile key={course.id} course={course} />)}
+            </div>
           </div>
         )}
 
-        <SearchPagination
-          meta={meta}
-          page={page}
-          query={{ ...baseQuery, ...(level ? { level } : {}) }}
-          pathname={pathname}
-        />
+        {/* A catalog bigger than one request still needs paging: the scroller holds the first
+            100, and only a catalog past that renders this at all. */}
+        {meta.totalPages > 1 && (
+          <SearchPagination
+            meta={meta}
+            page={page}
+            query={{ ...baseQuery, ...(level ? { level } : {}) }}
+            pathname={pathname}
+          />
+        )}
       </div>
     </ProfileSection>
   );

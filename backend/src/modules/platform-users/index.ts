@@ -8,6 +8,7 @@ import { institutionMemberInviteRoutes } from "./routes/institution-member-invit
 import { institutionProfileRoutes } from "./routes/institution-profile.routes.js";
 import { institutionFileRoutes } from "./routes/institution-files.routes.js";
 import { institutionPartnersRoutes } from "./routes/institution-partners.routes.js";
+import { institutionBranchesRoutes } from "./routes/institution-branches.routes.js";
 import { institutionRolesRoutes } from "./routes/institution-roles.routes.js";
 import { publicLookupRoutes } from "./routes/public-lookup.routes.js";
 
@@ -20,6 +21,7 @@ export default async function platformUsersModule(app: FastifyInstance) {
   app.register(institutionProfileRoutes, { prefix: "/api/v3/institutions" });
   app.register(institutionFileRoutes, { prefix: "/api/v3/institutions" });
   app.register(institutionPartnersRoutes, { prefix: "/api/v3/institutions" });
+  app.register(institutionBranchesRoutes, { prefix: "/api/v3/institutions" });
   app.register(institutionRolesRoutes, { prefix: "/api/v3/institutions/roles" });
 }
 

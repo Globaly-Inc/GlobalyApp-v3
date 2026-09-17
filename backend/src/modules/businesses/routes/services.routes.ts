@@ -7,6 +7,8 @@ import {
 } from "../../superadmin/platform/business-services/schemas/business-services.schema.js";
 import * as service from "../../superadmin/platform/business-services/services/business-services.service.js";
 import * as coursesRepo from "../../superadmin/data-extraction/repositories/courses.repository.js";
+import { isInstitutionCategory } from "../../superadmin/data-extraction/repositories/promote.repository.js";
+import { ForbiddenError } from "../../../shared/errors.js";
 import type { CourseListFilters } from "../../superadmin/data-extraction/repositories/courses.repository.js";
 import * as activityService from "../services/activity.service.js";
 
@@ -48,6 +50,44 @@ async function searchInstitutionCourses(sourceJobId: string | null, limit: numbe
   return { rows: rows.map(courseToBusinessService), total };
 }
 
+/**
+ * The source_job_id a listing's services must be read from, or null to use business_services.
+ *
+ * An institution reads its catalog through the job whatever its claim state — the extracted
+ * courses are never copied into a tenant schema. That holds for an institution in the
+ * `institutions` table AND for one filed in `businesses` under the institutions category,
+ * which is where an admin-created (manual) institution lives.
+ *
+ * Null when an institution-category listing has no job at all: one created before manual
+ * institutions started minting theirs still owns whatever business_services rows it has, and
+ * showing an empty catalog instead would be a regression, not a collapse.
+ */
+async function servicesSourceJobId(req: {
+  auth: { orgType?: string };
+  institution?: { source_job_id: string | null } | null;
+  business?: { source_job_id?: string | null; business_category_id?: number | null } | null;
+}): Promise<string | null> {
+  if (req.auth.orgType === "institution") return req.institution?.source_job_id ?? null;
+  const business = req.business;
+  if (!business?.source_job_id || !business.business_category_id) return null;
+  return (await isInstitutionCategory(Number(business.business_category_id)))
+    ? business.source_job_id
+    : null;
+}
+
+/**
+ * A listing whose services ARE its extracted courses must not also accumulate
+ * business_services rows: nothing reads them back, so the row would save and then vanish
+ * from the Services tab. Institutions edit their catalog through the extraction tables.
+ */
+async function refuseIfCatalogIsExtracted(req: Parameters<typeof servicesSourceJobId>[0]) {
+  if (await servicesSourceJobId(req)) {
+    throw new ForbiddenError(
+      "This institution's services are its course catalog — edit the courses, not business services.",
+    );
+  }
+}
+
 export async function businessServicesRoutes(app: FastifyInstance) {
   app.get("/services", { preHandler: requireBusinessContext }, async (req, reply) => {
     return reply.send(await service.listServices(Number(req.business!.id)));
@@ -56,13 +96,15 @@ export async function businessServicesRoutes(app: FastifyInstance) {
   app.get("/services/search", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
     const { search, ...pagination } = ServiceSearchQuerySchema.parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
-    const { rows, total } = req.auth.orgType === "institution"
-      ? await searchInstitutionCourses(req.institution!.source_job_id, limit, offset, { search })
+    const sourceJobId = await servicesSourceJobId(req);
+    const { rows, total } = sourceJobId
+      ? await searchInstitutionCourses(sourceJobId, limit, offset, { search })
       : await service.searchServices(Number(req.business!.id), limit, offset, search);
     return reply.send(buildPaginatedResponse(rows, total, pagination));
   });
 
   app.post("/services", { preHandler: requireBusinessContext }, async (req, reply) => {
+    await refuseIfCatalogIsExtracted(req);
     const data = ServiceInputSchema.parse(req.body);
     const created = await service.createService(Number(req.business!.id), data);
     await activityService.logActivity(req.db, Number(req.auth.sub), "SERVICE_CREATED", "service", created.id, { name: created.name });
@@ -70,6 +112,7 @@ export async function businessServicesRoutes(app: FastifyInstance) {
   });
 
   app.patch("/services/:subId", { preHandler: requireBusinessContext }, async (req, reply) => {
+    await refuseIfCatalogIsExtracted(req);
     const { subId } = SubIdSchema.parse(req.params);
     const data = ServicePatchInputSchema.parse(req.body);
     const updated = await service.updateService(Number(req.business!.id), subId, data);
@@ -78,6 +121,7 @@ export async function businessServicesRoutes(app: FastifyInstance) {
   });
 
   app.delete("/services/:subId", { preHandler: requireBusinessContext }, async (req, reply) => {
+    await refuseIfCatalogIsExtracted(req);
     const { subId } = SubIdSchema.parse(req.params);
     await service.deleteService(Number(req.business!.id), subId);
     await activityService.logActivity(req.db, Number(req.auth.sub), "SERVICE_DELETED", "service", subId);

@@ -58,10 +58,10 @@ export function MembersTab({ businessId }: Readonly<{ businessId: number }>) {
         <AcceptedMembersList businessId={businessId} onEdit={(m) => { setEditingMember(m); setDrawerOpen(true); }} />
       )}
       {subTab === "invited" && <InvitedMembersList businessId={businessId} />}
-      {subTab === "roles" && <RolesList onEdit={(r) => { setEditingRole(r); setRoleDrawerOpen(true); }} />}
+      {subTab === "roles" && <RolesList businessId={businessId} onEdit={(r) => { setEditingRole(r); setRoleDrawerOpen(true); }} />}
 
       <AddMemberDrawer open={drawerOpen} onOpenChange={setDrawerOpen} businessId={businessId} editingMember={editingMember} />
-      <RoleDrawer open={roleDrawerOpen} onOpenChange={setRoleDrawerOpen} editingRole={editingRole} />
+      <RoleDrawer open={roleDrawerOpen} onOpenChange={setRoleDrawerOpen} businessId={businessId} editingRole={editingRole} />
     </div>
   );
 }

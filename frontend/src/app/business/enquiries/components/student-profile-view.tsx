@@ -142,7 +142,8 @@ export function StudentProfileView({ distributionId }: Readonly<{ distributionId
           <Section icon={User} title="Personal Details">
             <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
               <Field label="Full Name" value={name} />
-              <Field label="Date of Birth" value={formatDate(p?.date_of_birth)} />
+              {/* Hidden for now, may come back — see the note on Personal Address below. */}
+              {/* <Field label="Date of Birth" value={formatDate(p?.date_of_birth)} /> */}
               <Field label="Gender" value={titleise(p?.gender)} />
               <Field label="Nationality" value={nationality?.name} />
               <Field label="City of Residence" value={p?.city_of_residence} />
@@ -165,12 +166,17 @@ export function StudentProfileView({ distributionId }: Readonly<{ distributionId
               ) : (
                 <Field label="Phone" value={profile.phone} />
               )}
-              <Field
+              {/* Date of Birth and Personal Address are hidden for now and may be restored.
+                  Presentation only — the API still returns both fields, so uncommenting these
+                  two is the whole change. If the intent is that an agent must NOT have them at
+                  all, the API response has to drop them too; hiding them here still ships the
+                  values to the browser. */}
+              {/* <Field
                 label="Personal Address"
                 value={[p?.personal_address_street, p?.personal_address_city, p?.personal_address_state, p?.personal_address_postcode]
                   .filter(Boolean)
                   .join(", ")}
-              />
+              /> */}
               <Field label="Country" value={countryName(p?.personal_address_country_id)} />
             </div>
           </Section>

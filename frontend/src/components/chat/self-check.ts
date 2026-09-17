@@ -97,13 +97,33 @@ assert.deepEqual(parseMessageBody("run `a **b**` now"), [
 
 // A bare URL becomes a link, with the trailing sentence punctuation left outside it.
 {
-  const parsed = parseMessageBody("see https://globaly.app/courses, thanks");
-  assert.deepEqual(parsed[1], { kind: "link", href: "https://globaly.app/courses", label: "globaly.app/courses" });
+  const parsed = parseMessageBody("see https://globalyapp.com/courses, thanks");
+  assert.deepEqual(parsed[1], { kind: "link", href: "https://globalyapp.com/courses", label: "globalyapp.com/courses" });
   assert.deepEqual(parsed[2], { kind: "text", value: ", thanks" });
 }
 
 // `www.` links get a protocol so the href is navigable.
-assert.equal((parseMessageBody("www.globaly.app")[0] as { href: string }).href, "https://www.globaly.app");
+assert.equal((parseMessageBody("www.globalyapp.com")[0] as { href: string }).href, "https://www.globalyapp.com");
+
+// The toolbar's Link button writes `[label](href)`, so the renderer must read it back —
+// showing the label, not the raw markdown, and never the bare URL inside the parens.
+assert.deepEqual(parseMessageBody("[hello](staging.globalyapp.com/personal/messages)"), [
+  { kind: "link", href: "https://staging.globalyapp.com/personal/messages", label: "hello" },
+]);
+assert.deepEqual(parseMessageBody("see [docs](https://globalyapp.com/a/b) now"), [
+  { kind: "text", value: "see " },
+  { kind: "link", href: "https://globalyapp.com/a/b", label: "docs" },
+  { kind: "text", value: " now" },
+]);
+// An in-app path stays relative; a scheme we do not vouch for is defused into a https host.
+assert.equal((parseMessageBody("[inbox](/personal/messages)")[0] as { href: string }).href, "/personal/messages");
+assert.equal((parseMessageBody("[mail](mailto:a@b.com)")[0] as { href: string }).href, "mailto:a@b.com");
+assert.ok(
+  (parseMessageBody("[x](javascript:alert)")[0] as { href: string }).href.startsWith("https://"),
+  "a javascript: target must never reach the href as-is",
+);
+// The composer's untouched placeholder must not render as a live link to nowhere.
+assert.equal((parseMessageBody("[text](url)")[0] as { href: string }).href, "https://url");
 
 // Nothing is ever emitted as HTML — the renderer only ever sees known segment kinds.
 for (const segment of parseMessageBody("<script>alert(1)</script> **x**")) {
@@ -111,7 +131,7 @@ for (const segment of parseMessageBody("<script>alert(1)</script> **x**")) {
 }
 assert.deepEqual(parseMessageBody("<b>x</b>"), [{ kind: "text", value: "<b>x</b>" }]);
 
-assert.equal(truncateUrl("https://globaly.app/a/very/long/path/that/keeps/going/and/going/on", 20), "globaly.app/a/ver...");
+assert.equal(truncateUrl("https://globalyapp.com/a/very/long/path/that/keeps/going/and/going/on", 20), "globalyapp.com/a/...");
 
 // ── grouping ──
 

@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import { getVisaServiceProviderBySlug } from "../../search/api";
 import { EntityProfile } from "../../components/profile/entity-profile";
 import { PageViews } from "../../components/page-views";
-import { joinParts, type ProfileData, type ProfileRegistration } from "../../components/profile/profile-data";
+import { joinParts, toProfileSocials, type ProfileData, type ProfileRegistration } from "../../components/profile/profile-data";
 import type { VisaServiceProviderDetail } from "../../search/types";
 import { VisaServicesSection } from "./components/visa-services-section";
 
@@ -49,7 +49,7 @@ function toProfileData(provider: VisaServiceProviderDetail): ProfileData {
     email: provider.email,
     phone: provider.phone,
     addressLabel: joinParts(provider.address, provider.city, provider.state, provider.country_name),
-    socials: [],
+    socials: toProfileSocials(provider),
     locations: hasLocation
       ? [{
         id: provider.id,

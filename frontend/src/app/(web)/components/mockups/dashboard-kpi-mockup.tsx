@@ -5,7 +5,7 @@ const kpis = [
   { label: "Enquiries", value: "1,284", delta: "+18%", icon: MessageSquare },
   { label: "Active leads", value: "342", delta: "+9%", icon: Users },
   { label: "Conversions", value: "57", delta: "+24%", icon: TrendingUp },
-  { label: "Wallet", value: "12,400", delta: "coins", icon: Wallet },
+  { label: "Wallet", value: "12,400", delta: "credits", icon: Wallet },
 ];
 
 // Bars grow via inline animation-delay; heights baked in.

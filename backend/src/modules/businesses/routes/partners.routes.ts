@@ -22,7 +22,7 @@ export async function businessPartnersRoutes(app: FastifyInstance) {
 
   app.post("/partners", { preHandler: requireBusinessContext }, async (req, reply) => {
     const data = RelationInputSchema.parse(req.body);
-    const relation = await service.createRelation(Number(req.business!.id), data);
+    const relation = await service.createConsultancyRelation(Number(req.business!.id), data);
     await activityService.logActivity(req.db, Number(req.auth.sub), "PARTNER_ADDED", "partner", relation.id, { partner_business_id: data.partner_business_id });
     return reply.status(201).send(relation);
   });

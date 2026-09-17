@@ -4,13 +4,20 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 const T = `${S}.extraction_courses`;
 
-export type CourseListFilters = { search?: string; status?: string };
+export type CourseListFilters = { search?: string; status?: string; scope?: "in" | "out"; excluded?: string[] | null };
 export type CourseSort = "newest" | "oldest" | "name_asc" | "name_desc";
 
-function filteredCoursesQuery(jobId: string, { search, status }: CourseListFilters) {
+function filteredCoursesQuery(jobId: string, { search, status, scope, excluded }: CourseListFilters) {
   const q = masterKnex(T).where({ job_id: jobId });
-  if (search) q.whereILike("name", `%${search}%`);
+  if (search) q.where((b) => b.whereILike("name", `%${search}%`).orWhereILike("description", `%${search}%`));
   if (status) q.where("verification_status", status);
+  if (scope && excluded) {
+    // Mirrors isCourseInScope on a SCOPED job: the level must be resolved AND not excluded.
+    const inScope = "(degree_level_code IS NOT NULL AND NOT (degree_level_code = ANY(?)))";
+    q.whereRaw(scope === "in" ? inScope : `NOT ${inScope}`, [excluded]);
+  } else if (scope === "out") {
+    q.whereRaw("false");   // an unscoped job excludes nothing
+  }
   return q;
 }
 
@@ -38,7 +45,7 @@ export type CourseFeeListFilters = { search?: string };
 
 function filteredCourseFeesQuery(jobId: string, { search }: CourseFeeListFilters) {
   const q = masterKnex(`${S}.extraction_course_fees`).where({ job_id: jobId });
-  if (search) q.whereILike("name", `%${search}%`);
+  if (search) q.where((b) => b.whereILike("name", `%${search}%`).orWhereILike("description", `%${search}%`));
   return q;
 }
 
@@ -101,7 +108,7 @@ export type EligibilityListFilters = { search?: string };
 
 function filteredEligibilityQuery(jobId: string, { search }: EligibilityListFilters) {
   const q = masterKnex(`${S}.extraction_eligibility_requirements`).where({ job_id: jobId });
-  if (search) q.whereILike("name", `%${search}%`);
+  if (search) q.where((b) => b.whereILike("name", `%${search}%`).orWhereILike("description", `%${search}%`));
   return q;
 }
 
@@ -140,17 +147,17 @@ export async function insertCourse(data: Record<string, unknown>) {
   return row;
 }
 
-export async function updateCourse(id: string, data: Record<string, unknown>) {
+export async function updateCourse(id: string, data: Record<string, unknown>, adminId: number) {
   const count = await masterKnex(T)
     .where({ id })
-    .update({ ...data, updated_at: masterKnex.fn.now() });
+    .update({ ...data, updated_at: masterKnex.fn.now(), updated_by_platform_user_id: adminId });
   return count > 0;
 }
 
-export async function updateCoursesByIds(ids: string[], data: Record<string, unknown>) {
+export async function updateCoursesByIds(ids: string[], data: Record<string, unknown>, adminId: number) {
   return masterKnex(T)
     .whereIn("id", ids)
-    .update({ ...data, updated_at: masterKnex.fn.now() });
+    .update({ ...data, updated_at: masterKnex.fn.now(), updated_by_platform_user_id: adminId });
 }
 
 export async function deleteCourse(id: string) {
@@ -186,7 +193,10 @@ export async function getCourseLinks(jobId: string) {
     if (key === "accreditations") {
       return masterKnex(table).select("*").then((rows) => [key, rows] as const);
     }
-    const query = key.endsWith("_assignments")
+    // course_campuses stores campus_name denormalized already but not course_name — join it
+    // here too (not just "_assignments" tables) so the Branches tab can list linked courses
+    // without a second round-trip to fetch every course's name.
+    const query = key.endsWith("_assignments") || key === "course_campuses"
       ? masterKnex(table).select(`${table}.*`, `${T}.name as course_name`)
         .leftJoin(T, `${table}.course_id`, `${T}.id`)
         .where(`${table}.job_id`, jobId)

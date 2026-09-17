@@ -58,7 +58,8 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
   });
 
   // The detail response carries everything the public profile renders in one round trip:
-  // campuses (Locations), the course facets (subject-area grid + level tabs) and the team.
+  // campuses (Locations), the appointed agents (Representatives), the course facets (subject-area
+  // grid + level tabs) and the team.
   // The catalog pieces hang off the extraction job, so a hand-registered institution — which
   // has no source_job_id — simply gets empty arrays and the page drops those sections.
   app.get("/search/institutions/:slug", async (req, reply) => {
@@ -67,9 +68,10 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
     if (!institution) throw new NotFoundError("Institution not found");
 
     const jobId = institution.job_id;
-    const [row, campuses, rawMembers, facets, courseCount] = await Promise.all([
+    const [row, campuses, representatives, rawMembers, facets, courseCount] = await Promise.all([
       withImagePreviews(institution),
       jobId ? repo.listInstitutionCampuses(jobId) : [],
+      jobId ? repo.listInstitutionRepresentatives(jobId) : [],
       repo.listInstitutionMembers(Number(institution.id)),
       jobId ? coursesRepo.listCourseFacets(jobId) : { subject_areas: [], degree_levels: [] },
       jobId ? coursesRepo.countPublicCourses({ jobId }) : 0,
@@ -78,7 +80,7 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
       ...m, photo_url: await storage.resolvePreviewUrl(m.photo_url),
     })));
 
-    return reply.send({ ...row, campuses, members, ...facets, course_count: courseCount });
+    return reply.send({ ...row, campuses, representatives, members, ...facets, course_count: courseCount });
   });
 
   app.get("/search/institutions/:slug/courses", async (req, reply) => {
@@ -171,7 +173,7 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
     if (!business) throw new NotFoundError("Business not found");
 
     // gallery_images/video_urls are raw storage paths — only their resolved forms go out.
-    const { schema_name, schema_provisioned_at, gallery_images, video_urls, ...publicBusiness } = business;
+    const { schema_name, schema_provisioned_at, gallery_images, video_urls, source_agent_id, ...publicBusiness } = business;
     // Team Members has its own owner-controlled visibility toggle (public_visibility.team) —
     // hidden by default only when explicitly turned off, same convention the other section
     // toggles use.
@@ -183,7 +185,10 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
     const hasSchema = Boolean(schema_provisioned_at);
     const [media, branches, members, services, representations] = await Promise.all([
       withImagePreviews({ ...publicBusiness, gallery_images, video_urls }),
-      hasSchema ? repo.listPublicBranches(business.id, schema_name) : Promise.resolve([]),
+      // No tenant schema yet → the listing's offices are the scraped ones (see listScrapedBranches).
+      hasSchema
+        ? repo.listPublicBranches(business.id, schema_name)
+        : source_agent_id ? repo.listScrapedBranches(source_agent_id) : Promise.resolve([]),
       hasSchema && showTeam ? repo.listPublicMembers(business.id, schema_name) : Promise.resolve([]),
       hasSchema ? repo.listPublicServices(business.id, schema_name) : Promise.resolve([]),
       repo.listPublicRepresentations(business.id).then(withRepresentationPreviews),

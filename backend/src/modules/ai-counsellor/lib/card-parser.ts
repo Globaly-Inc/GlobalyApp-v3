@@ -8,6 +8,9 @@ export interface ParsedCard {
   duration?: string;
   fees?: number;
   currency?: string;
+  /** How `fees` is charged — "per year", "per semester", "per credit", "total". Without it the
+   * card can only guess, and a per-credit rate rendered as annual tuition is off by 30x. */
+  fee_period?: string;
   country?: string;
   city?: string;
   intakes?: string[];

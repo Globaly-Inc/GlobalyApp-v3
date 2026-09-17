@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Clock, DollarSign, Link2, Loader2, Pencil, Plus, Trash2, Type, X } from "lucide-react";
+import { Clock, DollarSign, FileText, Link2, Loader2, Pencil, Plus, Trash2, Type, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
@@ -18,6 +18,7 @@ import { EditableField, saveFormAndLearn, useFieldSaver, type EditableFieldProps
 import { FeeForm } from "./fee-form";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
+import { RowActors } from "./row-actors";
 import type { CourseFee, CourseFeeParams, CourseLinks, ExtractionJob } from "../apis/types";
 
 type LinkedCourse = { id: string; name: string | null };
@@ -98,9 +99,13 @@ function FeeCard({
 
       <CardContent className="flex flex-col gap-3 p-4">
         <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
-          <Field icon={Type} label="Fee Name" value={fee.name} onSave={(v) => onSaveField("name", v)} multiline />
+          <Field icon={Type} label="Fee Name" value={fee.name} onSave={(v) => onSaveField("name", v)} />
           <Field icon={DollarSign} label="Currency" value={fee.currency} onSave={(v) => onSaveField("currency", v)} />
           <Field icon={Clock} label="Period Type" value={fee.period_type} onSave={(v) => onSaveField("period_type", v)} />
+          <Field
+            icon={FileText} label="Description" value={fee.description} multiline
+            className="md:col-span-2" onSave={(v) => onSaveField("description", v)}
+          />
         </div>
 
         {fee.installments && fee.installments.length > 0 && (
@@ -148,6 +153,7 @@ function FeeCard({
             className="h-8 text-xs"
           />
         )}
+        <RowActors row={fee} className="border-t border-border pt-2" />
       </CardContent>
     </Card>
   );
@@ -211,15 +217,16 @@ export function FeesTab({
     }
   };
 
-  const handleCreate = (values: CourseFeeParams) =>
+  // The form hands back one fee, or two when domestic and international were filled together.
+  const handleCreate = (values: CourseFeeParams[]) =>
     run(async () => {
-      await allExtractionsApi.createCourseFee({ job_id: jobId, ...values });
+      for (const v of values) await allExtractionsApi.createCourseFee({ job_id: jobId, ...v });
       setAdding(false);
-    }, "Fee added");
+    }, values.length > 1 ? `${values.length} fees added` : "Fee added");
 
-  const handleUpdate = (fee: CourseFee, values: CourseFeeParams) =>
+  const handleUpdate = (fee: CourseFee, values: CourseFeeParams[]) =>
     run(async () => {
-      await saveFormAndLearn("extraction_course_fees", fee, values, jobId);
+      await saveFormAndLearn("extraction_course_fees", fee, values[0]!, jobId);
       setEditingId(null);
     }, "Fee updated");
 
@@ -286,7 +293,7 @@ export function FeesTab({
       <div className="space-y-3">
         <Dialog open={adding} onOpenChange={setAdding}>
           <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl p-0 border-0 bg-transparent shadow-none">
-            <FeeForm saving={saving} onCancel={() => setAdding(false)} onSave={handleCreate} />
+            <FeeForm jobId={jobId} saving={saving} onCancel={() => setAdding(false)} onSave={handleCreate} />
           </DialogContent>
         </Dialog>
 
@@ -310,6 +317,7 @@ export function FeesTab({
           editingId === fee.id ? (
             <FeeForm
               key={fee.id}
+              jobId={jobId}
               fee={fee}
               saving={saving}
               onCancel={() => setEditingId(null)}

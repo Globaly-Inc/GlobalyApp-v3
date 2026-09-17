@@ -3,7 +3,6 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { MEDIA_URL } from "../const/index";
 import { Reveal } from "../components/reveal";
 import { AutoplayVideo } from "../components/autoplay-video";
@@ -54,31 +53,49 @@ export default function ForStudentsPage() {
   return (
     <>
       {/* ── 1. HERO ─────────────────────────────────────────────────────── */}
-      <section className="relative min-h-[calc(100svh-64px)] md:min-h-[620px] flex items-center overflow-hidden">
+      <section className="relative flex items-center overflow-hidden pt-8 pb-4 md:pt-11 md:pb-8">
         <AutoplayVideo
           src={`${MEDIA_URL}/students-hero.mp4`}
           poster={`${MEDIA_URL}/students-hero-poster.webp`}
-          className="absolute inset-0 w-full h-full object-cover scale-105"
-          style={{ transformOrigin: "center" }}
+          className="absolute inset-0 h-full w-full object-cover object-top"
+          aria-hidden="true"
+          tabIndex={-1}
         />
-        <div className="absolute inset-0 bg-[hsl(var(--purple-dark))]/80" />
-        <div className="relative container mx-auto px-4 py-16 md:py-20 z-10">
-          <div className="max-w-4xl mx-auto text-center py-8 md:py-[50px] pb-[20px] pt-[60px]">
-            <Badge className="mb-3 bg-[hsl(var(--gold))]/20 text-[hsl(var(--gold))] border-[hsl(var(--gold))]/40 text-xs font-semibold px-3 py-1 rounded-full">
+        {/* The same two layers as the home hero: a dark scrim that carries the white type, and a
+            2px frost behind the copy alone. */}
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 bg-gradient-to-b from-stone-950/62 via-stone-950/48 to-stone-950/68"
+        />
+        <div aria-hidden="true" className="hero-copy-blur pointer-events-none absolute inset-0" />
+        <div className="container mx-auto px-4 py-8 sm:py-12 relative z-10">
+          <div className="max-w-4xl mx-auto text-center">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-4 py-1.5 text-xs font-semibold text-white shadow-xs backdrop-blur animate-fade-in">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full rounded-full bg-white animate-ai-pulse" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-white" />
+              </span>
               For Students
-            </Badge>
-            <h1 className="text-4xl md:text-5xl font-bold text-white mb-4 leading-tight">
+            </div>
+            <h1 className="mt-6 text-4xl sm:text-5xl md:text-6xl font-extrabold text-white leading-[1.05] animate-fade-up">
               Your Education Journey
               <br />
-              <span className="text-[hsl(var(--gold))] inline-block min-h-[1.2em]">
+              <span className="text-amber-300 inline-block min-h-[1.2em]">
                 {displayText}
-                <span style={{ opacity: showCursor ? 1 : 0, transition: "opacity 0.1s" }}>|</span>
+                <span
+                  className="text-amber-200"
+                  style={{ opacity: showCursor ? 1 : 0, transition: "opacity 0.1s" }}
+                >
+                  |
+                </span>
               </span>
             </h1>
-            <p className="text-white/80 mb-8 text-base max-w-lg mx-auto">
+            <p className="mt-5 mb-8 mx-auto max-w-2xl text-base sm:text-lg font-medium text-white/85 animate-fade-up">
               Find your perfect education destination and step into a world of possibilities
             </p>
-            <UnifiedSearchBar />
+            <div className="animate-fade-up">
+              <UnifiedSearchBar />
+            </div>
           </div>
         </div>
       </section>
@@ -96,9 +113,9 @@ export default function ForStudentsPage() {
 
         <div className="container relative mx-auto px-4 text-center z-10">
           <Reveal>
-            <h2 className="text-3xl md:text-4xl font-bold mb-6 leading-tight">Your Global Future Begins Today.</h2>
+            <h2 className="text-3xl md:text-4xl font-bold mb-6 leading-tight">Your Education Journey Begins Today.</h2>
             <p className="text-white/70 text-lg mb-10 max-w-2xl mx-auto">
-              Join thousands of students who have already found their perfect education path with Globaly.app. Start
+              Join thousands of students who have already found their perfect education path with Globalyapp. Start
               your journey for free.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">

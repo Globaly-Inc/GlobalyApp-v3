@@ -49,18 +49,20 @@ export function CoverLogoEditor({
   return (
     <div
       className={cn(
-        "relative h-40 overflow-hidden sm:h-48",
+        "relative h-40 sm:h-48",
         coverUrl ? "bg-muted" : "bg-gradient-to-br from-primary to-primary/70",
         className,
       )}
     >
-      {coverUrl && (
-        // object-cover: the crop dialog's 5:1 output is wider than the banner at every real
-        // breakpoint, so this only ever crops the sides — no upscale, no letterbox gap.
-        // eslint-disable-next-line @next/next/no-img-element
-        <img src={coverUrl} alt="" className="absolute inset-0 h-full w-full select-none object-cover" draggable={false} />
-      )}
-      {coverUrl && <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/20" />}
+      <div className="absolute inset-0 overflow-hidden">
+        {coverUrl && (
+          // object-cover: the crop dialog's 5:1 output is wider than the banner at every real
+          // breakpoint, so this only ever crops the sides — no upscale, no letterbox gap.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img src={coverUrl} alt="" className="absolute inset-0 h-full w-full select-none object-cover" draggable={false} />
+        )}
+        {coverUrl && <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/20" />}
+      </div>
       {onCoverFile && (
         <>
           {coverUrl ? (

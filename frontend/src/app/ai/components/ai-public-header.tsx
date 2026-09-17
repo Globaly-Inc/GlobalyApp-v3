@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { useAuthState } from "@/app/auth/store/auth-slice";
+import { ICON } from "@/lib/public-assets";
 
 export function AiPublicHeader() {
   const { user, initializing } = useAuthState();
@@ -13,10 +14,10 @@ export function AiPublicHeader() {
       <div className="flex h-16 items-center gap-3 px-4">
         <Link href="/" className="flex shrink-0 items-center">
           <Image
-            src="/globaly-red-icon.png"
-            alt="Globaly"
-            width={283}
-            height={283}
+            src={ICON.src}
+            alt="Globalyapp"
+            width={ICON.width}
+            height={ICON.height}
             className="size-9 rounded-[10px]"
             priority
           />

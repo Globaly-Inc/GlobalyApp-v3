@@ -167,7 +167,7 @@ export function AddBusinessView() {
           <Button
             variant="ghost"
             className="mb-1 h-10 cursor-pointer gap-1 px-1 text-muted-foreground"
-            onClick={() => router.push("/admin/platform/businesses")}
+            onClick={() => router.back()}
           >
             <ArrowLeft className="h-4 w-4" />
             Back

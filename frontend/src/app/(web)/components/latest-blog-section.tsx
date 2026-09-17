@@ -4,14 +4,16 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Skeleton } from "@/components/ui/skeleton";
 import { Reveal } from "./reveal";
 import { AutoScrollRow } from "./auto-scroll-row";
 import { getPosts } from "../blog/api";
-import { FALLBACK_BLOG_POSTS, type BlogCardData } from "../data/blog-fallback-posts";
+import type { PublicBlogPost } from "../blog/types";
 
-/** Real published posts from the blog, falling back to static illustrative cards while loading/empty. */
+/** Real published posts from the blog; the section hides itself when the feed has nothing to show. */
 export function LatestBlogSection({ subtitle }: Readonly<{ subtitle: string }>) {
-  const [posts, setPosts] = useState<BlogCardData[]>([]);
+  const [posts, setPosts] = useState<PublicBlogPost[]>([]);
+  const [loading, setLoading] = useState(true);
 
   const fetchedRef = useRef(false);
   useEffect(() => {
@@ -19,11 +21,11 @@ export function LatestBlogSection({ subtitle }: Readonly<{ subtitle: string }>) 
     fetchedRef.current = true;
     getPosts({})
       .then((res) => setPosts(res.data.slice(0, 6)))
-      .catch(() => {});
+      .catch(() => {})
+      .finally(() => setLoading(false));
   }, []);
 
-  const usingFallback = posts.length === 0;
-  const displayedPosts = usingFallback ? FALLBACK_BLOG_POSTS : posts;
+  if (!loading && posts.length === 0) return null;
 
   return (
     <section className="py-16 bg-background">
@@ -36,10 +38,14 @@ export function LatestBlogSection({ subtitle }: Readonly<{ subtitle: string }>) 
         </Reveal>
 
         <AutoScrollRow className="flex gap-4 pb-4">
-          {displayedPosts.map((post, i) => (
+          {loading
+            ? Array.from({ length: 4 }).map((_, i) => (
+                <Skeleton key={i} className="flex-shrink-0 w-72 md:w-80 h-72 rounded-2xl" />
+              ))
+            : posts.map((post, i) => (
             <Reveal key={post.id} delay={i * 0.1} className="flex-shrink-0">
-              <Link href={usingFallback ? "/blog" : `/blog/${post.id}`} className="group block w-72 md:w-80">
-                <div className="rounded-2xl overflow-hidden border border-border bg-muted/10 hover:border-primary/30 transition-all hover:shadow-md h-full">
+              <Link href={`/blog/${post.id}`} className="group block w-72 md:w-80 h-full">
+                <div className="rounded-2xl overflow-hidden border border-border bg-muted/10 hover:border-primary/30 transition-all hover:shadow-md h-full flex flex-col">
                   <div className="aspect-[16/10] overflow-hidden bg-muted">
                     {post.cover_image_url && (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -50,16 +56,16 @@ export function LatestBlogSection({ subtitle }: Readonly<{ subtitle: string }>) 
                       />
                     )}
                   </div>
-                  <div className="p-5">
+                  <div className="p-5 flex-1 flex flex-col">
                     {post.category && (
                       <Badge variant="secondary" className="text-[10px] uppercase tracking-wider mb-3">
                         {post.category}
                       </Badge>
                     )}
-                    <h3 className="font-bold group-hover:text-primary transition-colors line-clamp-2 mb-2 h-10">
+                    <h3 className="font-bold group-hover:text-primary transition-colors line-clamp-2 mb-2">
                       {post.title}
                     </h3>
-                    <div className="flex items-center justify-between mt-4">
+                    <div className="flex items-center justify-between mt-auto pt-4">
                       <p className="text-[10px] text-muted-foreground">
                         {post.published_at
                           ? new Date(post.published_at).toLocaleDateString("en-AU", {
@@ -77,7 +83,7 @@ export function LatestBlogSection({ subtitle }: Readonly<{ subtitle: string }>) 
                 </div>
               </Link>
             </Reveal>
-          ))}
+              ))}
         </AutoScrollRow>
       </div>
     </section>

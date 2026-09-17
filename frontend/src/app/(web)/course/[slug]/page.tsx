@@ -11,6 +11,7 @@ import { CourseStats } from "./components/course-stats";
 import { CourseDescription } from "./components/course-description";
 import { CourseFeeCard } from "./components/course-fee-card";
 import { CourseIntakesCard } from "./components/course-intakes-card";
+import { CourseStudyOptionsCard, CourseStudyUnitsCard } from "./components/course-curriculum-card";
 import { CourseWeatherCard } from "./components/course-weather-card";
 import { CourseAwardedByCard, CourseConnectCard } from "./components/course-sidebar";
 import { CourseEntryRequirementsCard } from "./components/course-entry-requirements-card";
@@ -28,7 +29,7 @@ export async function generateMetadata({ params }: CoursePageProps): Promise<Met
   };
 }
 
-/** Where the course is taught — the awarding institution's campuses, same card the profile uses. */
+/** Where the course is taught — the campuses linked to it, same card the profile uses. */
 function toLocations(course: CourseDetail): ProfileLocation[] {
   return course.campuses.map((campus) => ({
     id: campus.id,
@@ -72,6 +73,8 @@ export default async function CoursePage({ params }: CoursePageProps) {
           <CourseDescription description={course.description} />
           <CourseFeeCard course={course} />
           <CourseIntakesCard intakes={course.intakes} />
+          <CourseStudyOptionsCard options={course.study_options} />
+          <CourseStudyUnitsCard units={course.study_units} />
           <ProfileLocationsCard locations={toLocations(course)} cityLink={course.city_link} />
           <CourseWeatherCard weather={course.weather} countryName={course.country_name} />
           <ProfileGallery items={courseGallery(course)} />

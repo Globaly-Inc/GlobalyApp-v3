@@ -40,7 +40,7 @@ export function AiPopover({ onClose }: AiPopoverProps) {
     <div className="fixed bottom-36 right-4 z-50 flex h-[500px] w-[380px] flex-col overflow-hidden rounded-2xl border bg-card shadow-2xl md:bottom-20">
       {/* Header */}
       <div className="flex items-center justify-between border-b px-4 py-2.5">
-        <span className="text-sm font-semibold">AI Counsellor</span>
+        <span className="text-sm font-semibold">Ask Aly</span>
         <Button variant="ghost" size="icon-sm" render={<Link href="/personal/ai" onClick={onClose} />}>
           <Expand className="h-4 w-4" />
         </Button>

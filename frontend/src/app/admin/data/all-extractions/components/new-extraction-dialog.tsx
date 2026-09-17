@@ -20,6 +20,7 @@ import {
 } from "../const";
 import { ExtractionStepIndicator } from "./extraction-step-indicator";
 import { ExtractionSourceStep } from "./extraction-source-step";
+import type { DegreeLevelOption } from "./degree-level-picker";
 import { ExtractionReviewStep } from "./extraction-review-step";
 
 const STEPS = ["Categories", "Source", "Review"];
@@ -53,6 +54,7 @@ export function NewExtractionDialog({
   const [sampleCourseUrl, setSampleCourseUrl] = useState("");
   const [guidedUrls, setGuidedUrls] = useState<Record<string, string[]>>({});
   const [guidanceNotes, setGuidanceNotes] = useState("");
+  const [degreeLevels, setDegreeLevels] = useState<DegreeLevelOption[]>([]);
   const [creating, setCreating] = useState(false);
   const [businessOptions, setBusinessOptions] = useState<Category[]>([]);
   const [serviceOptions, setServiceOptions] = useState<Category[]>([]);
@@ -79,6 +81,7 @@ export function NewExtractionDialog({
     setSampleCourseUrl("");
     setGuidedUrls({});
     setGuidanceNotes("");
+    setDegreeLevels([]);
 
     setLoadingCategories(true);
     Promise.all([
@@ -158,6 +161,7 @@ export function NewExtractionDialog({
         ...(Object.keys(guided_urls).length && { guided_urls }),
         ...(guidanceNotes.trim() && { guidance_notes: guidanceNotes.trim() }),
         ...(sampleCourseUrl.trim() && { sample_course_url: sampleCourseUrl.trim() }),
+        ...(degreeLevels.length && { degree_level_codes: degreeLevels.map((l) => l.slug) }),
       })
     );
     setCreating(false);
@@ -249,6 +253,8 @@ export function NewExtractionDialog({
             onGuidedUrlsChange={setGuidedUrls}
             guidanceNotes={guidanceNotes}
             onGuidanceNotesChange={setGuidanceNotes}
+            degreeLevels={degreeLevels}
+            onDegreeLevelsChange={setDegreeLevels}
           />
         ) : (
           <ExtractionReviewStep
@@ -261,6 +267,7 @@ export function NewExtractionDialog({
             guidedUrlCategories={guidedUrlCategories}
             guidedUrls={guidedUrls}
             guidanceNotes={guidanceNotes}
+            degreeLevels={degreeLevels.map((l) => l.name)}
           />
         )}
 

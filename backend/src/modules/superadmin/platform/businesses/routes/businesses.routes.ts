@@ -4,6 +4,7 @@ import type { FastifyInstance } from "fastify";
 import { paginationToOffset, buildPaginatedResponse } from "../../../../../shared/pagination.js";
 import { AppError, NotFoundError } from "../../../../../shared/errors.js";
 import * as storage from "../../../../../shared/storage/storageService.js";
+import { createChildLogger } from "../../../../../shared/logger.js";
 import * as platformRepo from "../../platform.repository.js";
 import * as service from "../services/businesses.service.js";
 import {
@@ -13,6 +14,8 @@ import {
   InstitutionPatchSchema, InstitutionRoleParamsSchema, ListQuerySchema, MemberInviteSchema, MemberListQuerySchema,
   MemberParamsSchema, MemberPatchSchema, PublishedPatchSchema, RoleCreateSchema, RolePatchSchema, StatusPatchSchema,
 } from "../schemas/businesses.schema.js";
+
+const logger = createChildLogger("admin-businesses");
 
 export async function adminBusinessRoutes(app: FastifyInstance) {
   // POST /businesses/image — logo/cover upload. Returns the relative storage path, not a public
@@ -24,7 +27,10 @@ export async function adminBusinessRoutes(app: FastifyInstance) {
     const storagePath = storage.buildPath("businesses", file.filename);
     try {
       await storage.uploadFile(storagePath, buffer, file.mimetype);
-    } catch {
+    } catch (err) {
+      // The 503 text is deliberately vague for the browser, so the real cause has to reach the
+      // log — a missing GCS_KEY_FILE and a permissions failure look identical from the UI.
+      logger.error("Image upload to storage failed", { storagePath, err: String(err) });
       throw new AppError("Image upload failed — storage isn't configured correctly on this server.", 503, "STORAGE_UNAVAILABLE");
     }
     return reply.status(201).send({ path: storagePath });
@@ -43,9 +49,9 @@ export async function adminBusinessRoutes(app: FastifyInstance) {
   // dropdown), by category_slug (e.g. partner-pairing lookups that only know a slug), or by
   // `kind` (a consultancy/partner picker that wants one table, no category restriction).
   app.get("/businesses", async (req, reply) => {
-    const { search, status, category, category_slug, sort, kind, ...pagination } = ListQuerySchema.parse(req.query);
+    const { search, status, category, category_slug, sort, kind, business_type, ...pagination } = ListQuerySchema.parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
-    const { rows, total } = await service.listBusinesses(limit, offset, search, status, category, category_slug, kind, sort);
+    const { rows, total } = await service.listBusinesses(limit, offset, search, status, category, category_slug, kind, sort, business_type);
     return reply.send(buildPaginatedResponse(rows, total, pagination));
   });
 

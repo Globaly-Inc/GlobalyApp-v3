@@ -22,8 +22,9 @@ const MODULE_LABELS: Record<string, string> = {
 export function RoleDrawer({
   open,
   onOpenChange,
+  businessId,
   editingRole = null,
-}: Readonly<{ open: boolean; onOpenChange: (open: boolean) => void; editingRole?: Role | null }>) {
+}: Readonly<{ open: boolean; onOpenChange: (open: boolean) => void; businessId: number; editingRole?: Role | null }>) {
   const readOnly = !!editingRole?.is_system;
   const heading = readOnly ? editingRole?.display_name : editingRole ? `Edit ${editingRole.display_name}` : "Add role";
   const subheading = readOnly
@@ -38,17 +39,18 @@ export function RoleDrawer({
           <SheetDescription>{subheading}</SheetDescription>
         </SheetHeader>
         {/* Sheet content unmounts on close, so form state resets naturally — no sync effect needed. */}
-        <RoleForm editingRole={editingRole} readOnly={readOnly} onClose={() => onOpenChange(false)} />
+        <RoleForm businessId={businessId} editingRole={editingRole} readOnly={readOnly} onClose={() => onOpenChange(false)} />
       </SheetContent>
     </Sheet>
   );
 }
 
 function RoleForm({
+  businessId,
   editingRole,
   readOnly,
   onClose,
-}: Readonly<{ editingRole: Role | null; readOnly: boolean; onClose: () => void }>) {
+}: Readonly<{ businessId: number; editingRole: Role | null; readOnly: boolean; onClose: () => void }>) {
   const dispatch = useAppDispatch();
   const permissions = useAppSelector((s) => s.businessProfileDetail.permissions);
   const isEdit = !!editingRole;
@@ -57,8 +59,8 @@ function RoleForm({
   useEffect(() => {
     if (fetchedRef.current || permissions.length > 0) return;
     fetchedRef.current = true;
-    dispatch(fetchPermissions());
-  }, [dispatch, permissions.length]);
+    dispatch(fetchPermissions({ id: businessId }));
+  }, [dispatch, businessId, permissions.length]);
 
   const [displayName, setDisplayName] = useState(editingRole?.display_name ?? "");
   const [description, setDescription] = useState(editingRole?.description ?? "");
@@ -85,12 +87,14 @@ function RoleForm({
     try {
       if (isEdit && editingRole) {
         await dispatch(updateRole({
+          id: businessId,
           roleId: editingRole.id,
           patch: { display_name: displayName.trim(), description: description.trim() || null, permission_ids: permissionIds },
         })).unwrap();
         toast.success("Role updated");
       } else {
         await dispatch(createRole({
+          id: businessId,
           input: { display_name: displayName.trim(), description: description.trim() || null, permission_ids: permissionIds },
         })).unwrap();
         toast.success("Role created");

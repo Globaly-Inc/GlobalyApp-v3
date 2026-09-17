@@ -306,7 +306,7 @@ export async function promoteJob(jobId: string, adminId: number) {
     if (await repo.linkRepresentation(promoted.row.id, jobId)) representationsCreated++;
   }
 
-  await jobsRepo.updateJob(jobId, { status: "exported" });
+  await jobsRepo.updateJob(jobId, { status: "exported" }, adminId);
 
   const result = {
     listing_type: isInstitution ? ("institution" as const) : ("business" as const),

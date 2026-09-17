@@ -16,7 +16,7 @@ export function HowItWorks() {
       <div className="container mx-auto px-4">
         <Reveal className="text-center mb-12">
           <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-3">
-            How Globaly.app <span className="highlight-text active">Works</span>
+            How Globalyapp <span className="highlight-text active">Works</span>
           </h2>
           <p className="text-muted-foreground text-sm max-w-xl mx-auto">
             Follow these simple steps to start your global education journey

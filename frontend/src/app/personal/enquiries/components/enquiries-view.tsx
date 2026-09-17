@@ -44,7 +44,11 @@ export function EnquiriesView() {
   const searchParams = useSearchParams();
   const router = useRouter();
   const [initialCourseId] = useState(() => searchParams.get("course_id"));
-  const [dialogOpen, setDialogOpen] = useState(!!initialCourseId);
+  // The institution and business search cards deep-link their own listing: one preselects the
+  // course picker's institution filter, the other names the business the enquiry is for.
+  const [initialInstitutionJobId] = useState(() => searchParams.get("institution"));
+  const [initialBusinessId] = useState(() => Number(searchParams.get("business_id")) || null);
+  const [dialogOpen, setDialogOpen] = useState(!!initialCourseId || !!initialInstitutionJobId || !!initialBusinessId);
   // The consent the just-submitted enquiry carried, or null when nothing is awaiting its
   // disclaimer. One piece of state for both "show it" and "what to say".
   const [submittedConsent, setSubmittedConsent] = useState<boolean | null>(null);
@@ -89,8 +93,10 @@ export function EnquiriesView() {
   // would reopen the dialog prefilled with the same course — and sharing or
   // bookmarking the page would carry that course along with it.
   useEffect(() => {
-    if (initialCourseId) router.replace("/personal/enquiries", { scroll: false });
-  }, [initialCourseId, router]);
+    if (initialCourseId || initialInstitutionJobId || initialBusinessId) {
+      router.replace("/personal/enquiries", { scroll: false });
+    }
+  }, [initialCourseId, initialInstitutionJobId, initialBusinessId, router]);
 
   const counts = useMemo(() => filterCounts(countsByStatus), [countsByStatus]);
   // The server already applied the status filter and the search, so the page is the page.
@@ -198,6 +204,8 @@ export function EnquiriesView() {
         onOpenChange={setDialogOpen}
         // Only the first (deep-linked) open prefills; later opens start blank.
         prefillCourseId={dialogSeq === 0 ? initialCourseId : null}
+        prefillInstitutionJobId={dialogSeq === 0 ? initialInstitutionJobId : null}
+        prefillBusinessId={dialogSeq === 0 ? initialBusinessId : null}
         onSubmitted={setSubmittedConsent}
       />
 

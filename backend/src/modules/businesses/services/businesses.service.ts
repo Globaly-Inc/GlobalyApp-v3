@@ -16,7 +16,6 @@ import { issueScopedAccessToken, queueEmail } from "../../auth/auth.service.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import { issueCode } from "../../referrals/services/codes.service.js";
 import { createSystemPost } from "../../feed/services/feed.service.js";
-import { guessImageMimeType } from "../../feed/services/feed-media.service.js";
 import type { BusinessRegisterInput, BusinessProfilePatchInput, AiAssistInput } from "../schemas/businesses.schema.js";
 import { generateSubdomain } from "../../../shared/subdomain.js";
 
@@ -106,11 +105,13 @@ export async function registerBusiness(userId: number, input: BusinessRegisterIn
     authorId: userId,
     businessId: Number(business.id),
     content: `**@all** 🎉 We've just joined **GlobalyApp**! Excited to be part of the community.`,
+    // Always the landscape banner, never the business's own logo: a square logo forced into
+    // the feed's wide image box gets center-cropped into an unrecognisable zoom.
     media: [
       {
-        storage_path: business.logo_url ?? WELCOME_POST_IMAGE,
+        storage_path: WELCOME_POST_IMAGE,
         type: "image",
-        mime_type: business.logo_url ? guessImageMimeType(business.logo_url) : "image/png",
+        mime_type: "image/png",
       },
     ],
   }).catch((err) => logger.warn("Welcome post creation error", { businessId: business.id, err: err.message }));
@@ -135,12 +136,27 @@ export async function searchBusinesses(
   search: string | undefined,
   limit: number,
   includeInstitutions = false,
+  forPartnerLink = false,
 ) {
   // An institution caller has no business row to exclude — and its own id would exclude an
   // unrelated business, since the two id spaces collide.
-  if (auth.orgType === "institution") return repo.searchBusinesses(search, undefined, limit, includeInstitutions);
+  if (auth.orgType === "institution") {
+    // Representations picker: an institution may only link a verified consultancy — see
+    // business-representations.service.ts requireVerifiedAgent for the matching server-side
+    // enforcement on the actual link endpoint. The client can't widen this by omitting the flag.
+    const partnerKind = forPartnerLink ? "agent" : undefined;
+    return repo.searchBusinesses(search, undefined, limit, includeInstitutions, partnerKind);
+  }
   const caller = await repo.findBusinessByDbName(auth.orgId!);
   if (!caller) throw new NotFoundError("Business not found");
+  // Representations picker: only a consultancy (business_type "agent") may link a partner here,
+  // and only a verified institution. A non-agent business gets an empty result — V1 never had
+  // this pairing either.
+  if (forPartnerLink) {
+    const partnerKind = caller.business_type === "agent" ? "institution" : undefined;
+    if (!partnerKind) return [];
+    return repo.searchBusinesses(search, caller.id, limit, includeInstitutions, partnerKind);
+  }
   return repo.searchBusinesses(search, caller.id, limit, includeInstitutions);
 }
 
@@ -186,6 +202,28 @@ export async function updateProfile(orgId: string, data: BusinessProfilePatchInp
 }
 
 /**
+ * The claim link for a business nobody owns yet — the twin of `mintInstitutionClaimUrl`, and
+ * exported for the same reason: an enquiry matching an unclaimed business has to put a way in
+ * inside its notification, or the mail asks someone to sign into an account that cannot be
+ * signed into.
+ *
+ * Reuses a live token rather than replacing it. There is only one `claim_token` column, so
+ * minting per enquiry invalidated every acquisition mail already in the inbox — see
+ * `ensureClaimToken`.
+ *
+ * Returns null when the listing has already been claimed, so the caller can stop asking for a
+ * claim it no longer needs.
+ */
+export async function mintBusinessClaimUrl(businessId: string | number): Promise<string | null> {
+  const token = await repo.ensureClaimToken(
+    businessId,
+    randomBytes(32).toString("hex"),
+    new Date(Date.now() + CLAIM_TOKEN_TTL_MS),
+  );
+  return token ? `${config.WEB_APP_URL}/invite/business/accept?token=${token}` : null;
+}
+
+/**
  * Self-serve claim trigger, called from the registration page after a user is told a business
  * profile already exists for their email. Always resolves silently (no "found"/"not found"
  * signal) to avoid leaking account existence — same anti-enumeration stance as `registerUser`.
@@ -196,10 +234,9 @@ export async function requestClaimByEmail(email: string): Promise<void> {
   const business = await repo.findUnclaimedBusinessByContactEmail(email);
   if (!business) return;
 
-  const token = randomBytes(32).toString("hex");
-  await repo.setClaimPending(business.id, token, new Date(Date.now() + CLAIM_TOKEN_TTL_MS));
-
-  const claimUrl = `${config.WEB_APP_URL}/invite/business/accept?token=${token}`;
+  const claimUrl = await mintBusinessClaimUrl(business.id);
+  // Null means it was claimed between the lookup above and the write — nothing left to send.
+  if (!claimUrl) return;
   // Personalise only if someone already registered on this address; otherwise stay generic,
   // since the listing itself has no name for a person.
   const existingUser = await userRepo.findByEmail(email);

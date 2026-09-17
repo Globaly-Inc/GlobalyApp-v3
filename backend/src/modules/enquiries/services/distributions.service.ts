@@ -165,7 +165,7 @@ export async function unlock(recipient: Recipient, distributionId: string, userI
 
     // The conversation is what the unlock buys, so it opens with a message in the same
     // transaction rather than waiting for someone to type one.
-    await messagesService.seedOnUnlock(trx, distributionId, userId);
+    await messagesService.seedOnUnlock(trx, distributionId, userId, enquiry.student_id);
 
     // …and with its membership. Same transaction for the same reason: an unlocked thread must
     // never exist without an admin, or nobody can add anyone to it. The owner administers it,

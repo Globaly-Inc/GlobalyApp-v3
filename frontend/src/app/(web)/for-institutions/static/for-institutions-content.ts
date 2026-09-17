@@ -84,7 +84,7 @@ export const WHY_JOIN = [
   {
     Icon: Code2,
     title: "Embed course search and eligibility check",
-    desc: "Add Globaly.app's powerful course search and eligibility test tool directly to your institution's site to capture and convert student traffic instantly.",
+    desc: "Add Globalyapp's powerful course search and eligibility test tool directly to your institution's site to capture and convert student traffic instantly.",
   },
   {
     Icon: Megaphone,
@@ -176,7 +176,7 @@ export const OWN_DATA_ITEMS = [
   },
   {
     title: "Embed Powerful Course Search",
-    desc: "Integrate Globaly.app's powerful course search tool and live API into your own website or CRM, keeping your student and education counselor audiences up-to-date everywhere you operate.",
+    desc: "Integrate Globalyapp's powerful course search tool and live API into your own website or CRM, keeping your student and education counselor audiences up-to-date everywhere you operate.",
     comingSoon: true,
   },
 ];

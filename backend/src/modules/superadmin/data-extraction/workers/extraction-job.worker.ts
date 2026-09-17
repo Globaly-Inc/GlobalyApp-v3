@@ -5,13 +5,16 @@
 // Run with: npm run job:extraction
 
 import "dotenv/config";
+import { randomUUID } from "node:crypto";
 import { queueService } from "../../../../shared/queue/queueService.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
-import { scrapeMarkdown, discoverUrlsForCrawl } from "../lib/scraper.js";
+import { discoverUrlsForCrawl } from "../lib/scraper.js";
+import { SNAPSHOT_BATCH_SIZE } from "../lib/site-snapshot.js";
+import { getPage } from "../lib/page-store.js";
 import { looksLikeCourseUrl, looksLikeVisaServiceUrl, filterUrls, truncateMarkdown, domainOf, collectGuidedUrls } from "../lib/html-utils.js";
-import { extractJson, isConfigured } from "../lib/llm-client.js";
+import { extractJson, isConfigured, setLlmContext } from "../lib/llm-client.js";
 import {
   siteAnalysisPrompt, urlDiscoveryPrompt, SITE_ANALYSIS_SYSTEM,
   visaServiceSiteAnalysisPrompt, visaServiceUrlDiscoveryPrompt,
@@ -47,6 +50,7 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
     return;
   }
   logger.info("Received job", { jobId, resumed: !!resumed });
+  setLlmContext({ jobId, kind: "site_analysis" });
 
   const job = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).first();
   if (!job) {
@@ -82,7 +86,7 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
 
   try {
     // ── Phase 1: Scrape homepage → LLM analysis ──
-    const homepage = await scrapeMarkdown(job.institution_url, { withLinks: true, onlyMainContent: false });
+    const homepage = await getPage(job.institution_url, { withLinks: true, onlyMainContent: false });
 
     if (!homepage.markdown && homepage.error) {
       throw new Error(`Failed to scrape homepage: ${homepage.error}`);
@@ -107,7 +111,14 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
     });
 
     // Write institution overview + site intelligence
-    await writeInstitutionOverview(jobId, { ...analysis.institution, source_url: job.institution_url } as any);
+    // The prompt's response key is `other_social_urls` (readable in the JSON schema); the DB
+    // column is `other_social_links` — rename here rather than in the prompt/schema.
+    const { other_social_urls, ...institutionRest } = analysis.institution as Record<string, unknown>;
+    await writeInstitutionOverview(jobId, {
+      ...institutionRest,
+      ...(Array.isArray(other_social_urls) && other_social_urls.length ? { other_social_links: other_social_urls } : {}),
+      source_url: job.institution_url,
+    } as any);
     await writeSiteIntelligence(jobId, analysis.site_intelligence as any);
 
     await writeJobEvent(jobId, "site_analyzed", {
@@ -115,6 +126,24 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
       message: "Site analysis complete",
       data: { patterns: analysis.course_page_patterns },
     });
+
+    // ponytail: the "institution" step (extraction-step.worker.ts) does a much better job of this
+    // same overview than the homepage-only analysis above — it also scrapes guided_urls.contact_urls
+    // (or discovers/guesses a contact page), and non-destructively merges into what's already there.
+    // Previously only ran when an admin manually clicked "Re-run" on the Institution tab, so email/
+    // phone/address came back null on every fresh job. Auto-dispatch it right after site analysis
+    // instead of duplicating its contact-page logic here.
+    //
+    // "branches" is dispatched by handleInstitutionStep itself once it finishes (not here,
+    // alongside "institution") — the branches step falls back to the institution's own phone/
+    // email whenever a campus doesn't have its own, and firing both steps at once raced that
+    // fallback against the institution step's own writes: branches often finishes faster (fewer
+    // pages/LLM calls), reads institution overview before institution step has written email/
+    // phone, finds it still empty, and silently has nothing to fall back to. Chaining instead of
+    // firing in parallel guarantees the institution row is actually complete first.
+    if (!job.source_type || job.source_type === "institution") {
+      await queueService.publish(EXTRACTION_QUEUES.STEPS, { jobId, step: "institution" });
+    }
 
     await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
       pipeline_progress: JSON.stringify({ site_mapping: "done", course_discovery: "processing", data_extraction: "waiting", verification: "waiting" }),
@@ -126,6 +155,49 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
     const discovery = await discoverUrlsForCrawl(job.institution_url, { limit: 10000 });
     const origin = new URL(job.institution_url).origin;
     let allUrls = filterUrls(discovery.urls, origin);
+
+    // Related domains: an admin-curated hint for a multi-campus institution whose country
+    // site is a genuinely different registrable domain (monash.edu.my vs monash.edu) — no
+    // automated technique reliably links those without a human confirming the match, so this
+    // is opt-in config, not discovery. Same table/key shape as the blocklist below.
+    const relatedDomainsRow = await masterKnex(`${S}.extraction_additional_info`)
+      .where({ job_id: jobId, key: "related_domains" })
+      .select("value")
+      .first();
+    let relatedDomains: string[] = [];
+    if (relatedDomainsRow?.value) {
+      try {
+        // Hand-edited config: an object, bare string or number all PARSE, then either throw on
+        // .slice (failing the whole job for a typo) or iterate character by character as bogus
+        // domains. Shape-check before use; a malformed row costs its own feature, not the job.
+        const parsed: unknown = JSON.parse(relatedDomainsRow.value);
+        if (Array.isArray(parsed)) {
+          relatedDomains = parsed
+            .filter((d): d is string => typeof d === "string")
+            .map((d) => d.trim())
+            .filter(Boolean);
+        } else {
+          logger.warn("related_domains is not an array — ignoring", { jobId, got: typeof parsed });
+        }
+      } catch { /* ignore malformed related-domains config */ }
+    }
+    // ponytail: cap admin input, not correctness — a typo'd huge list shouldn't multiply a
+    // job's discovery cost by accident; bump if a real institution needs more than 10.
+    for (const domain of relatedDomains.slice(0, 10)) {
+      try {
+        const relatedSeed = domain.includes("://") ? domain : `https://${domain}`;
+        const relatedDiscovery = await discoverUrlsForCrawl(relatedSeed, { limit: 10000 });
+        const relatedUrls = filterUrls(relatedDiscovery.urls, new URL(relatedSeed).origin);
+        allUrls = [...new Set([...allUrls, ...relatedUrls])];
+        await writeJobEvent(jobId, "related_domain_discovered", {
+          phase: "course_discovery",
+          message: `Discovered ${relatedUrls.length} URLs from related domain ${domain} via ${relatedDiscovery.method}`,
+          data: { domain, method: relatedDiscovery.method, count: relatedUrls.length },
+        });
+      } catch (err) {
+        logger.warn("Related-domain discovery failed", { jobId, domain, err: String(err) });
+      }
+    }
 
     // ponytail: apply URL blocklist before heuristic filter
     const blocklistRow = await masterKnex(`${S}.extraction_additional_info`)
@@ -152,6 +224,24 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
       message: `Discovered ${allUrls.length} URLs via ${discovery.method}`,
       data: { method: discovery.method, count: allUrls.length },
     });
+
+    // Site snapshot: every discovered page → .md in GCS, on the step worker so this consumer
+    // isn't held for hundreds of scrapes. Bounded by the job's page_cap, same budget as queueing,
+    // and split into batches so a crash mid-way loses one batch rather than the whole site.
+    const snapshotUrls = allUrls.slice(0, Number(job.page_cap) || 500);
+    const batches = Math.ceil(snapshotUrls.length / SNAPSHOT_BATCH_SIZE);
+    // Batches are consumed CONCURRENTLY, so no single one knows the step is finished. Each
+    // carries the id of THIS dispatch, so the step worker can tell its own run's batch events
+    // from those of a dispatch overlapping it — the job worker deliberately tolerates a second
+    // message for a job already "processing", so two runs numbering batches 1..N is reachable.
+    const runId = randomUUID();
+    for (let i = 0; i < batches; i++) {
+      await queueService.publish(EXTRACTION_QUEUES.STEPS, {
+        jobId, step: "site_snapshot",
+        urls: snapshotUrls.slice(i * SNAPSHOT_BATCH_SIZE, (i + 1) * SNAPSHOT_BATCH_SIZE),
+        batch: { runId, index: i + 1, total: batches },
+      });
+    }
 
     // Heuristic filter: keep only URLs that look like course (or visa service) pages
     let courseUrls = allUrls.filter(isVisaService ? looksLikeVisaServiceUrl : looksLikeCourseUrl);
@@ -220,19 +310,43 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
     });
 
     // ── Phase 3: Queue each page for extraction ──
+    let queued = 0;
     for (const url of courseUrls) {
       const queueItemId = await insertQueueItem(jobId, url);
       if (!queueItemId) continue; // already queued (e.g. duplicate JOBS message) — its owner dispatches it
       await queueService.publish(EXTRACTION_QUEUES.PAGES, { jobId, queueItemId, url });
+      queued++;
     }
+
+    // Nothing published means nothing advances the job — a re-dispatch whose URLs are all
+    // already queued would otherwise sit in "processing" forever.
+    // Counts `processing` too: a duplicate job message arriving while pages are still in flight
+    // queues nothing and has no pending rows, and calling that idle retires the job to `review`
+    // before its pages finish — after which the normal completion path can no longer start
+    // verification, leaving it permanently `waiting`.
+    const live = await masterKnex(`${S}.extraction_queue`)
+      .where({ job_id: jobId }).whereIn("status", ["pending", "processing"]).count({ n: "*" }).first();
+    const idle = queued === 0 && Number(live?.n ?? 0) === 0;
 
     await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
       total_pages_found: courseUrls.length,
       pages_total: courseUrls.length,
-      pipeline_progress: JSON.stringify({ site_mapping: "done", course_discovery: "done", data_extraction: "processing", verification: "waiting" }),
+      ...(idle ? { status: "review" } : {}),
+      pipeline_progress: JSON.stringify({
+        site_mapping: "done", course_discovery: "done",
+        data_extraction: idle ? "done" : "processing", verification: "waiting",
+      }),
       processing_heartbeat_at: masterKnex.fn.now(),
       updated_at: masterKnex.fn.now(),
     });
+
+    if (idle) {
+      await writeJobEvent(jobId, "discovery_found_nothing_new", {
+        level: "warn", phase: "course_discovery",
+        message: `Discovery found no pages that weren't already queued (${courseUrls.length} URLs, all known)`,
+        data: { method: discovery.method, urls: courseUrls.length },
+      });
+    }
 
     logger.info("Job discovery complete", { jobId, method: discovery.method, pages: courseUrls.length });
 

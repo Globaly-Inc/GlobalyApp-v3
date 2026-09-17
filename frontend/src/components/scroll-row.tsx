@@ -28,16 +28,18 @@ export function ScrollRow({
     });
   }, []);
 
-  // ponytail: no dep array — re-measures after every render, which covers children being added or
-  // filtered. ResizeObserver on the rail covers viewport/container resizes.
-  useEffect(sync);
-
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     const ro = new ResizeObserver(sync);
     ro.observe(el);
-    return () => ro.disconnect();
+    const mo = new MutationObserver(sync);
+    mo.observe(el, { childList: true, subtree: true, characterData: true });
+    sync();
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+    };
   }, [sync]);
 
   const nudge = (dir: -1 | 1) => {

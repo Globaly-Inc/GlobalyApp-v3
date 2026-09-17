@@ -37,7 +37,16 @@ export interface QueueRow extends NewQueueRow {
 }
 
 /**
- * Which (template, recipient_email) groups are due for a summary mail.
+ * Which (template, recipient_email, business_id) groups are due for a summary mail.
+ *
+ * `business_id` is in the key because `businesses.email` is neither unique nor required: two
+ * listings commonly share one address, most often because neither sets its own and both fall
+ * back to the same owner. Without it, one digest mixed two businesses' enquiries, named itself
+ * after the oldest row's business and carried only the newest row's claim link — so the cards
+ * were misattributed and only one of the two listings could actually be claimed.
+ *
+ * Institutions ride the NULL branch: `institutions.email` IS uniquely indexed, so address
+ * alone already identifies one.
  *
  * The window is measured against the group's OLDEST pending row, not each row's own age:
  * once a group is due, `claimGroup` takes everything currently pending for it, including
@@ -51,15 +60,16 @@ export async function findReadyDigestGroups(
   templates: string[],
   windowMs: number,
   limit: number,
-): Promise<{ recipient_email: string; template: string }[]> {
-  return masterKnex(T)
+): Promise<{ recipient_email: string; template: string; business_id: number | null }[]> {
+  const rows = await masterKnex(T)
     .where("status", "pending")
     .whereIn("template", templates)
-    .groupBy("recipient_email", "template")
+    .groupBy("recipient_email", "template", "business_id")
     .havingRaw("MIN(created_at) <= now() - (? || ' milliseconds')::interval", [String(windowMs)])
     .orderByRaw("MIN(created_at) ASC")
     .limit(limit)
-    .select("recipient_email", "template");
+    .select("recipient_email", "template", "business_id");
+  return rows.map((r) => ({ ...r, business_id: r.business_id == null ? null : Number(r.business_id) }));
 }
 
 /**
@@ -83,19 +93,24 @@ export async function claimGroup(
   trx: Knex.Transaction,
   template: string,
   recipientEmail: string,
+  businessId: number | null,
   limit: number,
 ): Promise<QueueRow[]> {
+  // The lock key must carry the same columns as the group key, or two different businesses on
+  // one address would serialise against each other and one would be skipped every sweep.
   const { rows } = await trx.raw("SELECT pg_try_advisory_xact_lock(hashtext(?)::bigint) AS locked", [
-    `enquiry_digest:${template}:${recipientEmail.toLowerCase()}`,
+    `enquiry_digest:${template}:${recipientEmail.toLowerCase()}:${businessId ?? "none"}`,
   ]);
   if (!rows[0]?.locked) return [];
 
-  return trx(T)
+  const q = trx(T)
     .where({ status: "pending", template, recipient_email: recipientEmail })
     .orderBy("created_at", "asc")
     .limit(limit)
     .forUpdate()
     .skipLocked();
+  // `business_id = NULL` matches nothing in SQL — the institution rows need IS NULL.
+  return businessId == null ? q.whereNull("business_id") : q.where("business_id", businessId);
 }
 
 /** Pending rows for templates that are NOT batched — requeued retries of the immediate mails. */

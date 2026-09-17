@@ -40,8 +40,52 @@ import publicPageViewsModule from "./modules/page-views/index.js";
 
 const logger = createChildLogger("server");
 
+
+/**
+ * "false" | "true" | "2" | "10.0.0.0/8,192.168.1.1" → the shape Fastify wants.
+ *
+ * A hop count and an allowlist both survive header rotation; `true` does not, so it is
+ * accepted only because Fastify defines it and someone may knowingly want it.
+ */
+function parseTrustProxy(value: string): boolean | number | string[] {
+  const trimmed = value.trim();
+  if (trimmed === "" || trimmed.toLowerCase() === "false") return false;
+  if (trimmed.toLowerCase() === "true") return true;
+  if (/^\d+$/.test(trimmed)) return Number(trimmed);
+  // Names ("loopback", "linklocal", "uniquelocal"), IPs and CIDRs, comma-separated.
+  return trimmed.split(",").map((v) => v.trim()).filter(Boolean);
+}
+
+/**
+ * Refuse to boot on a trustProxy setting that would silently break the rate limiter.
+ *
+ * `false` in production is not a safe default here, it is a broken one: nginx is always in
+ * front, so `req.ip` becomes nginx's address, every visitor to a widget shares its 12/min
+ * bucket and every plain guest shares one signup gate. Legitimate visitors get 429s and
+ * each other's guest state — a failure that looks like a bug in the widget.
+ */
+function assertUsableTrustProxy(resolved: boolean | number | string[]): void {
+  if (config.NODE_ENV !== "production") return;
+  if (resolved === false) {
+    throw new Error(
+      "TRUST_PROXY is false in production, but nginx always fronts Fastify in this image — " +
+      "req.ip would be nginx's address and all visitors would share one rate-limit bucket. " +
+      'Set TRUST_PROXY=loopback (plus any CDN/ALB ranges in front of nginx).',
+    );
+  }
+  if (resolved === true) {
+    throw new Error(
+      "TRUST_PROXY=true trusts the entire X-Forwarded-For chain, so a caller can spoof " +
+      "req.ip and bypass rate limits. Use TRUST_PROXY=loopback, a hop count, or a CIDR list.",
+    );
+  }
+}
 export async function buildServer() {
-  const app = Fastify({ logger: true });
+  // trustProxy decides what req.ip means, and req.ip is the only unforgeable client
+  // identity the rate limiter and the guest gate have. See config.TRUST_PROXY.
+  const trustProxy = parseTrustProxy(config.TRUST_PROXY);
+  assertUsableTrustProxy(trustProxy);
+  const app = Fastify({ logger: true, trustProxy });
 
   // --- Framework plugins ---
   await app.register(cors, { origin: config.CORS_ORIGINS, credentials: true });
@@ -177,6 +221,10 @@ export async function buildServer() {
 
 // --- Start server ---
 const app = await buildServer();
+
+if (config.GEMINI_API_KEY && !config.OPENROUTER_API_KEY) {
+  app.log.warn("OPENROUTER_API_KEY is not set — Gemini has no fallback LLM. Set OPENROUTER_API_KEY to enable OpenRouter fallback.");
+}
 
 // Graceful shutdown
 const shutdown = async () => {

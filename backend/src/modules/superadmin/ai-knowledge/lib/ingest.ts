@@ -8,7 +8,7 @@ import { createHash } from "node:crypto";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
-import { embed, isConfigured as llmConfigured } from "../../data-extraction/lib/llm-client.js";
+import { embed, isEmbedConfigured as llmConfigured } from "../../data-extraction/lib/llm-client.js";
 import { chunkMarkdown, embedTextFor, normaliseMarkdown } from "./chunker.js";
 
 const logger = createChildLogger("ai-knowledge-ingest");

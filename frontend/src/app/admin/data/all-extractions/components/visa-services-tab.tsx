@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { allExtractionsApi } from "../apis";
+import { RowActors } from "./row-actors";
 import type { VisaService } from "../apis/types";
 import { useConfirmDelete } from "./use-confirm-delete";
 
@@ -155,6 +156,7 @@ function VisaServiceCard({
               source <ExternalLink className="h-3 w-3" />
             </a>
           )}
+          <RowActors row={service} className="mt-1.5" />
         </div>
         <Button size="sm" variant="ghost" className="cursor-pointer" onClick={() => setOpen((v) => !v)}>
           {open ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}

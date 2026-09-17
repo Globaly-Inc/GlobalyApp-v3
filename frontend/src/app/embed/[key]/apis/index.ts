@@ -3,4 +3,6 @@ import { embedMockApi } from "./mock-data";
 import { embedRealApi } from "./real-api";
 
 export const embedApi = createApi({ mock: embedMockApi, real: embedRealApi });
-export type { EmbedChatEvent, EmbedPublicConfig, GuestMessageRequest } from "./types";
+export type {
+  EmbedChatEvent, EmbedPublicConfig, EmbedStoredMessage, EmbedThread, GuestMessageRequest,
+} from "./types";

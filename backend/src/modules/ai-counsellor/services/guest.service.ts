@@ -16,6 +16,41 @@ export function hashIp(ip: string): string {
   return createHash("sha256").update(ip).digest("hex");
 }
 
+/**
+ * Identity of an anonymous widget visitor, for threading.
+ *
+ * Deliberately NOT hashFingerprint(): that mixes in the IP, which is right for a rate
+ * gate but wrong for a conversation — switching from office wifi to mobile data would
+ * silently strand the visitor's thread and start an empty one. The embed key is mixed
+ * in instead, so the key is stable per browser and scoped per university: two widgets
+ * on the same browser can never resolve to the same thread.
+ */
+export function visitorKey(fingerprint: string, embedKey: string): string {
+  return createHash("sha256").update(`${fingerprint}:${embedKey}`).digest("hex");
+}
+
+/**
+ * The visitor's thread for this widget, created on first message.
+ *
+ * The create can lose a race with itself — a double-send, or two tabs on the same site
+ * — and the partial unique index turns the loser into a 500 on a message the visitor
+ * did type. Re-read on unique violation instead: whichever insert won owns the thread.
+ */
+export async function resolveVisitorSession(
+  visitorKey: string,
+  embedConfigId: number,
+): Promise<sessionsRepo.SessionRow> {
+  const existing = await sessionsRepo.findByVisitor(visitorKey, embedConfigId);
+  if (existing) return existing;
+  try {
+    return await sessionsRepo.createForVisitor(visitorKey, embedConfigId);
+  } catch (err) {
+    const raced = await sessionsRepo.findByVisitor(visitorKey, embedConfigId);
+    if (raced) return raced;
+    throw err;
+  }
+}
+
 /** Check if a guest with this fingerprint or IP is allowed to send a message. */
 export async function checkGuestGate(fingerprintHash: string, ipHash: string): Promise<{ allowed: boolean; existingSession?: guestRepo.GuestSessionRow }> {
   const existing = await guestRepo.findByFingerprintOrIp(fingerprintHash, ipHash);

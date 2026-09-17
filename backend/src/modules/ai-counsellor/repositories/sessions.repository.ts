@@ -64,7 +64,9 @@ export function mergeCounsellingContext(
 
 export interface SessionRow {
   id: number;
-  platform_user_id: number;
+  /** Null on an embed-widget visitor's thread — `visitor_key` owns it instead. */
+  platform_user_id: number | null;
+  visitor_key: string | null;
   embed_config_id: number | null;
   title: string | null;
   message_count: number;
@@ -81,7 +83,7 @@ const TABLE = "ai_counselor_sessions";
 // The list endpoint renders titles. counselling_context is deliberately absent: it
 // grows with the conversation and the sidebar has no use for it.
 const LIST_COLUMNS = [
-  "id", "platform_user_id", "embed_config_id", "title", "message_count",
+  "id", "platform_user_id", "visitor_key", "embed_config_id", "title", "message_count",
   "credits_used", "is_archived", "created_at", "updated_at", "deleted_at",
 ];
 
@@ -94,6 +96,53 @@ export async function create(userId: number, embedConfigId?: number): Promise<Se
 
 export async function findById(id: number): Promise<SessionRow | undefined> {
   return masterKnex(TABLE).where({ id }).whereNull("deleted_at").first();
+}
+
+/**
+ * The anonymous widget visitor's live thread for ONE embed config, created on first
+ * message. Keyed on (visitor_key, embed_config_id) — the same browser talking to two
+ * universities' widgets gets two threads, and neither can read the other.
+ *
+ * `embedConfigId` is required, not optional: a visitor_key only ever means something
+ * inside a widget, and defaulting it to null would collapse every university's thread
+ * for that browser into one row.
+ */
+export async function findByVisitor(
+  visitorKey: string,
+  embedConfigId: number,
+): Promise<SessionRow | undefined> {
+  return masterKnex(TABLE)
+    .where({ visitor_key: visitorKey, embed_config_id: embedConfigId })
+    .whereNull("deleted_at")
+    .first();
+}
+
+export async function createForVisitor(
+  visitorKey: string,
+  embedConfigId: number,
+): Promise<SessionRow> {
+  const [row] = await masterKnex(TABLE)
+    .insert({ visitor_key: visitorKey, embed_config_id: embedConfigId, platform_user_id: null })
+    .returning("*");
+  return row;
+}
+
+/**
+ * Hand a visitor's thread to the account they just created: the whole conversation
+ * carries over by changing owner, with no message copying. The one-owner CHECK means
+ * visitor_key has to be cleared in the same statement.
+ */
+export async function adoptVisitorSession(
+  visitorKey: string,
+  embedConfigId: number,
+  userId: number,
+): Promise<SessionRow | undefined> {
+  const [row] = await masterKnex(TABLE)
+    .where({ visitor_key: visitorKey, embed_config_id: embedConfigId })
+    .whereNull("deleted_at")
+    .update({ platform_user_id: userId, visitor_key: null, updated_at: masterKnex.fn.now() })
+    .returning("*");
+  return row;
 }
 
 /** Sessions this user has ever had (archived included) — drives the returning-user greeting. */

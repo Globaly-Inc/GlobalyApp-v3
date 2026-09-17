@@ -21,13 +21,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { AiLauncher } from "@/components/ai-widget/ai-launcher";
+// import { AiLauncher } from "@/components/ai-widget/ai-launcher";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { logout, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchFullProfile } from "./store/profile-slice";
 import { PortalSidebar } from "@/components/portal-sidebar";
-import { NAV_ITEMS } from "./const";
+import { NAV_ITEMS, PERSONAL_PORTAL_HOME } from "./const";
 import { PersonalMobileNav } from "./components/personal-mobile-nav";
+import { ICON } from "@/lib/public-assets";
 
 const SHELL_WIDTH = "mx-auto w-full max-w-7xl px-3 sm:px-4 md:px-6";
 
@@ -93,10 +94,10 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
           <div className="flex h-16 shrink-0 items-center px-3 sm:px-4 md:w-20 md:justify-center md:px-0">
             <Link href="/" className="flex shrink-0 items-center">
               <Image
-                src="/globaly-red-icon.png"
-                alt="Globaly"
-                width={283}
-                height={283}
+                src={ICON.src}
+                alt="Globalyapp"
+                width={ICON.width}
+                height={ICON.height}
                 className="size-9 rounded-[10px]"
                 priority
               />
@@ -165,7 +166,7 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
                     </DropdownMenuItem>
                   </>
                 )} */}
-                <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/personal/portal")}>
+                <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push(PERSONAL_PORTAL_HOME)}>
                   Personal Portal
                 </DropdownMenuItem>
                 <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/business/portal")}>
@@ -202,7 +203,8 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
       </div>
 
       <PersonalMobileNav portalTarget={portalTarget} myProfileHref={myProfileHref} onSignOut={handleSignOut} />
-      <AiLauncher />
+      {/* Ask Aly floating orb — parked for now. */}
+      {/* <AiLauncher /> */}
     </div>
   );
 }

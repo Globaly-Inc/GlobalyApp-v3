@@ -48,6 +48,25 @@ export const PUBLISHABLE_STATUSES: ExtractionStatus[] = ["review", "verified", "
 export const PAUSABLE_STATUSES: ExtractionStatus[] = ["scraping", "extracting"];
 export const FINISHED_STATUSES: ExtractionStatus[] = ["done", "completed", "approved", "verified", "exported", "pushed"];
 
+// Curated status filter shown in the toolbar dropdown — collapses the raw per-stage statuses
+// (mapping/scraping/extracting/processing/verifying, failed/stalled) into the handful of
+// states a user actually filters by, instead of every distinct STATUS_CONFIG label.
+export const STATUS_FILTER_OPTIONS: { value: string; label: string; statuses: ExtractionStatus[] }[] = [
+  { value: "pending", label: "Pending", statuses: ["pending"] },
+  { value: "in_progress", label: "In Progress", statuses: ACTIVE_STATUSES },
+  { value: "review", label: "Pending Review", statuses: ["review"] },
+  { value: "approved", label: "Approved", statuses: ["verified", "approved"] },
+  { value: "completed", label: "Completed", statuses: ["done", "completed"] },
+  { value: "published", label: "Published", statuses: ["exported", "pushed"] },
+  { value: "failed", label: "Failed", statuses: ["failed", "stalled"] },
+  { value: "declined", label: "Declined", statuses: ["declined"] },
+  { value: "paused", label: "Paused", statuses: ["paused"] },
+];
+
+export function statusesForFilterValue(value: string): ExtractionStatus[] {
+  return STATUS_FILTER_OPTIONS.find((o) => o.value === value)?.statuses ?? [];
+}
+
 // Every guided-URL bucket the backend actually reads. Keys must stay `*_urls` — the job
 // worker seeds the crawl from every key with that suffix, and the per-course data steps
 // look up `<data_type>_urls`. Adding a category here is enough to make it work end to end.
@@ -119,7 +138,16 @@ export const SOURCE_FILTER_OPTIONS = [
   { value: "all", label: "All sources" },
   { value: "ai", label: "AI Extraction" },
   { value: "agentcis", label: "AgentCIS" },
+  { value: "manual", label: "Manual institution" },
+  { value: "self_service", label: "Self-registered" },
 ];
+
+/**
+ * source_type values that mean "this listing owns its catalog, nothing crawled it". Their jobs
+ * exist only to give extraction_* rows a job_id to hang off, so every dashboard list excludes
+ * them — they would otherwise show up as completed extractions.
+ */
+export const OWNED_JOB_SOURCE_TYPES = ["manual", "self_service"];
 
 /** Stages of the AI pipeline, in run order — keys match pipeline_progress. */
 export const PIPELINE_STAGES: { key: string; label: string; icon: LucideIcon }[] = [
@@ -184,8 +212,24 @@ export const PERIOD_TYPE_OPTIONS = [
   { value: "Per Year", label: "Per Year" },
   { value: "Per Semester", label: "Per Semester" },
   { value: "Per Trimester", label: "Per Trimester" },
+  { value: "Per Term", label: "Per Term" },
+  { value: "Per Week", label: "Per Week" },
   { value: "Per Unit", label: "Per Unit" },
   { value: "Total", label: "Total" },
+];
+
+// Which of public.fee_types the fee form offers. Only tuition and the application fee are wanted
+// for now; the rest still exist in the table and the extractor still recognises them, they are
+// just not selectable here. Uncomment a line to bring one back.
+export const ENABLED_FEE_TYPES = [
+  "Tuition Fee",
+  "Application Fee",
+  // "Enrollment Fee",
+  // "Material Fee",
+  // "Exam Fee",
+  // "Late Payment Fee",
+  // "Health Insurance Fee",
+  // "Student Services Fee",
 ];
 
 export const CURRENCY_OPTIONS = ["AUD", "NZD", "CAD", "USD", "GBP", "EUR", "NPR", "INR"].map((c) => ({
@@ -228,3 +272,6 @@ export const SORT_OPTIONS: { value: SortOrder; label: string }[] = [
   { value: "name_asc", label: "Name A → Z" },
   { value: "name_desc", label: "Name Z → A" },
 ];
+
+/** The durations courses are actually advertised in, in weeks — the column's unit. */
+export const DURATION_WEEK_OPTIONS = [4, 8, 12, 16, 24, 26, 39, 52, 78, 104, 130, 156, 208, 260];

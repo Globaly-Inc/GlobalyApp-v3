@@ -21,6 +21,7 @@ import { latestTimestamp } from "../utils";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
 import { StudyOptionForm } from "./study-option-form";
+import { RowActors } from "./row-actors";
 import type { CourseLinks, ExtractionJob, StudyOption } from "../apis/types";
 
 type LinkedCourse = { id: string; name: string | null };
@@ -152,6 +153,7 @@ function StudyOptionCard({
             className="mt-2 h-8 text-xs"
           />
         )}
+        <RowActors row={option} className="border-t border-border pt-2" />
       </CardContent>
     </Card>
   );
