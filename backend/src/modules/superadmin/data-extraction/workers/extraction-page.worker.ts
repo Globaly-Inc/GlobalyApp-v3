@@ -14,7 +14,7 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { scrapeRenderedHtml } from "../lib/scraper.js";
 import { getPage, getDocument, isPdfUrl } from "../lib/page-store.js";
-import { truncateMarkdown, domainOf } from "../lib/html-utils.js";
+import { truncateMarkdown, domainOf, MIN_EXTRACTABLE_CHARS } from "../lib/html-utils.js";
 import { courseLinksByName, looksLikeCourseList, parseCourseList } from "../lib/courselist-parser.js";
 import { extractJson, setLlmContext, withLlmKind } from "../lib/llm-client.js";
 import {
@@ -450,6 +450,49 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
     const memoryStep = isVisaService
       ? "visa_service_extraction"
       : isIntakeSource ? "intakes" : "course_extraction";
+    // ── Too thin to be worth a course-extraction call ──
+    // Measured on a live Yale run: 65% of course_extraction calls returned zero courses, and the
+    // predictor was page SIZE, not URL shape (the same /ycps/courses/* family both yields and
+    // doesn't, so no pattern blocklist separates them). Under this threshold the page is
+    // navigation chrome — "/ycps/courses/litr" is 2,074 chars of menu, and its live HTML carries
+    // zero course codes, so nothing is being thrown away. That run: 74 wasted calls skipped, 2
+    // productive pages lost; 5,000 would save 19 more but cost 6.
+    //
+    // COURSE pages only. The threshold was tuned on course pages at one institution, and the other
+    // two shapes are exactly where "short" is normal rather than empty: an academic calendar under
+    // Context -> Intakes is a handful of term dates (and silently dropping those is a failure this
+    // module already shipped once — see CLAUDE.md (l)), and a consultancy's visa-service page can
+    // legitimately be a short description. Generalising one institution's course-page measurement
+    // to them would be guessing.
+    //
+    // Pagination above has already run, so a thin LISTING still queued its siblings; this only
+    // declines to ask the model about the page itself.
+    if (!isVisaService && !isIntakeSource && page.markdown.length < MIN_EXTRACTABLE_CHARS) {
+      logger.info("Page too thin for course extraction, skipping model call", { jobId, url, chars: page.markdown.length });
+      // Fenced like every other terminal write on this row (see writeIfOwned): this point is
+      // AFTER the claim and after a slow scrape, so a reclaim can have landed meanwhile. The
+      // blocklist skip this was first modelled on is allowed a bare update only because it runs
+      // BEFORE the item is ever claimed.
+      const owned = await writeIfOwned({
+        status: "completed",
+        extracted_data: JSON.stringify({ skipped: true, reason: "too_thin", chars: page.markdown.length }),
+        page_id: page.pageId,
+        page_content_hash: page.contentHash,
+        updated_at: masterKnex.fn.now(),
+      });
+      if (!owned) {
+        logger.info("Fenced out — a newer attempt owns this item, dropping stale thin-page skip", { jobId, queueItemId, url });
+        return;
+      }
+      await writeJobEvent(jobId, "page_skipped_thin", {
+        phase: "data_extraction",
+        message: `Skipped model call: ${url} has ${page.markdown.length} chars (under ${MIN_EXTRACTABLE_CHARS})`,
+        data: { url, chars: page.markdown.length, threshold: MIN_EXTRACTABLE_CHARS },
+      });
+      await checkAllPagesDone(jobId);
+      return;
+    }
+
     const recalled = await recallMemory(domain, memoryStep, markdown.slice(0, 500));
     const addendum = buildSystemAddendum(recalled);
 
