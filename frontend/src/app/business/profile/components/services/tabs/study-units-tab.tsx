@@ -19,15 +19,15 @@ const UNIT_TYPE_OPTIONS = [
 
 const EMPTY: ServiceStudyUnitInput = { unit_code: "", unit_name: "", credit_points: null, description: "", unit_type: "compulsory" };
 
-export function StudyUnitsTab({ serviceId }: Readonly<{ serviceId: string }>) {
+export function StudyUnitsTab({ serviceId, orgBase }: Readonly<{ serviceId: string; orgBase: string }>) {
   const [units, setUnits] = useState<ServiceStudyUnit[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<ServiceStudyUnitInput>(EMPTY);
   const [saving, setSaving] = useState(false);
 
-  const load = () => businessProfileDetailApi.serviceStudyUnits.list(serviceId).then(setUnits).finally(() => setLoading(false));
-  useEffect(() => { load(); }, [serviceId]);
+  const load = () => businessProfileDetailApi.serviceStudyUnits.list(serviceId, orgBase).then(setUnits).finally(() => setLoading(false));
+  useEffect(() => { load(); }, [serviceId, orgBase]);
 
   const canSave = form.unit_name.trim().length > 0;
 
@@ -35,7 +35,7 @@ export function StudyUnitsTab({ serviceId }: Readonly<{ serviceId: string }>) {
     if (!canSave) return;
     setSaving(true);
     try {
-      await businessProfileDetailApi.serviceStudyUnits.create(serviceId, form);
+      await businessProfileDetailApi.serviceStudyUnits.create(serviceId, form, orgBase);
       toast.success("Study unit added");
       setOpen(false);
       setForm(EMPTY);
@@ -49,7 +49,7 @@ export function StudyUnitsTab({ serviceId }: Readonly<{ serviceId: string }>) {
 
   const handleDelete = async (id: number) => {
     try {
-      await businessProfileDetailApi.serviceStudyUnits.remove(serviceId, id);
+      await businessProfileDetailApi.serviceStudyUnits.remove(serviceId, id, orgBase);
       setUnits((u) => u.filter((x) => x.id !== id));
     } catch (e) {
       toast.error("Couldn't remove study unit", { description: (e as Error).message });

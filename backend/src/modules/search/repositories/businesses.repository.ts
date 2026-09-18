@@ -28,6 +28,8 @@ const INSTITUTION_COLUMNS = [
   "i.status", "i.institution_type as category_name", "i.registration_number", "i.registration_licenses",
   // Profile-page extras: the media strips and the "Other Information" sidebar rows.
   "i.gallery_images", "i.video_urls", "i.company_size", "i.created_at",
+  // Read to decide which sections go out; stripped from the response before sending.
+  "i.public_visibility",
 ];
 
 /**
@@ -366,16 +368,25 @@ const INSTITUTION_LIST_COLUMNS = [
   // keyed by extraction job — null for an institution registered by hand, which just means
   // the dialog opens unfiltered.
   "i.source_job_id as job_id",
+  // Read only to redact below — the owner's toggles never go over the wire.
+  "i.public_visibility",
 ];
 
 function toPublicInstitution(r: PublicInstitutionRow) {
+  // The same owner toggles the detail endpoint honours. Enforcing them only there left Contact
+  // and Locations retrievable from the list and the saved-items lookup, which read this query.
+  // Absent key means public, matching the detail route.
+  const { public_visibility, ...row } = r as PublicInstitutionRow & { public_visibility?: Record<string, boolean> | null };
+  const showContact = public_visibility?.contact !== false;
+  const showLocations = public_visibility?.locations !== false;
   return withSlug({
-    ...r,
+    ...row,
+    ...(showContact ? {} : { website: null, email: null }),
     id: businessIdFragment(r.id),
     course_count: Number(r.course_count),
     subject_area_count: Number(r.subject_area_count),
     study_modes: r.study_modes ?? [],
-    campus_locations: r.campus_locations ?? [],
+    campus_locations: showLocations ? (r.campus_locations ?? []) : [],
   });
 }
 

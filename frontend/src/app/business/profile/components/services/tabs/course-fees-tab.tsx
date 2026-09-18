@@ -22,20 +22,20 @@ const EMPTY: ServiceFeeInput = {
   name: "", student_type: "both", period_type: "Per Year", currency: "AUD", total_amount: 0, installments: [],
 };
 
-export function CourseFeesTab({ serviceId }: Readonly<{ serviceId: string }>) {
+export function CourseFeesTab({ serviceId, orgBase }: Readonly<{ serviceId: string; orgBase: string }>) {
   const [fees, setFees] = useState<ServiceFee[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<ServiceFeeInput>(EMPTY);
   const [saving, setSaving] = useState(false);
 
-  const load = () => businessProfileDetailApi.serviceFees.list(serviceId).then(setFees).finally(() => setLoading(false));
-  useEffect(() => { load(); }, [serviceId]);
+  const load = () => businessProfileDetailApi.serviceFees.list(serviceId, orgBase).then(setFees).finally(() => setLoading(false));
+  useEffect(() => { load(); }, [serviceId, orgBase]);
 
   const handleAdd = async () => {
     setSaving(true);
     try {
-      await businessProfileDetailApi.serviceFees.create(serviceId, form);
+      await businessProfileDetailApi.serviceFees.create(serviceId, form, orgBase);
       toast.success("Fee added");
       setOpen(false);
       setForm(EMPTY);
@@ -49,7 +49,7 @@ export function CourseFeesTab({ serviceId }: Readonly<{ serviceId: string }>) {
 
   const handleDelete = async (id: number) => {
     try {
-      await businessProfileDetailApi.serviceFees.remove(serviceId, id);
+      await businessProfileDetailApi.serviceFees.remove(serviceId, id, orgBase);
       setFees((f) => f.filter((x) => x.id !== id));
     } catch (e) {
       toast.error("Couldn't remove fee", { description: (e as Error).message });

@@ -462,6 +462,8 @@ const DETAIL_COLUMNS = [
   "inst.facebook_url as institution_facebook_url", "inst.instagram_url as institution_instagram_url",
   "inst.twitter_url as institution_twitter_url", "inst.linkedin_url as institution_linkedin_url",
   "inst.youtube_url as institution_youtube_url",
+  // Read only to redact in the route — the owner's toggles never go over the wire.
+  "inst.public_visibility as institution_public_visibility",
   "c.weather_summer", "c.weather_autumn", "c.weather_winter", "c.weather_spring",
 ];
 

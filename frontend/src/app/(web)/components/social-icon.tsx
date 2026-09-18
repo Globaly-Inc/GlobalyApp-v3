@@ -1,6 +1,8 @@
 import { SOCIAL_ICON_PATHS } from "../const/index";
 
-export type SocialName = "facebook" | "twitter" | "linkedin" | "instagram" | "youtube";
+export type SocialName =
+  | "facebook" | "twitter" | "linkedin" | "instagram" | "youtube"
+  | "tiktok" | "whatsapp" | "threads" | "messenger" | "telegram" | "line" | "viber";
 
 export function SocialIcon({ name, className }: Readonly<{ name: SocialName; className?: string }>) {
   return (

@@ -303,6 +303,8 @@ export type InstitutionDetail = SearchBusiness & {
   video_urls: string[] | null;
   /** Signed preview URLs for `gallery_images`, resolved server-side. */
   gallery_image_urls?: (string | null)[];
+  /** False when the owner set the Locations card to Private — `campuses` also arrives empty. */
+  show_locations?: boolean;
   campuses: InstitutionCampus[];
   representatives: InstitutionRepresentative[];
   members: InstitutionMember[];
@@ -423,6 +425,8 @@ export type BusinessDetail = SearchBusiness & {
   twitter_url: string | null;
   linkedin_url: string | null;
   youtube_url: string | null;
+  /** False when the owner set the Locations card to Private — `branches` also arrives empty. */
+  show_locations?: boolean;
   branches: BusinessBranch[];
   members: BusinessMember[];
   services: BusinessService[];

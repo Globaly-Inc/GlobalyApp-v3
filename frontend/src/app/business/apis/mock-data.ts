@@ -1,4 +1,5 @@
 import type {
+  AiAssistInput, AiAssistResult,
   BusinessCategoryOption, BusinessProfile, BusinessProfilePatch, BusinessRegisterInput,
   RegisterBusinessResult, InstitutionRegisterInput, RegisterInstitutionResult,
 } from "./types";
@@ -18,8 +19,10 @@ let mockProfile: BusinessProfile = {
   schema_name: "mock-org-id",
   business_name: "Mock Agency",
   subdomain: "mock-agency",
-  business_type: null,
-  business_category_id: null,
+  business_type: "agent",
+  business_category_id: 1,
+  business_category_name: "Education Consultancy",
+  business_category_icon: "Building2",
   email: null,
   phone: null,
   logo_url: null,
@@ -124,5 +127,16 @@ export const businessMockApi = {
     await delay(200);
     if (!search) return MOCK_BUSINESS_CATEGORIES;
     return MOCK_BUSINESS_CATEGORIES.filter((c) => c.label.toLowerCase().includes(search.toLowerCase()));
+  },
+
+  aiAssist: async (input: AiAssistInput): Promise<AiAssistResult> => {
+    console.log("[mock] POST /businesses/me/ai-assist", input);
+    await delay(900);
+    return {
+      text:
+        `${input.business_name ?? "This business"} helps students turn study-abroad plans into ` +
+        "offers, guiding them from shortlisting courses through applications and visas. " +
+        "Every step is handled by counsellors who know the destination first-hand.",
+    };
   },
 };

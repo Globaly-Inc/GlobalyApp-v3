@@ -28,13 +28,20 @@ export async function searchCoursesRoutes(app: FastifyInstance) {
       job_id, institution_id, institution_name, institution_cover_url, institution_website, institution_city,
       institution_gallery_images,
       institution_facebook_url, institution_instagram_url, institution_twitter_url,
-      institution_linkedin_url, institution_youtube_url,
+      institution_linkedin_url, institution_youtube_url, institution_public_visibility,
       weather_summer, weather_autumn, weather_winter, weather_spring, ...rest
     } = course;
 
-    const [card, campuses, coverUrl, galleryUrls, cityLink] = await Promise.all([
+    // The same owner toggles the institution profile honours — a course page is another public
+    // view of the same institution, so hiding Contact or Locations there has to hide them here.
+    // Absent key means public, matching /search/institutions/:slug.
+    const visibility = institution_public_visibility as Record<string, boolean> | null;
+    const showContact = visibility?.contact !== false;
+    const showLocations = visibility?.locations !== false;
+
+    const [card, rawCampuses, coverUrl, galleryUrls, cityLink] = await Promise.all([
       withCardFields(rest),
-      job_id ? repo.listCourseCampuses(course.id, job_id) : [],
+      job_id && showLocations ? repo.listCourseCampuses(course.id, job_id) : [],
       storage.resolvePreviewUrl(institution_cover_url ?? null),
       Promise.all(((institution_gallery_images ?? []) as string[]).map((key) => storage.resolvePreviewUrl(key))),
       repo.findCityLink(institution_city ?? null, course.country_code ?? null),
@@ -42,6 +49,11 @@ export async function searchCoursesRoutes(app: FastifyInstance) {
 
     // The institution's public slug is name + its zero-padded id, the same scheme
     // findPublicInstitutionBySlug parses back — so the hero can link straight to its profile.
+    // Campus address/phone/email are contact details wherever they surface.
+    const campuses = showContact
+      ? rawCampuses
+      : rawCampuses.map((c) => ({ ...c, address: null, phone: null, email: null }));
+
     const institution = institution_id
       ? {
         id: String(institution_id),
@@ -49,7 +61,7 @@ export async function searchCoursesRoutes(app: FastifyInstance) {
         name: institution_name,
         logo_url: card.institution_logo_url,
         cover_url: coverUrl,
-        website: institution_website,
+        website: showContact ? institution_website : null,
         city: institution_city,
         gallery_image_urls: galleryUrls,
         facebook_url: institution_facebook_url,
