@@ -139,6 +139,9 @@ export async function snapshotRunOutcome(
 /** Pages per step message. A crash mid-step loses one batch, not the whole site, and the
  *  concurrent STEPS consumer works batches in parallel. */
 export const SNAPSHOT_BATCH_SIZE = 100;
+/** Pages in flight per batch. ponytail: 4 is polite for one edu host and cuts a 500-page site
+ *  from ~an hour to ~15 minutes; set SNAPSHOT_CONCURRENCY=2 if a site starts answering 429. */
+const SNAPSHOT_CONCURRENCY = Math.max(1, Number(process.env.SNAPSHOT_CONCURRENCY) || 4);
 
 async function jobHalted(jobId: string): Promise<boolean> {
   const job = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId })
@@ -156,27 +159,37 @@ export async function snapshotSite(jobId: string, urls: string[], batch?: Snapsh
   let processed = 0;
   let halted = false;
   const failed: string[] = [];
-  for (const url of urls) {
-    if (processed % 25 === 0) {
-      if (await jobHalted(jobId)) { halted = true; break; }
-      await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({ processing_heartbeat_at: masterKnex.fn.now() });
-    }
-    processed++;
+  /** One page: scrape (through the store), upload. Returns whether the scraper was hit. */
+  async function snapshotOne(url: string): Promise<boolean> {
     try {
       // ponytail: no retry here — Scrapling already walks get → stealthy_fetch → browser fetch
       // internally, and a Firecrawl escalation would bill credits the account may not have.
       const page = await getPage(url, { onlyMainContent: true, withLinks: true });
-      if (page.blocked || page.notFound || page.markdown.length < 50) { failed.push(url); continue; }
+      if (page.blocked || page.notFound || page.markdown.length < 50) { failed.push(url); return !page.fromCache; }
       const files = fileLinksOf(page.links);
       const body = `---\nurl: ${url}\njob_id: ${jobId}\nscraped_at: ${new Date().toISOString()}\n---\n\n${page.markdown}\n`
         + (files.length ? `\n## Linked files\n\n${files.map((f) => `- ${f}`).join("\n")}\n` : "");
       await uploadFile(snapshotPathFor(url), Buffer.from(body, "utf8"), "text/markdown");
       uploaded++;
-      if (!page.fromCache) await politeDelay(300, 900);
+      return !page.fromCache;
     } catch (err) {
       failed.push(url);
       logger.warn("Snapshot failed", { jobId, url, err: String(err) });
+      return true;
     }
+  }
+  // Halt gate and heartbeat every ~25 pages, checked at a chunk boundary so a stop request is
+  // seen within one chunk's worth of work.
+  const gateEvery = Math.ceil(25 / SNAPSHOT_CONCURRENCY) * SNAPSHOT_CONCURRENCY;
+  for (let i = 0; i < urls.length; i += SNAPSHOT_CONCURRENCY) {
+    if (processed % gateEvery === 0) {
+      if (await jobHalted(jobId)) { halted = true; break; }
+      await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({ processing_heartbeat_at: masterKnex.fn.now() });
+    }
+    const chunk = urls.slice(i, i + SNAPSHOT_CONCURRENCY);
+    processed += chunk.length;
+    const fetched = await Promise.all(chunk.map(snapshotOne));
+    if (fetched.some(Boolean)) await politeDelay(300, 900);
   }
   await writeJobEvent(jobId, "site_snapshot_uploaded", {
     phase: "site_mapping",

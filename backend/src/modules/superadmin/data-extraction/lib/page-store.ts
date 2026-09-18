@@ -13,7 +13,7 @@ import { createChildLogger } from "../../../../shared/logger.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { scrapeMarkdown, type ScrapeOptions, type ScrapeResult } from "./scraper.js";
 import { createDocumentExtractor } from "./document-extractor.js";
-import { domainOf } from "./html-utils.js";
+import { domainOf, stripMarkdownJunk } from "./html-utils.js";
 
 const logger = createChildLogger("page-store");
 const TABLE = `${S}.extraction_pages`;
@@ -22,7 +22,7 @@ const TABLE = `${S}.extraction_pages`;
 const ENABLED = process.env.PAGE_SNAPSHOTS !== "0";
 /** Fees and intakes move on a yearly cycle; 30 days is conservative for all of them. */
 const DEFAULT_MAX_AGE_DAYS = Number(process.env.PAGE_SNAPSHOT_MAX_AGE_DAYS) || 30;
-/** Nothing real is this big after stripMarkdownJunk; a hostile page must not be either. */
+/** Nothing real is this big after stripMarkdownJunk (applied in getPage); a hostile page must not be either. */
 const MAX_STORED_CHARS = 1_000_000;
 /** Same floor every caller already applies. */
 const MIN_USABLE_CHARS = 50;
@@ -158,7 +158,10 @@ export async function getPage(url: string, opts: PageOptions = {}): Promise<Page
 
   // Links are always extracted for the row, so a later caller that wants them gets them;
   // the caller that asked for none still gets none, exactly as scrapeMarkdown behaves.
-  const result = await _pageDeps.scrape(url, { ...scrapeOpts, withLinks: true });
+  const scraped = await _pageDeps.scrape(url, { ...scrapeOpts, withLinks: true });
+  // Cleaned ONCE here, so the row, the GCS snapshot and every reader see the same text and
+  // content_hash does not flip on a rotated base64 favicon or an HTML comment.
+  const result = { ...scraped, markdown: stripMarkdownJunk(scraped.markdown) };
   const links = opts.withLinks ? result.links : [];
   if (result.blocked || result.notFound || !usable(result.markdown)) {
     return { ...result, links, pageId: null, contentHash: null, fromCache: false, changed: false };
