@@ -12,6 +12,16 @@ import { cn } from "@/lib/utils";
  * Each chevron only appears when there is something to scroll to in that direction. Wheel, trackpad
  * and touch scrolling still work, so the arrows are an affordance, not the only way through.
  */
+/**
+ * Width of one chevron gutter: the `h-4` icon (1rem) plus the container's `gap-0.5` (0.125rem).
+ * The gutters are reserved whether or not a chevron is visible, so the row's content always sits
+ * this far inside the ScrollRow's own box. A caller that needs that content flush with full-width
+ * siblings pulls the whole rail out by this much — see `<ProfileLocationsCard>`.
+ *
+ * Tailwind needs literal class strings, so callers write `-mx-[1.125rem]`; keep the two in step.
+ */
+export const SCROLL_ROW_GUTTER = "1.125rem";
+
 export function ScrollRow({
   className, rowClassName, children,
 }: Readonly<{ className?: string; rowClassName?: string; children: ReactNode }>) {

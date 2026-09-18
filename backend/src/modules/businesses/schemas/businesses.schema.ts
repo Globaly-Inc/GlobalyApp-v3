@@ -21,6 +21,10 @@ export const BusinessRegisterSchema = z.object({
 const REQUIRED = "This field is required";
 
 export const BusinessProfilePatchSchema = z.object({
+  // Editable from the profile's General Information card. Not nullable like most fields here:
+  // the schema is `.strict()`, so an absent key is how you leave the name alone — a null one
+  // would be a request to blank the listing's only human-readable identifier.
+  business_name: z.string().trim().min(1, REQUIRED).max(200),
   business_type: z.enum(BUSINESS_TYPES).nullable(),
   business_category_id: z.number().int().positive().nullable(),
   description: z.string().min(1, REQUIRED).max(5000).nullable(),

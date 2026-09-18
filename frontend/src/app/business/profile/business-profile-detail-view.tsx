@@ -6,14 +6,14 @@ import { toast } from "sonner";
 import { Eye, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-// import { Switch } from "@/components/ui/switch";
+import { Switch } from "@/components/ui/switch";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { geoApi, type Country } from "@/app/geo/apis";
 import { fetchMe, useAuthState, switchAccount } from "@/app/auth/store/auth-slice";
 import { fetchMyProfile, updateMyProfile } from "@/app/business/store/business-onboarding-slice";
 import { businessApi } from "@/app/business/apis";
-import type { BusinessProfilePatch } from "../apis/types";
-import { BusinessDetailsDialog } from "./business-details-dialog";
+import type { SocialLinks } from "@/app/business/apis/types";
+import { SocialLinksDialog } from "./components/social-links-dialog";
 import { BranchesTab } from "./components/tabs/branches-tab";
 import { ServicesTab } from "./components/tabs/services-tab";
 import { PartnersTab } from "./components/tabs/partners-tab";
@@ -35,9 +35,10 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
   const router = useRouter();
   const searchParams = useSearchParams();
   const dispatch = useAppDispatch();
-  const { profile, status } = useAppSelector((state) => state.businessOnboarding);
+  const { profile } = useAppSelector((state) => state.businessOnboarding);
   const [countries, setCountries] = useState<Country[]>([]);
-  const [detailsOpen, setDetailsOpen] = useState(false);
+  const [socialOpen, setSocialOpen] = useState(false);
+  const [savingSocials, setSavingSocials] = useState(false);
   const [contextReady, setContextReady] = useState(false);
   const [imageUploading, setImageUploading] = useState<"logo" | "cover" | null>(null);
   const [previewMode, setPreviewMode] = useState(false);
@@ -120,17 +121,6 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
     );
   }
 
-  const saving = status === "saving";
-
-  const handleSaveDetails = async (patch: BusinessProfilePatch) => {
-    const result = await dispatch(updateMyProfile(patch));
-    if (updateMyProfile.rejected.match(result)) {
-      toast.error("Couldn't save", { description: result.error.message ?? "Please try again." });
-      return false;
-    }
-    return true;
-  };
-
   const handleImageFile = async (category: "logo" | "cover", file: File) => {
     setImageUploading(category);
     try {
@@ -143,46 +133,66 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
     }
   };
 
-  // const handleTogglePublished = async (is_published: boolean) => {
-  //   const result = await dispatch(updateMyProfile({ is_published }));
-  //   if (updateMyProfile.rejected.match(result)) {
-  //     toast.error("Couldn't update", { description: result.error.message ?? "Please try again." });
-  //     return;
-  //   }
-  //   toast.success(is_published ? "Profile published" : "Profile unpublished");
-  // };
+  const handleTogglePublished = async (is_published: boolean) => {
+    const result = await dispatch(updateMyProfile({ is_published }));
+    if (updateMyProfile.rejected.match(result)) {
+      toast.error("Couldn't update", { description: result.error.message ?? "Please try again." });
+      return;
+    }
+    toast.success(is_published ? "Profile published" : "Profile unpublished");
+  };
+
+  const handleSaveSocials = async (patch: Partial<SocialLinks>) => {
+    setSavingSocials(true);
+    try {
+      await dispatch(updateMyProfile(patch)).unwrap();
+      toast.success("Social links updated");
+      return true;
+    } catch (e) {
+      toast.error("Couldn't save social links", { description: (e as Error).message });
+      return false;
+    } finally {
+      setSavingSocials(false);
+    }
+  };
 
   return (
-    <div className="space-y-4">
-      {tab === "profile" && (
-      <>
-      <div className="flex items-center justify-end gap-3">
-        <Button variant="outline" size="sm" onClick={() => setPreviewMode((v) => !v)}>
-          <Eye className="mr-1.5 h-3.5 w-3.5" /> {previewMode ? "Exit preview" : "Preview"}
-        </Button>
-        {/* <div className="flex items-center gap-2">
-          <span className="text-sm text-muted-foreground">{profile.is_published ? "Published" : "Unpublished"}</span>
-          <Switch checked={profile.is_published} onCheckedChange={handleTogglePublished} />
-        </div> */}
-      </div>
+    <div className="space-y-4 md:space-y-6">
+      {/* V1's profile body is a column of bordered cards, not one card wrapping everything — so
+          only the other tabs, which are tables and lists, keep the outer <Card>. */}
+      {tab === "profile" ? (
+        <>
+          <div className="flex flex-wrap items-center justify-end gap-3">
+            <Button variant="outline" size="sm" onClick={() => setPreviewMode((v) => !v)}>
+              <Eye className="mr-1.5 h-3.5 w-3.5" /> {previewMode ? "Exit preview" : "Preview"}
+            </Button>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-muted-foreground">{profile.is_published ? "Published" : "Unpublished"}</span>
+              <Switch checked={profile.is_published} onCheckedChange={handleTogglePublished} />
+            </div>
+          </div>
 
-      <ProfileHeaderCard
-        profile={profile}
-        countries={countries}
-        previewMode={previewMode}
-        onCoverFile={(file) => handleImageFile("cover", file)}
-        coverUploading={imageUploading === "cover"}
-        onLogoFile={(file) => handleImageFile("logo", file)}
-        logoUploading={imageUploading === "logo"}
-        onEditDetails={() => setDetailsOpen(true)}
-      />
-      </>
-      )}
+          <ProfileHeaderCard
+            profile={profile}
+            countries={countries}
+            previewMode={previewMode}
+            onCoverFile={(file) => handleImageFile("cover", file)}
+            coverUploading={imageUploading === "cover"}
+            onLogoFile={(file) => handleImageFile("logo", file)}
+            logoUploading={imageUploading === "logo"}
+            onEditSocials={() => setSocialOpen(true)}
+          />
 
-      <div>
+          <ProfileTab
+            profile={profile}
+            countries={countries}
+            readOnly={previewMode}
+            isInstitution={isViewingInstitution}
+          />
+        </>
+      ) : (
         <Card>
           <CardContent>
-            {tab === "profile" && <ProfileTab profile={profile} countries={countries} readOnly={previewMode} />}
             {tab === "branches" && <BranchesTab businessId={businessId} isInstitution={isViewingInstitution} />}
             {tab === "partners" && (
               <PartnersTab businessId={businessId} businessName={profile.business_name} isInstitution={isViewingInstitution} />
@@ -193,15 +203,14 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
             {tab === "activity" && <ActivityTab businessId={businessId} />}
           </CardContent>
         </Card>
-      </div>
+      )}
 
-      <BusinessDetailsDialog
-        open={detailsOpen}
-        onOpenChange={setDetailsOpen}
+      <SocialLinksDialog
+        open={socialOpen}
+        onOpenChange={setSocialOpen}
         profile={profile}
-        countries={countries}
-        onSave={handleSaveDetails}
-        saving={saving}
+        onSave={handleSaveSocials}
+        saving={savingSocials}
       />
     </div>
   );
