@@ -17,20 +17,20 @@ const EMPTY: ServiceIntakeInput = {
   intake_month: null, intake_year: null,
 };
 
-export function IntakesTab({ serviceId }: Readonly<{ serviceId: string }>) {
+export function IntakesTab({ serviceId, orgBase }: Readonly<{ serviceId: string; orgBase: string }>) {
   const [intakes, setIntakes] = useState<ServiceIntake[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<ServiceIntakeInput>(EMPTY);
   const [saving, setSaving] = useState(false);
 
-  const load = () => businessProfileDetailApi.serviceIntakes.list(serviceId).then(setIntakes).finally(() => setLoading(false));
-  useEffect(() => { load(); }, [serviceId]);
+  const load = () => businessProfileDetailApi.serviceIntakes.list(serviceId, orgBase).then(setIntakes).finally(() => setLoading(false));
+  useEffect(() => { load(); }, [serviceId, orgBase]);
 
   const handleAdd = async () => {
     setSaving(true);
     try {
-      await businessProfileDetailApi.serviceIntakes.create(serviceId, form);
+      await businessProfileDetailApi.serviceIntakes.create(serviceId, form, orgBase);
       toast.success("Intake added");
       setOpen(false);
       setForm(EMPTY);
@@ -44,7 +44,7 @@ export function IntakesTab({ serviceId }: Readonly<{ serviceId: string }>) {
 
   const handleDelete = async (id: number) => {
     try {
-      await businessProfileDetailApi.serviceIntakes.remove(serviceId, id);
+      await businessProfileDetailApi.serviceIntakes.remove(serviceId, id, orgBase);
       setIntakes((i) => i.filter((x) => x.id !== id));
     } catch (e) {
       toast.error("Couldn't remove intake", { description: (e as Error).message });

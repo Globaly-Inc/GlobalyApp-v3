@@ -1,4 +1,4 @@
-import { httpDelete, httpGet, httpPatch, httpPost, httpPut } from "@/lib/api/http";
+import { httpDelete, httpGet, httpPatch, httpPost, httpPostForm, httpPut } from "@/lib/api/http";
 import type {
   Accreditation, Category, Lookup, LookupKind, Paginated, SearchListParams,
 } from "@/app/admin/platform/categories/apis/types";
@@ -17,14 +17,18 @@ import type {
 } from "./types";
 
 /** Generic list/create/update/delete client for one service child resource — same shape for
- * fees/intakes/eligibility/study-options/study-units, just a different path segment. */
+ * fees/intakes/eligibility/study-options/study-units, just a different path segment. `orgBase`
+ * routes an institution session to /institutions/services/... instead of /businesses/services/...
+ * (same table, different owning entity — see business-profile-detail-slice.ts's getOrgBase). */
 function childResourceApi<TRow, TInput, TPatch>(path: string) {
   return {
-    list: (serviceId: string): Promise<TRow[]> => httpGet(`${BASE}/services/${serviceId}/${path}`),
-    create: (serviceId: string, input: TInput): Promise<TRow> => httpPost(`${BASE}/services/${serviceId}/${path}`, input),
-    update: (serviceId: string, id: number, patch: TPatch): Promise<TRow> =>
-      httpPatch(`${BASE}/services/${serviceId}/${path}/${id}`, patch),
-    remove: (serviceId: string, id: number): Promise<void> => httpDelete(`${BASE}/services/${serviceId}/${path}/${id}`),
+    list: (serviceId: string, orgBase = BASE): Promise<TRow[]> => httpGet(`${orgBase}/services/${serviceId}/${path}`),
+    create: (serviceId: string, input: TInput, orgBase = BASE): Promise<TRow> =>
+      httpPost(`${orgBase}/services/${serviceId}/${path}`, input),
+    update: (serviceId: string, id: number, patch: TPatch, orgBase = BASE): Promise<TRow> =>
+      httpPatch(`${orgBase}/services/${serviceId}/${path}/${id}`, patch),
+    remove: (serviceId: string, id: number, orgBase = BASE): Promise<void> =>
+      httpDelete(`${orgBase}/services/${serviceId}/${path}/${id}`),
   };
 }
 
@@ -130,18 +134,27 @@ export const businessProfileDetailRealApi = {
     httpPost(`${BASE}/branches/link-existing`, input),
   deleteBranch: (branchId: string, orgBase = BASE): Promise<void> => httpDelete(`${orgBase}/branches/${branchId}`),
 
-  searchServices: async (params: ServiceSearchParams = {}): Promise<ServiceSearchResult> => {
-    const { data, meta } = await httpGet<{ data: BusinessService[]; meta: { total: number } }>(`${BASE}/services/search${toServiceSearchQuery(params)}`);
+  searchServices: async (params: ServiceSearchParams = {}, orgBase = BASE): Promise<ServiceSearchResult> => {
+    const { data, meta } = await httpGet<{ data: BusinessService[]; meta: { total: number } }>(`${orgBase}/services/search${toServiceSearchQuery(params)}`);
     return { data, total: meta.total };
   },
-  createService: (input: ServiceInput): Promise<BusinessService> => httpPost(`${BASE}/services`, input),
-  updateService: (serviceId: string, patch: ServicePatch): Promise<BusinessService> =>
-    httpPatch(`${BASE}/services/${serviceId}`, patch),
-  deleteService: (serviceId: string): Promise<void> => httpDelete(`${BASE}/services/${serviceId}`),
-  getServiceFieldValues: (serviceId: string): Promise<SchemaFieldValue[]> =>
-    httpGet(`${BASE}/services/${serviceId}/field-values`),
-  updateServiceFieldValues: (serviceId: string, values: SchemaFieldValue[]): Promise<SchemaFieldValue[]> =>
-    httpPut(`${BASE}/services/${serviceId}/field-values`, { values }),
+  createService: (input: ServiceInput, orgBase = BASE): Promise<BusinessService> => httpPost(`${orgBase}/services`, input),
+  updateService: (serviceId: string, patch: ServicePatch, orgBase = BASE): Promise<BusinessService> =>
+    httpPatch(`${orgBase}/services/${serviceId}`, patch),
+  deleteService: (serviceId: string, orgBase = BASE): Promise<void> => httpDelete(`${orgBase}/services/${serviceId}`),
+  uploadServiceCover: (serviceId: string, file: File, orgBase = BASE): Promise<BusinessService> => {
+    const form = new FormData();
+    form.append("file", file);
+    return httpPostForm(`${orgBase}/services/${serviceId}/cover`, form);
+  },
+  // 204, like every other delete here — the caller clears `cover_url` in its own state.
+  removeServiceCover: (serviceId: string, orgBase = BASE): Promise<void> =>
+    httpDelete(`${orgBase}/services/${serviceId}/cover`),
+
+  getServiceFieldValues: (serviceId: string, orgBase = BASE): Promise<SchemaFieldValue[]> =>
+    httpGet(`${orgBase}/services/${serviceId}/field-values`),
+  updateServiceFieldValues: (serviceId: string, values: SchemaFieldValue[], orgBase = BASE): Promise<SchemaFieldValue[]> =>
+    httpPut(`${orgBase}/services/${serviceId}/field-values`, { values }),
 
   getMembers: async (params: MemberListParams = {}): Promise<MemberListResult> => {
     const { data, meta } = await httpGet<{ data: Member[]; meta: { total: number } }>(`${BASE}/members${toMemberQuery(params)}`);
@@ -207,17 +220,17 @@ export const businessProfileDetailRealApi = {
   serviceStudyOptions: childResourceApi<ServiceStudyOption, ServiceStudyOptionInput, ServiceStudyOptionPatch>("study-options"),
   serviceStudyUnits: childResourceApi<ServiceStudyUnit, ServiceStudyUnitInput, ServiceStudyUnitPatch>("study-units"),
 
-  getServiceAccreditations: (serviceId: string): Promise<ServiceAccreditationLink[]> =>
-    httpGet(`${BASE}/services/${serviceId}/accreditations`),
-  linkServiceAccreditation: (serviceId: string, accreditation_id: number): Promise<ServiceAccreditationLink> =>
-    httpPost(`${BASE}/services/${serviceId}/accreditations`, { accreditation_id }),
-  unlinkServiceAccreditation: (serviceId: string, id: number): Promise<void> =>
-    httpDelete(`${BASE}/services/${serviceId}/accreditations/${id}`),
+  getServiceAccreditations: (serviceId: string, orgBase = BASE): Promise<ServiceAccreditationLink[]> =>
+    httpGet(`${orgBase}/services/${serviceId}/accreditations`),
+  linkServiceAccreditation: (serviceId: string, accreditation_id: number, orgBase = BASE): Promise<ServiceAccreditationLink> =>
+    httpPost(`${orgBase}/services/${serviceId}/accreditations`, { accreditation_id }),
+  unlinkServiceAccreditation: (serviceId: string, id: number, orgBase = BASE): Promise<void> =>
+    httpDelete(`${orgBase}/services/${serviceId}/accreditations/${id}`),
 
-  getServiceCategories: (params: SearchListParams = {}): Promise<Paginated<Category>> =>
-    httpGet(`${BASE}/service-categories${toSearchListQuery({ limit: 10, ...params })}`),
-  getLookups: (kind: LookupKind, params: SearchListParams = {}): Promise<Paginated<Lookup>> =>
-    httpGet(`${BASE}/${kind}${toSearchListQuery(params)}`),
-  getAccreditations: (params: SearchListParams = {}): Promise<Paginated<Accreditation>> =>
-    httpGet(`${BASE}/accreditations${toSearchListQuery(params)}`),
+  getServiceCategories: (params: SearchListParams = {}, orgBase = BASE): Promise<Paginated<Category>> =>
+    httpGet(`${orgBase}/service-categories${toSearchListQuery({ limit: 10, ...params })}`),
+  getLookups: (kind: LookupKind, params: SearchListParams = {}, orgBase = BASE): Promise<Paginated<Lookup>> =>
+    httpGet(`${orgBase}/${kind}${toSearchListQuery(params)}`),
+  getAccreditations: (params: SearchListParams = {}, orgBase = BASE): Promise<Paginated<Accreditation>> =>
+    httpGet(`${orgBase}/accreditations${toSearchListQuery(params)}`),
 };

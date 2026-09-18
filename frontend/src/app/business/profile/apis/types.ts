@@ -66,6 +66,8 @@ export type BusinessService = {
   price: string | null;
   is_published: boolean;
   public_visibility: Record<string, boolean> | null;
+  /** The service's own cover, already signed into a viewable URL. Null means "use the org's cover". */
+  cover_url: string | null;
   created_at: string;
   updated_at: string;
   degree_level: string | null;

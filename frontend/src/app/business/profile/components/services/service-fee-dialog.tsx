@@ -10,8 +10,9 @@ import { CourseFeesTab } from "./tabs/course-fees-tab";
  */
 export function ServiceFeeDialog({
   service,
+  orgBase,
   onOpenChange,
-}: Readonly<{ service: BusinessService | null; onOpenChange: (open: boolean) => void }>) {
+}: Readonly<{ service: BusinessService | null; orgBase: string; onOpenChange: (open: boolean) => void }>) {
   return (
     <Dialog open={!!service} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-2xl">
@@ -19,7 +20,7 @@ export function ServiceFeeDialog({
           <DialogTitle>Fees — {service?.name}</DialogTitle>
         </DialogHeader>
         {/* Keyed on the service so switching rows remounts the tab instead of showing stale fees. */}
-        {service && <CourseFeesTab key={service.id} serviceId={service.id} />}
+        {service && <CourseFeesTab key={service.id} serviceId={service.id} orgBase={orgBase} />}
       </DialogContent>
     </Dialog>
   );

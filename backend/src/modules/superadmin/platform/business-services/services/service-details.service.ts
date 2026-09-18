@@ -54,3 +54,57 @@ export async function unlinkAccreditation(businessId: number, serviceId: string,
   const biz = await requireBusiness(businessId);
   await repo.unlinkAccreditation(businessId, biz.schema_name, serviceId, id);
 }
+
+// ─── Institution twins ──────────────────────────────────────────────────────
+// Same child tables, same repository functions — only the owning-entity lookup differs,
+// mirroring business-services.service.ts's own "Institution twins" section.
+
+async function requireInstitution(institutionId: number) {
+  const inst = await platformRepo.findInstitutionById(institutionId);
+  if (!inst) throw new NotFoundError("Institution not found");
+  return inst;
+}
+
+function makeChildInstitutionService(childRepo: typeof repo.feesRepo) {
+  return {
+    list: async (institutionId: number, serviceId: string) => {
+      const inst = await requireInstitution(institutionId);
+      return childRepo.list(institutionId, inst.schema_name, serviceId);
+    },
+    create: async (institutionId: number, serviceId: string, data: Record<string, unknown>) => {
+      const inst = await requireInstitution(institutionId);
+      return childRepo.create(institutionId, inst.schema_name, serviceId, data);
+    },
+    update: async (institutionId: number, serviceId: string, id: number, data: Record<string, unknown>) => {
+      const inst = await requireInstitution(institutionId);
+      const row = await childRepo.update(institutionId, inst.schema_name, serviceId, id, data);
+      if (!row) throw new NotFoundError("Not found");
+      return row;
+    },
+    remove: async (institutionId: number, serviceId: string, id: number) => {
+      const inst = await requireInstitution(institutionId);
+      await childRepo.remove(institutionId, inst.schema_name, serviceId, id);
+    },
+  };
+}
+
+export const institutionFees = makeChildInstitutionService(repo.feesRepo);
+export const institutionIntakes = makeChildInstitutionService(repo.intakesRepo);
+export const institutionEligibility = makeChildInstitutionService(repo.eligibilityRepo);
+export const institutionStudyOptions = makeChildInstitutionService(repo.studyOptionsRepo);
+export const institutionStudyUnits = makeChildInstitutionService(repo.studyUnitsRepo);
+
+export async function listInstitutionAccreditations(institutionId: number, serviceId: string) {
+  const inst = await requireInstitution(institutionId);
+  return repo.listAccreditations(institutionId, inst.schema_name, serviceId);
+}
+
+export async function linkInstitutionAccreditation(institutionId: number, serviceId: string, accreditationId: number) {
+  const inst = await requireInstitution(institutionId);
+  return repo.linkAccreditation(institutionId, inst.schema_name, serviceId, accreditationId);
+}
+
+export async function unlinkInstitutionAccreditation(institutionId: number, serviceId: string, id: number) {
+  const inst = await requireInstitution(institutionId);
+  await repo.unlinkAccreditation(institutionId, inst.schema_name, serviceId, id);
+}

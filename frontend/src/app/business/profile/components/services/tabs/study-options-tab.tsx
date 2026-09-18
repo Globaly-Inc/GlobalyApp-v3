@@ -32,20 +32,20 @@ const EMPTY: ServiceStudyOptionInput = {
   name: "", study_mode: "on_campus", study_load: "full_time", duration_value: null, duration_unit: "months", applicable_to: "both",
 };
 
-export function StudyOptionsTab({ serviceId }: Readonly<{ serviceId: string }>) {
+export function StudyOptionsTab({ serviceId, orgBase }: Readonly<{ serviceId: string; orgBase: string }>) {
   const [options, setOptions] = useState<ServiceStudyOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<ServiceStudyOptionInput>(EMPTY);
   const [saving, setSaving] = useState(false);
 
-  const load = () => businessProfileDetailApi.serviceStudyOptions.list(serviceId).then(setOptions).finally(() => setLoading(false));
-  useEffect(() => { load(); }, [serviceId]);
+  const load = () => businessProfileDetailApi.serviceStudyOptions.list(serviceId, orgBase).then(setOptions).finally(() => setLoading(false));
+  useEffect(() => { load(); }, [serviceId, orgBase]);
 
   const handleAdd = async () => {
     setSaving(true);
     try {
-      await businessProfileDetailApi.serviceStudyOptions.create(serviceId, form);
+      await businessProfileDetailApi.serviceStudyOptions.create(serviceId, form, orgBase);
       toast.success("Study option added");
       setOpen(false);
       setForm(EMPTY);
@@ -59,7 +59,7 @@ export function StudyOptionsTab({ serviceId }: Readonly<{ serviceId: string }>) 
 
   const handleDelete = async (id: number) => {
     try {
-      await businessProfileDetailApi.serviceStudyOptions.remove(serviceId, id);
+      await businessProfileDetailApi.serviceStudyOptions.remove(serviceId, id, orgBase);
       setOptions((o) => o.filter((x) => x.id !== id));
     } catch (e) {
       toast.error("Couldn't remove study option", { description: (e as Error).message });

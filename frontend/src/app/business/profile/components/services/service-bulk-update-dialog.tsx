@@ -28,11 +28,13 @@ export function ServiceBulkUpdateDialog({
   open,
   onOpenChange,
   selectedIds,
+  orgBase,
   onUpdated,
 }: Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
   selectedIds: string[];
+  orgBase: string;
   onUpdated: () => void;
 }>) {
   const [degreeLevels, setDegreeLevels] = useState<Lookup[]>([]);
@@ -50,9 +52,9 @@ export function ServiceBulkUpdateDialog({
   useEffect(() => {
     if (!open || loadedRef.current) return;
     loadedRef.current = true;
-    businessProfileDetailApi.getLookups("degree-levels", { limit: 200 }).then((res) => setDegreeLevels(res.data));
-    businessProfileDetailApi.getLookups("areas-of-study", { limit: 200 }).then((res) => setAreasOfStudy(res.data));
-    businessProfileDetailApi.getServiceCategories({ limit: 100 }).then((res) => {
+    businessProfileDetailApi.getLookups("degree-levels", { limit: 200 }, orgBase).then((res) => setDegreeLevels(res.data));
+    businessProfileDetailApi.getLookups("areas-of-study", { limit: 200 }, orgBase).then((res) => setAreasOfStudy(res.data));
+    businessProfileDetailApi.getServiceCategories({ limit: 100 }, orgBase).then((res) => {
       const ids: FieldIds = {};
       for (const category of res.data) {
         for (const field of category.schema_fields) {
@@ -62,7 +64,7 @@ export function ServiceBulkUpdateDialog({
       }
       setFieldIds(ids);
     });
-  }, [open]);
+  }, [open, orgBase]);
 
   const applyFieldValues = async (serviceId: string) => {
     const values: { schema_field_id: number; value: unknown }[] = [];
@@ -72,18 +74,18 @@ export function ServiceBulkUpdateDialog({
     if (enabled.area_of_study && areaOfStudyId && fieldIds.area_of_study != null) {
       values.push({ schema_field_id: fieldIds.area_of_study, value: Number(areaOfStudyId) });
     }
-    if (values.length > 0) await businessProfileDetailApi.updateServiceFieldValues(serviceId, values);
+    if (values.length > 0) await businessProfileDetailApi.updateServiceFieldValues(serviceId, values, orgBase);
   };
 
   const applyDuration = async (serviceId: string) => {
     if (!enabled.duration || !durationValue) return;
     const duration_value = Number(durationValue);
     const duration_unit = durationUnit as "days" | "weeks" | "months" | "years";
-    const existing = await businessProfileDetailApi.serviceStudyOptions.list(serviceId);
+    const existing = await businessProfileDetailApi.serviceStudyOptions.list(serviceId, orgBase);
     // The list column reads the first study option's duration, so that's the one to move.
     const first = existing[0];
     if (first) {
-      await businessProfileDetailApi.serviceStudyOptions.update(serviceId, first.id, { duration_value, duration_unit });
+      await businessProfileDetailApi.serviceStudyOptions.update(serviceId, first.id, { duration_value, duration_unit }, orgBase);
       return;
     }
     await businessProfileDetailApi.serviceStudyOptions.create(serviceId, {
@@ -93,7 +95,7 @@ export function ServiceBulkUpdateDialog({
       duration_value,
       duration_unit,
       applicable_to: "both",
-    });
+    }, orgBase);
   };
 
   const handleSave = async () => {

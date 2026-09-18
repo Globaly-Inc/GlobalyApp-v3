@@ -43,9 +43,12 @@ export const deleteBranch = createAsyncThunk(
 );
 
 // ─── Services ────────────────────────────────────────────────────────────────
+// getOrgBase routes an institution session to /institutions/services (institution-services.routes.ts
+// backend) instead of /businesses/services — same table, different owning entity.
 export const fetchServices = createAsyncThunk(
   "businessProfileDetail/fetchServices",
-  ({ params }: { id: number; params?: ServiceSearchParams }) => businessProfileDetailApi.searchServices(params),
+  ({ params }: { id: number; params?: ServiceSearchParams }, { getState }) =>
+    businessProfileDetailApi.searchServices(params, getOrgBase(getState)),
 );
 /**
  * Every service the business owns, in one go.
@@ -59,13 +62,14 @@ export const fetchServices = createAsyncThunk(
 const MAX_SERVICE_PAGES = 10;
 export const fetchAllServices = createAsyncThunk(
   "businessProfileDetail/fetchAllServices",
-  async ({ search }: { id: number; search?: string }) => {
+  async ({ search }: { id: number; search?: string }, { getState }) => {
+    const orgBase = getOrgBase(getState);
     const limit = 100;
-    const first = await businessProfileDetailApi.searchServices({ page: 1, limit, search });
+    const first = await businessProfileDetailApi.searchServices({ page: 1, limit, search }, orgBase);
     const pages = Math.min(Math.ceil(first.total / limit), MAX_SERVICE_PAGES);
     const rest = await Promise.all(
       Array.from({ length: Math.max(0, pages - 1) }, (_, i) =>
-        businessProfileDetailApi.searchServices({ page: i + 2, limit, search }),
+        businessProfileDetailApi.searchServices({ page: i + 2, limit, search }, orgBase),
       ),
     );
     return { data: [...first.data, ...rest.flatMap((r) => r.data)], total: first.total };
@@ -73,32 +77,34 @@ export const fetchAllServices = createAsyncThunk(
 );
 export const createService = createAsyncThunk(
   "businessProfileDetail/createService",
-  ({ input }: { id: number; input: ServiceInput }) => businessProfileDetailApi.createService(input),
+  ({ input }: { id: number; input: ServiceInput }, { getState }) => businessProfileDetailApi.createService(input, getOrgBase(getState)),
 );
 export const updateService = createAsyncThunk(
   "businessProfileDetail/updateService",
-  ({ serviceId, patch }: { id: number; serviceId: string; patch: ServicePatch }) => businessProfileDetailApi.updateService(serviceId, patch),
+  ({ serviceId, patch }: { id: number; serviceId: string; patch: ServicePatch }, { getState }) =>
+    businessProfileDetailApi.updateService(serviceId, patch, getOrgBase(getState)),
 );
 export const toggleServicePublished = createAsyncThunk(
   "businessProfileDetail/toggleServicePublished",
-  ({ serviceId, is_published }: { id: number; serviceId: string; is_published: boolean }) =>
-    businessProfileDetailApi.updateService(serviceId, { is_published }),
+  ({ serviceId, is_published }: { id: number; serviceId: string; is_published: boolean }, { getState }) =>
+    businessProfileDetailApi.updateService(serviceId, { is_published }, getOrgBase(getState)),
 );
 export const deleteServiceThunk = createAsyncThunk(
   "businessProfileDetail/deleteService",
-  async ({ serviceId }: { id: number; serviceId: string }) => {
-    await businessProfileDetailApi.deleteService(serviceId);
+  async ({ serviceId }: { id: number; serviceId: string }, { getState }) => {
+    await businessProfileDetailApi.deleteService(serviceId, getOrgBase(getState));
     return serviceId;
   },
 );
 export const fetchServiceFieldValues = createAsyncThunk(
   "businessProfileDetail/fetchServiceFieldValues",
-  ({ serviceId }: { id: number; serviceId: string }) => businessProfileDetailApi.getServiceFieldValues(serviceId),
+  ({ serviceId }: { id: number; serviceId: string }, { getState }) =>
+    businessProfileDetailApi.getServiceFieldValues(serviceId, getOrgBase(getState)),
 );
 export const updateServiceFieldValues = createAsyncThunk(
   "businessProfileDetail/updateServiceFieldValues",
-  ({ serviceId, values }: { id: number; serviceId: string; values: SchemaFieldValue[] }) =>
-    businessProfileDetailApi.updateServiceFieldValues(serviceId, values),
+  ({ serviceId, values }: { id: number; serviceId: string; values: SchemaFieldValue[] }, { getState }) =>
+    businessProfileDetailApi.updateServiceFieldValues(serviceId, values, getOrgBase(getState)),
 );
 
 // ─── Members ─────────────────────────────────────────────────────────────────

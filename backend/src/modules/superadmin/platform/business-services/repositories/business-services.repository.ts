@@ -5,7 +5,7 @@ import { getKnex } from "../../../../../core/db/pool-manager.js";
 
 const SERVICE_COLUMNS = [
   "uuid as id", "service_category_id", "name", "description", "price", "is_published", "public_visibility",
-  "created_at", "updated_at",
+  "cover_url", "created_at", "updated_at",
 ];
 
 // The category's presentation columns travel with every service row: `icon` drives the per-row
@@ -76,6 +76,13 @@ export async function createService(businessId: number, schemaName: string, data
 export async function updateService(businessId: number, schemaName: string, serviceId: string, data: Record<string, unknown>) {
   const db = await getKnex(businessId, schemaName);
   await db("business_services").where({ uuid: serviceId }).update({ ...data, updated_at: db.fn.now() });
+  return serviceWithCategory(db).where("s.uuid", serviceId).first();
+}
+
+/** Stores the service's own cover image path, or null to fall back to the org's cover. */
+export async function setServiceCover(businessId: number, schemaName: string, serviceId: string, coverUrl: string | null) {
+  const db = await getKnex(businessId, schemaName);
+  await db("business_services").where({ uuid: serviceId }).update({ cover_url: coverUrl, updated_at: db.fn.now() });
   return serviceWithCategory(db).where("s.uuid", serviceId).first();
 }
 

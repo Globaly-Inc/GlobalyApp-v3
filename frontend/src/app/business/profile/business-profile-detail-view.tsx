@@ -156,6 +156,16 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
     }
   };
 
+  // V1 lays Service management straight onto the page — header, then its own filter card, then
+  // the table's card. Wrapping it in the tab <Card> below would nest a card inside a card.
+  if (tab === "services") {
+    return (
+      <div className="space-y-4 md:space-y-6">
+        <ServicesTab businessId={businessId} />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-4 md:space-y-6">
       {/* V1's profile body is a column of bordered cards, not one card wrapping everything — so
@@ -198,7 +208,6 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
               <PartnersTab businessId={businessId} businessName={profile.business_name} isInstitution={isViewingInstitution} />
             )}
             {tab === "team" && <MembersTab businessId={businessId} />}
-            {tab === "services" && <ServicesTab businessId={businessId} readOnly={isViewingInstitution} />}
             {tab === "scholarships" && <ScholarshipsTab businessId={businessId} />}
             {tab === "activity" && <ActivityTab businessId={businessId} />}
           </CardContent>

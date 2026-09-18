@@ -22,6 +22,7 @@ const COURSE_FIELDS = [
 
 export function SummaryTab({
   serviceId,
+  orgBase,
   onNavigateTab,
   description,
   onDescriptionChange,
@@ -33,6 +34,7 @@ export function SummaryTab({
   courseSearchLoading,
 }: Readonly<{
   serviceId: string | null;
+  orgBase: string;
   onNavigateTab: (tab: DetailTab) => void;
   description: string;
   onDescriptionChange: (value: string) => void;
@@ -48,15 +50,15 @@ export function SummaryTab({
   useEffect(() => {
     if (!serviceId) return;
     Promise.all([
-      businessProfileDetailApi.serviceFees.list(serviceId),
-      businessProfileDetailApi.serviceIntakes.list(serviceId),
-      businessProfileDetailApi.serviceEligibility.list(serviceId),
-      businessProfileDetailApi.serviceStudyUnits.list(serviceId),
-      businessProfileDetailApi.getServiceAccreditations(serviceId),
+      businessProfileDetailApi.serviceFees.list(serviceId, orgBase),
+      businessProfileDetailApi.serviceIntakes.list(serviceId, orgBase),
+      businessProfileDetailApi.serviceEligibility.list(serviceId, orgBase),
+      businessProfileDetailApi.serviceStudyUnits.list(serviceId, orgBase),
+      businessProfileDetailApi.getServiceAccreditations(serviceId, orgBase),
     ]).then(([fees, intakes, eligibility, studyUnits, accreditations]) => {
       setCounts({ fees: fees.length, intakes: intakes.length, eligibility: eligibility.length, studyUnits: studyUnits.length, accreditations: accreditations.length });
     });
-  }, [serviceId]);
+  }, [serviceId, orgBase]);
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">

@@ -8,11 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Pagination } from "@/components/ui/pagination";
 import { applyClientFilter } from "@/lib/filter-matcher";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { useAuthState } from "@/app/auth/store/auth-slice";
 import { useColumnPreferences } from "@/lib/use-column-preferences";
 import { useUniversalFilter } from "@/lib/use-universal-filter";
 import { SERVICES_MODULE_KEY, SERVICES_PAGE_SIZE, SERVICE_COLUMNS, buildServiceFilterFields } from "../../const";
 import {
-  deleteServiceThunk, fetchAllServices, fetchServices, toggleServicePublished, updateService,
+  deleteServiceThunk, fetchAllServices, toggleServicePublished, updateService,
 } from "../../store/business-profile-detail-slice";
 import { distinctOptions, flattenService, sortServices } from "../../utils";
 import type { BusinessService } from "../../apis/types";
@@ -23,16 +24,21 @@ import { ServiceManagementTable, type SortState } from "../services/service-mana
 
 /**
  * Service management — V1's `/business/services` page, rendered as this profile's Services tab.
- *
- * A business's whole catalog is loaded once and then searched, filtered, sorted and paginated in
- * the browser, as V1 does: the condition builder can combine any fields with AND/OR, which no
- * query string on `/services/search` expresses. An institution's rows are read-only extracted
- * courses and can run to thousands, so that path keeps the backend's own paging and search.
+ * Identical for a business or an institution: the whole catalog is loaded once and then
+ * searched, filtered, sorted and paginated in the browser, as V1 does — the condition builder
+ * can combine any fields with AND/OR, which no query string on `/services/search` expresses.
  */
-export function ServicesTab({ businessId, readOnly = false }: Readonly<{ businessId: number; readOnly?: boolean }>) {
+export function ServicesTab({ businessId }: Readonly<{ businessId: number }>) {
   const router = useRouter();
   const dispatch = useAppDispatch();
-  const { items: services, status, total: backendTotal } = useAppSelector((state) => state.businessProfileDetail.services);
+  const { items: services, status } = useAppSelector((state) => state.businessProfileDetail.services);
+
+  // Same institution-vs-business resolution as business-profile-detail-view.tsx — the dialogs
+  // below make their own direct API calls (not thunks), so they need the org base explicitly.
+  const { user: authUser } = useAuthState();
+  const isInstitution =
+    !authUser?.businesses.some((b) => b.id === businessId) && !!authUser?.institutions.some((i) => i.id === businessId);
+  const orgBase = isInstitution ? "/institutions" : "/businesses";
 
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -58,36 +64,16 @@ export function ServicesTab({ businessId, readOnly = false }: Readonly<{ busines
   );
   const filter = useUniversalFilter({ moduleKey: SERVICES_MODULE_KEY, fieldDefinitions });
 
-  const load = (nextPage: number, query: string) => {
-    const thunk = readOnly
-      ? fetchServices({ id: businessId, params: { search: query || undefined, page: nextPage, limit: SERVICES_PAGE_SIZE } })
-      : fetchAllServices({ id: businessId });
-    dispatch(thunk).finally(() => setHasLoaded(true));
-  };
-
-  // Read-only course catalogs re-query the backend on every keystroke, so they debounce; a
-  // business's catalog is already in memory and only needs one fetch for the whole tab.
   const fetchedRef = useRef(false);
   useEffect(() => {
-    if (!readOnly) {
-      if (fetchedRef.current) return;
-      fetchedRef.current = true;
-      load(1, "");
-      return;
-    }
-    const isFirstRun = !fetchedRef.current;
+    if (fetchedRef.current) return;
     fetchedRef.current = true;
-    const timer = setTimeout(() => load(1, search), isFirstRun ? 0 : 300);
-    return () => clearTimeout(timer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch, businessId, readOnly, search]);
+    dispatch(fetchAllServices({ id: businessId })).finally(() => setHasLoaded(true));
+  }, [dispatch, businessId]);
 
   const hasActiveFilters = search.trim().length > 0 || filter.activeCount > 0;
 
   const { rows, total } = useMemo(() => {
-    // The backend already searched and paged this one — filtering it again would only hide rows.
-    if (readOnly) return { rows: services, total: backendTotal };
-
     let filtered = services;
     const query = search.trim().toLowerCase();
     if (query) filtered = filtered.filter((s) => s.name.toLowerCase().includes(query));
@@ -98,12 +84,9 @@ export function ServicesTab({ businessId, readOnly = false }: Readonly<{ busines
     const sorted = sortServices(filtered, sort.column, sort.direction);
     const start = (page - 1) * SERVICES_PAGE_SIZE;
     return { rows: sorted.slice(start, start + SERVICES_PAGE_SIZE), total: filtered.length };
-  }, [readOnly, services, backendTotal, search, filter.activeCount, filter.filterConfig, sort, page]);
+  }, [services, search, filter.activeCount, filter.filterConfig, sort, page]);
 
-  const handlePageChange = (next: number) => {
-    setPage(next);
-    if (readOnly) load(next, search);
-  };
+  const handlePageChange = (next: number) => setPage(next);
 
   // Third click on the same header clears the sort, matching V1.
   const handleSortChange = (column: string) =>
@@ -166,8 +149,6 @@ export function ServicesTab({ businessId, readOnly = false }: Readonly<{ busines
     setSelectedIds(new Set());
   };
 
-  const noun = readOnly ? "courses" : "services";
-
   let body: React.ReactNode;
   if (!hasLoaded || status === "loading") {
     body = (
@@ -177,12 +158,11 @@ export function ServicesTab({ businessId, readOnly = false }: Readonly<{ busines
     );
   } else if (rows.length === 0) {
     body = (
-      <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-16 text-center">
-        <Package className="h-12 w-12 text-muted-foreground/30" />
-        <p className="text-sm text-muted-foreground">
-          {hasActiveFilters
-            ? `No ${noun} match your filters.`
-            : `No ${noun} yet.${readOnly ? "" : " Add your first service to get started."}`}
+      // V1's empty state sits bare on the page — no dashed box around it.
+      <div className="py-16 text-center">
+        <Package className="mx-auto mb-3 h-12 w-12 text-muted-foreground/30" />
+        <p className="mb-4 text-muted-foreground">
+          {hasActiveFilters ? "No services match your filters." : "No services yet. Add your first service to get started."}
         </p>
         {hasActiveFilters && (
           <Button variant="outline" size="sm" onClick={clearAll}>
@@ -202,18 +182,14 @@ export function ServicesTab({ businessId, readOnly = false }: Readonly<{ busines
         onSortChange={handleSortChange}
         selectedIds={selectedIds}
         onSelectedIdsChange={setSelectedIds}
-        onRowClick={(service) => !readOnly && router.push(`/business/profile/${businessId}/services/${service.id}/edit`)}
-        actions={
-          readOnly
-            ? undefined
-            : {
-                onEdit: (id) => router.push(`/business/profile/${businessId}/services/${id}/edit`),
-                onTogglePublish: handleTogglePublish,
-                onEditFees: setFeeService,
-                onPriceSave: handlePriceSave,
-                onDelete: setDeletingService,
-              }
-        }
+        onRowClick={(service) => router.push(`/business/profile/${businessId}/services/${service.id}/edit`)}
+        actions={{
+          onEdit: (id) => router.push(`/business/profile/${businessId}/services/${id}/edit`),
+          onTogglePublish: handleTogglePublish,
+          onEditFees: setFeeService,
+          onPriceSave: handlePriceSave,
+          onDelete: setDeletingService,
+        }}
       />
     );
   }
@@ -222,16 +198,12 @@ export function ServicesTab({ businessId, readOnly = false }: Readonly<{ busines
     <div>
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold">{readOnly ? "Courses" : "Service management"}</h2>
-          <p className="text-sm text-muted-foreground">
-            {readOnly ? "Courses extracted for this institution." : "Manage your service listings."}
-          </p>
+          <h2 className="text-2xl font-bold">Service management</h2>
+          <p className="text-sm text-muted-foreground">Manage your service listings.</p>
         </div>
-        {!readOnly && (
-          <Button className="h-10" onClick={() => router.push(`/business/profile/${businessId}/services/add`)}>
-            <Plus className="mr-1.5 h-3.5 w-3.5" /> Add service
-          </Button>
-        )}
+        <Button className="h-10" onClick={() => router.push(`/business/profile/${businessId}/services/add`)}>
+          <Plus className="mr-1.5 h-3.5 w-3.5" /> Add service
+        </Button>
       </div>
 
       <ServiceListToolbar
@@ -247,8 +219,8 @@ export function ServicesTab({ businessId, readOnly = false }: Readonly<{ busines
         }}
         hasActiveFilters={hasActiveFilters}
         onClear={clearAll}
-        showFilter={!readOnly}
-        searchPlaceholder={`Search ${noun}...`}
+        showFilter
+        searchPlaceholder="Search services..."
         columns={{
           allColumns: SERVICE_COLUMNS,
           visibleColumns: columnPrefs.visibleColumns,
@@ -275,6 +247,7 @@ export function ServicesTab({ businessId, readOnly = false }: Readonly<{ busines
 
       <ServiceListDialogs
         selectedIds={[...selectedIds]}
+        orgBase={orgBase}
         bulkUpdateOpen={showBulkUpdate}
         onBulkUpdateOpenChange={setShowBulkUpdate}
         onBulkUpdated={() => {

@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "
 import { businessProfileDetailApi } from "../../../apis";
 import type { ServiceAccreditationLink } from "../../../apis/types";
 
-export function AccreditationsTab({ serviceId }: Readonly<{ serviceId: string }>) {
+export function AccreditationsTab({ serviceId, orgBase }: Readonly<{ serviceId: string; orgBase: string }>) {
   const [links, setLinks] = useState<ServiceAccreditationLink[]>([]);
   const [catalog, setCatalog] = useState<Accreditation[]>([]);
   const [loading, setLoading] = useState(true);
@@ -21,14 +21,14 @@ export function AccreditationsTab({ serviceId }: Readonly<{ serviceId: string }>
 
   const load = () => {
     Promise.all([
-      businessProfileDetailApi.getServiceAccreditations(serviceId),
-      businessProfileDetailApi.getAccreditations({ limit: 100 }),
+      businessProfileDetailApi.getServiceAccreditations(serviceId, orgBase),
+      businessProfileDetailApi.getAccreditations({ limit: 100 }, orgBase),
     ]).then(([linkRows, cat]) => {
       setLinks(linkRows);
       setCatalog(cat.data);
     }).finally(() => setLoading(false));
   };
-  useEffect(() => { load(); }, [serviceId]);
+  useEffect(() => { load(); }, [serviceId, orgBase]);
 
   const catalogById = new Map(catalog.map((a) => [a.id, a]));
   const linkedIds = new Set(links.map((l) => l.accreditation_id));
@@ -38,7 +38,7 @@ export function AccreditationsTab({ serviceId }: Readonly<{ serviceId: string }>
     if (!selected) return;
     setSaving(true);
     try {
-      await businessProfileDetailApi.linkServiceAccreditation(serviceId, Number(selected));
+      await businessProfileDetailApi.linkServiceAccreditation(serviceId, Number(selected), orgBase);
       toast.success("Accreditation linked");
       setOpen(false);
       setSelected("");
@@ -52,7 +52,7 @@ export function AccreditationsTab({ serviceId }: Readonly<{ serviceId: string }>
 
   const handleRemove = async (id: number) => {
     try {
-      await businessProfileDetailApi.unlinkServiceAccreditation(serviceId, id);
+      await businessProfileDetailApi.unlinkServiceAccreditation(serviceId, id, orgBase);
       setLinks((l) => l.filter((x) => x.id !== id));
     } catch (e) {
       toast.error("Couldn't remove accreditation", { description: (e as Error).message });
