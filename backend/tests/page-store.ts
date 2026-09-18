@@ -118,6 +118,22 @@ console.log("\n4. failures, links, provenance");
   assert(withLinks.fromCache && withLinks.links.length === 2, "but the row stored them, so a later caller who asks gets them", withLinks.links);
 }
 
+console.log("\n4b. junk is stripped before hashing and storing");
+{
+  const url = "https://uq.edu.au/junky";
+  const real = "# Fees\n\n| Programme | Fee |\n| --- | --- |\n| MSc | $32,000 |\n".padEnd(200, "z");
+  const junkA = `![logo](data:image/png;base64,${"A".repeat(400)})\n<!-- tracking pixel -->\n${real}\nfooter\nfooter\nfooter\n\n\n\n\nend`;
+  const junkB = `![logo](data:image/png;base64,${"B".repeat(400)})\n<!-- other comment -->\n${real}\nfooter\n\n\nend`;
+  nextScrape = { markdown: junkA };
+  const a = await getPage(url, { onlyMainContent: true });
+  assert(!a.markdown.includes("AAAA") && !a.markdown.includes("<!--"), "returned markdown has no base64 payload or HTML comment", a.markdown.length);
+  assert(a.markdown.includes("| MSc | $32,000 |"), "the table row survives verbatim");
+  assert(rows.get("https://uq.edu.au/junky|main")?.markdown === a.markdown, "the stored row is the cleaned text, not the raw scrape");
+  nextScrape = { markdown: junkB };
+  const b = await getPage(url, { onlyMainContent: true, fresh: true });
+  assert(b.changed === false && b.contentHash === a.contentHash, "two scrapes that differ only in junk hash the same, so `changed` is false", { a: a.contentHash, b: b.contentHash });
+}
+
 console.log("\n5. PDFs");
 {
   const pdf = "https://uq.edu.au/fees/2027.pdf";
