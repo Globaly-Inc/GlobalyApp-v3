@@ -50,6 +50,8 @@ export async function institutionServicesRoutes(app: FastifyInstance) {
   // the institution's own cover image.
   app.post("/services/:subId/cover", { preHandler: requireInstitutionContext }, async (req, reply) => {
     const { subId } = SubIdSchema.parse(req.params);
+    // Before the upload, not after: an unknown UUID would otherwise leave an orphaned object.
+    await service.requireInstitutionService(req.institutionId, subId);
     const file = await req.file();
     if (!file) throw new NotFoundError("No file uploaded");
     const buffer = await file.toBuffer();

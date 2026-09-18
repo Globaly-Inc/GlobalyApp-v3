@@ -247,6 +247,7 @@ export function ServicesTab({ businessId }: Readonly<{ businessId: number }>) {
 
       <ServiceListDialogs
         selectedIds={[...selectedIds]}
+        selectedServices={services.filter((s) => selectedIds.has(s.id))}
         orgBase={orgBase}
         bulkUpdateOpen={showBulkUpdate}
         onBulkUpdateOpenChange={setShowBulkUpdate}

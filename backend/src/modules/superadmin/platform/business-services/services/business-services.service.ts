@@ -112,8 +112,19 @@ export async function deleteService(businessId: number, serviceId: string) {
   return repo.deleteService(businessId, biz.schema_name, serviceId);
 }
 
-export async function setServiceCover(businessId: number, serviceId: string, coverUrl: string | null) {
+/**
+ * Throws before the caller spends an upload on a service that isn't there. Without it an unknown
+ * UUID updates zero rows and leaves an unreferenced object in public storage.
+ */
+export async function requireService(businessId: number, serviceId: string) {
   const biz = await requireBusiness(businessId);
+  const existing = await repo.getService(businessId, biz.schema_name, serviceId);
+  if (!existing) throw new NotFoundError("Service not found");
+  return biz;
+}
+
+export async function setServiceCover(businessId: number, serviceId: string, coverUrl: string | null) {
+  const biz = await requireService(businessId, serviceId);
   return withSignedCover(await repo.setServiceCover(businessId, biz.schema_name, serviceId, coverUrl));
 }
 
@@ -172,8 +183,16 @@ export async function updateInstitutionService(institutionId: number, serviceId:
   return repo.updateService(institutionId, inst.schema_name, serviceId, data);
 }
 
-export async function setInstitutionServiceCover(institutionId: number, serviceId: string, coverUrl: string | null) {
+/** Institution twin of requireService — same "exists before we upload" guard. */
+export async function requireInstitutionService(institutionId: number, serviceId: string) {
   const inst = await requireInstitution(institutionId);
+  const existing = await repo.getService(institutionId, inst.schema_name, serviceId);
+  if (!existing) throw new NotFoundError("Service not found");
+  return inst;
+}
+
+export async function setInstitutionServiceCover(institutionId: number, serviceId: string, coverUrl: string | null) {
+  const inst = await requireInstitutionService(institutionId, serviceId);
   return withSignedCover(await repo.setServiceCover(institutionId, inst.schema_name, serviceId, coverUrl));
 }
 
