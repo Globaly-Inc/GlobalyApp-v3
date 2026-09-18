@@ -6,6 +6,8 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 import { config } from "../../../../config.js";
 import { createChildLogger } from "../../../../shared/logger.js";
+import { masterKnex } from "../../../../core/db/master-pool.js";
+import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { isRegistrySuffix, isSameSite, siteOf } from "./html-utils.js";
 import { assertPublicUrl, safeFetch, UnsafeUrlError } from "../../../../shared/public-url.js";
 
@@ -160,18 +162,87 @@ export function politeDelay(minMs: number, maxMs: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
+/** Last RESERVED slot per host — a time already promised to a caller, not a time a request was
+ *  observed to happen. See nextHostSlot. */
 const lastHostHit = new Map<string, number>();
 // ponytail: 800ms is polite enough for edu sites; set HOST_THROTTLE_MS=1500 if you get 429s
 const MIN_HOST_GAP_MS = Number(process.env.HOST_THROTTLE_MS) || 800;
 
-async function throttleForHost(url: string) {
+/**
+ * The next moment a request to this host may go out, given the last slot already handed out. Pure.
+ *
+ * The slot must be RESERVED before the caller sleeps, not recorded after it wakes. Reading the
+ * last hit, sleeping, then writing paces sequential callers correctly but does nothing for
+ * concurrent ones: ten page-worker consumers calling at once all read the same timestamp, all
+ * compute the same wait, and all fire together — a thundering herd wearing a throttle.
+ *
+ * Honest about the evidence: this fixes a throttle that provably did not throttle (see the
+ * concurrency test), but NO target site in this pipeline's history has ever rate-limited or
+ * blocked us — 1,490 recorded page errors, every one our own infrastructure, zero 429/403/
+ * Cloudflare/captcha. The pacing is therefore precautionary, not a fix for an observed block:
+ * it exists so a university does not ban the IP we crawl every institution from. Tune with
+ * HOST_THROTTLE_MS if it costs more than it is worth on a given run.
+ *
+ * Reserving instead gives caller N the slot `last + N*gap`, so concurrency becomes a queue.
+ */
+export function nextHostSlot(lastSlot: number | undefined, now: number, gapMs: number): number {
+  return Math.max(now, (lastSlot ?? 0) + gapMs);
+}
+
+/**
+ * Claim the next free slot for a host ACROSS PROCESSES, in one atomic upsert.
+ *
+ * `GREATEST(next_slot_at, now()) + gap` is the same reservation the in-process version does, but
+ * the row lock serialises claimants from every worker process — extraction-job, -pages, -step and
+ * -verify each run their own Node process with their own Map, so an in-process throttle alone
+ * lets them collectively exceed the rate against one catalogue host.
+ *
+ * Returns the milliseconds to wait, or null when the shared table can't be used (not migrated
+ * yet, DB blip) so the caller can fall back to in-process pacing rather than failing the scrape.
+ */
+async function reserveSharedHostSlot(host: string, gapMs: number): Promise<number | null> {
   try {
-    const host = new URL(url).host;
-    const last = lastHostHit.get(host) ?? 0;
-    const wait = MIN_HOST_GAP_MS - (Date.now() - last);
-    if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-    lastHostHit.set(host, Date.now());
-  } catch { /* invalid url */ }
+    const { rows } = await masterKnex.raw(
+      `INSERT INTO ${S}.extraction_host_slots AS s (host, next_slot_at, updated_at)
+       VALUES (?, now() + (? || ' milliseconds')::interval, now())
+       ON CONFLICT (host) DO UPDATE
+         SET next_slot_at = GREATEST(s.next_slot_at, now()) + (? || ' milliseconds')::interval,
+             updated_at = now()
+       RETURNING EXTRACT(EPOCH FROM (s.next_slot_at - (? || ' milliseconds')::interval - now())) * 1000 AS wait_ms`,
+      [host, gapMs, gapMs, gapMs],
+    );
+    const waitMs = Number(rows?.[0]?.wait_ms ?? 0);
+    return Number.isFinite(waitMs) ? Math.max(0, waitMs) : 0;
+  } catch (err) {
+    logger.warn("Shared host-slot reservation unavailable, pacing in-process only", { host, error: String(err) });
+    return null;
+  }
+}
+
+/** Exported for the concurrency test: the bug this guards against is a write-ordering one that a
+ *  pure slot calculation cannot express — it only shows up when several callers await at once. */
+export async function throttleForHost(url: string) {
+  let host: string;
+  try {
+    host = new URL(url).host;
+  } catch {
+    return; // invalid url
+  }
+
+  const shared = await reserveSharedHostSlot(host, MIN_HOST_GAP_MS);
+  if (shared !== null) {
+    // The shared table is authoritative; keep the local map roughly in step so a later fallback
+    // doesn't immediately hand out a slot the shared reservation already used.
+    lastHostHit.set(host, Date.now() + shared);
+    if (shared > 0) await new Promise((r) => setTimeout(r, shared));
+    return;
+  }
+
+  const now = Date.now();
+  const slot = nextHostSlot(lastHostHit.get(host), now, MIN_HOST_GAP_MS);
+  lastHostHit.set(host, slot); // reserve BEFORE awaiting, or concurrent callers all take it
+  const wait = slot - now;
+  if (wait > 0) await new Promise((r) => setTimeout(r, wait));
 }
 
 export async function politeFetch(
@@ -318,7 +389,7 @@ interface ScraplingToolResult {
   url?: string;
 }
 
-const SCRAPLING_TIERS: { tool: string; timeoutMs: number; args: Record<string, unknown> }[] = [
+const SCRAPLING_TIERS: { tool: string; timeoutMs: number; browser?: boolean; args: Record<string, unknown> }[] = [
   // follow_redirects "safe" is Scrapling's own SSRF guard — it follows redirects but refuses ones
   // aiming at private or link-local addresses. It is the default, set explicitly so a Scrapling
   // upgrade changing that default cannot silently reopen the hole. assertPublicUrl only validates
@@ -329,9 +400,47 @@ const SCRAPLING_TIERS: { tool: string; timeoutMs: number; args: Record<string, u
   // to one and be redirected inward. Egress policy on the Scrapling container (deny RFC1918 and
   // 169.254.0.0/16) is the control for that; it cannot be closed from here.
   { tool: "get", timeoutMs: 22_000, args: { timeout: 10, follow_redirects: "safe", max_redirects: 5 } },
-  { tool: "stealthy_fetch", timeoutMs: 30_000, args: { timeout: 25_000, network_idle: true, solve_cloudflare: true } },
-  { tool: "fetch", timeoutMs: 35_000, args: { timeout: 30_000, network_idle: true } },
+  { tool: "stealthy_fetch", timeoutMs: 30_000, browser: true, args: { timeout: 25_000, network_idle: true, solve_cloudflare: true } },
+  { tool: "fetch", timeoutMs: 35_000, browser: true, args: { timeout: 30_000, network_idle: true } },
 ];
+
+/**
+ * How many browser-tier calls may be in flight at once, per process.
+ *
+ * Scrapling spawns a real Chromium for `stealthy_fetch`/`fetch` and does not reap it. Measured
+ * 2026-09-17 with no limit: the container went from 4 processes to ~1,600 — 99% of its 2GiB —
+ * in under a minute, after which it still answered MCP handshakes but could no longer open a
+ * browser, so every scrape timed out and the page worker blamed the target site. Tier 1 `get` is
+ * plain HTTP, spawns nothing, and is deliberately NOT gated: on the same run it served 138 of 138
+ * successful scrapes while the two browser tiers served none.
+ *
+ * ponytail: per-process, so N worker processes allow N × this. Promote it to a slot table like
+ * extraction_host_slots only if one process's share stops being the binding constraint.
+ */
+// `Number("two")` is NaN, and `Math.max(1, NaN)` is NaN — every `inFlight < NaN` is false, so the
+// FIRST browser request queues itself as a waiter that nothing will ever wake. That is a permanent
+// stall of every browser-tier scrape in the process, from one typo in an env var. `|| 2` catches
+// NaN, 0 and "", Math.floor rejects "2.7", and Math.max rejects negatives — same shape as
+// HOST_THROTTLE_MS above, which is why that one was never vulnerable to this.
+const MAX_BROWSER_TIER_CONCURRENCY = Math.max(1, Math.floor(Number(process.env.SCRAPLING_BROWSER_CONCURRENCY) || 2));
+let browsersInFlight = 0;
+const browserWaiters: (() => void)[] = [];
+
+async function acquireBrowserSlot(): Promise<void> {
+  if (browsersInFlight < MAX_BROWSER_TIER_CONCURRENCY) { browsersInFlight++; return; }
+  await new Promise<void>((resolve) => browserWaiters.push(resolve));
+}
+
+// The slot is HANDED to the next waiter without decrementing. Decrementing first and then waking
+// someone lets a fresh caller see the free slot and take it before the waiter resumes, so both
+// run and the limit is exceeded.
+function releaseBrowserSlot(): void {
+  const next = browserWaiters.shift();
+  if (next) next();
+  else browsersInFlight--;
+}
+
+export const __browserSlotInternals = { acquireBrowserSlot, releaseBrowserSlot, MAX_BROWSER_TIER_CONCURRENCY, inFlight: () => browsersInFlight };
 
 /**
  * `mainContentOnly` maps to Scrapling's own `main_content_only`, which DEFAULTS TO TRUE on its
@@ -361,8 +470,12 @@ async function scraplingScrape(
 
   let lastError: string | undefined;
   for (const tier of SCRAPLING_TIERS) {
-    logger.info(`scrapling mcp: calling tool "${tier.tool}" for ${url}`);
+    if (tier.browser) await acquireBrowserSlot();
     try {
+      // Inside the try, not before it: anything thrown between acquiring the slot and entering
+      // this block would leak it, and a leaked slot is never returned — the process would
+      // permanently lose one of its browser slots, and eventually all of them.
+      logger.info(`scrapling mcp: calling tool "${tier.tool}" for ${url}`);
       const result = await client.callTool(
         {
           name: tier.tool,
@@ -397,6 +510,8 @@ async function scraplingScrape(
         lastError = reconnectErr instanceof Error ? reconnectErr.message : "scrapling mcp reconnect failed";
         break;
       }
+    } finally {
+      if (tier.browser) releaseBrowserSlot();
     }
   }
   return { content: "", error: lastError ?? "all scrapling tiers exhausted" };
@@ -515,6 +630,15 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
     }
     throw err;
   }
+
+  // Pace PAGE scrapes per host, not just sitemap fetches. This was the one path with no throttle
+  // at all: throttleForHost lived only inside politeFetch, while the page worker auto-scales to 10
+  // concurrent consumers and a well-discovered university puts nearly every course URL on a single
+  // catalogue host (Yale: 983 of 1,013 queued on catalog.yale.edu), so a whole job lands on one
+  // server as a burst. Precautionary, not a response to an observed block — nothing has ever
+  // rate-limited us (see nextHostSlot). Once at the top, so falling through Scrapling → Crawl4AI →
+  // Firecrawl for one page doesn't pay the gap three times.
+  await throttleForHost(url);
 
   const fcKey = getFirecrawlKey();
   const scrapling = opts.forceFirecrawl ? null : getScraplingConfig();

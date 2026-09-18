@@ -37,6 +37,7 @@
     "test:fee-scope": "node --import tsx tests/fee-scope.ts",
     "test:subdomain-cert-log": "node --import tsx tests/subdomain-cert-log.ts",
     "test:sitemap-parsing": "node --import tsx tests/sitemap-parsing.ts",
+    "test:classify-failure": "node --import tsx tests/classify-failure.ts",
     "test:agentcis-duration": "node --import tsx tests/agentcis-duration.ts",
     "test:agentcis-fields": "node --import tsx tests/agentcis-fields.ts",
     "test:agentcis-intakes": "node --import tsx tests/agentcis-intakes.ts",
@@ -91,7 +92,9 @@
     "test:otp-log-redaction": "node --import tsx tests/otp-log-redaction.ts",
     "test:integration-settings": "node --import tsx tests/integration-settings.ts",
     "test:llm-usage-cache": "node --import tsx tests/llm-usage-cache.ts",
-    "test:page-store": "node --import tsx tests/page-store.ts"
+    "test:page-store": "node --import tsx tests/page-store.ts",
+    "test:browser-slot": "node --import tsx tests/browser-slot.ts",
+    "test:non-course-url": "node --import tsx tests/non-course-url.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",
