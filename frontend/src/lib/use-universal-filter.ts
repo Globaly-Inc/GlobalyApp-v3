@@ -39,16 +39,6 @@ function writeStore(next: SavedFilterStore) {
 const newId = () => Math.random().toString(36).slice(2, 10);
 
 /**
- * Whether the live config is still verbatim a saved filter's, rather than something the user has
- * since edited. Both sides come from the same shapes — applying a filter reuses its object, and a
- * reload parses one JSON document — so key order is stable; a false negative just keeps the
- * conditions, which is the safe direction.
- */
-function isUnchangedCopy(live: FilterConfig, saved: FilterConfig): boolean {
-  return JSON.stringify(live) === JSON.stringify(saved);
-}
-
-/**
  * State for one module's filter panel: the live condition tree, plus that module's saved
  * filters. `fieldDefinitions` decides which fields a new condition can pick and which operator
  * it starts on.
@@ -67,6 +57,18 @@ export function useUniversalFilter({
     () => saved.filters.find((f) => f.id === saved.defaultId)?.filter_config ?? EMPTY_FILTER_CONFIG,
   );
   const [panelOpen, setPanelOpen] = useState(false);
+  // Which saved filter the live config came from, or null once it is the user's own working state.
+  // Tracked by id rather than by comparing values: two saved filters may hold identical configs,
+  // and deleting one of those must not disturb a session that is running the other.
+  const [appliedFilterId, setAppliedFilterId] = useState<string | null>(
+    () => (saved.filters.some((f) => f.id === saved.defaultId) ? saved.defaultId : null),
+  );
+
+  /** Every hand edit detaches the live config from whichever saved filter seeded it. */
+  const editConfig = useCallback((updater: (prev: FilterConfig) => FilterConfig) => {
+    setFilterConfig(updater);
+    setAppliedFilterId(null);
+  }, []);
 
   const persist = useCallback(
     (next: { filters: SavedFilter[]; defaultId: string | null }) => {
@@ -78,18 +80,18 @@ export function useUniversalFilter({
 
   const mapGroup = useCallback(
     (groupId: string, fn: (g: FilterConfig["groups"][number]) => FilterConfig["groups"][number]) =>
-      setFilterConfig((prev) => ({ ...prev, groups: prev.groups.map((g) => (g.id === groupId ? fn(g) : g)) })),
-    [],
+      editConfig((prev) => ({ ...prev, groups: prev.groups.map((g) => (g.id === groupId ? fn(g) : g)) })),
+    [editConfig],
   );
 
   const addGroup = useCallback(
-    () => setFilterConfig((prev) => ({ ...prev, groups: [...prev.groups, { id: newId(), logic: "and", conditions: [] }] })),
-    [],
+    () => editConfig((prev) => ({ ...prev, groups: [...prev.groups, { id: newId(), logic: "and", conditions: [] }] })),
+    [editConfig],
   );
 
   const removeGroup = useCallback(
-    (groupId: string) => setFilterConfig((prev) => ({ ...prev, groups: prev.groups.filter((g) => g.id !== groupId) })),
-    [],
+    (groupId: string) => editConfig((prev) => ({ ...prev, groups: prev.groups.filter((g) => g.id !== groupId) })),
+    [editConfig],
   );
 
   const addCondition = useCallback(
@@ -124,9 +126,9 @@ export function useUniversalFilter({
     [mapGroup],
   );
 
-  const setTopLogic = useCallback((logic: FilterLogic) => setFilterConfig((prev) => ({ ...prev, logic })), []);
+  const setTopLogic = useCallback((logic: FilterLogic) => editConfig((prev) => ({ ...prev, logic })), [editConfig]);
 
-  const clearFilters = useCallback(() => setFilterConfig(EMPTY_FILTER_CONFIG), []);
+  const clearFilters = useCallback(() => editConfig(() => EMPTY_FILTER_CONFIG), [editConfig]);
 
   const saveFilter = useCallback(
     (name: string) => {
@@ -138,11 +140,16 @@ export function useUniversalFilter({
         created_at: new Date().toISOString(),
       };
       persist({ ...saved, filters: [...saved.filters, filter] });
+      // What's on screen is now that saved filter, not loose working state.
+      setAppliedFilterId(filter.id);
     },
     [filterConfig, moduleKey, persist, saved],
   );
 
-  const applySavedFilter = useCallback((filter: SavedFilter) => setFilterConfig(filter.filter_config), []);
+  const applySavedFilter = useCallback((filter: SavedFilter) => {
+    setFilterConfig(filter.filter_config);
+    setAppliedFilterId(filter.id);
+  }, []);
 
   const setDefaultFilter = useCallback(
     (filterId: string | null) => {
@@ -150,7 +157,10 @@ export function useUniversalFilter({
       // Apply it immediately too — starring a filter you can already see should not need a reload
       // to take effect.
       const starred = saved.filters.find((f) => f.id === filterId);
-      if (starred) setFilterConfig(starred.filter_config);
+      if (starred) {
+        setFilterConfig(starred.filter_config);
+        setAppliedFilterId(starred.id);
+      }
     },
     [persist, saved],
   );
@@ -161,15 +171,17 @@ export function useUniversalFilter({
         filters: saved.filters.filter((f) => f.id !== filterId),
         defaultId: saved.defaultId === filterId ? null : saved.defaultId,
       });
-      // Deleting a filter the user is currently sitting on would otherwise leave those conditions
-      // applied now but gone after a reload (nothing seeds them any more) — same action, two
-      // different result sets. Only when the live config is still the saved one verbatim: once
-      // they have edited it, it is their own working state and deleting a bookmark must not
-      // discard it.
-      const deleted = saved.filters.find((f) => f.id === filterId);
-      if (deleted && isUnchangedCopy(filterConfig, deleted.filter_config)) setFilterConfig(EMPTY_FILTER_CONFIG);
+      // Deleting the filter currently on screen would otherwise leave its conditions applied now
+      // but gone after a reload (nothing seeds them any more) — one action, two result sets.
+      // Strictly the applied one: deleting a different filter that merely holds the same
+      // conditions leaves this session alone, and once the user has edited what they applied it
+      // is their own working state, which tidying up a bookmark must not discard.
+      if (appliedFilterId === filterId) {
+        setFilterConfig(EMPTY_FILTER_CONFIG);
+        setAppliedFilterId(null);
+      }
     },
-    [filterConfig, persist, saved],
+    [appliedFilterId, persist, saved],
   );
 
   const activeCount = useMemo(() => countActiveConditions(filterConfig), [filterConfig]);
