@@ -13,6 +13,7 @@ import { adminOtherServicesRoutes } from "./routes/other-services.routes.js";
 import businessesModule from "./businesses/index.js";
 import businessBranchesModule from "./business-branches/index.js";
 import businessServicesModule from "./business-services/index.js";
+import businessContactsModule from "./business-contacts/index.js";
 import businessPartnersModule from "./business-partners/index.js";
 import businessRepresentationsModule from "./business-representations/index.js";
 
@@ -33,6 +34,7 @@ export default async function platformModule(app: FastifyInstance) {
   app.register(businessesModule);
   app.register(businessBranchesModule);
   app.register(businessServicesModule);
+  app.register(businessContactsModule);
   app.register(businessPartnersModule);
   app.register(businessRepresentationsModule);
 }

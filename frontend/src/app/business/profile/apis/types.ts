@@ -85,6 +85,9 @@ export type ServiceSearchResult = { data: BusinessService[]; total: number };
 
 export type ServicePatch = Partial<ServiceInput> & { is_published?: boolean; public_visibility?: Record<string, boolean> | null };
 
+export type ServiceAiAssistInput = { name: string; category_name?: string; hint?: string };
+export type ServiceAiAssistResult = { text: string };
+
 export type SchemaFieldValue = { schema_field_id: number; value: unknown };
 
 // ─── Service details family (fees / intakes / eligibility / study options / study units / accreditations) ───

@@ -8,7 +8,7 @@ import type {
   Member, MemberInviteInput, MemberListParams, MemberListResult, MemberPatch, MemberRole,
   PartnerInstitutionCourse, PartnerInstitutionCourseListParams, PartnerInstitutionCourseListResult, PartnerInstitutionDetail, Permission,
   RelationInput, RelationListParams, RelationListResult, RelationPatch, Role, RoleCreateInput, RolePatch,
-  SchemaFieldValue, Scholarship, ScholarshipInput,
+  SchemaFieldValue, Scholarship, ScholarshipInput, ServiceAiAssistInput, ServiceAiAssistResult,
   ScholarshipListParams, ScholarshipListResult, ScholarshipPatch, ServiceAccreditationLink, ServiceEligibility,
   ServiceEligibilityInput, ServiceEligibilityPatch, ServiceFee, ServiceFeeInput, ServiceFeePatch, ServiceInput,
   ServiceIntake, ServiceIntakeInput, ServiceIntakePatch, ServicePatch, ServiceSearchParams, ServiceSearchResult,
@@ -142,6 +142,8 @@ export const businessProfileDetailRealApi = {
     httpGet(`${BASE}/services/${serviceId}/field-values`),
   updateServiceFieldValues: (serviceId: string, values: SchemaFieldValue[]): Promise<SchemaFieldValue[]> =>
     httpPut(`${BASE}/services/${serviceId}/field-values`, { values }),
+  generateServiceDescription: (input: ServiceAiAssistInput): Promise<ServiceAiAssistResult> =>
+    httpPost(`${BASE}/services/ai-assist`, input),
 
   getMembers: async (params: MemberListParams = {}): Promise<MemberListResult> => {
     const { data, meta } = await httpGet<{ data: Member[]; meta: { total: number } }>(`${BASE}/members${toMemberQuery(params)}`);

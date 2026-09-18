@@ -4,6 +4,7 @@ import { NotFoundError } from "../../../shared/errors.js";
 import { buildPaginatedResponse, paginationToOffset } from "../../../shared/pagination.js";
 import * as storage from "../../../shared/storage/storageService.js";
 import * as repo from "../repositories/courses.repository.js";
+import * as manualRepo from "../repositories/manual-courses.repository.js";
 import { CourseListQuery } from "../schemas/search.schema.js";
 import { courseSlug } from "../utils/slug.js";
 import { withCardFields } from "../utils/course-card-fields.js";
@@ -22,7 +23,21 @@ export async function searchCoursesRoutes(app: FastifyInstance) {
   app.get("/search/courses/:slug", async (req, reply) => {
     const { slug } = SlugParam.parse(req.params);
     const course = await repo.findPublicCourseBySlug(slug);
-    if (!course) throw new NotFoundError("Course not found");
+    if (!course) {
+      // Not an extraction course — try a manually-added "courses"-category business_service
+      // before giving up (see manual-courses.repository.ts).
+      const manual = await manualRepo.findPublicManualCourseBySlug(slug);
+      if (!manual) throw new NotFoundError("Course not found");
+      const [institutionLogo, institutionCover] = await Promise.all([
+        storage.resolvePreviewUrl(manual.institution_logo_url),
+        storage.resolvePreviewUrl(manual.institution.cover_url),
+      ]);
+      return reply.send({
+        ...manual,
+        institution_logo_url: institutionLogo,
+        institution: { ...manual.institution, logo_url: institutionLogo, cover_url: institutionCover },
+      });
+    }
 
     const {
       job_id, institution_id, institution_name, institution_cover_url, institution_website, institution_city,
@@ -86,10 +101,38 @@ export async function searchCoursesRoutes(app: FastifyInstance) {
       feeMin: fee_min, feeMax: fee_max, currency, intakeYear: intake_year,
       institution, duration,
     };
+
+    // Manually-added "courses"-category business_services (see manual-courses.repository.ts)
+    // never made it into extraction_courses, so a plain name search wouldn't find them. The
+    // actual cards are only fetched for page 1 (capped to `limit`, and subtracted from the
+    // extraction page's own limit so a page never returns more than `limit` rows total), but the
+    // *count* is fetched for every page so `total`/`totalPages` stay consistent across pages —
+    // see that file's header for why filters beyond plain search aren't shared with either.
+    // ponytail: with manual matches present, extraction rows shown on page 2+ shift by up to
+    // `limit` compared to page 1 (offsets aren't adjusted for what page 1 held back) — an
+    // accepted rough edge for what's meant to surface a handful of manually-added courses, not
+    // paginate a mixed catalog exactly.
+    const noIncompatibleFilters = !country && !city && !degree_level && !subject_area
+      && fee_min == null && fee_max == null && !currency && intake_year == null && !institution && !duration;
+
+    let manualCards: Awaited<ReturnType<typeof withCardFields>>[] = [];
+    let manualTotal = 0;
+    if (search && noIncompatibleFilters) {
+      const searchTerm = search;
+      [manualCards, manualTotal] = await Promise.all([
+        pagination.page === 1
+          ? Promise.all((await manualRepo.listPublicManualCourses(searchTerm)).map(withCardFields)).then((c) => c.slice(0, limit))
+          : Promise.resolve([]),
+        manualRepo.countPublicManualCourses(searchTerm),
+      ]);
+    }
+
     const [rows, total] = await Promise.all([
-      repo.listPublicCourses(filters, sort, limit, offset),
+      repo.listPublicCourses(filters, sort, limit - manualCards.length, offset),
       repo.countPublicCourses(filters),
     ]);
-    return reply.send(buildPaginatedResponse(await Promise.all(rows.map(withCardFields)), total, pagination));
+    const cardRows = await Promise.all(rows.map(withCardFields));
+
+    return reply.send(buildPaginatedResponse([...manualCards, ...cardRows], total + manualTotal, pagination));
   });
 }

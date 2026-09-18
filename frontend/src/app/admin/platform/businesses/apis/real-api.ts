@@ -2,15 +2,19 @@ import { httpDelete, httpGet, httpPatch, httpPost, httpPostForm, httpPut } from 
 import type {
   ActivityListParams, ActivityListResult, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchListResult,
   BranchPatch, Business, BusinessCreateInput, ListingRef, BusinessDetail, BusinessListParams, BusinessListResult, BusinessPatch, BusinessRelation,
-  BusinessService, BusinessStatus, EnquirySettingsPatch, InstitutionBranchListParams, InstitutionBranchListResult, InstitutionCourseListParams, InstitutionCourseListResult, InstitutionDetail,
+  BusinessService, BusinessStatus, Contact, ContactInput, ContactListParams, ContactListResult, ContactPatch,
+  EnquirySettingsPatch, InstitutionBranchListParams, InstitutionBranchListResult, InstitutionCourseListParams, InstitutionCourseListResult, InstitutionDetail,
   ListingKind,
   InstitutionInvitation, InstitutionInvitationListParams, InstitutionInvitationListResult, InstitutionInviteInput,
   InstitutionPartnerInput, InstitutionPartnerListParams, InstitutionPartnerListResult, InstitutionPartnerPatch, InstitutionPartnerRow, InstitutionPatch,
   InstitutionPermission, InstitutionRole, InstitutionRoleCreateInput, InstitutionRolePatch,
   LinkExistingBranchInput, LinkExistingBranchResult, Member,
   MemberInviteInput, MemberListParams, MemberListResult, MemberPatch, MemberRole,
-  RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, ServiceInput, ServicePatch,
-  ServiceSearchParams, ServiceSearchResult,
+  RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, ServiceAccreditation, ServiceAccreditationInput,
+  ServiceAiAssistInput, ServiceAiAssistResult, ServiceEligibility, ServiceEligibilityInput, ServiceEligibilityPatch,
+  ServiceFee, ServiceFeeInput, ServiceFeePatch, ServiceInput, ServiceIntake, ServiceIntakeInput, ServiceIntakePatch, ServiceMediaFile, ServicePatch,
+  ServiceSearchParams, ServiceSearchResult, ServiceStudyOption, ServiceStudyOptionInput, ServiceStudyOptionPatch,
+  ServiceStudyUnit, ServiceStudyUnitInput, ServiceStudyUnitPatch,
 } from "./types";
 
 const BASE = "/admin/platform/businesses";
@@ -50,6 +54,15 @@ function toPageLimitQuery(params: { page?: number; limit?: number }): string {
 }
 
 function toServiceSearchQuery(params: ServiceSearchParams): string {
+  const q = new URLSearchParams();
+  if (params.page) q.set("page", String(params.page));
+  if (params.limit) q.set("limit", String(params.limit));
+  if (params.search) q.set("search", params.search);
+  const qs = q.toString();
+  return qs ? `?${qs}` : "";
+}
+
+function toContactQuery(params: ContactListParams): string {
   const q = new URLSearchParams();
   if (params.page) q.set("page", String(params.page));
   if (params.limit) q.set("limit", String(params.limit));
@@ -176,6 +189,172 @@ export const businessesRealApi = {
     httpGet(`${BASE}/${id}/services/${serviceId}/field-values`),
   updateServiceFieldValues: (id: number, serviceId: string, values: SchemaFieldValue[]): Promise<SchemaFieldValue[]> =>
     httpPut(`${BASE}/${id}/services/${serviceId}/field-values`, { values }),
+  generateServiceDescription: (input: ServiceAiAssistInput): Promise<ServiceAiAssistResult> =>
+    httpPost("/admin/platform/services/ai-assist", input),
+
+  getServiceFees: (id: number, serviceId: string): Promise<ServiceFee[]> => httpGet(`${BASE}/${id}/services/${serviceId}/fees`),
+  createServiceFee: (id: number, serviceId: string, input: ServiceFeeInput): Promise<ServiceFee> =>
+    httpPost(`${BASE}/${id}/services/${serviceId}/fees`, input),
+  updateServiceFee: (id: number, serviceId: string, feeId: number, patch: ServiceFeePatch): Promise<ServiceFee> =>
+    httpPatch(`${BASE}/${id}/services/${serviceId}/fees/${feeId}`, patch),
+  deleteServiceFee: (id: number, serviceId: string, feeId: number): Promise<void> =>
+    httpDelete(`${BASE}/${id}/services/${serviceId}/fees/${feeId}`),
+
+  getServiceIntakes: (id: number, serviceId: string): Promise<ServiceIntake[]> => httpGet(`${BASE}/${id}/services/${serviceId}/intakes`),
+  createServiceIntake: (id: number, serviceId: string, input: ServiceIntakeInput): Promise<ServiceIntake> =>
+    httpPost(`${BASE}/${id}/services/${serviceId}/intakes`, input),
+  updateServiceIntake: (id: number, serviceId: string, intakeId: number, patch: ServiceIntakePatch): Promise<ServiceIntake> =>
+    httpPatch(`${BASE}/${id}/services/${serviceId}/intakes/${intakeId}`, patch),
+  deleteServiceIntake: (id: number, serviceId: string, intakeId: number): Promise<void> =>
+    httpDelete(`${BASE}/${id}/services/${serviceId}/intakes/${intakeId}`),
+
+  getServiceEligibility: (id: number, serviceId: string): Promise<ServiceEligibility[]> =>
+    httpGet(`${BASE}/${id}/services/${serviceId}/eligibility`),
+  createServiceEligibility: (id: number, serviceId: string, input: ServiceEligibilityInput): Promise<ServiceEligibility> =>
+    httpPost(`${BASE}/${id}/services/${serviceId}/eligibility`, input),
+  updateServiceEligibility: (id: number, serviceId: string, eligibilityId: number, patch: ServiceEligibilityPatch): Promise<ServiceEligibility> =>
+    httpPatch(`${BASE}/${id}/services/${serviceId}/eligibility/${eligibilityId}`, patch),
+  deleteServiceEligibility: (id: number, serviceId: string, eligibilityId: number): Promise<void> =>
+    httpDelete(`${BASE}/${id}/services/${serviceId}/eligibility/${eligibilityId}`),
+
+  getServiceStudyOptions: (id: number, serviceId: string): Promise<ServiceStudyOption[]> =>
+    httpGet(`${BASE}/${id}/services/${serviceId}/study-options`),
+  createServiceStudyOption: (id: number, serviceId: string, input: ServiceStudyOptionInput): Promise<ServiceStudyOption> =>
+    httpPost(`${BASE}/${id}/services/${serviceId}/study-options`, input),
+  updateServiceStudyOption: (id: number, serviceId: string, optionId: number, patch: ServiceStudyOptionPatch): Promise<ServiceStudyOption> =>
+    httpPatch(`${BASE}/${id}/services/${serviceId}/study-options/${optionId}`, patch),
+  deleteServiceStudyOption: (id: number, serviceId: string, optionId: number): Promise<void> =>
+    httpDelete(`${BASE}/${id}/services/${serviceId}/study-options/${optionId}`),
+
+  getServiceStudyUnits: (id: number, serviceId: string): Promise<ServiceStudyUnit[]> =>
+    httpGet(`${BASE}/${id}/services/${serviceId}/study-units`),
+  createServiceStudyUnit: (id: number, serviceId: string, input: ServiceStudyUnitInput): Promise<ServiceStudyUnit> =>
+    httpPost(`${BASE}/${id}/services/${serviceId}/study-units`, input),
+  updateServiceStudyUnit: (id: number, serviceId: string, unitId: number, patch: ServiceStudyUnitPatch): Promise<ServiceStudyUnit> =>
+    httpPatch(`${BASE}/${id}/services/${serviceId}/study-units/${unitId}`, patch),
+  deleteServiceStudyUnit: (id: number, serviceId: string, unitId: number): Promise<void> =>
+    httpDelete(`${BASE}/${id}/services/${serviceId}/study-units/${unitId}`),
+
+  getServiceAccreditations: (id: number, serviceId: string): Promise<ServiceAccreditation[]> =>
+    httpGet(`${BASE}/${id}/services/${serviceId}/accreditations`),
+  createServiceAccreditation: (id: number, serviceId: string, input: ServiceAccreditationInput): Promise<ServiceAccreditation> =>
+    httpPost(`${BASE}/${id}/services/${serviceId}/accreditations`, input),
+  deleteServiceAccreditation: (id: number, serviceId: string, rowId: number): Promise<void> =>
+    httpDelete(`${BASE}/${id}/services/${serviceId}/accreditations/${rowId}`),
+
+  getServiceMedia: (id: number, serviceId: string): Promise<{ files: ServiceMediaFile[] }> =>
+    httpGet(`${BASE}/${id}/services/${serviceId}/media`),
+  uploadServiceMedia: (id: number, serviceId: string, file: File): Promise<ServiceMediaFile> => {
+    const form = new FormData();
+    form.append("file", file);
+    return httpPostForm(`${BASE}/${id}/services/${serviceId}/media`, form);
+  },
+  deleteServiceMedia: (id: number, serviceId: string, fileId: number): Promise<void> =>
+    httpDelete(`${BASE}/${id}/services/${serviceId}/media/${fileId}`),
+
+  getContacts: async (id: number, params: ContactListParams = {}): Promise<ContactListResult> => {
+    const { data, meta } = await httpGet<{ data: Contact[]; meta: { total: number } }>(`${BASE}/${id}/contacts${toContactQuery(params)}`);
+    return { data, total: meta.total };
+  },
+  createContact: (id: number, input: ContactInput): Promise<Contact> => httpPost(`${BASE}/${id}/contacts`, input),
+  updateContact: (id: number, contactId: string, patch: ContactPatch): Promise<Contact> =>
+    httpPatch(`${BASE}/${id}/contacts/${contactId}`, patch),
+  deleteContact: (id: number, contactId: string): Promise<void> => httpDelete(`${BASE}/${id}/contacts/${contactId}`),
+
+  getInstitutionContacts: async (id: number, params: ContactListParams = {}): Promise<ContactListResult> => {
+    const { data, meta } = await httpGet<{ data: Contact[]; meta: { total: number } }>(
+      `/admin/platform/institutions/${id}/contacts${toContactQuery(params)}`,
+    );
+    return { data, total: meta.total };
+  },
+  createInstitutionContact: (id: number, input: ContactInput): Promise<Contact> =>
+    httpPost(`/admin/platform/institutions/${id}/contacts`, input),
+  updateInstitutionContact: (id: number, contactId: string, patch: ContactPatch): Promise<Contact> =>
+    httpPatch(`/admin/platform/institutions/${id}/contacts/${contactId}`, patch),
+  deleteInstitutionContact: (id: number, contactId: string): Promise<void> =>
+    httpDelete(`/admin/platform/institutions/${id}/contacts/${contactId}`),
+
+  // Institution twins — same business_services tenant table, own /admin/platform/institutions prefix
+  // (ids collide with businesses, so they can't share the /businesses path — see listingBase above).
+  getInstitutionServices: (id: number): Promise<BusinessService[]> => httpGet(`/admin/platform/institutions/${id}/services`),
+  searchInstitutionServices: async (id: number, params: ServiceSearchParams = {}): Promise<ServiceSearchResult> => {
+    const { data, meta } = await httpGet<{ data: BusinessService[]; meta: { total: number } }>(
+      `/admin/platform/institutions/${id}/services/search${toServiceSearchQuery(params)}`,
+    );
+    return { data, total: meta.total };
+  },
+  createInstitutionService: (id: number, input: ServiceInput): Promise<BusinessService> =>
+    httpPost(`/admin/platform/institutions/${id}/services`, input),
+  updateInstitutionService: (id: number, serviceId: string, patch: ServicePatch): Promise<BusinessService> =>
+    httpPatch(`/admin/platform/institutions/${id}/services/${serviceId}`, patch),
+  setInstitutionServicePublished: (id: number, serviceId: string, is_published: boolean): Promise<BusinessService> =>
+    httpPatch(`/admin/platform/institutions/${id}/services/${serviceId}`, { is_published }),
+  deleteInstitutionService: (id: number, serviceId: string): Promise<void> =>
+    httpDelete(`/admin/platform/institutions/${id}/services/${serviceId}`),
+  getInstitutionServiceFieldValues: (id: number, serviceId: string): Promise<SchemaFieldValue[]> =>
+    httpGet(`/admin/platform/institutions/${id}/services/${serviceId}/field-values`),
+  updateInstitutionServiceFieldValues: (id: number, serviceId: string, values: SchemaFieldValue[]): Promise<SchemaFieldValue[]> =>
+    httpPut(`/admin/platform/institutions/${id}/services/${serviceId}/field-values`, { values }),
+  getInstitutionServiceFees: (id: number, serviceId: string): Promise<ServiceFee[]> =>
+    httpGet(`/admin/platform/institutions/${id}/services/${serviceId}/fees`),
+  createInstitutionServiceFee: (id: number, serviceId: string, input: ServiceFeeInput): Promise<ServiceFee> =>
+    httpPost(`/admin/platform/institutions/${id}/services/${serviceId}/fees`, input),
+  updateInstitutionServiceFee: (id: number, serviceId: string, feeId: number, patch: ServiceFeePatch): Promise<ServiceFee> =>
+    httpPatch(`/admin/platform/institutions/${id}/services/${serviceId}/fees/${feeId}`, patch),
+  deleteInstitutionServiceFee: (id: number, serviceId: string, feeId: number): Promise<void> =>
+    httpDelete(`/admin/platform/institutions/${id}/services/${serviceId}/fees/${feeId}`),
+  getInstitutionServiceIntakes: (id: number, serviceId: string): Promise<ServiceIntake[]> =>
+    httpGet(`/admin/platform/institutions/${id}/services/${serviceId}/intakes`),
+  createInstitutionServiceIntake: (id: number, serviceId: string, input: ServiceIntakeInput): Promise<ServiceIntake> =>
+    httpPost(`/admin/platform/institutions/${id}/services/${serviceId}/intakes`, input),
+  updateInstitutionServiceIntake: (id: number, serviceId: string, intakeId: number, patch: ServiceIntakePatch): Promise<ServiceIntake> =>
+    httpPatch(`/admin/platform/institutions/${id}/services/${serviceId}/intakes/${intakeId}`, patch),
+  deleteInstitutionServiceIntake: (id: number, serviceId: string, intakeId: number): Promise<void> =>
+    httpDelete(`/admin/platform/institutions/${id}/services/${serviceId}/intakes/${intakeId}`),
+
+  getInstitutionServiceEligibility: (id: number, serviceId: string): Promise<ServiceEligibility[]> =>
+    httpGet(`/admin/platform/institutions/${id}/services/${serviceId}/eligibility`),
+  createInstitutionServiceEligibility: (id: number, serviceId: string, input: ServiceEligibilityInput): Promise<ServiceEligibility> =>
+    httpPost(`/admin/platform/institutions/${id}/services/${serviceId}/eligibility`, input),
+  updateInstitutionServiceEligibility: (id: number, serviceId: string, eligibilityId: number, patch: ServiceEligibilityPatch): Promise<ServiceEligibility> =>
+    httpPatch(`/admin/platform/institutions/${id}/services/${serviceId}/eligibility/${eligibilityId}`, patch),
+  deleteInstitutionServiceEligibility: (id: number, serviceId: string, eligibilityId: number): Promise<void> =>
+    httpDelete(`/admin/platform/institutions/${id}/services/${serviceId}/eligibility/${eligibilityId}`),
+
+  getInstitutionServiceStudyOptions: (id: number, serviceId: string): Promise<ServiceStudyOption[]> =>
+    httpGet(`/admin/platform/institutions/${id}/services/${serviceId}/study-options`),
+  createInstitutionServiceStudyOption: (id: number, serviceId: string, input: ServiceStudyOptionInput): Promise<ServiceStudyOption> =>
+    httpPost(`/admin/platform/institutions/${id}/services/${serviceId}/study-options`, input),
+  updateInstitutionServiceStudyOption: (id: number, serviceId: string, optionId: number, patch: ServiceStudyOptionPatch): Promise<ServiceStudyOption> =>
+    httpPatch(`/admin/platform/institutions/${id}/services/${serviceId}/study-options/${optionId}`, patch),
+  deleteInstitutionServiceStudyOption: (id: number, serviceId: string, optionId: number): Promise<void> =>
+    httpDelete(`/admin/platform/institutions/${id}/services/${serviceId}/study-options/${optionId}`),
+
+  getInstitutionServiceStudyUnits: (id: number, serviceId: string): Promise<ServiceStudyUnit[]> =>
+    httpGet(`/admin/platform/institutions/${id}/services/${serviceId}/study-units`),
+  createInstitutionServiceStudyUnit: (id: number, serviceId: string, input: ServiceStudyUnitInput): Promise<ServiceStudyUnit> =>
+    httpPost(`/admin/platform/institutions/${id}/services/${serviceId}/study-units`, input),
+  updateInstitutionServiceStudyUnit: (id: number, serviceId: string, unitId: number, patch: ServiceStudyUnitPatch): Promise<ServiceStudyUnit> =>
+    httpPatch(`/admin/platform/institutions/${id}/services/${serviceId}/study-units/${unitId}`, patch),
+  deleteInstitutionServiceStudyUnit: (id: number, serviceId: string, unitId: number): Promise<void> =>
+    httpDelete(`/admin/platform/institutions/${id}/services/${serviceId}/study-units/${unitId}`),
+
+  getInstitutionServiceAccreditations: (id: number, serviceId: string): Promise<ServiceAccreditation[]> =>
+    httpGet(`/admin/platform/institutions/${id}/services/${serviceId}/accreditations`),
+  createInstitutionServiceAccreditation: (id: number, serviceId: string, input: ServiceAccreditationInput): Promise<ServiceAccreditation> =>
+    httpPost(`/admin/platform/institutions/${id}/services/${serviceId}/accreditations`, input),
+  deleteInstitutionServiceAccreditation: (id: number, serviceId: string, rowId: number): Promise<void> =>
+    httpDelete(`/admin/platform/institutions/${id}/services/${serviceId}/accreditations/${rowId}`),
+
+  getInstitutionServiceMedia: (id: number, serviceId: string): Promise<{ files: ServiceMediaFile[] }> =>
+    httpGet(`/admin/platform/institutions/${id}/services/${serviceId}/media`),
+  uploadInstitutionServiceMedia: (id: number, serviceId: string, file: File): Promise<ServiceMediaFile> => {
+    const form = new FormData();
+    form.append("file", file);
+    return httpPostForm(`/admin/platform/institutions/${id}/services/${serviceId}/media`, form);
+  },
+  deleteInstitutionServiceMedia: (id: number, serviceId: string, fileId: number): Promise<void> =>
+    httpDelete(`/admin/platform/institutions/${id}/services/${serviceId}/media/${fileId}`),
 
   getMembers: async (id: number, params: MemberListParams = {}): Promise<MemberListResult> => {
     const { data, meta } = await httpGet<{ data: Member[]; meta: { total: number } }>(`${BASE}/${id}/members${toMemberQuery(params)}`);

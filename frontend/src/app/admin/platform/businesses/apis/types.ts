@@ -131,6 +131,7 @@ export type InstitutionDetail = {
 
 export type InstitutionPatch = Partial<{
   business_name: string;
+  business_category_id: number | null;
   description: string | null;
   email: string | null;
   phone: string | null;
@@ -142,6 +143,12 @@ export type InstitutionPatch = Partial<{
   postcode: string | null;
   logo_url: string | null;
   cover_url: string | null;
+  linkedin_url: string | null;
+  facebook_url: string | null;
+  instagram_url: string | null;
+  twitter_url: string | null;
+  youtube_url: string | null;
+  whatsapp_url: string | null;
 }>;
 
 /** A subset of `extraction_courses` columns — the institution's courses if it was promoted from
@@ -351,6 +358,198 @@ export type ServiceSearchParams = {
 export type ServiceSearchResult = { data: BusinessService[]; total: number };
 
 export type ServicePatch = Partial<ServiceInput> & { is_published?: boolean };
+
+export type ServiceAiAssistInput = { name: string; category_name?: string; hint?: string };
+export type ServiceAiAssistResult = { text: string };
+
+export type ServiceFeeInstallment = { label: string; lines: { fee_type: string; amount: number }[] };
+
+export type ServiceFee = {
+  id: number;
+  service_id: string;
+  name: string | null;
+  student_type: "domestic" | "international" | "both";
+  period_type: string;
+  currency: string;
+  total_amount: string;
+  installments: ServiceFeeInstallment[];
+  created_at: string;
+};
+
+export type ServiceFeeInput = {
+  name?: string | null;
+  student_type?: ServiceFee["student_type"];
+  period_type?: string;
+  currency?: string;
+  total_amount: number;
+  installments?: ServiceFeeInstallment[];
+};
+
+export type ServiceFeePatch = Partial<ServiceFeeInput>;
+
+export type ServiceIntake = {
+  id: number;
+  service_id: string;
+  intake_name: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  orientation_date: string | null;
+  admission_deadline: string | null;
+  intake_month: number | null;
+  intake_year: number | null;
+  created_at: string;
+};
+
+export type ServiceIntakeInput = {
+  intake_name?: string | null;
+  start_date?: string | null;
+  end_date?: string | null;
+  orientation_date?: string | null;
+  admission_deadline?: string | null;
+  intake_month?: number | null;
+  intake_year?: number | null;
+};
+
+export type ServiceIntakePatch = Partial<ServiceIntakeInput>;
+
+// Same shape as the data-extraction module's LanguageTest/AcademicTest (apis/types.ts) —
+// same-to-same reuse of its eligibility form means matching what it reads and writes.
+export type ServiceLanguageTest = {
+  test_type_name: string;
+  overall_score: string;
+  listening_score?: string;
+  reading_score?: string;
+  writing_score?: string;
+  speaking_score?: string;
+};
+export type ServiceAcademicTest = {
+  test_name: string;
+  score: string;
+  typical_score?: string | null;
+  is_optional?: boolean;
+};
+
+export type ServiceEligibility = {
+  id: number;
+  service_id: string;
+  name: string | null;
+  applicable_to: "domestic" | "international" | "both";
+  degree_level_id: number | null;
+  score_type: "percentage" | "gpa_4" | "gpa_10" | "cgpa" | null;
+  min_score: string | null;
+  description: string | null;
+  academic_tests: ServiceAcademicTest[];
+  language_tests: ServiceLanguageTest[];
+  created_at: string;
+};
+
+export type ServiceEligibilityInput = {
+  name?: string | null;
+  applicable_to?: ServiceEligibility["applicable_to"];
+  degree_level_id?: number | null;
+  score_type?: ServiceEligibility["score_type"];
+  min_score?: number | null;
+  description?: string | null;
+  academic_tests?: ServiceAcademicTest[];
+  language_tests?: ServiceLanguageTest[];
+};
+export type ServiceEligibilityPatch = Partial<ServiceEligibilityInput>;
+
+export type ServiceStudyOption = {
+  id: number;
+  service_id: string;
+  name: string | null;
+  study_mode: "on_campus" | "online" | "blended";
+  study_load: "full_time" | "part_time";
+  duration_value: number | null;
+  duration_unit: "days" | "weeks" | "months" | "years";
+  applicable_to: "domestic" | "international" | "both";
+  created_at: string;
+};
+export type ServiceStudyOptionInput = {
+  name?: string | null;
+  study_mode?: ServiceStudyOption["study_mode"];
+  study_load?: ServiceStudyOption["study_load"];
+  duration_value?: number | null;
+  duration_unit?: ServiceStudyOption["duration_unit"];
+  applicable_to?: ServiceStudyOption["applicable_to"];
+};
+export type ServiceStudyOptionPatch = Partial<ServiceStudyOptionInput>;
+
+export type ServiceStudyUnit = {
+  id: number;
+  service_id: string;
+  unit_code: string | null;
+  unit_name: string;
+  credit_points: number | null;
+  description: string | null;
+  unit_type: "compulsory" | "elective";
+  created_at: string;
+};
+export type ServiceStudyUnitInput = {
+  unit_code?: string | null;
+  unit_name: string;
+  credit_points?: number | null;
+  description?: string | null;
+  unit_type?: ServiceStudyUnit["unit_type"];
+};
+export type ServiceStudyUnitPatch = Partial<ServiceStudyUnitInput>;
+
+export type ServiceAccreditation = {
+  id: number;
+  service_id: string;
+  accreditation_id: number;
+  created_at: string;
+};
+export type ServiceAccreditationInput = { accreditation_id: number };
+
+export type ServiceMediaFile = {
+  id: number;
+  original_name: string;
+  mime_type: string;
+  size_bytes: number;
+  url: string;
+};
+
+export type PreferredChannel = "email" | "phone" | "whatsapp" | "linkedin";
+
+export type Contact = {
+  id: string;
+  full_name: string;
+  job_title: string | null;
+  department: string | null;
+  email: string | null;
+  phone: string | null;
+  phone_country_code: string | null;
+  linkedin_url: string | null;
+  other_url: string | null;
+  tags: string[];
+  preferred_channel: PreferredChannel | null;
+  is_primary: boolean;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+
+export type ContactInput = {
+  full_name: string;
+  job_title?: string | null;
+  department?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  phone_country_code?: string | null;
+  linkedin_url?: string | null;
+  other_url?: string | null;
+  tags?: string[];
+  preferred_channel?: PreferredChannel | null;
+  is_primary?: boolean;
+  notes?: string | null;
+};
+
+export type ContactPatch = Partial<ContactInput>;
+
+export type ContactListParams = { search?: string; page?: number; limit?: number };
+export type ContactListResult = { data: Contact[]; total: number };
 
 export type SchemaFieldValue = { schema_field_id: number; value: unknown };
 
