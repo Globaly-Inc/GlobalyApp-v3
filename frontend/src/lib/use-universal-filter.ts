@@ -47,9 +47,16 @@ export function useUniversalFilter({
   moduleKey,
   fieldDefinitions,
 }: Readonly<{ moduleKey: string; fieldDefinitions: FilterFieldDefinition[] }>) {
-  const [filterConfig, setFilterConfig] = useState<FilterConfig>(EMPTY_FILTER_CONFIG);
-  const [panelOpen, setPanelOpen] = useState(false);
+  // Reading localStorage in a state initialiser would normally risk a hydration mismatch, but
+  // every screen using this sits behind a client-only loading gate, so the server and the first
+  // client render both show the spinner, not the table.
   const [saved, setSaved] = useState(() => readStore()[moduleKey] ?? { filters: [], defaultId: null });
+  // Starring a filter as the default has to actually apply it on the next visit, or the star is
+  // decoration — so the live config starts as that filter's, not empty.
+  const [filterConfig, setFilterConfig] = useState<FilterConfig>(
+    () => saved.filters.find((f) => f.id === saved.defaultId)?.filter_config ?? EMPTY_FILTER_CONFIG,
+  );
+  const [panelOpen, setPanelOpen] = useState(false);
 
   const persist = useCallback(
     (next: { filters: SavedFilter[]; defaultId: string | null }) => {
@@ -128,7 +135,13 @@ export function useUniversalFilter({
   const applySavedFilter = useCallback((filter: SavedFilter) => setFilterConfig(filter.filter_config), []);
 
   const setDefaultFilter = useCallback(
-    (filterId: string | null) => persist({ ...saved, defaultId: filterId }),
+    (filterId: string | null) => {
+      persist({ ...saved, defaultId: filterId });
+      // Apply it immediately too — starring a filter you can already see should not need a reload
+      // to take effect.
+      const starred = saved.filters.find((f) => f.id === filterId);
+      if (starred) setFilterConfig(starred.filter_config);
+    },
     [persist, saved],
   );
 

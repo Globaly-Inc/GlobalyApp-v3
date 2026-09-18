@@ -33,9 +33,15 @@ function toDate(v: unknown): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-/** Local midnight, so "on 2026-05-01" matches any time of day on that date. */
-function startOfDay(d: Date): number {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+/**
+ * UTC midnight, so a date-only comparison matches any time of day on that date.
+ *
+ * UTC rather than local on purpose: the date inputs emit a bare `YYYY-MM-DD`, which `Date` parses
+ * as UTC midnight, while the records carry real instants. Bucketing by local day shifted the two
+ * sides by the viewer's offset and dropped records late in the day on the range's last date.
+ */
+function startOfUtcDay(d: Date): number {
+  return Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate());
 }
 
 function daysAgo(n: number): number {
@@ -94,6 +100,21 @@ function matchesText(operator: FilterOperator, raw: string, needle: string): boo
   }
 }
 
+/**
+ * `between` serves both number and date fields, and the matcher only sees the serialised
+ * condition — not the field's type. Numbers first; ISO date strings coerce to NaN, so they fall
+ * through to a day-granular date comparison, with both bounds inclusive.
+ */
+function matchesBetween(raw: unknown, from: unknown, to: unknown): boolean {
+  const [value, lo, hi] = [toNum(raw), toNum(from), toNum(to)];
+  if (value != null && lo != null && hi != null) return value >= lo && value <= hi;
+
+  const [date, after, before] = [toDate(raw), toDate(from), toDate(to)];
+  if (date == null || after == null || before == null) return false;
+  const day = startOfUtcDay(date);
+  return day >= startOfUtcDay(after) && day <= startOfUtcDay(before);
+}
+
 function matchesMembership(operator: FilterOperator, rawValue: unknown, condValue: unknown): boolean {
   const wanted = (Array.isArray(condValue) ? condValue : [condValue]).map(String);
   const actual = Array.isArray(rawValue) ? rawValue.map(String) : [toStr(rawValue)];
@@ -124,14 +145,13 @@ function evaluateCondition(record: DataRecord, cond: FilterCondition): boolean {
 
   if (op === "between") {
     if (!Array.isArray(value) || value.length < 2) return false;
-    const [a, lo, hi] = [toNum(raw), toNum(value[0]), toNum(value[1])];
-    return a != null && lo != null && hi != null && a >= lo && a <= hi;
+    return matchesBetween(raw, value[0], value[1]);
   }
 
   if (op === "before" || op === "after" || op === "on") {
     const [a, b] = [toDate(raw), toDate(value)];
     if (a == null || b == null) return false;
-    if (op === "on") return startOfDay(a) === startOfDay(b);
+    if (op === "on") return startOfUtcDay(a) === startOfUtcDay(b);
     return op === "before" ? a.getTime() < b.getTime() : a.getTime() > b.getTime();
   }
 

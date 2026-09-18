@@ -50,6 +50,8 @@ export async function businessServicesRoutes(app: FastifyInstance) {
   // DELETE here means "go back to the business cover", not "show nothing".
   app.post("/services/:subId/cover", { preHandler: requireBusinessContext }, async (req, reply) => {
     const { subId } = SubIdSchema.parse(req.params);
+    // Before the upload, not after: an unknown UUID would otherwise leave an orphaned object.
+    await service.requireService(Number(req.business!.id), subId);
     const file = await req.file();
     if (!file) throw new NotFoundError("No file uploaded");
     const buffer = await file.toBuffer();

@@ -9,6 +9,7 @@ import { ServiceFeeDialog } from "./service-fee-dialog";
 /** The four modals the service list can raise, kept together so the tab itself stays readable. */
 export function ServiceListDialogs({
   selectedIds,
+  selectedServices,
   orgBase,
   bulkUpdateOpen,
   onBulkUpdateOpenChange,
@@ -24,6 +25,8 @@ export function ServiceListDialogs({
   deleting,
 }: Readonly<{
   selectedIds: string[];
+  /** The same selection as objects — bulk update needs each row's category, not just its id. */
+  selectedServices: BusinessService[];
   orgBase: string;
   bulkUpdateOpen: boolean;
   onBulkUpdateOpenChange: (open: boolean) => void;
@@ -43,7 +46,7 @@ export function ServiceListDialogs({
       <ServiceBulkUpdateDialog
         open={bulkUpdateOpen}
         onOpenChange={onBulkUpdateOpenChange}
-        selectedIds={selectedIds}
+        services={selectedServices}
         orgBase={orgBase}
         onUpdated={onBulkUpdated}
       />
