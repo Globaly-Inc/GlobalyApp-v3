@@ -39,6 +39,16 @@ function writeStore(next: SavedFilterStore) {
 const newId = () => Math.random().toString(36).slice(2, 10);
 
 /**
+ * Whether the live config is still verbatim a saved filter's, rather than something the user has
+ * since edited. Both sides come from the same shapes — applying a filter reuses its object, and a
+ * reload parses one JSON document — so key order is stable; a false negative just keeps the
+ * conditions, which is the safe direction.
+ */
+function isUnchangedCopy(live: FilterConfig, saved: FilterConfig): boolean {
+  return JSON.stringify(live) === JSON.stringify(saved);
+}
+
+/**
  * State for one module's filter panel: the live condition tree, plus that module's saved
  * filters. `fieldDefinitions` decides which fields a new condition can pick and which operator
  * it starts on.
@@ -146,12 +156,20 @@ export function useUniversalFilter({
   );
 
   const deleteFilter = useCallback(
-    (filterId: string) =>
+    (filterId: string) => {
       persist({
         filters: saved.filters.filter((f) => f.id !== filterId),
         defaultId: saved.defaultId === filterId ? null : saved.defaultId,
-      }),
-    [persist, saved],
+      });
+      // Deleting a filter the user is currently sitting on would otherwise leave those conditions
+      // applied now but gone after a reload (nothing seeds them any more) — same action, two
+      // different result sets. Only when the live config is still the saved one verbatim: once
+      // they have edited it, it is their own working state and deleting a bookmark must not
+      // discard it.
+      const deleted = saved.filters.find((f) => f.id === filterId);
+      if (deleted && isUnchangedCopy(filterConfig, deleted.filter_config)) setFilterConfig(EMPTY_FILTER_CONFIG);
+    },
+    [filterConfig, persist, saved],
   );
 
   const activeCount = useMemo(() => countActiveConditions(filterConfig), [filterConfig]);
