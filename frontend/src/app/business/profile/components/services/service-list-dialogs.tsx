@@ -9,6 +9,7 @@ import { ServiceFeeDialog } from "./service-fee-dialog";
 /** The four modals the service list can raise, kept together so the tab itself stays readable. */
 export function ServiceListDialogs({
   selectedIds,
+  orgBase,
   bulkUpdateOpen,
   onBulkUpdateOpenChange,
   onBulkUpdated,
@@ -23,6 +24,7 @@ export function ServiceListDialogs({
   deleting,
 }: Readonly<{
   selectedIds: string[];
+  orgBase: string;
   bulkUpdateOpen: boolean;
   onBulkUpdateOpenChange: (open: boolean) => void;
   onBulkUpdated: () => void;
@@ -42,15 +44,17 @@ export function ServiceListDialogs({
         open={bulkUpdateOpen}
         onOpenChange={onBulkUpdateOpenChange}
         selectedIds={selectedIds}
+        orgBase={orgBase}
         onUpdated={onBulkUpdated}
       />
       <ServiceBulkAssignDialog
         open={bulkAssignOpen}
         onOpenChange={onBulkAssignOpenChange}
         selectedIds={selectedIds}
+        orgBase={orgBase}
         onAssigned={onBulkAssigned}
       />
-      <ServiceFeeDialog service={feeService} onOpenChange={(open) => !open && onFeeServiceClose()} />
+      <ServiceFeeDialog service={feeService} orgBase={orgBase} onOpenChange={(open) => !open && onFeeServiceClose()} />
       <DeleteServiceDialog
         service={deletingService}
         onOpenChange={(open) => !open && onDeletingServiceClose()}

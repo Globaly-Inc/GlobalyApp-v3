@@ -22,11 +22,13 @@ export function ServiceBulkAssignDialog({
   open,
   onOpenChange,
   selectedIds,
+  orgBase,
   onAssigned,
 }: Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
   selectedIds: string[];
+  orgBase: string;
   onAssigned: () => void;
 }>) {
   const [branches, setBranches] = useState<Branch[]>([]);
@@ -39,11 +41,11 @@ export function ServiceBulkAssignDialog({
     if (!open || loadedRef.current) return;
     loadedRef.current = true;
     businessProfileDetailApi
-      .getBranches({ limit: 100 })
+      .getBranches({ limit: 100 }, orgBase)
       .then((res) => setBranches(res.data.filter((b) => !b.is_primary)))
       .catch((e: Error) => toast.error("Couldn't load branches", { description: e.message }))
       .finally(() => setLoading(false));
-  }, [open]);
+  }, [open, orgBase]);
 
   const toggle = (branchId: string) => {
     const next = new Set(picked);
@@ -60,7 +62,7 @@ export function ServiceBulkAssignDialog({
         targets.map((branch) =>
           businessProfileDetailApi.updateBranch(branch.id, {
             shared_services: [...new Set([...(branch.shared_services as string[]), ...selectedIds])],
-          }),
+          }, orgBase),
         ),
       );
       toast.success(`Shared with ${picked.size} branch${picked.size === 1 ? "" : "es"}`);

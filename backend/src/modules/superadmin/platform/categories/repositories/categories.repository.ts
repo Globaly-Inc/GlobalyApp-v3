@@ -105,6 +105,20 @@ export async function insertServiceCategory(data: Record<string, unknown>) {
   return row;
 }
 
+/**
+ * The per-category fields the service editor's "Course details" card needs before either picker
+ * can be used — see migration 20260917_001, which backfilled them for the categories that
+ * already existed. Called on create so a new category is usable immediately instead of
+ * shipping with two disabled fields until someone notices.
+ */
+export async function insertDefaultServiceCategoryFields(categoryId: number, fields: Record<string, unknown>[]) {
+  if (fields.length === 0) return;
+  await masterKnex("schema_fields")
+    .insert(fields.map((f) => ({ ...f, entity_id: categoryId, entity_type: "service_categories" })))
+    .onConflict(["entity_id", "entity_type", "key"])
+    .ignore();
+}
+
 export async function updateServiceCategory(id: number, data: Record<string, unknown>) {
   const [row] = await masterKnex("service_categories").where({ id }).update({ ...data, updated_at: now() }).returning("*");
   return row;

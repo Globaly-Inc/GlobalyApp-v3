@@ -30,20 +30,20 @@ const EMPTY: ServiceEligibilityInput = {
   description: "", academic_tests: [], language_tests: [],
 };
 
-export function EligibilityTab({ serviceId }: Readonly<{ serviceId: string }>) {
+export function EligibilityTab({ serviceId, orgBase }: Readonly<{ serviceId: string; orgBase: string }>) {
   const [rows, setRows] = useState<ServiceEligibility[]>([]);
   const [loading, setLoading] = useState(true);
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<ServiceEligibilityInput>(EMPTY);
   const [saving, setSaving] = useState(false);
 
-  const load = () => businessProfileDetailApi.serviceEligibility.list(serviceId).then(setRows).finally(() => setLoading(false));
-  useEffect(() => { load(); }, [serviceId]);
+  const load = () => businessProfileDetailApi.serviceEligibility.list(serviceId, orgBase).then(setRows).finally(() => setLoading(false));
+  useEffect(() => { load(); }, [serviceId, orgBase]);
 
   const handleAdd = async () => {
     setSaving(true);
     try {
-      await businessProfileDetailApi.serviceEligibility.create(serviceId, form);
+      await businessProfileDetailApi.serviceEligibility.create(serviceId, form, orgBase);
       toast.success("Eligibility requirement added");
       setOpen(false);
       setForm(EMPTY);
@@ -57,7 +57,7 @@ export function EligibilityTab({ serviceId }: Readonly<{ serviceId: string }>) {
 
   const handleDelete = async (id: number) => {
     try {
-      await businessProfileDetailApi.serviceEligibility.remove(serviceId, id);
+      await businessProfileDetailApi.serviceEligibility.remove(serviceId, id, orgBase);
       setRows((r) => r.filter((x) => x.id !== id));
     } catch (e) {
       toast.error("Couldn't remove requirement", { description: (e as Error).message });

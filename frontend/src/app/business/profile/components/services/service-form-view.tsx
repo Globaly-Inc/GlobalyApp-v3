@@ -5,13 +5,10 @@ import { useRouter } from "next/navigation";
 import { ArrowLeft, Save } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Combobox } from "@/components/combobox";
-import { DynamicIcon } from "@/components/dynamic-icon";
 import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { useAuthState } from "@/app/auth/store/auth-slice";
 import type { Accreditation, Category, Lookup } from "@/app/admin/platform/categories/apis/types";
 import { businessProfileDetailApi } from "../../apis";
 import {
@@ -19,6 +16,7 @@ import {
 } from "../../store/business-profile-detail-slice";
 import { ApiError } from "@/lib/api/http";
 import type { SchemaFieldValue, ServiceInput } from "../../apis/types";
+import { ServiceEditorHeader } from "./service-editor-header";
 import { SummaryTab } from "./tabs/summary-tab";
 import { CourseFeesTab } from "./tabs/course-fees-tab";
 import { IntakesTab } from "./tabs/intakes-tab";
@@ -47,6 +45,14 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
   const dispatch = useAppDispatch();
   const isEdit = !!serviceId;
 
+  // Same institution-vs-business resolution as business-profile-detail-view.tsx: membership
+  // lists are the authoritative source, since a dual-role user's `user_category` only names
+  // their primary role, not which org this page is actually for.
+  const { user: authUser } = useAuthState();
+  const isInstitution =
+    !authUser?.businesses.some((b) => b.id === businessId) && !!authUser?.institutions.some((i) => i.id === businessId);
+  const orgBase = isInstitution ? "/institutions" : "/businesses";
+
   const profile = useAppSelector((state) => state.businessOnboarding.profile);
   const services = useAppSelector((state) => state.businessProfileDetail.services.items);
   const [serviceCategories, setServiceCategories] = useState<Category[]>([]);
@@ -64,6 +70,11 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
     const existing = serviceId ? services.find((s) => s.id === serviceId) : undefined;
     return existing ? toForm(existing) : EMPTY_FORM;
   });
+  // The service's own cover, null while it inherits the org's. Held locally rather than read
+  // from the store each render so an upload shows immediately, before the list is refetched.
+  const [coverUrl, setCoverUrl] = useState<string | null>(
+    () => (serviceId ? (services.find((s) => s.id === serviceId)?.cover_url ?? null) : null),
+  );
   const [fieldValues, setFieldValues] = useState<Record<number, unknown>>({});
   const [saving, setSaving] = useState(false);
   const [detailTab, setDetailTab] = useState<DetailTab>("summary");
@@ -83,16 +94,21 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
   useEffect(() => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
-    businessProfileDetailApi.getServiceCategories().then((res) => setServiceCategories(res.data));
-    businessProfileDetailApi.getLookups("degree-levels").then((res) => setDegreeLevels(res.data));
-    businessProfileDetailApi.getLookups("areas-of-study").then((res) => setAreasOfStudy(res.data));
-    businessProfileDetailApi.getAccreditations().then((res) => setAccreditations(res.data));
+    // Not the API's default limit of 10: this list is both the category picker AND the source of
+    // `schemaFieldIdByKey`, so a truncated page silently hides categories and their schema fields.
+    businessProfileDetailApi.getServiceCategories({ limit: 100 }, orgBase).then((res) => setServiceCategories(res.data));
+    businessProfileDetailApi.getLookups("degree-levels", {}, orgBase).then((res) => setDegreeLevels(res.data));
+    businessProfileDetailApi.getLookups("areas-of-study", {}, orgBase).then((res) => setAreasOfStudy(res.data));
+    businessProfileDetailApi.getAccreditations({}, orgBase).then((res) => setAccreditations(res.data));
     if (isEdit && serviceId) {
       if (!services.some((s) => s.id === serviceId)) {
         dispatch(fetchServices({ id: businessId, params: { limit: 100 } })).then((res) => {
           if (fetchServices.fulfilled.match(res)) {
             const found = res.payload.data.find((s) => s.id === serviceId);
-            if (found) setForm(toForm(found));
+            if (found) {
+              setForm(toForm(found));
+              setCoverUrl(found.cover_url);
+            }
           }
         });
       }
@@ -108,6 +124,7 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
   }, []);
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((f) => ({ ...f, [key]: value }));
+
 
   const canSave = form.name.trim().length >= 2 && !!form.service_category_id;
 
@@ -203,40 +220,21 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
         </Button>
       </div>
 
-      <div className="overflow-hidden rounded-lg border">
-        <div className="relative h-32 bg-linear-to-br from-primary/15 to-primary/5" />
-        <CardContent>
-          <div className="flex items-start gap-4 -mt-14 ml-8">
-            <Avatar className="size-28 shrink-0 rounded-xl border-4 border-background shadow-sm">
-              {profile?.logo_url && <AvatarImage src={profile.logo_url} alt={profile.business_name} className="rounded-lg object-contain p-1" />}
-              <AvatarFallback className="rounded-lg bg-background text-xl font-bold text-primary">
-                {(profile?.business_name ?? "B").charAt(0).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex flex-1 flex-col gap-1.5 pt-4 sm:pt-14 m-2">
-              <Combobox
-                options={serviceCategories.map((c) => ({
-                  value: String(c.id),
-                  label: c.name,
-                  icon: <DynamicIcon name={c.icon} fallback="GraduationCap" className="h-3.5 w-3.5" />,
-                }))}
-                value={form.service_category_id ? String(form.service_category_id) : ""}
-                onChange={(v) => set("service_category_id", v ? Number(v) : null)}
-                placeholder="Select category"
-                searchPlaceholder="Search categories..."
-                className="h-7 w-fit min-w-0 rounded-full border-primary/30 bg-primary/5 px-3 text-xs font-medium text-primary"
-              />
-              <Input
-                value={form.name}
-                onChange={(e) => set("name", e.target.value)}
-                placeholder="Untitled service"
-                className="h-10 border-none p-0 text-xl font-bold text-foreground shadow-none focus-visible:ring-0"
-              />
-              <p className="text-sm text-muted-foreground">{profile?.business_name ?? "Business"}</p>
-            </div>
-          </div>
-        </CardContent>
-      </div>
+      <ServiceEditorHeader
+        ownerName={profile?.business_name ?? "Business"}
+        ownerLogoUrl={profile?.logo_url ?? null}
+        ownerCoverUrl={profile?.cover_url ?? null}
+        isInstitution={isInstitution}
+        serviceId={isEdit ? (serviceId ?? null) : null}
+        orgBase={orgBase}
+        coverUrl={coverUrl}
+        onCoverChange={setCoverUrl}
+        serviceCategories={serviceCategories}
+        categoryId={form.service_category_id}
+        onCategoryChange={(id) => set("service_category_id", id)}
+        name={form.name}
+        onNameChange={(v) => set("name", v)}
+      />
 
       {isEdit && serviceId ? (
         <>
@@ -246,6 +244,7 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
               {detailTab === "summary" && (
                 <SummaryTab
                   serviceId={serviceId}
+                  orgBase={orgBase}
                   onNavigateTab={setDetailTab}
                   description={form.description}
                   onDescriptionChange={(v) => set("description", v)}
@@ -257,18 +256,19 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
                   courseSearchLoading={courseSearchLoading}
                 />
               )}
-              {detailTab === "fees" && <CourseFeesTab serviceId={serviceId} />}
-              {detailTab === "intakes" && <IntakesTab serviceId={serviceId} />}
-              {detailTab === "eligibility" && <EligibilityTab serviceId={serviceId} />}
-              {detailTab === "study-options" && <StudyOptionsTab serviceId={serviceId} />}
-              {detailTab === "study-units" && <StudyUnitsTab serviceId={serviceId} />}
-              {detailTab === "accreditations" && <AccreditationsTab serviceId={serviceId} />}
+              {detailTab === "fees" && <CourseFeesTab serviceId={serviceId} orgBase={orgBase} />}
+              {detailTab === "intakes" && <IntakesTab serviceId={serviceId} orgBase={orgBase} />}
+              {detailTab === "eligibility" && <EligibilityTab serviceId={serviceId} orgBase={orgBase} />}
+              {detailTab === "study-options" && <StudyOptionsTab serviceId={serviceId} orgBase={orgBase} />}
+              {detailTab === "study-units" && <StudyUnitsTab serviceId={serviceId} orgBase={orgBase} />}
+              {detailTab === "accreditations" && <AccreditationsTab serviceId={serviceId} orgBase={orgBase} />}
             </CardContent>
           </Card>
         </>
       ) : (
         <SummaryTab
           serviceId={null}
+          orgBase={orgBase}
           onNavigateTab={() => {}}
           description={form.description}
           onDescriptionChange={(v) => set("description", v)}
