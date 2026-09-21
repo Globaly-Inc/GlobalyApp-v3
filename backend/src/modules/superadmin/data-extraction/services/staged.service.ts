@@ -4,7 +4,7 @@ import { BadRequestError, NotFoundError } from "../../../../shared/errors.js";
 import { logAudit } from "../shared/audit.js";
 import * as repo from "../repositories/staged.repository.js";
 import { withActorNames } from "../shared/actor-names.js";
-import { upsertStudyOption } from "../lib/staging-writer.js";
+import { courseIdsForStudyOption, syncCourseDurationFromOptions, upsertStudyOption } from "../lib/staging-writer.js";
 
 // ── Study options ──
 
@@ -25,6 +25,7 @@ export async function createStudyOption(data: Record<string, unknown>, adminId: 
   if (courseId) {
     const assignment = await repo.assignJunction("study-options", { job_id: jobId, course_id: courseId, entity_id: optionId });
     linked = assignment?.linked ?? false;
+    await syncCourseDurationFromOptions([courseId]);
   }
 
   if (created) {
@@ -39,12 +40,15 @@ export async function createStudyOption(data: Record<string, unknown>, adminId: 
 
 export async function patchStudyOption(id: string, data: Record<string, unknown>, adminId: number) {
   await repo.studyOptions.update(id, data, adminId);
+  await syncCourseDurationFromOptions(await courseIdsForStudyOption(id));
   await logAudit(adminId, "STUDY_OPTION_PATCH", { entityType: "extraction_study_options", entityId: id });
   return { updated: true };
 }
 
 export async function deleteStudyOption(id: string, adminId: number) {
+  const courses = await courseIdsForStudyOption(id); // before the delete cascades the assignments away
   await repo.studyOptions.delete(id);
+  await syncCourseDurationFromOptions(courses);
   await logAudit(adminId, "STUDY_OPTION_DELETE", { entityType: "extraction_study_options", entityId: id });
   return { deleted: true };
 }
@@ -224,6 +228,7 @@ export async function assignJunction(
   if (!repo.getJunctionInfo(slug)) throw new BadRequestError(`Unknown junction: ${slug}`);
   const row = await repo.assignJunction(slug, data);
   if (!row) throw new BadRequestError(`Unknown junction: ${slug}`);
+  if (slug === "study-options") await syncCourseDurationFromOptions([data.course_id]);
   // Same accuracy fix as createStudyOption: "link existing" clicked on something already linked
   // is a no-op, not a fresh assignment worth an audit entry.
   if (row.linked) await logAudit(adminId, "JUNCTION_ASSIGN", { entityType: slug, entityId: row.id });
@@ -237,6 +242,7 @@ export async function unassignJunction(
 ) {
   if (!repo.getJunctionInfo(slug)) throw new BadRequestError(`Unknown junction: ${slug}`);
   await repo.unassignJunction(slug, data);
+  if (slug === "study-options") await syncCourseDurationFromOptions([data.course_id]);
   await logAudit(adminId, "JUNCTION_UNASSIGN", { entityType: slug });
   return { deleted: true };
 }

@@ -32,7 +32,7 @@ import { writeInstitutionOverview, writeSiteIntelligence, insertQueueItemDetaile
 import {
   upsertSiteUrls, listActiveSiteUrls, listSiteUrlsByCategory, setSiteUrlCategories,
 } from "../repositories/site-urls.repository.js";
-import { SITE_URL_CATEGORIES, categoriesFor, guidedUrlCategories, type SiteUrlCategory } from "./url-categories.js";
+import { SITE_URL_CATEGORIES, categoriesFor, guidedUrlCategories, type CategoryVerdict, type SiteUrlCategory } from "./url-categories.js";
 
 const logger = createChildLogger("pipeline-steps");
 
@@ -396,19 +396,25 @@ export async function runUrlClassify(jobId: string, job: JobRow): Promise<{ cour
   if (picked.size === 0 && urls.length > 0) picked = await classify(urls.slice(0, CLASSIFY_ALL_CAP), false);
   if (picked.size === 0) picked.add(normaliseUrl(job.institution_url)); // fallback: the homepage itself
 
-  const merged = categoriesFor(urls, picked, guidedUrlCategories(guidedRaw, normaliseUrl));
+  // `usedLlm` here means the COURSE pick was model-assisted; that is the source for course rows only.
+  const merged = categoriesFor(urls, picked, guidedUrlCategories(guidedRaw, normaliseUrl), usedLlm ? "llm" : "heuristic");
   // Only what the free passes could not place goes to the model. ponytail: same CLASSIFY_ALL_CAP as
   // the course pass — past it the tail is "other", not another round of lite calls.
-  const unplaced = [...merged].filter(([, c]) => c === null).map(([u]) => u);
-  const modelled = unplaced.length ? await categoriseWithModel(jobId, unplaced.slice(0, CLASSIFY_ALL_CAP)) : new Map<string, SiteUrlCategory>();
+  const unplaced = [...merged].filter(([, v]) => v === null).map(([u]) => u);
+  const attempted = new Set(unplaced.slice(0, CLASSIFY_ALL_CAP));
+  const modelled = attempted.size ? await categoriseWithModel(jobId, [...attempted]) : new Map<string, SiteUrlCategory>();
   if (modelled.size) usedLlm = true;
 
-  const categories = new Map<string, SiteUrlCategory>();
-  for (const [url, cat] of merged) categories.set(url, cat ?? modelled.get(url) ?? "other");
-  await setSiteUrlCategories(jobId, categories, usedLlm ? "llm" : "heuristic");
+  // Per-URL provenance: a URL the model was shown but did not return is still the model's "other".
+  const verdicts = new Map<string, CategoryVerdict>();
+  for (const [url, v] of merged) {
+    const m = modelled.get(url);
+    verdicts.set(url, v ?? (m ? { category: m, source: "llm" } : { category: "other", source: attempted.has(url) ? "llm" : "heuristic" }));
+  }
+  await setSiteUrlCategories(jobId, verdicts);
 
   const byCategory: Record<string, number> = {};
-  for (const cat of categories.values()) byCategory[cat] = (byCategory[cat] ?? 0) + 1;
+  for (const { category } of verdicts.values()) byCategory[category] = (byCategory[category] ?? 0) + 1;
   const course = byCategory.course ?? 0;
   const summary = Object.entries(byCategory).filter(([k]) => k !== "course").map(([k, n]) => `${k} ${n}`).join(", ");
   await _stepDeps.writeEvent(jobId, "urls_filtered", {

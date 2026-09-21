@@ -651,6 +651,20 @@ their next scrape. `full` mode is `…<digest>.full.md`. `snapshotPathFor`/`file
 from `site-snapshot.ts` (re-exported there). `test:page-store` §6 covers write, hit, missing file,
 mismatched file, linked-files round-trip, PDF.
 
+## Study options own a course's duration (2026-09-21)
+
+User decision: "study options' duration is the single source of truth". The admin UI no longer shows
+or edits `extraction_courses.duration_weeks` (courses list badge, detail picker and add-course input
+removed). The column stays — search and public course pages read it — and is kept true by
+`syncCourseDurationFromOptions` (`staging-writer.ts`, `weeksFromStudyOptions` over the course's
+linked options) called from EVERY study-option write path: `staged.service` create / patch / delete /
+assign / unassign for the `study-options` junction, and `supporting.service.saveAndLearn` for
+`extraction_study_options`. Options yielding no duration leave the stored value alone, so a
+prose/text-derived figure survives and deleting a course's only dated option keeps the last value.
+Updates use `IS DISTINCT FROM` so an unchanged figure does not bump `updated_at` (which would
+re-queue incremental verification). Manually created courses get their duration the moment their
+first dated study option is added. Not a V2 behaviour; review follow-up to the UI removal.
+
 ## Site URLs carry a CATEGORY, not a course/other role (2026-09-21)
 
 `extraction_site_urls.category` / `category_source` (migration `20260918_001`, which had not
@@ -665,7 +679,9 @@ classify logic) > path heuristic (`heuristicCategory`, free) > ONE lite-tier mod
 is still null (`urlCategoryPrompt`, 200 URLs + page excerpt per batch, capped at
 `CLASSIFY_ALL_CAP`) > other. `queue_pages` reads `category = 'course'`; nothing else in the
 pipeline consumes the other categories yet — they are labels on the Site tab and the hook for the
-entity steps to stop re-discovering their pages. **Behaviour change:** a guided `fees_urls` /
+entity steps to stop re-discovering their pages. `category_source` is PER URL (guided / heuristic /
+llm / admin — review fix 2026-09-21: an earlier cut stamped one job-wide source on every row, so a
+single model call relabelled guided and heuristic rows as llm). **Behaviour change:** a guided `fees_urls` /
 `contact_urls` / … page used to be pinned `course` and therefore queued for course extraction; it
 now keeps its own category and is NOT queued — the entity steps already read those keys directly.
 Guarded by `test:step-gate` §6.

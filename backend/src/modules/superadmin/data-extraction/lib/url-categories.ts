@@ -14,6 +14,10 @@ export const SITE_URL_CATEGORIES = [
 ] as const;
 export type SiteUrlCategory = (typeof SITE_URL_CATEGORIES)[number];
 
+/** Who decided a URL's category. `admin` is the only one a re-run never overwrites. */
+export type SiteUrlCategorySource = "guided" | "heuristic" | "llm" | "admin";
+export type CategoryVerdict = { category: SiteUrlCategory; source: SiteUrlCategorySource };
+
 /** guided_urls keys (frontend const GUIDED_URL_CATEGORIES / VISA_SERVICE_GUIDED_URL_CATEGORIES) → category. */
 const GUIDED_KEY_CATEGORY: Record<string, SiteUrlCategory> = {
   course_list_urls: "course", services_urls: "course",
@@ -63,12 +67,21 @@ export function heuristicCategory(url: string): SiteUrlCategory | null {
 }
 
 /**
- * Pure merge (tested in tests/step-gate.ts): guided key > classifier pick > heuristic > null.
- * Guided URLs not on the list are added — the admin named them, they exist.
+ * Pure merge (tested in tests/step-gate.ts): guided key > classifier pick > heuristic > null, each
+ * verdict carrying its OWN source — `pickSource` says whether the course pick came from the model
+ * or the URL heuristic. Guided URLs not on the list are added — the admin named them, they exist.
  */
-export function categoriesFor(urls: string[], picked: Set<string>, guided: Map<string, SiteUrlCategory>): Map<string, SiteUrlCategory | null> {
-  const out = new Map<string, SiteUrlCategory | null>();
-  for (const url of urls) out.set(url, guided.get(url) ?? (picked.has(url) ? "course" : heuristicCategory(url)));
-  for (const [url, cat] of guided) out.set(url, cat);
+export function categoriesFor(
+  urls: string[], picked: Set<string>, guided: Map<string, SiteUrlCategory>, pickSource: "heuristic" | "llm",
+): Map<string, CategoryVerdict | null> {
+  const out = new Map<string, CategoryVerdict | null>();
+  for (const url of urls) {
+    const g = guided.get(url);
+    if (g) { out.set(url, { category: g, source: "guided" }); continue; }
+    if (picked.has(url)) { out.set(url, { category: "course", source: pickSource }); continue; }
+    const h = heuristicCategory(url);
+    out.set(url, h ? { category: h, source: "heuristic" } : null);
+  }
+  for (const [url, cat] of guided) out.set(url, { category: cat, source: "guided" });
   return out;
 }

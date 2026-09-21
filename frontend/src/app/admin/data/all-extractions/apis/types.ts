@@ -387,7 +387,7 @@ export type SiteUrl = {
   url: string;
   source: string;
   category: SiteUrlCategory | null;
-  category_source: "heuristic" | "llm" | "admin" | null;
+  category_source: "guided" | "heuristic" | "llm" | "admin" | null;
   excluded: boolean;
   created_at: string;
   updated_at: string;

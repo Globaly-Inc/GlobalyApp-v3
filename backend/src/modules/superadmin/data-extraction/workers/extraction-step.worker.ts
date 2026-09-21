@@ -981,7 +981,7 @@ async function handleDiscoveryStep(jobId: string) {
     if (!toPublish.length) return;
     const urls = toPublish.map((p) => p.url);
     await upsertSiteUrls(jobId, urls.map((url) => ({ url, source: "discovery" })));
-    await setSiteUrlCategories(jobId, new Map(urls.map((u) => [u, "course" as const])), "heuristic");
+    await setSiteUrlCategories(jobId, new Map(urls.map((u) => [u, { category: "course" as const, source: "heuristic" as const }])));
     await snapshotSite(jobId, urls);
     for (const p of toPublish) await queueService.publish(EXTRACTION_QUEUES.PAGES, { jobId, queueItemId: p.queueItemId, url: p.url });
     toPublish.length = 0;

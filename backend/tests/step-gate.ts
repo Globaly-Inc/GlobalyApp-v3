@@ -7,7 +7,8 @@
  *   3. stop_requested must NOT publish, whatever the mode
  *   4. a step with no successor publishes nothing and says so
  *   5. the classifier merge keeps a distrusted batch's heuristic URLs
- *   6. URL categories: guided key > classifier pick > path heuristic > null (model pass) — never a silent 'other'
+ *   6. URL categories: guided key > classifier pick > path heuristic > null (model pass) — never a silent 'other',
+ *      and every verdict carries the source that produced IT (provenance is per URL, not per job)
  *
  * Run: node --import tsx tests/step-gate.ts   (or: npm run test:step-gate)
  * No queue, no database — swapped through _stepDeps.
@@ -131,12 +132,16 @@ console.log("\n6. URL categories");
     ["https://x.edu/a", "https://x.edu/news/b", "https://x.edu/g-fees", "https://x.edu/mystery"],
     new Set(["https://x.edu/a", "https://x.edu/g-fees"]),
     guided,
+    "llm",
   );
-  assert(cats.get("https://x.edu/a") === "course", "picked → course", [...cats]);
-  assert(cats.get("https://x.edu/g-fees") === "fees", "a guided URL keeps its guided category even when the classifier picked it as course", [...cats]);
-  assert(cats.get("https://x.edu/news/b") === "other", "heuristic fills the rest", [...cats]);
-  assert(cats.get("https://x.edu/mystery") === null, "no signal stays null for the model pass", [...cats]);
-  assert(cats.get("https://x.edu/g-courses") === "course", "a guided URL not on the list is still categorised", [...cats]);
+  const v = (u: string) => cats.get(u);
+  assert(v("https://x.edu/a")?.category === "course" && v("https://x.edu/a")?.source === "llm", "picked → course, sourced to the course pass (llm here)", [...cats]);
+  assert(v("https://x.edu/g-fees")?.category === "fees" && v("https://x.edu/g-fees")?.source === "guided", "a guided URL keeps its guided category AND source even when the classifier picked it", [...cats]);
+  assert(v("https://x.edu/news/b")?.category === "other" && v("https://x.edu/news/b")?.source === "heuristic", "heuristic fills the rest and says so", [...cats]);
+  assert(v("https://x.edu/mystery") === null, "no signal stays null for the model pass", [...cats]);
+  assert(v("https://x.edu/g-courses")?.category === "course" && v("https://x.edu/g-courses")?.source === "guided", "a guided URL not on the list is still categorised", [...cats]);
+  const heur = categoriesFor(["https://x.edu/a"], new Set(["https://x.edu/a"]), new Map(), "heuristic");
+  assert(heur.get("https://x.edu/a")?.source === "heuristic", "a heuristic-only course pass is not blamed on the model", [...heur]);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

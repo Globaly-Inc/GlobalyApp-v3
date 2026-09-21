@@ -8,7 +8,7 @@ import { createChildLogger } from "../../../../shared/logger.js";
 import { geocodeAddress } from "../../../../shared/google-places/placesService.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import * as repo from "../repositories/supporting.repository.js";
-import { deriveIntakeMonthYear } from "../lib/staging-writer.js";
+import { courseIdsForStudyOption, deriveIntakeMonthYear, syncCourseDurationFromOptions } from "../lib/staging-writer.js";
 import { coercePartialDate, normaliseStored } from "../lib/partial-date.js";
 import {
   AcademicTestSchema,
@@ -210,6 +210,9 @@ export async function saveAndLearn(input: SaveAndLearnInput, adminId: number) {
   if (table === "extraction_courses") await normaliseCoursePatch(patch);
 
   await repo.patchEntityRow(table, id, patch, adminId);
+
+  // Study options own a course's duration; an inline edit to one moves every linked course.
+  if (table === "extraction_study_options") await syncCourseDurationFromOptions(await courseIdsForStudyOption(id));
 
   // Re-derive an intake's month/year when the admin corrects the name or start date.
   //

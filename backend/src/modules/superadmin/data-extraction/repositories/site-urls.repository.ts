@@ -3,11 +3,11 @@
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { normaliseUrl } from "../lib/page-store.js";
-import { SITE_URL_CATEGORIES, type SiteUrlCategory } from "../lib/url-categories.js";
+import { SITE_URL_CATEGORIES, type CategoryVerdict, type SiteUrlCategory, type SiteUrlCategorySource } from "../lib/url-categories.js";
 
 const T = `${S}.extraction_site_urls`;
 
-export type SiteUrlCategorySource = "heuristic" | "llm" | "admin";
+export type { SiteUrlCategorySource };
 
 export interface SiteUrlRow {
   id: string;
@@ -56,19 +56,25 @@ export async function listSiteUrlsByCategory(jobId: string, category: SiteUrlCat
 }
 
 /**
- * Write the classifier's verdicts. An admin's own category is never overwritten by a re-run — that
- * is the one thing `category_source` exists to protect.
+ * Write the classifier's verdicts, each with the source that produced IT (guided / heuristic / llm)
+ * so the Site map's "Decided by" is true per row. An admin's own category is never overwritten by
+ * a re-run — that is the one thing `category_source` exists to protect.
  */
-export async function setSiteUrlCategories(jobId: string, categories: Map<string, SiteUrlCategory>, source: Exclude<SiteUrlCategorySource, "admin">): Promise<void> {
-  const byCategory = new Map<SiteUrlCategory, string[]>();
-  for (const [url, category] of categories) byCategory.set(category, [...(byCategory.get(category) ?? []), url]);
-  for (const [category, urls] of byCategory) {
+export async function setSiteUrlCategories(jobId: string, verdicts: Map<string, CategoryVerdict>): Promise<void> {
+  const groups = new Map<string, { verdict: CategoryVerdict; urls: string[] }>();
+  for (const [url, verdict] of verdicts) {
+    const key = `${verdict.category}|${verdict.source}`;
+    const g = groups.get(key) ?? { verdict, urls: [] };
+    g.urls.push(url);
+    groups.set(key, g);
+  }
+  for (const { verdict, urls } of groups.values()) {
     for (let i = 0; i < urls.length; i += CHUNK) {
       await masterKnex(T)
         .where({ job_id: jobId })
         .whereIn("url", urls.slice(i, i + CHUNK))
         .where((w) => w.whereNull("category_source").orWhereNot("category_source", "admin"))
-        .update({ category, category_source: source, updated_at: masterKnex.fn.now() });
+        .update({ category: verdict.category, category_source: verdict.source, updated_at: masterKnex.fn.now() });
     }
   }
 }
