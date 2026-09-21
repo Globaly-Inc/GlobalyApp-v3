@@ -74,7 +74,13 @@ export const BusinessSearchQuerySchema = z.object({
     .enum(["true", "false"])
     .optional()
     .transform((v) => v === "true"),
-  for_partner_link: z.coerce.boolean().optional(),
+  // Same reason, and it bites harder here: "false" arriving as true swaps an ordinary search for
+  // the restricted partner one, which answers a non-agent business with [] and an institution
+  // with agents only — a caller that spelled the negative out gets the opposite of what it asked.
+  for_partner_link: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => v === "true"),
 });
 
 // first/last name are collected HERE rather than at promote time: extraction never captures a
