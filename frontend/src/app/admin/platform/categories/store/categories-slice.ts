@@ -208,8 +208,15 @@ export const toggleRegistrationType = mutation<{ id: number; is_active: boolean 
 export const removeRegistrationType = mutation<{ id: number }>(
   "removeRegistrationType",
   ({ id }) => categoriesApi.deleteRegistrationType(id),
-  // Deleting the last row of a page would otherwise leave the list on an empty page.
-  (_arg, state) => fetchRegistrationTypes({ page: Math.min(state.registrationTypes.page, Math.max(1, state.registrationTypes.totalPages)) }),
+  // Deleting the last row of a page would otherwise leave the list on an empty page. `state` is
+  // read before any refetch lands and no reducer handles the delete, so `totalPages` still counts
+  // the row just removed — clamping to it is a no-op in exactly the case it is meant for. The
+  // page count is recomputed from `total - 1` instead.
+  (_arg, state) => {
+    const { page, limit, total } = state.registrationTypes;
+    const lastPage = Math.max(1, Math.ceil(Math.max(0, total - 1) / limit));
+    return fetchRegistrationTypes({ page: Math.min(page, lastPage) });
+  },
 );
 
 export const saveFeeType = mutation<{ id: number | null; input: FeeTypeInput }>(

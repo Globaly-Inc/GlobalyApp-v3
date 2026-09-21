@@ -62,14 +62,26 @@ export function RegistrationLicensesCard({
 
   // Keyed to the country, not a bare boolean: the card keeps its instance when the owner edits
   // the profile's country, and the offered identifiers change with it.
+  //
+  // Two countries in quick succession leave two requests in flight, and they can land in either
+  // order — so only the newest may write. Without that, the slower response for the country the
+  // owner just left would replace the current one's options, and its failure handler would clear
+  // options that had loaded fine: the editor would offer, and save, another country's identifier.
   const fetchedForRef = useRef<number | null | undefined>(undefined);
+  const countryRequestRef = useRef(0);
   useEffect(() => {
     if (fetchedForRef.current === profile.country_id) return;
     fetchedForRef.current = profile.country_id;
+    const seq = ++countryRequestRef.current;
     businessProfileDetailApi
       .getRegistrationTypes(profile.country_id)
-      .then(({ data }) => setRegistrationTypes(data.map((r) => ({ value: r.code, label: r.label }))))
-      .catch(() => setRegistrationTypes([]));
+      .then(({ data }) => {
+        if (seq !== countryRequestRef.current) return;
+        setRegistrationTypes(data.map((r) => ({ value: r.code, label: r.label })));
+      })
+      .catch(() => {
+        if (seq === countryRequestRef.current) setRegistrationTypes([]);
+      });
   }, [profile.country_id]);
 
   const fetchedLicensesRef = useRef(false);

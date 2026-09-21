@@ -11,7 +11,10 @@ import type { Knex } from "knex";
 // `scope` is an iso2 list resolved to accreditation_scope_countries below. An empty scope means
 // the mark is global, matching categories.service.ts: `is_global: scope_country_ids.length === 0`.
 const ACCREDITATIONS: { id?: number; name: string; sort_order: number; description?: string; scope?: string[] }[] = [
-  { id: 1, name: "CRICOS Registered", sort_order: 1 },
+  // "CRICOS", not "CRICOS Registered": the profile license picker persists this name, and
+  // profiles predating the catalog store the bare code. Migration 20260921_004 renames the row
+  // on databases seeded before that, so both fresh and existing environments land on one value.
+  { id: 1, name: "CRICOS", sort_order: 1, description: "Commonwealth Register of Institutions and Courses" },
   { id: 2, name: "TEQSA Accredited", sort_order: 2 },
   { id: 3, name: "ASQA Registered", sort_order: 3 },
   { id: 4, name: "Nationally Recognised Training (NRT)", sort_order: 4 },
@@ -19,8 +22,7 @@ const ACCREDITATIONS: { id?: number; name: string; sort_order: number; descripti
   { id: 6, name: "ISO 9001:2015 Certified", sort_order: 6 },
 
   // ── Advisor / agent registrations (ex-LICENSE_TYPE_OPTIONS) ──
-  // CRICOS is deliberately absent: it is row 1 above. Seeding it again under the bare code would
-  // put two CRICOS rows in the admin's list.
+  // CRICOS is deliberately absent: it is row 1 above, under the same bare code these use.
   { name: "MARA", sort_order: 10, description: "Migration Agents Registration Authority", scope: ["AU"] },
   { name: "QEAC", sort_order: 11, description: "Qualified Education Agent Counsellor", scope: ["AU"] },
   { name: "PIER", sort_order: 12, description: "Professional International Education Resources", scope: ["AU"] },
