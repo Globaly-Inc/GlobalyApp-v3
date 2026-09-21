@@ -50,14 +50,20 @@ export function ServiceEditorHeader({
         fallbackLabel={isInstitution ? "institution" : "business"}
       />
       <CardContent>
-        <div className="-mt-14 ml-8 flex items-start gap-4">
-          <Avatar className="size-28 shrink-0 rounded-xl border-4 border-background shadow-sm">
+        {/* Only the logo overlaps the cover, by a fixed 56px. Pulling the whole row up and pushing
+            the text back down with `pt-4 sm:pt-14` fought itself: the two offsets never matched,
+            and below `sm` the text rode up over the cover. V1 hangs the negative margin off the
+            avatar alone, which keeps the overlap independent of how tall the text column is. */}
+        <div className="flex items-start gap-4">
+          <Avatar className="-mt-14 size-28 shrink-0 rounded-xl border-4 border-background bg-background shadow-lg">
             {ownerLogoUrl && <AvatarImage src={ownerLogoUrl} alt={ownerName} className="rounded-lg object-contain p-1" />}
             <AvatarFallback className="rounded-lg bg-background text-xl font-bold text-primary">
               {ownerName.charAt(0).toUpperCase()}
             </AvatarFallback>
           </Avatar>
-          <div className="m-2 flex flex-1 flex-col gap-1.5 pt-4 sm:pt-14">
+          {/* gap, not space-y: the Combobox's focus guards take space-y margins and shift the
+              column every time its popup opens. */}
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5 pt-1">
             <Combobox
               options={serviceCategories.map((c) => ({
                 value: String(c.id),
@@ -73,13 +79,15 @@ export function ServiceEditorHeader({
               // which truncates every category name. Give the list its own width instead.
               contentClassName="w-64"
             />
+            {/* h-auto, not h-10: a 40px box around 20px text opened gaps above and below the name
+                that the pill and the owner line didn't have. */}
             <Input
               value={name}
               onChange={(e) => onNameChange(e.target.value)}
               placeholder="Untitled service"
-              className="h-10 border-none p-0 text-xl font-bold text-foreground shadow-none focus-visible:ring-0"
+              className="h-auto border-none p-0 text-xl leading-tight font-bold text-foreground shadow-none focus-visible:ring-0"
             />
-            <p className="text-sm text-muted-foreground">{ownerName}</p>
+            <p className="truncate text-sm leading-tight text-muted-foreground">{ownerName}</p>
           </div>
         </div>
       </CardContent>
