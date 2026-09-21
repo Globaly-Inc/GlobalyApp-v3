@@ -1,10 +1,12 @@
 // Read-only category/lookup catalogs for the service add/edit form —
-// same data as the admin platform catalogs, scoped to any authenticated business.
+// same data as the admin platform catalogs, scoped to any authenticated business or
+// institution (this module is also mounted under /api/v3/institutions — the data itself has
+// no owning-entity column, so the same handlers serve both without a twin).
 
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { buildPaginatedResponse, paginationToOffset, PaginationSchema } from "../../../shared/pagination.js";
-import { requireBusinessContext } from "../../../core/plugins/auth.plugin.js";
+import { requireBusinessOrInstitutionContext } from "../../../core/plugins/auth.plugin.js";
 import * as categoriesService from "../../superadmin/platform/categories/services/categories.service.js";
 const CategoryListQuery = PaginationSchema.extend({
   search: z.string().trim().min(1).optional(),
@@ -15,7 +17,7 @@ const RegistrationTypesQuery = z.object({
 });
 
 export async function businessLookupsRoutes(app: FastifyInstance) {
-  app.get("/service-categories", { preHandler: requireBusinessContext }, async (req, reply) => {
+  app.get("/service-categories", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
     const { search, ...pagination } = CategoryListQuery.parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
     const [rows, total] = await Promise.all([
@@ -42,7 +44,7 @@ export async function businessLookupsRoutes(app: FastifyInstance) {
     ["degree-levels", "degree_levels"],
     ["areas-of-study", "areas_of_study"],
   ] as const) {
-    app.get(`/${path}`, { preHandler: requireBusinessContext }, async (req, reply) => {
+    app.get(`/${path}`, { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
       const { search, ...pagination } = CategoryListQuery.parse(req.query);
       const { limit, offset } = paginationToOffset(pagination);
       const [rows, total] = await Promise.all([
@@ -60,13 +62,13 @@ export async function businessLookupsRoutes(app: FastifyInstance) {
    * "use the generic set when this country has none of its own" is one rule that belongs on one
    * side of the wire — not re-implemented by every client that draws the picker.
    */
-  app.get("/registration-types", { preHandler: requireBusinessContext }, async (req, reply) => {
+  app.get("/registration-types", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
     const { country_id } = RegistrationTypesQuery.parse(req.query);
     const rows = await categoriesService.listActiveRegistrationTypes(country_id);
     return reply.send({ data: rows });
   });
 
-  app.get("/accreditations", { preHandler: requireBusinessContext }, async (req, reply) => {
+  app.get("/accreditations", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
     const pagination = PaginationSchema.parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
     const [rows, total] = await Promise.all([

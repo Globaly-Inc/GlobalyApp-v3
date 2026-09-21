@@ -1,27 +1,29 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Award, BookOpen, CalendarDays, DollarSign, FileText, GraduationCap, Image as ImageIcon, ShieldCheck, Sparkles } from "lucide-react";
-import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Award, BookOpen, CalendarDays, DollarSign, GraduationCap, Image as ImageIcon, ShieldCheck } from "lucide-react";
 import { Combobox } from "@/components/combobox";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { SectionCard } from "@/app/personal/profile/section-card";
+import { PrivacyBadge } from "@/components/privacy-badge";
+import { OneToManySection, SectionCard } from "@/app/personal/profile/section-card";
 import { businessProfileDetailApi } from "../../../apis";
 import { SectionSummaryCard } from "../section-summary-card";
+import { ServiceBranchSharing } from "../service-branch-sharing";
+import { ServiceDescriptionCard } from "../service-description-card";
 import { ServiceSetupChecklist } from "../service-setup-checklist";
 import type { DetailTab } from "../service-form-view";
 
+// The three the Course details card offers, matching V1's editor and the superadmin one.
 const COURSE_FIELDS = [
   { key: "degree_level", label: "Degree level" },
   { key: "area_of_study", label: "Area of study" },
+  { key: "awarded_by", label: "Awarded by" },
 ];
 
 export function SummaryTab({
   serviceId,
+  orgBase,
+  isCourse,
   onNavigateTab,
   description,
   onDescriptionChange,
@@ -33,6 +35,9 @@ export function SummaryTab({
   courseSearchLoading,
 }: Readonly<{
   serviceId: string | null;
+  orgBase: string;
+  /** Course-shaped categories get the academic sections; everything else gets description + fees. */
+  isCourse: boolean;
   onNavigateTab: (tab: DetailTab) => void;
   description: string;
   onDescriptionChange: (value: string) => void;
@@ -48,48 +53,22 @@ export function SummaryTab({
   useEffect(() => {
     if (!serviceId) return;
     Promise.all([
-      businessProfileDetailApi.serviceFees.list(serviceId),
-      businessProfileDetailApi.serviceIntakes.list(serviceId),
-      businessProfileDetailApi.serviceEligibility.list(serviceId),
-      businessProfileDetailApi.serviceStudyUnits.list(serviceId),
-      businessProfileDetailApi.getServiceAccreditations(serviceId),
+      businessProfileDetailApi.serviceFees.list(serviceId, orgBase),
+      businessProfileDetailApi.serviceIntakes.list(serviceId, orgBase),
+      businessProfileDetailApi.serviceEligibility.list(serviceId, orgBase),
+      businessProfileDetailApi.serviceStudyUnits.list(serviceId, orgBase),
+      businessProfileDetailApi.getServiceAccreditations(serviceId, orgBase),
     ]).then(([fees, intakes, eligibility, studyUnits, accreditations]) => {
       setCounts({ fees: fees.length, intakes: intakes.length, eligibility: eligibility.length, studyUnits: studyUnits.length, accreditations: accreditations.length });
     });
-  }, [serviceId]);
+  }, [serviceId, orgBase]);
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
       <div className="space-y-4 lg:col-span-2">
-        <Card className="gap-3">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-4 w-4 text-muted-foreground" />
-              Description
-            </CardTitle>
-            <CardAction>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="gap-1.5 text-primary"
-                onClick={() => toast("Coming soon", { description: "AI-generated descriptions aren't available yet." })}
-              >
-                <Sparkles className="h-3.5 w-3.5" /> Write with AI
-              </Button>
-            </CardAction>
-          </CardHeader>
-          <CardContent>
-            <Textarea
-              value={description}
-              onChange={(e) => onDescriptionChange(e.target.value)}
-              placeholder="Describe the service..."
-              rows={8}
-              className="min-h-20"
-            />
-          </CardContent>
-        </Card>
+        <ServiceDescriptionCard description={description} onChange={onDescriptionChange} />
 
-        {serviceId && (
+        {serviceId && isCourse && (
           <>
             <SectionSummaryCard
               icon={BookOpen}
@@ -112,25 +91,27 @@ export function SummaryTab({
               title="Eligibility"
               count={counts.eligibility}
               emptyText="No eligibility requirements configured yet."
-              addLabel="Add"
               onAdd={() => onNavigateTab("eligibility")}
             />
-            <Card className="gap-3">
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="flex items-center gap-2 text-sm">
-                  <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                  Media <Badge variant="secondary" className="text-[10px]">Public</Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground italic">No media uploaded yet.</p>
-              </CardContent>
-            </Card>
           </>
+        )}
+
+        {/* Not course-only: every service can carry photos, so V1 shows this whatever the category. */}
+        {serviceId && (
+          <OneToManySection
+            icon={ImageIcon}
+            title="Media"
+            count={0}
+            badge={<PrivacyBadge isPublic />}
+            emptyText="No media uploaded yet."
+          >
+            {null}
+          </OneToManySection>
         )}
       </div>
 
       <div className="space-y-4">
+        {isCourse && (
         <SectionCard icon={GraduationCap} title="Course details">
           <div className="space-y-4">
             {COURSE_FIELDS.map((field) => {
@@ -161,31 +142,42 @@ export function SummaryTab({
             })}
           </div>
         </SectionCard>
+        )}
 
         {serviceId && (
           <>
+            {/* "Course fees" whatever the category, as V1 titles it — only the tab drops the prefix. */}
             <SectionSummaryCard
               icon={DollarSign}
               title="Course fees"
               count={counts.fees}
               emptyText="No fees configured yet."
-              addLabel="Add"
               onAdd={() => onNavigateTab("fees")}
             />
-            <SectionSummaryCard
-              icon={CalendarDays}
-              title="Intakes"
-              count={counts.intakes}
-              emptyText="No intakes configured yet."
-              addLabel="Add"
-              onAdd={() => onNavigateTab("intakes")}
-            />
+            {isCourse && (
+              <SectionSummaryCard
+                icon={CalendarDays}
+                title="Intakes"
+                count={counts.intakes}
+                emptyText="No intakes configured yet."
+                onAdd={() => onNavigateTab("intakes")}
+              />
+            )}
+            <ServiceBranchSharing serviceId={serviceId} orgBase={orgBase} />
+            {/* Intakes and eligibility are academic concepts — a non-course service would never
+                tick them off, so its checklist stops at description and fees. */}
             <ServiceSetupChecklist
-              steps={[
-                { label: "Fees", done: counts.fees > 0 },
-                { label: "Intakes", done: counts.intakes > 0 },
-                { label: "Eligibility", done: counts.eligibility > 0 },
-              ]}
+              steps={isCourse
+                ? [
+                  { label: "Description", done: description.trim().length > 0 },
+                  { label: "Fees", done: counts.fees > 0 },
+                  { label: "Intakes", done: counts.intakes > 0 },
+                  { label: "Eligibility", done: counts.eligibility > 0 },
+                ]
+                : [
+                  { label: "Description", done: description.trim().length > 0 },
+                  { label: "Fees", done: counts.fees > 0 },
+                ]}
             />
           </>
         )}

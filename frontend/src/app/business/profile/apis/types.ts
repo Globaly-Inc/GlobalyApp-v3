@@ -57,12 +57,19 @@ export type BusinessService = {
   id: string;
   service_category_id: number | null;
   category_name: string | null;
+  /** Drives the per-row glyph in the service management table. */
+  category_icon: string | null;
+  /** The table branches on this: a "courses" row prices through its fee schedule, not a flat fee. */
+  category_slug: string | null;
   name: string;
   description: string | null;
   price: string | null;
   is_published: boolean;
   public_visibility: Record<string, boolean> | null;
+  /** The service's own cover, already signed into a viewable URL. Null means "use the org's cover". */
+  cover_url: string | null;
   created_at: string;
+  updated_at: string;
   degree_level: string | null;
   area_of_study: string | null;
   duration: string | null;

@@ -1,4 +1,5 @@
 import { categoriesMockApi } from "@/app/admin/platform/categories/apis/mock-data";
+import type { LookupKind, SearchListParams } from "@/app/admin/platform/categories/apis/types";
 import { uuid } from "@/lib/utils";
 import type {
   ActivityListParams, ActivityListResult, Branch, BranchInput, BranchListParams, BranchListResult, BranchPatch,
@@ -21,23 +22,23 @@ let mockServiceAccreditations: (ServiceAccreditationLink & { __serviceId: string
 function makeChildMockApi<TRow extends { id: number }, TInput, TPatch>(label: string) {
   let rows: (TRow & { __serviceId: string })[] = [];
   return {
-    list: async (serviceId: string): Promise<TRow[]> => {
+    list: async (serviceId: string, _orgBase?: string): Promise<TRow[]> => {
       console.log(`[mock] GET /businesses/services/${serviceId}/${label}`);
       await delay(200);
       return rows.filter((r) => r.__serviceId === serviceId);
     },
-    create: async (serviceId: string, input: TInput): Promise<TRow> => {
+    create: async (serviceId: string, input: TInput, _orgBase?: string): Promise<TRow> => {
       await delay(200);
       const row = { ...(input as object), id: mockChildSeq++, __serviceId: serviceId } as TRow & { __serviceId: string };
       rows = [...rows, row];
       return row;
     },
-    update: async (serviceId: string, id: number, patch: TPatch): Promise<TRow> => {
+    update: async (serviceId: string, id: number, patch: TPatch, _orgBase?: string): Promise<TRow> => {
       await delay(200);
       rows = rows.map((r) => (r.id === id && r.__serviceId === serviceId ? { ...r, ...patch } : r));
       return rows.find((r) => r.id === id)!;
     },
-    remove: async (serviceId: string, id: number): Promise<void> => {
+    remove: async (serviceId: string, id: number, _orgBase?: string): Promise<void> => {
       await delay(200);
       rows = rows.filter((r) => !(r.id === id && r.__serviceId === serviceId));
     },
@@ -156,36 +157,55 @@ export const businessProfileDetailMockApi = {
     mockBranches = mockBranches.filter((b) => b.id !== branchId);
   },
 
-  searchServices: async (params: ServiceSearchParams = {}): Promise<ServiceSearchResult> => {
+  searchServices: async (params: ServiceSearchParams = {}, _orgBase?: string): Promise<ServiceSearchResult> => {
     console.log("[mock] GET /businesses/services/search", params);
     await delay(300);
     return { data: mockServices, total: mockServices.length };
   },
-  createService: async (input: ServiceInput): Promise<BusinessService> => {
+  createService: async (input: ServiceInput, _orgBase?: string): Promise<BusinessService> => {
     await delay(300);
+    const now = new Date().toISOString();
     const service: BusinessService = {
-      id: uuid(), service_category_id: input.service_category_id, category_name: null, name: input.name,
+      id: uuid(), service_category_id: input.service_category_id, category_name: null, category_icon: null,
+      category_slug: null, name: input.name,
       description: input.description ?? null, price: input.price != null ? String(input.price) : null,
-      is_published: false, public_visibility: {}, degree_level: null, area_of_study: null, duration: null,
-      created_at: new Date().toISOString(),
+      is_published: false, public_visibility: {}, cover_url: null, degree_level: null, area_of_study: null, duration: null,
+      created_at: now, updated_at: now,
     };
     mockServices = [service, ...mockServices];
     return service;
   },
-  updateService: async (serviceId: string, patch: ServicePatch): Promise<BusinessService> => {
+  updateService: async (serviceId: string, patch: ServicePatch, _orgBase?: string): Promise<BusinessService> => {
     await delay(300);
-    mockServices = mockServices.map((s) => (s.id === serviceId ? { ...s, ...patch, price: patch.price != null ? String(patch.price) : s.price } : s));
+    mockServices = mockServices.map((s) =>
+      s.id === serviceId
+        ? { ...s, ...patch, price: patch.price != null ? String(patch.price) : s.price, updated_at: new Date().toISOString() }
+        : s,
+    );
     return mockServices.find((s) => s.id === serviceId)!;
   },
-  deleteService: async (serviceId: string): Promise<void> => {
+  deleteService: async (serviceId: string, _orgBase?: string): Promise<void> => {
     await delay(300);
     mockServices = mockServices.filter((s) => s.id !== serviceId);
   },
-  getServiceFieldValues: async (_serviceId: string): Promise<SchemaFieldValue[]> => {
+  uploadServiceCover: async (serviceId: string, file: File, _orgBase?: string): Promise<BusinessService> => {
+    console.log("[mock] POST /services/:id/cover", file.name);
+    await delay(300);
+    // Object URLs survive only this page load, which is all a mock cover needs.
+    mockServices = mockServices.map((s) => (s.id === serviceId ? { ...s, cover_url: URL.createObjectURL(file) } : s));
+    return mockServices.find((s) => s.id === serviceId)!;
+  },
+  removeServiceCover: async (serviceId: string, _orgBase?: string): Promise<void> => {
+    console.log("[mock] DELETE /services/:id/cover");
+    await delay(200);
+    mockServices = mockServices.map((s) => (s.id === serviceId ? { ...s, cover_url: null } : s));
+  },
+
+  getServiceFieldValues: async (_serviceId: string, _orgBase?: string): Promise<SchemaFieldValue[]> => {
     await delay(100);
     return [];
   },
-  updateServiceFieldValues: async (_serviceId: string, values: SchemaFieldValue[]): Promise<SchemaFieldValue[]> => {
+  updateServiceFieldValues: async (_serviceId: string, values: SchemaFieldValue[], _orgBase?: string): Promise<SchemaFieldValue[]> => {
     await delay(150);
     return values;
   },
@@ -372,25 +392,25 @@ export const businessProfileDetailMockApi = {
   serviceStudyOptions: makeChildMockApi<ServiceStudyOption, ServiceStudyOptionInput, ServiceStudyOptionPatch>("study-options"),
   serviceStudyUnits: makeChildMockApi<ServiceStudyUnit, ServiceStudyUnitInput, ServiceStudyUnitPatch>("study-units"),
 
-  getServiceAccreditations: async (serviceId: string): Promise<ServiceAccreditationLink[]> => {
+  getServiceAccreditations: async (serviceId: string, _orgBase?: string): Promise<ServiceAccreditationLink[]> => {
     await delay(200);
     return mockServiceAccreditations.filter((a) => a.__serviceId === serviceId);
   },
-  linkServiceAccreditation: async (serviceId: string, accreditation_id: number): Promise<ServiceAccreditationLink> => {
+  linkServiceAccreditation: async (serviceId: string, accreditation_id: number, _orgBase?: string): Promise<ServiceAccreditationLink> => {
     await delay(200);
     const link = { id: mockChildSeq++, accreditation_id, __serviceId: serviceId };
     mockServiceAccreditations = [...mockServiceAccreditations, link];
     return link;
   },
-  unlinkServiceAccreditation: async (serviceId: string, id: number): Promise<void> => {
+  unlinkServiceAccreditation: async (serviceId: string, id: number, _orgBase?: string): Promise<void> => {
     await delay(200);
     mockServiceAccreditations = mockServiceAccreditations.filter((a) => !(a.id === id && a.__serviceId === serviceId));
   },
 
-  getServiceCategories: categoriesMockApi.getServiceCategories,
-  getLookups: categoriesMockApi.getLookups,
-  getAccreditations: categoriesMockApi.getAccreditations,
-  getRegistrationTypes: async (countryId?: number | null) => {
+  getServiceCategories: (params?: SearchListParams, _orgBase?: string) => categoriesMockApi.getServiceCategories(params),
+  getLookups: (kind: LookupKind, params?: SearchListParams, _orgBase?: string) => categoriesMockApi.getLookups(kind, params),
+  getAccreditations: (params?: SearchListParams, _orgBase?: string) => categoriesMockApi.getAccreditations(params),
+  getRegistrationTypes: async (countryId?: number | null, _orgBase?: string) => {
     console.log("[mock] getRegistrationTypes", countryId);
     const { data } = await categoriesMockApi.getRegistrationTypes({ limit: 100 });
     const active = data.filter((r) => r.is_active);

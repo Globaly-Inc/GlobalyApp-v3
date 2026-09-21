@@ -57,6 +57,10 @@ export const listServiceCategories = repo.listServiceCategories;
 export const countServiceCategories = repo.countServiceCategories;
 
 export function createServiceCategory(data: CategoryInput) {
+  // No schema fields are provisioned here. Degree level / Area of study / Awarded by belong to
+  // the `courses` category alone — the service editor gates its Course details card on that slug
+  // — so seeding them onto every new category only produced rows nothing could ever read. See
+  // migration 20260921_001, which narrowed them back to `courses`.
   return repo.insertServiceCategory(data);
 }
 

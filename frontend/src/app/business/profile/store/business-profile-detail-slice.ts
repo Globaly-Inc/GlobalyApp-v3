@@ -43,38 +43,68 @@ export const deleteBranch = createAsyncThunk(
 );
 
 // ─── Services ────────────────────────────────────────────────────────────────
+// getOrgBase routes an institution session to /institutions/services (institution-services.routes.ts
+// backend) instead of /businesses/services — same table, different owning entity.
 export const fetchServices = createAsyncThunk(
   "businessProfileDetail/fetchServices",
-  ({ params }: { id: number; params?: ServiceSearchParams }) => businessProfileDetailApi.searchServices(params),
+  ({ params }: { id: number; params?: ServiceSearchParams }, { getState }) =>
+    businessProfileDetailApi.searchServices(params, getOrgBase(getState)),
+);
+/**
+ * Every service the business owns, in one go.
+ *
+ * The service management table filters, sorts and paginates client-side (V1 does the same), and
+ * all three are wrong when they only see one backend page — a "Draft only" filter that hides
+ * drafts on page 2 is worse than no filter. `/services/search` caps `limit` at 100, so this walks
+ * the pages until it has them all, stopping at MAX_SERVICE_PAGES so a pathological catalog can't
+ * turn one tab into fifty requests.
+ */
+const MAX_SERVICE_PAGES = 10;
+export const fetchAllServices = createAsyncThunk(
+  "businessProfileDetail/fetchAllServices",
+  async ({ search }: { id: number; search?: string }, { getState }) => {
+    const orgBase = getOrgBase(getState);
+    const limit = 100;
+    const first = await businessProfileDetailApi.searchServices({ page: 1, limit, search }, orgBase);
+    const pages = Math.min(Math.ceil(first.total / limit), MAX_SERVICE_PAGES);
+    const rest = await Promise.all(
+      Array.from({ length: Math.max(0, pages - 1) }, (_, i) =>
+        businessProfileDetailApi.searchServices({ page: i + 2, limit, search }, orgBase),
+      ),
+    );
+    return { data: [...first.data, ...rest.flatMap((r) => r.data)], total: first.total };
+  },
 );
 export const createService = createAsyncThunk(
   "businessProfileDetail/createService",
-  ({ input }: { id: number; input: ServiceInput }) => businessProfileDetailApi.createService(input),
+  ({ input }: { id: number; input: ServiceInput }, { getState }) => businessProfileDetailApi.createService(input, getOrgBase(getState)),
 );
 export const updateService = createAsyncThunk(
   "businessProfileDetail/updateService",
-  ({ serviceId, patch }: { id: number; serviceId: string; patch: ServicePatch }) => businessProfileDetailApi.updateService(serviceId, patch),
+  ({ serviceId, patch }: { id: number; serviceId: string; patch: ServicePatch }, { getState }) =>
+    businessProfileDetailApi.updateService(serviceId, patch, getOrgBase(getState)),
 );
 export const toggleServicePublished = createAsyncThunk(
   "businessProfileDetail/toggleServicePublished",
-  ({ serviceId, is_published }: { id: number; serviceId: string; is_published: boolean }) =>
-    businessProfileDetailApi.updateService(serviceId, { is_published }),
+  ({ serviceId, is_published }: { id: number; serviceId: string; is_published: boolean }, { getState }) =>
+    businessProfileDetailApi.updateService(serviceId, { is_published }, getOrgBase(getState)),
 );
 export const deleteServiceThunk = createAsyncThunk(
   "businessProfileDetail/deleteService",
-  async ({ serviceId }: { id: number; serviceId: string }) => {
-    await businessProfileDetailApi.deleteService(serviceId);
+  async ({ serviceId }: { id: number; serviceId: string }, { getState }) => {
+    await businessProfileDetailApi.deleteService(serviceId, getOrgBase(getState));
     return serviceId;
   },
 );
 export const fetchServiceFieldValues = createAsyncThunk(
   "businessProfileDetail/fetchServiceFieldValues",
-  ({ serviceId }: { id: number; serviceId: string }) => businessProfileDetailApi.getServiceFieldValues(serviceId),
+  ({ serviceId }: { id: number; serviceId: string }, { getState }) =>
+    businessProfileDetailApi.getServiceFieldValues(serviceId, getOrgBase(getState)),
 );
 export const updateServiceFieldValues = createAsyncThunk(
   "businessProfileDetail/updateServiceFieldValues",
-  ({ serviceId, values }: { id: number; serviceId: string; values: SchemaFieldValue[] }) =>
-    businessProfileDetailApi.updateServiceFieldValues(serviceId, values),
+  ({ serviceId, values }: { id: number; serviceId: string; values: SchemaFieldValue[] }, { getState }) =>
+    businessProfileDetailApi.updateServiceFieldValues(serviceId, values, getOrgBase(getState)),
 );
 
 // ─── Members ─────────────────────────────────────────────────────────────────
@@ -303,6 +333,11 @@ const businessProfileDetailSlice = createSlice({
         state.services = { items: action.payload.data, status: "idle", error: null, total: action.payload.total };
       })
       .addCase(fetchServices.rejected, (state, action) => { state.services.status = "failed"; state.services.error = action.error.message ?? "Failed to load services."; })
+      .addCase(fetchAllServices.pending, (state) => { state.services.status = "loading"; })
+      .addCase(fetchAllServices.fulfilled, (state, action) => {
+        state.services = { items: action.payload.data, status: "idle", error: null, total: action.payload.total };
+      })
+      .addCase(fetchAllServices.rejected, (state, action) => { state.services.status = "failed"; state.services.error = action.error.message ?? "Failed to load services."; })
       .addCase(createService.fulfilled, (state, action) => { state.services.items.unshift(action.payload); state.services.total += 1; })
       .addCase(updateService.fulfilled, (state, action) => {
         const i = state.services.items.findIndex((s) => s.id === action.payload.id);

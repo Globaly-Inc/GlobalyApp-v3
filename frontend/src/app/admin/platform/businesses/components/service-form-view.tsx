@@ -211,6 +211,9 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
             placeholder="Select category"
             searchPlaceholder="Search categories..."
             className="h-7 w-fit min-w-0 rounded-full border-primary/30 bg-primary/5 px-3 text-xs font-medium text-primary"
+            // The trigger is a w-fit pill, and the popup defaults to the trigger's width —
+            // which truncates every category name. Give the list its own width instead.
+            contentClassName="w-64"
           />
           <Input
             value={form.name}

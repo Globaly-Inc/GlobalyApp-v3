@@ -5,6 +5,7 @@ import { masterKnex } from "../../../../../core/db/master-pool.js";
 import * as coursesRepo from "../../../data-extraction/repositories/courses.repository.js";
 import { NotFoundError } from "../../../../../shared/errors.js";
 import * as platformRepo from "../../platform.repository.js";
+import * as storage from "../../../../../shared/storage/storageService.js";
 import * as repo from "../repositories/business-services.repository.js";
 import type { ServiceFieldValuesInput, ServiceInput, ServicePatchInput } from "../schemas/business-services.schema.js";
 
@@ -14,9 +15,9 @@ function courseAsService(c: {
   domestic_fee_total: string | null; international_fee_total: string | null; created_at: string;
 }) {
   return {
-    id: c.id, service_category_id: null, category_name: c.subject_area, name: c.name,
-    description: c.description, price: c.international_fee_total ?? c.domestic_fee_total,
-    is_published: true, public_visibility: true, created_at: c.created_at,
+    id: c.id, service_category_id: null, category_name: c.subject_area, category_slug: null, category_icon: null,
+    name: c.name, description: c.description, price: c.international_fee_total ?? c.domestic_fee_total,
+    is_published: true, public_visibility: true, cover_url: null, created_at: c.created_at, updated_at: c.created_at,
     degree_level: null, area_of_study: null, duration: null,
   };
 }
@@ -53,12 +54,24 @@ async function withListExtras<T extends { id: string }>(businessId: number, sche
     durations.map((d) => [d.service_id, `${d.duration_value} ${d.duration_unit}`]),
   );
 
-  return rows.map((r) => ({
+  // `cover_url` is stored as a bucket path; the client needs a viewable URL. Signing is local
+  // (the service-account key signs a JWT), so a page of rows costs no round trips.
+  const covers = await Promise.all(
+    rows.map((r) => storage.resolvePreviewUrl((r as { cover_url?: string | null }).cover_url)),
+  );
+
+  return rows.map((r, i) => ({
     ...r,
+    cover_url: covers[i] ?? null,
     degree_level: degreeLevelByService.get(r.id) ?? null,
     area_of_study: areaOfStudyByService.get(r.id) ?? null,
     duration: durationByService.get(r.id) ?? null,
   }));
+}
+
+/** One row on its way out of a write endpoint — same cover signing the list rows get. */
+async function withSignedCover<T extends { cover_url?: string | null }>(row: T): Promise<T> {
+  return { ...row, cover_url: await storage.resolvePreviewUrl(row.cover_url) };
 }
 
 export async function listServices(businessId: number) {
@@ -99,6 +112,23 @@ export async function deleteService(businessId: number, serviceId: string) {
   return repo.deleteService(businessId, biz.schema_name, serviceId);
 }
 
+/**
+ * Throws before the caller spends an upload on a service that isn't there. Without it an unknown
+ * UUID updates zero rows and leaves an unreferenced object in public storage.
+ */
+export async function requireService(businessId: number, serviceId: string) {
+  const biz = await requireBusiness(businessId);
+  const existing = await repo.getService(businessId, biz.schema_name, serviceId);
+  if (!existing) throw new NotFoundError("Service not found");
+  return biz;
+}
+
+export async function setServiceCover(businessId: number, serviceId: string, coverUrl: string | null) {
+  const biz = await requireService(businessId, serviceId);
+  return withSignedCover(await repo.setServiceCover(businessId, biz.schema_name, serviceId, coverUrl));
+}
+
+
 export async function getServiceFieldValues(businessId: number, serviceId: string) {
   const biz = await requireBusiness(businessId);
   return repo.getServiceFieldValues(businessId, biz.schema_name, serviceId);
@@ -107,4 +137,80 @@ export async function getServiceFieldValues(businessId: number, serviceId: strin
 export async function upsertServiceFieldValues(businessId: number, serviceId: string, values: ServiceFieldValuesInput["values"]) {
   const biz = await requireBusiness(businessId);
   return repo.upsertServiceFieldValues(businessId, biz.schema_name, serviceId, values);
+}
+
+// ─── Institution twins ──────────────────────────────────────────────────────
+// An institution's own Services tab: same `business_services` tenant table (see the migration's
+// comment), same repository functions — only the owning-entity lookup differs, mirroring
+// business-branches.service.ts's "Institution twins" section.
+
+async function requireInstitution(id: number) {
+  const inst = await platformRepo.findInstitutionById(id);
+  if (!inst) throw new NotFoundError("Institution not found");
+  return inst;
+}
+
+export async function listInstitutionServices(institutionId: number) {
+  const inst = await requireInstitution(institutionId);
+  const rows = await repo.listServices(institutionId, inst.schema_name);
+  return withListExtras(institutionId, inst.schema_name, rows);
+}
+
+export async function searchInstitutionServices(institutionId: number, limit: number, offset: number, search?: string) {
+  const inst = await requireInstitution(institutionId);
+
+  // Same fallback as searchServices: a promoted-but-unclaimed institution (never provisioned) has
+  // no business_services rows of its own yet — its scraped courses stand in until claimed.
+  if (inst.account_status === 0 && inst.source_job_id) {
+    const [rows, total] = await Promise.all([
+      coursesRepo.listCoursesByJob(inst.source_job_id, limit, offset, { search }),
+      coursesRepo.countCoursesByJob(inst.source_job_id, { search }),
+    ]);
+    return { rows: rows.map(courseAsService), total };
+  }
+
+  const { rows, total } = await repo.searchServices(institutionId, inst.schema_name, limit, offset, search);
+  return { rows: await withListExtras(institutionId, inst.schema_name, rows), total };
+}
+
+export async function createInstitutionService(institutionId: number, data: ServiceInput) {
+  const inst = await requireInstitution(institutionId);
+  return repo.createService(institutionId, inst.schema_name, data);
+}
+
+export async function updateInstitutionService(institutionId: number, serviceId: string, data: ServicePatchInput) {
+  const inst = await requireInstitution(institutionId);
+  return repo.updateService(institutionId, inst.schema_name, serviceId, data);
+}
+
+/** Institution twin of requireService — same "exists before we upload" guard. */
+export async function requireInstitutionService(institutionId: number, serviceId: string) {
+  const inst = await requireInstitution(institutionId);
+  const existing = await repo.getService(institutionId, inst.schema_name, serviceId);
+  if (!existing) throw new NotFoundError("Service not found");
+  return inst;
+}
+
+export async function setInstitutionServiceCover(institutionId: number, serviceId: string, coverUrl: string | null) {
+  const inst = await requireInstitutionService(institutionId, serviceId);
+  return withSignedCover(await repo.setServiceCover(institutionId, inst.schema_name, serviceId, coverUrl));
+}
+
+export async function deleteInstitutionService(institutionId: number, serviceId: string) {
+  const inst = await requireInstitution(institutionId);
+  return repo.deleteService(institutionId, inst.schema_name, serviceId);
+}
+
+export async function getInstitutionServiceFieldValues(institutionId: number, serviceId: string) {
+  const inst = await requireInstitution(institutionId);
+  return repo.getServiceFieldValues(institutionId, inst.schema_name, serviceId);
+}
+
+export async function upsertInstitutionServiceFieldValues(
+  institutionId: number,
+  serviceId: string,
+  values: ServiceFieldValuesInput["values"],
+) {
+  const inst = await requireInstitution(institutionId);
+  return repo.upsertServiceFieldValues(institutionId, inst.schema_name, serviceId, values);
 }

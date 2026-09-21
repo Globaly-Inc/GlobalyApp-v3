@@ -105,6 +105,7 @@ export async function insertServiceCategory(data: Record<string, unknown>) {
   return row;
 }
 
+
 export async function updateServiceCategory(id: number, data: Record<string, unknown>) {
   const [row] = await masterKnex("service_categories").where({ id }).update({ ...data, updated_at: now() }).returning("*");
   return row;

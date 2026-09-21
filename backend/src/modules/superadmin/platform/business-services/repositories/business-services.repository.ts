@@ -4,14 +4,20 @@
 import { getKnex } from "../../../../../core/db/pool-manager.js";
 
 const SERVICE_COLUMNS = [
-  "uuid as id", "service_category_id", "name", "description", "price", "is_published", "public_visibility", "created_at",
+  "uuid as id", "service_category_id", "name", "description", "price", "is_published", "public_visibility",
+  "cover_url", "created_at", "updated_at",
 ];
+
+// The category's presentation columns travel with every service row: `icon` drives the per-row
+// glyph in the service-management table, and `slug` is what that table branches on to decide
+// whether a row offers the fee-schedule action (courses price through intakes, not a flat fee).
+const CATEGORY_COLUMNS = ["cat.name as category_name", "cat.slug as category_slug", "cat.icon as category_icon"];
 
 function serviceWithCategory(db: Awaited<ReturnType<typeof getKnex>>) {
   return db("business_services as s")
     .leftJoin("service_categories as cat", "cat.id", "s.service_category_id")
     .whereNull("s.deleted_at")
-    .select([...SERVICE_COLUMNS.map((c) => `s.${c}`), "cat.name as category_name"]);
+    .select([...SERVICE_COLUMNS.map((c) => `s.${c}`), ...CATEGORY_COLUMNS]);
 }
 
 export async function listServices(businessId: number, schemaName: string) {
@@ -49,7 +55,7 @@ export async function searchServices(businessId: number, schemaName: string, lim
   };
   const [{ count }] = await base().count<{ count: string }[]>("s.id as count");
   const rows = await base()
-    .select([...SERVICE_COLUMNS.map((c) => `s.${c}`), "cat.name as category_name"])
+    .select([...SERVICE_COLUMNS.map((c) => `s.${c}`), ...CATEGORY_COLUMNS])
     .orderBy("s.name")
     .limit(limit)
     .offset(offset);
@@ -70,6 +76,13 @@ export async function createService(businessId: number, schemaName: string, data
 export async function updateService(businessId: number, schemaName: string, serviceId: string, data: Record<string, unknown>) {
   const db = await getKnex(businessId, schemaName);
   await db("business_services").where({ uuid: serviceId }).update({ ...data, updated_at: db.fn.now() });
+  return serviceWithCategory(db).where("s.uuid", serviceId).first();
+}
+
+/** Stores the service's own cover image path, or null to fall back to the org's cover. */
+export async function setServiceCover(businessId: number, schemaName: string, serviceId: string, coverUrl: string | null) {
+  const db = await getKnex(businessId, schemaName);
+  await db("business_services").where({ uuid: serviceId }).update({ cover_url: coverUrl, updated_at: db.fn.now() });
   return serviceWithCategory(db).where("s.uuid", serviceId).first();
 }
 
