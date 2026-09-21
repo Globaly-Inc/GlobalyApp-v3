@@ -21,19 +21,19 @@ import { StudyUnitsTab } from "./study-units-tab";
 import { StudyOptionsTab } from "./study-options-tab";
 import { AccreditationsTab } from "./accreditations-tab";
 import { VisaServicesTab } from "./visa-services-tab";
-import { SiteUrlsTab } from "./site-urls-tab";
-import { SnapshotsTab } from "./snapshots-tab";
+import { SiteTab } from "./site-tab";
 
 const COURSE_JOB_TABS: JobTab[] = [
-  "overview", "context", "site_urls", "snapshots", "institution", "branches", "agents",
+  "overview", "context", "site", "institution", "branches", "agents",
   "courses", "fees", "intakes", "eligibility", "units", "study_options", "accreditations",
 ];
 
-const VISA_SERVICE_JOB_TABS: JobTab[] = ["overview", "context", "site_urls", "snapshots", "institution", "visa_services"];
+const VISA_SERVICE_JOB_TABS: JobTab[] = ["overview", "context", "site", "institution", "visa_services"];
 const VALID_TABS: JobTab[] = [...new Set([...COURSE_JOB_TABS, ...VISA_SERVICE_JOB_TABS])];
 
 function parseTab(raw: string | null): JobTab {
   if (raw === "progress") return "overview"; // legacy V2 alias
+  if (raw === "site_urls" || raw === "snapshots") return "site"; // merged 2026-09
   return (VALID_TABS as string[]).includes(raw ?? "") ? (raw as JobTab) : "overview";
 }
 
@@ -80,10 +80,8 @@ export function JobDetailView({ jobId }: Readonly<{ jobId: string }>) {
         return <OverviewTab full={full} onJumpToTab={setTab} onReload={reload} />;
       case "context":
         return <ContextTab job={full.job} onReload={reload} />;
-      case "site_urls":
-        return <SiteUrlsTab jobId={jobId} job={full.job} onReload={reload} />;
-      case "snapshots":
-        return <SnapshotsTab jobId={jobId} job={full.job} onReload={reload} />;
+      case "site":
+        return <SiteTab jobId={jobId} job={full.job} onReload={reload} />;
       case "institution":
         return <InstitutionTab overview={full.overview} jobId={jobId} onReload={reload} isVisaServiceJob={isVisaServiceJob} />;
       case "courses":

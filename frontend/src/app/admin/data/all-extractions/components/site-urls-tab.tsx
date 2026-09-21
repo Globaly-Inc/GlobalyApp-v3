@@ -10,19 +10,22 @@ import { Pagination } from "@/components/ui/pagination";
 import { Combobox } from "@/components/combobox";
 import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
-import { StepChainBar } from "./step-chain-bar";
-import type { ExtractionJob, SiteUrl, SiteUrlCounts, SiteUrlRole } from "../apis/types";
+import { SITE_URL_CATEGORY_LABELS } from "../const";
+import { SITE_URL_CATEGORIES, type SiteUrl, type SiteUrlCategory, type SiteUrlCounts } from "../apis/types";
 
 const PAGE_SIZE = 20;
-const EMPTY_COUNTS: SiteUrlCounts = { total: 0, course: 0, other: 0, unclassified: 0, excluded: 0 };
+const EMPTY_COUNTS: SiteUrlCounts = {
+  total: 0, unclassified: 0, excluded: 0,
+  by_category: Object.fromEntries(SITE_URL_CATEGORIES.map((c) => [c, 0])) as Record<SiteUrlCategory, number>,
+};
 
-type RoleFilter = "all" | SiteUrlRole | "unclassified";
+type CategoryFilter = "all" | SiteUrlCategory | "unclassified";
 type ExcludedFilter = "active" | "excluded" | "all";
 
-const ROLE_FILTERS: { value: RoleFilter; label: string }[] = [
-  { value: "all", label: "All roles" },
-  { value: "course", label: "Course pages" },
-  { value: "other", label: "Other pages" },
+const CATEGORY_OPTIONS = SITE_URL_CATEGORIES.map((c) => ({ value: c, label: SITE_URL_CATEGORY_LABELS[c] }));
+const CATEGORY_FILTERS: { value: CategoryFilter; label: string }[] = [
+  { value: "all", label: "All categories" },
+  ...CATEGORY_OPTIONS,
   { value: "unclassified", label: "Not yet classified" },
 ];
 const EXCLUDED_FILTERS: { value: ExcludedFilter; label: string }[] = [
@@ -30,24 +33,20 @@ const EXCLUDED_FILTERS: { value: ExcludedFilter; label: string }[] = [
   { value: "excluded", label: "Excluded" },
   { value: "all", label: "Active + excluded" },
 ];
-const ROW_ROLES: { value: string; label: string }[] = [
-  { value: "auto", label: "Auto" },
-  { value: "course", label: "Course" },
-  { value: "other", label: "Other" },
-];
+const ROW_CATEGORIES: { value: string; label: string }[] = [{ value: "auto", label: "Auto" }, ...CATEGORY_OPTIONS];
 
 /**
- * Step 1 and 4 of the chain, as a table the admin can prune before anything is scraped or sent to
- * Gemini. Excluding a URL keeps it out of snapshot, classify and queue; setting a role pins it as
- * admin-owned so a re-run of the classifier never overwrites it.
+ * Site tab → Details sheet. Steps 1 and 4 of the chain, as a table the admin can prune before anything is scraped or sent to
+ * Gemini. Excluding a URL keeps it out of snapshot, classify and queue; setting a category pins it
+ * as admin-owned so a re-run of the classifier never overwrites it. Only `course` pages are queued.
  */
-export function SiteUrlsTab({ jobId, job, onReload }: Readonly<{ jobId: string; job: ExtractionJob; onReload: () => void }>) {
+export function SiteUrlsTab({ jobId }: Readonly<{ jobId: string }>) {
   const [rows, setRows] = useState<SiteUrl[]>([]);
   const [counts, setCounts] = useState<SiteUrlCounts>(EMPTY_COUNTS);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
   const [page, setPage] = useState(1);
-  const [role, setRole] = useState<RoleFilter>("all");
+  const [category, setCategory] = useState<CategoryFilter>("all");
   const [excluded, setExcluded] = useState<ExcludedFilter>("active");
   const [q, setQ] = useState("");
   const [query, setQuery] = useState("");
@@ -60,7 +59,7 @@ export function SiteUrlsTab({ jobId, job, onReload }: Readonly<{ jobId: string; 
     try {
       const res = await allExtractionsApi.getSiteUrls(jobId, {
         page, limit: PAGE_SIZE, q: query || undefined,
-        role: role === "all" ? undefined : role,
+        category: category === "all" ? undefined : category,
         excluded: excluded === "all" ? undefined : excluded === "excluded",
       });
       setRows(res.data);
@@ -72,7 +71,7 @@ export function SiteUrlsTab({ jobId, job, onReload }: Readonly<{ jobId: string; 
     } finally {
       setLoading(false);
     }
-  }, [jobId, page, role, excluded, query]);
+  }, [jobId, page, category, excluded, query]);
 
   useEffect(() => {
     if (fetchedRef.current) { load(); return; }
@@ -80,7 +79,7 @@ export function SiteUrlsTab({ jobId, job, onReload }: Readonly<{ jobId: string; 
     load();
   }, [load]);
 
-  const patch = async (row: SiteUrl, change: { excluded?: boolean; role?: SiteUrlRole | null }) => {
+  const patch = async (row: SiteUrl, change: { excluded?: boolean; category?: SiteUrlCategory | null }) => {
     setBusy(row.id);
     try {
       await allExtractionsApi.patchSiteUrl(row.id, change);
@@ -110,23 +109,32 @@ export function SiteUrlsTab({ jobId, job, onReload }: Readonly<{ jobId: string; 
   const toggleAll = () => setSelected(allOnPageSelected ? new Set() : new Set(rows.map((r) => r.id)));
   const toggleOne = (id: string) => setSelected((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
-  const stat = (label: string, n: number, tone = "text-foreground") => (
-    <div className="rounded-md border border-border px-3 py-2">
-      <div className={cn("text-lg font-semibold leading-none", tone)}>{n}</div>
-      <div className="mt-1 text-[11px] text-muted-foreground">{label}</div>
-    </div>
+  // One chip per category; clicking one filters the table to it. The three non-category counts sit first.
+  const chip = (label: string, n: number, value: CategoryFilter | null, tone = "") => (
+    <button
+      key={label}
+      type="button"
+      disabled={value === null}
+      onClick={() => { if (value !== null) { setCategory(category === value ? "all" : value); setPage(1); } }}
+      className={cn(
+        "flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs",
+        value !== null && "cursor-pointer hover:bg-muted/60",
+        value !== null && category === value ? "border-primary bg-primary/5 text-primary" : "border-border",
+        tone,
+      )}
+    >
+      <span className="font-semibold tabular-nums">{n}</span>
+      <span className="text-muted-foreground">{label}</span>
+    </button>
   );
 
   return (
     <div>
-      <StepChainBar job={job} highlight={["site_map", "url_classify", "queue_pages"]} onChanged={onReload} />
-
-      <div className="mb-3 grid grid-cols-2 gap-2 md:grid-cols-5">
-        {stat("On the site list", counts.total)}
-        {stat("Course pages", counts.course, "text-emerald-700")}
-        {stat("Other pages", counts.other)}
-        {stat("Not yet classified", counts.unclassified, "text-amber-700")}
-        {stat("Excluded by you", counts.excluded, "text-muted-foreground")}
+      <div className="mb-3 flex flex-wrap gap-1.5">
+        {chip("on the site list", counts.total, null)}
+        {chip("not yet classified", counts.unclassified, "unclassified", "text-amber-700")}
+        {chip("excluded by you", counts.excluded, null, "opacity-70")}
+        {SITE_URL_CATEGORIES.map((c) => chip(SITE_URL_CATEGORY_LABELS[c], counts.by_category[c] ?? 0, c, c === "course" ? "text-emerald-700" : ""))}
       </div>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -137,7 +145,7 @@ export function SiteUrlsTab({ jobId, job, onReload }: Readonly<{ jobId: string; 
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search URLs…" className="h-8 w-64 text-xs" />
           <Button type="submit" variant="outline" size="sm" className="h-8 cursor-pointer"><Search className="h-3.5 w-3.5" /></Button>
         </form>
-        <Combobox className="w-44" options={ROLE_FILTERS} value={role} onChange={(v) => { setRole(v as RoleFilter); setPage(1); }} />
+        <Combobox className="w-44" options={CATEGORY_FILTERS} value={category} onChange={(v) => { setCategory(v as CategoryFilter); setPage(1); }} />
         <Combobox className="w-44" options={EXCLUDED_FILTERS} value={excluded} onChange={(v) => { setExcluded(v as ExcludedFilter); setPage(1); }} />
         {selected.size > 0 && (
           <div className="ml-auto flex items-center gap-1.5">
@@ -159,7 +167,7 @@ export function SiteUrlsTab({ jobId, job, onReload }: Readonly<{ jobId: string; 
               <th className="w-8 px-2 py-2"><Checkbox checked={allOnPageSelected} onCheckedChange={toggleAll} aria-label="Select all on page" /></th>
               <th className="px-2 py-2">URL</th>
               <th className="w-28 px-2 py-2">Found via</th>
-              <th className="w-36 px-2 py-2">Role</th>
+              <th className="w-44 px-2 py-2">Category</th>
               <th className="w-24 px-2 py-2">Decided by</th>
               <th className="w-24 px-2 py-2 text-right">Excluded</th>
             </tr>
@@ -170,7 +178,7 @@ export function SiteUrlsTab({ jobId, job, onReload }: Readonly<{ jobId: string; 
             )}
             {!loading && rows.length === 0 && (
               <tr><td colSpan={6} className="px-2 py-8 text-center text-muted-foreground">
-                {counts.total === 0 ? "No URLs yet — run “Map site” above." : "Nothing matches these filters."}
+                {counts.total === 0 ? "No URLs yet — run “Map site” on the Site tab." : "Nothing matches these filters."}
               </td></tr>
             )}
             {rows.map((r) => (
@@ -182,15 +190,15 @@ export function SiteUrlsTab({ jobId, job, onReload }: Readonly<{ jobId: string; 
                 <td className="px-2 py-1.5 text-muted-foreground">{r.source}</td>
                 <td className="px-2 py-1.5">
                   <Combobox
-                    className="w-32"
-                    options={ROW_ROLES}
-                    value={r.role_source === "admin" && r.role ? r.role : "auto"}
+                    className="w-36"
+                    options={ROW_CATEGORIES}
+                    value={r.category_source === "admin" && r.category ? r.category : "auto"}
                     disabled={busy === r.id}
-                    onChange={(v) => patch(r, { role: v === "auto" ? null : (v as SiteUrlRole) })}
+                    onChange={(v) => patch(r, { category: v === "auto" ? null : (v as SiteUrlCategory) })}
                   />
-                  {r.role_source !== "admin" && r.role && <span className="ml-1.5 text-[10px] text-muted-foreground">({r.role})</span>}
+                  {r.category_source !== "admin" && r.category && <span className="ml-1.5 text-[10px] text-muted-foreground">({SITE_URL_CATEGORY_LABELS[r.category]})</span>}
                 </td>
-                <td className="px-2 py-1.5 text-muted-foreground">{r.role_source ?? "—"}</td>
+                <td className="px-2 py-1.5 text-muted-foreground">{r.category_source ?? "—"}</td>
                 <td className="px-2 py-1.5 text-right">
                   <Button
                     variant="ghost" size="sm" className="h-7 gap-1 px-2 text-[11px] cursor-pointer" disabled={busy === r.id}

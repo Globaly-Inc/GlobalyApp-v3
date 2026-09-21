@@ -10,14 +10,14 @@ import {
 export async function siteUrlsRoutes(app: FastifyInstance) {
   const adminId = (req: any) => Number(req.auth.sub);
 
-  // GET /jobs/:id/site-urls?page=&limit=&role=&excluded=&q=
+  // GET /jobs/:id/site-urls?page=&limit=&category=&excluded=&q=
   app.get("/jobs/:id/site-urls", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
     const query = ListSiteUrlsQuerySchema.parse(req.query);
     return reply.send(await service.listSiteUrls(id, query));
   });
 
-  // PATCH /site-urls/:id { excluded?, role? }
+  // PATCH /site-urls/:id { excluded?, category? }
   app.patch("/site-urls/:id", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
     const input = PatchSiteUrlSchema.parse(req.body);

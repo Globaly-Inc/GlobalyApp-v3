@@ -3,19 +3,19 @@
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { normaliseUrl } from "../lib/page-store.js";
+import { SITE_URL_CATEGORIES, type SiteUrlCategory } from "../lib/url-categories.js";
 
 const T = `${S}.extraction_site_urls`;
 
-export type SiteUrlRole = "course" | "other";
-export type SiteUrlRoleSource = "heuristic" | "llm" | "admin";
+export type SiteUrlCategorySource = "heuristic" | "llm" | "admin";
 
 export interface SiteUrlRow {
   id: string;
   job_id: string;
   url: string;
   source: string;
-  role: SiteUrlRole | null;
-  role_source: SiteUrlRoleSource | null;
+  category: SiteUrlCategory | null;
+  category_source: SiteUrlCategorySource | null;
   excluded: boolean;
   created_at: Date;
   updated_at: Date;
@@ -25,7 +25,7 @@ const CHUNK = 500;
 
 /**
  * Insert what discovery found. A URL already on the list keeps its row untouched — in particular
- * `excluded` and an admin-set `role` survive every re-run of site_map. Returns how many were new.
+ * `excluded` and an admin-set `category` survive every re-run of site_map. Returns how many were new.
  */
 export async function upsertSiteUrls(jobId: string, items: { url: string; source: string }[]): Promise<number> {
   const seen = new Set<string>();
@@ -45,37 +45,36 @@ export async function upsertSiteUrls(jobId: string, items: { url: string; source
 }
 
 /** Every non-excluded URL for a job, in discovery order. What site_snapshot and url_classify read. */
-export async function listActiveSiteUrls(jobId: string): Promise<Pick<SiteUrlRow, "id" | "url" | "source" | "role" | "role_source">[]> {
-  return masterKnex(T).where({ job_id: jobId, excluded: false }).orderBy("created_at").select("id", "url", "source", "role", "role_source");
+export async function listActiveSiteUrls(jobId: string): Promise<Pick<SiteUrlRow, "id" | "url" | "source" | "category" | "category_source">[]> {
+  return masterKnex(T).where({ job_id: jobId, excluded: false }).orderBy("created_at").select("id", "url", "source", "category", "category_source");
 }
 
-/** Non-excluded URLs with the given role — what queue_pages sends to the page queue. */
-export async function listSiteUrlsByRole(jobId: string, role: SiteUrlRole): Promise<string[]> {
-  const rows = await masterKnex(T).where({ job_id: jobId, excluded: false, role }).orderBy("created_at").select("url");
+/** Non-excluded URLs in the given category — queue_pages sends `course` to the page queue. */
+export async function listSiteUrlsByCategory(jobId: string, category: SiteUrlCategory): Promise<string[]> {
+  const rows = await masterKnex(T).where({ job_id: jobId, excluded: false, category }).orderBy("created_at").select("url");
   return rows.map((r: { url: string }) => r.url);
 }
 
 /**
- * Write the classifier's verdicts. An admin's own role is never overwritten by a re-run — that is
- * the one thing `role_source` exists to protect.
+ * Write the classifier's verdicts. An admin's own category is never overwritten by a re-run — that
+ * is the one thing `category_source` exists to protect.
  */
-export async function setSiteUrlRoles(jobId: string, roles: Map<string, SiteUrlRole>, source: Exclude<SiteUrlRoleSource, "admin">): Promise<void> {
-  const byRole: Record<SiteUrlRole, string[]> = { course: [], other: [] };
-  for (const [url, role] of roles) byRole[role].push(url);
-  for (const role of Object.keys(byRole) as SiteUrlRole[]) {
-    const urls = byRole[role];
+export async function setSiteUrlCategories(jobId: string, categories: Map<string, SiteUrlCategory>, source: Exclude<SiteUrlCategorySource, "admin">): Promise<void> {
+  const byCategory = new Map<SiteUrlCategory, string[]>();
+  for (const [url, category] of categories) byCategory.set(category, [...(byCategory.get(category) ?? []), url]);
+  for (const [category, urls] of byCategory) {
     for (let i = 0; i < urls.length; i += CHUNK) {
       await masterKnex(T)
         .where({ job_id: jobId })
         .whereIn("url", urls.slice(i, i + CHUNK))
-        .where((w) => w.whereNull("role_source").orWhereNot("role_source", "admin"))
-        .update({ role, role_source: source, updated_at: masterKnex.fn.now() });
+        .where((w) => w.whereNull("category_source").orWhereNot("category_source", "admin"))
+        .update({ category, category_source: source, updated_at: masterKnex.fn.now() });
     }
   }
 }
 
 export interface ListSiteUrlsFilter {
-  role?: SiteUrlRole | "unclassified";
+  category?: SiteUrlCategory | "unclassified";
   excluded?: boolean;
   q?: string;
 }
@@ -83,38 +82,40 @@ export interface ListSiteUrlsFilter {
 /** Admin listing, paginated. */
 export async function listSiteUrls(jobId: string, filter: ListSiteUrlsFilter, offset: number, limit: number) {
   const base = masterKnex(T).where({ job_id: jobId }).modify((qb) => {
-    if (filter.role === "unclassified") qb.whereNull("role");
-    else if (filter.role) qb.where({ role: filter.role });
+    if (filter.category === "unclassified") qb.whereNull("category");
+    else if (filter.category) qb.where({ category: filter.category });
     if (filter.excluded !== undefined) qb.where({ excluded: filter.excluded });
     if (filter.q) qb.whereILike("url", `%${filter.q}%`);
   });
   const [{ n }] = await base.clone().count({ n: "*" });
   const rows = await base.clone().orderBy("created_at").offset(offset).limit(limit)
-    .select("id", "url", "source", "role", "role_source", "excluded", "created_at", "updated_at") as SiteUrlRow[];
+    .select("id", "url", "source", "category", "category_source", "excluded", "created_at", "updated_at") as SiteUrlRow[];
   return { rows, total: Number(n) };
 }
 
-/** Counts for the tab header: total, per role, excluded. */
-export async function siteUrlCounts(jobId: string) {
+export type SiteUrlCounts = { total: number; unclassified: number; excluded: number; by_category: Record<SiteUrlCategory, number> };
+
+/** Counts for the tab header: total, per category (non-excluded), unclassified, excluded. */
+export async function siteUrlCounts(jobId: string): Promise<SiteUrlCounts> {
   const rows = await masterKnex(T).where({ job_id: jobId })
-    .select("role", "excluded").count({ n: "*" }).groupBy("role", "excluded") as { role: string | null; excluded: boolean; n: string }[];
-  const counts = { total: 0, course: 0, other: 0, unclassified: 0, excluded: 0 };
+    .select("category", "excluded").count({ n: "*" }).groupBy("category", "excluded") as { category: SiteUrlCategory | null; excluded: boolean; n: string }[];
+  const by_category = Object.fromEntries(SITE_URL_CATEGORIES.map((c) => [c, 0])) as Record<SiteUrlCategory, number>;
+  const counts: SiteUrlCounts = { total: 0, unclassified: 0, excluded: 0, by_category };
   for (const r of rows) {
     const n = Number(r.n);
     counts.total += n;
     if (r.excluded) { counts.excluded += n; continue; }
-    if (r.role === "course") counts.course += n;
-    else if (r.role === "other") counts.other += n;
+    if (r.category && r.category in by_category) by_category[r.category] += n;
     else counts.unclassified += n;
   }
   return counts;
 }
 
-/** Admin edit: exclude/include, or set a role (which pins it as admin-owned). */
-export async function patchSiteUrl(id: string, patch: { excluded?: boolean; role?: SiteUrlRole | null }): Promise<boolean> {
+/** Admin edit: exclude/include, or set a category (which pins it as admin-owned). */
+export async function patchSiteUrl(id: string, patch: { excluded?: boolean; category?: SiteUrlCategory | null }): Promise<boolean> {
   const update: Record<string, unknown> = { updated_at: masterKnex.fn.now() };
   if (patch.excluded !== undefined) update.excluded = patch.excluded;
-  if (patch.role !== undefined) { update.role = patch.role; update.role_source = patch.role === null ? null : "admin"; }
+  if (patch.category !== undefined) { update.category = patch.category; update.category_source = patch.category === null ? null : "admin"; }
   const n = await masterKnex(T).where({ id }).update(update);
   return n > 0;
 }

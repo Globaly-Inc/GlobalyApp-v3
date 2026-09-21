@@ -373,27 +373,31 @@ export type EditableTable =
 // backend's `z.record(z.unknown())`.
 export type UpdateContextParams = { guided_urls?: Record<string, unknown> | null; guidance_notes?: string | null; step_mode?: StepMode };
 
-// ── One-step-at-a-time chain (Site URLs / Snapshots tabs) ───────────────
+// ── One-step-at-a-time chain (Site tab) ───────────────
 
 export type StepMode = "auto" | "manual";
-export type SiteUrlRole = "course" | "other";
+export const SITE_URL_CATEGORIES = [
+  "overview", "about_us", "contact_us", "course", "branches", "agents", "fees",
+  "study_units", "study_options", "intake", "eligibility", "accreditations", "other",
+] as const;
+export type SiteUrlCategory = (typeof SITE_URL_CATEGORIES)[number];
 
 export type SiteUrl = {
   id: string;
   url: string;
   source: string;
-  role: SiteUrlRole | null;
-  role_source: "heuristic" | "llm" | "admin" | null;
+  category: SiteUrlCategory | null;
+  category_source: "heuristic" | "llm" | "admin" | null;
   excluded: boolean;
   created_at: string;
   updated_at: string;
 };
 
-export type SiteUrlCounts = { total: number; course: number; other: number; unclassified: number; excluded: number };
+export type SiteUrlCounts = { total: number; unclassified: number; excluded: number; by_category: Record<SiteUrlCategory, number> };
 
 export type SiteUrlsPage = Paginated<SiteUrl> & { counts: SiteUrlCounts };
 
-export type GetSiteUrlsParams = { page?: number; limit?: number; role?: SiteUrlRole | "unclassified"; excluded?: boolean; q?: string };
+export type GetSiteUrlsParams = { page?: number; limit?: number; category?: SiteUrlCategory | "unclassified"; excluded?: boolean; q?: string };
 
 export type SnapshotRow = {
   id: string;
@@ -402,7 +406,7 @@ export type SnapshotRow = {
   scraped_at: string;
   content_hash: string;
   link_count: number;
-  role: SiteUrlRole | null;
+  category: SiteUrlCategory | null;
   excluded: boolean;
   gcs_path: string;
 };

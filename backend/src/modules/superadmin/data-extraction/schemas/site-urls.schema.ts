@@ -1,12 +1,11 @@
-// Zod schemas for the site URL list and snapshot listing (Site URLs / Snapshots tabs).
+// Zod schemas for the site URL list and snapshot listing (Site tab).
 
 import { z } from "zod";
 import { PaginationSchema } from "../../../../shared/pagination.js";
-
-export const SITE_URL_ROLES = ["course", "other"] as const;
+import { SITE_URL_CATEGORIES } from "../lib/url-categories.js";
 
 export const ListSiteUrlsQuerySchema = PaginationSchema.extend({
-  role: z.enum([...SITE_URL_ROLES, "unclassified"]).optional(),
+  category: z.enum([...SITE_URL_CATEGORIES, "unclassified"]).optional(),
   excluded: z.enum(["true", "false"]).transform((v) => v === "true").optional(),
   q: z.string().trim().max(200).optional(),
 });
@@ -15,8 +14,8 @@ export type ListSiteUrlsQuery = z.infer<typeof ListSiteUrlsQuerySchema>;
 export const PatchSiteUrlSchema = z.object({
   excluded: z.boolean().optional(),
   /** null clears an admin override so the next url_classify run may set it again. */
-  role: z.enum(SITE_URL_ROLES).nullable().optional(),
-}).refine((v) => v.excluded !== undefined || v.role !== undefined, { message: "Nothing to change" });
+  category: z.enum(SITE_URL_CATEGORIES).nullable().optional(),
+}).refine((v) => v.excluded !== undefined || v.category !== undefined, { message: "Nothing to change" });
 export type PatchSiteUrlInput = z.infer<typeof PatchSiteUrlSchema>;
 
 export const BulkExcludeSchema = z.object({

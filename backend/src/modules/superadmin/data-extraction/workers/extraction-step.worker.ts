@@ -81,7 +81,7 @@ import {
   advance, gate, dispatchSnapshotBatches, setProgress,
   runSiteMap, runSiteAnalysis, runUrlClassify, runQueuePages,
 } from "../lib/pipeline-steps.js";
-import { listActiveSiteUrls, upsertSiteUrls, setSiteUrlRoles } from "../repositories/site-urls.repository.js";
+import { listActiveSiteUrls, upsertSiteUrls, setSiteUrlCategories } from "../repositories/site-urls.repository.js";
 
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
@@ -981,7 +981,7 @@ async function handleDiscoveryStep(jobId: string) {
     if (!toPublish.length) return;
     const urls = toPublish.map((p) => p.url);
     await upsertSiteUrls(jobId, urls.map((url) => ({ url, source: "discovery" })));
-    await setSiteUrlRoles(jobId, new Map(urls.map((u) => [u, "course" as const])), "heuristic");
+    await setSiteUrlCategories(jobId, new Map(urls.map((u) => [u, "course" as const])), "heuristic");
     await snapshotSite(jobId, urls);
     for (const p of toPublish) await queueService.publish(EXTRACTION_QUEUES.PAGES, { jobId, queueItemId: p.queueItemId, url: p.url });
     toPublish.length = 0;

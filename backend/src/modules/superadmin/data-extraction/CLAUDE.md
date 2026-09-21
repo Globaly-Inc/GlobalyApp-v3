@@ -651,6 +651,25 @@ their next scrape. `full` mode is `…<digest>.full.md`. `snapshotPathFor`/`file
 from `site-snapshot.ts` (re-exported there). `test:page-store` §6 covers write, hit, missing file,
 mismatched file, linked-files round-trip, PDF.
 
+## Site URLs carry a CATEGORY, not a course/other role (2026-09-21)
+
+`extraction_site_urls.category` / `category_source` (migration `20260918_001`, which had not
+reached staging, so the columns were renamed in place rather than by a follow-up migration).
+The set is `lib/url-categories.ts` `SITE_URL_CATEGORIES`: overview, about_us, contact_us, course,
+branches, agents, fees, study_units, study_options, intake, eligibility, accreditations, other —
+the admin's words for the job's sub-tabs, plus `other` because a real site is mostly news, events
+and staff pages and the classifier needs somewhere to put them. `url_classify` assigns one per URL
+in this order: admin (never overwritten) > guided_urls key (`fees_urls` → fees, `team_urls` →
+agents, …; the admin TOLD us) > course-classifier pick → course (unchanged heuristic + narrow/
+classify logic) > path heuristic (`heuristicCategory`, free) > ONE lite-tier model pass over what
+is still null (`urlCategoryPrompt`, 200 URLs + page excerpt per batch, capped at
+`CLASSIFY_ALL_CAP`) > other. `queue_pages` reads `category = 'course'`; nothing else in the
+pipeline consumes the other categories yet — they are labels on the Site tab and the hook for the
+entity steps to stop re-discovering their pages. **Behaviour change:** a guided `fees_urls` /
+`contact_urls` / … page used to be pinned `course` and therefore queued for course extraction; it
+now keeps its own category and is NOT queued — the entity steps already read those keys directly.
+Guarded by `test:step-gate` §6.
+
 ## Registrable domains come from the Public Suffix List (2026-09-17)
 
 `siteOf` decides crawl scope (`filterUrls`), the catalogue-subdomain probe, the crt.sh query and

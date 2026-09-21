@@ -1,4 +1,4 @@
-// Site URL list + snapshot listing for the admin's Site URLs / Snapshots tabs.
+// Site URL list + snapshot listing for the admin's Site tab.
 
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { NotFoundError } from "../../../../shared/errors.js";
@@ -18,12 +18,12 @@ export async function listSiteUrls(jobId: string, query: ListSiteUrlsQuery) {
   await requireJob(jobId);
   const { offset, limit } = paginationToOffset(query);
   const [{ rows, total }, counts] = await Promise.all([
-    repo.listSiteUrls(jobId, { role: query.role, excluded: query.excluded, q: query.q }, offset, limit),
+    repo.listSiteUrls(jobId, { category: query.category, excluded: query.excluded, q: query.q }, offset, limit),
     repo.siteUrlCounts(jobId),
   ]);
   // Explicit allow-list, never the row spread.
   const data = rows.map((r) => ({
-    id: r.id, url: r.url, source: r.source, role: r.role, role_source: r.role_source, excluded: r.excluded,
+    id: r.id, url: r.url, source: r.source, category: r.category, category_source: r.category_source, excluded: r.excluded,
     created_at: r.created_at, updated_at: r.updated_at,
   }));
   return { ...buildPaginatedResponse(data, total, query), counts };
@@ -62,11 +62,11 @@ export async function listSnapshots(jobId: string, query: ListSnapshotsQuery) {
     .select(
       "p.id", "p.url", "p.scraper", "p.scraped_at", "p.content_hash",
       masterKnex.raw("jsonb_array_length(p.links) as link_count"),
-      "su.role", "su.excluded",
-    ) as Array<{ id: string; url: string; scraper: string; scraped_at: Date; content_hash: string; link_count: number; role: string | null; excluded: boolean }>;
+      "su.category", "su.excluded",
+    ) as Array<{ id: string; url: string; scraper: string; scraped_at: Date; content_hash: string; link_count: number; category: string | null; excluded: boolean }>;
   const data = rows.map((r) => ({
     id: r.id, url: r.url, scraper: r.scraper, scraped_at: r.scraped_at, content_hash: r.content_hash,
-    link_count: Number(r.link_count), role: r.role, excluded: r.excluded,
+    link_count: Number(r.link_count), category: r.category, excluded: r.excluded,
     gcs_path: snapshotPathFor(r.url),
   }));
   return buildPaginatedResponse(data, Number(n), query);

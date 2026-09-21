@@ -36,7 +36,7 @@ import type {
   Paginated,
   QueueItem,
   GetSiteUrlsParams,
-  SiteUrlRole,
+  SiteUrlCategory,
   SiteUrlsPage,
   SnapshotMarkdown,
   SnapshotRow,
@@ -294,19 +294,19 @@ export const allExtractionsRealApi = {
     await httpPatch(`/admin/data-extraction/jobs/${id}/context`, params);
   },
 
-  // ── Site URLs / Snapshots (one-step-at-a-time chain) ──────────────
+  // ── Site tab (one-step-at-a-time chain) ──────────────
 
   getSiteUrls: (jobId: string, params: GetSiteUrlsParams = {}): Promise<SiteUrlsPage> => {
     const query = new URLSearchParams();
     if (params.page) query.set("page", String(params.page));
     if (params.limit) query.set("limit", String(params.limit));
-    if (params.role) query.set("role", params.role);
+    if (params.category) query.set("category", params.category);
     if (params.excluded !== undefined) query.set("excluded", String(params.excluded));
     if (params.q) query.set("q", params.q);
     return httpGet<SiteUrlsPage>(`/admin/data-extraction/jobs/${jobId}/site-urls?${query}`);
   },
 
-  patchSiteUrl: async (id: string, patch: { excluded?: boolean; role?: SiteUrlRole | null }): Promise<void> => {
+  patchSiteUrl: async (id: string, patch: { excluded?: boolean; category?: SiteUrlCategory | null }): Promise<void> => {
     await httpPatch(`/admin/data-extraction/site-urls/${id}`, patch);
   },
 

@@ -9,14 +9,14 @@ import { Pagination } from "@/components/ui/pagination";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
+import { SITE_URL_CATEGORY_LABELS } from "../const";
 import { fmtTime } from "../utils";
-import { StepChainBar } from "./step-chain-bar";
-import type { ExtractionJob, SnapshotMarkdown, SnapshotRow } from "../apis/types";
+import type { SnapshotMarkdown, SnapshotRow } from "../apis/types";
 
 const PAGE_SIZE = 20;
 
-/** Step 2 of the chain: what was actually fetched, per page. Read-only. */
-export function SnapshotsTab({ jobId, job, onReload }: Readonly<{ jobId: string; job: ExtractionJob; onReload: () => void }>) {
+/** Site tab body. Step 2 of the chain: what was actually fetched, per page. Read-only. */
+export function SnapshotsTab({ jobId }: Readonly<{ jobId: string }>) {
   const [rows, setRows] = useState<SnapshotRow[]>([]);
   const [total, setTotal] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -59,8 +59,6 @@ export function SnapshotsTab({ jobId, job, onReload }: Readonly<{ jobId: string;
 
   return (
     <div>
-      <StepChainBar job={job} highlight={["site_snapshot"]} onChanged={onReload} />
-
       <div className="mb-3 flex flex-wrap items-center gap-2">
         <form className="flex items-center gap-1.5" onSubmit={(e) => { e.preventDefault(); setPage(1); setQuery(q.trim()); }}>
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search URLs…" className="h-8 w-64 text-xs" />
@@ -74,7 +72,7 @@ export function SnapshotsTab({ jobId, job, onReload }: Readonly<{ jobId: string;
           <thead className="bg-muted/50 text-left text-muted-foreground">
             <tr>
               <th className="px-2 py-2">URL</th>
-              <th className="w-20 px-2 py-2">Role</th>
+              <th className="w-28 px-2 py-2">Category</th>
               <th className="w-20 px-2 py-2">Scraper</th>
               <th className="w-16 px-2 py-2 text-right">Links</th>
               <th className="w-36 px-2 py-2">Fetched</th>
@@ -95,7 +93,7 @@ export function SnapshotsTab({ jobId, job, onReload }: Readonly<{ jobId: string;
                 <td className="max-w-xl truncate px-2 py-1.5 font-mono text-[11px]" title={`${r.url}\n${r.gcs_path}`}>
                   <a href={r.url} target="_blank" rel="noreferrer" className="hover:underline">{r.url}</a>
                 </td>
-                <td className="px-2 py-1.5 text-muted-foreground">{r.role ?? "—"}</td>
+                <td className="px-2 py-1.5 text-muted-foreground">{r.category ? SITE_URL_CATEGORY_LABELS[r.category] : "—"}</td>
                 <td className="px-2 py-1.5 text-muted-foreground">{r.scraper}</td>
                 <td className="px-2 py-1.5 text-right tabular-nums">{r.link_count}</td>
                 <td className="px-2 py-1.5 text-muted-foreground">{fmtTime(r.scraped_at)}</td>

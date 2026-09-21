@@ -25,13 +25,14 @@ import {
 } from "./html-utils.js";
 import { extractJson } from "./llm-client.js";
 import {
-  siteAnalysisPrompt, urlDiscoveryPrompt, SITE_ANALYSIS_SYSTEM,
+  siteAnalysisPrompt, urlDiscoveryPrompt, urlCategoryPrompt, SITE_ANALYSIS_SYSTEM,
   visaServiceSiteAnalysisPrompt, visaServiceUrlDiscoveryPrompt,
 } from "./extraction-prompts.js";
 import { writeInstitutionOverview, writeSiteIntelligence, insertQueueItemDetailed, writeJobEvent } from "./staging-writer.js";
 import {
-  upsertSiteUrls, listActiveSiteUrls, listSiteUrlsByRole, setSiteUrlRoles, type SiteUrlRole,
+  upsertSiteUrls, listActiveSiteUrls, listSiteUrlsByCategory, setSiteUrlCategories,
 } from "../repositories/site-urls.repository.js";
+import { SITE_URL_CATEGORIES, categoriesFor, guidedUrlCategories, type SiteUrlCategory } from "./url-categories.js";
 
 const logger = createChildLogger("pipeline-steps");
 
@@ -46,6 +47,10 @@ interface SiteAnalysisResult {
 interface UrlDiscoveryResult {
   course_urls: string[];
   listing_urls: string[];
+}
+
+interface UrlCategoryResult {
+  categories: Partial<Record<SiteUrlCategory, string[]>>;
 }
 
 // ── Test seam: the job row, the queue, progress and the timeline ──
@@ -120,15 +125,6 @@ export function mergeClassifierBatch(batch: string[], picked: string[]): Set<str
   const inBatch = new Set(batch);
   const kept = new Set(picked.map((p) => p.trim()).filter((p) => inBatch.has(p)));
   return classifierDistrusted(batch.length, kept.size) ? inBatch : kept;
-}
-
-/** course for the picked and guided URLs, other for the rest. Guided URLs are course by definition. */
-export function rolesFor(urls: string[], picked: Set<string>, guided: string[]): Map<string, SiteUrlRole> {
-  const guidedSet = new Set(guided);
-  const roles = new Map<string, SiteUrlRole>();
-  for (const url of urls) roles.set(url, picked.has(url) || guidedSet.has(url) ? "course" : "other");
-  for (const g of guided) roles.set(g, "course");
-  return roles;
 }
 
 // ── Step 1: site_map ────────────────────────────────────────────────────────
@@ -316,15 +312,46 @@ async function latestPatterns(jobId: string): Promise<string[]> {
 }
 
 /**
- * Decide which site URLs are course pages. Heuristic first (free); the model only NARROWS a list
- * over 500 or CLASSIFIES when the heuristic found nothing — exactly as the job worker did, plus
- * a page excerpt per URL now that the snapshot exists. Writes `role` on extraction_site_urls.
+ * One category per URL for what the heuristics left null: lite tier, batched, page excerpt beside
+ * each URL. A URL the model puts under an unknown key or does not return at all stays null (→ other).
  */
-export async function runUrlClassify(jobId: string, job: JobRow): Promise<{ course: number; total: number }> {
+async function categoriseWithModel(jobId: string, candidates: string[]): Promise<Map<string, SiteUrlCategory>> {
+  const out = new Map<string, SiteUrlCategory>();
+  const excerpts = await excerptsFor(candidates);
+  const known = new Set<string>(SITE_URL_CATEGORIES);
+  for (let i = 0; i < candidates.length; i += CLASSIFIER_BATCH) {
+    const batch = candidates.slice(i, i + CLASSIFIER_BATCH);
+    const inBatch = new Set(batch);
+    const result = await extractJson<UrlCategoryResult>({
+      system: SITE_ANALYSIS_SYSTEM,
+      prompt: urlCategoryPrompt(batch.map((u) => classifierLine(u, excerpts.get(u))), SITE_URL_CATEGORIES),
+      maxTokens: 65536,
+      tier: "lite",
+    });
+    for (const [cat, list] of Object.entries(result.categories ?? {})) {
+      if (!known.has(cat) || !Array.isArray(list)) continue;
+      for (const raw of list) {
+        const u = typeof raw === "string" ? normaliseUrl(raw.trim()) : "";
+        if (inBatch.has(u) && !out.has(u)) out.set(u, cat as SiteUrlCategory);
+      }
+    }
+    await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({ processing_heartbeat_at: masterKnex.fn.now() });
+  }
+  return out;
+}
+
+/**
+ * Categorise every site URL. Course detection is unchanged — heuristic first (free); the model
+ * only NARROWS a list over 500 or CLASSIFIES when the heuristic found nothing. Then every URL
+ * gets a category: guided key > course pick > path heuristic > model pass (lite) > other. Writes
+ * `category` on extraction_site_urls; queue_pages reads `course` out of it.
+ */
+export async function runUrlClassify(jobId: string, job: JobRow): Promise<{ course: number; total: number; categories: Record<string, number> }> {
   const isVisaService = job.source_type === "visa_service";
   const rows = await listActiveSiteUrls(jobId);
   const urls = rows.map((r) => r.url);
-  const guided = collectGuidedUrls(typeof job.guided_urls === "string" ? JSON.parse(job.guided_urls) : job.guided_urls).map(normaliseUrl);
+  const guidedRaw = typeof job.guided_urls === "string" ? JSON.parse(job.guided_urls) : job.guided_urls;
+  const guided = collectGuidedUrls(guidedRaw).map(normaliseUrl);
   const patterns = await latestPatterns(jobId);
   const buildPrompt = isVisaService ? visaServiceUrlDiscoveryPrompt : urlDiscoveryPrompt;
 
@@ -369,23 +396,34 @@ export async function runUrlClassify(jobId: string, job: JobRow): Promise<{ cour
   if (picked.size === 0 && urls.length > 0) picked = await classify(urls.slice(0, CLASSIFY_ALL_CAP), false);
   if (picked.size === 0) picked.add(normaliseUrl(job.institution_url)); // fallback: the homepage itself
 
-  const roles = rolesFor(urls, picked, guided);
-  await setSiteUrlRoles(jobId, roles, usedLlm ? "llm" : "heuristic");
+  const merged = categoriesFor(urls, picked, guidedUrlCategories(guidedRaw, normaliseUrl));
+  // Only what the free passes could not place goes to the model. ponytail: same CLASSIFY_ALL_CAP as
+  // the course pass — past it the tail is "other", not another round of lite calls.
+  const unplaced = [...merged].filter(([, c]) => c === null).map(([u]) => u);
+  const modelled = unplaced.length ? await categoriseWithModel(jobId, unplaced.slice(0, CLASSIFY_ALL_CAP)) : new Map<string, SiteUrlCategory>();
+  if (modelled.size) usedLlm = true;
 
-  const course = [...roles.values()].filter((r) => r === "course").length;
+  const categories = new Map<string, SiteUrlCategory>();
+  for (const [url, cat] of merged) categories.set(url, cat ?? modelled.get(url) ?? "other");
+  await setSiteUrlCategories(jobId, categories, usedLlm ? "llm" : "heuristic");
+
+  const byCategory: Record<string, number> = {};
+  for (const cat of categories.values()) byCategory[cat] = (byCategory[cat] ?? 0) + 1;
+  const course = byCategory.course ?? 0;
+  const summary = Object.entries(byCategory).filter(([k]) => k !== "course").map(([k, n]) => `${k} ${n}`).join(", ");
   await _stepDeps.writeEvent(jobId, "urls_filtered", {
     phase: "course_discovery",
-    message: `${course} course pages identified out of ${urls.length}${usedLlm ? " (model-assisted)" : ""}`,
-    data: { count: course, total: urls.length, used_llm: usedLlm, sample: [...picked].slice(0, 10) },
+    message: `${course} course pages identified out of ${urls.length}${usedLlm ? " (model-assisted)" : ""}${summary ? `; also ${summary}` : ""}`,
+    data: { count: course, total: urls.length, used_llm: usedLlm, categories: byCategory, model_categorised: modelled.size, sample: [...picked].slice(0, 10) },
   });
-  return { course, total: urls.length };
+  return { course, total: urls.length, categories: byCategory };
 }
 
 // ── Step 5: queue_pages ─────────────────────────────────────────────────────
 
-/** Queue every course-role URL for the page worker. The page worker reads the snapshot; it does not scrape. */
+/** Queue every `course`-category URL for the page worker. The page worker reads the snapshot; it does not scrape. */
 export async function runQueuePages(jobId: string, job: JobRow): Promise<{ queued: number; idle: boolean }> {
-  const courseUrls = await listSiteUrlsByRole(jobId, "course");
+  const courseUrls = await listSiteUrlsByCategory(jobId, "course");
   if (courseUrls.length === 0) courseUrls.push(job.institution_url);
 
   let queued = 0;

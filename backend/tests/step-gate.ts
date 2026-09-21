@@ -6,14 +6,16 @@
  *   2. manual mode must NOT publish — or "manual" is a label, not a gate
  *   3. stop_requested must NOT publish, whatever the mode
  *   4. a step with no successor publishes nothing and says so
- *   5. the classifier merge keeps a distrusted batch's heuristic URLs and pins guided URLs as course
+ *   5. the classifier merge keeps a distrusted batch's heuristic URLs
+ *   6. URL categories: guided key > classifier pick > path heuristic > null (model pass) — never a silent 'other'
  *
  * Run: node --import tsx tests/step-gate.ts   (or: npm run test:step-gate)
  * No queue, no database — swapped through _stepDeps.
  */
 
 import "dotenv/config";
-import { _stepDeps, advance, gate, mergeClassifierBatch, rolesFor } from "../src/modules/superadmin/data-extraction/lib/pipeline-steps.js";
+import { _stepDeps, advance, gate, mergeClassifierBatch } from "../src/modules/superadmin/data-extraction/lib/pipeline-steps.js";
+import { categoriesFor, guidedUrlCategories, heuristicCategory } from "../src/modules/superadmin/data-extraction/lib/url-categories.js";
 
 let passed = 0;
 let failed = 0;
@@ -105,9 +107,36 @@ console.log("\n5. classifier merge");
     [...mergeClassifierBatch(batch, ["https://x.edu/a — Bachelor of Arts", "https://elsewhere.org/z"])].length === 4,
     "a pick that is not verbatim in the batch does not count, so the batch is distrusted, not silently emptied",
   );
-  const roles = rolesFor(["https://x.edu/a", "https://x.edu/b", "https://x.edu/g"], new Set(["https://x.edu/a"]), ["https://x.edu/g"]);
-  assert(roles.get("https://x.edu/a") === "course" && roles.get("https://x.edu/b") === "other", "picked → course, rest → other", [...roles]);
-  assert(roles.get("https://x.edu/g") === "course", "a guided URL is always course, whatever the classifier said", [...roles]);
+}
+
+console.log("\n6. URL categories");
+{
+  assert(heuristicCategory("https://x.edu/") === "overview", "the homepage is the overview");
+  assert(heuristicCategory("https://x.edu/about-us/history") === "about_us", "about → about_us");
+  assert(heuristicCategory("https://x.edu/contact") === "contact_us", "contact → contact_us");
+  assert(heuristicCategory("https://x.edu/study/fees-and-scholarships") === "fees", "fees → fees");
+  assert(heuristicCategory("https://x.edu/international/entry-requirements") === "eligibility", "entry requirements → eligibility");
+  assert(heuristicCategory("https://x.edu/key-dates") === "intake", "key dates → intake");
+  assert(heuristicCategory("https://x.edu/our-campuses/melbourne") === "branches", "campuses → branches");
+  assert(heuristicCategory("https://x.edu/find-an-agent") === "agents", "agents → agents");
+  assert(heuristicCategory("https://x.edu/about/accreditation") === "accreditations", "accreditation beats about (more specific first)");
+  assert(heuristicCategory("https://x.edu/news/open-day") === "other", "news → other");
+  assert(heuristicCategory("https://x.edu/something-unusual") === null, "no signal → null, left for the model");
+
+  const guided = guidedUrlCategories({ fees_urls: ["https://x.edu/g-fees"], course_list_urls: ["https://x.edu/g-courses"], team_urls: ["https://x.edu/team"], junk: "no" });
+  assert(guided.get("https://x.edu/g-fees") === "fees" && guided.get("https://x.edu/g-courses") === "course" && guided.get("https://x.edu/team") === "agents", "guided keys map to categories", [...guided]);
+  assert(guidedUrlCategories(["https://x.edu/legacy"]).get("https://x.edu/legacy") === "course", "legacy array form is all course");
+
+  const cats = categoriesFor(
+    ["https://x.edu/a", "https://x.edu/news/b", "https://x.edu/g-fees", "https://x.edu/mystery"],
+    new Set(["https://x.edu/a", "https://x.edu/g-fees"]),
+    guided,
+  );
+  assert(cats.get("https://x.edu/a") === "course", "picked → course", [...cats]);
+  assert(cats.get("https://x.edu/g-fees") === "fees", "a guided URL keeps its guided category even when the classifier picked it as course", [...cats]);
+  assert(cats.get("https://x.edu/news/b") === "other", "heuristic fills the rest", [...cats]);
+  assert(cats.get("https://x.edu/mystery") === null, "no signal stays null for the model pass", [...cats]);
+  assert(cats.get("https://x.edu/g-courses") === "course", "a guided URL not on the list is still categorised", [...cats]);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

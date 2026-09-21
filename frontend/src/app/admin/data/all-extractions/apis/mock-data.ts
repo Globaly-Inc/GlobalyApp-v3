@@ -29,7 +29,7 @@ import type {
   QueueItem,
   GetSiteUrlsParams,
   SiteUrl,
-  SiteUrlRole,
+  SiteUrlCategory,
   SiteUrlsPage,
   SnapshotMarkdown,
   SnapshotRow,
@@ -41,6 +41,7 @@ import type {
   UpdateCourseParams,
   VisaService,
 } from "./types";
+import { SITE_URL_CATEGORIES } from "./types";
 
 import { MODE_STATUS_FILTER, statusesForFilterValue } from "../const";
 import type { SortOrder } from "../const";
@@ -92,19 +93,20 @@ let mockJobs: ExtractionJob[] = [
 ];
 
 const mockSiteUrls: SiteUrl[] = [
-  { id: "su-1", url: "https://example.edu/", source: "homepage", role: "other", role_source: "heuristic", excluded: false, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" },
-  { id: "su-2", url: "https://example.edu/courses/bachelor-of-computer-science", source: "sitemap", role: "course", role_source: "heuristic", excluded: false, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" },
-  { id: "su-3", url: "https://example.edu/courses/master-of-data-science", source: "sitemap", role: "course", role_source: "llm", excluded: false, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" },
-  { id: "su-4", url: "https://example.edu/news/open-day-2027", source: "sitemap", role: "other", role_source: "heuristic", excluded: false, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" },
-  { id: "su-5", url: "https://example.edu/staff/directory", source: "map", role: "other", role_source: "admin", excluded: true, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" },
-  { id: "su-6", url: "https://example.edu/study/fees", source: "guided", role: "course", role_source: "heuristic", excluded: false, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" },
-  { id: "su-7", url: "https://example.edu/about/history", source: "map", role: null, role_source: null, excluded: false, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" },
+  { id: "su-1", url: "https://example.edu/", source: "homepage", category: "overview", category_source: "heuristic", excluded: false, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" },
+  { id: "su-2", url: "https://example.edu/courses/bachelor-of-computer-science", source: "sitemap", category: "course", category_source: "heuristic", excluded: false, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" },
+  { id: "su-3", url: "https://example.edu/courses/master-of-data-science", source: "sitemap", category: "course", category_source: "llm", excluded: false, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" },
+  { id: "su-4", url: "https://example.edu/news/open-day-2027", source: "sitemap", category: "other", category_source: "heuristic", excluded: false, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" },
+  { id: "su-5", url: "https://example.edu/staff/directory", source: "map", category: "other", category_source: "admin", excluded: true, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" },
+  { id: "su-6", url: "https://example.edu/study/fees", source: "guided", category: "fees", category_source: "heuristic", excluded: false, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" },
+  { id: "su-7", url: "https://example.edu/about/history", source: "map", category: null, category_source: null, excluded: false, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" },
+  { id: "su-8", url: "https://example.edu/contact", source: "map", category: "contact_us", category_source: "llm", excluded: false, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" },
 ];
 
 const mockSnapshots: SnapshotRow[] = [
-  { id: "11111111-1111-4111-8111-111111111111", url: "https://example.edu/courses/bachelor-of-computer-science", scraper: "scrapling", scraped_at: "2026-09-18T01:00:00Z", content_hash: "3f2a91c4d0e1", link_count: 64, role: "course", excluded: false, gcs_path: "extraction/www/example.edu/example.edu/courses_bachelor-of-computer-science-3f2a91c4.md" },
-  { id: "22222222-2222-4222-8222-222222222222", url: "https://example.edu/courses/master-of-data-science", scraper: "scrapling", scraped_at: "2026-09-18T01:00:05Z", content_hash: "7b10de55a9c2", link_count: 51, role: "course", excluded: false, gcs_path: "extraction/www/example.edu/example.edu/courses_master-of-data-science-7b10de55.md" },
-  { id: "33333333-3333-4333-8333-333333333333", url: "https://example.edu/news/open-day-2027", scraper: "crawl4ai", scraped_at: "2026-09-18T01:00:09Z", content_hash: "c0ffee00beef", link_count: 12, role: "other", excluded: false, gcs_path: "extraction/www/example.edu/example.edu/news_open-day-2027-c0ffee00.md" },
+  { id: "11111111-1111-4111-8111-111111111111", url: "https://example.edu/courses/bachelor-of-computer-science", scraper: "scrapling", scraped_at: "2026-09-18T01:00:00Z", content_hash: "3f2a91c4d0e1", link_count: 64, category: "course", excluded: false, gcs_path: "extraction/www/example.edu/example.edu/courses_bachelor-of-computer-science-3f2a91c4.md" },
+  { id: "22222222-2222-4222-8222-222222222222", url: "https://example.edu/courses/master-of-data-science", scraper: "scrapling", scraped_at: "2026-09-18T01:00:05Z", content_hash: "7b10de55a9c2", link_count: 51, category: "course", excluded: false, gcs_path: "extraction/www/example.edu/example.edu/courses_master-of-data-science-7b10de55.md" },
+  { id: "33333333-3333-4333-8333-333333333333", url: "https://example.edu/news/open-day-2027", scraper: "crawl4ai", scraped_at: "2026-09-18T01:00:09Z", content_hash: "c0ffee00beef", link_count: 12, category: "other", excluded: false, gcs_path: "extraction/www/example.edu/example.edu/news_open-day-2027-c0ffee00.md" },
 ];
 
 export const allExtractionsMockApi = {
@@ -515,23 +517,23 @@ export const allExtractionsMockApi = {
     await delay(200);
   },
 
-  // ── Site URLs / Snapshots (one-step-at-a-time chain) ──────────────
+  // ── Site tab (one-step-at-a-time chain) ──────────────
 
   getSiteUrls: async (jobId: string, params: GetSiteUrlsParams = {}): Promise<SiteUrlsPage> => {
     console.log("[mock] GET site-urls", jobId, params);
     await delay(250);
     let rows = mockSiteUrls.filter((r) => r.excluded === (params.excluded ?? r.excluded));
-    if (params.role === "unclassified") rows = rows.filter((r) => r.role === null);
-    else if (params.role) rows = rows.filter((r) => r.role === params.role);
+    if (params.category === "unclassified") rows = rows.filter((r) => r.category === null);
+    else if (params.category) rows = rows.filter((r) => r.category === params.category);
     if (params.q) rows = rows.filter((r) => r.url.includes(params.q!));
     const limit = params.limit ?? 20;
     const page = params.page ?? 1;
+    const active = mockSiteUrls.filter((r) => !r.excluded);
     const counts = {
       total: mockSiteUrls.length,
-      course: mockSiteUrls.filter((r) => !r.excluded && r.role === "course").length,
-      other: mockSiteUrls.filter((r) => !r.excluded && r.role === "other").length,
-      unclassified: mockSiteUrls.filter((r) => !r.excluded && r.role === null).length,
+      unclassified: active.filter((r) => r.category === null).length,
       excluded: mockSiteUrls.filter((r) => r.excluded).length,
+      by_category: Object.fromEntries(SITE_URL_CATEGORIES.map((c) => [c, active.filter((r) => r.category === c).length])) as Record<SiteUrlCategory, number>,
     };
     return {
       data: rows.slice((page - 1) * limit, page * limit),
@@ -540,13 +542,13 @@ export const allExtractionsMockApi = {
     };
   },
 
-  patchSiteUrl: async (id: string, patch: { excluded?: boolean; role?: SiteUrlRole | null }): Promise<void> => {
+  patchSiteUrl: async (id: string, patch: { excluded?: boolean; category?: SiteUrlCategory | null }): Promise<void> => {
     console.log("[mock] PATCH site-url", id, patch);
     await delay(150);
     const row = mockSiteUrls.find((r) => r.id === id);
     if (!row) return;
     if (patch.excluded !== undefined) row.excluded = patch.excluded;
-    if (patch.role !== undefined) { row.role = patch.role; row.role_source = patch.role === null ? null : "admin"; }
+    if (patch.category !== undefined) { row.category = patch.category; row.category_source = patch.category === null ? null : "admin"; }
   },
 
   bulkExcludeSiteUrls: async (jobId: string, ids: string[], excluded: boolean): Promise<void> => {

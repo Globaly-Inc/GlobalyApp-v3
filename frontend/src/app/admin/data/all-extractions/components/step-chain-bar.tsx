@@ -19,8 +19,8 @@ export const CHAIN_STEPS: { key: string; label: string; hint: string }[] = [
 ];
 
 /**
- * One chip per chain step with its status and a Run button. Rendered above the Site URLs and
- * Snapshots tabs; `highlight` marks the steps that tab is about. Preconditions are enforced by the
+ * One chip per chain step with its status and a Run button. Rendered once at the top of the Site
+ * tab; `highlight` marks the steps the tab is about. Preconditions are enforced by the
  * backend and surface here as the toast on a refused Run ("run site_map first").
  */
 export function StepChainBar({ job, highlight = [], onChanged }: Readonly<{ job: ExtractionJob; highlight?: string[]; onChanged: () => void }>) {

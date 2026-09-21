@@ -10,7 +10,7 @@ import type { ExtractionJob, StepMode } from "../apis/types";
 
 /**
  * Auto | Manual. Auto chains the pipeline steps as they always ran; Manual stops after every step
- * and waits for Run on the next one (Site URLs / Snapshots tabs). Takes effect at the next hand-off.
+ * and waits for Run on the next one (Site tab). Takes effect at the next hand-off.
  */
 export function StepModeToggle({ job, onReload }: Readonly<{ job: ExtractionJob; onReload: () => void }>) {
   const [busy, setBusy] = useState(false);
