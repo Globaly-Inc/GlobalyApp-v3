@@ -11,9 +11,12 @@ import type { Knex } from "knex";
  * So the rows on Accommodation, Insurance, Transport and the rest are unreachable, and asking an
  * admin to look at "Degree level" on Insurance in the schema-fields editor is just noise.
  *
- * Only rows this platform created (is_default) are removed, so a field an admin added by hand
- * survives. Deleting a schema_fields row cascades to any stored schema_field_values, which is why
- * this is scoped that tightly.
+ * Additive only. See the note at the end of `up` for why the matching cleanup was dropped.
+ *
+ * On a fresh database this is a no-op: `service_categories` is populated by a seeder, which runs
+ * after migrations. service_categories_seeder.ts owns the same three fields and is what actually
+ * guarantees them in every environment; this migration only backfills a database that was already
+ * seeded before the fields existed.
  */
 const COURSE_SLUG = "courses";
 
@@ -43,11 +46,12 @@ export async function up(knex: Knex): Promise<void> {
       .ignore();
   }
 
-  await knex("schema_fields")
-    .where({ entity_type: "service_categories", is_default: true })
-    .whereIn("key", COURSE_FIELDS.map((f) => f.key))
-    .whereNotIn("entity_id", knex("service_categories").where({ slug: COURSE_SLUG }).select("id"))
-    .delete();
+  // This used to delete the same fields from every non-course category, for tidiness in the
+  // superadmin schema-fields editor. Removed: schema_field_values has ON DELETE CASCADE, so any
+  // tenant that had saved a degree level against, say, an Insurance service during the few days
+  // 20260917_001's blanket fields were exposed would have lost it silently on upgrade. The rows
+  // are unreachable anyway — the editor gates the Course details card on the category slug — so
+  // a little clutter is the cheaper side of that trade.
 }
 
 export async function down(knex: Knex): Promise<void> {

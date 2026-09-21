@@ -14,6 +14,26 @@ const CATEGORIES = [
   { id: 11, slug: "visas", name: "Visas", description: null, icon: "stamp", sort_order: 95 },
 ];
 
+/**
+ * The per-category fields the service editor's Course details card writes to. They live on the
+ * course-shaped categories only — COURSE_CATEGORY_SLUGS in the business profile feature gates the
+ * card on the same two slugs.
+ *
+ * Seeded rather than migrated because the categories themselves are seeded: a migration that
+ * looks them up runs before this file on a fresh database and finds nothing, which left a fresh
+ * install with all three pickers permanently disabled.
+ *
+ * `text` rather than `select`: a select field must carry a non-empty `options` array, and these
+ * three draw their options from the `degree_levels` / `areas_of_study` / `accreditations`
+ * catalogs instead. The editor keys off `key`, never `type`.
+ */
+const COURSE_SLUGS = ["courses", "short_courses"];
+const COURSE_FIELDS = [
+  { key: "degree_level", label: "Degree level" },
+  { key: "area_of_study", label: "Area of study" },
+  { key: "awarded_by", label: "Awarded by" },
+];
+
 export async function seed(knex: Knex): Promise<void> {
   // Upsert by id, not by slug: id is this table's stable identity (other schemas' FKs point at
   // it), while the slug/name/etc a given id maps to has changed as this taxonomy evolved. A
@@ -28,4 +48,23 @@ export async function seed(knex: Knex): Promise<void> {
   await knex.raw(
     "SELECT setval(pg_get_serial_sequence('service_categories', 'id'), (SELECT MAX(id) FROM service_categories))",
   );
+
+  // After the categories, so the rows they hang off always exist. onConflict ignore keeps a field
+  // an admin has since renamed or retyped, and makes re-running this a no-op.
+  const courseCategories = CATEGORIES.filter((c) => COURSE_SLUGS.includes(c.slug));
+  await knex("schema_fields")
+    .insert(courseCategories.flatMap((category) =>
+      COURSE_FIELDS.map((field) => ({
+        entity_id: category.id,
+        entity_type: "service_categories",
+        is_default: true,
+        label: field.label,
+        key: field.key,
+        type: "text",
+        is_required: false,
+        filterable: true,
+      })),
+    ))
+    .onConflict(["entity_id", "entity_type", "key"])
+    .ignore();
 }

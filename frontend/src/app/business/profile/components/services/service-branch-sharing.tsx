@@ -31,9 +31,24 @@ export function ServiceBranchSharing({
   useEffect(() => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
+    // Every page, not just the first 100: a branch past the cap would be unreachable here, with
+    // no way to tell it apart from one deliberately not sharing. The endpoint caps `limit` at
+    // 100, so this walks the pages; MAX_PAGES stops a pathological org turning one card into
+    // dozens of requests.
+    const MAX_PAGES = 10;
+    const limit = 100;
     businessProfileDetailApi
-      .getBranches({ limit: 100 }, orgBase)
-      .then((res) => setBranches(res.data.filter((b) => !b.is_primary)))
+      .getBranches({ page: 1, limit }, orgBase)
+      .then(async (first) => {
+        const pages = Math.min(Math.ceil(first.total / limit), MAX_PAGES);
+        const rest = await Promise.all(
+          Array.from({ length: Math.max(0, pages - 1) }, (_, i) =>
+            businessProfileDetailApi.getBranches({ page: i + 2, limit }, orgBase),
+          ),
+        );
+        return [...first.data, ...rest.flatMap((r) => r.data)];
+      })
+      .then((all) => setBranches(all.filter((b) => !b.is_primary)))
       .catch(() => setBranches([]))
       .finally(() => setLoading(false));
   }, [orgBase]);
@@ -65,7 +80,8 @@ export function ServiceBranchSharing({
     body = <p className="text-sm text-muted-foreground italic">No branches to share with yet.</p>;
   } else {
     body = (
-      <div className="flex flex-col gap-3">
+      // Capped height: a long branch list would otherwise push the rest of the sidebar off-screen.
+      <div className="flex max-h-96 flex-col gap-3 overflow-y-auto">
         <p className="text-sm text-muted-foreground">
           Share this service with your branches so it also appears in their listings.
         </p>

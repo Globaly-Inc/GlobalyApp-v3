@@ -50,14 +50,18 @@ export function ServiceEditorHeader({
         fallbackLabel={isInstitution ? "institution" : "business"}
       />
       <CardContent>
-        <div className="-mt-14 ml-8 flex items-start gap-4">
-          <Avatar className="size-28 shrink-0 rounded-xl border-4 border-background shadow-sm">
+        {/* The negative margin hangs off the avatar, not the row: lifting the row lifted the text
+            column with it, and its 16px of top padding was nowhere near the 56px needed to put it
+            back, so on phones the category pill and name sat on top of the cover. This way the
+            overlap is the logo's alone, whatever the text column's height. */}
+        <div className="ml-8 flex items-start gap-4">
+          <Avatar className="-mt-14 size-28 shrink-0 rounded-xl border-4 border-background shadow-sm">
             {ownerLogoUrl && <AvatarImage src={ownerLogoUrl} alt={ownerName} className="rounded-lg object-contain p-1" />}
             <AvatarFallback className="rounded-lg bg-background text-xl font-bold text-primary">
               {ownerName.charAt(0).toUpperCase()}
             </AvatarFallback>
           </Avatar>
-          <div className="m-2 flex flex-1 flex-col gap-1.5 pt-4 sm:pt-14">
+          <div className="flex min-w-0 flex-1 flex-col gap-1.5 pt-1">
             <Combobox
               options={serviceCategories.map((c) => ({
                 value: String(c.id),

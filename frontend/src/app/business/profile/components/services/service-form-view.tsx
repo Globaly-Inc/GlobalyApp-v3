@@ -263,11 +263,16 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
       {isEdit && serviceId ? (
         <>
           {/* ScrollRow reserves a chevron gutter on each side whether or not a chevron shows
-              (SCROLL_ROW_GUTTER), which pushed the tab strip 18px right of the cards it sits
-              above. Same pull-out ProfileLocationsCard uses, on the left only — the strip is
-              w-fit, so the right gutter costs nothing. */}
+              (SCROLL_ROW_GUTTER), which pushes the tab strip 18px right of the cards it sits
+              between. Same pull-out ProfileLocationsCard uses, on the left only — the strip is
+              w-fit, so the right gutter costs nothing.
+
+              md and up only: the shell's own padding is 12px at base and 16px at sm, so pulling
+              out 18px there would overhang it and `main`'s overflow-x-clip would cut the left
+              scroll chevron in half exactly when a narrow screen needs it. Below md the strip
+              keeps its 18px indent, which is cosmetic, over a control you cannot press. */}
           <AdminSegmentedTabs
-            className="-ml-[1.125rem]"
+            className="md:-ml-[1.125rem]"
             options={detailTabs}
             value={activeTab}
             onChange={setDetailTab}
