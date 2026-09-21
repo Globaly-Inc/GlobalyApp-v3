@@ -612,6 +612,37 @@ queued URLs. `npm run sitemap:list -- <url> [--discover]` prints what discovery 
 Same pass: `edu.np` added to `MULTI_LABEL_SUFFIXES`, since `siteOf` was reducing `ku.edu.np` to
 `edu.np`. **That list is gone** — see "Registrable domains come from the Public Suffix List" below.
 
+## Scrapling gets the WHOLE body; `fresh` re-snapshots (2026-09-21)
+
+`scrapeMarkdown`'s Scrapling call now passes `main_content_only: false` always. Scrapling's
+"main content" is `<body>` minus script/style/svg minus every element hidden at load (inline
+display:none, aria-hidden, template — `_sanitize_for_ai` in scrapling/core/shell.py, an
+anti-prompt-injection measure). On a university site that is the collapsed module accordions and
+the inactive fee tabs. UEL BEng Electrical: 45,847 chars, module headings with nothing under them
+and no fee figure, versus 101,306 chars with a paragraph per module and "£9,790 per year" /
+"£16,020 per year". `scrapeRenderedHtml` had already been passing false for the CourseLeaf tables;
+the markdown path never got the same fix. Nav is NOT stripped by either setting; it stays in and
+`truncateMarkdown` (120k) bounds it — add a nav stripper in html-utils only if the tail of a real
+page starts getting cut. `onlyMainContent` still keys `extraction_pages.mode`; it no longer changes
+what Scrapling returns. Snapshots taken before this are thin and cached for 30 days: the Snapshot
+chip's Run on a finished step now sends `fresh: true` (`RunStepSchema.fresh`, carried on every
+batch message through `dispatchSnapshotBatches` → `snapshotSite` → `getPage({ fresh })`), which
+re-fetches and rewrites every page's file.
+
+## The .md file in GCS is the page's source of truth (2026-09-21)
+
+User spec: "scrape each endpoint in 1 md file each and that md file will be used to insert the
+data". `getPage` (`lib/page-store.ts`) writes the file to `snapshotPathFor(url, mode)` before the
+`extraction_pages` row and leaves the row's `markdown` column BLANK when the upload succeeded; the
+row keeps id, links, content_hash, scraper, scraped_at. Every read downloads the file, parses it
+(`parseSnapshotFile`) and re-hashes it against the row. A missing or mismatched file is a MISS →
+live Scrapling scrape → file and row rewritten. Never an error, so the page worker's
+`snapshot_missing` gate and failure class are deleted. With no bucket configured the column holds
+the text (pre-2026-09-21 behaviour); rows stored before this change are read from the column until
+their next scrape. `full` mode is `…<digest>.full.md`. `snapshotPathFor`/`fileLinksOf` moved here
+from `site-snapshot.ts` (re-exported there). `test:page-store` §6 covers write, hit, missing file,
+mismatched file, linked-files round-trip, PDF.
+
 ## Registrable domains come from the Public Suffix List (2026-09-17)
 
 `siteOf` decides crawl scope (`filterUrls`), the catalogue-subdomain probe, the crt.sh query and

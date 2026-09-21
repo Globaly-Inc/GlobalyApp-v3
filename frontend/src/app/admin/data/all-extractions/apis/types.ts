@@ -70,6 +70,8 @@ export type ExtractionJob = ActorFields & {
   guided_urls?: Record<string, unknown> | null;
   guidance_notes?: string | null;
   pipeline_progress?: Record<string, unknown> | null;
+  /** auto: steps chain themselves. manual: the pipeline waits after every step for Run. */
+  step_mode?: StepMode;
   supporting_documents?: SupportingDoc[] | null;
   error_message?: string | null;
   processing_heartbeat_at?: string | null;
@@ -369,7 +371,43 @@ export type EditableTable =
 
 // guided_urls values are URL arrays and resource objects, not strings — matches the
 // backend's `z.record(z.unknown())`.
-export type UpdateContextParams = { guided_urls?: Record<string, unknown> | null; guidance_notes?: string | null };
+export type UpdateContextParams = { guided_urls?: Record<string, unknown> | null; guidance_notes?: string | null; step_mode?: StepMode };
+
+// ── One-step-at-a-time chain (Site URLs / Snapshots tabs) ───────────────
+
+export type StepMode = "auto" | "manual";
+export type SiteUrlRole = "course" | "other";
+
+export type SiteUrl = {
+  id: string;
+  url: string;
+  source: string;
+  role: SiteUrlRole | null;
+  role_source: "heuristic" | "llm" | "admin" | null;
+  excluded: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SiteUrlCounts = { total: number; course: number; other: number; unclassified: number; excluded: number };
+
+export type SiteUrlsPage = Paginated<SiteUrl> & { counts: SiteUrlCounts };
+
+export type GetSiteUrlsParams = { page?: number; limit?: number; role?: SiteUrlRole | "unclassified"; excluded?: boolean; q?: string };
+
+export type SnapshotRow = {
+  id: string;
+  url: string;
+  scraper: string;
+  scraped_at: string;
+  content_hash: string;
+  link_count: number;
+  role: SiteUrlRole | null;
+  excluded: boolean;
+  gcs_path: string;
+};
+
+export type SnapshotMarkdown = { id: string; url: string; scraped_at: string; markdown: string };
 
 // ── Course-linked entity types ──────────────────────────────────
 

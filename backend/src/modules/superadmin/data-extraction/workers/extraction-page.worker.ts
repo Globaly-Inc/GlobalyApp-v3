@@ -214,9 +214,9 @@ async function extractSecondaryPageInner(opts: {
 
 await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
   let jobId: string, queueItemId: string, url: string, forceFirecrawl: boolean | undefined, mobile: boolean | undefined,
-    proxy: "stealth" | "auto" | undefined, expandCollapsed: boolean | undefined;
+    proxy: "stealth" | "auto" | undefined, expandCollapsed: boolean | undefined, adminRetry: boolean | undefined;
   try {
-    ({ jobId, queueItemId, url, forceFirecrawl, mobile, proxy, expandCollapsed } = JSON.parse(msg!.content.toString()));
+    ({ jobId, queueItemId, url, forceFirecrawl, mobile, proxy, expandCollapsed, adminRetry } = JSON.parse(msg!.content.toString()));
   } catch {
     logger.error("Malformed queue message, discarding", { raw: msg?.content.toString().slice(0, 200) });
     return;
@@ -326,7 +326,8 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
   }
 
   try {
-    // ── Scrape page to markdown ──
+    // ── Read the page: the site_snapshot step's .md file on a hit; a live Scrapling scrape when the
+    // file is missing (never snapshotted, or gone from the bucket), which getPage then stores. ──
     // The retry ladder (forceFirecrawl) exists because the stored attempt failed or was thin,
     // so it always fetches fresh; a first attempt takes a snapshot within the window.
     const page = await getPage(url, {

@@ -452,12 +452,16 @@ export const __browserSlotInternals = { acquireBrowserSlot, releaseBrowserSlot, 
  *   - `ScrapeOptions.onlyMainContent` did nothing at all on the Scrapling path, which is why
  *     asking for the full page and asking for main content returned byte-identical markdown.
  */
+/** The floor every caller applies (page-store.MIN_USABLE_CHARS). A 2xx page this long that
+ *  carries no not-found phrasing is a real, thin page — not a wall to escalate past. */
+const MIN_THIN_2XX_LEN = 50;
+
 async function scraplingScrape(
   url: string,
   cfg: { baseUrl: string; apiKey?: string },
   extractionType: ScraplingExtractionType,
   mainContentOnly: boolean,
-): Promise<{ content: string; tierUsed?: string; error?: string }> {
+): Promise<{ content: string; tierUsed?: string; error?: string; notFound?: boolean }> {
   let client: Client;
   try {
     client = await getMcpClient(cfg);
@@ -493,8 +497,17 @@ async function scraplingScrape(
       }
       const structured = result.structuredContent as ScraplingToolResult | undefined;
       const content = structured?.content?.join("\n") ?? "";
-      if (isUsableContent(content)) {
-        logger.info(`scrapling mcp: tool "${tier.tool}" succeeded for ${url} (${content.length} chars)`);
+      const status = structured?.status;
+      // A real 404/410 is the origin saying the URL is dead. No browser tier, proxy or other
+      // provider can change that; escalating only spends minutes per dead URL.
+      if (status === 404 || status === 410) {
+        logger.info(`scrapling mcp: tool "${tier.tool}" got HTTP ${status} for ${url} — dead URL, not escalating`);
+        return { content: "", tierUsed: tier.tool, notFound: true, error: `${tier.tool}: HTTP ${status} — source page does not exist` };
+      }
+      const ok2xx = status != null && status >= 200 && status < 300;
+      const thinButReal = ok2xx && content.length >= MIN_THIN_2XX_LEN && !NO_CONTENT_PATTERNS.some((re) => re.test(content));
+      if (isUsableContent(content) || thinButReal) {
+        logger.info(`scrapling mcp: tool "${tier.tool}" succeeded for ${url} (${content.length} chars${thinButReal && !isUsableContent(content) ? ", thin 2xx" : ""})`);
         return { content, tierUsed: tier.tool };
       }
       lastError = `${tier.tool}: ${unusableReason(content)}`;
@@ -581,10 +594,11 @@ export async function scrapeRenderedHtml(
     // The WHOLE document: this exists to be parsed, and Scrapling's main-content extraction
     // strips exactly the tabbed panels a catalogue keeps its curriculum in.
     const s = await scraplingScrape(url, scrapling, "html", false);
-    if (isUsableContent(s.content)) {
+    if (s.content) {
       logger.info(`scrapling OK (rendered html) for ${url} (tier: ${s.tierUsed ?? "unknown"}, ${s.content.length} chars)`);
       return { html: s.content };
     }
+    if (s.notFound) return { html: "", error: s.error };
     logger.warn(`scrapling insufficient (rendered html) for ${url} (tier: ${s.tierUsed ?? "unknown"}) — falling through: ${s.error ?? "content too short"}`);
   }
 
@@ -646,8 +660,14 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
 
   // Path 0: Scrapling available
   if (scrapling) {
-    const s = await scraplingScrape(url, scrapling, "markdown", opts.onlyMainContent ?? true);
-    if (isUsableContent(s.content)) {
+    // ALWAYS the whole body. Scrapling's main_content_only drops every element hidden at load
+    // (inline display:none, aria-hidden) — which on a university site is the collapsed module
+    // accordions and the inactive fee tabs, i.e. the data. UEL BEng: 45k chars and no fee figure
+    // with it on, 101k chars with "£9,790 per year" and a paragraph per module with it off
+    // (2026-09-21). Nav stays in; Gemini copes and stripMarkdownJunk/truncateMarkdown bound it.
+    // `onlyMainContent` still keys the store's mode; it no longer changes what Scrapling returns.
+    const s = await scraplingScrape(url, scrapling, "markdown", false);
+    if (s.content) {
       logger.info(`scrapling OK for ${url} (tier: ${s.tierUsed ?? "unknown"}, ${s.content.length} chars)`);
       return {
         markdown: s.content,
@@ -655,6 +675,9 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
         scraper: "scrapling",
       };
     }
+    // blocked: true is the shape every caller already branches on for "no page to process";
+    // notFound tells the page worker to file it as not_found rather than anti_bot.
+    if (s.notFound) return { markdown: "", links: [], scraper: "scrapling", blocked: true, notFound: true, error: s.error };
     logger.warn(`scrapling insufficient for ${url} (tier: ${s.tierUsed ?? "unknown"}) — falling through: ${s.error ?? "content too short"}`);
   }
 

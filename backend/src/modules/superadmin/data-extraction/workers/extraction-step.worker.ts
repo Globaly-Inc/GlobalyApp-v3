@@ -1,6 +1,7 @@
 // Worker — consumes "extraction_steps" queue.
-// Routes admin-triggered step re-runs: institution, branches, agents,
-// discovery, courses, enrichment, verification, course_data.
+// Runs the one-step-at-a-time chain (site_map → site_snapshot → site_analysis → url_classify →
+// queue_pages, see lib/pipeline-steps.ts) and admin-triggered step re-runs: institution, branches,
+// agents, discovery, courses, enrichment, verification, course_data.
 //
 // Run with: npm run job:extraction-step
 
@@ -76,6 +77,11 @@ import { matchFeesToCourses } from "../lib/fee-matcher.js";
 import { parseInstallments } from "../lib/installment-parser.js";
 import { createDocumentExtractor, buildDocumentContext, type DocInput } from "../lib/document-extractor.js";
 import type { PipelineStep, CourseDataType } from "../schemas/step.schema.js";
+import {
+  advance, gate, dispatchSnapshotBatches, setProgress,
+  runSiteMap, runSiteAnalysis, runUrlClassify, runQueuePages,
+} from "../lib/pipeline-steps.js";
+import { listActiveSiteUrls, upsertSiteUrls, setSiteUrlRoles } from "../repositories/site-urls.repository.js";
 
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
@@ -110,18 +116,100 @@ async function markStepProgress(jobId: string, step: string, status: string) {
   });
 }
 
-/** The job worker passes the discovered URL list; an admin re-run passes none, so fall back to
- *  every URL this job has queued. */
-async function handleSiteSnapshotStep(
-  jobId: string, urls?: string[], batch?: SnapshotBatch,
-): Promise<"done" | "failed" | "pending"> {
-  if (!urls?.length) {
-    const rows = await masterKnex(`${S}.extraction_queue`).where({ job_id: jobId }).select("url");
-    urls = rows.map((r: { url: string }) => r.url);
+// ── The chain: site_map → site_snapshot → site_analysis → url_classify → queue_pages ──────────
+// Thin wrappers: the work is in lib/pipeline-steps.ts; this file owns the timeline events and the
+// hand-off to the next step through the gate.
+
+async function handleSiteMapStep(jobId: string) {
+  const job = await loadJob(jobId);
+  if (!job) return;
+  await writeJobEvent(jobId, "step_start", { phase: "site_map", message: "Mapping the site" });
+  const total = await runSiteMap(jobId, job);
+  await writeJobEvent(jobId, "step_complete", { phase: "site_map", message: `${total} URLs on the site list`, data: { count: total } });
+
+  // site_map publishes BATCHES, not one message, so it uses gate() and dispatches itself.
+  if (await gate(jobId, "site_map")) {
+    const urls = (await listActiveSiteUrls(jobId)).map((r) => r.url);
+    await setProgress(jobId, { site_snapshot: "processing" });
+    await dispatchSnapshotBatches(jobId, urls, Number(job.page_cap) || 500);
   }
-  await snapshotSite(jobId, urls, batch);
-  // One unbatched message (an admin re-run) is the whole step; a batch only speaks for itself.
-  return batch ? snapshotRunOutcome(jobId, batch) : "done";
+}
+
+/**
+ * Batched messages do the work. An UNBATCHED message (the admin's Run button, or a message from
+ * before batching existed) is a dispatcher: it splits the site list into the same concurrent
+ * batches site_map would, so a manual run has the same shape and the same hand-off as an automatic
+ * one. Jobs that predate the site list fall back to the URLs they queued.
+ */
+async function handleSiteSnapshotStep(
+  jobId: string, urls?: string[], batch?: SnapshotBatch, fresh = false,
+): Promise<"done" | "failed" | "pending"> {
+  if (!urls?.length || !batch) {
+    const job = await loadJob(jobId);
+    let list = urls?.length ? urls : (await listActiveSiteUrls(jobId)).map((r) => r.url);
+    if (!list.length) {
+      const rows = await masterKnex(`${S}.extraction_queue`).where({ job_id: jobId }).select("url");
+      list = rows.map((r: { url: string }) => r.url);
+    }
+    if (!list.length) throw new Error("Nothing to snapshot — run site_map first");
+    await dispatchSnapshotBatches(jobId, list, Number(job?.page_cap) || list.length, fresh);
+    return "pending";
+  }
+  await snapshotSite(jobId, urls, batch, fresh);
+  return snapshotRunOutcome(jobId, batch);
+}
+
+/**
+ * Batches land CONCURRENTLY, and two that finish together can both read the run as complete. The
+ * hand-off must happen once per run, so it is fenced on a per-run marker event under an advisory
+ * lock — the same pattern the page worker uses for its once-per-job outage warning.
+ */
+async function advanceSnapshotRunOnce(jobId: string, batch: SnapshotBatch) {
+  const first = await masterKnex.transaction(async (trx) => {
+    await trx.raw("SELECT pg_advisory_xact_lock(hashtext(?))", [`snapshot_run_complete:${batch.runId}`]);
+    const already = await trx(`${S}.extraction_job_events`)
+      .where({ job_id: jobId, kind: "snapshot_run_complete" })
+      .whereRaw("(data::jsonb)->>'runId' = ?", [batch.runId])
+      .first();
+    if (already) return false;
+    await trx(`${S}.extraction_job_events`).insert({
+      job_id: jobId, kind: "snapshot_run_complete", level: "info", phase: "site_snapshot",
+      message: `Site snapshot complete (${batch.total} batches)`,
+      data: JSON.stringify({ runId: batch.runId, total: batch.total }),
+    });
+    return true;
+  });
+  if (first) await advance(jobId, "site_snapshot");
+}
+
+async function handleSiteAnalysisStep(jobId: string) {
+  const job = await loadJob(jobId);
+  if (!job) return;
+  await writeJobEvent(jobId, "step_start", { phase: "site_analysis", message: "Analysing the homepage" });
+  const patterns = await runSiteAnalysis(jobId, job);
+  await writeJobEvent(jobId, "step_complete", { phase: "site_analysis", message: `Site analysed — ${patterns.length} course URL patterns`, data: { patterns } });
+  await advance(jobId, "site_analysis");
+}
+
+async function handleUrlClassifyStep(jobId: string) {
+  const job = await loadJob(jobId);
+  if (!job) return;
+  await writeJobEvent(jobId, "step_start", { phase: "url_classify", message: "Classifying site URLs" });
+  const r = await runUrlClassify(jobId, job);
+  await writeJobEvent(jobId, "step_complete", { phase: "url_classify", message: `${r.course} of ${r.total} URLs marked as course pages`, data: r });
+  await advance(jobId, "url_classify");
+}
+
+async function handleQueuePagesStep(jobId: string) {
+  const job = await loadJob(jobId);
+  if (!job) return;
+  await writeJobEvent(jobId, "step_start", { phase: "queue_pages", message: "Queueing course pages for extraction" });
+  const r = await runQueuePages(jobId, job);
+  await writeJobEvent(jobId, "step_complete", {
+    phase: "queue_pages",
+    message: r.idle ? "Nothing new to queue — job moved to review" : `${r.queued} pages queued for extraction`,
+    data: r,
+  });
 }
 
 async function scrapeUrl(url: string): Promise<string | null> {
@@ -887,18 +975,33 @@ async function handleDiscoveryStep(jobId: string) {
         const courseUrl = course.url || url;
         const queueItemId = await insertQueueItem(jobId, courseUrl);
         if (!queueItemId) continue; // already queued this job — dedupe now enforced by the DB unique constraint
-        await queueService.publish(EXTRACTION_QUEUES.PAGES, { jobId, queueItemId, url: courseUrl });
+        toPublish.push({ queueItemId, url: courseUrl });
         totalCoursePages++;
       }
     }
   }
 
+  // The page worker reads snapshots only (its snapshot gate), so pages this step discovers are
+  // snapshotted BEFORE they are published — and recorded on the site list as course pages so the
+  // Site URLs tab shows where they came from.
+  const toPublish: { queueItemId: string; url: string }[] = [];
+  async function publishDiscovered() {
+    if (!toPublish.length) return;
+    const urls = toPublish.map((p) => p.url);
+    await upsertSiteUrls(jobId, urls.map((url) => ({ url, source: "discovery" })));
+    await setSiteUrlRoles(jobId, new Map(urls.map((u) => [u, "course" as const])), "heuristic");
+    await snapshotSite(jobId, urls);
+    for (const p of toPublish) await queueService.publish(EXTRACTION_QUEUES.PAGES, { jobId, queueItemId: p.queueItemId, url: p.url });
+    toPublish.length = 0;
+  }
+
   for (const url of courseListUrls) {
     // ponytail: stop check per catalogue URL
     const sc = await masterKnex(`${S}.extraction_jobs`).select("stop_requested").where({ id: jobId }).first();
-    if (sc?.stop_requested) { logger.info("Stop requested, aborting", { jobId }); return; }
+    if (sc?.stop_requested) { logger.info("Stop requested, aborting", { jobId }); await publishDiscovered(); return; }
 
     await processListUrl(url, 0);
+    await publishDiscovered();
   }
 
   // Keep pages_total in step with total_pages_found — the admin "Pages Found" stat reads the latter.
@@ -1746,9 +1849,9 @@ async function handleVisaServiceDataStep(jobId: string, visaServiceId: string) {
 
 await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
   let jobId: string, step: string, courseId: string | undefined, dataType: string | undefined, visaServiceId: string | undefined,
-    urls: string[] | undefined, batch: SnapshotBatch | undefined;
+    urls: string[] | undefined, batch: SnapshotBatch | undefined, fresh: boolean | undefined;
   try {
-    ({ jobId, step, courseId, dataType, visaServiceId, urls, batch } = JSON.parse(msg!.content.toString()));
+    ({ jobId, step, courseId, dataType, visaServiceId, urls, batch, fresh } = JSON.parse(msg!.content.toString()));
   } catch {
     logger.error("Malformed queue message, discarding", { raw: msg?.content.toString().slice(0, 200) });
     return;
@@ -1761,6 +1864,10 @@ await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
   let outcome: "done" | "failed" | "pending" = "done";
   try {
     switch (step as PipelineStep) {
+      case "site_map":          await handleSiteMapStep(jobId); break;
+      case "site_analysis":     await handleSiteAnalysisStep(jobId); break;
+      case "url_classify":      await handleUrlClassifyStep(jobId); break;
+      case "queue_pages":       await handleQueuePagesStep(jobId); break;
       case "institution":       await handleInstitutionStep(jobId); break;
       case "branches":          await handleBranchesStep(jobId); break;
       case "agents":            await handleAgentsStep(jobId); break;
@@ -1771,12 +1878,14 @@ await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
       case "course_data":       await handleCourseDataStep(jobId, courseId!, dataType as CourseDataType); break;
       case "visa_services":     await handleVisaServicesStep(jobId); break;
       case "visa_service_data": await handleVisaServiceDataStep(jobId, visaServiceId!); break;
-      case "site_snapshot":     outcome = await handleSiteSnapshotStep(jobId, urls, batch); break;
+      case "site_snapshot":     outcome = await handleSiteSnapshotStep(jobId, urls, batch, !!fresh); break;
       default:
         logger.warn("Unknown step", { step });
     }
 
     if (outcome !== "pending") await markStepProgress(jobId, step, outcome);
+    // The snapshot run is complete only when its LAST batch says so; that batch hands off.
+    if (step === "site_snapshot" && outcome === "done" && batch) await advanceSnapshotRunOnce(jobId, batch);
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     logger.error("Step failed", { jobId, step, error: errMsg });

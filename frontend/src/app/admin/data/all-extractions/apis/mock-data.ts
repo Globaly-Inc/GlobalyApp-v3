@@ -27,6 +27,12 @@ import type {
   MissingDetailCandidate,
   Paginated,
   QueueItem,
+  GetSiteUrlsParams,
+  SiteUrl,
+  SiteUrlRole,
+  SiteUrlsPage,
+  SnapshotMarkdown,
+  SnapshotRow,
   StudyOption,
   StudyOptionParams,
   StudyUnit,
@@ -83,6 +89,22 @@ let mockJobs: ExtractionJob[] = [
   { id: "21", institution_name: "Monash University", institution_url: "https://monash.edu", status: "done", total_pages_found: 70, courses_extracted: 62, verification_score: 60, verification_total: 62, pages_scraped: 70, pages_failed: 0, agent_count: 3, created_at: "2026-06-11T09:00:00Z", updated_at: "2026-06-11T09:00:00Z" },
   { id: "22", institution_name: "Murdoch University", institution_url: "https://murdoch.edu.au", status: "pending", total_pages_found: 18, courses_extracted: 0, verification_score: 0, verification_total: 0, pages_scraped: 0, pages_failed: 0, agent_count: 0, created_at: "2026-08-05T09:00:00Z", updated_at: "2026-08-05T09:00:00Z" },
   { id: "23", institution_name: "Queensland University of Technology (QUT)", institution_url: "https://qut.edu.au", status: "done", total_pages_found: 65, courses_extracted: 58, verification_score: 55, verification_total: 58, pages_scraped: 65, pages_failed: 0, agent_count: 2, created_at: "2026-06-10T09:00:00Z", updated_at: "2026-06-10T09:00:00Z" },
+];
+
+const mockSiteUrls: SiteUrl[] = [
+  { id: "su-1", url: "https://example.edu/", source: "homepage", role: "other", role_source: "heuristic", excluded: false, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" },
+  { id: "su-2", url: "https://example.edu/courses/bachelor-of-computer-science", source: "sitemap", role: "course", role_source: "heuristic", excluded: false, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" },
+  { id: "su-3", url: "https://example.edu/courses/master-of-data-science", source: "sitemap", role: "course", role_source: "llm", excluded: false, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" },
+  { id: "su-4", url: "https://example.edu/news/open-day-2027", source: "sitemap", role: "other", role_source: "heuristic", excluded: false, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" },
+  { id: "su-5", url: "https://example.edu/staff/directory", source: "map", role: "other", role_source: "admin", excluded: true, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" },
+  { id: "su-6", url: "https://example.edu/study/fees", source: "guided", role: "course", role_source: "heuristic", excluded: false, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" },
+  { id: "su-7", url: "https://example.edu/about/history", source: "map", role: null, role_source: null, excluded: false, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" },
+];
+
+const mockSnapshots: SnapshotRow[] = [
+  { id: "11111111-1111-4111-8111-111111111111", url: "https://example.edu/courses/bachelor-of-computer-science", scraper: "scrapling", scraped_at: "2026-09-18T01:00:00Z", content_hash: "3f2a91c4d0e1", link_count: 64, role: "course", excluded: false, gcs_path: "extraction/www/example.edu/example.edu/courses_bachelor-of-computer-science-3f2a91c4.md" },
+  { id: "22222222-2222-4222-8222-222222222222", url: "https://example.edu/courses/master-of-data-science", scraper: "scrapling", scraped_at: "2026-09-18T01:00:05Z", content_hash: "7b10de55a9c2", link_count: 51, role: "course", excluded: false, gcs_path: "extraction/www/example.edu/example.edu/courses_master-of-data-science-7b10de55.md" },
+  { id: "33333333-3333-4333-8333-333333333333", url: "https://example.edu/news/open-day-2027", scraper: "crawl4ai", scraped_at: "2026-09-18T01:00:09Z", content_hash: "c0ffee00beef", link_count: 12, role: "other", excluded: false, gcs_path: "extraction/www/example.edu/example.edu/news_open-day-2027-c0ffee00.md" },
 ];
 
 export const allExtractionsMockApi = {
@@ -491,6 +513,62 @@ export const allExtractionsMockApi = {
   updateContext: async (id: string, params: UpdateContextParams): Promise<void> => {
     console.log("[mock] PATCH context", id, params);
     await delay(200);
+  },
+
+  // ── Site URLs / Snapshots (one-step-at-a-time chain) ──────────────
+
+  getSiteUrls: async (jobId: string, params: GetSiteUrlsParams = {}): Promise<SiteUrlsPage> => {
+    console.log("[mock] GET site-urls", jobId, params);
+    await delay(250);
+    let rows = mockSiteUrls.filter((r) => r.excluded === (params.excluded ?? r.excluded));
+    if (params.role === "unclassified") rows = rows.filter((r) => r.role === null);
+    else if (params.role) rows = rows.filter((r) => r.role === params.role);
+    if (params.q) rows = rows.filter((r) => r.url.includes(params.q!));
+    const limit = params.limit ?? 20;
+    const page = params.page ?? 1;
+    const counts = {
+      total: mockSiteUrls.length,
+      course: mockSiteUrls.filter((r) => !r.excluded && r.role === "course").length,
+      other: mockSiteUrls.filter((r) => !r.excluded && r.role === "other").length,
+      unclassified: mockSiteUrls.filter((r) => !r.excluded && r.role === null).length,
+      excluded: mockSiteUrls.filter((r) => r.excluded).length,
+    };
+    return {
+      data: rows.slice((page - 1) * limit, page * limit),
+      meta: { page, limit, total: rows.length, totalPages: Math.max(1, Math.ceil(rows.length / limit)) },
+      counts,
+    };
+  },
+
+  patchSiteUrl: async (id: string, patch: { excluded?: boolean; role?: SiteUrlRole | null }): Promise<void> => {
+    console.log("[mock] PATCH site-url", id, patch);
+    await delay(150);
+    const row = mockSiteUrls.find((r) => r.id === id);
+    if (!row) return;
+    if (patch.excluded !== undefined) row.excluded = patch.excluded;
+    if (patch.role !== undefined) { row.role = patch.role; row.role_source = patch.role === null ? null : "admin"; }
+  },
+
+  bulkExcludeSiteUrls: async (jobId: string, ids: string[], excluded: boolean): Promise<void> => {
+    console.log("[mock] POST site-urls bulk-exclude", jobId, ids.length, excluded);
+    await delay(200);
+    for (const r of mockSiteUrls) if (ids.includes(r.id)) r.excluded = excluded;
+  },
+
+  getSnapshots: async (jobId: string, params: { page?: number; limit?: number; q?: string } = {}): Promise<Paginated<SnapshotRow>> => {
+    console.log("[mock] GET snapshots", jobId, params);
+    await delay(250);
+    const rows = params.q ? mockSnapshots.filter((r) => r.url.includes(params.q!)) : mockSnapshots;
+    const limit = params.limit ?? 20;
+    const page = params.page ?? 1;
+    return { data: rows.slice((page - 1) * limit, page * limit), meta: { page, limit, total: rows.length, totalPages: Math.max(1, Math.ceil(rows.length / limit)) } };
+  },
+
+  getSnapshotMarkdown: async (jobId: string, pageId: string): Promise<SnapshotMarkdown> => {
+    console.log("[mock] GET snapshot markdown", jobId, pageId);
+    await delay(200);
+    const row = mockSnapshots.find((r) => r.id === pageId) ?? mockSnapshots[0]!;
+    return { id: row.id, url: row.url, scraped_at: row.scraped_at, markdown: `# ${row.url}\n\nMock snapshot markdown for this page.\n\n| Programme | Fee |\n| --- | --- |\n| MSc Example | $32,000 |\n` };
   },
 
   getQueue: async (jobId: string): Promise<QueueItem[]> => {

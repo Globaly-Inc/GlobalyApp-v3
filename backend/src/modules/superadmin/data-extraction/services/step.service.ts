@@ -8,6 +8,7 @@ import { logAudit } from "../shared/audit.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import type { RunStepInput, PipelineStep } from "../schemas/step.schema.js";
+import { countSiteUrls } from "../repositories/site-urls.repository.js";
 
 const logger = createChildLogger("extraction-step-service");
 
@@ -15,7 +16,7 @@ export async function dispatchStep(jobId: string, input: RunStepInput, adminId: 
   const job = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).first();
   if (!job) throw new NotFoundError("Extraction job not found");
 
-  const { step, course_id, data_type, visa_service_id } = input;
+  const { step, course_id, data_type, visa_service_id, fresh } = input;
 
   // Validate step-specific prerequisites
   if (step === "agents") {
@@ -48,10 +49,23 @@ export async function dispatchStep(jobId: string, input: RunStepInput, adminId: 
     if (!visaService.source_url) throw new BadRequestError("This visa service has no source_url to re-scrape");
   }
 
-  // Update pipeline_progress for this step
+  // The chained steps read the previous step's table, so they refuse to run before it exists —
+  // a 400 that names the step to run is the whole "one step at a time" contract for the admin.
   const progress = typeof job.pipeline_progress === "string"
     ? JSON.parse(job.pipeline_progress)
     : (job.pipeline_progress || {});
+  if (step === "site_snapshot" && (await countSiteUrls(jobId)) === 0) {
+    throw new BadRequestError("site_snapshot needs the site list — run site_map first");
+  }
+  const requires: Partial<Record<PipelineStep, PipelineStep[]>> = {
+    url_classify: ["site_map", "site_analysis"],
+    queue_pages: ["url_classify"],
+  };
+  for (const dep of requires[step] ?? []) {
+    if (progress[dep] !== "done") throw new BadRequestError(`${step} requires ${dep} to have completed — run it first`);
+  }
+
+  // Update pipeline_progress for this step
   progress[step] = "processing";
   await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
     pipeline_progress: JSON.stringify(progress),
@@ -66,12 +80,13 @@ export async function dispatchStep(jobId: string, input: RunStepInput, adminId: 
     courseId: course_id ?? null,
     dataType: data_type ?? null,
     visaServiceId: visa_service_id ?? null,
+    ...(step === "site_snapshot" && fresh ? { fresh: true } : {}),
   });
 
   await logAudit(adminId, "EXTRACTION_STEP_DISPATCH", {
     entityType: "extraction_jobs",
     entityId: jobId,
-    details: { step, course_id, data_type, visa_service_id },
+    details: { step, course_id, data_type, visa_service_id, ...(fresh ? { fresh } : {}) },
   });
 
   logger.info("Dispatched step", { jobId, step, course_id, data_type });

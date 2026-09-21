@@ -422,7 +422,7 @@ export function collectGuidedUrls(guided: unknown): string[] {
  * that carries information is rewritten or shortened. Every stripped byte is a billed
  * input token the model could never use.
  */
-function stripMarkdownJunk(md: string): string {
+export function stripMarkdownJunk(md: string): string {
   let out = md
     // base64 data URIs: thousands of chars of pure noise (inline images, favicons)
     .replace(/data:[a-zA-Z0-9/+.-]+;base64,[A-Za-z0-9+/=]{64,}/g, "data:omitted")

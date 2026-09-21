@@ -183,6 +183,7 @@ await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
     let verifiedCount = 0;
     let totalChecks = 0;
     let matchCount = 0;
+    let unchanged = 0;
 
     for (const course of courses) {
       // Check still active
@@ -192,6 +193,16 @@ await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
       try {
         // Verification compares against the LIVE page by definition — fresh, never a snapshot.
         const page = await getPage(course.source_url, { onlyMainContent: true, fresh: true });
+
+        // The live page is byte-identical to the snapshot this course was already verified against,
+        // so the model would be asked the same question about the same text. Stamp the course so
+        // the incremental filter stops re-selecting it, and move on. A never-verified course is
+        // still verified — that pass is a QA of the extraction, not a freshness check.
+        if (course.last_verified_at && page.previousHash && page.contentHash === page.previousHash) {
+          await masterKnex(`${S}.extraction_courses`).where({ id: course.id }).update({ last_verified_at: masterKnex.fn.now() });
+          unchanged++;
+          continue;
+        }
 
         if (page.blocked || page.markdown.length < 50) {
           for (const field of FIELDS_TO_VERIFY) {
@@ -253,7 +264,9 @@ await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
       // instead of clobbering it with this pass's partial count. A forced full pass owns it.
       verification_score: force ? matchCount : masterKnex.raw("COALESCE(verification_score, 0) + ?", [matchCount]),
       verification_total: force ? totalChecks : masterKnex.raw("COALESCE(verification_total, 0) + ?", [totalChecks]),
-      pipeline_progress: JSON.stringify({ site_mapping: "done", course_discovery: "done", data_extraction: "done", verification: "done" }),
+      // Merge, don't replace: the per-step keys (site_map … queue_pages) must survive.
+      pipeline_progress: masterKnex.raw("coalesce(pipeline_progress, '{}'::jsonb) || ?::jsonb",
+        [JSON.stringify({ site_mapping: "done", course_discovery: "done", data_extraction: "done", verification: "done" })]),
       updated_at: masterKnex.fn.now(),
     });
 
@@ -261,8 +274,9 @@ await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
 
     await writeJobEvent(jobId, "verification_complete", {
       phase: "verification",
-      message: `Verification complete: ${matchCount}/${totalChecks} matched across ${verifiedCount} courses`,
-      data: { verified: verifiedCount, total_checks: totalChecks, matches: matchCount },
+      message: `Verification complete: ${matchCount}/${totalChecks} matched across ${verifiedCount} courses`
+        + (unchanged > 0 ? `; ${unchanged} skipped — live page unchanged since last verification` : ""),
+      data: { verified: verifiedCount, total_checks: totalChecks, matches: matchCount, unchanged },
     });
 
     logger.info("Verification complete", { jobId, verifiedCount, totalChecks, matchCount });

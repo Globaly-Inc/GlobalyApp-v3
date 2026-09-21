@@ -40,7 +40,9 @@ async function dispatchQueueItem(id: string) {
   const item = await repo.findQueueItem(id);
   if (!item) return;
   try {
-    await pipelineQueue.publish(EXTRACTION_QUEUES.PAGES, { jobId: item.job_id, queueItemId: item.id, url: item.url });
+    // adminRetry lets an explicit admin Retry fetch the page live; the page worker otherwise reads
+    // only the snapshot store (see its snapshot gate).
+    await pipelineQueue.publish(EXTRACTION_QUEUES.PAGES, { jobId: item.job_id, queueItemId: item.id, url: item.url, adminRetry: true });
   } catch {
     logger.warn("Queue unavailable dispatching retried item, worker will need a manual re-trigger", { queueItemId: id });
   }

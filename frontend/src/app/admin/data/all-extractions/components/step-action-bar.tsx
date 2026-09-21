@@ -11,22 +11,24 @@ import { fmtTime } from "../utils";
 import type { ContextKey } from "../const";
 
 /** V3 writes plain strings into pipeline_progress; V2 wrote {status, updated_at}. Accept both. */
-function readStatus(progress: unknown): string | undefined {
+export function readStatus(progress: unknown): string | undefined {
   if (typeof progress === "string") return progress;
   if (progress && typeof progress === "object") return (progress as { status?: string }).status;
   return undefined;
 }
 
-type StepBadge = { label: string; icon: LucideIcon; className: string; spin?: boolean };
+export type StepBadge = { label: string; icon: LucideIcon; className: string; spin?: boolean };
 
 const RUNNING: StepBadge = { label: "Running", icon: Loader2, className: "bg-blue-500/15 text-blue-700", spin: true };
 const STOPPED: StepBadge = { label: "Stopped", icon: MinusCircle, className: "bg-amber-500/15 text-amber-700" };
 const COMPLETE: StepBadge = { label: "Complete", icon: CheckCircle2, className: "bg-emerald-500/15 text-emerald-700" };
-const NOT_RUN: StepBadge = { label: "Not run", icon: Clock, className: "border border-border text-muted-foreground" };
+export const NOT_RUN: StepBadge = { label: "Not run", icon: Clock, className: "border border-border text-muted-foreground" };
+const WAITING: StepBadge = { label: "Waiting for Run", icon: Clock, className: "bg-amber-500/15 text-amber-700" };
 
-const BADGES: Record<string, StepBadge> = {
+export const BADGES: Record<string, StepBadge> = {
   running: RUNNING,
   processing: RUNNING,
+  waiting: WAITING,
   failed: { label: "Failed", icon: XCircle, className: "bg-destructive/15 text-destructive" },
   paused: STOPPED,
   halted: STOPPED,

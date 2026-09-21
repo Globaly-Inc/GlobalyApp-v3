@@ -238,6 +238,38 @@ async function main() {
   assertEqual(r.scraper, "crawl4ai", "falls through to crawl4ai when the scrapling mcp server is genuinely unreachable");
   assertEqual(downAttempts, 2, "gives up after a bounded number of connect attempts, not unbounded retries");
 
+  // 11. Scrapling's first tier ("get") reports a REAL HTTP 404. Escalating to two browser
+  // tiers, then Crawl4AI twice, then Firecrawl cannot turn a dead URL into a live one — it
+  // only costs ~5 minutes per bad URL, serially inside a 100-page snapshot batch. Stop at the
+  // status code and report notFound from the scrapling path itself.
+  let toolCalls = 0;
+  let restCalls = 0;
+  (Client.prototype as any).connect = async function () {};
+  (Client.prototype as any).callTool = async function () {
+    toolCalls++;
+    return { structuredContent: { status: 404, content: [`${LONG}\nPage Not Found\n${LONG}`], url: "https://example.com/gone" } };
+  };
+  global.fetch = (async () => { restCalls++; return new Response(JSON.stringify({ markdown: LONG }), { status: 200 }); }) as typeof fetch;
+  r = await scrapeMarkdown("https://example.com/gone");
+  assertEqual(r.notFound, true, "an HTTP 404 from scrapling's get tier is reported as notFound");
+  assertEqual(r.scraper, "scrapling", "and attributed to scrapling — no other provider was asked");
+  assertEqual(toolCalls, 1, "no escalation to the browser tiers on a real 404");
+  assertEqual(restCalls, 0, "no fall-through to crawl4ai/firecrawl on a real 404");
+
+  // 12. A real 2xx page that is simply short (a contact page, a one-paragraph notice). Every
+  // caller accepts 50+ chars, so escalating through every tier and provider only to reject it
+  // as "too short" at 200 was pure cost. Accept it at the first tier.
+  toolCalls = 0;
+  const THIN_REAL = "# Contact us\n\nAdmissions office, Building 4, open 9-5 weekdays. Call 555-0100.";
+  (Client.prototype as any).callTool = async function () {
+    toolCalls++;
+    return { structuredContent: { status: 200, content: [THIN_REAL], url: "https://example.com/contact" } };
+  };
+  r = await scrapeMarkdown("https://example.com/contact");
+  assertEqual(r.scraper, "scrapling", "a short real 2xx page is accepted from scrapling");
+  assertEqual(r.markdown, THIN_REAL, "with its content intact");
+  assertEqual(toolCalls, 1, "at the first tier, no escalation");
+
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed > 0) process.exit(1);
 }

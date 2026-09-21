@@ -1,6 +1,7 @@
 // Extraction queue repository.
 
 import { masterKnex } from "../../../../core/db/master-pool.js";
+import { deleteSiteUrls } from "./site-urls.repository.js";
 
 const T = "superadmin.extraction_queue";
 const T_JOBS = "superadmin.extraction_jobs";
@@ -123,11 +124,15 @@ export async function resetPipeline(jobId: string, adminId: number) {
         course_discovery: "waiting",
         data_extraction: "waiting",
         verification: "waiting",
+        site_map: "waiting", site_snapshot: "waiting", site_analysis: "waiting", url_classify: "waiting", queue_pages: "waiting",
       }),
       updated_at: masterKnex.fn.now(),
       updated_by_platform_user_id: adminId,
     });
   if (!jobCount) return false;
   await deleteAllQueueForJob(jobId);
+  // The site list is re-discovered by site_map. Snapshots in extraction_pages are KEPT — they are
+  // the cache, and a from-scratch redo should still be free where the site has not changed.
+  await deleteSiteUrls(jobId);
   return true;
 }
