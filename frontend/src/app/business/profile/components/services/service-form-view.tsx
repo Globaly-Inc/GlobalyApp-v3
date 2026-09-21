@@ -263,32 +263,35 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
       {isEdit && serviceId ? (
         <>
           <AdminSegmentedTabs options={detailTabs} value={activeTab} onChange={setDetailTab} />
-          <Card>
-            <CardContent>
-              {activeTab === "summary" && (
-                <SummaryTab
-                  serviceId={serviceId}
-                  orgBase={orgBase}
-                  isCourse={isCourse}
-                  onNavigateTab={setDetailTab}
-                  description={form.description}
-                  onDescriptionChange={(v) => set("description", v)}
-                  schemaFieldIdByKey={schemaFieldIdByKey}
-                  fieldValues={fieldValues}
-                  setFieldValues={setFieldValues}
-                  courseFieldOptions={courseFieldOptions}
-                  debouncedSearchCourseField={debouncedSearchCourseField}
-                  courseSearchLoading={courseSearchLoading}
-                />
-              )}
-              {activeTab === "fees" && <CourseFeesTab serviceId={serviceId} orgBase={orgBase} />}
-              {activeTab === "intakes" && <IntakesTab serviceId={serviceId} orgBase={orgBase} />}
-              {activeTab === "eligibility" && <EligibilityTab serviceId={serviceId} orgBase={orgBase} />}
-              {activeTab === "study-options" && <StudyOptionsTab serviceId={serviceId} orgBase={orgBase} />}
-              {activeTab === "study-units" && <StudyUnitsTab serviceId={serviceId} orgBase={orgBase} />}
-              {activeTab === "accreditations" && <AccreditationsTab serviceId={serviceId} orgBase={orgBase} />}
-            </CardContent>
-          </Card>
+          {/* Summary is a column of its own cards, like V1's — wrapping it in one would nest a
+              card inside a card. The other panels are bare content, so they get the surface. */}
+          {activeTab === "summary" ? (
+            <SummaryTab
+              serviceId={serviceId}
+              orgBase={orgBase}
+              isCourse={isCourse}
+              onNavigateTab={setDetailTab}
+              description={form.description}
+              onDescriptionChange={(v) => set("description", v)}
+              schemaFieldIdByKey={schemaFieldIdByKey}
+              fieldValues={fieldValues}
+              setFieldValues={setFieldValues}
+              courseFieldOptions={courseFieldOptions}
+              debouncedSearchCourseField={debouncedSearchCourseField}
+              courseSearchLoading={courseSearchLoading}
+            />
+          ) : (
+            <Card>
+              <CardContent>
+                {activeTab === "fees" && <CourseFeesTab serviceId={serviceId} orgBase={orgBase} />}
+                {activeTab === "intakes" && <IntakesTab serviceId={serviceId} orgBase={orgBase} />}
+                {activeTab === "eligibility" && <EligibilityTab serviceId={serviceId} orgBase={orgBase} />}
+                {activeTab === "study-options" && <StudyOptionsTab serviceId={serviceId} orgBase={orgBase} />}
+                {activeTab === "study-units" && <StudyUnitsTab serviceId={serviceId} orgBase={orgBase} />}
+                {activeTab === "accreditations" && <AccreditationsTab serviceId={serviceId} orgBase={orgBase} />}
+              </CardContent>
+            </Card>
+          )}
         </>
       ) : (
         <SummaryTab
