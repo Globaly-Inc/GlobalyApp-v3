@@ -791,10 +791,11 @@ export function resolveDurationWeeks(course: Pick<ExtractedCourse, "duration_wee
  * Study options are the single source of truth for a course's duration (2026-09-21): the admin UI
  * no longer shows or edits `extraction_courses.duration_weeks`, so it must FOLLOW the options.
  * Called from every study-option write path (create / patch / delete / link / unlink /
- * save-and-learn). Options that yield no duration leave the stored value alone — a prose- or
- * text-derived figure beats null, and a course whose only dated option was just deleted keeps
- * what it had rather than losing its duration. ponytail: one query per course; batch if a bulk
- * study-option edit ever appears.
+ * save-and-learn). When no linked option supplies a duration the column is CLEARED — keeping the
+ * old figure would show catalogue readers a duration the reviewed options no longer state (review
+ * finding, 2026-09-21). A pipeline-extracted course keeps its prose-derived figure only until an
+ * admin first touches its options; from then on the options are the truth, null included.
+ * ponytail: one query per course; batch if a bulk study-option edit ever appears.
  */
 export async function syncCourseDurationFromOptions(courseIds: Iterable<string>): Promise<void> {
   for (const courseId of new Set(courseIds)) {
@@ -802,8 +803,7 @@ export async function syncCourseDurationFromOptions(courseIds: Iterable<string>)
       .join(`${S}.extraction_course_study_option_assignments as a`, "a.study_option_id", "o.id")
       .where("a.course_id", courseId)
       .select("o.name", "o.study_mode", "o.study_load", "o.duration_value", "o.duration_unit") as ExtractedStudyOption[];
-    const weeks = weeksFromStudyOptions(options);
-    if (weeks == null) continue;
+    const weeks = weeksFromStudyOptions(options); // null → clear
     // IS DISTINCT FROM: no updated_at bump (and no re-verification) when nothing changed.
     await masterKnex(`${S}.extraction_courses`)
       .where({ id: courseId })

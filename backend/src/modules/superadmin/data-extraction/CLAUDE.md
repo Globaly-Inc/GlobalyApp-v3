@@ -659,9 +659,10 @@ removed). The column stays — search and public course pages read it — and is
 `syncCourseDurationFromOptions` (`staging-writer.ts`, `weeksFromStudyOptions` over the course's
 linked options) called from EVERY study-option write path: `staged.service` create / patch / delete /
 assign / unassign for the `study-options` junction, and `supporting.service.saveAndLearn` for
-`extraction_study_options`. Options yielding no duration leave the stored value alone, so a
-prose/text-derived figure survives and deleting a course's only dated option keeps the last value.
-Updates use `IS DISTINCT FROM` so an unchanged figure does not bump `updated_at` (which would
+`extraction_study_options`. When no linked option supplies a duration the column is CLEARED
+(review fix the same day — an earlier cut kept the old figure, so the catalogue kept showing a
+duration the reviewed options no longer stated). A pipeline-extracted course keeps its prose-derived
+figure only until an admin first touches its options. Updates use `IS DISTINCT FROM` so an unchanged figure does not bump `updated_at` (which would
 re-queue incremental verification). Manually created courses get their duration the moment their
 first dated study option is added. Not a V2 behaviour; review follow-up to the UI removal.
 
