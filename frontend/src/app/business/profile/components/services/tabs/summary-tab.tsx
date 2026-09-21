@@ -1,17 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Award, BookOpen, CalendarDays, DollarSign, FileText, GraduationCap, Image as ImageIcon, ShieldCheck, Sparkles } from "lucide-react";
-import { toast } from "sonner";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Award, BookOpen, CalendarDays, DollarSign, GraduationCap, Image as ImageIcon, ShieldCheck } from "lucide-react";
 import { Combobox } from "@/components/combobox";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
-import { SectionCard } from "@/app/personal/profile/section-card";
+import { PrivacyBadge } from "@/components/privacy-badge";
+import { OneToManySection, SectionCard } from "@/app/personal/profile/section-card";
 import { businessProfileDetailApi } from "../../../apis";
 import { SectionSummaryCard } from "../section-summary-card";
+import { ServiceBranchSharing } from "../service-branch-sharing";
+import { ServiceDescriptionCard } from "../service-description-card";
 import { ServiceSetupChecklist } from "../service-setup-checklist";
 import type { DetailTab } from "../service-form-view";
 
@@ -68,33 +66,7 @@ export function SummaryTab({
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
       <div className="space-y-4 lg:col-span-2">
-        <Card className="gap-3">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-4 w-4 text-muted-foreground" />
-              Description
-            </CardTitle>
-            <CardAction>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="gap-1.5 text-primary"
-                onClick={() => toast("Coming soon", { description: "AI-generated descriptions aren't available yet." })}
-              >
-                <Sparkles className="h-3.5 w-3.5" /> Write with AI
-              </Button>
-            </CardAction>
-          </CardHeader>
-          <CardContent>
-            <Textarea
-              value={description}
-              onChange={(e) => onDescriptionChange(e.target.value)}
-              placeholder="Describe the service..."
-              rows={8}
-              className="min-h-20"
-            />
-          </CardContent>
-        </Card>
+        <ServiceDescriptionCard description={description} onChange={onDescriptionChange} />
 
         {serviceId && isCourse && (
           <>
@@ -119,21 +91,22 @@ export function SummaryTab({
               title="Eligibility"
               count={counts.eligibility}
               emptyText="No eligibility requirements configured yet."
-              addLabel="Add"
               onAdd={() => onNavigateTab("eligibility")}
             />
-            <Card className="gap-3">
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="flex items-center gap-2 text-sm">
-                  <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                  Media <Badge variant="secondary" className="text-[10px]">Public</Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground italic">No media uploaded yet.</p>
-              </CardContent>
-            </Card>
           </>
+        )}
+
+        {/* Not course-only: every service can carry photos, so V1 shows this whatever the category. */}
+        {serviceId && (
+          <OneToManySection
+            icon={ImageIcon}
+            title="Media"
+            count={0}
+            badge={<PrivacyBadge isPublic />}
+            emptyText="No media uploaded yet."
+          >
+            {null}
+          </OneToManySection>
         )}
       </div>
 
@@ -173,12 +146,12 @@ export function SummaryTab({
 
         {serviceId && (
           <>
+            {/* "Course fees" whatever the category, as V1 titles it — only the tab drops the prefix. */}
             <SectionSummaryCard
               icon={DollarSign}
-              title={isCourse ? "Course fees" : "Fees"}
+              title="Course fees"
               count={counts.fees}
               emptyText="No fees configured yet."
-              addLabel="Add"
               onAdd={() => onNavigateTab("fees")}
             />
             {isCourse && (
@@ -187,15 +160,16 @@ export function SummaryTab({
                 title="Intakes"
                 count={counts.intakes}
                 emptyText="No intakes configured yet."
-                addLabel="Add"
                 onAdd={() => onNavigateTab("intakes")}
               />
             )}
-            {/* A non-course service is set up once it has a fee — intakes and eligibility are
-                academic concepts and never become "done" for it. */}
+            <ServiceBranchSharing serviceId={serviceId} orgBase={orgBase} />
+            {/* Intakes and eligibility are academic concepts — a non-course service would never
+                tick them off, so its checklist stops at description and fees. */}
             <ServiceSetupChecklist
               steps={isCourse
                 ? [
+                  { label: "Description", done: description.trim().length > 0 },
                   { label: "Fees", done: counts.fees > 0 },
                   { label: "Intakes", done: counts.intakes > 0 },
                   { label: "Eligibility", done: counts.eligibility > 0 },
