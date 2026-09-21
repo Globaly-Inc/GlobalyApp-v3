@@ -25,7 +25,7 @@ import { StudyOptionsTab } from "./tabs/study-options-tab";
 import { StudyUnitsTab } from "./tabs/study-units-tab";
 import { AccreditationsTab } from "./tabs/accreditations-tab";
 
-const DETAIL_TABS = [
+const ALL_DETAIL_TABS = [
   { value: "summary", label: "Summary" },
   { value: "fees", label: "Course Fees" },
   { value: "intakes", label: "Intakes" },
@@ -34,7 +34,21 @@ const DETAIL_TABS = [
   { value: "study-units", label: "Study Units" },
   { value: "accreditations", label: "Accreditations" },
 ] as const;
-export type DetailTab = (typeof DETAIL_TABS)[number]["value"];
+export type DetailTab = (typeof ALL_DETAIL_TABS)[number]["value"];
+
+/**
+ * Intakes, eligibility, study options, study units and accreditations only describe a course —
+ * accommodation or insurance has none of them. Same gate as V1's BusinessServiceEditor and the
+ * superadmin editor: one hardcoded category slug, with every other category getting Summary and
+ * Fees plus whatever schema fields its own category defines.
+ */
+const COURSE_ONLY_TABS: DetailTab[] = ["intakes", "eligibility", "study-options", "study-units", "accreditations"];
+
+function detailTabsFor(isCourse: boolean) {
+  return ALL_DETAIL_TABS.filter((t) => isCourse || !COURSE_ONLY_TABS.includes(t.value)).map((t) =>
+    t.value === "fees" && !isCourse ? { ...t, label: "Fees" } : t,
+  );
+}
 
 type FormState = { name: string; service_category_id: number | null; description: string };
 
@@ -134,12 +148,21 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
     awarded_by: accreditations.map((a) => ({ value: String(a.id), label: a.name })),
   };
 
+  // Scoped to the SELECTED category: schema_fields are per-category rows with their own ids, so
+  // merging across every category picked whichever came first and filed values under another
+  // category's definition.
+  const selectedCategory = serviceCategories.find((c) => c.id === form.service_category_id);
+  const isCourse = selectedCategory?.slug === "courses";
+
   const schemaFieldIdByKey: Record<string, number> = {};
-  for (const c of serviceCategories) {
-    for (const f of c.schema_fields) {
-      if (!(f.key in schemaFieldIdByKey)) schemaFieldIdByKey[f.key] = f.id;
-    }
+  for (const f of selectedCategory?.schema_fields ?? []) {
+    schemaFieldIdByKey[f.key] = f.id;
   }
+
+  // Switching to a category that doesn't have the tab you're on would otherwise leave the body
+  // rendering a section its tab strip no longer offers.
+  const detailTabs = detailTabsFor(isCourse);
+  const activeTab = detailTabs.some((t) => t.value === detailTab) ? detailTab : "summary";
 
   const searchCourseField = async (key: string, query: string) => {
     setCourseSearchLoading((s) => ({ ...s, [key]: true }));
@@ -238,13 +261,14 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
 
       {isEdit && serviceId ? (
         <>
-          <AdminSegmentedTabs options={DETAIL_TABS} value={detailTab} onChange={setDetailTab} />
+          <AdminSegmentedTabs options={detailTabs} value={activeTab} onChange={setDetailTab} />
           <Card>
             <CardContent>
-              {detailTab === "summary" && (
+              {activeTab === "summary" && (
                 <SummaryTab
                   serviceId={serviceId}
                   orgBase={orgBase}
+                  isCourse={isCourse}
                   onNavigateTab={setDetailTab}
                   description={form.description}
                   onDescriptionChange={(v) => set("description", v)}
@@ -256,12 +280,12 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
                   courseSearchLoading={courseSearchLoading}
                 />
               )}
-              {detailTab === "fees" && <CourseFeesTab serviceId={serviceId} orgBase={orgBase} />}
-              {detailTab === "intakes" && <IntakesTab serviceId={serviceId} orgBase={orgBase} />}
-              {detailTab === "eligibility" && <EligibilityTab serviceId={serviceId} orgBase={orgBase} />}
-              {detailTab === "study-options" && <StudyOptionsTab serviceId={serviceId} orgBase={orgBase} />}
-              {detailTab === "study-units" && <StudyUnitsTab serviceId={serviceId} orgBase={orgBase} />}
-              {detailTab === "accreditations" && <AccreditationsTab serviceId={serviceId} orgBase={orgBase} />}
+              {activeTab === "fees" && <CourseFeesTab serviceId={serviceId} orgBase={orgBase} />}
+              {activeTab === "intakes" && <IntakesTab serviceId={serviceId} orgBase={orgBase} />}
+              {activeTab === "eligibility" && <EligibilityTab serviceId={serviceId} orgBase={orgBase} />}
+              {activeTab === "study-options" && <StudyOptionsTab serviceId={serviceId} orgBase={orgBase} />}
+              {activeTab === "study-units" && <StudyUnitsTab serviceId={serviceId} orgBase={orgBase} />}
+              {activeTab === "accreditations" && <AccreditationsTab serviceId={serviceId} orgBase={orgBase} />}
             </CardContent>
           </Card>
         </>
@@ -269,6 +293,7 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
         <SummaryTab
           serviceId={null}
           orgBase={orgBase}
+          isCourse={isCourse}
           onNavigateTab={() => {}}
           description={form.description}
           onDescriptionChange={(v) => set("description", v)}

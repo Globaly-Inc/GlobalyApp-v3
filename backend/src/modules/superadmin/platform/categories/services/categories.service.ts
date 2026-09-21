@@ -56,25 +56,12 @@ export const replaceDefaultServices = repo.replaceDefaultServices;
 export const listServiceCategories = repo.listServiceCategories;
 export const countServiceCategories = repo.countServiceCategories;
 
-/**
- * Degree level and Area of study are dynamic per-category fields, not columns on a service, so
- * the service editor can only offer them once the category has a `schema_fields` row to key the
- * value off. Every category gets them, matching V1 (where both were columns on every service)
- * and the editor, which renders the Course details card whatever the category.
- *
- * `text` rather than `select`: a select field must carry non-empty `options`, and these two draw
- * theirs from the `degree_levels` / `areas_of_study` catalogs. The editor keys off `key`, not
- * `type`. Kept in step with migration 20260917_001, which backfilled the existing categories.
- */
-const DEFAULT_SERVICE_CATEGORY_FIELDS = [
-  { key: "degree_level", label: "Degree level", type: "text", is_default: true, is_required: false, filterable: true },
-  { key: "area_of_study", label: "Area of study", type: "text", is_default: true, is_required: false, filterable: true },
-];
-
-export async function createServiceCategory(data: CategoryInput) {
-  const category = await repo.insertServiceCategory(data);
-  await repo.insertDefaultServiceCategoryFields(category.id, DEFAULT_SERVICE_CATEGORY_FIELDS);
-  return category;
+export function createServiceCategory(data: CategoryInput) {
+  // No schema fields are provisioned here. Degree level / Area of study / Awarded by belong to
+  // the `courses` category alone — the service editor gates its Course details card on that slug
+  // — so seeding them onto every new category only produced rows nothing could ever read. See
+  // migration 20260921_001, which narrowed them back to `courses`.
+  return repo.insertServiceCategory(data);
 }
 
 export function updateServiceCategory(id: number, data: Partial<CategoryInput>) {

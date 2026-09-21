@@ -15,14 +15,17 @@ import { SectionSummaryCard } from "../section-summary-card";
 import { ServiceSetupChecklist } from "../service-setup-checklist";
 import type { DetailTab } from "../service-form-view";
 
+// The three the Course details card offers, matching V1's editor and the superadmin one.
 const COURSE_FIELDS = [
   { key: "degree_level", label: "Degree level" },
   { key: "area_of_study", label: "Area of study" },
+  { key: "awarded_by", label: "Awarded by" },
 ];
 
 export function SummaryTab({
   serviceId,
   orgBase,
+  isCourse,
   onNavigateTab,
   description,
   onDescriptionChange,
@@ -35,6 +38,8 @@ export function SummaryTab({
 }: Readonly<{
   serviceId: string | null;
   orgBase: string;
+  /** Course-shaped categories get the academic sections; everything else gets description + fees. */
+  isCourse: boolean;
   onNavigateTab: (tab: DetailTab) => void;
   description: string;
   onDescriptionChange: (value: string) => void;
@@ -91,7 +96,7 @@ export function SummaryTab({
           </CardContent>
         </Card>
 
-        {serviceId && (
+        {serviceId && isCourse && (
           <>
             <SectionSummaryCard
               icon={BookOpen}
@@ -133,6 +138,7 @@ export function SummaryTab({
       </div>
 
       <div className="space-y-4">
+        {isCourse && (
         <SectionCard icon={GraduationCap} title="Course details">
           <div className="space-y-4">
             {COURSE_FIELDS.map((field) => {
@@ -163,31 +169,41 @@ export function SummaryTab({
             })}
           </div>
         </SectionCard>
+        )}
 
         {serviceId && (
           <>
             <SectionSummaryCard
               icon={DollarSign}
-              title="Course fees"
+              title={isCourse ? "Course fees" : "Fees"}
               count={counts.fees}
               emptyText="No fees configured yet."
               addLabel="Add"
               onAdd={() => onNavigateTab("fees")}
             />
-            <SectionSummaryCard
-              icon={CalendarDays}
-              title="Intakes"
-              count={counts.intakes}
-              emptyText="No intakes configured yet."
-              addLabel="Add"
-              onAdd={() => onNavigateTab("intakes")}
-            />
+            {isCourse && (
+              <SectionSummaryCard
+                icon={CalendarDays}
+                title="Intakes"
+                count={counts.intakes}
+                emptyText="No intakes configured yet."
+                addLabel="Add"
+                onAdd={() => onNavigateTab("intakes")}
+              />
+            )}
+            {/* A non-course service is set up once it has a fee — intakes and eligibility are
+                academic concepts and never become "done" for it. */}
             <ServiceSetupChecklist
-              steps={[
-                { label: "Fees", done: counts.fees > 0 },
-                { label: "Intakes", done: counts.intakes > 0 },
-                { label: "Eligibility", done: counts.eligibility > 0 },
-              ]}
+              steps={isCourse
+                ? [
+                  { label: "Fees", done: counts.fees > 0 },
+                  { label: "Intakes", done: counts.intakes > 0 },
+                  { label: "Eligibility", done: counts.eligibility > 0 },
+                ]
+                : [
+                  { label: "Description", done: description.trim().length > 0 },
+                  { label: "Fees", done: counts.fees > 0 },
+                ]}
             />
           </>
         )}
