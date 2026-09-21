@@ -390,4 +390,12 @@ export const businessProfileDetailMockApi = {
   getServiceCategories: categoriesMockApi.getServiceCategories,
   getLookups: categoriesMockApi.getLookups,
   getAccreditations: categoriesMockApi.getAccreditations,
+  getRegistrationTypes: async (countryId?: number | null) => {
+    console.log("[mock] getRegistrationTypes", countryId);
+    const { data } = await categoriesMockApi.getRegistrationTypes({ limit: 100 });
+    const active = data.filter((r) => r.is_active);
+    // Mirrors the server's rule: a country's own rows, else the generic (null-country) set.
+    const forCountry = countryId ? active.filter((r) => r.country_id === countryId) : [];
+    return { data: forCountry.length > 0 ? forCountry : active.filter((r) => r.country_id === null) };
+  },
 };

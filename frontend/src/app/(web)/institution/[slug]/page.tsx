@@ -39,6 +39,10 @@ export async function generateMetadata({ params }: InstitutionPageProps): Promis
  * so its own address stands in as the single campus rather than leaving the map card empty.
  */
 function toLocations(institution: InstitutionDetail): ProfileLocation[] {
+  // `show_locations` false means the owner set the Locations card to Private. The server already
+  // withheld the campuses; the own-address fallback below is built here, so it stops here too.
+  if (institution.show_locations === false) return [];
+
   if (institution.campuses.length > 0) {
     return institution.campuses.map((campus) => ({
       id: campus.id,

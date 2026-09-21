@@ -24,6 +24,15 @@ export type BusinessProfile = SocialLinks & {
   subdomain: string;
   business_type: BusinessType | null;
   business_category_id: number | null;
+  /**
+   * Institutions only — the ownership sector, "Public" or "Private". Absent on a business, which
+   * is classified by `business_category_id` instead.
+   */
+  institution_type?: string | null;
+  /** Resolved from `business_category_id` server-side — the label the profile header badge shows. */
+  business_category_name: string | null;
+  /** Lucide icon name on the category row, or null when it sets none. */
+  business_category_icon: string | null;
   email: string | null;
   phone: string | null;
   logo_url: string | null;
@@ -52,7 +61,8 @@ export type BusinessProfile = SocialLinks & {
 export type BusinessProfilePatch = Partial<
   Pick<
     BusinessProfile,
-    | "business_type" | "business_category_id" | "email" | "phone" | "description" | "website"
+    | "business_name" | "business_type" | "business_category_id" | "institution_type"
+    | "email" | "phone" | "description" | "website"
     | "country_id" | "state" | "city" | "address" | "postcode" | "latitude" | "longitude" | "onboarding_completed"
     | "is_published" | "show_team_public" | "public_visibility" | "currency" | "cover_position"
     | "linkedin_url" | "facebook_url" | "instagram_url" | "twitter_url" | "youtube_url" | "whatsapp_url"
@@ -103,3 +113,13 @@ export type RegisterInstitutionResult = {
   access_token: string;
   message: string;
 };
+
+/** Backs "Improve with AI" on the profile description — a draft to review, not to publish as-is. */
+export type AiAssistInput = {
+  field: "description";
+  business_name?: string;
+  business_type?: string;
+  hint?: string;
+};
+
+export type AiAssistResult = { text: string };

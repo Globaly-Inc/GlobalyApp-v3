@@ -32,6 +32,7 @@ export const CATEGORY_TABS: { value: CategoryTab; label: string }[] = [
   { value: "tests", label: "Tests" },
   { value: "fee_types", label: "Fee Types" },
   { value: "accreditations", label: "Accreditations" },
+  { value: "registration_types", label: "Registration Types" },
 ];
 
 export const ADD_LABEL: Record<CategoryTab, string | null> = {
@@ -43,6 +44,7 @@ export const ADD_LABEL: Record<CategoryTab, string | null> = {
   tests: "Add test",
   fee_types: "Add fee type",
   accreditations: "Add accreditation",
+  registration_types: "Add registration type",
 };
 
 /** URL segment for the editor route. "other_service" gets its own so the editor knows which scope to save. */
@@ -67,4 +69,8 @@ export const TAB_DESCRIPTION: Partial<Record<CategoryTab, string>> = {
     "Personal portal service categories are listed as Other Services. These are the only categories a person can " +
     "choose when they publish a service through Earn — they cannot add their own, so anything you add here is " +
     "what they get.",
+  registration_types:
+    "The identifier a business quotes where it is registered — an ABN in Australia, a UEN in Singapore. A row " +
+    "with no country is a fallback, offered to every country that has none of its own. Deactivating a row hides " +
+    "it from new submissions; businesses that already picked it keep what they saved.",
 };
