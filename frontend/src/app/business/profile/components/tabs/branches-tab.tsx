@@ -28,7 +28,11 @@ export function BranchesTab({
   isInstitution,
 }: Readonly<{ businessId: number; isInstitution: boolean }>) {
   const dispatch = useAppDispatch();
-  const { items: branches, status, total: branchesTotal } = useAppSelector((state) => state.businessProfileDetail.branches);
+  const { items: branches, status, total: branchesTotal, ownerId } = useAppSelector((state) => state.businessProfileDetail.branches);
+  // The list is shared with the Locations card and outlives a switch to another business, and the
+  // first fetch is debounced — so until it holds THIS business's rows the tab shows its spinner
+  // rather than whichever rows happen to be in the store.
+  const loadingBranches = status === "loading" || ownerId !== businessId;
   const [createOpen, setCreateOpen] = useState(false);
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
   const [editingLinkedBranch, setEditingLinkedBranch] = useState<Branch | null>(null);
@@ -70,7 +74,7 @@ export function BranchesTab({
   };
 
   let list: React.ReactNode;
-  if (status === "loading") {
+  if (loadingBranches) {
     list = (
       <div className="flex justify-center py-8">
         <Loader2 className="h-5 w-5 animate-spin text-primary" />

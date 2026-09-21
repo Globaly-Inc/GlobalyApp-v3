@@ -38,10 +38,18 @@ export function ProfileLocationsSection({
   const dispatch = useAppDispatch();
   const { isPublic, toggle, canToggle } = useSectionVisibility(profile);
   const canEditVisibility = !readOnly && canToggle;
-  const { items: branchRows, status: branchStatus } = useAppSelector((state) => state.businessProfileDetail.branches);
-  // The slice is keyed to nothing, so a list fetched for another business would otherwise render
-  // here — with edit pencils on rows this profile doesn't own — until the new request lands.
-  const branches = hasBranches && branchStatus !== "loading" ? branchRows : [];
+  const { items: branchRows, status: branchStatus, ownerId: branchOwnerId } = useAppSelector(
+    (state) => state.businessProfileDetail.branches,
+  );
+  // `ownerId` already keeps another business's rows out. This card needs the stricter gate on top
+  // of it, because the list is also written by the Branches tab — whose rows are that tab's
+  // search and page, not the full first page this card means to show — so it renders only what
+  // its OWN request returned. `status` alone wouldn't do: the effect dispatches after the render
+  // that follows a profile change, and a refetch that fails parks on "failed" with rows still in
+  // the list; either way the card would put edit pencils on addresses this profile doesn't own.
+  const [loadedFor, setLoadedFor] = useState<number | null>(null);
+  const showBranches = hasBranches && branchOwnerId === profile.id && loadedFor === profile.id && branchStatus === "idle";
+  const branches = showBranches ? branchRows : [];
 
   // Keyed to the profile, not a bare boolean: the guard is there because Strict Mode double-invokes
   // effects, but this component keeps its instance when the router moves between two profile ids,
@@ -50,7 +58,11 @@ export function ProfileLocationsSection({
   useEffect(() => {
     if (!hasBranches || fetchedForRef.current === profile.id) return;
     fetchedForRef.current = profile.id;
-    dispatch(fetchBranches({ id: profile.id, params: { limit: BRANCH_LIMIT } }));
+    dispatch(fetchBranches({ id: profile.id, params: { limit: BRANCH_LIMIT } }))
+      .unwrap()
+      .then(() => setLoadedFor(profile.id))
+      // The slice already records the failure; the card just keeps showing the business address.
+      .catch(() => {});
   }, [dispatch, hasBranches, profile.id]);
 
   const [editing, setEditing] = useState<LocationTarget | null>(null);
