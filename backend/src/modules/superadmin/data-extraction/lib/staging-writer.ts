@@ -787,6 +787,37 @@ export function resolveDurationWeeks(course: Pick<ExtractedCourse, "duration_wee
  * one qualifies an option for the preferred pool, matching how an admin reads the Study Options
  * tab (2026-09-15).
  */
+/**
+ * Study options are the single source of truth for a course's duration (2026-09-21): the admin UI
+ * no longer shows or edits `extraction_courses.duration_weeks`, so it must FOLLOW the options.
+ * Called from every study-option write path (create / patch / delete / link / unlink /
+ * save-and-learn). When no linked option supplies a duration the column is CLEARED — keeping the
+ * old figure would show catalogue readers a duration the reviewed options no longer state (review
+ * finding, 2026-09-21). A pipeline-extracted course keeps its prose-derived figure only until an
+ * admin first touches its options; from then on the options are the truth, null included.
+ * ponytail: one query per course; batch if a bulk study-option edit ever appears.
+ */
+export async function syncCourseDurationFromOptions(courseIds: Iterable<string>): Promise<void> {
+  for (const courseId of new Set(courseIds)) {
+    const options = await masterKnex(`${S}.extraction_study_options as o`)
+      .join(`${S}.extraction_course_study_option_assignments as a`, "a.study_option_id", "o.id")
+      .where("a.course_id", courseId)
+      .select("o.name", "o.study_mode", "o.study_load", "o.duration_value", "o.duration_unit") as ExtractedStudyOption[];
+    const weeks = weeksFromStudyOptions(options); // null → clear
+    // IS DISTINCT FROM: no updated_at bump (and no re-verification) when nothing changed.
+    await masterKnex(`${S}.extraction_courses`)
+      .where({ id: courseId })
+      .whereRaw("duration_weeks IS DISTINCT FROM ?", [weeks])
+      .update({ duration_weeks: weeks, updated_at: masterKnex.fn.now() });
+  }
+}
+
+/** Courses a study option is linked to — the set whose duration a change to that option can move. */
+export async function courseIdsForStudyOption(optionId: string): Promise<string[]> {
+  const rows = await masterKnex(`${S}.extraction_course_study_option_assignments`).where({ study_option_id: optionId }).select("course_id");
+  return rows.map((r: { course_id: string }) => r.course_id);
+}
+
 export function weeksFromStudyOptions(options: ExtractedStudyOption[] | null | undefined): number | null {
   if (!options?.length) return null;
   const weeks = options.map((o) => {

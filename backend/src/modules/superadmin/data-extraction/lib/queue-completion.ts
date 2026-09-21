@@ -41,19 +41,30 @@ async function deduplicateCampuses(jobId: string) {
  * Items in paused/ignored/stopped are treated as terminal — admin chose to skip them.
  */
 export async function checkAllPagesDone(jobId: string) {
-  const remaining = await masterKnex(`${S}.extraction_queue`)
+  const counts = await masterKnex(`${S}.extraction_queue`)
     .where({ job_id: jobId })
-    .whereIn("status", ["pending", "processing"])
-    .count("id as count")
-    .first();
+    .select(
+      masterKnex.raw(`count(*) filter (where status in ('pending', 'processing')) as remaining`),
+      masterKnex.raw("count(*) as total"),
+    )
+    .first() as { remaining: string | number; total: string | number } | undefined;
 
-  if (Number(remaining?.count) === 0) {
+  // An EMPTY queue is not a finished queue. A job in manual step mode sits with no queue rows at
+  // all until the admin runs queue_pages, and its heartbeat goes stale while it waits — the
+  // reclaim sweep then calls this for it. Treating zero rows as "all done" would push that job
+  // into verification and out of the chain. Every path that legitimately ends with nothing queued
+  // (queue_pages finding nothing new) already moves the job to review itself.
+  if (Number(counts?.total ?? 0) === 0) return;
+
+  if (Number(counts?.remaining) === 0) {
     // Guard: only transition once — avoid duplicate verification dispatches from parallel workers
     const updated = await masterKnex(`${S}.extraction_jobs`)
       .where({ id: jobId, status: "processing" })
       .update({
         status: "extracting",
-        pipeline_progress: JSON.stringify({ site_mapping: "done", course_discovery: "done", data_extraction: "done", verification: "processing" }),
+        // Merge, don't replace: the per-step keys (site_map … queue_pages) must survive.
+        pipeline_progress: masterKnex.raw("coalesce(pipeline_progress, '{}'::jsonb) || ?::jsonb",
+          [JSON.stringify({ site_mapping: "done", course_discovery: "done", data_extraction: "done", verification: "processing" })]),
         updated_at: masterKnex.fn.now(),
       });
 

@@ -266,6 +266,7 @@ export async function patchJobContext(id: string, input: PatchJobContextInput, a
   const updates: Record<string, unknown> = {};
   if (input.guided_urls !== undefined) updates.guided_urls = JSON.stringify(input.guided_urls);
   if (input.guidance_notes !== undefined) updates.guidance_notes = input.guidance_notes;
+  if (input.step_mode !== undefined) updates.step_mode = input.step_mode;
   const found = await repo.updateJob(id, updates, adminId);
   if (!found) throw new NotFoundError("Extraction job not found");
   await logAudit(adminId, "JOB_CONTEXT_UPDATE", { entityType: "extraction_jobs", entityId: id });

@@ -14,6 +14,7 @@ import { useConfirmDelete } from "./use-confirm-delete";
 import { RerunExtractionButton } from "./rerun-extraction-button";
 import { DeepScrapeButton } from "./deep-scrape-button";
 import { EnrichFromWebButton } from "./enrich-from-web-button";
+import { StepModeToggle } from "./step-mode-toggle";
 import type { ExtractionJob } from "../apis/types";
 
 const RESETTABLE_STATUSES = ["pending", "failed", "mapping", "scraping", "extracting", "verifying", "paused"];
@@ -67,6 +68,7 @@ export function JobHeader({ job, onReload }: Readonly<{ job: ExtractionJob; onRe
       </div>
 
       <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+        {job.source_type !== "agentcis" && <StepModeToggle job={job} onReload={onReload} />}
         <RerunExtractionButton jobId={job.id} status={job.status} onReload={onReload} />
         {job.source_type !== "agentcis" && job.status !== "exported" && (
           <DeepScrapeButton jobId={job.id} onReload={onReload} />

@@ -80,6 +80,11 @@ const tallies: [string, { reported: number; errored: number }, { reported: numbe
   ["three distinct batches", tallySnapshotEvents([ev("a", "site_snapshot_uploaded", 1), ev("b", "site_snapshot_uploaded", 2), ev("c", "site_snapshot_uploaded", 3)], RUN), { reported: 3, errored: 0 }],
   ["redelivered batch 2 counts once", tallySnapshotEvents([ev("a", "site_snapshot_uploaded", 1), ev("b", "site_snapshot_uploaded", 2), ev("c", "site_snapshot_uploaded", 2)], RUN), { reported: 2, errored: 0 }],
   ["batch that errored then succeeded is one batch, still errored", tallySnapshotEvents([ev("a", "step_error", 1), ev("b", "site_snapshot_uploaded", 1)], RUN), { reported: 1, errored: 1 }],
+  // A batch that saw the job paused/stopped exits early and still writes its event (so the admin
+  // sees where it stopped) — but it did NOT finish its pages, so it must not read as a success.
+  ["a halted batch counts as errored, not done", tallySnapshotEvents([
+    ev("a", "site_snapshot_uploaded", 1), { id: "b", kind: "site_snapshot_uploaded", phase: "site_snapshot", data: { runId: RUN, index: 2, total: 8, halted: true } },
+  ], RUN), { reported: 2, errored: 1 }],
   ["another step's error is not ours", tallySnapshotEvents([ev("a", "site_snapshot_uploaded", 1), ev("b", "step_error", 2, "courses")], RUN), { reported: 1, errored: 0 }],
   ["indexless events do not collapse onto one key", tallySnapshotEvents([ev("a", "site_snapshot_uploaded"), ev("b", "site_snapshot_uploaded")], RUN), { reported: 2, errored: 0 }],
   // Two dispatches for one job overlap (the job worker tolerates a second message for a job

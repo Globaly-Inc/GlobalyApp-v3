@@ -70,6 +70,8 @@ export type ExtractionJob = ActorFields & {
   guided_urls?: Record<string, unknown> | null;
   guidance_notes?: string | null;
   pipeline_progress?: Record<string, unknown> | null;
+  /** auto: steps chain themselves. manual: the pipeline waits after every step for Run. */
+  step_mode?: StepMode;
   supporting_documents?: SupportingDoc[] | null;
   error_message?: string | null;
   processing_heartbeat_at?: string | null;
@@ -369,7 +371,47 @@ export type EditableTable =
 
 // guided_urls values are URL arrays and resource objects, not strings — matches the
 // backend's `z.record(z.unknown())`.
-export type UpdateContextParams = { guided_urls?: Record<string, unknown> | null; guidance_notes?: string | null };
+export type UpdateContextParams = { guided_urls?: Record<string, unknown> | null; guidance_notes?: string | null; step_mode?: StepMode };
+
+// ── One-step-at-a-time chain (Site tab) ───────────────
+
+export type StepMode = "auto" | "manual";
+export const SITE_URL_CATEGORIES = [
+  "overview", "about_us", "contact_us", "course", "branches", "agents", "fees",
+  "study_units", "study_options", "intake", "eligibility", "accreditations", "other",
+] as const;
+export type SiteUrlCategory = (typeof SITE_URL_CATEGORIES)[number];
+
+export type SiteUrl = {
+  id: string;
+  url: string;
+  source: string;
+  category: SiteUrlCategory | null;
+  category_source: "guided" | "heuristic" | "llm" | "admin" | null;
+  excluded: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export type SiteUrlCounts = { total: number; unclassified: number; excluded: number; by_category: Record<SiteUrlCategory, number> };
+
+export type SiteUrlsPage = Paginated<SiteUrl> & { counts: SiteUrlCounts };
+
+export type GetSiteUrlsParams = { page?: number; limit?: number; category?: SiteUrlCategory | "unclassified"; excluded?: boolean; q?: string };
+
+export type SnapshotRow = {
+  id: string;
+  url: string;
+  scraper: string;
+  scraped_at: string;
+  content_hash: string;
+  link_count: number;
+  category: SiteUrlCategory | null;
+  excluded: boolean;
+  gcs_path: string;
+};
+
+export type SnapshotMarkdown = { id: string; url: string; scraped_at: string; markdown: string };
 
 // ── Course-linked entity types ──────────────────────────────────
 

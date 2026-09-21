@@ -114,6 +114,17 @@ export async function uploadFile(
   return { storagePath, sizeBytes: buffer.length, mimeType };
 }
 
+/** Read an object back. Null when it does not exist — the caller decides what a miss means. */
+export async function downloadFile(storagePath: string): Promise<Buffer | null> {
+  try {
+    const [buf] = await bucket().file(storagePath).download();
+    return buf;
+  } catch (err: any) {
+    if (err?.code === 404) return null;
+    throw err;
+  }
+}
+
 /**
  * Generate a signed upload URL for direct client → GCS upload.
  * Client PUTs the file to this URL with the specified content type.

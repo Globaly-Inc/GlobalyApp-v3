@@ -85,6 +85,39 @@ Rules:
 - If unsure, include it — false positives are better than missing courses`;
 }
 
+/**
+ * Category pass for URLs neither the course classifier nor the path heuristic could place. One
+ * label per URL, chosen from the pipeline's own category set. Lite tier — cheap by design.
+ */
+export function urlCategoryPrompt(lines: string[], categories: readonly string[]) {
+  return `Categorise each of these URLs from an educational institution (or visa/migration provider) website. Where shown, the line under a URL is the first words of the page itself.
+
+Categories (use exactly these keys):
+- overview: the homepage or an institution-wide overview / "why us" page
+- about_us: history, mission, governance, leadership, who we are
+- contact_us: contact details, enquiry forms, how to reach the institution
+- course: a specific course/programme/degree/service, or a listing of them
+- branches: campuses, locations, offices, centres
+- agents: education agents, representatives, partner directories, the team
+- fees: tuition, fees, scholarships, costs, payment
+- study_units: units, modules, subjects, curriculum outlines
+- study_options: study modes — online, part-time, full-time, distance, delivery
+- intake: intakes, key dates, academic calendar, application deadlines
+- eligibility: entry requirements, admission criteria, English language requirements, how to apply
+- accreditations: accreditation, registration (CRICOS/TEQSA/MARA etc.), rankings, memberships
+- other: news, events, blog, staff, research, careers, legal, anything that is none of the above
+
+URLs (${lines.length}):
+${lines.join("\n")}
+
+Return JSON — every URL appears under exactly one key, copied verbatim:
+{
+  "categories": {
+${categories.map((c) => `    "${c}": []`).join(",\n")}
+  }
+}`;
+}
+
 // ── Phase 2: Course extraction (page worker) ──
 
 export const COURSE_EXTRACTION_SYSTEM = `You are a data extraction specialist. Extract structured course data from educational institution web pages.

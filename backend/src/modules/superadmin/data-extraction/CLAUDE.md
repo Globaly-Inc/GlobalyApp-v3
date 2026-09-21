@@ -595,6 +595,14 @@ no special case.
 The wholesale-rewrite hazard still applies to the step's DISPLAYED status for a site that finishes
 before the job worker reaches that later `pipeline_progress` write — pre-existing for every step,
 not fixed here.
+**A halted batch is not a finished batch, and a paused job does not chain** (review fix,
+2026-09-21). The snapshot's halt check runs every 25 pages and then still wrote `site_snapshot_uploaded`
+(so the admin can see where it stopped) — which the tally counted as a success, so a run containing a
+halted batch could report `done` and publish `site_analysis` over an incomplete snapshot. Two guards,
+both needed: `tallySnapshotEvents` counts an event carrying `halted: true` as errored, and `gate()`
+refuses a job whose status is paused/failed/declined (the same set `jobHalted` uses), because a batch
+that finished clean AFTER the pause can be the one that completes the run. Tests:
+`test:site-snapshot-path` ("a halted batch counts as errored") and `test:step-gate` §3b.
 **Count distinct batches, not event rows.** Delivery is at-least-once, so a worker that dies
 between writing its batch event and acking gets the batch redelivered and writes a SECOND event for
 the same index; counting rows let that duplicate stand in for a batch still outstanding.
@@ -611,6 +619,73 @@ removed because the deployment is Scrapling-only and Firecrawl credits may be ab
 queued URLs. `npm run sitemap:list -- <url> [--discover]` prints what discovery sees for a site.
 Same pass: `edu.np` added to `MULTI_LABEL_SUFFIXES`, since `siteOf` was reducing `ku.edu.np` to
 `edu.np`. **That list is gone** — see "Registrable domains come from the Public Suffix List" below.
+
+## Scrapling gets the WHOLE body; `fresh` re-snapshots (2026-09-21)
+
+`scrapeMarkdown`'s Scrapling call now passes `main_content_only: false` always. Scrapling's
+"main content" is `<body>` minus script/style/svg minus every element hidden at load (inline
+display:none, aria-hidden, template — `_sanitize_for_ai` in scrapling/core/shell.py, an
+anti-prompt-injection measure). On a university site that is the collapsed module accordions and
+the inactive fee tabs. UEL BEng Electrical: 45,847 chars, module headings with nothing under them
+and no fee figure, versus 101,306 chars with a paragraph per module and "£9,790 per year" /
+"£16,020 per year". `scrapeRenderedHtml` had already been passing false for the CourseLeaf tables;
+the markdown path never got the same fix. Nav is NOT stripped by either setting; it stays in and
+`truncateMarkdown` (120k) bounds it — add a nav stripper in html-utils only if the tail of a real
+page starts getting cut. `onlyMainContent` still keys `extraction_pages.mode`; it no longer changes
+what Scrapling returns. Snapshots taken before this are thin and cached for 30 days: the Snapshot
+chip's Run on a finished step now sends `fresh: true` (`RunStepSchema.fresh`, carried on every
+batch message through `dispatchSnapshotBatches` → `snapshotSite` → `getPage({ fresh })`), which
+re-fetches and rewrites every page's file.
+
+## The .md file in GCS is the page's source of truth (2026-09-21)
+
+User spec: "scrape each endpoint in 1 md file each and that md file will be used to insert the
+data". `getPage` (`lib/page-store.ts`) writes the file to `snapshotPathFor(url, mode)` before the
+`extraction_pages` row and leaves the row's `markdown` column BLANK when the upload succeeded; the
+row keeps id, links, content_hash, scraper, scraped_at. Every read downloads the file, parses it
+(`parseSnapshotFile`) and re-hashes it against the row. A missing or mismatched file is a MISS →
+live Scrapling scrape → file and row rewritten. Never an error, so the page worker's
+`snapshot_missing` gate and failure class are deleted. With no bucket configured the column holds
+the text (pre-2026-09-21 behaviour); rows stored before this change are read from the column until
+their next scrape. `full` mode is `…<digest>.full.md`. `snapshotPathFor`/`fileLinksOf` moved here
+from `site-snapshot.ts` (re-exported there). `test:page-store` §6 covers write, hit, missing file,
+mismatched file, linked-files round-trip, PDF.
+
+## Study options own a course's duration (2026-09-21)
+
+User decision: "study options' duration is the single source of truth". The admin UI no longer shows
+or edits `extraction_courses.duration_weeks` (courses list badge, detail picker and add-course input
+removed). The column stays — search and public course pages read it — and is kept true by
+`syncCourseDurationFromOptions` (`staging-writer.ts`, `weeksFromStudyOptions` over the course's
+linked options) called from EVERY study-option write path: `staged.service` create / patch / delete /
+assign / unassign for the `study-options` junction, and `supporting.service.saveAndLearn` for
+`extraction_study_options`. When no linked option supplies a duration the column is CLEARED
+(review fix the same day — an earlier cut kept the old figure, so the catalogue kept showing a
+duration the reviewed options no longer stated). A pipeline-extracted course keeps its prose-derived
+figure only until an admin first touches its options. Updates use `IS DISTINCT FROM` so an unchanged figure does not bump `updated_at` (which would
+re-queue incremental verification). Manually created courses get their duration the moment their
+first dated study option is added. Not a V2 behaviour; review follow-up to the UI removal.
+
+## Site URLs carry a CATEGORY, not a course/other role (2026-09-21)
+
+`extraction_site_urls.category` / `category_source` (migration `20260918_001`, which had not
+reached staging, so the columns were renamed in place rather than by a follow-up migration).
+The set is `lib/url-categories.ts` `SITE_URL_CATEGORIES`: overview, about_us, contact_us, course,
+branches, agents, fees, study_units, study_options, intake, eligibility, accreditations, other —
+the admin's words for the job's sub-tabs, plus `other` because a real site is mostly news, events
+and staff pages and the classifier needs somewhere to put them. `url_classify` assigns one per URL
+in this order: admin (never overwritten) > guided_urls key (`fees_urls` → fees, `team_urls` →
+agents, …; the admin TOLD us) > course-classifier pick → course (unchanged heuristic + narrow/
+classify logic) > path heuristic (`heuristicCategory`, free) > ONE lite-tier model pass over what
+is still null (`urlCategoryPrompt`, 200 URLs + page excerpt per batch, capped at
+`CLASSIFY_ALL_CAP`) > other. `queue_pages` reads `category = 'course'`; nothing else in the
+pipeline consumes the other categories yet — they are labels on the Site tab and the hook for the
+entity steps to stop re-discovering their pages. `category_source` is PER URL (guided / heuristic /
+llm / admin — review fix 2026-09-21: an earlier cut stamped one job-wide source on every row, so a
+single model call relabelled guided and heuristic rows as llm). **Behaviour change:** a guided `fees_urls` /
+`contact_urls` / … page used to be pinned `course` and therefore queued for course extraction; it
+now keeps its own category and is NOT queued — the entity steps already read those keys directly.
+Guarded by `test:step-gate` §6.
 
 ## Registrable domains come from the Public Suffix List (2026-09-17)
 

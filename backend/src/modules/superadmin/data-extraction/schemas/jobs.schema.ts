@@ -1,6 +1,7 @@
 // Zod schemas for extraction jobs endpoints.
 
 import { z } from "zod";
+import { STEP_MODES } from "./step.schema.js";
 import { PaginationSchema } from "../../../../shared/pagination.js";
 
 export const JOB_STATUSES = [
@@ -33,6 +34,8 @@ export const FailJobSchema = z.object({
 export const PatchJobContextSchema = z.object({
   guided_urls: z.record(z.unknown()).nullable().optional(),
   guidance_notes: z.string().nullable().optional(),
+  /** auto: steps chain themselves. manual: the pipeline stops after every step until the admin presses Run. */
+  step_mode: z.enum(STEP_MODES).optional(),
 });
 
 export const UuidParamSchema = z.object({

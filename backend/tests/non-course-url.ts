@@ -11,7 +11,7 @@
  * pages costs courses, which is far worse than the money it saves. Each KEEP case is either a
  * documented past regression or a category measured as productive.
  */
-import { looksLikeCourseUrl, looksLikeNonCourseUrl } from "../src/modules/superadmin/data-extraction/lib/html-utils.js";
+import { compileBlocklist, looksLikeCourseUrl, looksLikeNonCourseUrl } from "../src/modules/superadmin/data-extraction/lib/html-utils.js";
 
 let passed = 0;
 let failed = 0;
@@ -84,6 +84,15 @@ ok(!looksLikeNonCourseUrl("https://library.example.edu/programs/bachelor-of-scie
    "a denied word in the HOSTNAME does not deny the path");
 ok(looksLikeCourseUrl("https://library.example.edu/programs/bachelor-of-science"),
    "...and that page is still a course URL");
+
+
+// ── url_blocklist_patterns: one bad regex must not take the good ones (or the whole step) down ──
+{
+  const { patterns, invalid } = compileBlocklist(["/news/", "[", "\\.pdf$", "(unclosed"]);
+  ok(patterns.length === 2 && invalid.length === 2 && invalid.includes("[") && invalid.includes("(unclosed"), "compileBlocklist keeps the valid patterns and reports the invalid ones");
+  ok(patterns[0].test("https://x.edu/NEWS/2027") && patterns[1].test("https://x.edu/fees.PDF"), "compiled patterns are case-insensitive, like the page worker's always were");
+  ok(compileBlocklist([]).patterns.length === 0, "an empty list compiles to nothing");
+}
 
 console.log(`${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

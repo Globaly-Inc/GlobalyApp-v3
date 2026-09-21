@@ -14,6 +14,7 @@ import {
   Clock,
   ShieldCheck,
   Globe2,
+  Link2,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollRow } from "@/components/scroll-row";
@@ -22,6 +23,7 @@ import type { TabCounts } from "../apis/types";
 export type JobTab =
   | "overview"
   | "context"
+  | "site"
   | "institution"
   | "branches"
   | "agents"
@@ -37,6 +39,7 @@ export type JobTab =
 const TABS: { value: JobTab; label: string; icon: LucideIcon; countKey?: keyof TabCounts }[] = [
   { value: "overview", label: "Overview", icon: ListOrdered },
   { value: "context", label: "Context", icon: Settings2 },
+  { value: "site", label: "Site Extraction", icon: Link2 },
   { value: "institution", label: "Institution", icon: Building2 },
   { value: "branches", label: "Branches", icon: MapPin, countKey: "branches" },
   { value: "agents", label: "Agents", icon: Users, countKey: "agents" },

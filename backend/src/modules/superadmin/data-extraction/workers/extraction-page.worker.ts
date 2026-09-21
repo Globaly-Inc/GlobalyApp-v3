@@ -14,7 +14,7 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { scrapeRenderedHtml } from "../lib/scraper.js";
 import { getPage, getDocument, isPdfUrl } from "../lib/page-store.js";
-import { truncateMarkdown, domainOf, MIN_EXTRACTABLE_CHARS } from "../lib/html-utils.js";
+import { truncateMarkdown, domainOf, MIN_EXTRACTABLE_CHARS, compileBlocklist } from "../lib/html-utils.js";
 import { courseLinksByName, looksLikeCourseList, parseCourseList } from "../lib/courselist-parser.js";
 import { extractJson, setLlmContext, withLlmKind } from "../lib/llm-client.js";
 import {
@@ -214,9 +214,9 @@ async function extractSecondaryPageInner(opts: {
 
 await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
   let jobId: string, queueItemId: string, url: string, forceFirecrawl: boolean | undefined, mobile: boolean | undefined,
-    proxy: "stealth" | "auto" | undefined, expandCollapsed: boolean | undefined;
+    proxy: "stealth" | "auto" | undefined, expandCollapsed: boolean | undefined, adminRetry: boolean | undefined;
   try {
-    ({ jobId, queueItemId, url, forceFirecrawl, mobile, proxy, expandCollapsed } = JSON.parse(msg!.content.toString()));
+    ({ jobId, queueItemId, url, forceFirecrawl, mobile, proxy, expandCollapsed, adminRetry } = JSON.parse(msg!.content.toString()));
   } catch {
     logger.error("Malformed queue message, discarding", { raw: msg?.content.toString().slice(0, 200) });
     return;
@@ -249,8 +249,11 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
     .first();
   if (blocklistRow?.value) {
     try {
-      const patterns: string[] = JSON.parse(blocklistRow.value);
-      if (patterns.some((p) => new RegExp(p, "i").test(url))) {
+      const raw: unknown = JSON.parse(blocklistRow.value);
+      // compileBlocklist drops an invalid entry on its own, so one bad pattern no longer disables
+      // the valid ones for this page (the catch below is now only for malformed JSON).
+      const { patterns } = compileBlocklist(Array.isArray(raw) ? raw.filter((p): p is string => typeof p === "string") : []);
+      if (patterns.some((rx) => rx.test(url))) {
         logger.info("URL blocklisted, skipping", { jobId, url });
         await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).update({
           status: "completed",
@@ -326,7 +329,8 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
   }
 
   try {
-    // ── Scrape page to markdown ──
+    // ── Read the page: the site_snapshot step's .md file on a hit; a live Scrapling scrape when the
+    // file is missing (never snapshotted, or gone from the bucket), which getPage then stores. ──
     // The retry ladder (forceFirecrawl) exists because the stored attempt failed or was thin,
     // so it always fetches fresh; a first attempt takes a snapshot within the window.
     const page = await getPage(url, {
