@@ -117,7 +117,7 @@ export function SnapshotsTab({ jobId }: Readonly<{ jobId: string }>) {
             <SheetTitle className="truncate text-sm">{open?.url}</SheetTitle>
             <SheetDescription>Stored snapshot · fetched {fmtTime(open?.scraped_at)} · {open?.markdown.length.toLocaleString()} chars. This is exactly what the model is shown.</SheetDescription>
           </SheetHeader>
-          <pre className="mt-3 whitespace-pre-wrap break-words rounded-md border border-border bg-muted/30 p-3 font-mono text-[11px] leading-relaxed">{open?.markdown}</pre>
+          <pre className="mx-4 mb-4 whitespace-pre-wrap break-words rounded-md border border-border bg-muted/30 p-3 font-mono text-[11px] leading-relaxed">{open?.markdown}</pre>
         </SheetContent>
       </Sheet>
     </div>

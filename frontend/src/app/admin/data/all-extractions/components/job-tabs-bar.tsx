@@ -39,7 +39,7 @@ export type JobTab =
 const TABS: { value: JobTab; label: string; icon: LucideIcon; countKey?: keyof TabCounts }[] = [
   { value: "overview", label: "Overview", icon: ListOrdered },
   { value: "context", label: "Context", icon: Settings2 },
-  { value: "site", label: "Site", icon: Link2 },
+  { value: "site", label: "Site Extraction", icon: Link2 },
   { value: "institution", label: "Institution", icon: Building2 },
   { value: "branches", label: "Branches", icon: MapPin, countKey: "branches" },
   { value: "agents", label: "Agents", icon: Users, countKey: "agents" },

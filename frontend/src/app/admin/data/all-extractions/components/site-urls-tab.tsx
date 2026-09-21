@@ -109,32 +109,42 @@ export function SiteUrlsTab({ jobId }: Readonly<{ jobId: string }>) {
   const toggleAll = () => setSelected(allOnPageSelected ? new Set() : new Set(rows.map((r) => r.id)));
   const toggleOne = (id: string) => setSelected((prev) => { const n = new Set(prev); if (n.has(id)) n.delete(id); else n.add(id); return n; });
 
-  // One chip per category; clicking one filters the table to it. The three non-category counts sit first.
-  const chip = (label: string, n: number, value: CategoryFilter | null, tone = "") => (
-    <button
-      key={label}
-      type="button"
-      disabled={value === null}
-      onClick={() => { if (value !== null) { setCategory(category === value ? "all" : value); setPage(1); } }}
-      className={cn(
-        "flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs",
-        value !== null && "cursor-pointer hover:bg-muted/60",
-        value !== null && category === value ? "border-primary bg-primary/5 text-primary" : "border-border",
-        tone,
-      )}
-    >
-      <span className="font-semibold tabular-nums">{n}</span>
-      <span className="text-muted-foreground">{label}</span>
-    </button>
-  );
+  // Every chip is a filter. "All" is every row including excluded; "Excluded" flips the excluded
+  // filter; a category chip narrows to that category among active rows. Clicking the active chip
+  // goes back to the default view (all categories, active rows).
+  type Target = { category: CategoryFilter; excluded: ExcludedFilter };
+  const DEFAULT: Target = { category: "all", excluded: "active" };
+  const applyTarget = (t: Target) => {
+    const isActive = category === t.category && excluded === t.excluded;
+    const next = isActive && !(t.category === DEFAULT.category && t.excluded === DEFAULT.excluded) ? DEFAULT : t;
+    setCategory(next.category); setExcluded(next.excluded); setPage(1);
+  };
+  const chip = (label: string, n: number, target: Target, tone = "") => {
+    const isActive = category === target.category && excluded === target.excluded;
+    return (
+      <button
+        key={label}
+        type="button"
+        onClick={() => applyTarget(target)}
+        className={cn(
+          "flex items-center gap-1.5 rounded-md border px-2.5 py-1.5 text-xs cursor-pointer hover:bg-muted/60",
+          isActive ? "border-primary bg-primary/5 text-primary" : "border-border",
+          tone,
+        )}
+      >
+        <span className="font-semibold tabular-nums">{n}</span>
+        <span className={cn(isActive ? "text-primary" : "text-muted-foreground")}>{label}</span>
+      </button>
+    );
+  };
 
   return (
     <div>
       <div className="mb-3 flex flex-wrap gap-1.5">
-        {chip("on the site list", counts.total, null)}
-        {chip("not yet classified", counts.unclassified, "unclassified", "text-amber-700")}
-        {chip("excluded by you", counts.excluded, null, "opacity-70")}
-        {SITE_URL_CATEGORIES.map((c) => chip(SITE_URL_CATEGORY_LABELS[c], counts.by_category[c] ?? 0, c, c === "course" ? "text-emerald-700" : ""))}
+        {chip("All", counts.total, { category: "all", excluded: "all" })}
+        {chip("Not yet classified", counts.unclassified, { category: "unclassified", excluded: "active" }, "text-amber-700")}
+        {chip("Excluded by you", counts.excluded, { category: "all", excluded: "excluded" })}
+        {SITE_URL_CATEGORIES.map((c) => chip(SITE_URL_CATEGORY_LABELS[c], counts.by_category[c] ?? 0, { category: c, excluded: "active" }, c === "course" ? "text-emerald-700" : ""))}
       </div>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">

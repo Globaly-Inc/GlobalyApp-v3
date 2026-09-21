@@ -38,7 +38,7 @@ export function SiteTab({ jobId, job, onReload }: Readonly<{ jobId: string; job:
               Snapshot, Classify and Queue; set a category to pin it so a re-run never overwrites it.
             </SheetDescription>
           </SheetHeader>
-          <div className="mt-3">
+          <div className="px-4 pb-4">
             <SiteUrlsTab jobId={jobId} />
           </div>
         </SheetContent>

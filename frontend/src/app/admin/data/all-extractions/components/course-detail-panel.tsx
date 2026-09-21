@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
   BookMarked, Building2, CalendarDays, CheckCircle2, ChevronsUpDown, Clock, DollarSign, ExternalLink, Flag, Link2,
@@ -21,8 +21,8 @@ import { saveFormAndLearn } from "./editable-field";
 import { FeeForm } from "./fee-form";
 import { StudyOptionForm } from "./study-option-form";
 import { useConfirmDelete } from "./use-confirm-delete";
-import { DURATION_WEEK_OPTIONS } from "../const";
-import { courseDuration, feeAmount } from "../utils";
+import { SharedCoursesBadge, otherCourseNames } from "./shared-courses-badge";
+import { feeAmount } from "../utils";
 import type {
   CampusFull, CourseAssignment, CourseFull, CourseLinks, JunctionSlug, StudyOption,
 } from "../apis/types";
@@ -198,19 +198,6 @@ export function CourseDetailPanel({
     }
   };
 
-  // An extracted duration is any integer of weeks, so the preset list alone would render blank
-  // on a course the crawler read as 11 weeks — the same trap the subject-area picker fell into.
-  const durationOptions = useMemo(() => {
-    const weeks = [...DURATION_WEEK_OPTIONS];
-    const current = course.duration_weeks;
-    if (current && !weeks.includes(current)) weeks.push(current);
-    weeks.sort((a, b) => a - b);
-    return [
-      { value: "", label: "Not set" },
-      ...weeks.map((w) => ({ value: String(w), label: courseDuration(w) ?? `${w} weeks` })),
-    ];
-  }, [course.duration_weeks]);
-
   // save-and-learn, not a plain PATCH: a reviewer correcting the same field twice on a
   // domain is what creates an AI Memory lesson. Courses are where most corrections happen,
   // so a plain PATCH here left the learning loop effectively switched off.
@@ -240,8 +227,7 @@ export function CourseDetailPanel({
 
   // Study units/options are shared rows across courses — surfaced so unlinking/editing one
   // doesn't read as exclusive to this course.
-  const sharedWithCount = (rows: CourseAssignment[], column: string, entityId: string) =>
-    new Set(rows.filter((r) => r[column] === entityId && r.course_id !== course.id).map((r) => r.course_id)).size;
+  const sharedWith = (rows: CourseAssignment[], column: string, entityId: string) => otherCourseNames(rows, column, entityId, course.id);
 
   const fees = pick(links.course_fees, idsFor(links.fee_assignments, "course_fee_id"));
   const intakes = pick(links.intakes, idsFor(links.intake_assignments, "intake_id"));
@@ -331,16 +317,6 @@ export function CourseDetailPanel({
             {course.subject_area && (
               <p className="text-xs text-muted-foreground">Extracted as “{course.subject_area}”</p>
             )}
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label className="text-xs uppercase tracking-wide text-muted-foreground">Duration</Label>
-            <Combobox
-              options={durationOptions}
-              value={course.duration_weeks ? String(course.duration_weeks) : ""}
-              onChange={(v) => patchCourse({ duration_weeks: v ? Number(v) : null })}
-              placeholder="Select duration"
-              searchPlaceholder="Search duration..."
-            />
           </div>
         </div>
 
@@ -479,7 +455,7 @@ export function CourseDetailPanel({
               <p className="rounded-md bg-muted/50 py-2 text-center text-xs text-muted-foreground">No study units</p>
             ) : (
               rows.map((unit) => {
-                const otherCourses = sharedWithCount(links.study_unit_assignments, "study_unit_id", unit.id);
+                const otherNames = sharedWith(links.study_unit_assignments, "study_unit_id", unit.id);
                 return (
                   <div key={unit.id} className="flex items-center justify-between gap-2 rounded-md bg-muted/40 px-2 py-1.5">
                     <span className="flex min-w-0 items-center gap-2">
@@ -487,11 +463,7 @@ export function CourseDetailPanel({
                       <span className="truncate text-sm">{unit.unit_name}</span>
                     </span>
                     <span className="flex shrink-0 items-center gap-2">
-                      {otherCourses > 0 && (
-                        <span className="text-xs text-muted-foreground" title="Also linked to other courses">
-                          +{otherCourses} other course{otherCourses === 1 ? "" : "s"}
-                        </span>
-                      )}
+                      <SharedCoursesBadge names={otherNames} />
                       {unit.credit_points != null && (
                         <Badge className="bg-primary/10 text-[10px] text-primary">{unit.credit_points} CP</Badge>
                       )}
@@ -558,7 +530,8 @@ export function CourseDetailPanel({
           )}
 
           {studyOptions.map((option) => {
-            const otherCourses = sharedWithCount(links.study_option_assignments, "study_option_id", option.id);
+            const otherNames = sharedWith(links.study_option_assignments, "study_option_id", option.id);
+            const otherCourses = otherNames.length;
             return editingOptionId === option.id ? (
               <StudyOptionForm
                 key={option.id}
@@ -592,11 +565,7 @@ export function CourseDetailPanel({
                     {option.duration_value != null && (
                       <p className="mt-1 text-xs text-muted-foreground">{option.duration_value} {option.duration_unit}</p>
                     )}
-                    {otherCourses > 0 && (
-                      <p className="mt-1 text-xs text-muted-foreground" title="Also linked to other courses">
-                        Shared with {otherCourses} other course{otherCourses === 1 ? "" : "s"}
-                      </p>
-                    )}
+                    <SharedCoursesBadge names={otherNames} prefix="Shared with " className="mt-1 block text-left" />
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
