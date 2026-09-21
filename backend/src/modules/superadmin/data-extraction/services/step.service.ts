@@ -9,6 +9,7 @@ import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import type { RunStepInput, PipelineStep } from "../schemas/step.schema.js";
 import { countSiteUrls } from "../repositories/site-urls.repository.js";
+import { setProgress } from "../lib/pipeline-steps.js";
 
 const logger = createChildLogger("extraction-step-service");
 
@@ -65,13 +66,8 @@ export async function dispatchStep(jobId: string, input: RunStepInput, adminId: 
     if (progress[dep] !== "done") throw new BadRequestError(`${step} requires ${dep} to have completed — run it first`);
   }
 
-  // Update pipeline_progress for this step
-  progress[step] = "processing";
-  await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
-    pipeline_progress: JSON.stringify(progress),
-    processing_heartbeat_at: masterKnex.fn.now(),
-    updated_at: masterKnex.fn.now(),
-  });
+  // Mark this step processing — an atomic merge, so a step finishing concurrently keeps its status.
+  await setProgress(jobId, { [step]: "processing" });
 
   // Publish to queue
   await queueService.publish(EXTRACTION_QUEUES.STEPS, {

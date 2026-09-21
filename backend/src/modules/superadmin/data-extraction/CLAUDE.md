@@ -595,6 +595,14 @@ no special case.
 The wholesale-rewrite hazard still applies to the step's DISPLAYED status for a site that finishes
 before the job worker reaches that later `pipeline_progress` write — pre-existing for every step,
 not fixed here.
+**A halted batch is not a finished batch, and a paused job does not chain** (review fix,
+2026-09-21). The snapshot's halt check runs every 25 pages and then still wrote `site_snapshot_uploaded`
+(so the admin can see where it stopped) — which the tally counted as a success, so a run containing a
+halted batch could report `done` and publish `site_analysis` over an incomplete snapshot. Two guards,
+both needed: `tallySnapshotEvents` counts an event carrying `halted: true` as errored, and `gate()`
+refuses a job whose status is paused/failed/declined (the same set `jobHalted` uses), because a batch
+that finished clean AFTER the pause can be the one that completes the run. Tests:
+`test:site-snapshot-path` ("a halted batch counts as errored") and `test:step-gate` §3b.
 **Count distinct batches, not event rows.** Delivery is at-least-once, so a worker that dies
 between writing its batch event and acking gets the batch redelivered and writes a SECOND event for
 the same index; counting rows let that duplicate stand in for a batch still outstanding.

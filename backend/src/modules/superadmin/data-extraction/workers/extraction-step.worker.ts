@@ -104,17 +104,9 @@ async function heartbeat(jobId: string) {
   });
 }
 
-async function markStepProgress(jobId: string, step: string, status: string) {
-  const job = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).first();
-  const progress = typeof job?.pipeline_progress === "string"
-    ? JSON.parse(job.pipeline_progress)
-    : (job?.pipeline_progress || {});
-  progress[step] = status;
-  await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
-    pipeline_progress: JSON.stringify(progress),
-    updated_at: masterKnex.fn.now(),
-  });
-}
+/** Atomic merge via pipeline-steps.setProgress — a whole-blob read-modify-write here raced the
+ *  concurrent snapshot batches and the chain hand-off (review, 2026-09-21). */
+const markStepProgress = (jobId: string, step: string, status: string) => setProgress(jobId, { [step]: status });
 
 // ── The chain: site_map → site_snapshot → site_analysis → url_classify → queue_pages ──────────
 // Thin wrappers: the work is in lib/pipeline-steps.ts; this file owns the timeline events and the

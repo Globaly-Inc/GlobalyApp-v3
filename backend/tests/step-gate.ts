@@ -23,7 +23,7 @@ function assert(condition: boolean, label: string, detail?: unknown) {
 }
 
 // ── In-memory stand-ins ──
-let job: { step_mode: "auto" | "manual"; stop_requested: boolean } | undefined = { step_mode: "auto", stop_requested: false };
+let job: { step_mode: "auto" | "manual"; stop_requested: boolean; status?: string } | undefined = { step_mode: "auto", stop_requested: false };
 const published: { queue: string; payload: Record<string, unknown> }[] = [];
 const progress: Record<string, string> = {};
 const events: string[] = [];
@@ -62,6 +62,22 @@ console.log("\n3. stop_requested waits even in auto");
   job = { step_mode: "auto", stop_requested: true };
   const r = await advance("job-1", "url_classify");
   assert(r === "waiting" && published.length === 0, "stop request beats auto mode", { r, published });
+}
+
+console.log("\n3b. a paused job waits even in auto");
+{
+  // The snapshot's halt check runs every 25 pages, so a batch can finish clean AFTER the admin
+  // paused and be the one that completes the run. The gate is the last line: it must not publish
+  // site_analysis for a job that is paused (or failed/declined) whatever the tally said.
+  for (const status of ["paused", "failed", "declined"]) {
+    reset();
+    job = { step_mode: "auto", stop_requested: false, status };
+    const r = await advance("job-1", "site_snapshot");
+    assert(r === "waiting" && published.length === 0 && progress.site_analysis === "waiting", `${status} job: nothing published, successor marked waiting`, { r, published, progress });
+  }
+  reset();
+  job = { step_mode: "auto", stop_requested: false, status: "processing" };
+  assert((await advance("job-1", "site_snapshot")) === "published", "a processing job still chains");
 }
 
 console.log("\n4. no successor");

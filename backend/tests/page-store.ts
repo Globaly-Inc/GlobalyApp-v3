@@ -183,6 +183,17 @@ console.log("\n6. the bucket is the source of truth");
   const pdf = "https://uq.edu.au/fees/2028.pdf";
   await getDocument(pdf);
   assert(bucket.has(snapshotPathFor(pdf)), "a PDF's Vision text is a file too", snapshotPathFor(pdf));
+
+  // The store's size bound applies to the FILE as well as the row, and the hash is of what was
+  // actually stored — otherwise a hostile 50MB page is 50MB of GCS writes on every fresh rerun,
+  // and a bounded row could never re-hash to an unbounded file.
+  const huge = "https://uq.edu.au/huge";
+  nextScrape = { markdown: "# Huge\n" + "x".repeat(1_500_000) };
+  const h = await getPage(huge, { onlyMainContent: true });
+  const stored = parseSnapshotFile(bucket.get(snapshotPathFor(huge))!);
+  assert(stored.length <= 1_000_000, "the file is bounded to MAX_STORED_CHARS", stored.length);
+  assert(h.contentHash === (await getPage(huge, { onlyMainContent: true })).contentHash, "the hash is of the bounded text, so the file re-hashes to its row on read");
+  assert((await getPage(huge, { onlyMainContent: true })).fromCache, "…and that read is a cache hit, not a mismatch → rescrape");
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`);

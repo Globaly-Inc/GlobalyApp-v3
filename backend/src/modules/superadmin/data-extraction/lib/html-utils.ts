@@ -403,6 +403,21 @@ export function filterUrls(urls: string[], base: string): string[] {
  * bucket silently dropping out is how a job goes from 97 courses to 4.
  * A bare array (legacy shape) is returned as-is.
  */
+/**
+ * `url_blocklist_patterns` as regexes, case-insensitive. An entry that is not a valid regex is
+ * reported, not thrown: the list is optional admin input with no validation at its write path, and
+ * one bad entry must neither fail the site_map step nor (as the page worker's single try/catch did)
+ * silently disable every OTHER pattern for that page.
+ */
+export function compileBlocklist(patterns: string[]): { patterns: RegExp[]; invalid: string[] } {
+  const out: RegExp[] = [];
+  const invalid: string[] = [];
+  for (const p of patterns) {
+    try { out.push(new RegExp(p, "i")); } catch { invalid.push(p); }
+  }
+  return { patterns: out, invalid };
+}
+
 export function collectGuidedUrls(guided: unknown): string[] {
   if (Array.isArray(guided)) return guided.filter((u): u is string => typeof u === "string");
   if (!guided || typeof guided !== "object") return [];

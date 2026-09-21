@@ -20,7 +20,7 @@ import { discoverUrlsForCrawl } from "./scraper.js";
 import { SNAPSHOT_BATCH_SIZE } from "./site-snapshot.js";
 import { getPage, normaliseUrl, readSnapshot } from "./page-store.js";
 import {
-  looksLikeCourseUrl, looksLikeVisaServiceUrl, filterUrls, truncateMarkdown, collectGuidedUrls,
+  looksLikeCourseUrl, looksLikeVisaServiceUrl, filterUrls, truncateMarkdown, collectGuidedUrls, compileBlocklist,
   classifierDistrusted, MIN_CLASSIFIER_KEEP_RATIO,
 } from "./html-utils.js";
 import { extractJson } from "./llm-client.js";
@@ -52,11 +52,13 @@ interface UrlDiscoveryResult {
 export const _stepDeps = {
   loadJob: async (jobId: string): Promise<JobRow | undefined> => masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).first(),
   publish: async (queue: string, payload: Record<string, unknown>): Promise<void> => { await queueService.publish(queue, payload); },
+  // ONE atomic jsonb merge, never read-modify-write: snapshot batches land concurrently and the
+  // successor hand-off writes in the same window, so two readers of the whole blob overwrite each
+  // other and a freshly written "site_analysis: processing" vanishes while its message is already
+  // in flight. Same shape as queue-completion.ts and the verify worker.
   setProgress: async (jobId: string, patch: Record<string, string>): Promise<void> => {
-    const job = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).select("pipeline_progress").first();
-    const progress = typeof job?.pipeline_progress === "string" ? JSON.parse(job.pipeline_progress) : (job?.pipeline_progress ?? {});
     await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
-      pipeline_progress: JSON.stringify({ ...progress, ...patch }),
+      pipeline_progress: masterKnex.raw("coalesce(pipeline_progress, '{}'::jsonb) || ?::jsonb", [JSON.stringify(patch)]),
       processing_heartbeat_at: masterKnex.fn.now(),
       updated_at: masterKnex.fn.now(),
     });
@@ -70,7 +72,8 @@ export const setProgress = (jobId: string, patch: Record<string, string>) => _st
 
 /**
  * May the step after `from` run now? Returns the successor's name when it may, null when the
- * chain must pause (manual mode, a stop request) or `from` has no successor. The caller publishes
+ * chain must pause (manual mode, a stop request, a job that is paused/failed/declined) or `from`
+ * has no successor. The caller publishes
  * — site_map needs to publish snapshot BATCHES, not one message, so publishing is not done here.
  */
 export async function gate(jobId: string, from: PipelineStep): Promise<PipelineStep | null> {
@@ -78,12 +81,17 @@ export async function gate(jobId: string, from: PipelineStep): Promise<PipelineS
   if (!step) return null;
   const job = await _stepDeps.loadJob(jobId);
   if (!job) return null;
-  if (job.stop_requested || job.step_mode === "manual") {
+  // Same set the snapshot's own halt check uses. A batch can still complete AFTER the admin paused
+  // (the halt check runs every 25 pages), so the pause has to be honoured here too or the chain
+  // continues with an incomplete snapshot.
+  const halted = ["paused", "failed", "declined"].includes(job.status);
+  if (job.stop_requested || halted || job.step_mode === "manual") {
+    const reason = job.stop_requested ? "stop_requested" : halted ? job.status : "manual";
     await _stepDeps.setProgress(jobId, { [step]: "waiting" });
     await _stepDeps.writeEvent(jobId, "step_waiting", {
       phase: step,
-      message: job.stop_requested ? `Stopped before ${step}` : `Waiting for admin to run ${step} (manual step mode)`,
-      data: { step, reason: job.stop_requested ? "stop_requested" : "manual" },
+      message: reason === "manual" ? `Waiting for admin to run ${step} (manual step mode)` : `Stopped before ${step} (job ${reason})`,
+      data: { step, reason },
     });
     return null;
   }
@@ -160,7 +168,15 @@ export async function runSiteMap(jobId: string, job: JobRow): Promise<number> {
     }
   }
 
-  const blocklist = (await readJsonList(jobId, "url_blocklist_patterns")).map((p) => new RegExp(p, "i"));
+  const { patterns: blocklist, invalid } = compileBlocklist(await readJsonList(jobId, "url_blocklist_patterns"));
+  if (invalid.length) {
+    logger.warn("Ignoring invalid url_blocklist_patterns entries", { jobId, invalid });
+    await _stepDeps.writeEvent(jobId, "blocklist_pattern_invalid", {
+      level: "warn", phase: "site_map",
+      message: `${invalid.length} blocklist pattern(s) are not valid regular expressions and were ignored`,
+      data: { invalid },
+    });
+  }
   if (blocklist.length) {
     const before = found.length;
     found = found.filter(({ url }) => !blocklist.some((rx) => rx.test(url)));
@@ -403,9 +419,15 @@ export async function runQueuePages(jobId: string, job: JobRow): Promise<{ queue
     .where({ job_id: jobId }).whereIn("status", ["pending", "processing"]).count({ n: "*" }).first();
   const idle = queued === 0 && Number(live?.n ?? 0) === 0;
 
+  // The denominator of the admin's progress bar is what was actually QUEUED, not what was found:
+  // URLs refused at page_cap were thrown away and can never be scraped, so counting them holds a
+  // finished job below 100%. The queue is the truth (it also carries pages other producers added,
+  // e.g. pagination overflow), and reading it keeps a re-run of this step idempotent.
+  const [{ n: queuedTotal }] = await masterKnex(`${S}.extraction_queue`).where({ job_id: jobId }).count({ n: "*" });
+
   await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
-    total_pages_found: courseUrls.length,
-    pages_total: courseUrls.length,
+    total_pages_found: Number(queuedTotal),
+    pages_total: Number(queuedTotal),
     ...(idle ? { status: "review" } : {}),
     processing_heartbeat_at: masterKnex.fn.now(),
     updated_at: masterKnex.fn.now(),

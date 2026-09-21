@@ -59,20 +59,24 @@ export interface SnapshotEventRow { id: string; kind: string; phase: string | nu
  * to its own row id rather than collapsing every such event onto one key. A batch that errored and
  * then succeeded on redelivery is one entry in `reported` and still counted in `errored`, so the
  * run reports failed with both events on the timeline — conservative on purpose.
+ *
+ * A batch that HALTED (saw the job paused/stopped mid-way) writes its event with `halted: true` so
+ * the timeline shows where it stopped; it is counted as errored here, because its pages were not
+ * fetched and a run containing it must not hand off to site_analysis as if the snapshot were whole.
  */
 export function tallySnapshotEvents(events: SnapshotEventRow[], runId: string | undefined): { reported: number; errored: number } {
   const reported = new Set<string>();
   const errored = new Set<string>();
   for (const e of events) {
     if (e.kind === "step_error" && e.phase !== "site_snapshot") continue;
-    const data = (typeof e.data === "string" ? JSON.parse(e.data) : e.data ?? {}) as { runId?: string; index?: number };
+    const data = (typeof e.data === "string" ? JSON.parse(e.data) : e.data ?? {}) as { runId?: string; index?: number; halted?: boolean };
     // Only this run's batches. Messages and events written before runId existed both carry
     // undefined, so they still match each other and behave exactly as they did — the deploy
     // window where an old message meets new code needs no special case.
     if (data?.runId !== runId) continue;
     const key = data?.index != null ? `i${data.index}` : `e${e.id}`;
     reported.add(key);
-    if (e.kind === "step_error") errored.add(key);
+    if (e.kind === "step_error" || data?.halted === true) errored.add(key);
   }
   return { reported: reported.size, errored: errored.size };
 }

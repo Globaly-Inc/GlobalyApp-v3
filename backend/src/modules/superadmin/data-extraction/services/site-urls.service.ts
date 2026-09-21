@@ -54,9 +54,10 @@ export async function listSnapshots(jobId: string, query: ListSnapshotsQuery) {
     .where("p.mode", "main")
     .modify((qb) => { if (query.q) qb.whereILike("p.url", `%${query.q}%`); });
   const [{ n }] = await base.clone().countDistinct({ n: "p.id" });
+  // One row per page without DISTINCT ON: extraction_site_urls is unique on (job_id, url) and the
+  // page side is pinned to mode 'main'. Newest fetch first; id only breaks ties deterministically.
   const rows = await base.clone()
-    .distinctOn("p.id")
-    .orderBy([{ column: "p.id" }, { column: "p.scraped_at", order: "desc" }])
+    .orderBy([{ column: "p.scraped_at", order: "desc" }, { column: "p.id" }])
     .offset(offset).limit(limit)
     .select(
       "p.id", "p.url", "p.scraper", "p.scraped_at", "p.content_hash",
@@ -74,8 +75,15 @@ export async function listSnapshots(jobId: string, query: ListSnapshotsQuery) {
 /** One snapshot's markdown, read from its .md file, for the read-only viewer. */
 export async function getSnapshotMarkdown(jobId: string, pageId: string) {
   await requireJob(jobId);
-  const row = await masterKnex(`${S}.extraction_pages`).where({ id: pageId }).select("id", "url", "mode").first();
+  // Pages are shared across jobs (keyed by URL, not job), so the id alone proves nothing about
+  // THIS job. Scope through the job's own site list, exactly as listSnapshots does — a page id
+  // from job B under job A's URL is a 404, not B's markdown.
+  const row = await masterKnex(`${S}.extraction_pages as p`)
+    .join(`${S}.extraction_site_urls as su`, function () {
+      this.on("su.url", "=", "p.url").andOn("su.job_id", "=", masterKnex.raw("?", [jobId]));
+    })
+    .where("p.id", pageId).select("p.id", "p.url", "p.mode").first();
   const page = row && await readSnapshot(row.url, row.mode);
-  if (!page) throw new NotFoundError("Snapshot not found — its file is gone from the bucket; the next read of this page scrapes it again");
+  if (!page) throw new NotFoundError("Snapshot not found on this job — or its file is gone from the bucket; the next read of this page scrapes it again");
   return { id: row.id, url: row.url, scraped_at: page.scraped_at, markdown: page.markdown };
 }

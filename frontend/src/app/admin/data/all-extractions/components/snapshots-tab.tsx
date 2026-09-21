@@ -76,7 +76,6 @@ export function SnapshotsTab({ jobId, job, onReload }: Readonly<{ jobId: string;
               <th className="px-2 py-2">URL</th>
               <th className="w-20 px-2 py-2">Role</th>
               <th className="w-20 px-2 py-2">Scraper</th>
-              <th className="w-20 px-2 py-2 text-right">Chars</th>
               <th className="w-16 px-2 py-2 text-right">Links</th>
               <th className="w-36 px-2 py-2">Fetched</th>
               <th className="w-16 px-2 py-2" />

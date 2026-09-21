@@ -229,14 +229,19 @@ async function store(
   url: string, key: string, mode: PageMode, markdown: string, links: string[], scraper: string,
 ): Promise<string | null> {
   if (!ENABLED) return null;
+  // One bound for file, row and hash. Nothing real is this long after stripMarkdownJunk; a hostile
+  // page must not become an unbounded GCS write on every fresh rerun, and the hash has to be of
+  // the text actually stored or the file could never re-hash to its row on read.
+  const bounded = markdown.slice(0, MAX_STORED_CHARS);
+  if (bounded.length < markdown.length) logger.warn("Page markdown truncated for storage", { key, chars: markdown.length, kept: bounded.length });
   // The file first, so a row never claims a file that was not written. A failed upload (or no
   // bucket) keeps the text in the row — the pipeline runs either way, the bucket is where it
   // lives when there is one.
   const inFile = await _pageDeps
-    .writeObject(snapshotPathFor(key, mode), renderSnapshotFile({ url: key, mode, scraper, scrapedAt: new Date(_pageDeps.now()).toISOString() }, markdown, links))
+    .writeObject(snapshotPathFor(key, mode), renderSnapshotFile({ url: key, mode, scraper, scrapedAt: new Date(_pageDeps.now()).toISOString() }, bounded, links))
     .catch((err) => { logger.warn("Failed to upload page snapshot file — keeping text in the row", { key, err: String(err) }); return false; });
   return _pageDeps
-    .savePage({ url: key, mode, domain: domainOf(url), markdown: inFile ? "" : markdown.slice(0, MAX_STORED_CHARS), links, content_hash: hashOf(markdown), scraper })
+    .savePage({ url: key, mode, domain: domainOf(url), markdown: inFile ? "" : bounded, links, content_hash: hashOf(bounded), scraper })
     .catch((err) => {
       logger.warn("Failed to store page snapshot", { key, err: String(err) });
       return null;
@@ -264,7 +269,7 @@ export async function getPage(url: string, opts: PageOptions = {}): Promise<Page
     return { ...result, links, pageId: null, contentHash: null, fromCache: false, changed: false, previousHash: stored?.content_hash ?? null };
   }
 
-  const contentHash = hashOf(result.markdown);
+  const contentHash = hashOf(result.markdown.slice(0, MAX_STORED_CHARS)); // same text store() hashes
   const pageId = await store(url, key, mode, result.markdown, result.links, result.scraper);
   return {
     ...result,
@@ -295,7 +300,7 @@ export async function getDocument(url: string, opts: Pick<PageOptions, "maxAgeDa
     return { markdown: "", links: [], scraper: "pdf-vision", error: result.error, pageId: null, contentHash: null, fromCache: false, changed: false, previousHash: stored?.content_hash ?? null };
   }
 
-  const contentHash = hashOf(text);
+  const contentHash = hashOf(text.slice(0, MAX_STORED_CHARS)); // same text store() hashes
   const pageId = await store(url, key, "main", text, [], "pdf-vision");
   return {
     markdown: text, links: [], scraper: "pdf-vision",
