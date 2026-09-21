@@ -11,6 +11,7 @@ import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { useAuthState } from "@/app/auth/store/auth-slice";
 import type { Accreditation, Category, Lookup } from "@/app/admin/platform/categories/apis/types";
 import { businessProfileDetailApi } from "../../apis";
+import { COURSE_CATEGORY_SLUGS } from "../../const";
 import {
   createService, fetchServiceFieldValues, fetchServices, updateService, updateServiceFieldValues,
 } from "../../store/business-profile-detail-slice";
@@ -152,7 +153,7 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
   // merging across every category picked whichever came first and filed values under another
   // category's definition.
   const selectedCategory = serviceCategories.find((c) => c.id === form.service_category_id);
-  const isCourse = selectedCategory?.slug === "courses";
+  const isCourse = COURSE_CATEGORY_SLUGS.has(selectedCategory?.slug ?? "");
 
   const schemaFieldIdByKey: Record<string, number> = {};
   for (const f of selectedCategory?.schema_fields ?? []) {

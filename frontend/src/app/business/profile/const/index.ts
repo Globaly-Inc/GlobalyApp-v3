@@ -65,6 +65,17 @@ export const LICENSE_TYPE_OPTIONS = [
 
 // ─── Service management table ─────────────────────────────────────────────────
 
+/**
+ * Service categories whose services are courses: they get the academic tabs (Intakes,
+ * Eligibility, Study Options, Study Units, Accreditations) and the Course details card, while
+ * every other category gets Summary and Fees plus its own schema fields.
+ *
+ * V1 and the superadmin editor hardcode the single `courses` slug; Short Courses is just as
+ * academic — same degree level, same intakes — so it belongs on the same side of the gate.
+ * Keep this in step with migration 20260921_002, which owns the matching schema_fields rows.
+ */
+export const COURSE_CATEGORY_SLUGS = new Set(["courses", "short_courses"]);
+
 /** Preference bucket + saved-filter bucket for the service management table. */
 export const SERVICES_MODULE_KEY = "business_services";
 
