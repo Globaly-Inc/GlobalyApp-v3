@@ -10,6 +10,10 @@ const CategoryListQuery = PaginationSchema.extend({
   search: z.string().trim().min(1).optional(),
 });
 
+const RegistrationTypesQuery = z.object({
+  country_id: z.coerce.number().int().positive().optional(),
+});
+
 export async function businessLookupsRoutes(app: FastifyInstance) {
   app.get("/service-categories", { preHandler: requireBusinessContext }, async (req, reply) => {
     const { search, ...pagination } = CategoryListQuery.parse(req.query);
@@ -48,6 +52,19 @@ export async function businessLookupsRoutes(app: FastifyInstance) {
       return reply.send(buildPaginatedResponse(rows, total, pagination));
     });
   }
+
+  /**
+   * The registration-identifier options for the profile's Registration & Licenses card.
+   *
+   * Unpaginated and fallback-resolved on purpose: a country has a handful of these at most, and
+   * "use the generic set when this country has none of its own" is one rule that belongs on one
+   * side of the wire — not re-implemented by every client that draws the picker.
+   */
+  app.get("/registration-types", { preHandler: requireBusinessContext }, async (req, reply) => {
+    const { country_id } = RegistrationTypesQuery.parse(req.query);
+    const rows = await categoriesService.listActiveRegistrationTypes(country_id);
+    return reply.send({ data: rows });
+  });
 
   app.get("/accreditations", { preHandler: requireBusinessContext }, async (req, reply) => {
     const pagination = PaginationSchema.parse(req.query);

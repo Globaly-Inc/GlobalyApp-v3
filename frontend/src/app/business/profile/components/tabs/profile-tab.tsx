@@ -45,7 +45,7 @@ export function ProfileTab({
       <div className="space-y-4 md:space-y-6">
         <ContactDetailsCard profile={profile} countries={countries} readOnly={readOnly} />
         <DefaultCurrencyCard profile={profile} countries={countries} readOnly={readOnly} />
-        <RegistrationLicensesCard profile={profile} countries={countries} readOnly={readOnly} />
+        <RegistrationLicensesCard profile={profile} readOnly={readOnly} />
         <TeamMembersCard profile={profile} readOnly={readOnly} />
       </div>
     </div>

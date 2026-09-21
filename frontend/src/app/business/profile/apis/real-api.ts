@@ -1,6 +1,6 @@
 import { httpDelete, httpGet, httpPatch, httpPost, httpPut } from "@/lib/api/http";
 import type {
-  Accreditation, Category, Lookup, LookupKind, Paginated, SearchListParams,
+  Accreditation, Category, Lookup, LookupKind, Paginated, RegistrationType, SearchListParams,
 } from "@/app/admin/platform/categories/apis/types";
 import type {
   ActivityListParams, ActivityListResult, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchListResult, BranchPatch,
@@ -220,4 +220,7 @@ export const businessProfileDetailRealApi = {
     httpGet(`${BASE}/${kind}${toSearchListQuery(params)}`),
   getAccreditations: (params: SearchListParams = {}): Promise<Paginated<Accreditation>> =>
     httpGet(`${BASE}/accreditations${toSearchListQuery(params)}`),
+  /** Unpaginated: the server returns one country's handful, already falling back to the generic set. */
+  getRegistrationTypes: (countryId?: number | null): Promise<{ data: RegistrationType[] }> =>
+    httpGet(`${BASE}/registration-types${countryId ? `?country_id=${countryId}` : ""}`),
 };

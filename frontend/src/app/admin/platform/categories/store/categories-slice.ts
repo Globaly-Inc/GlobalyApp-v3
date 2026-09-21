@@ -3,7 +3,7 @@ import { categoriesApi } from "../apis";
 import type {
   Accreditation, AccreditationInput, Category, CategoryInput, CountryOption,
   FeeType, FeeTypeInput, IssuingOrganization, ListParams, Lookup, LookupInput, LookupKind,
-  ModerationStatus, PaginationMeta, Test, TestInput,
+  ModerationStatus, PaginationMeta, RegistrationType, RegistrationTypeInput, Test, TestInput,
 } from "../apis/types";
 
 type ListState<T> = { data: T[] } & PaginationMeta;
@@ -65,6 +65,11 @@ export const fetchLookup = createAsyncThunk(
 export const fetchTests = createAsyncThunk(
   "platformCategories/fetchTests",
   (params: ListParams = {}) => categoriesApi.getTests({ limit: PAGE_LIMIT, ...params }),
+);
+/** Outside fetchCatalog for the same reason tests are — that thunk maps results by index. */
+export const fetchRegistrationTypes = createAsyncThunk(
+  "platformCategories/fetchRegistrationTypes",
+  (params: ListParams = {}) => categoriesApi.getRegistrationTypes({ limit: PAGE_LIMIT, ...params }),
 );
 export const fetchFeeTypes = createAsyncThunk(
   "platformCategories/fetchFeeTypes",
@@ -187,6 +192,26 @@ export const toggleTest = mutation<{ id: number; is_active: boolean }>(
   (_arg, state) => fetchTests({ page: state.tests.page }),
 );
 
+export const saveRegistrationType = mutation<{ id: number | null; input: RegistrationTypeInput }>(
+  "saveRegistrationType",
+  ({ id, input }) =>
+    id ? categoriesApi.updateRegistrationType(id, input) : categoriesApi.createRegistrationType(input),
+  (_arg, state) => fetchRegistrationTypes({ page: state.registrationTypes.page }),
+);
+
+export const toggleRegistrationType = mutation<{ id: number; is_active: boolean }>(
+  "toggleRegistrationType",
+  ({ id, is_active }) => categoriesApi.updateRegistrationType(id, { is_active }),
+  (_arg, state) => fetchRegistrationTypes({ page: state.registrationTypes.page }),
+);
+
+export const removeRegistrationType = mutation<{ id: number }>(
+  "removeRegistrationType",
+  ({ id }) => categoriesApi.deleteRegistrationType(id),
+  // Deleting the last row of a page would otherwise leave the list on an empty page.
+  (_arg, state) => fetchRegistrationTypes({ page: Math.min(state.registrationTypes.page, Math.max(1, state.registrationTypes.totalPages)) }),
+);
+
 export const saveFeeType = mutation<{ id: number | null; input: FeeTypeInput }>(
   "saveFeeType",
   ({ id, input }) => (id ? categoriesApi.updateFeeType(id, input) : categoriesApi.createFeeType(input)),
@@ -234,6 +259,7 @@ export type CategoriesState = {
   tests: ListState<Test>;
   feeTypes: ListState<FeeType>;
   accreditations: ListState<Accreditation>;
+  registrationTypes: ListState<RegistrationType>;
   issuingOrganizations: IssuingOrganization[];
   countries: CountryOption[];
   status: "idle" | "loading" | "failed";
@@ -244,7 +270,7 @@ const initialState: CategoriesState = {
   businessCategories: emptyList(), businessCategoryOptions: [],
   serviceCategories: emptyList(), serviceCategoryOptions: [], otherServiceCategories: emptyList(),
   degreeLevels: emptyList(), areasOfStudy: emptyList(), tests: emptyList(),
-  feeTypes: emptyList(), accreditations: emptyList(),
+  feeTypes: emptyList(), accreditations: emptyList(), registrationTypes: emptyList(),
   issuingOrganizations: [], countries: [],
   status: "idle", error: null,
 };
@@ -289,6 +315,9 @@ const categoriesSlice = createSlice({
         const list = { data: action.payload.data, ...action.payload.meta };
         if (action.meta.arg.kind === "degree-levels") state.degreeLevels = list;
         else state.areasOfStudy = list;
+      })
+      .addCase(fetchRegistrationTypes.fulfilled, (state, action) => {
+        state.registrationTypes = { data: action.payload.data, ...action.payload.meta };
       })
       .addCase(fetchTests.fulfilled, (state, action) => {
         state.tests = { data: action.payload.data, ...action.payload.meta };

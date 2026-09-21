@@ -2,7 +2,8 @@ import { httpDelete, httpGet, httpPatch, httpPost, httpPostForm, httpPut } from 
 import type {
   Accreditation, AccreditationInput, Category, CategoryInput, CityOption, CountryOption,
   FeeType, FeeTypeInput, IssuingOrganization, ListParams, Lookup, LookupInput, LookupKind,
-  ModerationStatus, Paginated, SchemaField, SchemaFieldInput, SearchListParams, Test, TestInput,
+  ModerationStatus, Paginated, RegistrationType, RegistrationTypeInput, SchemaField, SchemaFieldInput,
+  SearchListParams, Test, TestInput,
 } from "./types";
 
 type CountryDto = { id: number; name: string; iso2: string; phone_code: string | null };
@@ -103,4 +104,13 @@ export const categoriesRealApi = {
     (await httpGet<{ cities: CityDto[] }>(`${BASE}/countries/${countryId}/cities`)).cities.map((c) => ({
       id: c.id, name: c.name, stateName: c.state_name,
     })),
+
+  getRegistrationTypes: (params: SearchListParams = {}): Promise<Paginated<RegistrationType>> =>
+    httpGet(`${BASE}/registration-types${toQuery(params)}`),
+  createRegistrationType: (input: RegistrationTypeInput): Promise<RegistrationType> =>
+    httpPost(`${BASE}/registration-types`, input),
+  updateRegistrationType: (id: number, input: Partial<RegistrationTypeInput>): Promise<RegistrationType> =>
+    httpPatch(`${BASE}/registration-types/${id}`, input),
+  deleteRegistrationType: (id: number): Promise<void> =>
+    httpDelete(`${BASE}/registration-types/${id}`),
 };

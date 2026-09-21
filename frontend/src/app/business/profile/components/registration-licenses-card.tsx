@@ -1,20 +1,18 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Pencil, Plus, Save, ShieldCheck, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Combobox } from "@/components/combobox";
+import { Combobox, type ComboboxOption } from "@/components/combobox";
 import { ProfileSection } from "@/app/(web)/components/profile/profile-section";
 import { useAppDispatch } from "@/lib/hooks";
 import { updateMyProfile } from "@/app/business/store/business-onboarding-slice";
 import type { BusinessProfile } from "@/app/business/apis/types";
-import type { Country } from "@/app/geo/apis";
-import {
-  COUNTRY_REGISTRATION_TYPES, DEFAULT_REGISTRATION_TYPES, HEADER_PENCIL, LICENSE_TYPE_OPTIONS,
-} from "../const";
+import { businessProfileDetailApi } from "../apis";
+import { HEADER_PENCIL } from "../const";
 import { PrivacyBadge } from "@/components/privacy-badge";
 import { useSectionVisibility } from "./use-section-visibility";
 
@@ -23,11 +21,29 @@ type RegLicenses = { business_registration?: RegLicense; licenses?: RegLicense[]
 
 const GROUP_LABEL = "text-xs font-semibold uppercase tracking-wide text-muted-foreground";
 
+/**
+ * An escape hatch, not catalogue data — it stays client-side so an admin can't delete it, and so
+ * profiles that already saved the literal "Other" keep resolving to a label.
+ */
+const OTHER_LICENSE: ComboboxOption = { value: "Other", label: "Other", description: "Custom license type" };
+
+/**
+ * Both pickers draw from admin-managed catalogs now, so a value can be deactivated, renamed or
+ * simply belong to a country whose list no longer carries it. A Combobox whose value matches no
+ * option renders its empty placeholder, which would read as "nothing selected" over a license the
+ * business did save — so anything already saved is pinned into the list it is shown in.
+ */
+const withSaved = (options: ComboboxOption[], saved: string | undefined) =>
+  saved && !options.some((o) => o.value === saved)
+    ? [...options, { value: saved, label: saved, description: "No longer offered" }]
+    : options;
+
+// No `countries` prop any more: the server resolves the country's registration types (and the
+// fallback) from profile.country_id, so the card no longer needs the name to match a const key.
 export function RegistrationLicensesCard({
   profile,
-  countries,
   readOnly,
-}: Readonly<{ profile: BusinessProfile; countries: Country[]; readOnly: boolean }>) {
+}: Readonly<{ profile: BusinessProfile; readOnly: boolean }>) {
   const dispatch = useAppDispatch();
   const { isPublic, toggle, canToggle } = useSectionVisibility(profile);
   const canEditVisibility = !readOnly && canToggle;
@@ -38,9 +54,35 @@ export function RegistrationLicensesCard({
   const registration = (profile.registration_licenses as RegLicenses | null) ?? {};
 
   // Which identifier a business quotes depends on where it is registered — an Australian agent
-  // has an ABN, a Singaporean one a UEN. Anywhere unlisted gets the generic option.
-  const countryName = countries.find((c) => c.id === profile.country_id)?.name ?? "";
-  const registrationTypes = COUNTRY_REGISTRATION_TYPES[countryName] ?? DEFAULT_REGISTRATION_TYPES;
+  // has an ABN, a Singaporean one a UEN. Both lists are admin-managed reference data (Platform →
+  // Categories); the server picks the country's set and falls back to the generic one, so there
+  // is no country-name matching left on this side.
+  const [registrationTypes, setRegistrationTypes] = useState<ComboboxOption[]>([]);
+  const [licenseTypes, setLicenseTypes] = useState<ComboboxOption[]>([]);
+
+  // Keyed to the country, not a bare boolean: the card keeps its instance when the owner edits
+  // the profile's country, and the offered identifiers change with it.
+  const fetchedForRef = useRef<number | null | undefined>(undefined);
+  useEffect(() => {
+    if (fetchedForRef.current === profile.country_id) return;
+    fetchedForRef.current = profile.country_id;
+    businessProfileDetailApi
+      .getRegistrationTypes(profile.country_id)
+      .then(({ data }) => setRegistrationTypes(data.map((r) => ({ value: r.code, label: r.label }))))
+      .catch(() => setRegistrationTypes([]));
+  }, [profile.country_id]);
+
+  const fetchedLicensesRef = useRef(false);
+  useEffect(() => {
+    if (fetchedLicensesRef.current) return;
+    fetchedLicensesRef.current = true;
+    businessProfileDetailApi
+      .getAccreditations({ limit: 100 })
+      .then(({ data }) =>
+        setLicenseTypes(data.map((a) => ({ value: a.name, label: a.name, description: a.description ?? undefined }))),
+      )
+      .catch(() => setLicenseTypes([]));
+  }, []);
 
   const startEditing = () => {
     setDraft({
@@ -110,7 +152,7 @@ export function RegistrationLicensesCard({
           <div className="flex flex-col gap-2">
             <p className={GROUP_LABEL}>Business Registration</p>
             <Combobox
-              options={registrationTypes}
+              options={withSaved(registrationTypes, draft.business_registration?.type)}
               value={draft.business_registration?.type ?? ""}
               onChange={(v) => updateRegistration({ type: v })}
               placeholder="Select registration type"
@@ -146,7 +188,7 @@ export function RegistrationLicensesCard({
                 <div key={i} className="flex flex-col gap-2 rounded-lg border border-border p-2.5">
                   <div className="flex items-center gap-2">
                     <Combobox
-                      options={LICENSE_TYPE_OPTIONS}
+                      options={withSaved([...licenseTypes, OTHER_LICENSE], license.type)}
                       value={license.type}
                       onChange={(v) => updateLicense(i, { type: v })}
                       placeholder="License type"
