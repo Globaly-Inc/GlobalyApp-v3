@@ -1,8 +1,9 @@
 // Business service — registration (provisions schema + creates owner agent), profile management.
 
 import { randomBytes } from "node:crypto";
-import { NotFoundError, ConflictError } from "../../../shared/errors.js";
+import { NotFoundError, ConflictError, BadRequestError } from "../../../shared/errors.js";
 import { generateText } from "../../../shared/ai/gemini.js";
+import { masterKnex } from "../../../core/db/master-pool.js";
 import { getKnex } from "../../../core/db/pool-manager.js";
 import { schemaName } from "../../../core/db/knex.js";
 import { provisionBusinessSchema, provisionOnClaim } from "../../../core/business/provisioner.js";
@@ -16,8 +17,14 @@ import { issueScopedAccessToken, queueEmail } from "../../auth/auth.service.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import { issueCode } from "../../referrals/services/codes.service.js";
 import { createSystemPost } from "../../feed/services/feed.service.js";
-import type { BusinessRegisterInput, BusinessProfilePatchInput, AiAssistInput } from "../schemas/businesses.schema.js";
+import type {
+  BusinessRegisterInput, BusinessProfilePatchInput, AiAssistInput, StartExtractionInput, SiteUrlsQueryInput,
+  SiteUrlSnapshotQueryInput,
+} from "../schemas/businesses.schema.js";
 import { generateSubdomain } from "../../../shared/subdomain.js";
+import { createJob, getSelfServiceStatus } from "../../superadmin/data-extraction/services/jobs.service.js";
+import { isInstitutionCategory } from "../../superadmin/data-extraction/repositories/promote.repository.js";
+import { listSiteUrls, getSnapshotMarkdownByUrl } from "../../superadmin/data-extraction/services/site-urls.service.js";
 
 const logger = createChildLogger("businesses-service");
 const CLAIM_TOKEN_TTL_MS = 72 * 60 * 60 * 1000; // 72 hours, matching admin claim-request convention
@@ -214,6 +221,77 @@ export async function updateProfile(orgId: string, data: BusinessProfilePatchInp
   if (!existing) throw new NotFoundError("Business not found");
   const updated = await repo.updateBusinessProfile(existing.id, data);
   return withCategory(await withImagePreviews(updated));
+}
+
+export async function startExtraction(orgId: string, platformUserId: number, input: StartExtractionInput) {
+  const business = await repo.findBusinessByDbName(orgId);
+  if (!business) throw new NotFoundError("Business not found");
+  if (!business.business_category_id || !(await isInstitutionCategory(business.business_category_id))) {
+    throw new BadRequestError("Extraction is only available for institutions");
+  }
+
+  return masterKnex.transaction(async (trx) => {
+    const locked: BusinessRecord | undefined = await trx("businesses").where({ id: business.id }).forUpdate().first();
+    if (!locked) throw new NotFoundError("Business not found");
+    if (locked.source_job_id) throw new ConflictError("Extraction has already been started for this business");
+
+    const website = input.website ?? locked.website;
+    if (!website) throw new BadRequestError("A website is required to start extraction");
+
+    let job: { id: string };
+    try {
+      job = await createJob(
+        {
+          institution_url: website,
+          institution_name: locked.business_name,
+          source_type: "business_self_service",
+          business_category_id: locked.business_category_id ?? undefined,
+        },
+        platformUserId,
+      );
+    } catch (err) {
+      if (err instanceof ConflictError) {
+        throw new ConflictError("An extraction for this website already exists. Contact support.");
+      }
+      throw err;
+    }
+
+    const [updated] = await trx("businesses")
+      .where({ id: business.id })
+      .update({ website, source_job_id: job.id, updated_at: trx.fn.now() })
+      .returning("*");
+    return withCategory(await withImagePreviews(updated));
+  });
+}
+
+/** Progress + counts for the business's own linked extraction job, or null if none started yet. */
+export async function getExtractionStatus(orgId: string) {
+  const business = await repo.findBusinessByDbName(orgId);
+  if (!business) throw new NotFoundError("Business not found");
+  if (!business.source_job_id) return null;
+  return getSelfServiceStatus(business.source_job_id);
+}
+
+/**
+ * The self-service twin of the admin's Site tab (site-urls.service.ts's listSiteUrls, reused
+ * as-is) — scoped to the business's OWN job only, never a client-supplied job id, and forced to
+ * excluded: false since curating what to exclude is an admin job, not something to expose here.
+ */
+export async function getExtractionSiteUrls(orgId: string, query: SiteUrlsQueryInput) {
+  const business = await repo.findBusinessByDbName(orgId);
+  if (!business) throw new NotFoundError("Business not found");
+  if (!business.source_job_id) {
+    return { data: [], meta: { page: query.page, limit: query.limit, total: 0, totalPages: 0 }, counts: null };
+  }
+  return listSiteUrls(business.source_job_id, { ...query, excluded: false });
+}
+
+/** The "View" action's content — same stored snapshot markdown the admin's Snapshots tab shows. */
+export async function getExtractionSiteUrlSnapshot(orgId: string, query: SiteUrlSnapshotQueryInput) {
+  const business = await repo.findBusinessByDbName(orgId);
+  if (!business) throw new NotFoundError("Business not found");
+  if (!business.source_job_id) throw new NotFoundError("No extraction started for this business");
+  return getSnapshotMarkdownByUrl(business.source_job_id, query.url);
 }
 
 /**

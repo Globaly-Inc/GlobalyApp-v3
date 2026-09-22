@@ -2,7 +2,8 @@ import { httpDelete, httpGet, httpPatch, httpPost, httpPostForm, isInstitutionCo
 import type {
   AiAssistInput, AiAssistResult,
   BusinessCategoryOption, BusinessProfile, BusinessProfilePatch, BusinessRegisterInput,
-  RegisterBusinessResult, InstitutionRegisterInput, RegisterInstitutionResult,
+  RegisterBusinessResult, InstitutionRegisterInput, RegisterInstitutionResult, StartExtractionInput,
+  ExtractionStatus, SiteUrlsQuery, SiteUrlsPage, SiteUrlSnapshot,
 } from "./types";
 
 // Institution accounts render through this exact same business-profile UI (there is no
@@ -37,6 +38,8 @@ type InstitutionMe = {
   /** Ownership sector — "Public" or "Private". Not a category like "University"; see
    *  migration 20260909_003, which narrowed this column to those two values. */
   institution_type: string | null;
+  /** Extraction job this institution was linked to (self-triggered). Null = no extracted data yet. */
+  source_job_id: string | null;
 };
 
 /**
@@ -76,6 +79,7 @@ function institutionToBusinessProfile(inst: InstitutionMe): BusinessProfile {
     subdomain: inst.subdomain,
     business_type: null,
     business_category_id: null,
+    source_job_id: inst.source_job_id,
     // Institutions aren't categorised against `business_categories`; their ownership sector is
     // what the badge carries, exactly as on the public institution page.
     institution_type: inst.institution_type,
@@ -181,4 +185,32 @@ export const businessRealApi = {
   // Business-only: the endpoint sits behind requireBusinessContext, so the description card hides
   // the button for an institution rather than calling this and getting a 403.
   aiAssist: (input: AiAssistInput): Promise<AiAssistResult> => httpPost("/businesses/me/ai-assist", input),
+
+  startExtraction: async (input: StartExtractionInput): Promise<BusinessProfile> => {
+    if (isInstitutionContext()) {
+      return institutionToBusinessProfile(await httpPost<InstitutionMe>("/institutions/me/start-extraction", input));
+    }
+    return withSignedMedia(await httpPost<BusinessProfile>("/businesses/me/start-extraction", input));
+  },
+
+  getExtractionStatus: (): Promise<ExtractionStatus> => {
+    const base = isInstitutionContext() ? "/institutions/me/extraction-status" : "/businesses/me/extraction-status";
+    return httpGet<ExtractionStatus>(base);
+  },
+
+  getExtractionSiteUrls: (params: SiteUrlsQuery): Promise<SiteUrlsPage> => {
+    const base = isInstitutionContext() ? "/institutions/me/extraction-site-urls" : "/businesses/me/extraction-site-urls";
+    const q = new URLSearchParams();
+    if (params.page) q.set("page", String(params.page));
+    if (params.limit) q.set("limit", String(params.limit));
+    if (params.category) q.set("category", params.category);
+    return httpGet<SiteUrlsPage>(`${base}?${q}`);
+  },
+
+  getExtractionSiteUrlSnapshot: (url: string): Promise<SiteUrlSnapshot> => {
+    const base = isInstitutionContext()
+      ? "/institutions/me/extraction-site-urls/snapshot"
+      : "/businesses/me/extraction-site-urls/snapshot";
+    return httpGet<SiteUrlSnapshot>(`${base}?url=${encodeURIComponent(url)}`);
+  },
 };

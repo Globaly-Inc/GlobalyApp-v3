@@ -24,6 +24,8 @@ export type BusinessProfile = SocialLinks & {
   subdomain: string;
   business_type: BusinessType | null;
   business_category_id: number | null;
+  /** Extraction job this profile was linked to (self-triggered or promoted). Null = no extracted data yet. */
+  source_job_id: string | null;
   /**
    * Institutions only — the ownership sector, "Public" or "Private". Absent on a business, which
    * is classified by `business_category_id` instead.
@@ -123,3 +125,62 @@ export type AiAssistInput = {
 };
 
 export type AiAssistResult = { text: string };
+
+/** website is only required when the profile doesn't already have one. */
+export type StartExtractionInput = { website?: string };
+
+export type ExtractionCounts = {
+  branches: number;
+  agents: number;
+  courses: number;
+  fees: number;
+  intakes: number;
+  eligibility: number;
+  units: number;
+  study_options: number;
+  accreditations: number;
+  visa_services: number;
+};
+
+/** null when no extraction has been started (source_job_id unset, or only the placeholder). */
+export type ExtractionStatus = {
+  status: string;
+  progress_pct: number;
+  counts: ExtractionCounts;
+} | null;
+
+/** Mirrors backend lib/url-categories.ts SITE_URL_CATEGORIES exactly. */
+export type SiteUrlCategory =
+  | "overview" | "about_us" | "contact_us" | "course" | "branches" | "agents" | "fees"
+  | "study_units" | "study_options" | "intake" | "eligibility" | "accreditations" | "other";
+
+export type SiteUrl = {
+  id: string;
+  url: string;
+  source: string;
+  category: SiteUrlCategory | null;
+  category_source: "guided" | "heuristic" | "llm" | "admin" | null;
+  created_at: string;
+};
+
+export type SiteUrlCounts = {
+  total: number;
+  unclassified: number;
+  excluded: number;
+  by_category: Record<SiteUrlCategory, number>;
+};
+
+export type SiteUrlsQuery = { page?: number; limit?: number; category?: SiteUrlCategory };
+
+export type SiteUrlsPage = {
+  data: SiteUrl[];
+  meta: { page: number; limit: number; total: number; totalPages: number };
+  counts: SiteUrlCounts | null;
+};
+
+/** The "View" action's content — the stored scraped markdown for one page. */
+export type SiteUrlSnapshot = {
+  url: string;
+  scraped_at: string;
+  markdown: string;
+};

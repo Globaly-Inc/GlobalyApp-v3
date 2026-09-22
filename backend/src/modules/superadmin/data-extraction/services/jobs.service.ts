@@ -98,6 +98,52 @@ export async function getJob(id: string) {
   return { job: { ...jobWithActors, usage }, overview: overviewWithActors };
 }
 
+// Mirrors overallProgressPct in frontend/src/app/admin/data/all-extractions/components/
+// extraction-job-row.tsx exactly, so a business/institution owner's progress bar reads the same
+// percentage an admin sees. Kept as a straight port rather than a shared package — five string
+// literals and a status list aren't worth a cross-app dependency.
+const PROGRESS_STAGE_KEYS = ["mapping", "intelligence", "scraping", "extracting", "verifying"];
+const PROGRESS_FINISHED_STATUSES = ["done", "approved", "verified", "exported"];
+
+function computeProgressPct(job: {
+  status: string;
+  pipeline_progress: Record<string, { status: string; total?: number; done?: number }> | null;
+  pages_scraped: number | null;
+  total_pages_found: number | null;
+  verification_score: number | null;
+  verification_total: number | null;
+}): number {
+  if (job.status === "failed" || job.status === "declined") return 0;
+  if (PROGRESS_FINISHED_STATUSES.includes(job.status) || job.status === "review") return 100;
+  if (job.pipeline_progress) {
+    const known = PROGRESS_STAGE_KEYS.map((k) => job.pipeline_progress![k]).filter(Boolean);
+    if (known.length > 0) {
+      const sum = known.reduce((acc, stage) => {
+        if (stage!.status === "done") return acc + 1;
+        if (stage!.status === "processing") return acc + Math.min(1, stage!.total ? (stage!.done || 0) / stage!.total : 0.5);
+        return acc;
+      }, 0);
+      return Math.min(100, Math.round((sum / PROGRESS_STAGE_KEYS.length) * 100));
+    }
+  }
+  if (job.total_pages_found) return Math.min(100, Math.round(((job.pages_scraped ?? 0) / job.total_pages_found) * 100));
+  if (job.verification_total) return Math.min(100, Math.round(((job.verification_score ?? 0) / job.verification_total) * 100));
+  return 0;
+}
+
+/**
+ * Self-service extraction status for a business/institution's own linked job: status, progress
+ * percentage, and entity counts only — never admin internals (LLM cost, job events, error
+ * messages). Returns null when the job no longer exists (shouldn't happen once linked, but a
+ * missing job is "nothing to show", not a 500).
+ */
+export async function getSelfServiceStatus(jobId: string) {
+  const job = await repo.findJobById(jobId);
+  if (!job) return null;
+  const counts = await getTabCounts(jobId);
+  return { status: job.status as string, progress_pct: computeProgressPct(job), counts };
+}
+
 export async function getTabCounts(jobId: string) {
   const [branches, agents, courses, fees, intakes, eligibility, units, studyOptions, accreditations, visaServices] =
     await Promise.all([

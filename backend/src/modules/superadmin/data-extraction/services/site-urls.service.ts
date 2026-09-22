@@ -87,3 +87,18 @@ export async function getSnapshotMarkdown(jobId: string, pageId: string) {
   if (!page) throw new NotFoundError("Snapshot not found on this job — or its file is gone from the bucket; the next read of this page scrapes it again");
   return { id: row.id, url: row.url, scraped_at: page.scraped_at, markdown: page.markdown };
 }
+
+/**
+ * Self-service twin of getSnapshotMarkdown, keyed by URL instead of extraction_pages.id — the
+ * self-service Site card (businesses/institutions "View" action) only ever has the site_urls row,
+ * not a page id. Scoped identically: the URL must belong to THIS job's own site list, so an org
+ * can never read another org's snapshot by guessing a URL.
+ */
+export async function getSnapshotMarkdownByUrl(jobId: string, url: string) {
+  await requireJob(jobId);
+  const owns = await masterKnex(`${S}.extraction_site_urls`).where({ job_id: jobId, url }).first("id");
+  if (!owns) throw new NotFoundError("This page isn't part of this job's site");
+  const page = await readSnapshot(url, "main");
+  if (!page) throw new NotFoundError("Snapshot not found — it may not have been scraped yet");
+  return { url, scraped_at: page.scraped_at, markdown: page.markdown };
+}

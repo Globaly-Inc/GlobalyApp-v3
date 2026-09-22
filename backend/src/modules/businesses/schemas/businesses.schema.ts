@@ -3,6 +3,11 @@
 import { z } from "zod";
 import { BUSINESS_TYPES } from "../consts.js";
 
+export {
+  StartExtractionSchema, SiteUrlsQuerySchema, SiteUrlSnapshotQuerySchema,
+  type StartExtractionInput, type SiteUrlsQueryInput, type SiteUrlSnapshotQueryInput,
+} from "../../superadmin/data-extraction/schemas/self-service.schema.js";
+
 export const BusinessRegisterSchema = z.object({
   business_name: z.string().min(1).max(200),
   business_type: z.enum(BUSINESS_TYPES).optional(),

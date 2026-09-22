@@ -1,6 +1,8 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { businessApi } from "../apis";
-import type { BusinessProfile, BusinessProfilePatch, BusinessRegisterInput, InstitutionRegisterInput } from "../apis/types";
+import type {
+  BusinessProfile, BusinessProfilePatch, BusinessRegisterInput, InstitutionRegisterInput, StartExtractionInput,
+} from "../apis/types";
 
 // Result isn't stored in this slice's state — a successful registration hard-navigates
 // to /business (same reload rationale the business switcher already uses), so there's
@@ -22,6 +24,14 @@ export const fetchMyProfile = createAsyncThunk("businessOnboarding/fetchMyProfil
 export const updateMyProfile = createAsyncThunk(
   "businessOnboarding/updateMyProfile",
   (patch: BusinessProfilePatch) => businessApi.updateMyProfile(patch),
+);
+
+// Not routed through the shared "saving" status: the empty-state card tracks its own
+// submitting/error state locally, since a start-extraction failure (e.g. already started,
+// missing website) is specific to that card, not the profile-wide save banner.
+export const startExtraction = createAsyncThunk(
+  "businessOnboarding/startExtraction",
+  (input: StartExtractionInput) => businessApi.startExtraction(input),
 );
 
 type BusinessOnboardingState = {
@@ -65,6 +75,9 @@ const businessOnboardingSlice = createSlice({
       .addCase(updateMyProfile.rejected, (state, action) => {
         state.status = "failed";
         state.error = action.error.message ?? "Failed to save.";
+      })
+      .addCase(startExtraction.fulfilled, (state, action) => {
+        state.profile = action.payload;
       })
       .addCase(registerBusiness.pending, (state) => {
         state.status = "saving";

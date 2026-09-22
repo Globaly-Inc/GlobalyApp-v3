@@ -2,6 +2,11 @@
 
 import { z } from "zod";
 
+export {
+  StartExtractionSchema, SiteUrlsQuerySchema, SiteUrlSnapshotQuerySchema,
+  type StartExtractionInput, type SiteUrlsQueryInput, type SiteUrlSnapshotQueryInput,
+} from "../../superadmin/data-extraction/schemas/self-service.schema.js";
+
 export const InstitutionProfilePatchSchema = z.object({
   institution_name: z.string().min(1),
   // Ownership sector. The enum mirrors `institutions_institution_type_check` exactly — anything
@@ -26,3 +31,4 @@ export const InstitutionProfilePatchSchema = z.object({
 }).partial().strict();
 
 export type InstitutionProfilePatchInput = z.infer<typeof InstitutionProfilePatchSchema>;
+

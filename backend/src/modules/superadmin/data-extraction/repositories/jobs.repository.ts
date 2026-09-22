@@ -239,6 +239,11 @@ export async function insertJob(data: Record<string, unknown>, db: Knex = master
  * Guarded on source_type: a crawled or AgentCIS job's institution_url is its provenance — the
  * address the pipeline actually fetched — and must never be rewritten from a display field.
  */
+export async function findJobSourceType(id: string): Promise<string | null> {
+  const row = await masterKnex(T).where({ id }).first("source_type");
+  return row?.source_type ?? null;
+}
+
 export async function syncOwnedJobUrl(jobId: string, website: string) {
   const url = website.includes("://") ? website : `https://${website}`;
   return masterKnex(T)
