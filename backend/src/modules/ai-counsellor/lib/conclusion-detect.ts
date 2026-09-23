@@ -87,7 +87,14 @@ export async function judgeConclusion(
 
     const { value, via } = parseModelJson<Record<string, unknown>>(raw);
     const signal = value && typeof value === "object" ? cleanConclusion(value) : null;
-    logger.debug("Conclusion judged", { via, likelihood: signal?.likelihood ?? null, sample: signal ? undefined : raw.slice(0, 200) });
+    // Same rule as profile-extract: shape, never body. This call is fed the transcript, so an
+    // unparseable response can echo the student's own words straight back — and `reason`, when it
+    // DOES parse, is a deliberate internal note rather than raw model text.
+    logger.debug("Conclusion judged", {
+      via,
+      likelihood: signal?.likelihood ?? null,
+      ...(signal ? {} : { length: raw.length, looksJson: raw.trimStart().startsWith("{") }),
+    });
     return signal;
   } catch (err) {
     logger.warn("Conclusion judgement failed", { err: err instanceof Error ? err.message : String(err) });

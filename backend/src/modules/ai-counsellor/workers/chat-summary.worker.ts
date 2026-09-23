@@ -20,6 +20,7 @@
 // The visitor rows live in each tenant's own schema, so this walks the schemas rather than
 // reading one table. The walk is bounded to tenants that own at least one embed config.
 
+import type { Knex } from "knex";
 import { masterKnex } from "../../../core/db/master-pool.js";
 import { createSchemaKnex, schemaName } from "../../../core/db/knex.js";
 import * as messagesRepo from "../repositories/messages.repository.js";
@@ -45,6 +46,19 @@ const fallbackMinutes = () => Number(process.env.CHAT_SUMMARY_FALLBACK_MINUTES ?
 const batchCap = () => Number(process.env.CHAT_SUMMARY_BATCH_CAP) || 100;
 /** Matches the outbox's own ladder. Past this the row stays `failed` for a human to look at. */
 const maxAttempts = () => Number(process.env.CHAT_SUMMARY_MAX_ATTEMPTS) || 5;
+/**
+ * How long a claim may sit in `processing` before another sweep may take it back.
+ *
+ * A claim is committed BEFORE the summary is generated and enqueued, so a restart, a crash or a
+ * SIGKILL between the two leaves the row `processing` forever: later sweeps only looked for
+ * `pending`, and `summarySettled` counts `processing` as settled, so the visitor could never be
+ * offered a wrap-up again either. Nothing retried it and nothing said so.
+ *
+ * Generous on purpose — it must exceed the worst realistic time for one row (a model call with
+ * retries and an OpenRouter fallback), or a slow row gets claimed twice and the visitor gets two
+ * emails. The `enquiry_email_queue` dedup_key is the backstop if that ever happens.
+ */
+const claimLeaseMinutes = () => Number(process.env.CHAT_SUMMARY_CLAIM_LEASE_MINUTES) || 15;
 
 interface TenantSchema {
   schema: string;
@@ -139,8 +153,34 @@ async function processTenant(tenant: TenantSchema): Promise<number> {
     // so arriving early is no longer a false statement — only an earlier one.
     const cutoff = new Date(Date.now() - fallbackMinutes() * 60_000);
 
+    // Rows this sweep may take: owed, or claimed so long ago the claimant is presumed dead.
+    // Bounded by summary_attempts, which the claim increments — otherwise a row that kills the
+    // process every time would be reclaimed forever, since the catch that retires an exhausted
+    // row never runs when the process dies rather than throws.
+    const staleClaim = new Date(Date.now() - claimLeaseMinutes() * 60_000);
+    const claimable = (q: Knex.QueryBuilder) =>
+      q.where({ summary_status: "pending" }).orWhere((stale) =>
+        stale
+          .where({ summary_status: "processing" })
+          .where("updated_at", "<", staleClaim)
+          .where("summary_attempts", "<", maxAttempts()),
+      );
+
+    // A stale claim with no attempts left is a real failure that never got to record itself.
+    // Retiring it here turns a row that silently lies ("processing") into one that is greppable,
+    // and stops it being rescanned on every sweep forever.
+    await db(TABLE)
+      .where({ summary_status: "processing" })
+      .where("updated_at", "<", staleClaim)
+      .where("summary_attempts", ">=", maxAttempts())
+      .update({
+        summary_status: "failed",
+        summary_error: "claim expired without completing",
+        updated_at: db.fn.now(),
+      });
+
     const candidates: number[] = await db(TABLE)
-      .where({ summary_status: "pending" })
+      .where(claimable)
       .whereNotNull("email")
       .where((q) =>
         q
@@ -160,12 +200,13 @@ async function processTenant(tenant: TenantSchema): Promise<number> {
 
     if (!candidates.length) return 0;
 
-    // Claim. The `summary_status = 'pending'` predicate is re-evaluated under the row lock,
-    // so a second worker that selected the same ids a millisecond earlier gets nothing back
-    // and cannot send the same summary twice.
+    // Claim. The same predicate is re-evaluated under the row lock, so a second worker that
+    // selected the same ids a millisecond earlier gets nothing back and cannot send the same
+    // summary twice — including for a reclaim, because the winner's update sets updated_at to
+    // now() and that moves the row out of the stale window for everyone else.
     const claimed: VisitorRow[] = await db(TABLE)
       .whereIn("id", candidates)
-      .where({ summary_status: "pending" })
+      .where(claimable)
       .update({
         summary_status: "processing",
         summary_attempts: db.raw("summary_attempts + 1"),

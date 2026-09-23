@@ -106,7 +106,16 @@ export async function extractProfile(message: string): Promise<VisitorProfile | 
 
     const { value, via } = parseModelJson<Record<string, unknown>>(raw);
     if (!value || typeof value !== "object") {
-      logger.warn("Profile extraction unparseable", { via, sample: raw.slice(0, 200) });
+      // SHAPE ONLY — never the response body. Everything this call returns is by definition the
+      // visitor's own grades, scores, institutions and employers, so a "just the first 200 chars
+      // to debug" sample puts personal data into the console and the retained combined log. The
+      // three fields below are enough to tell a truncation from a prose preamble from an empty
+      // reply, which is all the sample was ever used for.
+      logger.warn("Profile extraction unparseable", {
+        via,
+        length: raw.length,
+        looksJson: raw.trimStart().startsWith("{"),
+      });
       return null;
     }
     // Same cleaner as the old in-band path: unknown keys dropped, values bounded, strings only.

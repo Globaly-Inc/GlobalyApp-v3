@@ -331,7 +331,12 @@ export async function recordTurn(
   await db(TABLE)
     .where({ id: visitorId })
     .update({
-      message_count: opts.nextCount,
+      // Incremented in SQL, not written as the absolute value the route computed. The same
+      // visitor_key can have two tabs open: both read message_count = 5, both derive
+      // nextCount = 6, and an absolute write means one of those turns never happened as far as
+      // the schedule is concerned. Postgres evaluates every SET expression against the OLD row,
+      // so the prompt-count snapshots below stay consistent with this.
+      message_count: db.raw("message_count + 1"),
       // The only clock the fallback runs on, now that the leave beacon is gone: a new message
       // pushes the 30 minutes out, which is the whole of "they came back".
       last_activity_at: db.fn.now(),
@@ -350,7 +355,7 @@ export async function recordTurn(
       ...(opts.prompted === "ending"
         ? {
             end_prompt_count: db.raw("end_prompt_count + 1"),
-            end_prompt_at_count: opts.nextCount,
+            end_prompt_at_count: db.raw("message_count + 1"),
           }
         : {}),
       ...(opts.prompted === "contact"
@@ -361,7 +366,7 @@ export async function recordTurn(
               `CASE WHEN contact_status = 'submitted' THEN contact_status ELSE 'shown' END`,
             ),
             contact_prompt_count: db.raw("contact_prompt_count + 1"),
-            contact_prompted_at_count: opts.nextCount,
+            contact_prompted_at_count: db.raw("message_count + 1"),
             contact_prompted_at: db.fn.now(),
           }
         : {}),
@@ -399,35 +404,42 @@ export async function recordProfile(
   visitorId: number,
   incoming: VisitorProfile,
 ): Promise<void> {
-  const existing = await db<VisitorRow>(TABLE)
-    .where({ id: visitorId })
-    .first("qualifications", "language_tests", "academic_tests", "work_experiences");
-  if (!existing) return;
+  // Read and write under a row lock. This is a read-modify-write over whole jsonb arrays, so two
+  // turns landing together would otherwise both read the same `existing`, each merge their own
+  // entry onto it, and the second write would drop the first visitor's fact for good. The lock
+  // is cheap here — one row, and the merge between the SELECT and the UPDATE is pure CPU.
+  await db.transaction(async (trx) => {
+    const existing = await trx<VisitorRow>(TABLE)
+      .where({ id: visitorId })
+      .forUpdate()
+      .first("qualifications", "language_tests", "academic_tests", "work_experiences");
+    if (!existing) return;
 
-  const patch: Record<string, unknown> = {};
+    const patch: Record<string, unknown> = {};
 
-  for (const key of PROFILE_KEYS) {
-    const add = incoming[key];
-    if (!add?.length) continue;
+    for (const key of PROFILE_KEYS) {
+      const add = incoming[key];
+      if (!add?.length) continue;
 
-    // A column absent on a lagging schema reads as undefined; an array that is somehow not an
-    // array would break the merge, so both fall back to empty rather than throwing.
-    const current = existing[key];
-    const merged = new Map<string, Record<string, unknown>>();
-    for (const e of Array.isArray(current) ? current : []) {
-      merged.set(profileKey(key, e as Record<string, unknown>), e as Record<string, unknown>);
+      // A column absent on a lagging schema reads as undefined; an array that is somehow not an
+      // array would break the merge, so both fall back to empty rather than throwing.
+      const current = existing[key];
+      const merged = new Map<string, Record<string, unknown>>();
+      for (const e of Array.isArray(current) ? current : []) {
+        merged.set(profileKey(key, e as Record<string, unknown>), e as Record<string, unknown>);
+      }
+      for (const e of add as Record<string, unknown>[]) {
+        const k = profileKey(key, e);
+        // Shallow-merge onto what is there: the new mention wins field by field, so a later turn
+        // adding a test date does not wipe the score the earlier one carried.
+        merged.set(k, { ...(merged.get(k) ?? {}), ...e });
+      }
+      patch[key] = JSON.stringify([...merged.values()]);
     }
-    for (const e of add as Record<string, unknown>[]) {
-      const k = profileKey(key, e);
-      // Shallow-merge onto what is there: the new mention wins field by field, so a later turn
-      // adding a test date does not wipe the score the earlier one carried.
-      merged.set(k, { ...(merged.get(k) ?? {}), ...e });
-    }
-    patch[key] = JSON.stringify([...merged.values()]);
-  }
 
-  if (!Object.keys(patch).length) return;
-  await db(TABLE).where({ id: visitorId }).update({ ...patch, updated_at: db.fn.now() });
+    if (!Object.keys(patch).length) return;
+    await trx(TABLE).where({ id: visitorId }).update({ ...patch, updated_at: trx.fn.now() });
+  });
 }
 
 /**

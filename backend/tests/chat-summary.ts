@@ -10,7 +10,7 @@ import {
 } from "../src/modules/ai-counsellor/services/visitor.service.js";
 import { cleanProfile, parseBlocks, parseConclusion, parseProfile, stripBlocks } from "../src/modules/ai-counsellor/lib/card-parser.js";
 import { worthExtracting } from "../src/modules/ai-counsellor/lib/profile-extract.js";
-import { recordProfile } from "../src/modules/ai-counsellor/services/visitor.service.js";
+import { recordProfile, recordTurn } from "../src/modules/ai-counsellor/services/visitor.service.js";
 import {
   summariseConversation, buildSummaryPrompt, worthSummarising, looksTruncated,
   trimToCompleteSentence, MAX_TURNS,
@@ -466,29 +466,47 @@ ok(parseProfile(fence(JSON.stringify({ type: "profile", qualifications: [], lang
 /* ── recordProfile: merges across turns, never duplicates ── */
 
 /**
- * Enough fake knex for recordProfile: it reads the four columns, then updates them. Captures the
- * patch so the merge can be asserted without a database — the real one is unreachable from here.
+ * Enough fake knex for recordProfile: it reads the four columns under a row lock, then updates
+ * them. Captures the patch so the merge can be asserted without a database — the real one is
+ * unreachable from here.
+ *
+ * `forUpdate` and `transaction` are asserted, not just stubbed: the merge is a read-modify-write
+ * over whole jsonb arrays, so losing either one silently reintroduces the race where two
+ * concurrent turns each drop the other's captured fact.
  */
 function fakeDb(row: Record<string, unknown>) {
   const captured: Record<string, unknown> = {};
-  const db = ((_table: string) => ({
+  const seen = { locked: false, inTransaction: false };
+  // One callable stands in for both the knex instance and the trx handed to the callback: real
+  // code calls each the same way, `db(TABLE)` / `trx(TABLE)`.
+  const builder = (_table?: string) => ({
     where: () => ({
+      forUpdate: () => ({ first: async () => { seen.locked = true; return row; } }),
       first: async () => row,
       update: async (patch: Record<string, unknown>) => { Object.assign(captured, patch); },
     }),
-  })) as never as Parameters<typeof recordProfile>[0];
-  (db as unknown as { fn: { now: () => string } }).fn = { now: () => "NOW()" };
-  return { db, captured };
+  });
+  builder.fn = { now: () => "NOW()" };
+  // Raw fragments are captured as their SQL text so a test can tell "wrote the number the route
+  // computed" from "told Postgres to increment" — the whole point of the concurrency fix.
+  builder.raw = (sql: string) => ({ __raw: sql });
+  builder.transaction = async (cb: (t: unknown) => Promise<void>) => {
+    seen.inTransaction = true;
+    await cb(builder);
+  };
+  return { db: builder as never as Parameters<typeof recordProfile>[0], captured, seen };
 }
 
 const parsed = (p: Record<string, unknown>) => JSON.parse(p as unknown as string) as unknown[];
 
 // First mention on an empty row.
 {
-  const { db, captured } = fakeDb({ qualifications: null, language_tests: null, academic_tests: null, work_experiences: null });
+  const { db, captured, seen } = fakeDb({ qualifications: null, language_tests: null, academic_tests: null, work_experiences: null });
   await recordProfile(db, 1, { language_tests: [{ test_type: "IELTS", overall_score: "7.0" }] });
   deep(parsed(captured.language_tests as never), [{ test_type: "IELTS", overall_score: "7.0" }], "a first mention is written as a one-entry array");
   ok(captured.qualifications, undefined, "columns the turn said nothing about are left alone");
+  ok(seen.inTransaction, true, "the merge runs inside a transaction");
+  ok(seen.locked, true, "the read that feeds the merge takes a row lock");
 }
 
 // THE ONE THAT MATTERS: restating the same test later fills in detail instead of duplicating.
@@ -636,6 +654,34 @@ ok(matters({ ...live, end_prompt_count: 1 }, 15), false, "the offer is spent —
 ok(matters({ ...live, summary_status: "sent" }, 15), false, "a summary already sent shuts the gate");
 ok(matters({ ...live, summary_status: "processing" }, 15), false, "a summary mid-flight shuts the gate");
 ok(matters({ ...live, conversation_state: "end_confirmed" }, 15), false, "an already-ended chat has nothing to offer");
+
+/* ── recordTurn writes counters as SQL increments, not as values read a moment ago ── */
+// One visitor_key, two tabs: both reads see message_count = 5, both derive nextCount = 6, and an
+// absolute write means one of those turns never happened as far as the prompt schedule knows.
+// Postgres evaluates every SET expression against the OLD row, so the two "at what count" columns
+// use the same expression and stay consistent with it.
+const rawOf = (v: unknown) => (v as { __raw?: string } | undefined)?.__raw;
+
+{
+  const { db, captured } = fakeDb({});
+  await recordTurn(db, 1, { prompted: null, nextCount: 6, sessionId: 9 });
+  ok(rawOf(captured.message_count), "message_count + 1", "message_count is incremented in SQL, never written as an absolute");
+  ok(captured.message_count === 6, false, "the route's computed count is not written directly");
+}
+
+{
+  const { db, captured } = fakeDb({});
+  await recordTurn(db, 1, { prompted: "contact", nextCount: 6, sessionId: 9 });
+  ok(rawOf(captured.contact_prompt_count), "contact_prompt_count + 1", "the contact counter increments in SQL");
+  ok(rawOf(captured.contact_prompted_at_count), "message_count + 1", "the contact snapshot uses the same expression as message_count");
+}
+
+{
+  const { db, captured } = fakeDb({});
+  await recordTurn(db, 1, { prompted: "ending", nextCount: 6, sessionId: 9 });
+  ok(rawOf(captured.end_prompt_count), "end_prompt_count + 1", "the end counter increments in SQL");
+  ok(rawOf(captured.end_prompt_at_count), "message_count + 1", "the end snapshot uses the same expression as message_count");
+}
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);
