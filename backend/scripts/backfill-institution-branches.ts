@@ -8,7 +8,7 @@
 
 import "dotenv/config";
 import { masterKnex } from "../src/core/db/master-pool.js";
-import { getKnex } from "../src/core/db/pool-manager.js";
+import { getKnex, shutdownAll } from "../src/core/db/pool-manager.js";
 import { seedBranchesFromJob } from "../src/modules/superadmin/data-extraction/lib/branch-sync.js";
 
 async function main() {
@@ -46,6 +46,7 @@ async function main() {
 
   console.log(`\n${touched} institution(s) ${apply ? "backfilled" : "would be backfilled"}.`);
   if (!apply) console.log("Dry run — pass --apply to write.");
+  await shutdownAll();
   await masterKnex.destroy();
 }
 
