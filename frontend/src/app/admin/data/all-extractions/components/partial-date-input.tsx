@@ -26,6 +26,7 @@ export function PartialDateInput({
   disabled,
   className,
   "aria-invalid": ariaInvalid,
+  allowMonth = true,
 }: Readonly<{
   id?: string;
   /** "YYYY-MM-DD", "YYYY-MM", or "" */
@@ -34,6 +35,9 @@ export function PartialDateInput({
   disabled?: boolean;
   className?: string;
   "aria-invalid"?: boolean;
+  /** False where the target column is a real `date` (a business service's intakes) and so cannot
+   * hold a month without inventing a day — hides the Month option. */
+  allowMonth?: boolean;
 }>) {
   // The value is the source of truth WHENEVER IT HAS ONE, so the selector can never describe a
   // value it doesn't match — and the input's type always matches its value, which matters because
@@ -55,7 +59,7 @@ export function PartialDateInput({
 
   return (
     <div className={cn("flex flex-col gap-1.5", className)}>
-      <div className="inline-flex w-fit overflow-hidden rounded-md border border-border">
+      {allowMonth && <div className="inline-flex w-fit overflow-hidden rounded-md border border-border">
         {(["full_date", "month"] as const).map((p) => (
           <button
             key={p}
@@ -70,7 +74,7 @@ export function PartialDateInput({
             {p === "full_date" ? "Full date" : "Month"}
           </button>
         ))}
-      </div>
+      </div>}
       {precision === "month" ? (
         <Input
           id={id}

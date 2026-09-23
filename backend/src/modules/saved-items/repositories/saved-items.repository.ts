@@ -79,6 +79,7 @@ export async function coursePublicById(courseId: string): Promise<boolean> {
   const row = await masterKnex("superadmin.extraction_courses as ec")
     .where("ec.id", courseId)
     .whereRaw("exists (select 1 from superadmin.extraction_jobs ej where ej.id = ec.job_id and ej.status = 'exported')")
+    .where("ec.is_published", true)
     .first("ec.id");
   return Boolean(row);
 }

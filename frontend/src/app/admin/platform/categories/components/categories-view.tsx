@@ -12,7 +12,7 @@ import { categoriesApi } from "../apis";
 import { ADD_LABEL, CATEGORY_TABS, LOOKUP_KIND, LOOKUP_TITLE, ROUTE_SEGMENT, TAB_DESCRIPTION } from "../const";
 import {
   fetchAccreditations, fetchBusinessCategories, fetchCatalog, fetchFeeTypes, fetchIssuingOrganizations,
-  fetchLookup, fetchOtherServiceCategories, fetchRegistrationTypes, fetchServiceCategories, fetchTests, removeAccreditation, removeFeeType, removeRegistrationType, reviewAccreditation, reviewFeeType,
+  fetchLookup, fetchOtherServiceCategories, fetchRegistrationTypes, fetchServiceCategories, fetchTests, removeAccreditation, removeFeeType, removeRegistrationType, reviewAccreditation, reviewFeeType, reviewIssuingOrganization,
   saveAccreditation, saveCategory, saveFeeType, saveLookup, saveRegistrationType, saveTest,
   toggleCategory, toggleLookup, toggleRegistrationType, toggleTest,
 } from "../store/categories-slice";
@@ -256,6 +256,8 @@ export function CategoriesView() {
             items={catalog.accreditations.data}
             countries={catalog.countries}
             onReview={(id, decision) => handleReview("accreditation", id, decision)}
+            onReviewIssuer={(id, decision) =>
+              void run(dispatch(reviewIssuingOrganization({ id, decision })), decision === "approved" ? "Issuer approved" : "Issuer rejected")}
             onEdit={(editing) => setAccreditationDialog({ open: true, editing })}
             onDelete={(item) => setDeleting({ kind: "accreditation", id: item.id, name: item.name })}
           />

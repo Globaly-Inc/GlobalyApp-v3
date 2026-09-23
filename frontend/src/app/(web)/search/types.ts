@@ -208,6 +208,9 @@ domestic_fee_installments: FeeInstallment[] | null;
   international_fee_installments: FeeInstallment[] | null;
   /** The platform's city page for the campus city, when one is published. */
   city_link: { name: string; href: string } | null;
+  /** Per-section public/private control set in the owner's editor — a section absent or not
+   * explicitly `false` here is public (same "unset means public" rule as the profile pages). */
+  public_visibility: Record<string, boolean> | null;
 };
 
 export type SearchBusiness = {

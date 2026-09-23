@@ -27,6 +27,7 @@ export async function entityExists(entityType: PageViewType, entityId: string): 
       const row = await masterKnex(`${S}.extraction_courses as ec`)
         .where("ec.id", entityId)
         .whereRaw(`exists (select 1 from ${S}.extraction_jobs ej where ej.id = ec.job_id and ej.status = 'exported')`)
+        .where("ec.is_published", true)
         .first("ec.id");
       return Boolean(row);
     }

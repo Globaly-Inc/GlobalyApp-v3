@@ -3,6 +3,7 @@
 // business_services.uuid (`serviceId` route param).
 
 import { z } from "zod";
+import { PartialDateSchema } from "../../../data-extraction/schemas/staged.schema.js";
 
 export const ServiceIdParamSchema = z.object({ serviceId: z.string().uuid() });
 export const ChildIdParamSchema = z.object({ serviceId: z.string().uuid(), id: z.coerce.number().int().positive() });
@@ -19,10 +20,13 @@ export const FeePatchInputSchema = FeeInputSchema.partial();
 
 export const IntakeInputSchema = z.object({
   intake_name: z.string().nullable().optional(),
-  start_date: z.string().date().nullable().optional(),
-  end_date: z.string().date().nullable().optional(),
-  orientation_date: z.string().date().nullable().optional(),
-  admission_deadline: z.string().date().nullable().optional(),
+  // Either precision ("2026-09-21" or "2026-09") — institution intakes store both. A business
+  // service's intakes are `date` columns, so its service rejects the month-only form (see intakes
+  // in service-details.service.ts) rather than inventing a day.
+  start_date: PartialDateSchema,
+  end_date: PartialDateSchema,
+  orientation_date: PartialDateSchema,
+  admission_deadline: PartialDateSchema,
   intake_month: z.number().int().min(1).max(12).nullable().optional(),
   intake_year: z.number().int().nullable().optional(),
 });

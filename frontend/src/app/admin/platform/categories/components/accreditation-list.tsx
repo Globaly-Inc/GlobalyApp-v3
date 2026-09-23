@@ -13,12 +13,15 @@ export function AccreditationList({
   items,
   countries,
   onReview,
+  onReviewIssuer,
   onEdit,
   onDelete,
 }: Readonly<{
   items: Accreditation[];
   countries: CountryOption[];
   onReview: (id: number, decision: ModerationStatus) => void;
+  /** Issuers are reviewed separately — approving an accreditation never approves its issuer. */
+  onReviewIssuer: (issuerId: number, decision: ModerationStatus) => void;
   onEdit: (item: Accreditation) => void;
   onDelete: (item: Accreditation) => void;
 }>) {
@@ -60,7 +63,32 @@ export function AccreditationList({
                   {item.business_id && !item.is_global && <Badge variant="outline">Organisation</Badge>}
                 </div>
                 {item.issuing_organization_name && (
-                  <p className="mt-0.5 text-xs text-muted-foreground">{item.issuing_organization_name}</p>
+                  <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
+                    <span>Issuer: {item.issuing_organization_name}</span>
+                    {item.issuing_organization_status && item.issuing_organization_status !== "approved" && (
+                      <ModerationStatusBadge status={item.issuing_organization_status} />
+                    )}
+                    {item.issuing_organization_status === "pending" && item.issuing_organization_id && (
+                      <>
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          aria-label={`Approve issuer ${item.issuing_organization_name}`}
+                          onClick={() => onReviewIssuer(item.issuing_organization_id!, "approved")}
+                        >
+                          <CheckCircle2 className="text-emerald-600" /> Approve issuer
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="xs"
+                          aria-label={`Reject issuer ${item.issuing_organization_name}`}
+                          onClick={() => onReviewIssuer(item.issuing_organization_id!, "rejected")}
+                        >
+                          <XCircle className="text-destructive" /> Reject issuer
+                        </Button>
+                      </>
+                    )}
+                  </div>
                 )}
                 {!item.is_global && item.scope_country_ids.length > 0 && (
                   <div className="mt-1 flex flex-wrap items-center gap-1">

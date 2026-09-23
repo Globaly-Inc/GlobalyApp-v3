@@ -305,6 +305,8 @@ export async function searchCourses(opts: {
     .whereRaw(
       `exists (select 1 from ${SA}.extraction_jobs ej where ej.id = c.job_id and ej.status = 'exported')`,
     )
+    // An owner's draft course isn't public yet — the counsellor must not recommend it.
+    .where("c.is_published", true)
     .modify((q) => {
       // Empty query = browse mode (filters only): rankSql would be empty SQL.
       if (words.length) q.orderByRaw(`${rankSql} DESC`, rankBindings);
@@ -617,6 +619,7 @@ export async function getCourseDetails(courseId: string): Promise<CourseDetailRe
       "i.name as institution_name", "i.country as institution_country",
     )
     .where("c.id", courseId)
+    .where("c.is_published", true)
     .first();
 
   if (!course) return undefined;
