@@ -1,10 +1,14 @@
 // Staged entities + junctions service.
 
 import { BadRequestError, NotFoundError } from "../../../../shared/errors.js";
+import { createChildLogger } from "../../../../shared/logger.js";
 import { logAudit } from "../shared/audit.js";
 import * as repo from "../repositories/staged.repository.js";
 import { withActorNames } from "../shared/actor-names.js";
 import { courseIdsForStudyOption, syncCourseDurationFromOptions, upsertStudyOption } from "../lib/staging-writer.js";
+import { findCampusJobId, syncBranchDeletion } from "../lib/branch-sync.js";
+
+const logger = createChildLogger("staged-service");
 
 // ── Study options ──
 
@@ -213,8 +217,14 @@ export async function createCampus(data: Record<string, unknown>, adminId: numbe
 }
 
 export async function deleteCampus(id: string, adminId: number) {
+  const jobId = await findCampusJobId(id);
   await repo.campuses.delete(id);
   await logAudit(adminId, "CAMPUS_DELETE", { entityType: "extraction_campuses", entityId: id });
+  if (jobId) {
+    await syncBranchDeletion(jobId, id).catch((err) =>
+      logger.warn("Tenant branch sync failed after campus delete", { id, err: err instanceof Error ? err.message : String(err) }),
+    );
+  }
   return { deleted: true };
 }
 

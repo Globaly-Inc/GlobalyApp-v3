@@ -2,10 +2,14 @@
 
 import { NotFoundError } from "../../../../shared/errors.js";
 import { buildPaginatedResponse, type PaginationInput } from "../../../../shared/pagination.js";
+import { createChildLogger } from "../../../../shared/logger.js";
 import { logAudit } from "../shared/audit.js";
 import { withActorNames } from "../shared/actor-names.js";
 import * as repo from "../repositories/review.repository.js";
+import { syncBranchFromCampus } from "../lib/branch-sync.js";
 import type { PatchAgentInput, PatchCampusInput } from "../schemas/review.schema.js";
+
+const logger = createChildLogger("review-service");
 
 // ── Agents ──
 
@@ -78,6 +82,9 @@ export async function patchCampus(id: string, input: PatchCampusInput, adminId: 
   const found = await repo.updateCampus(id, input, adminId);
   if (!found) throw new NotFoundError("Campus not found");
   await logAudit(adminId, "CAMPUS_PATCH", { entityType: "extraction_campuses", entityId: id });
+  await syncBranchFromCampus(id).catch((err) =>
+    logger.warn("Tenant branch sync failed after campus patch", { id, err: err instanceof Error ? err.message : String(err) }),
+  );
   return { updated: true };
 }
 
