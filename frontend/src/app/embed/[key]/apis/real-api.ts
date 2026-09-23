@@ -3,7 +3,9 @@
 
 import type { CourseCard } from "@/app/ai/apis/types";
 import type {
-  EmbedChatEvent, EmbedPublicConfig, EmbedThread, GuestMessageRequest, WireCourseCard,
+  EmbedChatEvent, EmbedContactPrompt, EmbedEndPrompt, EmbedPublicConfig, EmbedThread,
+  GuestContactRequest, GuestConversationEndRequest, GuestConversationEndResponse,
+  GuestMessageRequest, WireCourseCard,
 } from "./types";
 
 const RAW_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
@@ -113,6 +115,10 @@ export const embedRealApi = {
         onEvent({ type: "cards", cards: (parsed as WireCourseCard[]).map(toCourseCard) });
       } else if (eventType === "chips") {
         onEvent({ type: "chips", chips: parsed as string[] });
+      } else if (eventType === "contact-prompt") {
+        onEvent({ type: "contact-prompt", prompt: parsed as EmbedContactPrompt });
+      } else if (eventType === "end-prompt") {
+        onEvent({ type: "end-prompt", prompt: parsed as EmbedEndPrompt });
       }
       // session / guest-meta / sources / usage — nothing to render in the widget
     };
@@ -129,5 +135,47 @@ export const embedRealApi = {
         else if (line === "") eventType = "";
       }
     }
+  },
+
+  /**
+   * The visitor's answer to the contact card — a submission or a "not now".
+   *
+   * "Not now" is posted rather than handled purely in React state because the decision has
+   * to outlive the tab: the cooldown that stops the card reappearing on the next message is
+   * counted server-side, so a dismissal the backend never heard about would be undone by the
+   * next reply.
+   */
+  submitContact: async (input: GuestContactRequest): Promise<void> => {
+    const res = await fetch(`${BASE_URL}/guest/contact`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new Error((body as { error?: string } | null)?.error ?? "Couldn't save your details. Please try again.");
+    }
+  },
+
+  /**
+   * The visitor's answer to the end-of-chat offer.
+   *
+   * Confirming is the only thing that sends a summary — there is no timer and no leave beacon
+   * any more. Returns whether a summary was actually queued, which is false when they
+   * confirmed without ever having given an address.
+   */
+  confirmConversationEnd: async (
+    input: GuestConversationEndRequest,
+  ): Promise<GuestConversationEndResponse> => {
+    const res = await fetch(`${BASE_URL}/guest/conversation-end`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new Error((body as { error?: string } | null)?.error ?? "Something went wrong. Please try again.");
+    }
+    return res.json();
   },
 };

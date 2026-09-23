@@ -370,8 +370,10 @@ export function buildSystemPrompt(opts: {
     '```block\n{"type":"image","url":"https://...","title":"...","caption":"..."}\n```\n' +
     "Rules: use blocks to make counselling interactive — comparisons when the student weighs options, " +
     "a timeline when explaining a path, quick_replies instead of leaving your questions open-ended. " +
-    "Max 3 blocks per reply. Prose stays primary: never send blocks without a conversational message around them.",
+    "Max 3 blocks per reply — that counts ONLY the types listed above; the conclusion block described further down is never shown to the student and never counts towards this limit. " +
+    "Prose stays primary: never send blocks without a conversational message around them.",
   );
+
 
   // ── How to use retrieved material ──
   // Unconditional: applies to the CONTEXT block below and to tool results alike. Without

@@ -792,3 +792,194 @@ export function guideDeliveryEmail(options: {
     }),
   };
 }
+
+/** One question-and-answer pair from a widget conversation. */
+export interface ChatSummaryTurn {
+  question: string;
+  answer: string;
+}
+
+const BULLET_RE = /^[-*\u2022]\s+/;
+
+function bulletList(items: string[]): string {
+  const rows = items
+    .map(
+      (l) =>
+        `<tr><td valign="top" style="padding:0 8px 6px 0;color:${BRAND.muted};font-size:14px;line-height:22px">&bull;</td>
+             <td style="padding:0 0 6px;color:${BRAND.body};font-size:14px;line-height:22px">${esc(l.replace(BULLET_RE, ""))}</td></tr>`,
+    )
+    .join("");
+  return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;margin:0 0 14px">${rows}</table>`;
+}
+
+const proseParagraph = (lines: string[]): string =>
+  `<p style="margin:0 0 14px;color:${BRAND.body};font-size:15px;line-height:23px">${esc(lines.join(" "))}</p>`;
+
+/**
+ * The model's recap as mail HTML.
+ *
+ * Deliberately not a markdown parser: the prompt asks for plain lines and "- " bullets and
+ * nothing else, so anything more would be machinery for output we did not ask for. Everything is
+ * escaped — this is model text going into someone else's inbox, built from a stranger's chat.
+ *
+ * It groups CONSECUTIVE RUNS rather than classifying whole blocks. The block-level version
+ * required every line between two blank lines to be a bullet, which held only while the recap was
+ * mostly paragraphs. Now that it opens with one line and continues straight into bullets, a model
+ * that omits the blank line between them — and a prompt asking for a blank line is a request, not
+ * a contract — would have had its entire list flattened into one run-on paragraph. Runs make the
+ * blank line irrelevant.
+ */
+function renderSummaryProse(text: string): string {
+  const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+
+  const out: string[] = [];
+  let run: string[] = [];
+  let runIsBullets = false;
+
+  const flush = () => {
+    if (!run.length) return;
+    out.push(runIsBullets ? bulletList(run) : proseParagraph(run));
+    run = [];
+  };
+
+  for (const line of lines) {
+    const isBullet = BULLET_RE.test(line);
+    if (run.length && isBullet !== runIsBullets) flush();
+    runIsBullets = isBullet;
+    run.push(line);
+  }
+  flush();
+
+  return out.join("");
+}
+
+/** Longest answer we reproduce before trimming. Past this a "summary" is just the chat again. */
+const SUMMARY_ANSWER_CHARS = 700;
+
+/**
+ * The visitor's own conversation, mailed back to them.
+ *
+ * Deliberately NOT model-generated: a summary written by the model is a second chance to get
+ * the facts wrong, in a medium the visitor keeps and the institution cannot correct. What the
+ * counsellor actually said is both cheaper and more truthful, so this reproduces the exchange
+ * and lets the course list — lifted from the cards the answers already carried — do the
+ * summarising.
+ */
+export function chatSummaryEmail(options: {
+  name: string;
+  orgName: string | null;
+  courses: string[];
+  turns: ChatSummaryTurn[];
+  conversationUrl: string;
+  /** The written recap. Null when the model was unavailable or the chat was too short —
+   *  the transcript below is the fallback, so the visitor always gets something. */
+  summary?: string | null;
+  /**
+   * Did the visitor tell us they were finished, or did we infer it from their silence?
+   *
+   * Only ever true for an explicit "End chat & send summary". Everything else — a closed tab, an
+   * hour of quiet — arrives here false, and gets one extra line inviting them back.
+   *
+   * Deliberately absent-means-false: rows queued before this existed carry no such key, and the
+   * extra line is harmless to someone who was finished. The reverse default would not be.
+   */
+  confirmedEnd?: boolean;
+}): { subject: string; html: string; text: string } {
+  const org = options.orgName ? esc(options.orgName) : null;
+  const subject = options.orgName
+    ? `Your conversation with ${options.orgName}`
+    : "Your conversation summary";
+
+  const courseList = options.courses.length
+    ? `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;border-radius:12px;background-color:${BRAND.soft};margin:0 0 20px">
+         <tr><td style="padding:16px 18px">
+           <p style="margin:0 0 8px;color:${BRAND.muted};font-size:12px;line-height:16px;text-transform:uppercase;letter-spacing:0.06em">Programs we discussed</p>
+           ${options.courses
+             .map(
+               (c) =>
+                 `<p style="margin:0 0 4px;color:${BRAND.ink};font-size:15px;line-height:22px;font-weight:600">${esc(c)}</p>`,
+             )
+             .join("")}
+         </td></tr>
+       </table>`
+    : "";
+
+  // A bordered left rail per turn rather than chat bubbles: bubbles need alignment and
+  // background tricks that Outlook drops, and a transcript reads fine as a document.
+  const transcript = options.turns
+    .map((t) => {
+      const answer = t.answer.length > SUMMARY_ANSWER_CHARS
+        ? `${t.answer.slice(0, SUMMARY_ANSWER_CHARS)}…`
+        : t.answer;
+      return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;margin:0 0 18px">
+        <tr><td style="border-left:3px solid ${BRAND.line};padding:0 0 0 14px">
+          <p style="margin:0 0 6px;color:${BRAND.ink};font-size:15px;line-height:22px;font-weight:600">${esc(t.question)}</p>
+          <p style="margin:0;color:${BRAND.body};font-size:14px;line-height:22px;white-space:pre-wrap">${esc(answer)}</p>
+        </td></tr>
+      </table>`;
+    })
+    .join("");
+
+  // The recap is the email; the transcript is what we send when there is no recap. Sending
+  // both would bury the part they actually asked for under the part they already lived
+  // through.
+  const written = options.summary?.trim()
+    ? renderSummaryProse(options.summary.trim())
+    : transcript;
+
+  const intro = options.summary?.trim()
+    ? `Here's a recap of your chat with ${org ? `<strong>${org}</strong>` : "our AI counsellor"}, so you have it to hand whenever you need it.`
+    : `Here's the conversation you had with ${org ? `the <strong>${org}</strong> AI counsellor` : "our AI counsellor"}, so you have the details to hand whenever you need them.`;
+
+  /**
+   * The one sentence that separates a confirmed goodbye from an abandoned tab.
+   *
+   * It claims nothing either way, and that is the point. Asserting the conversation ended
+   * unresolved would be false for the large share of people who got exactly what they came for
+   * and simply closed the tab without pressing a button — and being told your question went
+   * unanswered when it did not is worse than being told nothing. An invitation is true for both.
+   */
+  const pickUp = options.confirmedEnd
+    ? ""
+    : `<p style="margin:0 0 20px">If anything's still unanswered, you can pick up where you left off.</p>`;
+
+  const body = `<p style="margin:0 0 16px">Hi ${esc(options.name)},</p>
+    <p style="margin:0 0 ${pickUp ? "8px" : "20px"}">${intro}</p>
+    ${pickUp}
+    ${courseList}
+    ${written}`;
+
+  const textCourses = options.courses.length
+    ? `\n\nPrograms we discussed:\n${options.courses.map((c) => `- ${c}`).join("\n")}`
+    : "";
+  const textTurns = options.turns
+    .map((t) => `\nQ: ${t.question}\nA: ${t.answer.slice(0, SUMMARY_ANSWER_CHARS)}`)
+    .join("\n");
+
+  const textBody = options.summary?.trim() ? `\n${options.summary.trim()}\n` : textTurns;
+
+  // Both branches the HTML makes, which this half of the email did not make at all: it announced
+  // "a recap" over a raw transcript whenever the model was unavailable, and never invited an
+  // abandoned visitor back. A plain-text part nobody reads is still a plain-text part that lies.
+  const textIntro = options.summary?.trim()
+    ? `Here's a recap of your chat with ${options.orgName ?? "our"} AI counsellor.`
+    : `Here's the conversation you had with ${options.orgName ? `the ${options.orgName}` : "our"} AI counsellor.`;
+  const textPickUp = options.confirmedEnd
+    ? ""
+    : "\n\nIf anything's still unanswered, you can pick up where you left off.";
+
+  return {
+    subject,
+    text: `Hi ${options.name},\n\n${textIntro}${textPickUp}${textCourses}\n${textBody}\n\nContinue the conversation: ${options.conversationUrl}`,
+    html: emailLayout({
+      heading: "Your conversation",
+      body,
+      cta: { label: "Continue the conversation", href: options.conversationUrl },
+      // Says plainly why this arrived. The visitor asked for it minutes ago, but they asked
+      // inside someone else's website and may not connect this sender with that chat.
+      footnote: `You asked us to send you a copy of this chat${org ? ` on ${org}'s website` : ""}. We only email you when you ask us to.`,
+      size: "wide",
+      align: "left",
+    }),
+  };
+}

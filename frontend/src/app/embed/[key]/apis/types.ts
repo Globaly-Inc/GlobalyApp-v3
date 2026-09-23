@@ -32,12 +32,57 @@ export type WireCourseCard = {
   source_url: string | null;
 };
 
+/** Copy for the inline contact card, written server-side so it can name the institution. */
+export type EmbedContactPrompt = {
+  heading: string;
+  body: string;
+};
+
+/**
+ * The offer to end the chat and be emailed a summary.
+ *
+ * `covered` is the counsellor's own clause describing what was discussed — it is why this reads
+ * as part of the conversation rather than as a timed pop-up. Null when the model classified the
+ * conversation as finished but did not write one, in which case the card drops that sentence.
+ *
+ * The model's INTERNAL reason for the classification is deliberately not here: it is written for
+ * our logs, in a register that would read badly to a visitor.
+ */
+export type EmbedEndPrompt = {
+  heading: string;
+  body: string;
+  covered: string | null;
+  email: string | null;
+};
+
 export type EmbedChatEvent =
   | { type: "delta"; text: string }
   | { type: "trace"; step: string }
   | { type: "cards"; cards: CourseCard[] }
   | { type: "chips"; chips: string[] }
+  | { type: "contact-prompt"; prompt: EmbedContactPrompt }
+  | { type: "end-prompt"; prompt: EmbedEndPrompt }
   | { type: "done" };
+
+export type GuestContactRequest = {
+  embed_key: string;
+  fingerprint: string;
+  action: "submit" | "skip";
+  name?: string;
+  email?: string;
+};
+
+export type GuestConversationEndRequest = {
+  embed_key: string;
+  fingerprint: string;
+  action: "end" | "continue";
+};
+
+/** `summary_queued` is false when they confirmed without ever giving an address. */
+export type GuestConversationEndResponse = {
+  ok: boolean;
+  summary_queued?: boolean;
+};
 
 /** One stored turn of the visitor's thread, as /guest/session returns it. */
 export type EmbedStoredMessage = {
