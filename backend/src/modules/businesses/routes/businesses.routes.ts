@@ -3,7 +3,7 @@
 import type { FastifyInstance } from "fastify";
 import {
   BusinessRegisterSchema, BusinessProfilePatchSchema, BusinessSearchQuerySchema, ClaimAcceptSchema, ClaimRequestByEmailSchema,
-  AiAssistSchema,
+  AiAssistSchema, StartExtractionSchema, SiteUrlsQuerySchema, SiteUrlSnapshotQuerySchema,
 } from "../schemas/businesses.schema.js";
 import { requireBusinessContext, requireBusinessOrInstitutionContext } from "../../../core/plugins/auth.plugin.js";
 import * as service from "../services/businesses.service.js";
@@ -51,6 +51,35 @@ export async function businessRoutes(app: FastifyInstance) {
   app.patch("/me", { preHandler: requireBusinessContext }, async (req, reply) => {
     const data = BusinessProfilePatchSchema.parse(req.body);
     const result = await service.updateProfile(req.auth.orgId!, data);
+    return reply.send(result);
+  });
+
+  app.post("/me/start-extraction", {
+    preHandler: requireBusinessContext,
+    config: { rateLimit: { max: 5, timeWindow: "15 minutes" } },
+  }, async (req, reply) => {
+    const input = StartExtractionSchema.parse(req.body);
+    const result = await service.startExtraction(req.auth.orgId!, Number(req.auth.sub), input);
+    return reply.status(201).send(result);
+  });
+
+  app.get("/me/extraction-status", { preHandler: requireBusinessContext }, async (req, reply) => {
+    const result = await service.getExtractionStatus(req.auth.orgId!);
+    return reply.send(result);
+  });
+
+  app.get("/me/extraction-site-urls", { preHandler: requireBusinessContext }, async (req, reply) => {
+    const query = SiteUrlsQuerySchema.parse(req.query);
+    const result = await service.getExtractionSiteUrls(req.auth.orgId!, query);
+    return reply.send(result);
+  });
+
+  app.get("/me/extraction-site-urls/snapshot", {
+    preHandler: requireBusinessContext,
+    config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+  }, async (req, reply) => {
+    const query = SiteUrlSnapshotQuerySchema.parse(req.query);
+    const result = await service.getExtractionSiteUrlSnapshot(req.auth.orgId!, query);
     return reply.send(result);
   });
 
