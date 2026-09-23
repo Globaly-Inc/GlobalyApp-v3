@@ -4,8 +4,9 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { buildPaginatedResponse, paginationToOffset, PaginationSchema } from "../../../shared/pagination.js";
-import { requireBusinessContext, requireBusinessOrInstitutionContext } from "../../../core/plugins/auth.plugin.js";
+import { requireBusinessOrInstitutionContext } from "../../../core/plugins/auth.plugin.js";
 import * as categoriesService from "../../superadmin/platform/categories/services/categories.service.js";
+import { AccreditationInputSchema, IssuingOrgInputSchema } from "../../superadmin/platform/categories/schemas/categories.schema.js";
 const CategoryListQuery = PaginationSchema.extend({
   search: z.string().trim().min(1).optional(),
 });
@@ -66,12 +67,54 @@ export async function businessLookupsRoutes(app: FastifyInstance) {
     return reply.send({ data: rows });
   });
 
+  // approvedOnly=true — a pending self-proposed entry isn't vetted yet, so another org picking
+  // from this shared list must not see (and be able to claim) it before an admin reviews it.
   app.get("/accreditations", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
     const pagination = PaginationSchema.parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
     const [rows, total] = await Promise.all([
-      categoriesService.listAccreditations(limit, offset),
-      categoriesService.countAccreditations(),
+      categoriesService.listAccreditations(limit, offset, true),
+      categoriesService.countAccreditations(true),
+    ]);
+    return reply.send(buildPaginatedResponse(rows, total, pagination));
+  });
+
+  // Accreditations/issuing orgs are a shared global catalog (same one admin curates) — the
+  // "Add a new accreditation" path in the self-service Accreditations tab mirrors admin's
+  // one-for-one, so it writes to the same catalog rather than a business-scoped copy.
+  app.get("/issuing-organizations", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
+    const { search, ...pagination } = CategoryListQuery.parse(req.query);
+    const { limit, offset } = paginationToOffset(pagination);
+    const [rows, total] = await Promise.all([
+      categoriesService.listIssuingOrganizations(limit, offset, search, true),
+      categoriesService.countIssuingOrganizations(search, true),
+    ]);
+    return reply.send(buildPaginatedResponse(rows, total, pagination));
+  });
+
+  // Unlike admin's createIssuingOrganization, this starts pending — an admin has to review it
+  // before another org can see/select it from the shared catalog (see proposeIssuingOrganization).
+  app.post("/issuing-organizations", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
+    const data = IssuingOrgInputSchema.parse(req.body);
+    return reply.status(201).send(await categoriesService.proposeIssuingOrganization(data));
+  });
+
+  // Unlike admin's createAccreditation, this starts pending/non-global — an admin has to
+  // reviewAccreditation it before it's a vetted, globally-trusted catalog entry (see
+  // proposeAccreditation's comment).
+  app.post("/accreditations", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
+    const data = AccreditationInputSchema.parse(req.body);
+    return reply.status(201).send(await categoriesService.proposeAccreditation(data));
+  });
+
+  // Read-only — the admin catalog also lets an admin propose/review new fee types, which stays
+  // admin-only; a self-service caller only ever picks from the existing approved list.
+  app.get("/fee-types", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
+    const pagination = PaginationSchema.parse(req.query);
+    const { limit, offset } = paginationToOffset(pagination);
+    const [rows, total] = await Promise.all([
+      categoriesService.listFeeTypes(limit, offset),
+      categoriesService.countFeeTypes(),
     ]);
     return reply.send(buildPaginatedResponse(rows, total, pagination));
   });

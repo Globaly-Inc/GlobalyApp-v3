@@ -10,6 +10,6 @@ export type {
   Role, RoleCreateInput, RolePatch,
   SchemaFieldValue, Scholarship, ScholarshipInput, ScholarshipPatch, ServiceAccreditationLink, ServiceEligibility,
   ServiceEligibilityInput, ServiceFee, ServiceFeeInput, ServiceInput, ServiceIntake, ServiceIntakeInput,
-  ServiceSearchParams, ServiceStudyOption, ServiceStudyOptionInput, ServiceStudyUnit, ServiceStudyUnitInput,
+  ServiceMediaFile, ServiceSearchParams, ServiceStudyOption, ServiceStudyOptionInput, ServiceStudyUnit, ServiceStudyUnitInput,
   SharedServices,
 } from "./types";

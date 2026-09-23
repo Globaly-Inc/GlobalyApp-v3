@@ -1,6 +1,7 @@
 // Repository for the uploaded_files metadata table.
 
 import { masterKnex } from "../../core/db/master-pool.js";
+import * as storage from "./storageService.js";
 
 export interface UploadedFileRow {
   id: number;
@@ -40,4 +41,19 @@ export async function listFilesByEntity(entityType: string, entityId: string, ca
 
 export async function deleteFileRecord(id: number) {
   return masterKnex("uploaded_files").where({ id }).update({ deleted_at: masterKnex.fn.now() });
+}
+
+/**
+ * Deleting the parent entity (a service/course) removed neither its uploaded_files rows nor the
+ * GCS objects they point to — every media upload became orphaned storage the instant its parent
+ * was deleted. Called wherever a service/course delete happens, for every entity type that can
+ * carry uploaded media (currently just "service" — courses and business services share that
+ * entity_type, see service-media.routes.ts).
+ */
+export async function deleteFilesByEntity(entityType: string, entityId: string) {
+  const files = await listFilesByEntity(entityType, entityId);
+  await Promise.all(files.map((f) => storage.deleteFile(f.storage_path).catch(() => {})));
+  if (files.length > 0) {
+    await masterKnex("uploaded_files").whereIn("id", files.map((f) => f.id)).update({ deleted_at: masterKnex.fn.now() });
+  }
 }
