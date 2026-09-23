@@ -43,6 +43,14 @@ export interface InstitutionRecord {
   city: string | null;
   address: string | null;
   postcode: string | null;
+  currency: string | null;
+  registration_licenses: Record<string, unknown> | null;
+  linkedin_url: string | null;
+  facebook_url: string | null;
+  instagram_url: string | null;
+  twitter_url: string | null;
+  youtube_url: string | null;
+  whatsapp_url: string | null;
   status: string;
   /** 0 = not activated, 1 = activated. Same contract as businesses.account_status. */
   account_status: number;

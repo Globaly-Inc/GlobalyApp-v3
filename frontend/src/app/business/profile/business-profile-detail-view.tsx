@@ -241,6 +241,7 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
         profile={profile}
         onSave={handleSaveSocials}
         saving={savingSocials}
+        isInstitution={isViewingInstitution}
       />
     </div>
   );

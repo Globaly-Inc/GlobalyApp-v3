@@ -395,4 +395,19 @@ export type ScholarshipPatch = Partial<ScholarshipInput>;
 
 export type ScholarshipListParams = { search?: string; page?: number; limit?: number };
 
+// ─── Bulk import — same job-tracking shape as the superadmin editor's, scoped to this business ───
+
+export type ImportRowResult = { title: string; status: "ok" | "error"; detail?: string };
+
+export type ImportJob = {
+  id: number;
+  status: "pending" | "processing" | "completed" | "failed";
+  total_rows: number;
+  processed_rows: number;
+  created_count: number;
+  error_count: number;
+  results: ImportRowResult[];
+  failure_reason: string | null;
+};
+
 export type ScholarshipListResult = { data: Scholarship[]; total: number };

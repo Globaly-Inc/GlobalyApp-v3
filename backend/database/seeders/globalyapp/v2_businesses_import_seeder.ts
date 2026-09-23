@@ -48,17 +48,20 @@ function sharedFields(r: V2Row, countryId: number | null) {
 
 /** Everything V2 tracked that has no v3 column — preserved rather than dropped. */
 function metaFrom(r: V2Row) {
+  // "created_via" is NOT in this list: the dump's own created_via (e.g. "admin_manual") would
+  // otherwise spread over and clobber our "v2_import" provenance tag below, silently losing it
+  // for any row V2 already tagged. Preserved instead under its own key, v2_created_via.
   const keep = [
     "default_currency",
     "total_services",
     "total_students",
     "total_agents",
     "profile_views",
-    "created_via",
     "source_reference",
   ] as const;
   return {
     created_via: "v2_import",
+    v2_created_via: r.created_via ?? null,
     v2_id: r.id,
     v2_business_category_id: r.business_category_id ?? null,
     ...Object.fromEntries(keep.filter((k) => r[k]).map((k) => [k, r[k]])),
@@ -94,6 +97,7 @@ export async function seed(knex: Knex): Promise<void> {
         video_urls: gallery.videos.length ? gallery.videos : null,
         status: r.status === "verified" ? "verified" : "pending",
         claim_status: "unclaimed",
+        origin: "seeded",
         meta: JSON.stringify({ ...metaFrom(r), ...(emailTaken ? { contact_email: email } : {}) }),
         // platform_user_id / first_name / last_name stay NULL, account_status stays 0,
         // schema_provisioned_at stays NULL — provisioned on claim accept.
@@ -112,6 +116,7 @@ export async function seed(knex: Knex): Promise<void> {
         video_urls: gallery.videos.length ? gallery.videos : null,
         status: r.status === "verified" ? "verified" : "unverified",
         claim_status: "unclaimed",
+        origin: "seeded",
         enquiry_enabled: r.enquiry_enabled !== "false",
         enquiry_coin_cost: Number(r.enquiry_coin_cost ?? 30),
         enquiry_max_distributions: Number(r.enquiry_max_distributions ?? 5),

@@ -11,6 +11,7 @@ import { businessLookupsRoutes } from "./routes/lookups.routes.js";
 import { businessPartnersRoutes } from "./routes/partners.routes.js";
 import { businessActivityRoutes } from "./routes/activity.routes.js";
 import { businessScholarshipsRoutes } from "./routes/scholarships.routes.js";
+import { businessScholarshipsImportRoutes } from "./routes/scholarships-import.routes.js";
 import { agentBusinessRoutes } from "../agents/routes/agents.routes.js";
 import { businessRolesRoutes } from "../agents/routes/roles.routes.js";
 
@@ -24,6 +25,7 @@ export default async function businessesModule(app: FastifyInstance) {
   app.register(businessPartnersRoutes, { prefix: "/api/v3/businesses" });
   app.register(businessActivityRoutes, { prefix: "/api/v3/businesses" });
   app.register(businessScholarshipsRoutes, { prefix: "/api/v3/businesses" });
+  app.register(businessScholarshipsImportRoutes, { prefix: "/api/v3/businesses" });
   app.register(agentBusinessRoutes, { prefix: "/api/v3/businesses/members" });
   app.register(businessRolesRoutes, { prefix: "/api/v3/businesses/roles" });
 }

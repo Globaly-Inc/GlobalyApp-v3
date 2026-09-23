@@ -222,7 +222,7 @@ const mockBusinesses: BusinessDetail[] = [
     status: "verified", claim_status: "claimed", is_published: true, country_id: 1, country_name: "Australia", city: "Sydney",
     logo_url: null, account_status: 1, created_at: "2026-06-01T09:00:00Z",
     owner_first_name: "Alicia", owner_last_name: "Tan", owner_email: "alicia@primeedu.com",
-    is_unclaimed: false, profile_views: 128, source_job_id: null, branch_count: 2, service_count: 5,
+    is_unclaimed: false, profile_views: 128, source_job_id: null, origin: "signup", branch_count: 2, service_count: 5,
     description: "Prime Education Group helps students find the right university across Australia.",
     website: "https://primeedu.com", state: "NSW", address: "1 George St", postcode: "2000",
     cover_url: null, linkedin_url: null, facebook_url: null, instagram_url: null, twitter_url: null,
@@ -236,7 +236,7 @@ const mockBusinesses: BusinessDetail[] = [
     status: "unverified", claim_status: "claimed", is_published: false, country_id: 2, country_name: "New Zealand", city: "Auckland",
     logo_url: null, account_status: 1, created_at: "2026-07-15T09:00:00Z",
     owner_first_name: "Ravi", owner_last_name: "Shah", owner_email: "ravi@everestmigration.com",
-    is_unclaimed: false, profile_views: 12, source_job_id: null, branch_count: 0, service_count: 0,
+    is_unclaimed: false, profile_views: 12, source_job_id: null, origin: "signup", branch_count: 0, service_count: 0,
     description: null, website: null, state: null, address: null, postcode: null,
     cover_url: null, linkedin_url: null, facebook_url: null, instagram_url: null, twitter_url: null,
     youtube_url: null, whatsapp_url: null, gallery_images: [], video_urls: [],
@@ -249,7 +249,7 @@ const mockBusinesses: BusinessDetail[] = [
     status: "unverified", claim_status: "unclaimed", is_published: false, country_id: 3, country_name: "Canada", city: "Vancouver",
     logo_url: null, account_status: 1, created_at: "2026-05-20T09:00:00Z",
     owner_first_name: null, owner_last_name: null, owner_email: null,
-    is_unclaimed: true, profile_views: 0, source_job_id: null, branch_count: 0, service_count: 0,
+    is_unclaimed: true, profile_views: 0, source_job_id: null, origin: "admin", branch_count: 0, service_count: 0,
     description: null, website: null, state: null, address: null, postcode: null,
     cover_url: null, linkedin_url: null, facebook_url: null, instagram_url: null, twitter_url: null,
     youtube_url: null, whatsapp_url: null, gallery_images: [], video_urls: [],
@@ -268,7 +268,7 @@ const mockInstitutions: InstitutionDetail[] = [
     linkedin_url: null, facebook_url: null, instagram_url: null, twitter_url: null, youtube_url: null, whatsapp_url: null,
     gallery_images: [], video_urls: [], account_status: 1, created_at: "2026-05-20T09:00:00Z", updated_at: "2026-05-20T09:00:00Z",
     verified_at: null, owner_id: null, is_unclaimed: true, business_category_id: null, category_name: "Institutions",
-    owner_first_name: null, owner_last_name: null, owner_email: null, source_job_id: "mock-job-1",
+    owner_first_name: null, owner_last_name: null, owner_email: null, source_job_id: "mock-job-1", origin: "seeded",
     branch_count: 0, service_count: 3,
   },
 ];
@@ -340,6 +340,9 @@ function applyFilters(rows: Business[], params: BusinessListParams): Business[] 
   if (params.category) out = out.filter((b) => b.business_category_id === params.category);
   if (params.kind) out = out.filter((b) => b.kind === params.kind);
   if (params.business_type) out = out.filter((b) => b.business_type === params.business_type);
+  if (params.origin) out = out.filter((b) => b.origin === params.origin);
+  if (params.ownership === "owned") out = out.filter((b) => !b.is_unclaimed);
+  if (params.ownership === "unclaimed") out = out.filter((b) => b.is_unclaimed);
   out = [...out].sort((a, b) => {
     switch (params.sort) {
       case "name_desc": return b.business_name.localeCompare(a.business_name);
@@ -413,7 +416,7 @@ export const businessesMockApi = {
       country_id: input.country_id ?? null, country_name: null, city: input.city ?? null,
       logo_url: input.logo_url ?? null, account_status: 1, created_at: now,
       owner_first_name: input.first_name ?? input.business_name, owner_last_name: input.last_name ?? null, owner_email: input.email ?? null,
-      is_unclaimed: true, profile_views: 0, source_job_id: null, branch_count: 0, service_count: 0,
+      is_unclaimed: true, profile_views: 0, source_job_id: null, origin: "admin", branch_count: 0, service_count: 0,
       description: input.description ?? null, website: input.website ?? null, state: input.state ?? null,
       address: input.address ?? null, postcode: input.postcode ?? null, cover_url: input.cover_url ?? null,
       linkedin_url: input.linkedin_url ?? null, facebook_url: input.facebook_url ?? null,
@@ -437,6 +440,11 @@ export const businessesMockApi = {
     const inst = mockInstitutions.find((x) => x.id === id);
     if (!inst) throw new Error("Institution not found");
     return inst;
+  },
+  mintInstitutionPreviewToken: async (id: number): Promise<{ preview_token: string }> => {
+    console.log("[mock] POST /admin/platform/institutions/:id/preview-token", id);
+    await delay(100);
+    return { preview_token: "mock-preview-token" };
   },
   getListingKind: async (id: number): Promise<{ kind: ListingKind }> => {
     console.log("[mock] GET /admin/platform/listings/:id/kind", id);

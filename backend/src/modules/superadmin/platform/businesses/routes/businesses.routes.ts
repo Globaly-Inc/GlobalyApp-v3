@@ -15,6 +15,7 @@ import {
   MemberParamsSchema, MemberPatchSchema, PublishedPatchSchema, RoleCreateSchema, RolePatchSchema, StatusPatchSchema,
 } from "../schemas/businesses.schema.js";
 import { ContactInputSchema, ContactPatchSchema } from "../../../../agents/schemas/agents.schema.js";
+import { issuePreviewTokenForOrg } from "../../../../auth/auth.service.js";
 
 const logger = createChildLogger("admin-businesses");
 
@@ -50,9 +51,13 @@ export async function adminBusinessRoutes(app: FastifyInstance) {
   // dropdown), by category_slug (e.g. partner-pairing lookups that only know a slug), or by
   // `kind` (a consultancy/partner picker that wants one table, no category restriction).
   app.get("/businesses", async (req, reply) => {
-    const { search, status, category, category_slug, sort, kind, business_type, ...pagination } = ListQuerySchema.parse(req.query);
+    const {
+      search, status, category, category_slug, sort, kind, business_type, origin, ownership, ...pagination
+    } = ListQuerySchema.parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
-    const { rows, total } = await service.listBusinesses(limit, offset, search, status, category, category_slug, kind, sort, business_type);
+    const { rows, total } = await service.listBusinesses(
+      limit, offset, search, status, category, category_slug, kind, sort, business_type, origin, ownership,
+    );
     return reply.send(buildPaginatedResponse(rows, total, pagination));
   });
 
@@ -139,6 +144,16 @@ export async function adminBusinessRoutes(app: FastifyInstance) {
   app.get("/institutions/:id", async (req, reply) => {
     const { id } = IdParamSchema.parse(req.params);
     return reply.send(await service.getInstitutionDetail(id));
+  });
+
+  // Mints the superadmin editor's "Preview" button a short-lived preview_token for this
+  // institution (see issuePreviewTokenForOrg) — never a reusable admin session credential,
+  // since this ends up in a public page's URL (browser history, logs, referrer).
+  app.post("/institutions/:id/preview-token", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    const institution = await platformRepo.findInstitutionById(id);
+    if (!institution) throw new NotFoundError("Institution not found");
+    return reply.send({ preview_token: issuePreviewTokenForOrg(institution.schema_name, "institution") });
   });
 
   // PATCH /institutions/:id — the institution twin of PATCH /businesses/:id.

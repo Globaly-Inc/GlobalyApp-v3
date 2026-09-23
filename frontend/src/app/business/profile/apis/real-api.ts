@@ -4,7 +4,7 @@ import type {
 } from "@/app/admin/platform/categories/apis/types";
 import type {
   ActivityListParams, ActivityListResult, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchListResult, BranchPatch,
-  BusinessRelation, BusinessSearchParams, BusinessSearchResult, BusinessService, InvitationListResult, LinkExistingBranchInput, LinkExistingBranchResult,
+  BusinessRelation, BusinessSearchParams, BusinessSearchResult, BusinessService, ImportJob, InvitationListResult, LinkExistingBranchInput, LinkExistingBranchResult,
   Member, MemberInviteInput, MemberListParams, MemberListResult, MemberPatch, MemberRole,
   PartnerInstitutionCourse, PartnerInstitutionCourseListParams, PartnerInstitutionCourseListResult, PartnerInstitutionDetail, Permission,
   RelationInput, RelationListParams, RelationListResult, RelationPatch, Role, RoleCreateInput, RolePatch,
@@ -203,6 +203,10 @@ export const businessProfileDetailRealApi = {
   updateScholarship: (scholarshipId: number, patch: ScholarshipPatch): Promise<Scholarship> =>
     httpPatch(`${BASE}/scholarships/${scholarshipId}`, patch),
   deleteScholarship: (scholarshipId: number): Promise<void> => httpDelete(`${BASE}/scholarships/${scholarshipId}`),
+  // Bulk import — mirrors the superadmin editor's flow (client parses/maps the spreadsheet,
+  // only clean rows go over the wire), scoped to this business by the backend.
+  startScholarshipImport: (rows: ScholarshipInput[]): Promise<ImportJob> => httpPost(`${BASE}/scholarships/import`, { rows }),
+  getScholarshipImportJob: (id: number): Promise<ImportJob> => httpGet(`${BASE}/scholarships/import/${id}`),
 
   serviceFees: childResourceApi<ServiceFee, ServiceFeeInput, ServiceFeePatch>("fees"),
   serviceIntakes: childResourceApi<ServiceIntake, ServiceIntakeInput, ServiceIntakePatch>("intakes"),
