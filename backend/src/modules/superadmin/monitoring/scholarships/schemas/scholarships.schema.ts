@@ -77,6 +77,12 @@ export const ImportRowsSchema = z.object({
   rows: z.array(ScholarshipInputSchema).min(1).max(2000),
 });
 
+// Business self-service bulk import — same shape as admin's, minus is_featured (businesses can't
+// set it, forced false server-side — see createForBusiness).
+export const BusinessImportRowsSchema = z.object({
+  rows: z.array(BusinessScholarshipInputSchema).min(1).max(2000),
+});
+
 export const BulkDeleteSchema = z.object({
   ids: z.array(z.number().int().positive()).min(1).max(500),
 });

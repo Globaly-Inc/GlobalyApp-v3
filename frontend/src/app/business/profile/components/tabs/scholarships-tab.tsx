@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ExternalLink, GraduationCap, Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { ExternalLink, GraduationCap, Loader2, Pencil, Plus, Search, Trash2, UploadCloud } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,7 @@ import { fetchScholarships, deleteScholarship, toggleScholarshipPublished } from
 import type { Scholarship } from "../../apis/types";
 import { CreateScholarshipDialog } from "../scholarships/create-scholarship-dialog";
 import { DeleteScholarshipDialog } from "../scholarships/delete-scholarship-dialog";
+import { ScholarshipImportDialog } from "../scholarships/scholarship-import-dialog";
 
 const PAGE_SIZE = 10;
 
@@ -33,6 +34,7 @@ export function ScholarshipsTab({ businessId }: Readonly<{ businessId: number }>
   const [editing, setEditing] = useState<Scholarship | null>(null);
   const [deleting, setDeleting] = useState<Scholarship | null>(null);
   const [removing, setRemoving] = useState(false);
+  const [importOpen, setImportOpen] = useState(false);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
 
@@ -90,9 +92,14 @@ export function ScholarshipsTab({ businessId }: Readonly<{ businessId: number }>
           <h2 className="text-lg font-bold">Scholarships</h2>
           <p className="text-sm text-muted-foreground">Offer scholarships to attract prospective students.</p>
         </div>
-        <Button className="h-10" onClick={() => { setEditing(null); setCreateOpen(true); }}>
-          <Plus className="mr-1.5 h-3.5 w-3.5" /> New scholarship
-        </Button>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" className="h-10" onClick={() => setImportOpen(true)}>
+            <UploadCloud className="mr-1.5 h-3.5 w-3.5" /> Bulk import
+          </Button>
+          <Button className="h-10" onClick={() => { setEditing(null); setCreateOpen(true); }}>
+            <Plus className="mr-1.5 h-3.5 w-3.5" /> New scholarship
+          </Button>
+        </div>
       </div>
 
       <div className="mb-4 grid grid-cols-3 gap-3">
@@ -172,6 +179,7 @@ export function ScholarshipsTab({ businessId }: Readonly<{ businessId: number }>
 
       <CreateScholarshipDialog open={createOpen} onOpenChange={setCreateOpen} businessId={businessId} editing={editing} />
       <DeleteScholarshipDialog scholarship={deleting} onOpenChange={(open) => { if (!open) setDeleting(null); }} onConfirm={handleDelete} deleting={removing} />
+      <ScholarshipImportDialog open={importOpen} onOpenChange={setImportOpen} businessId={businessId} />
     </div>
   );
 }
