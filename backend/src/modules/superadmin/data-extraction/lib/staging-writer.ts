@@ -15,6 +15,7 @@ import { parseCourseName, canonicalCourseUrl } from "./course-name.js";
 import { resolveCourse, type CandidateRow } from "./course-resolver.js";
 import { classifyEntity, type EntityClassification } from "./entity-classifier.js";
 import { parseAddress } from "./address-parser.js";
+import { backfillSelfServiceProfile } from "./overview-sync.js";
 
 const logger = createChildLogger("staging-writer");
 /** Every course's lookup binding lands here, linked or not; the verify worker totals them per job. */
@@ -440,6 +441,10 @@ export async function writeInstitutionOverview(jobId: string, data: InstitutionO
     .merge(mergeSet)
     .returning("id");
   logger.info("Upserted institution overview", { jobId, id: row.id });
+
+  await backfillSelfServiceProfile(jobId).catch((err) =>
+    logger.warn("Self-service profile backfill failed", { jobId, err: err instanceof Error ? err.message : String(err) }),
+  );
   return row;
 }
 

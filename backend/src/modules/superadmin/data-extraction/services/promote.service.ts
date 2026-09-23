@@ -25,6 +25,7 @@ import { logAudit } from "../shared/audit.js";
 import * as jobsRepo from "../repositories/jobs.repository.js";
 import * as repo from "../repositories/promote.repository.js";
 import type { OverviewRow, AgentRow } from "../repositories/promote.repository.js";
+import { baseProfileFieldsFrom, institutionExtrasFrom, businessExtrasFrom } from "../lib/overview-sync.js";
 import { PROMOTABLE_JOB_STATUSES } from "../schemas/jobs.schema.js";
 
 /**
@@ -91,30 +92,10 @@ async function resolveListingOwnerFromAgents(jobId: string) {
   return resolveAgentOwner(named.name!.trim(), named.email, named.phone, seedFrom(named.id));
 }
 
-/** Profile fields shared by institutions and businesses, straight off the overview row. */
-function profileFrom(overview: OverviewRow | undefined, countryId: number | null) {
-  return {
-    description: overview?.description ?? null,
-    logo_url: overview?.logo_url ?? null,
-    website: overview?.website ?? null,
-    country_id: countryId,
-    state: overview?.state ?? null,
-    city: overview?.city ?? null,
-    address: overview?.address ?? null,
-    postcode: overview?.zip_code ?? null,
-    linkedin_url: overview?.linkedin_url ?? null,
-    facebook_url: overview?.facebook_url ?? null,
-    instagram_url: overview?.instagram_url ?? null,
-    twitter_url: overview?.twitter_url ?? null,
-    youtube_url: overview?.youtube_url ?? null,
-  };
-}
-
 async function promoteInstitution(job: any, overview: OverviewRow | undefined) {
   const name = overview?.name ?? job.institution_name ?? "Untitled institution";
   const seed = seedFrom(job.id);
   const existing = await repo.findInstitutionByJobId(job.id);
-  const countryId = await repo.findCountryId(overview?.country);
 
   // institutions.email is uniquely indexed where NOT NULL. Two jobs for the same school
   // would collide, so the loser keeps its address in meta rather than failing the promote.
@@ -125,7 +106,8 @@ async function promoteInstitution(job: any, overview: OverviewRow | undefined) {
     institution_name: name,
     email: emailFree ? email : null,
     phone: overview?.phone ?? null,
-    ...profileFrom(overview, countryId),
+    ...(await baseProfileFieldsFrom(overview)),
+    ...institutionExtrasFrom(overview),
     meta: {
       created_via: "admin_extraction",
       source_url: overview?.source_url ?? job.institution_url ?? null,
@@ -161,14 +143,14 @@ async function promoteBusiness(job: any, overview: OverviewRow | undefined) {
   const name = overview?.name ?? job.institution_name ?? "Untitled business";
   const seed = seedFrom(job.id);
   const existing = await repo.findPrimaryBusinessByJobId(job.id);
-  const countryId = await repo.findCountryId(overview?.country);
 
   const fields = {
     business_name: name,
     business_category_id: job.business_category_id ?? null,
     email: overview?.email ?? null,
     phone: overview?.phone ?? null,
-    ...profileFrom(overview, countryId),
+    ...(await baseProfileFieldsFrom(overview)),
+    ...businessExtrasFrom(overview),
     meta: {
       created_via: "admin_extraction",
       source_type: job.source_type ?? null,

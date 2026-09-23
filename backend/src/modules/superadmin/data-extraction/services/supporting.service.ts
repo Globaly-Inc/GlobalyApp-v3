@@ -10,6 +10,7 @@ import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import * as repo from "../repositories/supporting.repository.js";
 import { courseIdsForStudyOption, deriveIntakeMonthYear, syncCourseDurationFromOptions } from "../lib/staging-writer.js";
 import { coercePartialDate, normaliseStored } from "../lib/partial-date.js";
+import { syncBranchFromCampus } from "../lib/branch-sync.js";
 import {
   AcademicTestSchema,
   IntakeCustomDateSchema,
@@ -210,6 +211,11 @@ export async function saveAndLearn(input: SaveAndLearnInput, adminId: number) {
   if (table === "extraction_courses") await normaliseCoursePatch(patch);
 
   await repo.patchEntityRow(table, id, patch, adminId);
+  if (table === "extraction_campuses") {
+    await syncBranchFromCampus(id).catch((err) =>
+      logger.warn("Tenant branch sync failed after campus save-and-learn", { id, err: err instanceof Error ? err.message : String(err) }),
+    );
+  }
 
   // Study options own a course's duration; an inline edit to one moves every linked course.
   if (table === "extraction_study_options") await syncCourseDurationFromOptions(await courseIdsForStudyOption(id));

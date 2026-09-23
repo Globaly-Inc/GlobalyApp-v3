@@ -40,6 +40,7 @@ type InstitutionMe = {
   institution_type: string | null;
   /** Extraction job this institution was linked to (self-triggered). Null = no extracted data yet. */
   source_job_id: string | null;
+  registration_licenses: Record<string, unknown> | null;
 };
 
 /**
@@ -107,7 +108,7 @@ function institutionToBusinessProfile(inst: InstitutionMe): BusinessProfile {
     // visibility at all, and since 20260915_002 institutions can.
     public_visibility: inst.public_visibility ?? {},
     currency: null,
-    registration_licenses: null,
+    registration_licenses: inst.registration_licenses,
     gallery_images: signedOnly(inst.gallery_images),
     video_urls: signedOnly(inst.video_urls),
     linkedin_url: null, facebook_url: null, instagram_url: null, twitter_url: null, youtube_url: null,
@@ -121,7 +122,7 @@ function institutionToBusinessProfile(inst: InstitutionMe): BusinessProfile {
 // be dropped rather than forwarded.
 const INSTITUTION_PATCHABLE_KEYS = [
   "email", "phone", "description", "website", "country_id", "state", "city", "address",
-  "postcode", "is_published", "public_visibility", "institution_type",
+  "postcode", "is_published", "public_visibility", "institution_type", "registration_licenses",
 ] as const satisfies readonly (keyof BusinessProfilePatch)[];
 
 function toInstitutionPatch(patch: BusinessProfilePatch): Record<string, unknown> {

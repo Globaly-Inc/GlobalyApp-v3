@@ -1,10 +1,14 @@
 // Staged entities + junctions service.
 
 import { BadRequestError, NotFoundError } from "../../../../shared/errors.js";
+import { createChildLogger } from "../../../../shared/logger.js";
 import { logAudit } from "../shared/audit.js";
 import * as repo from "../repositories/staged.repository.js";
 import { withActorNames } from "../shared/actor-names.js";
 import { courseIdsForStudyOption, syncCourseDurationFromOptions, upsertStudyOption } from "../lib/staging-writer.js";
+import { findCampusJobId, syncBranchDeletion, syncBranchFromCampus } from "../lib/branch-sync.js";
+
+const logger = createChildLogger("staged-service");
 
 // ── Study options ──
 
@@ -209,12 +213,22 @@ export async function deleteAgent(id: string, adminId: number) {
 export async function createCampus(data: Record<string, unknown>, adminId: number) {
   const row = await repo.campuses.insert(data, adminId);
   await logAudit(adminId, "CAMPUS_CREATE", { entityType: "extraction_campuses", entityId: row.id });
+
+  await syncBranchFromCampus(row.id).catch((err) =>
+    logger.warn("Tenant branch sync failed after campus create", { id: row.id, err: err instanceof Error ? err.message : String(err) }),
+  );
   return { id: row.id };
 }
 
 export async function deleteCampus(id: string, adminId: number) {
+  const jobId = await findCampusJobId(id);
   await repo.campuses.delete(id);
   await logAudit(adminId, "CAMPUS_DELETE", { entityType: "extraction_campuses", entityId: id });
+  if (jobId) {
+    await syncBranchDeletion(jobId, id).catch((err) =>
+      logger.warn("Tenant branch sync failed after campus delete", { id, err: err instanceof Error ? err.message : String(err) }),
+    );
+  }
   return { deleted: true };
 }
 

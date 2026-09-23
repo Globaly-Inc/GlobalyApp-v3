@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { Users } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { ProfileSection } from "@/app/(web)/components/profile/profile-section";
@@ -16,7 +16,10 @@ export function TeamMembersCard({ profile, readOnly }: Readonly<{ profile: Busin
   const canEditVisibility = !readOnly && canToggle;
   const { items: members, status } = useAppSelector((state) => state.businessProfileDetail.members);
 
+  const fetchedForRef = useRef<number | null>(null);
   useEffect(() => {
+    if (fetchedForRef.current === profile.id) return;
+    fetchedForRef.current = profile.id;
     if (status === "idle" && members.length === 0) dispatch(fetchMembers({ id: profile.id, params: { limit: 5 } }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [profile.id]);
