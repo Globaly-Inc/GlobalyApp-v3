@@ -2270,6 +2270,13 @@ export async function writeCourse(
       // unresolvable country stays null rather than storing text that can never match.
       country_code: course.country_code ?? null,
       verification_status: "unverified",
+      // is_published (migration 20260925_003) defaults to false — that draft state is for
+      // self-service institution courses (institution-courses.repository.ts's createService
+      // explicitly opts in to it). A scraped course's public visibility has always been driven
+      // by the job's own status/verification, not a per-course flag, so it must still default
+      // published or every course from a job crawled after this migration silently vanishes from
+      // search/detail pages the moment its job is exported.
+      is_published: true,
     };
     if (course.career_paths?.length) courseInsert.career_paths = course.career_paths;
 

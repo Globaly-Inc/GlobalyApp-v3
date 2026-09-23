@@ -1,47 +1,50 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { BookOpen, Loader2, Plus, Trash2 } from "lucide-react";
+import { BookOpen, Loader2, Pencil, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Combobox } from "@/components/combobox";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { OneToManySection } from "@/app/personal/profile/section-card";
 import { businessProfileDetailApi } from "../../../apis";
+import { ServiceStudyUnitForm } from "./service-study-unit-form";
 import type { ServiceStudyUnit, ServiceStudyUnitInput } from "../../../apis/types";
 
-const UNIT_TYPE_OPTIONS = [
-  { value: "compulsory", label: "Compulsory" },
-  { value: "elective", label: "Elective" },
-];
-
-const EMPTY: ServiceStudyUnitInput = { unit_code: "", unit_name: "", credit_points: null, description: "", unit_type: "compulsory" };
+const UNIT_TYPE_LABELS: Record<string, string> = { compulsory: "Compulsory", elective: "Elective" };
 
 export function StudyUnitsTab({ serviceId }: Readonly<{ serviceId: string }>) {
-  const [units, setUnits] = useState<ServiceStudyUnit[]>([]);
+  const [rows, setRows] = useState<ServiceStudyUnit[]>([]);
   const [loading, setLoading] = useState(true);
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<ServiceStudyUnitInput>(EMPTY);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<ServiceStudyUnit | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const load = () => businessProfileDetailApi.serviceStudyUnits.list(serviceId).then(setUnits).finally(() => setLoading(false));
-  useEffect(() => { load(); }, [serviceId]);
+  const fetchedRef = useRef(false);
+  useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+    businessProfileDetailApi.serviceStudyUnits.list(serviceId).then(setRows).finally(() => setLoading(false));
+  }, [serviceId]);
 
-  const canSave = form.unit_name.trim().length > 0;
+  const openAdd = () => { setEditing(null); setFormOpen(true); };
+  const openEdit = (row: ServiceStudyUnit) => { setEditing(row); setFormOpen(true); };
 
-  const handleAdd = async () => {
-    if (!canSave) return;
+  const handleSave = async (input: ServiceStudyUnitInput) => {
     setSaving(true);
     try {
-      await businessProfileDetailApi.serviceStudyUnits.create(serviceId, form);
-      toast.success("Study unit added");
-      setOpen(false);
-      setForm(EMPTY);
-      load();
+      if (editing) {
+        const updated = await businessProfileDetailApi.serviceStudyUnits.update(serviceId, editing.id, input);
+        setRows((r) => r.map((x) => (x.id === editing.id ? updated : x)));
+        toast.success("Study unit updated");
+      } else {
+        const created = await businessProfileDetailApi.serviceStudyUnits.create(serviceId, input);
+        setRows((r) => [...r, created]);
+        toast.success("Study unit added");
+      }
+      setFormOpen(false);
     } catch (e) {
-      toast.error("Couldn't add study unit", { description: (e as Error).message });
+      toast.error("Couldn't save study unit", { description: (e as Error).message });
     } finally {
       setSaving(false);
     }
@@ -50,76 +53,62 @@ export function StudyUnitsTab({ serviceId }: Readonly<{ serviceId: string }>) {
   const handleDelete = async (id: number) => {
     try {
       await businessProfileDetailApi.serviceStudyUnits.remove(serviceId, id);
-      setUnits((u) => u.filter((x) => x.id !== id));
+      setRows((r) => r.filter((x) => x.id !== id));
+      toast.success("Study unit removed");
     } catch (e) {
       toast.error("Couldn't remove study unit", { description: (e as Error).message });
     }
   };
 
-  return (
-    <div>
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <BookOpen className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-semibold">Study Units</span>
-          <Badge variant="secondary">{units.length}</Badge>
-        </div>
-        <Button size="sm" onClick={() => setOpen(true)}>
-          <Plus className="mr-1.5 h-3.5 w-3.5" /> Add unit
-        </Button>
+  if (loading) {
+    return (
+      <div className="flex justify-center py-10">
+        <Loader2 className="h-5 w-5 animate-spin text-primary" />
       </div>
+    );
+  }
 
-      {loading ? (
-        <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
-      ) : units.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground italic">No study units assigned yet.</p>
-      ) : (
+  return (
+    <>
+      <OneToManySection icon={BookOpen} title="Study units" count={rows.length} onAdd={openAdd} emptyText="No study units assigned yet.">
         <div className="space-y-2">
-          {units.map((u) => (
-            <div key={u.id} className="flex items-center justify-between rounded-lg border p-3">
-              <div>
-                <p className="text-sm font-medium">{u.unit_code ? `${u.unit_code} — ` : ""}{u.unit_name} <Badge variant="outline" className="ml-1 text-[10px] capitalize">{u.unit_type}</Badge></p>
-                <p className="text-xs text-muted-foreground">{u.credit_points ? `${u.credit_points} credit points` : "—"}</p>
+          {rows.map((row) => (
+            <div key={row.id} className="flex items-center justify-between rounded-lg border bg-primary/5 p-3">
+              <div className="flex items-center gap-2.5">
+                <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
+                  <BookOpen className="h-4 w-4" />
+                </div>
+                <div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {row.unit_code && <span className="text-sm font-medium text-primary">{row.unit_code}</span>}
+                    <span className="text-sm font-medium">{row.unit_name}</span>
+                    <Badge className="bg-primary text-primary-foreground hover:bg-primary">
+                      {UNIT_TYPE_LABELS[row.unit_type]}
+                    </Badge>
+                  </div>
+                  {row.credit_points ? (
+                    <p className="mt-0.5 text-xs text-muted-foreground">{row.credit_points} credit points</p>
+                  ) : null}
+                </div>
               </div>
-              <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(u.id)} aria-label="Remove unit">
-                <Trash2 className="h-4 w-4" />
-              </Button>
+              <div className="flex gap-1">
+                <Button size="icon-sm" variant="ghost" onClick={() => openEdit(row)} aria-label="Edit study unit">
+                  <Pencil className="h-4 w-4" />
+                </Button>
+                <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(row.id)} aria-label="Delete study unit">
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
             </div>
           ))}
         </div>
-      )}
+      </OneToManySection>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Add study unit</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <div className="grid grid-cols-3 gap-3">
-              <div className="space-y-2">
-                <Label>Unit code</Label>
-                <Input className="h-10" value={form.unit_code ?? ""} onChange={(e) => setForm((f) => ({ ...f, unit_code: e.target.value }))} />
-              </div>
-              <div className="col-span-2 space-y-2">
-                <Label>Unit name<span className="text-destructive"> *</span></Label>
-                <Input className="h-10" value={form.unit_name} onChange={(e) => setForm((f) => ({ ...f, unit_name: e.target.value }))} />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label>Credit points</Label>
-                <Input className="h-10" inputMode="numeric" value={form.credit_points ?? ""} onChange={(e) => setForm((f) => ({ ...f, credit_points: e.target.value ? Number(e.target.value) : null }))} />
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label>Type</Label>
-                <Combobox options={UNIT_TYPE_OPTIONS} value={form.unit_type} onChange={(v) => setForm((f) => ({ ...f, unit_type: v as ServiceStudyUnitInput["unit_type"] }))} />
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)} disabled={saving}>Cancel</Button>
-            <Button onClick={handleAdd} disabled={saving || !canSave}>{saving ? "Adding…" : "Add"}</Button>
-          </DialogFooter>
+      <Dialog open={formOpen} onOpenChange={setFormOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto border-0 bg-transparent p-0 shadow-none sm:max-w-xl">
+          <ServiceStudyUnitForm unit={editing ?? undefined} saving={saving} onCancel={() => setFormOpen(false)} onSave={handleSave} />
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }

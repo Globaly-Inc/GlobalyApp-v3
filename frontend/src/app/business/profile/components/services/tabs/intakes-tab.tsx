@@ -1,116 +1,143 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { CalendarDays, Loader2, Plus, Trash2 } from "lucide-react";
+import { Calendar, Loader2, Pencil, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { DatePicker } from "@/components/ui/date-picker";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { OneToManySection } from "@/app/personal/profile/section-card";
+import { cn } from "@/lib/utils";
 import { businessProfileDetailApi } from "../../../apis";
+import { ServiceIntakeForm } from "./service-intake-form";
 import type { ServiceIntake, ServiceIntakeInput } from "../../../apis/types";
 
-const EMPTY: ServiceIntakeInput = {
-  intake_name: "", start_date: null, end_date: null, orientation_date: null, admission_deadline: null,
-  intake_month: null, intake_year: null,
-};
+const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+function dateParts(value: string) {
+  const d = new Date(value);
+  return { month: MONTH_ABBR[d.getMonth()], day: d.getDate(), year: d.getFullYear() };
+}
+
+function isEnded(intake: ServiceIntake) {
+  const ref = intake.end_date ?? intake.start_date;
+  return ref ? new Date(ref) < new Date() : false;
+}
+
+function formatDate(value: string) {
+  const d = new Date(value);
+  return `${MONTH_ABBR[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+}
 
 export function IntakesTab({ serviceId }: Readonly<{ serviceId: string }>) {
   const [intakes, setIntakes] = useState<ServiceIntake[]>([]);
   const [loading, setLoading] = useState(true);
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<ServiceIntakeInput>(EMPTY);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<ServiceIntake | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const load = () => businessProfileDetailApi.serviceIntakes.list(serviceId).then(setIntakes).finally(() => setLoading(false));
-  useEffect(() => { load(); }, [serviceId]);
+  const fetchedRef = useRef(false);
+  useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+    businessProfileDetailApi.serviceIntakes.list(serviceId).then(setIntakes).finally(() => setLoading(false));
+  }, [serviceId]);
 
-  const handleAdd = async () => {
+  const openAdd = () => { setEditing(null); setFormOpen(true); };
+  const openEdit = (intake: ServiceIntake) => { setEditing(intake); setFormOpen(true); };
+
+  const handleSave = async (input: ServiceIntakeInput) => {
     setSaving(true);
     try {
-      await businessProfileDetailApi.serviceIntakes.create(serviceId, form);
-      toast.success("Intake added");
-      setOpen(false);
-      setForm(EMPTY);
-      load();
+      if (editing) {
+        const updated = await businessProfileDetailApi.serviceIntakes.update(serviceId, editing.id, input);
+        setIntakes((i) => i.map((x) => (x.id === editing.id ? updated : x)));
+        toast.success("Intake updated");
+      } else {
+        const created = await businessProfileDetailApi.serviceIntakes.create(serviceId, input);
+        setIntakes((i) => [...i, created]);
+        toast.success("Intake added");
+      }
+      setFormOpen(false);
     } catch (e) {
-      toast.error("Couldn't add intake", { description: (e as Error).message });
+      toast.error("Couldn't save intake", { description: (e as Error).message });
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (intakeId: number) => {
     try {
-      await businessProfileDetailApi.serviceIntakes.remove(serviceId, id);
-      setIntakes((i) => i.filter((x) => x.id !== id));
+      await businessProfileDetailApi.serviceIntakes.remove(serviceId, intakeId);
+      setIntakes((i) => i.filter((x) => x.id !== intakeId));
+      toast.success("Intake removed");
     } catch (e) {
       toast.error("Couldn't remove intake", { description: (e as Error).message });
     }
   };
 
-  return (
-    <div>
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <CalendarDays className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-semibold">Intakes</span>
-          <Badge variant="secondary">{intakes.length}</Badge>
-        </div>
-        <Button size="sm" onClick={() => setOpen(true)}>
-          <Plus className="mr-1.5 h-3.5 w-3.5" /> Add intake
-        </Button>
+  if (loading) {
+    return (
+      <div className="flex justify-center py-10">
+        <Loader2 className="h-5 w-5 animate-spin text-primary" />
       </div>
+    );
+  }
 
-      {loading ? (
-        <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
-      ) : intakes.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground italic">No intakes configured yet.</p>
-      ) : (
-        <div className="space-y-2">
-          {intakes.map((i) => (
-            <div key={i.id} className="flex items-center justify-between rounded-lg border p-3">
-              <div>
-                <p className="text-sm font-medium">{i.intake_name || "Intake"}</p>
-                <p className="text-xs text-muted-foreground">
-                  {[i.start_date, i.admission_deadline ? `Deadline ${i.admission_deadline}` : null].filter(Boolean).join(" · ") || "—"}
-                </p>
+  return (
+    <>
+      <OneToManySection icon={Calendar} title="Intakes" count={intakes.length} onAdd={openAdd} emptyText="No intakes configured yet.">
+        <div className="space-y-3">
+          {intakes.map((intake) => {
+            const ref = intake.start_date ?? intake.end_date;
+            const ended = isEnded(intake);
+            const parts = ref ? dateParts(ref) : null;
+            return (
+              <div key={intake.id} className="flex items-center gap-3 rounded-lg border p-3">
+                <div
+                  className={cn(
+                    "flex w-16 shrink-0 flex-col items-center rounded-md py-1.5 text-center",
+                    ended ? "bg-muted" : "bg-primary/10",
+                  )}
+                >
+                  <span className={cn("text-[10px] font-semibold uppercase", ended ? "text-muted-foreground" : "text-primary")}>
+                    {parts?.month ?? "--"}
+                  </span>
+                  <span className={cn("text-lg font-bold leading-tight", ended ? "text-muted-foreground" : "text-primary")}>
+                    {parts?.day ?? "-"}
+                  </span>
+                  <span className={cn("text-[10px]", ended ? "text-muted-foreground" : "text-primary")}>{parts?.year ?? ""}</span>
+                </div>
+                <div className="flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-medium">{intake.intake_name || "Untitled intake"}</p>
+                    <Badge variant={ended ? "secondary" : "default"} className="text-[10px]">
+                      {ended ? "Ended" : "Upcoming"}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {intake.end_date ? `Ends ${formatDate(intake.end_date)}` : "No end date set"}
+                  </p>
+                </div>
+                <div className="flex gap-1">
+                  <Button size="icon-sm" variant="ghost" onClick={() => openEdit(intake)} aria-label="Edit intake">
+                    <Pencil className="h-4 w-4" />
+                  </Button>
+                  <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(intake.id)} aria-label="Delete intake">
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
-              <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(i.id)} aria-label="Remove intake">
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-          ))}
+            );
+          })}
         </div>
-      )}
+      </OneToManySection>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Add intake</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Name</Label>
-              <Input className="h-10" value={form.intake_name ?? ""} onChange={(e) => setForm((f) => ({ ...f, intake_name: e.target.value }))} placeholder="Spring 2027" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-2">
-                <Label>Start date</Label>
-                <DatePicker value={form.start_date ?? ""} onChange={(v) => setForm((f) => ({ ...f, start_date: v || null }))} />
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label>Admission deadline</Label>
-                <DatePicker value={form.admission_deadline ?? ""} onChange={(v) => setForm((f) => ({ ...f, admission_deadline: v || null }))} />
-              </div>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)} disabled={saving}>Cancel</Button>
-            <Button onClick={handleAdd} disabled={saving}>{saving ? "Adding…" : "Add"}</Button>
-          </DialogFooter>
+      <Dialog open={formOpen} onOpenChange={setFormOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto border-0 bg-transparent p-0 shadow-none sm:max-w-2xl">
+          <ServiceIntakeForm intake={editing ?? undefined} saving={saving} onCancel={() => setFormOpen(false)} onSave={handleSave} />
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }

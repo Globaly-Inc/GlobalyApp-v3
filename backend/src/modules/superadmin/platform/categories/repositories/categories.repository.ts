@@ -217,15 +217,17 @@ export async function deleteFeeType(id: number) {
 
 // ─── Issuing Organizations ─────────────────────────────────────────────────
 
-export async function listIssuingOrganizations(limit: number, offset: number, search?: string) {
+export async function listIssuingOrganizations(limit: number, offset: number, search?: string, approvedOnly?: boolean) {
   const q = masterKnex("issuing_organizations").orderBy("name").limit(limit).offset(offset);
   if (search) q.whereILike("name", `%${search}%`);
+  if (approvedOnly) q.where("status", "approved");
   return q;
 }
 
-export async function countIssuingOrganizations(search?: string) {
+export async function countIssuingOrganizations(search?: string, approvedOnly?: boolean) {
   const q = masterKnex("issuing_organizations").count("* as count");
   if (search) q.whereILike("name", `%${search}%`);
+  if (approvedOnly) q.where("status", "approved");
   const [row] = await q;
   return Number(row.count);
 }
@@ -233,6 +235,10 @@ export async function countIssuingOrganizations(search?: string) {
 export async function insertIssuingOrganization(data: Record<string, unknown>) {
   const [row] = await masterKnex("issuing_organizations").insert(data).returning("*");
   return row;
+}
+
+export async function findIssuingOrganizationById(id: number) {
+  return masterKnex("issuing_organizations").where({ id }).first();
 }
 
 export async function updateIssuingOrganization(id: number, data: Record<string, unknown>) {
@@ -248,17 +254,21 @@ const scopeCountryIds = masterKnex.raw(`COALESCE((
   FROM accreditation_scope_countries s WHERE s.accreditation_id = a.id
 ), '[]'::json) as scope_country_ids`);
 
-export async function listAccreditations(limit: number, offset: number) {
-  return masterKnex("accreditations as a")
+export async function listAccreditations(limit: number, offset: number, approvedOnly?: boolean) {
+  const q = masterKnex("accreditations as a")
     .leftJoin("issuing_organizations as o", "o.id", "a.issuing_organization_id")
     .whereNull("a.deleted_at")
     .orderBy("a.sort_order").orderBy("a.name")
     .limit(limit).offset(offset)
     .select("a.*", "o.name as issuing_organization_name", "o.logo_url as issuing_organization_logo_url", scopeCountryIds);
+  if (approvedOnly) q.where("a.status", "approved");
+  return q;
 }
 
-export async function countAccreditations() {
-  const [row] = await masterKnex("accreditations").whereNull("deleted_at").count("* as count");
+export async function countAccreditations(approvedOnly?: boolean) {
+  const q = masterKnex("accreditations").whereNull("deleted_at").count("* as count");
+  if (approvedOnly) q.where("status", "approved");
+  const [row] = await q;
   return Number(row.count);
 }
 

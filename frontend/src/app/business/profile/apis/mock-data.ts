@@ -12,7 +12,7 @@ import type {
   ServiceEligibilityInput, ServiceEligibilityPatch, ServiceFee, ServiceFeeInput, ServiceFeePatch, ServiceInput,
   ServiceIntake, ServiceIntakeInput, ServiceIntakePatch, ServicePatch, ServiceSearchParams, ServiceSearchResult,
   ServiceStudyOption, ServiceStudyOptionInput, ServiceStudyOptionPatch, ServiceStudyUnit, ServiceStudyUnitInput,
-  ServiceStudyUnitPatch,
+  ServiceStudyUnitPatch, ServiceMediaFile,
 } from "./types";
 
 let mockChildSeq = 1;
@@ -160,6 +160,12 @@ export const businessProfileDetailMockApi = {
     console.log("[mock] GET /businesses/services/search", params);
     await delay(300);
     return { data: mockServices, total: mockServices.length };
+  },
+  getService: async (serviceId: string): Promise<BusinessService> => {
+    await delay(200);
+    const found = mockServices.find((s) => s.id === serviceId);
+    if (!found) throw new Error("Service not found");
+    return found;
   },
   createService: async (input: ServiceInput): Promise<BusinessService> => {
     await delay(300);
@@ -411,9 +417,25 @@ export const businessProfileDetailMockApi = {
     mockServiceAccreditations = mockServiceAccreditations.filter((a) => !(a.id === id && a.__serviceId === serviceId));
   },
 
+  getServiceMedia: async (_serviceId: string): Promise<{ files: ServiceMediaFile[] }> => {
+    await delay(200);
+    return { files: [] };
+  },
+  uploadServiceMedia: async (_serviceId: string, file: File): Promise<ServiceMediaFile> => {
+    await delay(300);
+    return { id: mockChildSeq++, original_name: file.name, mime_type: file.type, size_bytes: file.size, url: "" };
+  },
+  deleteServiceMedia: async (_serviceId: string, _fileId: number): Promise<void> => {
+    await delay(200);
+  },
+
   getServiceCategories: categoriesMockApi.getServiceCategories,
   getLookups: categoriesMockApi.getLookups,
   getAccreditations: categoriesMockApi.getAccreditations,
+  createAccreditation: categoriesMockApi.createAccreditation,
+  getIssuingOrganizations: categoriesMockApi.getIssuingOrganizations,
+  createIssuingOrganization: categoriesMockApi.createIssuingOrganization,
+  getFeeTypes: categoriesMockApi.getFeeTypes,
   getRegistrationTypes: async (countryId?: number | null) => {
     console.log("[mock] getRegistrationTypes", countryId);
     const { data } = await categoriesMockApi.getRegistrationTypes({ limit: 100 });
