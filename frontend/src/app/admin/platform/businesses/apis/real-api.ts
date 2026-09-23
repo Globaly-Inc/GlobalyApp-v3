@@ -94,6 +94,10 @@ export const businessesRealApi = {
   },
   getBusinessDetail: (id: number): Promise<BusinessDetail> => httpGet(`${BASE}/${id}`),
   getInstitutionDetail: (id: number): Promise<InstitutionDetail> => httpGet(`/admin/platform/institutions/${id}`),
+  // Short-lived preview_token for the editor's "Preview" button — never the admin's own session
+  // token (see backend's issuePreviewTokenForOrg and the matching self-service fix).
+  mintInstitutionPreviewToken: (id: number): Promise<{ preview_token: string }> =>
+    httpPost(`/admin/platform/institutions/${id}/preview-token`, {}),
   getListingKind: (id: number): Promise<{ kind: ListingKind }> => httpGet(`/admin/platform/listings/${id}/kind`),
   updateInstitution: (id: number, patch: InstitutionPatch): Promise<InstitutionDetail> =>
     httpPatch(`/admin/platform/institutions/${id}`, patch),

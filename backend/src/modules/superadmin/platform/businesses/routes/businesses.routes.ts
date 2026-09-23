@@ -15,6 +15,7 @@ import {
   MemberParamsSchema, MemberPatchSchema, PublishedPatchSchema, RoleCreateSchema, RolePatchSchema, StatusPatchSchema,
 } from "../schemas/businesses.schema.js";
 import { ContactInputSchema, ContactPatchSchema } from "../../../../agents/schemas/agents.schema.js";
+import { issuePreviewTokenForOrg } from "../../../../auth/auth.service.js";
 
 const logger = createChildLogger("admin-businesses");
 
@@ -139,6 +140,16 @@ export async function adminBusinessRoutes(app: FastifyInstance) {
   app.get("/institutions/:id", async (req, reply) => {
     const { id } = IdParamSchema.parse(req.params);
     return reply.send(await service.getInstitutionDetail(id));
+  });
+
+  // Mints the superadmin editor's "Preview" button a short-lived preview_token for this
+  // institution (see issuePreviewTokenForOrg) — never a reusable admin session credential,
+  // since this ends up in a public page's URL (browser history, logs, referrer).
+  app.post("/institutions/:id/preview-token", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    const institution = await platformRepo.findInstitutionById(id);
+    if (!institution) throw new NotFoundError("Institution not found");
+    return reply.send({ preview_token: issuePreviewTokenForOrg(institution.schema_name, "institution") });
   });
 
   // PATCH /institutions/:id — the institution twin of PATCH /businesses/:id.

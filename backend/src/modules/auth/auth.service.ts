@@ -518,8 +518,8 @@ export async function refreshAccessToken(refreshToken: string, meta?: { ip?: str
  * refresh. Applies to both kinds.
  */
 /**
- * Mints a short-lived, single-purpose token for the self-service "Preview" button (see
- * search/utils/preview-auth.ts's resolvePreviewSchemaName) — NOT the caller's real session
+ * Mints a short-lived, single-purpose token for a "Preview" button (self-service or superadmin —
+ * see search/utils/preview-auth.ts's resolvePreviewSchemaName) — NOT the caller's real session
  * token. Putting the actual bearer access token in a URL query string would leave a fully
  * reusable credential sitting in browser history, server logs and referrer headers; this token
  * carries no `sub`/`orgRole`/role claims, expires in 10 minutes, and `purpose: "preview"` makes
@@ -527,11 +527,16 @@ export async function refreshAccessToken(refreshToken: string, meta?: { ip?: str
  * preview link can only ever bypass is_published on the two public preview routes it was
  * minted for.
  */
+export function issuePreviewTokenForOrg(orgId: string, orgType: "institution") {
+  return jwt.sign({ purpose: "preview", orgType, orgId }, config.JWT_SECRET, { expiresIn: "10m" });
+}
+
+/** Self-service wrapper — mints a preview token for the caller's OWN institution context. */
 export function issuePreviewToken(auth: AuthClaims) {
   if (auth.orgType !== "institution" || !auth.orgId) {
     throw new ForbiddenError("Switch to an institution context first");
   }
-  return jwt.sign({ purpose: "preview", orgType: "institution", orgId: auth.orgId }, config.JWT_SECRET, { expiresIn: "10m" });
+  return issuePreviewTokenForOrg(auth.orgId, "institution");
 }
 
 export async function switchAccount(userId: number, orgId: string, refreshToken?: string) {

@@ -438,6 +438,11 @@ export const businessesMockApi = {
     if (!inst) throw new Error("Institution not found");
     return inst;
   },
+  mintInstitutionPreviewToken: async (id: number): Promise<{ preview_token: string }> => {
+    console.log("[mock] POST /admin/platform/institutions/:id/preview-token", id);
+    await delay(100);
+    return { preview_token: "mock-preview-token" };
+  },
   getListingKind: async (id: number): Promise<{ kind: ListingKind }> => {
     console.log("[mock] GET /admin/platform/listings/:id/kind", id);
     await delay(100);

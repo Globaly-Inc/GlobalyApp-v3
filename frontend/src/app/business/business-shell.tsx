@@ -242,7 +242,7 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
               }
             >
               <Avatar className="size-7">
-                {profile?.logo_url && <AvatarImage src={profile.logo_url} alt={profile.business_name} />}
+                {user?.photo_url && <AvatarImage src={user.photo_url} alt={user?.first_name ?? "User"} />}
                 <AvatarFallback>{initial}</AvatarFallback>
               </Avatar>
               <ChevronDown className="h-4 w-4 text-muted-foreground" />
