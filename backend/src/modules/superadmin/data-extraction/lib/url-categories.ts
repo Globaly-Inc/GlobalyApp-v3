@@ -19,7 +19,7 @@ export type SiteUrlCategorySource = "guided" | "heuristic" | "llm" | "admin";
 export type CategoryVerdict = { category: SiteUrlCategory; source: SiteUrlCategorySource };
 
 /** guided_urls keys (frontend const GUIDED_URL_CATEGORIES / VISA_SERVICE_GUIDED_URL_CATEGORIES) → category. */
-const GUIDED_KEY_CATEGORY: Record<string, SiteUrlCategory> = {
+export const GUIDED_KEY_CATEGORY: Record<string, SiteUrlCategory> = {
   course_list_urls: "course", services_urls: "course",
   contact_urls: "contact_us", branches_urls: "branches", agents_urls: "agents", team_urls: "agents",
   fees_urls: "fees", intakes_urls: "intake", eligibility_urls: "eligibility", units_urls: "study_units",

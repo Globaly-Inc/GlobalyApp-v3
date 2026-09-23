@@ -22,8 +22,14 @@ export const CreateJobSchema = z.object({
   sample_course_url: z.string().url().optional(),
   /** degree_levels slugs; omitted means every level. */
   degree_level_codes: z.array(z.string()).optional(),
-  supporting_documents: z.array(z.unknown()).optional(),
   pipeline_progress: z.record(z.unknown()).optional(),
+  /**
+   * Removed 2026-09-22: PDFs are site URLs with a category now. Rejected rather than silently stripped
+   * (this schema is not strict) so a client still sending evidence learns it was not stored.
+   */
+  supporting_documents: z.undefined({
+    invalid_type_error: "supporting_documents is no longer accepted; create the job, then add each PDF with POST /jobs/:id/site-urls { url, category }",
+  }),
 });
 
 export const FailJobSchema = z.object({

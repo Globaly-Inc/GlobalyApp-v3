@@ -18,6 +18,13 @@ export const PatchSiteUrlSchema = z.object({
 }).refine((v) => v.excluded !== undefined || v.category !== undefined, { message: "Nothing to change" });
 export type PatchSiteUrlInput = z.infer<typeof PatchSiteUrlSchema>;
 
+/** Admin adds one page or PDF URL to the site list, already categorised. */
+export const AddSiteUrlSchema = z.object({
+  url: z.string().trim().url().max(2000),
+  category: z.enum(SITE_URL_CATEGORIES),
+});
+export type AddSiteUrlInput = z.infer<typeof AddSiteUrlSchema>;
+
 export const BulkExcludeSchema = z.object({
   ids: z.array(z.string().uuid()).min(1).max(1000),
   excluded: z.boolean(),

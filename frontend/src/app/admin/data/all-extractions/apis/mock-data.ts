@@ -104,9 +104,9 @@ const mockSiteUrls: SiteUrl[] = [
 ];
 
 const mockSnapshots: SnapshotRow[] = [
-  { id: "11111111-1111-4111-8111-111111111111", url: "https://example.edu/courses/bachelor-of-computer-science", scraper: "scrapling", scraped_at: "2026-09-18T01:00:00Z", content_hash: "3f2a91c4d0e1", link_count: 64, category: "course", excluded: false, gcs_path: "extraction/www/example.edu/example.edu/courses_bachelor-of-computer-science-3f2a91c4.md" },
-  { id: "22222222-2222-4222-8222-222222222222", url: "https://example.edu/courses/master-of-data-science", scraper: "scrapling", scraped_at: "2026-09-18T01:00:05Z", content_hash: "7b10de55a9c2", link_count: 51, category: "course", excluded: false, gcs_path: "extraction/www/example.edu/example.edu/courses_master-of-data-science-7b10de55.md" },
-  { id: "33333333-3333-4333-8333-333333333333", url: "https://example.edu/news/open-day-2027", scraper: "crawl4ai", scraped_at: "2026-09-18T01:00:09Z", content_hash: "c0ffee00beef", link_count: 12, category: "other", excluded: false, gcs_path: "extraction/www/example.edu/example.edu/news_open-day-2027-c0ffee00.md" },
+  { id: "11111111-1111-4111-8111-111111111111", url: "https://example.edu/courses/bachelor-of-computer-science", scraper: "scrapling", scraped_at: "2026-09-18T01:00:00Z", content_hash: "3f2a91c4d0e1", link_count: 64, site_url_id: "a1111111-1111-4111-8111-111111111111", category: "course", category_source: "heuristic", excluded: false, gcs_path: "extraction/www/example.edu/example.edu/courses_bachelor-of-computer-science-3f2a91c4.md" },
+  { id: "22222222-2222-4222-8222-222222222222", url: "https://example.edu/courses/master-of-data-science", scraper: "scrapling", scraped_at: "2026-09-18T01:00:05Z", content_hash: "7b10de55a9c2", link_count: 51, site_url_id: "a2222222-2222-4222-8222-222222222222", category: "course", category_source: "admin", excluded: false, gcs_path: "extraction/www/example.edu/example.edu/courses_master-of-data-science-7b10de55.md" },
+  { id: "33333333-3333-4333-8333-333333333333", url: "https://example.edu/news/open-day-2027", scraper: "crawl4ai", scraped_at: "2026-09-18T01:00:09Z", content_hash: "c0ffee00beef", link_count: 12, site_url_id: "a3333333-3333-4333-8333-333333333333", category: "other", category_source: "llm", excluded: false, gcs_path: "extraction/www/example.edu/example.edu/news_open-day-2027-c0ffee00.md" },
 ];
 
 export const allExtractionsMockApi = {
@@ -532,6 +532,7 @@ export const allExtractionsMockApi = {
     const counts = {
       total: mockSiteUrls.length,
       unclassified: active.filter((r) => r.category === null).length,
+      dead: 0,
       excluded: mockSiteUrls.filter((r) => r.excluded).length,
       by_category: Object.fromEntries(SITE_URL_CATEGORIES.map((c) => [c, active.filter((r) => r.category === c).length])) as Record<SiteUrlCategory, number>,
     };
@@ -540,6 +541,15 @@ export const allExtractionsMockApi = {
       meta: { page, limit, total: rows.length, totalPages: Math.max(1, Math.ceil(rows.length / limit)) },
       counts,
     };
+  },
+
+  addSiteUrl: async (jobId: string, url: string, category: SiteUrlCategory): Promise<void> => {
+    console.log("[mock] POST site-urls", jobId, url, category);
+    await delay(150);
+    const now = new Date().toISOString();
+    const existing = mockSiteUrls.find((r) => r.url === url);
+    if (existing) { existing.category = category; existing.category_source = "admin"; existing.excluded = false; existing.updated_at = now; return; }
+    mockSiteUrls.push({ id: `su-${mockSiteUrls.length + 1}`, url, source: "admin", category, category_source: "admin", excluded: false, created_at: now, updated_at: now });
   },
 
   patchSiteUrl: async (id: string, patch: { excluded?: boolean; category?: SiteUrlCategory | null }): Promise<void> => {

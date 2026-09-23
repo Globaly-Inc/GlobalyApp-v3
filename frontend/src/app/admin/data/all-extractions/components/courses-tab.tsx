@@ -24,12 +24,10 @@ export function CoursesTab({
   jobId,
   job,
   onReload,
-  onJumpToContext,
 }: Readonly<{
   jobId: string;
   job: ExtractionJob;
   onReload: () => void;
-  onJumpToContext: () => void;
 }>) {
   const [courses, setCourses] = useState<CourseFull[]>([]);
   const [total, setTotal] = useState(0);
@@ -239,11 +237,7 @@ export function CoursesTab({
         progress={(job.pipeline_progress as Record<string, unknown> | null)?.discovery}
         lastUpdated={latestTimestamp(courses)}
         hasData={total > 0}
-        guidedUrls={job.guided_urls}
-        contextKey="course_list_urls"
-        contextLabel="course list URLs"
         onChanged={onReload}
-        onAddContext={onJumpToContext}
       />
 
       {!loading && queuedCourseUrls === 0 && (

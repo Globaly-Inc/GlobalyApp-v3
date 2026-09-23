@@ -239,31 +239,3 @@ export function createDocumentExtractor() {
 
   return { extract };
 }
-
-// ─── Context builder ──────────────────────────────────────────────────────
-
-/** Build a markdown context block from a list of documents, skipping unparseable ones. */
-export async function buildDocumentContext(
-  extractor: ReturnType<typeof createDocumentExtractor>,
-  docs: DocInput[],
-  maxTotalChars = 60_000,
-): Promise<string> {
-  const parts: string[] = [];
-  let used = 0;
-
-  for (const d of docs) {
-    if (used >= maxTotalChars) break;
-    const { text, source, error } = await extractor.extract(d);
-
-    if (text) {
-      const remaining = maxTotalChars - used;
-      const snippet = text.length > remaining ? text.substring(0, remaining) : text;
-      parts.push(`=== DOCUMENT: ${source} ===\n${snippet}`);
-      used += snippet.length;
-    } else {
-      parts.push(`=== DOCUMENT (not parsed — ${error}): ${source} ===`);
-    }
-  }
-
-  return parts.join("\n\n");
-}

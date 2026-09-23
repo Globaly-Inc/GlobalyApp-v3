@@ -268,9 +268,6 @@ export const APPLICABLE_TO_OPTIONS = [
   { value: "both", label: "Both" },
 ];
 
-/** guided_urls keys a pipeline step can require before it will run. */
-export type ContextKey = "branches_urls" | "agents_urls" | "course_list_urls" | "extract_fields";
-
 export type SortOrder = "newest" | "oldest" | "name_asc" | "name_desc";
 
 export const SORT_OPTIONS: { value: SortOrder; label: string }[] = [

@@ -11,11 +11,12 @@ import { Combobox } from "@/components/combobox";
 import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
 import { SITE_URL_CATEGORY_LABELS } from "../const";
+import { AddSiteUrlForm } from "./add-site-url-form";
 import { SITE_URL_CATEGORIES, type SiteUrl, type SiteUrlCategory, type SiteUrlCounts } from "../apis/types";
 
 const PAGE_SIZE = 20;
 const EMPTY_COUNTS: SiteUrlCounts = {
-  total: 0, unclassified: 0, excluded: 0,
+  total: 0, unclassified: 0, excluded: 0, dead: 0,
   by_category: Object.fromEntries(SITE_URL_CATEGORIES.map((c) => [c, 0])) as Record<SiteUrlCategory, number>,
 };
 
@@ -143,7 +144,7 @@ export function SiteUrlsTab({ jobId }: Readonly<{ jobId: string }>) {
       <div className="mb-3 flex flex-wrap gap-1.5">
         {chip("All", counts.total, { category: "all", excluded: "all" })}
         {chip("Not yet classified", counts.unclassified, { category: "unclassified", excluded: "active" }, "text-amber-700")}
-        {chip("Excluded by you", counts.excluded, { category: "all", excluded: "excluded" })}
+        {chip("Excluded / suggested", counts.excluded, { category: "all", excluded: "excluded" })}
         {SITE_URL_CATEGORIES.map((c) => chip(SITE_URL_CATEGORY_LABELS[c], counts.by_category[c] ?? 0, { category: c, excluded: "active" }, c === "course" ? "text-emerald-700" : ""))}
       </div>
 
@@ -157,6 +158,7 @@ export function SiteUrlsTab({ jobId }: Readonly<{ jobId: string }>) {
         </form>
         <Combobox className="w-44" options={CATEGORY_FILTERS} value={category} onChange={(v) => { setCategory(v as CategoryFilter); setPage(1); }} />
         <Combobox className="w-44" options={EXCLUDED_FILTERS} value={excluded} onChange={(v) => { setExcluded(v as ExcludedFilter); setPage(1); }} />
+        {selected.size === 0 && <AddSiteUrlForm jobId={jobId} onAdded={load} />}
         {selected.size > 0 && (
           <div className="ml-auto flex items-center gap-1.5">
             <span className="text-xs text-muted-foreground">{selected.size} selected</span>

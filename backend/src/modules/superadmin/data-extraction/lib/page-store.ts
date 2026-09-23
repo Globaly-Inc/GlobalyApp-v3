@@ -177,6 +177,12 @@ export function normaliseUrl(raw: string): string {
   }
 }
 
+/** URL lists in priority order, deduped on normaliseUrl (www./trailing-slash spellings collapse), capped. Pure. */
+export function mergeUrlLists(lists: string[][], max: number): string[] {
+  const seen = new Set<string>();
+  return lists.flat().filter((u) => { const k = normaliseUrl(u); if (seen.has(k)) return false; seen.add(k); return true; }).slice(0, max);
+}
+
 /** onlyMainContent defaults to true in the scraper, so only an explicit false is the full page. */
 export function modeFor(opts: ScrapeOptions): PageMode {
   return opts.onlyMainContent === false ? "full" : "main";

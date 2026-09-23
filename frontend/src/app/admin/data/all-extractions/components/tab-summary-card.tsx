@@ -1,19 +1,14 @@
 "use client";
 
 import type { LucideIcon } from "lucide-react";
-import { AlertCircle, CheckCircle2, Circle, Lock, Loader2, MoreVertical, Play, RefreshCcw, Settings2 } from "lucide-react";
+import { AlertCircle, CheckCircle2, Circle, Loader2, Play, RefreshCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 import { fmtTime } from "../utils";
 import { useConfirmDelete } from "./use-confirm-delete";
 import type { JobTab } from "./job-tabs-bar";
 import type { ExtractionJob } from "../apis/types";
-
-export type ContextKey = "branches_urls" | "agents_urls" | "course_list_urls" | "extract_fields" | "services_urls";
 
 export type TabCard = {
   key: string;
@@ -24,9 +19,6 @@ export type TabCard = {
   tab: JobTab;
   /** Pipeline step to dispatch for a re-run. Absent = no Run button. */
   step?: string;
-  /** Guided-URL key that must be filled in before the step can run. */
-  contextKey?: ContextKey;
-  contextLabel?: string;
   /** Set when the card shows a Run button the backend can't serve job-wide yet. */
   runBlockedReason?: string;
 };
@@ -51,76 +43,31 @@ const STATE_META: Record<CardState, { icon: LucideIcon; className: string; label
 };
 
 function CardActions({
-  card, runnable, hasContext, hasData, busy, onRun, onJumpToTab,
-}: Readonly<{
-  card: TabCard; runnable: boolean; hasContext: boolean; hasData: boolean; busy: boolean;
-  onRun: () => void; onJumpToTab: (tab: JobTab) => void;
-}>) {
-  if (runnable && hasContext) {
-    return (
-      <div className="flex items-center gap-1.5">
-        <Button
-          variant={hasData ? "outline" : "default"}
-          size="sm"
-          className="h-8 flex-1 gap-1.5 text-xs cursor-pointer"
-          disabled={busy || Boolean(card.runBlockedReason)}
-          title={card.runBlockedReason}
-          onClick={onRun}
-        >
-          {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : hasData ? <RefreshCcw className="h-3 w-3" /> : <Play className="h-3 w-3" />}
-          {hasData ? "Re-run" : "Run"}
-        </Button>
-        {card.contextKey && (
-          <DropdownMenu>
-            <DropdownMenuTrigger title="More actions" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground">
-              <MoreVertical className="h-3.5 w-3.5" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => onJumpToTab("context")}>
-                <Settings2 className="h-3.5 w-3.5" /> Add Context
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
-    );
-  }
-
-  if (runnable && !hasContext) {
-    return (
-      <div className="flex items-center gap-1.5">
-        <Button variant="outline" size="sm" className="h-8 flex-1 gap-1.5 text-xs" disabled title={`Add ${card.contextLabel} in the Context tab first`}>
-          <Lock className="h-3 w-3" />
-          Run
-        </Button>
-        <Button size="sm" className="h-8 flex-1 gap-1.5 text-xs cursor-pointer" onClick={() => onJumpToTab("context")}>
-          <Settings2 className="h-3 w-3" />
-          Add Context
-        </Button>
-      </div>
-    );
-  }
-
-  if (!runnable && card.contextKey && !hasContext && !hasData) {
-    return (
-      <Button size="sm" className="h-8 w-full gap-1.5 text-xs cursor-pointer" onClick={() => onJumpToTab("context")}>
-        <Settings2 className="h-3 w-3" />
-        Add Context
-      </Button>
-    );
-  }
-
-  return null;
+  runnable, hasData, busy, runBlockedReason, onRun,
+}: Readonly<{ runnable: boolean; hasData: boolean; busy: boolean; runBlockedReason?: string; onRun: () => void }>) {
+  if (!runnable) return null;
+  return (
+    <Button
+      variant={hasData ? "outline" : "default"}
+      size="sm"
+      className="h-8 w-full gap-1.5 text-xs cursor-pointer"
+      disabled={busy || Boolean(runBlockedReason)}
+      title={runBlockedReason}
+      onClick={onRun}
+    >
+      {busy ? <Loader2 className="h-3 w-3 animate-spin" /> : hasData ? <RefreshCcw className="h-3 w-3" /> : <Play className="h-3 w-3" />}
+      {hasData ? "Re-run" : "Run"}
+    </Button>
+  );
 }
 
 export function TabSummaryCard({
-  card, jobStatus, jobActive, busy, hasContext, onRun, onJumpToTab,
+  card, jobStatus, jobActive, busy, onRun, onJumpToTab,
 }: Readonly<{
   card: TabCard;
   jobStatus: ExtractionJob["status"];
   jobActive: boolean;
   busy: boolean;
-  hasContext: boolean;
   onRun: () => void;
   onJumpToTab: (tab: JobTab) => void;
 }>) {
@@ -168,7 +115,7 @@ export function TabSummaryCard({
           {hasData && <p className="text-xs text-muted-foreground">Updated {fmtTime(card.updated)}</p>}
         </div>
 
-        <CardActions card={card} runnable={runnable} hasContext={hasContext} hasData={hasData} busy={busy} onRun={handleRun} onJumpToTab={onJumpToTab} />
+        <CardActions runnable={runnable} hasData={hasData} busy={busy} runBlockedReason={card.runBlockedReason} onRun={handleRun} />
       </CardContent>
       {dialog}
     </Card>

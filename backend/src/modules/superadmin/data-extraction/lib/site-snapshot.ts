@@ -14,7 +14,8 @@
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
-import { getPage, SNAPSHOT_PREFIX } from "./page-store.js";
+import { getPage, getDocument, isPdfUrl, fileLinksOf, SNAPSHOT_PREFIX } from "./page-store.js";
+import { upsertSiteUrls, setSiteUrlLiveness, type DeadReason } from "../repositories/site-urls.repository.js";
 import { politeDelay } from "./scraper.js";
 import { siteOf } from "./html-utils.js";
 import { writeJobEvent } from "./staging-writer.js";
@@ -111,6 +112,14 @@ export async function snapshotRunOutcome(
 /** Pages per step message. A crash mid-step loses one batch, not the whole site, and the
  *  concurrent STEPS consumer works batches in parallel. */
 export const SNAPSHOT_BATCH_SIZE = 100;
+
+/** Why a fetched page is INACTIVE, or null when it is readable. Pure; the snapshot step stamps it on the site list. */
+export function deadReasonOf(page: { notFound?: boolean; blocked?: boolean; markdown: string }): DeadReason | null {
+  if (page.notFound) return "not_found";
+  if (page.blocked) return "blocked";
+  if (page.markdown.length < 50) return "empty";
+  return null;
+}
 /** Pages in flight per batch. ponytail: 4 is polite for one edu host and cuts a 500-page site
  *  from ~an hour to ~15 minutes; set SNAPSHOT_CONCURRENCY=2 if a site starts answering 429. */
 const SNAPSHOT_CONCURRENCY = Math.max(1, Number(process.env.SNAPSHOT_CONCURRENCY) || 4);
@@ -123,18 +132,31 @@ async function jobHalted(jobId: string): Promise<boolean> {
 
 export async function snapshotSite(jobId: string, urls: string[], batch?: SnapshotBatch, fresh = false): Promise<number> {
   const label = batch ? ` (batch ${batch.index}/${batch.total})` : "";
+  /** Liveness observation time for this batch — see setSiteUrlLiveness. */
+  const observedAt = new Date();
   let uploaded = 0;
   let processed = 0;
   let halted = false;
   const failed: string[] = [];
+  /** Pages that came back unreadable — stamped `dead_reason` on the site list, counted as Inactive on the Site Context tab. */
+  const dead: { url: string; reason: DeadReason }[] = [];
+  const alive: string[] = [];
+  /** PDFs the pages link to — offered on the Site Context tab as excluded rows the admin can pick up. */
+  const linkedPdfs = new Set<string>();
   /** One page through the store (a scrape + file write on a miss). Returns whether the scraper was hit. */
   async function snapshotOne(url: string): Promise<boolean> {
     try {
       // ponytail: no retry here — Scrapling already walks get → stealthy_fetch → browser fetch
       // internally, and a Firecrawl escalation would bill credits the account may not have.
-      const page = await getPage(url, { onlyMainContent: true, withLinks: true, fresh });
-      if (page.blocked || page.notFound || page.markdown.length < 50) { failed.push(url); return !page.fromCache; }
+      // A PDF on the list (admin-added fee schedule, prospectus) is read by Vision, not Scrapling.
+      const page = isPdfUrl(url)
+        ? await getDocument(url, { fresh })
+        : await getPage(url, { onlyMainContent: true, withLinks: true, fresh });
+      const reason = deadReasonOf(page);
+      if (reason) { failed.push(url); dead.push({ url, reason }); return !page.fromCache; }
       uploaded++;
+      alive.push(url);
+      for (const f of fileLinksOf(page.links)) if (isPdfUrl(f)) linkedPdfs.add(f);
       return !page.fromCache;
     } catch (err) {
       failed.push(url);
@@ -155,13 +177,20 @@ export async function snapshotSite(jobId: string, urls: string[], batch?: Snapsh
     const fetched = await Promise.all(chunk.map(snapshotOne));
     if (fetched.some(Boolean)) await politeDelay(300, 900);
   }
+  // Discovery drops asset URLs, so this is the one place linked PDFs surface. Excluded by default:
+  // nothing fetches them until the admin restores one and gives it a category.
+  if (dead.length || alive.length) await setSiteUrlLiveness(jobId, dead, alive, observedAt);
+  let suggestedPdfs = 0;
+  if (linkedPdfs.size) {
+    suggestedPdfs = await upsertSiteUrls(jobId, [...linkedPdfs].map((url) => ({ url, source: "linked_pdf", excluded: true })));
+  }
   await writeJobEvent(jobId, "site_snapshot_uploaded", {
     phase: "site_mapping",
     level: halted || failed.length ? "warn" : "info",
     message: halted
       ? `Site snapshot stopped${label}: job paused or stop requested after ${processed} of ${urls.length} pages`
       : `${uploaded} of ${urls.length} pages written to ${SNAPSHOT_PREFIX}/${urls[0] ? siteOf(urls[0]) : ""}${label}`,
-    data: { uploaded, processed, failed: failed.length, failed_sample: failed.slice(0, 10), halted, fresh, ...(batch ?? {}) },
+    data: { uploaded, processed, failed: failed.length, dead: dead.length, failed_sample: failed.slice(0, 10), suggested_pdfs: suggestedPdfs, halted, fresh, ...(batch ?? {}) },
   });
   return uploaded;
 }
