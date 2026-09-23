@@ -4,7 +4,7 @@ import type { FastifyInstance } from "fastify";
 import * as service from "../services/site-urls.service.js";
 import { UuidParamSchema } from "../schemas/jobs.schema.js";
 import {
-  ListSiteUrlsQuerySchema, PatchSiteUrlSchema, BulkExcludeSchema, ListSnapshotsQuerySchema, SnapshotParamSchema,
+  ListSiteUrlsQuerySchema, PatchSiteUrlSchema, BulkExcludeSchema, ListSnapshotsQuerySchema, SnapshotParamSchema, AddSiteUrlSchema,
 } from "../schemas/site-urls.schema.js";
 
 export async function siteUrlsRoutes(app: FastifyInstance) {
@@ -15,6 +15,13 @@ export async function siteUrlsRoutes(app: FastifyInstance) {
     const { id } = UuidParamSchema.parse(req.params);
     const query = ListSiteUrlsQuerySchema.parse(req.query);
     return reply.send(await service.listSiteUrls(id, query));
+  });
+
+  // POST /jobs/:id/site-urls { url, category } — admin adds a page or PDF
+  app.post("/jobs/:id/site-urls", async (req, reply) => {
+    const { id } = UuidParamSchema.parse(req.params);
+    const input = AddSiteUrlSchema.parse(req.body);
+    return reply.status(201).send(await service.addSiteUrl(id, input, adminId(req)));
   });
 
   // PATCH /site-urls/:id { excluded?, category? }

@@ -9,7 +9,6 @@ import { JobHeader } from "./job-header";
 import { JobStats } from "./job-stats";
 import { JobTabsBar, type JobTab } from "./job-tabs-bar";
 import { OverviewTab } from "./overview-tab";
-import { ContextTab } from "./context-tab";
 import { InstitutionTab } from "./institution-tab";
 import { CoursesTab } from "./courses-tab";
 import { BranchesTab } from "./branches-tab";
@@ -24,11 +23,11 @@ import { VisaServicesTab } from "./visa-services-tab";
 import { SiteTab } from "./site-tab";
 
 const COURSE_JOB_TABS: JobTab[] = [
-  "overview", "context", "site", "institution", "branches", "agents",
+  "overview", "site", "institution", "branches", "agents",
   "courses", "fees", "intakes", "eligibility", "units", "study_options", "accreditations",
 ];
 
-const VISA_SERVICE_JOB_TABS: JobTab[] = ["overview", "context", "site", "institution", "visa_services"];
+const VISA_SERVICE_JOB_TABS: JobTab[] = ["overview", "site", "institution", "visa_services"];
 const VALID_TABS: JobTab[] = [...new Set([...COURSE_JOB_TABS, ...VISA_SERVICE_JOB_TABS])];
 
 function parseTab(raw: string | null): JobTab {
@@ -78,28 +77,26 @@ export function JobDetailView({ jobId }: Readonly<{ jobId: string }>) {
     switch (activeTab) {
       case "overview":
         return <OverviewTab full={full} onJumpToTab={setTab} onReload={reload} />;
-      case "context":
-        return <ContextTab job={full.job} onReload={reload} />;
       case "site":
         return <SiteTab jobId={jobId} job={full.job} onReload={reload} />;
       case "institution":
         return <InstitutionTab overview={full.overview} jobId={jobId} onReload={reload} isVisaServiceJob={isVisaServiceJob} />;
       case "courses":
-        return <CoursesTab jobId={jobId} job={full.job} onReload={reload} onJumpToContext={() => setTab("context")} />;
+        return <CoursesTab jobId={jobId} job={full.job} onReload={reload} />;
       case "branches":
-        return <BranchesTab jobId={jobId} job={full.job} onReload={reload} onJumpToContext={() => setTab("context")} />;
+        return <BranchesTab jobId={jobId} job={full.job} onReload={reload} />;
       case "agents":
-        return <AgentsTab jobId={jobId} job={full.job} onReload={reload} onJumpToContext={() => setTab("context")} />;
+        return <AgentsTab jobId={jobId} job={full.job} onReload={reload} />;
       case "fees":
-        return <FeesTab jobId={jobId} job={full.job} onReload={reload} onJumpToContext={() => setTab("context")} />;
+        return <FeesTab jobId={jobId} job={full.job} onReload={reload} />;
       case "intakes":
-        return <IntakesTab jobId={jobId} job={full.job} onReload={reload} onJumpToContext={() => setTab("context")} />;
+        return <IntakesTab jobId={jobId} job={full.job} onReload={reload} />;
       case "eligibility":
-        return <EligibilityTab jobId={jobId} job={full.job} onReload={reload} onJumpToContext={() => setTab("context")} />;
+        return <EligibilityTab jobId={jobId} job={full.job} onReload={reload} />;
       case "units":
-        return <StudyUnitsTab jobId={jobId} job={full.job} onReload={reload} onJumpToContext={() => setTab("context")} />;
+        return <StudyUnitsTab jobId={jobId} job={full.job} onReload={reload} />;
       case "study_options":
-        return <StudyOptionsTab jobId={jobId} job={full.job} onReload={reload} onJumpToContext={() => setTab("context")} />;
+        return <StudyOptionsTab jobId={jobId} job={full.job} onReload={reload} />;
       case "accreditations":
         return <AccreditationsTab jobId={jobId} />;
       case "visa_services":

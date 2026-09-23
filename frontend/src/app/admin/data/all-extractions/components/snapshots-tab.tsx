@@ -7,13 +7,16 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
+import { Combobox } from "@/components/combobox";
 import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
 import { SITE_URL_CATEGORY_LABELS } from "../const";
 import { fmtTime } from "../utils";
-import type { SnapshotMarkdown, SnapshotRow } from "../apis/types";
+import { SITE_URL_CATEGORIES, type SiteUrlCategory, type SnapshotMarkdown, type SnapshotRow } from "../apis/types";
 
 const PAGE_SIZE = 20;
+/** Shows the row's category whoever set it. Picking one pins it as admin-owned so a re-run never overwrites it; "Auto" clears that pin. */
+const ROW_CATEGORIES = [{ value: "auto", label: "Auto" }, ...SITE_URL_CATEGORIES.map((c) => ({ value: c, label: SITE_URL_CATEGORY_LABELS[c] }))];
 
 /** Site tab body. Step 2 of the chain: what was actually fetched, per page. Read-only. */
 export function SnapshotsTab({ jobId }: Readonly<{ jobId: string }>) {
@@ -46,6 +49,18 @@ export function SnapshotsTab({ jobId }: Readonly<{ jobId: string }>) {
     load();
   }, [load]);
 
+  const setCategory = async (row: SnapshotRow, value: string) => {
+    setOpening(row.id);
+    try {
+      await allExtractionsApi.patchSiteUrl(row.site_url_id, { category: value === "auto" ? null : (value as SiteUrlCategory) });
+      await load();
+    } catch (e) {
+      toast.error("Could not change the category", { description: (e as Error).message });
+    } finally {
+      setOpening(null);
+    }
+  };
+
   const view = async (row: SnapshotRow) => {
     setOpening(row.id);
     try {
@@ -72,19 +87,18 @@ export function SnapshotsTab({ jobId }: Readonly<{ jobId: string }>) {
           <thead className="bg-muted/50 text-left text-muted-foreground">
             <tr>
               <th className="px-2 py-2">URL</th>
-              <th className="w-28 px-2 py-2">Category</th>
+              <th className="w-52 px-2 py-2">Category</th>
               <th className="w-20 px-2 py-2">Scraper</th>
-              <th className="w-16 px-2 py-2 text-right">Links</th>
-              <th className="w-36 px-2 py-2">Fetched</th>
+              <th className="w-36 px-2 py-2">Fetched at</th>
               <th className="w-16 px-2 py-2" />
             </tr>
           </thead>
           <tbody>
             {loading && rows.length === 0 && (
-              <tr><td colSpan={7} className="px-2 py-8 text-center text-muted-foreground"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></td></tr>
+              <tr><td colSpan={5} className="px-2 py-8 text-center text-muted-foreground"><Loader2 className="mx-auto h-5 w-5 animate-spin" /></td></tr>
             )}
             {!loading && rows.length === 0 && (
-              <tr><td colSpan={7} className="px-2 py-8 text-center text-muted-foreground">
+              <tr><td colSpan={5} className="px-2 py-8 text-center text-muted-foreground">
                 No snapshots yet — run “Map site”, then “Snapshot” above.
               </td></tr>
             )}
@@ -93,9 +107,16 @@ export function SnapshotsTab({ jobId }: Readonly<{ jobId: string }>) {
                 <td className="max-w-xl truncate px-2 py-1.5 font-mono text-[11px]" title={`${r.url}\n${r.gcs_path}`}>
                   <a href={r.url} target="_blank" rel="noreferrer" className="hover:underline">{r.url}</a>
                 </td>
-                <td className="px-2 py-1.5 text-muted-foreground">{r.category ? SITE_URL_CATEGORY_LABELS[r.category] : "—"}</td>
+                <td className="px-2 py-1.5">
+                  <Combobox
+                    className="w-36"
+                    options={ROW_CATEGORIES}
+                    value={r.category ?? "auto"}
+                    disabled={opening === r.id}
+                    onChange={(v) => setCategory(r, v)}
+                  />
+                </td>
                 <td className="px-2 py-1.5 text-muted-foreground">{r.scraper}</td>
-                <td className="px-2 py-1.5 text-right tabular-nums">{r.link_count}</td>
                 <td className="px-2 py-1.5 text-muted-foreground">{fmtTime(r.scraped_at)}</td>
                 <td className="px-2 py-1.5 text-right">
                   <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-[11px] cursor-pointer" disabled={opening === r.id} onClick={() => view(r)} title="Read the stored markdown">

@@ -7,7 +7,7 @@ import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { logAudit } from "../shared/audit.js";
 import * as repo from "../repositories/site-urls.repository.js";
 import { readSnapshot, snapshotPathFor } from "../lib/page-store.js";
-import type { ListSiteUrlsQuery, PatchSiteUrlInput, BulkExcludeInput, ListSnapshotsQuery } from "../schemas/site-urls.schema.js";
+import type { ListSiteUrlsQuery, PatchSiteUrlInput, BulkExcludeInput, ListSnapshotsQuery, AddSiteUrlInput } from "../schemas/site-urls.schema.js";
 
 async function requireJob(jobId: string) {
   const job = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).select("id").first();
@@ -27,6 +27,13 @@ export async function listSiteUrls(jobId: string, query: ListSiteUrlsQuery) {
     created_at: r.created_at, updated_at: r.updated_at,
   }));
   return { ...buildPaginatedResponse(data, total, query), counts };
+}
+
+export async function addSiteUrl(jobId: string, input: AddSiteUrlInput, adminId: number) {
+  await requireJob(jobId);
+  const id = await repo.addSiteUrl(jobId, input.url, input.category);
+  await logAudit(adminId, "SITE_URL_ADD", { entityType: "extraction_site_urls", entityId: id, details: input });
+  return { id };
 }
 
 export async function patchSiteUrl(id: string, input: PatchSiteUrlInput, adminId: number) {
@@ -62,11 +69,11 @@ export async function listSnapshots(jobId: string, query: ListSnapshotsQuery) {
     .select(
       "p.id", "p.url", "p.scraper", "p.scraped_at", "p.content_hash",
       masterKnex.raw("jsonb_array_length(p.links) as link_count"),
-      "su.category", "su.excluded",
-    ) as Array<{ id: string; url: string; scraper: string; scraped_at: Date; content_hash: string; link_count: number; category: string | null; excluded: boolean }>;
+      "su.id as site_url_id", "su.category", "su.category_source", "su.excluded",
+    ) as Array<{ id: string; url: string; scraper: string; scraped_at: Date; content_hash: string; link_count: number; site_url_id: string; category: string | null; category_source: string | null; excluded: boolean }>;
   const data = rows.map((r) => ({
     id: r.id, url: r.url, scraper: r.scraper, scraped_at: r.scraped_at, content_hash: r.content_hash,
-    link_count: Number(r.link_count), category: r.category, excluded: r.excluded,
+    link_count: Number(r.link_count), site_url_id: r.site_url_id, category: r.category, category_source: r.category_source, excluded: r.excluded,
     gcs_path: snapshotPathFor(r.url),
   }));
   return buildPaginatedResponse(data, Number(n), query);

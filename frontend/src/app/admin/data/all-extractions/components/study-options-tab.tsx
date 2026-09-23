@@ -163,12 +163,10 @@ export function StudyOptionsTab({
   jobId,
   job,
   onReload,
-  onJumpToContext,
 }: Readonly<{
   jobId: string;
   job: ExtractionJob;
   onReload: () => void;
-  onJumpToContext: () => void;
 }>) {
   const [links, setLinks] = useState<CourseLinks | null>(null);
   const [options, setOptions] = useState<StudyOption[]>([]);
@@ -254,11 +252,7 @@ export function StudyOptionsTab({
         progress={(job.pipeline_progress as Record<string, unknown> | null)?.courses}
         lastUpdated={latestTimestamp(options)}
         hasData={total > 0}
-        guidedUrls={job.guided_urls}
-        contextKey="extract_fields"
-        contextLabel="extract fields"
         onChanged={onReload}
-        onAddContext={onJumpToContext}
       />
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

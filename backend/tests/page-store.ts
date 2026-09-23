@@ -15,7 +15,7 @@
  */
 
 import "dotenv/config";
-import { _pageDeps, getPage, getDocument, normaliseUrl, modeFor, snapshotPathFor, renderSnapshotFile, parseSnapshotFile } from "../src/modules/superadmin/data-extraction/lib/page-store.js";
+import { _pageDeps, getPage, getDocument, normaliseUrl, modeFor, snapshotPathFor, renderSnapshotFile, parseSnapshotFile, mergeUrlLists } from "../src/modules/superadmin/data-extraction/lib/page-store.js";
 
 let passed = 0;
 let failed = 0;
@@ -194,6 +194,14 @@ console.log("\n6. the bucket is the source of truth");
   assert(stored.length <= 1_000_000, "the file is bounded to MAX_STORED_CHARS", stored.length);
   assert(h.contentHash === (await getPage(huge, { onlyMainContent: true })).contentHash, "the hash is of the bounded text, so the file re-hashes to its row on read");
   assert((await getPage(huge, { onlyMainContent: true })).fromCache, "…and that read is a cache hit, not a mismatch → rescrape");
+}
+
+// The site list wins over the legacy guided list, one page spelled two ways is one entry, and the cap
+// is applied AFTER the dedupe so a duplicate never eats a slot.
+{
+  const merged = mergeUrlLists([["https://www.uq.edu.au/fees/", "https://uq.edu.au/fees/2028.pdf"], ["https://uq.edu.au/fees", "https://uq.edu.au/scholarships"]], 3);
+  assert(merged.length === 3 && merged[0] === "https://www.uq.edu.au/fees/" && merged[2] === "https://uq.edu.au/scholarships",
+    "mergeUrlLists: site first, www/slash spelling deduped, cap after dedupe", merged);
 }
 
 console.log(`\n${passed} passed, ${failed} failed\n`);

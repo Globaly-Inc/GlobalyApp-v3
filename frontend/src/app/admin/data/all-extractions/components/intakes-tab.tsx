@@ -266,12 +266,10 @@ export function IntakesTab({
   jobId,
   job,
   onReload,
-  onJumpToContext,
 }: Readonly<{
   jobId: string;
   job: ExtractionJob;
   onReload: () => void;
-  onJumpToContext: () => void;
 }>) {
   const [links, setLinks] = useState<CourseLinks | null>(null);
   const [intakes, setIntakes] = useState<Intake[]>([]);
@@ -352,11 +350,7 @@ export function IntakesTab({
         progress={(job.pipeline_progress as Record<string, unknown> | null)?.courses}
         lastUpdated={latestTimestamp(intakes)}
         hasData={total > 0}
-        guidedUrls={job.guided_urls}
-        contextKey="extract_fields"
-        contextLabel="extract fields"
         onChanged={onReload}
-        onAddContext={onJumpToContext}
       />
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

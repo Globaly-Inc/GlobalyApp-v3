@@ -68,11 +68,12 @@ export type ExtractionJob = ActorFields & {
   service_category_id?: number | null;
   service_category_name?: string | null;
   guided_urls?: Record<string, unknown> | null;
+  /** Legacy — the column still exists and the (unused) context-tab.tsx reads it. */
+  supporting_documents?: SupportingDoc[] | null;
   guidance_notes?: string | null;
   pipeline_progress?: Record<string, unknown> | null;
   /** auto: steps chain themselves. manual: the pipeline waits after every step for Run. */
   step_mode?: StepMode;
-  supporting_documents?: SupportingDoc[] | null;
   error_message?: string | null;
   processing_heartbeat_at?: string | null;
   /** List rows carry flat totals (LEFT JOIN, so null when a job has made no calls yet). */
@@ -90,12 +91,6 @@ export type PipelineStage = { status: string; total?: number; done?: number };
 
 /** Loose map — the AI pipeline writes mapping/intelligence/scraping/..., per-tab reruns write others. */
 export type PipelineProgress = Record<string, PipelineStage | undefined>;
-
-export type SupportingDoc = {
-  file_name: string;
-  file_url: string;
-  guidance?: string;
-};
 
 export type CreateJobParams = {
   institution_url: string;
@@ -371,6 +366,12 @@ export type EditableTable =
 
 // guided_urls values are URL arrays and resource objects, not strings — matches the
 // backend's `z.record(z.unknown())`.
+export type SupportingDoc = {
+  file_name: string;
+  file_url: string;
+  guidance?: string;
+};
+
 export type UpdateContextParams = { guided_urls?: Record<string, unknown> | null; guidance_notes?: string | null; step_mode?: StepMode };
 
 // ── One-step-at-a-time chain (Site tab) ───────────────
@@ -393,7 +394,7 @@ export type SiteUrl = {
   updated_at: string;
 };
 
-export type SiteUrlCounts = { total: number; unclassified: number; excluded: number; by_category: Record<SiteUrlCategory, number> };
+export type SiteUrlCounts = { total: number; unclassified: number; excluded: number; dead: number; by_category: Record<SiteUrlCategory, number> };
 
 export type SiteUrlsPage = Paginated<SiteUrl> & { counts: SiteUrlCounts };
 
@@ -406,7 +407,10 @@ export type SnapshotRow = {
   scraped_at: string;
   content_hash: string;
   link_count: number;
+  /** extraction_site_urls.id — what the Category picker patches. */
+  site_url_id: string;
   category: SiteUrlCategory | null;
+  category_source: "guided" | "heuristic" | "llm" | "admin" | null;
   excluded: boolean;
   gcs_path: string;
 };

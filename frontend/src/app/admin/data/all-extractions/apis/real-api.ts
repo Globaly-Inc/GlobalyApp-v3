@@ -306,6 +306,10 @@ export const allExtractionsRealApi = {
     return httpGet<SiteUrlsPage>(`/admin/data-extraction/jobs/${jobId}/site-urls?${query}`);
   },
 
+  addSiteUrl: async (jobId: string, url: string, category: SiteUrlCategory): Promise<void> => {
+    await httpPost(`/admin/data-extraction/jobs/${jobId}/site-urls`, { url, category });
+  },
+
   patchSiteUrl: async (id: string, patch: { excluded?: boolean; category?: SiteUrlCategory | null }): Promise<void> => {
     await httpPatch(`/admin/data-extraction/site-urls/${id}`, patch);
   },

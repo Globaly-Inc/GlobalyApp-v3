@@ -178,12 +178,10 @@ export function BranchesTab({
   jobId,
   job,
   onReload,
-  onJumpToContext,
 }: Readonly<{
   jobId: string;
   job: ExtractionJob;
   onReload: () => void;
-  onJumpToContext: () => void;
 }>) {
   const [branches, setBranches] = useState<CampusFull[]>([]);
   const [total, setTotal] = useState(0);
@@ -320,11 +318,7 @@ export function BranchesTab({
         progress={(job.pipeline_progress as Record<string, unknown> | null)?.branches}
         lastUpdated={latestTimestamp(branches)}
         hasData={total > 0}
-        guidedUrls={job.guided_urls}
-        contextKey="branches_urls"
-        contextLabel="branches URLs"
         onChanged={onReload}
-        onAddContext={onJumpToContext}
       />
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">

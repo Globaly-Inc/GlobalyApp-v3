@@ -2,13 +2,12 @@
 
 import { useState } from "react";
 import type { LucideIcon } from "lucide-react";
-import { AlertCircle, CheckCircle2, Clock, Loader2, MinusCircle, Play, Settings2, XCircle } from "lucide-react";
+import { CheckCircle2, Clock, Loader2, MinusCircle, Play, XCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
 import { fmtTime } from "../utils";
-import type { ContextKey } from "../const";
 
 /** V3 writes plain strings into pipeline_progress; V2 wrote {status, updated_at}. Accept both. */
 export function readStatus(progress: unknown): string | undefined {
@@ -46,11 +45,7 @@ export function StepActionBar({
   progress,
   lastUpdated,
   hasData = false,
-  guidedUrls,
-  contextKey,
-  contextLabel,
   onChanged,
-  onAddContext,
 }: Readonly<{
   jobId: string;
   step: string;
@@ -62,11 +57,7 @@ export function StepActionBar({
   progress?: unknown;
   lastUpdated?: string | null;
   hasData?: boolean;
-  guidedUrls?: Record<string, unknown> | null;
-  contextKey?: ContextKey;
-  contextLabel?: string;
   onChanged: () => void;
-  onAddContext: () => void;
 }>) {
   const [busy, setBusy] = useState(false);
 
@@ -74,9 +65,6 @@ export function StepActionBar({
   const badge: StepBadge = (status ? BADGES[status] : undefined) ?? (hasData ? COMPLETE : NOT_RUN);
   const running = status === "running" || status === "processing";
   const hasRun = status === "done" || status === "failed" || hasData;
-
-  const contextValue = contextKey ? (guidedUrls ?? {})[contextKey] : undefined;
-  const contextOk = !contextKey || (Array.isArray(contextValue) && contextValue.length > 0);
 
   const run = async () => {
     setBusy(true);
@@ -99,12 +87,6 @@ export function StepActionBar({
           {badge.label}
         </span>
         <span className="text-xs text-muted-foreground">Last updated: {fmtTime(lastUpdated)}</span>
-        {!contextOk && (
-          <span className="inline-flex items-center gap-1 text-xs text-amber-700">
-            <AlertCircle className="h-3.5 w-3.5" />
-            Missing {contextLabel ?? "context"} — add it in the Context tab to enable Run.
-          </span>
-        )}
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5">
@@ -112,19 +94,13 @@ export function StepActionBar({
           variant="outline"
           size="sm"
           className="h-8 gap-1.5 cursor-pointer"
-          disabled={busy || running || !contextOk || Boolean(runBlockedReason)}
-          title={runBlockedReason ?? (contextOk ? undefined : `Add ${contextLabel ?? "context"} in the Context tab first`)}
+          disabled={busy || running || Boolean(runBlockedReason)}
+          title={runBlockedReason}
           onClick={run}
         >
           {busy || running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
           {runLabel ?? (hasRun ? "Re-run extraction" : "Run extraction")}
         </Button>
-        {!contextOk && (
-          <Button size="sm" className="h-8 gap-1.5 cursor-pointer" onClick={onAddContext}>
-            <Settings2 className="h-3.5 w-3.5" />
-            Add Context
-          </Button>
-        )}
       </div>
     </div>
   );

@@ -687,6 +687,23 @@ single model call relabelled guided and heuristic rows as llm). **Behaviour chan
 now keeps its own category and is NOT queued — the entity steps already read those keys directly.
 Guarded by `test:step-gate` §6.
 
+## Inactive pages: `dead_reason` on the site list (2026-09-23)
+
+User decision: "Inactive does mean dead — not-found and blocked URLs", counted on the Site Context tab
+but never fed onward. `extraction_site_urls.dead_reason` (migration `20260923_001`; `not_found` |
+`blocked` | `empty`) is stamped by `snapshotSite` from the pure `deadReasonOf(page)` — the same
+three conditions the step already treated as a failed fetch — and CLEARED when a later snapshot of
+that URL succeeds (`setSiteUrlLiveness`, one update per reason per batch). Distinct from `excluded`,
+which is admin intent. `listActiveSiteUrls` / `listSiteUrlsByCategory` skip dead rows, so
+`url_classify`, `queue_pages` and every entity step's `urlsForType` never see them; the ONE place a
+dead page is retried is a `fresh` re-snapshot (`listActiveSiteUrls(jobId, { includeDead: true })`),
+because liveness is only knowable by fetching. `siteUrlCounts.dead` feeds the tab's Inactive capsule;
+Active there is `total − excluded − dead`. Dead pages have no `extraction_pages` row (`getPage` does
+not store an unreadable result), so they are absent from the snapshots table by construction. The
+snapshots list now also carries `site_url_id` + `category_source` so the visible table's Category
+picker can PATCH the site-list row; the old Details sheet is commented out in `site-tab.tsx`, not
+deleted, at the user's request. Guarded by `test:site-snapshot-path` (deadReasonOf cases).
+
 ## Registrable domains come from the Public Suffix List (2026-09-17)
 
 `siteOf` decides crawl scope (`filterUrls`), the catalogue-subdomain probe, the crt.sh query and

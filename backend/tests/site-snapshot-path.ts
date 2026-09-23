@@ -6,7 +6,7 @@
  * plus the property that lossiness would otherwise destroy: two different pages never share an
  * object path, because an upload overwrites and one page's snapshot would be silently lost.
  */
-import { fileLinksOf, snapshotPathFor, snapshotVerdict, tallySnapshotEvents } from "../src/modules/superadmin/data-extraction/lib/site-snapshot.js";
+import { deadReasonOf, fileLinksOf, snapshotPathFor, snapshotVerdict, tallySnapshotEvents } from "../src/modules/superadmin/data-extraction/lib/site-snapshot.js";
 import type { SnapshotEventRow } from "../src/modules/superadmin/data-extraction/lib/site-snapshot.js";
 
 let failed = 0;
@@ -114,5 +114,16 @@ for (const [label, got, want] of tallies) {
   }
 }
 
+
+// ── deadReasonOf: what the Site Context tab counts as Inactive ──
+for (const [label, page, want] of [
+  ["404 is not_found", { notFound: true, markdown: "x".repeat(500) }, "not_found"],
+  ["blocked wins over a thin body", { blocked: true, markdown: "" }, "blocked"],
+  ["under 50 chars is empty", { markdown: "Loading…" }, "empty"],
+  ["a readable page is live", { markdown: "x".repeat(50) }, null],
+] as const) {
+  const got = deadReasonOf(page);
+  if (got !== want) fail(`deadReasonOf ${label}: expected ${want}, got ${got}`);
+}
 if (failed) process.exit(1);
 console.log("site-snapshot-path: all passed");

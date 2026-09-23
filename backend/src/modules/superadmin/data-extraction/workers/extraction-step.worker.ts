@@ -13,7 +13,8 @@ import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { scrapeRenderedHtml, mapUrlsDetailed } from "../lib/scraper.js";
-import { getPage, getDocument, isPdfUrl } from "../lib/page-store.js";
+import { getPage, getDocument, isPdfUrl, mergeUrlLists } from "../lib/page-store.js";
+import { GUIDED_KEY_CATEGORY } from "../lib/url-categories.js";
 import { snapshotSite, snapshotRunOutcome } from "../lib/site-snapshot.js";
 import type { SnapshotBatch } from "../lib/site-snapshot.js";
 import { truncateMarkdown, domainOf, extractSocialLinks, extractHrefsFromHtml, extractDomainEmails, fixMalformedAbsoluteUrl } from "../lib/html-utils.js";
@@ -75,13 +76,12 @@ import { parseAgentRowsFromHtml } from "../lib/agent-table-parser.js";
 import { enrichAgents } from "../lib/agent-enrichment.js";
 import { matchFeesToCourses } from "../lib/fee-matcher.js";
 import { parseInstallments } from "../lib/installment-parser.js";
-import { createDocumentExtractor, buildDocumentContext, type DocInput } from "../lib/document-extractor.js";
 import type { PipelineStep, CourseDataType } from "../schemas/step.schema.js";
 import {
   advance, gate, dispatchSnapshotBatches, setProgress,
   runSiteMap, runSiteAnalysis, runUrlClassify, runQueuePages,
 } from "../lib/pipeline-steps.js";
-import { listActiveSiteUrls, upsertSiteUrls, setSiteUrlCategories } from "../repositories/site-urls.repository.js";
+import { listActiveSiteUrls, upsertSiteUrls, setSiteUrlCategories, listSiteUrlsByCategory } from "../repositories/site-urls.repository.js";
 
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
@@ -92,6 +92,23 @@ const logger = createChildLogger("extraction-step-worker");
 function parseGuidedUrls(job: Record<string, unknown>): Record<string, unknown> {
   if (!job.guided_urls) return Object.create(null) as Record<string, unknown>;
   return typeof job.guided_urls === "string" ? JSON.parse(job.guided_urls as string) : job.guided_urls as Record<string, unknown>;
+}
+
+/** Most extra pages (or PDFs) one step reads for a data type — the rest is prompt-budget waste. */
+const MAX_TYPE_URLS = Number(process.env.EXTRACTION_MAX_TYPE_URLS) || 10;
+
+/**
+ * The pages the admin wants read for one data type: the site list's rows in that category (added
+ * on the Site Context tab, pinned by hand, or classified) — admin-owned rows first — unioned with
+ * the legacy guided_urls list for jobs that predate the site list. PDFs are fine here; the callers
+ * go through scrapeUrlOrPdf.
+ */
+async function urlsForType(jobId: string, job: Record<string, unknown>, guidedKey: string): Promise<string[]> {
+  const category = GUIDED_KEY_CATEGORY[guidedKey];
+  const fromSite = category ? await listSiteUrlsByCategory(jobId, category) : [];
+  const guided = parseGuidedUrls(job)[guidedKey];
+  const fromGuided = Array.isArray(guided) ? guided.filter((u): u is string => typeof u === "string") : [];
+  return mergeUrlLists([fromSite, fromGuided], MAX_TYPE_URLS);
 }
 
 async function loadJob(jobId: string) {
@@ -138,7 +155,7 @@ async function handleSiteSnapshotStep(
 ): Promise<"done" | "failed" | "pending"> {
   if (!urls?.length || !batch) {
     const job = await loadJob(jobId);
-    let list = urls?.length ? urls : (await listActiveSiteUrls(jobId)).map((r) => r.url);
+    let list = urls?.length ? urls : (await listActiveSiteUrls(jobId, { includeDead: fresh })).map((r) => r.url);
     if (!list.length) {
       const rows = await masterKnex(`${S}.extraction_queue`).where({ job_id: jobId }).select("url");
       list = rows.map((r: { url: string }) => r.url);
@@ -490,21 +507,6 @@ async function handleInstitutionStep(jobId: string) {
   }
   if (detectedSocial.other_social_links.length) {
     merged.other_social_links = unionSocialLinks(merged.other_social_links, detectedSocial.other_social_links);
-  }
-
-  // Process supporting documents (PDFs/files attached to the job)
-  const docs: DocInput[] = Array.isArray(job.supporting_documents) ? job.supporting_documents : [];
-  if (docs.length > 0) {
-    const docExtractor = createDocumentExtractor();
-    const docContext = await buildDocumentContext(docExtractor, docs, 30000);
-    if (docContext.length > 200) {
-      await heartbeat(jobId);
-      const docData = await extractJson<Record<string, unknown>>({
-        system,
-        prompt: institutionExtractionPrompt("supporting-documents", docContext, job.guidance_notes),
-      });
-      mergeInstitutionFields(merged, docData);
-    }
   }
 
   // Preserve existing manual edits
@@ -1118,12 +1120,10 @@ async function handleEnrichmentStep(jobId: string) {
   const candidatePaths = ["/fees", "/tuition", "/tuition-fees", "/course-fees", "/costs", "/pricing"];
   let feePageText: string | null = null;
 
-  // Real bug: this step never looked at guided_urls.fees_urls at all — adding a Fees
-  // guided URL in the Context tab and hitting "Re-run" was silently ignored in favor of
-  // site-intelligence guessing and a hardcoded path list. An admin-provided URL is a
-  // stronger signal than either, so it wins outright when present.
-  const guided = parseGuidedUrls(job);
-  const feesUrls: string[] = (guided.fees_urls as string[]) || [];
+  // Fee pages the admin named (Site Context tab / guided fees_urls) or the classifier labelled
+  // `fees` — a stronger signal than site-intelligence guessing or the hardcoded path list, so
+  // they win outright when present.
+  const feesUrls = await urlsForType(jobId, job, "fees_urls");
   if (feesUrls.length > 0) {
     const pages = (await Promise.all(feesUrls.map((u) => scrapeUrlOrPdf(u)))).filter((md): md is string => !!md);
     if (pages.length > 0) feePageText = pages.join("\n\n");
@@ -1372,18 +1372,13 @@ async function handleCourseDataStep(
   const addendum = buildSystemAddendum(recalled);
   const system = addendum ? `${COURSE_DATA_SYSTEM}\n\n${addendum}` : COURSE_DATA_SYSTEM;
 
-  // Admin-supplied pages for this data type (fees_urls, intakes_urls, …) get appended to
-  // the course page — a shared fee table often lives off the course page entirely.
-  // PDF URLs (fee schedules, prospectuses) are handled via Gemini vision.
-  // ponytail: first 3 only, to bound scrape cost; raise if sites split data wider than that.
+  // Pages for this data type (Site Context tab category / guided `${dataType}_urls`) get appended
+  // to the course page — a shared fee table often lives off the course page entirely. PDF URLs
+  // (fee schedules, prospectuses) go through Gemini vision. Capped at MAX_TYPE_URLS.
   let combined = markdown;
-  const guidedForType = parseGuidedUrls(job)[`${dataType}_urls`];
-  if (Array.isArray(guidedForType)) {
-    for (const extra of guidedForType.slice(0, 3)) {
-      if (typeof extra !== "string") continue;
-      const extraMd = await scrapeUrlOrPdf(extra);
-      if (extraMd) combined += `\n\n---\nSource: ${extra}\n\n${extraMd}`;
-    }
+  for (const extra of await urlsForType(jobId, job, `${dataType}_urls`)) {
+    const extraMd = await scrapeUrlOrPdf(extra);
+    if (extraMd) combined += `\n\n---\nSource: ${extra}\n\n${extraMd}`;
   }
 
   const pageText = truncateMarkdown(combined, 24000);
