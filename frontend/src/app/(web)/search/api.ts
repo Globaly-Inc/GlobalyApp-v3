@@ -202,6 +202,7 @@ export async function getCourseBySlug(slug: string, previewToken?: string): Prom
     institution: data.institution ? { ...data.institution, gallery_image_urls: data.institution.gallery_image_urls ?? [] } : null,
     weather: data.weather ?? null,
     city_link: data.city_link ?? null,
+    public_visibility: data.public_visibility ?? null,
   };
 }
 
