@@ -40,15 +40,17 @@ export async function syncBranchFromCampus(campusId: string): Promise<void> {
   if (!org) return;
 
   const db = await getKnex(org.id, org.schema_name);
-  await db("business_branches")
-    .where({ uuid: campusId })
-    .whereRaw("updated_at = created_at")
-    .update({
-      name: campus.name ?? "Unnamed campus",
-      country: campus.country, state: campus.state, city: campus.city,
-      address: campus.address, phone: campus.phone, email: campus.email,
-      updated_at: db.raw("created_at"),
-    });
+  const name = campus.name ?? "Unnamed campus";
+  await db.raw(
+    `insert into business_branches (uuid, name, country, state, city, address, phone, email)
+     values (?, ?, ?, ?, ?, ?, ?, ?)
+     on conflict (uuid) do update set
+       name = excluded.name, country = excluded.country, state = excluded.state,
+       city = excluded.city, address = excluded.address, phone = excluded.phone, email = excluded.email,
+       updated_at = business_branches.created_at
+     where business_branches.updated_at = business_branches.created_at`,
+    [campusId, name, campus.country, campus.state, campus.city, campus.address, campus.phone, campus.email],
+  );
 }
 
 export async function syncBranchDeletion(jobId: string, campusId: string): Promise<void> {
