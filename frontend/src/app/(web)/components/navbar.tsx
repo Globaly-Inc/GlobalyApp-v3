@@ -97,8 +97,8 @@ export function Navbar() {
                   }
                 >
                   <Avatar className="size-7">
-                    {(user.photo_url ?? profile?.photo_url) && (
-                      <AvatarImage src={user.photo_url ?? profile?.photo_url ?? undefined} alt={user.first_name ?? "User"} />
+                    {(profile?.photo_url ?? user.photo_url) && (
+                      <AvatarImage src={profile?.photo_url ?? user.photo_url ?? undefined} alt={user.first_name ?? "User"} />
                     )}
                     <AvatarFallback>{initial}</AvatarFallback>
                   </Avatar>
@@ -110,8 +110,8 @@ export function Navbar() {
                     onClick={() => router.push(profileHref(user))}
                   >
                     <Avatar className="size-8 shrink-0">
-                      {(user.photo_url ?? profile?.photo_url) && (
-                        <AvatarImage src={user.photo_url ?? profile?.photo_url ?? undefined} alt={user.first_name ?? "User"} />
+                      {(profile?.photo_url ?? user.photo_url) && (
+                        <AvatarImage src={profile?.photo_url ?? user.photo_url ?? undefined} alt={user.first_name ?? "User"} />
                       )}
                       <AvatarFallback className="text-primary-foreground!">{initial}</AvatarFallback>
                     </Avatar>

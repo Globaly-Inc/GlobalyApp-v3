@@ -201,7 +201,13 @@ export function InstitutionServiceFormView({ institutionId, serviceId }: Readonl
     const tab = window.open("", "_blank");
     businessesApi.mintInstitutionPreviewToken(institutionId)
       .then(({ preview_token }) => { if (tab) tab.location.href = `${path}?preview_token=${encodeURIComponent(preview_token)}`; })
-      .catch(() => { if (tab) tab.location.href = path; });
+      .catch((e) => {
+        // An unpublished institution's course needs this token to bypass the publication
+        // filter — opening the bare URL without one just shows a misleading 404 instead of
+        // reporting that the preview couldn't be opened.
+        tab?.close();
+        toast.error("Couldn't open preview", { description: e instanceof Error ? e.message : "Please try again." });
+      });
   };
 
   const schemaFieldIdByKey: Record<string, number> = {};

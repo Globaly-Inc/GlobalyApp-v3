@@ -37,7 +37,6 @@ export const InstitutionProfilePatchSchema = z.object({
   // Per-section public/private map, e.g. { contact: true, registration: false } — same shape and
   // same default-public read rule as businesses'.
   public_visibility: z.record(z.string(), z.boolean()).nullable(),
-  registration_licenses: z.record(z.string(), z.unknown()).nullable(),
 }).partial().strict();
 
 export type InstitutionProfilePatchInput = z.infer<typeof InstitutionProfilePatchSchema>;

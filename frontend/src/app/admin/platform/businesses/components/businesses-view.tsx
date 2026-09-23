@@ -198,18 +198,35 @@ export function BusinessesView() {
       return { kind: kind as ListingRef["kind"], id: Number(id) };
     });
 
+  // Selection survives pagination/filter changes, but `businesses` only ever holds whatever
+  // page is currently loaded — a selected row from another page has no entry here. Eligibility
+  // filtering below only EXCLUDES a ref when we can positively confirm (from loaded data) that
+  // it's ineligible; an off-page ref we know nothing about is kept rather than silently dropped
+  // from the bulk action, which was the actual bug (not just an inaccurate displayed count).
+  const businessByKey = () => new Map(businesses.map((b) => [keyOf(b), b]));
+
   /** Same eligibility rule as the per-card button (business-card.tsx): every status except
    *  "claimed" — a pending request can be resent, only an already-claimed listing is excluded. */
   const selectedUnclaimedRefs = (): ListingRef[] => {
-    const unclaimedKeys = new Set(businesses.filter((b) => b.claim_status !== "claimed").map(keyOf));
-    return selectedRefs().filter((r) => unclaimedKeys.has(`${r.kind}-${r.id}`));
+    const byKey = businessByKey();
+    return selectedRefs().filter((r) => {
+      const b = byKey.get(`${r.kind}-${r.id}`);
+      return !b || b.claim_status !== "claimed";
+    });
   };
 
   /** How many of the current selection are actually eligible for a given bulk status change —
-   *  e.g. Verify shouldn't count/re-touch a business that's already verified. */
-  const selectedEligibleCount = (targetStatus: Business["status"]): number => {
-    const eligibleKeys = new Set(businesses.filter((b) => b.status !== targetStatus).map(keyOf));
-    return selectedRefs().filter((r) => eligibleKeys.has(`${r.kind}-${r.id}`)).length;
+   *  e.g. Verify shouldn't count/re-touch a business that's already verified. Off-page rows
+   *  (unknown status) count as eligible, matching selectedEligibleRefs below. */
+  const selectedEligibleCount = (targetStatus: Business["status"]): number =>
+    selectedEligibleRefs(targetStatus).length;
+
+  const selectedEligibleRefs = (targetStatus: Business["status"]): ListingRef[] => {
+    const byKey = businessByKey();
+    return selectedRefs().filter((r) => {
+      const b = byKey.get(`${r.kind}-${r.id}`);
+      return !b || b.status !== targetStatus;
+    });
   };
 
   const toggleOne = (key: string) => {
@@ -302,8 +319,7 @@ export function BusinessesView() {
   };
 
   const bulkUpdateStatus = async (target: "verified" | "suspended") => {
-    const eligibleKeys = new Set(businesses.filter((b) => b.status !== target).map(keyOf));
-    const refs = selectedRefs().filter((r) => eligibleKeys.has(`${r.kind}-${r.id}`));
+    const refs = selectedEligibleRefs(target);
     if (refs.length === 0) return;
     setBulkBusy(true);
     const results = await Promise.all(

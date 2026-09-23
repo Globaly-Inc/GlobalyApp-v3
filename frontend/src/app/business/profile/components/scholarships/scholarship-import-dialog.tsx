@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { read, utils } from "xlsx";
 import { UploadCloud } from "lucide-react";
+import { toast } from "sonner";
 import { categoriesApi, type CountryOption } from "@/app/admin/platform/categories/apis";
 import { flagFromIso2 } from "@/app/admin/platform/categories/utils";
 import { Combobox } from "@/components/combobox";
@@ -100,18 +101,26 @@ export function ScholarshipImportDialog({
       return;
     }
 
-    const job = await businessProfileDetailApi.startScholarshipImport(inputs);
-    for (;;) {
-      await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
-      const current = await businessProfileDetailApi.getScholarshipImportJob(job.id);
-      const rowResults: RowResult[] = current.results.map((r, i) => ({ key: `job-${i}`, title: r.title, status: r.status, detail: r.detail }));
-      setResults([...skippedResults, ...rowResults]);
-      setProgress({ done: skippedResults.length + current.processed_rows, total: rows.length });
-      if (current.status === "completed" || current.status === "failed") break;
+    try {
+      const job = await businessProfileDetailApi.startScholarshipImport(inputs);
+      for (;;) {
+        await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+        const current = await businessProfileDetailApi.getScholarshipImportJob(job.id);
+        const rowResults: RowResult[] = current.results.map((r, i) => ({ key: `job-${i}`, title: r.title, status: r.status, detail: r.detail }));
+        setResults([...skippedResults, ...rowResults]);
+        setProgress({ done: skippedResults.length + current.processed_rows, total: rows.length });
+        if (current.status === "completed" || current.status === "failed") break;
+      }
+      await dispatch(fetchScholarships({ id: businessId, params: {} }));
+      setStep("done");
+    } catch (e) {
+      // Otherwise the dialog is stuck on "importing" forever — that step also blocks the Close
+      // button, so a failed start/poll left the admin with no way out and no retry. Some rows
+      // may already have been created by the time this failed; falling back to "map" (rather
+      // than "done") makes that ambiguity visible instead of claiming success.
+      toast.error("Import failed", { description: e instanceof Error ? e.message : "Please try again." });
+      setStep("map");
     }
-
-    await dispatch(fetchScholarships({ id: businessId, params: {} }));
-    setStep("done");
   };
 
   const ok = results.filter((r) => r.status === "ok").length;

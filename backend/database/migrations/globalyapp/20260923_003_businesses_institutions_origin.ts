@@ -19,16 +19,26 @@ export async function up(knex: Knex): Promise<void> {
   // "has a source_job_id" alone would misclassify both as seeded. Anything with no job at all
   // predates this column and can't be told apart after the fact, so it defaults to "signup" —
   // the common case — rather than guessing "admin" for rows that were mostly self-registered.
+  // On a fresh install, globalyapp migrations run BEFORE superadmin's (see README's "Run
+  // migrations and seed" step — globalyapp must go first for its own FK reasons), so
+  // superadmin.extraction_jobs may not exist yet. A fresh install also has no business/
+  // institution rows to backfill, so skipping the join there is a genuine no-op rather than a
+  // gap — an existing install with real data to backfill already has that table.
+  const { rows } = await knex.raw("SELECT to_regclass('superadmin.extraction_jobs') AS reg");
+  const extractionJobsExists = rows[0]?.reg !== null;
+
   for (const table of ["businesses", "institutions"]) {
-    await knex.raw(`
-      UPDATE ${table} AS t SET origin = CASE j.source_type
-        WHEN 'self_service' THEN 'signup'
-        WHEN 'manual' THEN 'admin'
-        ELSE 'seeded'
-      END
-      FROM superadmin.extraction_jobs AS j
-      WHERE t.source_job_id = j.id
-    `);
+    if (extractionJobsExists) {
+      await knex.raw(`
+        UPDATE ${table} AS t SET origin = CASE j.source_type
+          WHEN 'self_service' THEN 'signup'
+          WHEN 'manual' THEN 'admin'
+          ELSE 'seeded'
+        END
+        FROM superadmin.extraction_jobs AS j
+        WHERE t.source_job_id = j.id
+      `);
+    }
     // Catches both source_job_id IS NULL and a source_job_id that doesn't match any row in
     // extraction_jobs (e.g. one belonging to a different environment's seed data) — either way
     // the join above left origin unset.

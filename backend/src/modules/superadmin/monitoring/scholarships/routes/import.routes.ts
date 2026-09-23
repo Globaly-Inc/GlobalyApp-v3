@@ -14,7 +14,14 @@ export async function importRoutes(app: FastifyInstance) {
   app.post("/import", async (req, reply) => {
     const { rows } = ImportRowsSchema.parse(req.body);
     const job = await importJobs.createJob(Number(req.auth.sub), rows.length);
-    await queueService.publish(SCHOLARSHIP_IMPORT_QUEUE, { jobId: job.id, rows });
+    try {
+      await queueService.publish(SCHOLARSHIP_IMPORT_QUEUE, { jobId: job.id, rows });
+    } catch (err) {
+      // Otherwise the job sits "pending" forever with no message ever published and no sweep
+      // to recover it — a retry would only create a second, equally-orphaned job.
+      await importJobs.markFailed(job.id, "Failed to queue import for processing");
+      throw err;
+    }
     return reply.status(202).send(job);
   });
 
