@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { EyeOff, Files, Globe } from "lucide-react";
 // import { ListTree } from "lucide-react";
 // import { Button } from "@/components/ui/button";
@@ -19,14 +19,18 @@ import type { ExtractionJob, SiteUrlCounts } from "../apis/types";
 export function SiteTab({ jobId, job, onReload }: Readonly<{ jobId: string; job: ExtractionJob; onReload: () => void }>) {
   // const [detailsOpen, setDetailsOpen] = useState(false);
   const [counts, setCounts] = useState<SiteUrlCounts | null>(null);
-  const fetchedRef = useRef(false);
 
+  // Refetched on every `job` change: onReload (a step Run, the header's refresh) hands down a new job
+  // object, so the counts follow the same "refresh to see progress" model as the step chips instead
+  // of freezing at mount.
   useEffect(() => {
-    if (fetchedRef.current) return;
-    fetchedRef.current = true;
+    let stale = false;
     // ponytail: counts ride on the existing site-urls list endpoint; limit 1 keeps the payload to the counts we need.
-    allExtractionsApi.getSiteUrls(jobId, { limit: 1 }).then((res) => setCounts(res.counts)).catch(() => setCounts(null));
-  }, [jobId]);
+    allExtractionsApi.getSiteUrls(jobId, { limit: 1 })
+      .then((res) => { if (!stale) setCounts(res.counts); })
+      .catch(() => { if (!stale) setCounts(null); });
+    return () => { stale = true; };
+  }, [jobId, job]);
 
   // Inactive = the snapshot step could not read the page (404 / blocked / empty). Admin-excluded rows
   // are neither active nor inactive here; they live in the site map.

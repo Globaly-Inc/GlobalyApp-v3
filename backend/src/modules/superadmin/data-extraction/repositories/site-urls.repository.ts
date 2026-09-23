@@ -1,5 +1,6 @@
 // superadmin.extraction_site_urls — the discovered URL list a job's steps read from and write to.
 
+import type { Knex } from "knex";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { normaliseUrl } from "../lib/page-store.js";
@@ -19,6 +20,8 @@ export interface SiteUrlRow {
   excluded: boolean;
   /** Set by the snapshot step when the page could not be read; null while the page is live. */
   dead_reason: DeadReason | null;
+  /** When `dead_reason` was last decided; a liveness write older than this is ignored. */
+  liveness_checked_at: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -52,14 +55,16 @@ export async function upsertSiteUrls(
 
 /**
  * Admin adds a URL (page or PDF) with its category. A row discovery already found is taken over:
- * category pinned as admin-owned and un-excluded, so a suggested PDF the admin picks up is one
- * call, not restore + categorise. Returns the row id.
+ * category pinned as admin-owned, un-excluded and `dead_reason` cleared, so a suggested PDF the
+ * admin picks up is one call, not restore + categorise. Clearing the marker is what lets the active
+ * reads see the row again; the next snapshot re-stamps it if the page is still unreadable.
+ * Returns the row id.
  */
 export async function addSiteUrl(jobId: string, url: string, category: SiteUrlCategory): Promise<string> {
   const [row] = await masterKnex(T)
     .insert({ job_id: jobId, url: normaliseUrl(url), source: "admin", category, category_source: "admin", excluded: false })
     .onConflict(["job_id", "url"])
-    .merge({ category, category_source: "admin", excluded: false, updated_at: masterKnex.fn.now() })
+    .merge({ category, category_source: "admin", excluded: false, dead_reason: null, liveness_checked_at: masterKnex.fn.now(), updated_at: masterKnex.fn.now() })
     .returning("id");
   return typeof row === "string" ? row : row.id;
 }
@@ -157,20 +162,30 @@ export async function patchSiteUrl(id: string, patch: { excluded?: boolean; cate
 /**
  * The snapshot step's verdict on liveness. `dead` rows are marked with their reason; `alive` rows
  * that were previously dead are cleared. Two statements per batch, keyed on the normalised url.
+ *
+ * `observedAt` is when this batch started fetching. Batches of overlapping runs finish in any
+ * order, so a row is written only if nothing newer has decided its liveness — a stale failed fetch
+ * cannot re-mark a page whose later fetch succeeded, and an admin re-add (which stamps now()) is
+ * not undone by a batch that was already in flight.
+ * ponytail: one timestamp per batch, not per fetch — keeps the chunked updates; per-URL precision
+ * would need a VALUES join and only matters when two runs' batches interleave within one batch.
  */
-export async function setSiteUrlLiveness(jobId: string, dead: { url: string; reason: DeadReason }[], alive: string[]): Promise<void> {
+export async function setSiteUrlLiveness(jobId: string, dead: { url: string; reason: DeadReason }[], alive: string[], observedAt: Date): Promise<void> {
+  const notNewer = (qb: Knex.QueryBuilder) =>
+    qb.where((w) => w.whereNull("liveness_checked_at").orWhere("liveness_checked_at", "<", observedAt));
+  const stamp = { liveness_checked_at: observedAt, updated_at: masterKnex.fn.now() };
   const byReason = new Map<DeadReason, string[]>();
   for (const d of dead) byReason.set(d.reason, [...(byReason.get(d.reason) ?? []), normaliseUrl(d.url)]);
   for (const [reason, urls] of byReason) {
     for (let i = 0; i < urls.length; i += CHUNK) {
-      await masterKnex(T).where({ job_id: jobId }).whereIn("url", urls.slice(i, i + CHUNK))
-        .update({ dead_reason: reason, updated_at: masterKnex.fn.now() });
+      await notNewer(masterKnex(T).where({ job_id: jobId }).whereIn("url", urls.slice(i, i + CHUNK)))
+        .update({ dead_reason: reason, ...stamp });
     }
   }
   const revived = alive.map(normaliseUrl);
   for (let i = 0; i < revived.length; i += CHUNK) {
-    await masterKnex(T).where({ job_id: jobId }).whereNotNull("dead_reason").whereIn("url", revived.slice(i, i + CHUNK))
-      .update({ dead_reason: null, updated_at: masterKnex.fn.now() });
+    await notNewer(masterKnex(T).where({ job_id: jobId }).whereIn("url", revived.slice(i, i + CHUNK)))
+      .update({ dead_reason: null, ...stamp });
   }
 }
 

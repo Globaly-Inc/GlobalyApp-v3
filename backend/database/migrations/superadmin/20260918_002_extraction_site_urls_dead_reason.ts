@@ -9,11 +9,13 @@ const S = "superadmin";
 export async function up(knex: Knex): Promise<void> {
   await knex.schema.withSchema(S).alterTable("extraction_site_urls", (t) => {
     t.text("dead_reason").nullable(); // not_found | blocked | empty
+    t.timestamp("liveness_checked_at", { useTz: true }).nullable();
   });
 }
 
 export async function down(knex: Knex): Promise<void> {
   await knex.schema.withSchema(S).alterTable("extraction_site_urls", (t) => {
     t.dropColumn("dead_reason");
+    t.dropColumn("liveness_checked_at");
   });
 }

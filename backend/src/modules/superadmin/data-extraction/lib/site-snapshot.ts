@@ -132,6 +132,8 @@ async function jobHalted(jobId: string): Promise<boolean> {
 
 export async function snapshotSite(jobId: string, urls: string[], batch?: SnapshotBatch, fresh = false): Promise<number> {
   const label = batch ? ` (batch ${batch.index}/${batch.total})` : "";
+  /** Liveness observation time for this batch — see setSiteUrlLiveness. */
+  const observedAt = new Date();
   let uploaded = 0;
   let processed = 0;
   let halted = false;
@@ -177,7 +179,7 @@ export async function snapshotSite(jobId: string, urls: string[], batch?: Snapsh
   }
   // Discovery drops asset URLs, so this is the one place linked PDFs surface. Excluded by default:
   // nothing fetches them until the admin restores one and gives it a category.
-  if (dead.length || alive.length) await setSiteUrlLiveness(jobId, dead, alive);
+  if (dead.length || alive.length) await setSiteUrlLiveness(jobId, dead, alive, observedAt);
   let suggestedPdfs = 0;
   if (linkedPdfs.size) {
     suggestedPdfs = await upsertSiteUrls(jobId, [...linkedPdfs].map((url) => ({ url, source: "linked_pdf", excluded: true })));
