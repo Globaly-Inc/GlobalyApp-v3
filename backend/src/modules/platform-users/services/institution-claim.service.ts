@@ -16,6 +16,7 @@ import { config } from "../../../config.js";
 import { getKnex } from "../../../core/db/pool-manager.js";
 import { schemaName } from "../../../core/db/knex.js";
 import { provisionOnClaim } from "../../../core/business/provisioner.js";
+import { seedBranchesFromJob } from "../../superadmin/data-extraction/lib/branch-sync.js";
 import { claimBusinessEmail } from "../../../shared/mail/templates.js";
 import { queueEmail } from "../../auth/auth.service.js";
 import { createChildLogger } from "../../../shared/logger.js";
@@ -139,6 +140,12 @@ export async function acceptInstitutionClaim(
       id: Number(institution.id),
       schema_name: institution.schema_name,
     });
+
+    if (institution.source_job_id) {
+      await seedBranchesFromJob(Number(institution.id), institution.schema_name, institution.source_job_id).catch((err) =>
+        logger.warn("Branch seeding from extraction failed", { institutionId: institution.id, err: err instanceof Error ? err.message : String(err) }),
+      );
+    }
 
     // addMember writes the tenant `members` row AND user_institution_index. The index is what
     // makes login hand out institution context — without it the owner would claim
