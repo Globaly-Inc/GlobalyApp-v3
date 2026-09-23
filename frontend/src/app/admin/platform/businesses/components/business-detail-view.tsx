@@ -265,7 +265,9 @@ export function BusinessDetailView({ id }: Readonly<{ id: number }>) {
                 <PartnersTab businessId={business.id} businessName={business.business_name} readOnly={readOnly} />
               )}
               {tab === "members" && <MembersTab businessId={business.id} readOnly={readOnly} />}
-              {tab === "contacts" && <ContactsTab kind="business" id={business.id} countries={countries} readOnly={readOnly} />}
+              {/* Contacts are a superadmin-only concept — never gated by claim status like the
+                  other tabs (see detail-tabs.tsx's matching institution branch). */}
+              {tab === "contacts" && <ContactsTab kind="business" id={business.id} countries={countries} />}
               {tab === "services" && <ServicesTab businessId={business.id} readOnly={readOnly} />}
               {tab === "activity" && <ActivityTab businessId={business.id} />}
             </CardContent>
