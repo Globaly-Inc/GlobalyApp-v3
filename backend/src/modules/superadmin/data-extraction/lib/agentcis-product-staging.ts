@@ -12,8 +12,10 @@ import {
 } from "./agentcis-product-mappers.js";
 import {
   normaliseCurrency, upsertEligibility, upsertEnglishRequirement, upsertFee, upsertIntake,
-  resolveCourseLookups, durationToWeeks, upsertStudyOption, resolveDurationWeeks,
+  resolveCourseLookups, durationToWeeks, upsertStudyOption, resolveDurationWeeks, jobCourseIndex,
 } from "./staging-writer.js";
+import { parseCourseName, canonicalCourseUrl } from "./course-name.js";
+import { resolveCourse } from "./course-resolver.js";
 
 export interface StagingCounters {
   branches_extracted: number;
@@ -67,24 +69,46 @@ export async function stageProduct(
     description,
   });
 
-  const [course] = await masterKnex(`${S}.extraction_courses`)
-    .insert({
-      job_id: jobId,
-      name: cName,
-      short_name: (p.short_name as string) || null,
-      degree_level: link.degree_level,
-      degree_level_code: link.degree_level_code,
-      subject_area: taxonomy.subjectName,
-      subject_area_code: link.subject_area_code,
-      description,
-      awarding_institution: (p.awarding_institution as string) || institutionName,
-      duration_weeks: durationWeeks,
-      source_url: sourceUrl,
-      verification_status: "pending",
-    })
-    .returning("id");
+  // This import used to insert with no lookup at all, so a product listed twice in the feed, or
+  // spelled two ways, became two rows. Same parser and resolver as writeCourse; an identical
+  // verdict inside this job reuses the row and still stages this product's campuses, fees,
+  // intakes, options and requirements onto it — a repeat often carries what the first one lacked.
+  const parsed = parseCourseName(cName);
+  const canonicalUrl = canonicalCourseUrl(sourceUrl, website);
+  const resolution = resolveCourse({ jobId, parsed, canonicalUrl }, await jobCourseIndex(jobId, website));
+  const reused = resolution.outcome === "identical" && resolution.match ? resolution.match.id : null;
 
-  const courseId = course.id as string;
+  let courseId: string;
+  if (reused) {
+    courseId = reused;
+    // Fill blanks only, never overwrite — same rule as writeCourse's merge.
+    const fill: Record<string, unknown> = {
+      short_name: (p.short_name as string) || null, degree_level: link.degree_level, degree_level_code: link.degree_level_code,
+      subject_area: taxonomy.subjectName, subject_area_code: link.subject_area_code, description,
+      duration_weeks: durationWeeks, source_url: sourceUrl,
+    };
+    const existing = await masterKnex(`${S}.extraction_courses`).where({ id: courseId }).first();
+    const updates = Object.fromEntries(Object.entries(fill).filter(([k, v]) => v != null && v !== "" && (existing?.[k] == null || existing?.[k] === "")));
+    if (Object.keys(updates).length) await masterKnex(`${S}.extraction_courses`).where({ id: courseId }).update({ ...updates, updated_at: masterKnex.fn.now() });
+  } else {
+    const [course] = await masterKnex(`${S}.extraction_courses`)
+      .insert({
+        job_id: jobId,
+        name: cName,
+        short_name: (p.short_name as string) || null,
+        degree_level: link.degree_level,
+        degree_level_code: link.degree_level_code,
+        subject_area: taxonomy.subjectName,
+        subject_area_code: link.subject_area_code,
+        description,
+        awarding_institution: (p.awarding_institution as string) || institutionName,
+        duration_weeks: durationWeeks,
+        source_url: sourceUrl,
+        verification_status: "pending",
+      })
+      .returning("id");
+    courseId = course.id as string;
+  }
 
   // Course → campus links
   const productCampusIds: string[] = [];
@@ -103,10 +127,13 @@ export async function stageProduct(
     if (key && campusMap[key]) productCampusIds.push(campusMap[key]);
   }
   const linkIds = productCampusIds.length ? productCampusIds : campusIds;
+  // extraction_course_campuses has no unique constraint, so onConflict().ignore() protects nothing:
+  // a reused course would get the same campus linked once per repeat product.
+  const linked = new Set((await masterKnex(`${S}.extraction_course_campuses`).where({ course_id: courseId }).pluck("campus_id")) as string[]);
   for (const cid of linkIds) {
-    await masterKnex(`${S}.extraction_course_campuses`)
-      .insert({ job_id: jobId, course_id: courseId, campus_id: cid })
-      .onConflict().ignore();
+    if (linked.has(cid)) continue;
+    await masterKnex(`${S}.extraction_course_campuses`).insert({ job_id: jobId, course_id: courseId, campus_id: cid });
+    linked.add(cid);
   }
 
   // Fees — through the same upsert the extraction pipeline uses, so one identical fee across two
@@ -193,5 +220,5 @@ export async function stageProduct(
     await upsertEnglishRequirement(jobId, courseId, eng, sourceUrl);
   }
 
-  counters.courses_extracted++;
+  if (reused) counters.skipped_products++; else counters.courses_extracted++;
 }

@@ -1074,3 +1074,57 @@ for the full list.
 Status fields are `text` columns with no CHECK constraints (matching V2).
 Validation is in Zod schemas. See `docs/extraction-v3-decisions.md`
 Section 3 for canonical value lists.
+
+## Units are not courses, and one spelling is one course (2026-09-23)
+
+Investigation doc: "Extraction Entity Quality Investigation" (Claude Doc). Two reported defects —
+spelling variants of one programme stored as separate courses, and study units stored as courses —
+and one root: `writeCourse` decided "is this a course?" and "have we seen it?" from the name string
+alone. Measured on the live table before the fix: 149 punctuation-only duplicate pairs in the 7
+institution crawls, 130 of Amberton's 145 unit-coded "courses" already present as study units of the
+same job, and 18,094 in-job trigram pairs ≥ 0.6 that are almost all sibling specialisations — so
+similarity must never merge. **No schema change**: identity is computed in memory from the stored
+names, and units go to the table that already exists for them.
+
+- **`lib/course-name.ts` `parseCourseName(name)`** — pure. Splits a name into qualifier (level word,
+  award folded into subject: `MBA` → master / business administration), subject, specialisation,
+  delivery flags (honours, placement_year, foundation_year, online, …), a unit/course code, and the
+  identity `key`. Punctuation, en-dashes, `in`/`of`/`-`, dotted and bare abbreviations,
+  qualifier-first vs qualifier-last, `&`/`and`, and combined awards (`BA / BCom` = `BA, BCom` = `BA
+  and BCom`) collapse; a different qualifier, specialisation, code, or `X with Y` vs `X and Y` never
+  does. Honours and pathway flags stay in the key. Audited over all 19,049 live names: 456 redundant
+  rows collapse and every multi-spelling group is a genuine variant (two false-merge classes were
+  found by that audit and fixed — a combined-degree branch that dropped the parenthetical, and
+  award words stripped out of a subject).
+- **`lib/course-resolver.ts` `resolveCourse`** — pure, over `jobCourseIndex(jobId)` (every course of
+  the job parsed with the same function; one query per write, what the old name lookup cost).
+  Tiers: 1 `identical` (same key, or same own-page URL / same code with the same qualifier) →
+  merge into the existing row as before; 2 `variant` (same qualifier+subject+specialisation, flags
+  differ) and 2b/3 `possible_duplicate` (specialisation missing on one side; trigram ≥ 0.85 within
+  one qualifier) → inserted as their own row with a `course_needs_review` job event. Differing
+  course codes never merge. A URL is an identity only when the page yielded ONE course.
+- **`lib/entity-classifier.ts` `classifyEntity`** — pure. Votes: the model's `entity_type` /
+  `parent_program` / `evidence` (new prompt fields), a unit code in the name, the item already being a
+  unit of this job (`jobUnitIndex`), curriculum-block heading vocabulary, credit points. A name that
+  states its own award is NEVER reclassified as a unit. Verdicts: course / short_course /
+  specialization / module / unsupported_standalone (no award, no evidence, on a list page → stored
+  with a `course_needs_review` event) / drop (`entity_type: other` → `dropped_entity` event). A module
+  is written through `upsertStudyUnit` and linked via `extraction_course_study_unit_assignments` to
+  the parent when `parent_program` resolves by key (`entity_reclassified` event); `writeCourse`
+  returns null so the page counter does not tick.
+- **Writers.** `writeCourse` (both crawl workers; 4th arg `{ pageUrl, coursesOnPage }` from the page
+  worker) and `agentcis-product-staging.ts` (which used to insert with NO lookup at all) go through
+  the same parse → classify → resolve path.
+- **Prompt.** `entity_type`, `parent_program`, `evidence` per item; the unit rule asks for the
+  classification instead of silence; one award with several tracks = one course + `specialization`
+  items; page title passed in the header. The LLM cache key is a hash of the prompt text, so the
+  change invalidates cached answers on its own.
+- **Cleanup.** `npm run courses:merge-duplicates [-- --apply] [--pass units|merge] [--job <id>]` —
+  dry run by default. `units` moves a stored unit-shaped "course" to `extraction_study_units` and
+  deletes the course row (kept when an enquiry references it); `merge` re-points every child and
+  reference (fees, intakes, options, units, requirements, campuses, enquiries, saved items, page
+  views) from the duplicate to the survivor, fills the survivor's blanks, writes a `course_merged`
+  event and deletes the duplicate.
+- **Tests.** `npm run test:course-entity-resolution` — 47 labelled pairs in
+  `tests/fixtures/course-entity-resolution.json`; any `identical` verdict on a pair not labelled
+  identical fails the run. Add a case whenever a reviewer overturns a pipeline decision.

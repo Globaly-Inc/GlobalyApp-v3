@@ -595,6 +595,9 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
         prompt: courseExtractionPrompt(
           url, markdown, job.guidance_notes, siteIntel, await loadLookupLists(),
           job.degree_level_codes ?? undefined,
+          // The page's own title — the parent programme for a curriculum page, the course for a
+          // detail page. Names the context the model otherwise has to infer from 100k chars.
+          markdown.match(/^#\s+(.+)$/m)?.[1]?.trim().slice(0, 200) ?? null,
         ),
         maxTokens: 65536,
       });
@@ -830,7 +833,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
             // From site intelligence, never the model — one country per job, resolved to the ISO2
             // the public search joins on. See lookup-catalog.resolveCountryCode.
             country_code: await resolveCountryCode(siteIntel?.country),
-          }, campusIdMap);
+          }, campusIdMap, { pageUrl: url, coursesOnPage: extracted.courses.length });
           if (written) entitiesWritten++;
         }
       }
