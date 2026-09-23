@@ -2011,9 +2011,10 @@ async function writeReclassifiedUnit(jobId: string, course: ExtractedCourse, cls
 }
 
 export async function writeCourse(
-  jobId: string, course: ExtractedCourse, campusIdMap: Map<string, string>, ctx: WriteCourseContext = {},
+  jobId: string, input: ExtractedCourse, campusIdMap: Map<string, string>, ctx: WriteCourseContext = {},
 ): Promise<string | null> {
-  const parsed = parseCourseName(course.name);
+  let course: ExtractedCourse = input;
+  let parsed = parseCourseName(course.name);
   const institutionUrl = await jobInstitutionUrl(jobId);
   const coursesOnPage = ctx.coursesOnPage ?? 1;
   // A URL identifies a course only when it is that course's own page: not the home page, and not a
@@ -2038,6 +2039,27 @@ export async function writeCourse(
   if (cls.verdict === "module") {
     await writeReclassifiedUnit(jobId, course, cls, index);
     return null;
+  }
+  // A track/concentration is its own course row (the platform has no programme > specialisation
+  // relation), but it must carry its programme's name: the prompt now returns "Finance" with
+  // parent_program "MBA", and a course called "Finance" is neither findable nor distinguishable
+  // from the same track under another award. Composed only when the track's own name states no
+  // award — "MBA - Finance" already does.
+  if (cls.verdict === "specialization" && cls.parentProgram && !parsed.qualifier) {
+    const parent = parseCourseName(cls.parentProgram);
+    if (parent.qualifier) {
+      const parentRow = index.find((c) => c.name_key === parent.key);
+      const parentLevel = parentRow
+        ? await masterKnex(`${S}.extraction_courses`).where({ id: parentRow.id }).first("degree_level")
+        : null;
+      course = {
+        ...course,
+        name: `${cls.parentProgram.trim()} - ${course.name.trim()}`,
+        degree_level: course.degree_level ?? parentLevel?.degree_level ?? null,
+      };
+      parsed = parseCourseName(course.name);
+      logger.info("Specialisation named under its programme", { jobId, name: course.name, parent: cls.parentProgram });
+    }
   }
 
   // ── Resolve: is this a course the job already holds? ──

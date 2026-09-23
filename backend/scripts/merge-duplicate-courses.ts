@@ -22,7 +22,7 @@
 import "dotenv/config";
 import { masterKnex } from "../src/core/db/master-pool.js";
 import { parseCourseName, UNIT_CODE_RE, canonicalCourseUrl } from "../src/modules/superadmin/data-extraction/lib/course-name.js";
-import { upsertStudyUnit, writeJobEvent } from "../src/modules/superadmin/data-extraction/lib/staging-writer.js";
+import { upsertStudyUnit } from "../src/modules/superadmin/data-extraction/lib/staging-writer.js";
 
 const apply = process.argv.includes("--apply");
 const jobIdx = process.argv.indexOf("--job");
@@ -66,40 +66,64 @@ async function passUnits(job: { id: string; source_type: string }) {
     const unitId = await upsertStudyUnit(job.id, {
       unit_code: code, unit_name: c.name.replace(/^[A-Z]{2,4}[ -]?\d{3,4}[A-Z]?\s*[-–:]\s*/, "").trim() || c.name, description: (c.description as string) ?? null,
     });
-    await writeJobEvent(job.id, "entity_reclassified", {
-      phase: "courses", message: `"${c.name}" moved from courses to study units (cleanup)`,
-      data: { course_id: c.id, unit_id: unitId, name: c.name, url: c.source_url, source: "merge-duplicate-courses" },
+    await masterKnex.transaction(async (trx) => {
+      await trx(`${S}.extraction_job_events`).insert({
+        job_id: job.id, kind: "entity_reclassified", level: "info", phase: "courses",
+        message: `"${c.name}" moved from courses to study units (cleanup)`,
+        data: JSON.stringify({ course_id: c.id, unit_id: unitId, name: c.name, url: c.source_url, source: "merge-duplicate-courses" }),
+      });
+      await trx(`${S}.extraction_courses`).where({ id: c.id }).delete(); // child rows cascade
     });
-    await K("extraction_courses").where({ id: c.id }).delete(); // child rows cascade
   }
   return { reclassified, sample };
 }
 
+// One transaction per merge: every re-point and the delete commit together or not at all.
+// saved_items is unique on (user, type, item) and page_views on (type, entity), so a user who saved
+// both duplicates, or two rows that were both viewed, are folded rather than re-pointed blindly.
 async function mergeInto(winner: CourseRow, loser: CourseRow, reason: string) {
-  const fill: Record<string, unknown> = {};
-  for (const f of FILL_FIELDS) if ((winner[f] == null || winner[f] === "") && loser[f] != null && loser[f] !== "") fill[f] = loser[f];
-  if (Object.keys(fill).length) await K("extraction_courses").where({ id: winner.id }).update({ ...fill, updated_at: masterKnex.fn.now() });
-  for (const [table, col] of ASSIGNMENTS) {
-    await masterKnex.raw(
-      `insert into ${S}.${table} (job_id, course_id, ${col}) select job_id, ?, ${col} from ${S}.${table} where course_id = ?
-       on conflict (course_id, ${col}) do nothing`, [winner.id, loser.id]);
-  }
-  await masterKnex.raw(
-    `insert into ${S}.extraction_course_campuses (job_id, course_id, campus_id, campus_name, campus_email)
-       select l.job_id, ?, l.campus_id, l.campus_name, l.campus_email from ${S}.extraction_course_campuses l
-        where l.course_id = ? and not exists (select 1 from ${S}.extraction_course_campuses w where w.course_id = ? and w.campus_id = l.campus_id)`,
-    [winner.id, loser.id, winner.id]);
-  for (const table of ["extraction_english_requirements", "extraction_verification_results", "extraction_intakes"]) {
-    await K(table).where({ course_id: loser.id }).update({ course_id: winner.id });
-  }
-  await masterKnex("enquiries").where({ course_id: loser.id }).update({ course_id: winner.id });
-  await masterKnex("saved_items").where({ item_type: "course", item_id: loser.id }).update({ item_id: winner.id });
-  await masterKnex("page_views").where({ entity_type: "course", entity_id: loser.id }).update({ entity_id: winner.id });
-  await writeJobEvent(winner.job_id, "course_merged", {
-    phase: "courses", message: `"${loser.name}" merged into "${winner.name}" (${reason})`,
-    data: { winner_id: winner.id, loser_id: loser.id, loser_name: loser.name, loser_url: loser.source_url, reason, source: "merge-duplicate-courses" },
+  await masterKnex.transaction(async (trx) => {
+    const T = (t: string) => trx(`${S}.${t}`);
+    const fill: Record<string, unknown> = {};
+    for (const f of FILL_FIELDS) if ((winner[f] == null || winner[f] === "") && loser[f] != null && loser[f] !== "") fill[f] = loser[f];
+    if (Object.keys(fill).length) await T("extraction_courses").where({ id: winner.id }).update({ ...fill, updated_at: trx.fn.now() });
+    for (const [table, col] of ASSIGNMENTS) {
+      await trx.raw(
+        `insert into ${S}.${table} (job_id, course_id, ${col}) select job_id, ?, ${col} from ${S}.${table} where course_id = ?
+         on conflict (course_id, ${col}) do nothing`, [winner.id, loser.id]);
+    }
+    await trx.raw(
+      `insert into ${S}.extraction_course_campuses (job_id, course_id, campus_id, campus_name, campus_email)
+         select l.job_id, ?, l.campus_id, l.campus_name, l.campus_email from ${S}.extraction_course_campuses l
+          where l.course_id = ? and not exists (select 1 from ${S}.extraction_course_campuses w where w.course_id = ? and w.campus_id = l.campus_id)`,
+      [winner.id, loser.id, winner.id]);
+    for (const table of ["extraction_english_requirements", "extraction_verification_results", "extraction_intakes"]) {
+      await T(table).where({ course_id: loser.id }).update({ course_id: winner.id });
+    }
+    await trx("enquiries").where({ course_id: loser.id }).update({ course_id: winner.id });
+    // A user who saved both keeps one; only rows with no counterpart on the winner move.
+    await trx.raw(
+      `delete from saved_items l using saved_items w
+        where l.item_type = 'course' and l.item_id = ? and w.item_type = 'course' and w.item_id = ? and w.platform_user_id = l.platform_user_id`,
+      [loser.id, winner.id]);
+    await trx("saved_items").where({ item_type: "course", item_id: loser.id }).update({ item_id: winner.id });
+    // Views add up; the loser's counter row is folded into the winner's, or renamed if there is none.
+    await trx.raw(
+      `update page_views w set views = w.views + l.views, updated_at = now() from page_views l
+        where w.entity_type = 'course' and w.entity_id = ? and l.entity_type = 'course' and l.entity_id = ?`,
+      [winner.id, loser.id]);
+    await trx.raw(
+      `delete from page_views l using page_views w
+        where l.entity_type = 'course' and l.entity_id = ? and w.entity_type = 'course' and w.entity_id = ?`,
+      [loser.id, winner.id]);
+    await trx("page_views").where({ entity_type: "course", entity_id: loser.id }).update({ entity_id: winner.id });
+    await T("extraction_job_events").insert({
+      job_id: winner.job_id, kind: "course_merged", level: "info", phase: "courses",
+      message: `"${loser.name}" merged into "${winner.name}" (${reason})`,
+      data: JSON.stringify({ winner_id: winner.id, loser_id: loser.id, loser_name: loser.name, loser_url: loser.source_url, reason, source: "merge-duplicate-courses" }),
+    });
+    await T("extraction_courses").where({ id: loser.id }).delete();
   });
-  await K("extraction_courses").where({ id: loser.id }).delete();
 }
 
 async function passMerge(job: { id: string; institution_url: string }) {
