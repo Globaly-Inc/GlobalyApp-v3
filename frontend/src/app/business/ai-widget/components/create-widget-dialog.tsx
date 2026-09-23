@@ -87,6 +87,7 @@ export function CreateWidgetDialog({
             <Label htmlFor="widget-limit">Monthly message limit</Label>
             <Input id="widget-limit" type="number" min={1} value={form.monthly_credit_limit} onChange={set("monthly_credit_limit")} />
           </div>
+
         </div>
 
         <DialogFooter>

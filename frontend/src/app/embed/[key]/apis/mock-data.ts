@@ -1,5 +1,7 @@
 import type {
-  EmbedChatEvent, EmbedPublicConfig, EmbedThread, GuestMessageRequest, WireCourseCard,
+  EmbedChatEvent, EmbedPublicConfig, EmbedThread, GuestContactRequest,
+  GuestConversationEndRequest, GuestConversationEndResponse, GuestMessageRequest,
+  WireCourseCard,
 } from "./types";
 import type { CourseCard } from "@/app/ai/apis/types";
 
@@ -61,6 +63,39 @@ export const embedMockApi = {
       ],
     });
     onEvent({ type: "chips", chips: ["What are the entry requirements?", "When is the next intake?"] });
+    // Emitted on every mock turn so the card is reachable without counting to three —
+    // the real threshold lives on the embed config and is decided server-side.
+    onEvent({
+      type: "contact-prompt",
+      prompt: {
+        heading: "Want a copy of this conversation?",
+        body: "Share your name and email and we'll send you a summary of everything we've covered about Acme University — the programs, the details, and what to do next.",
+      },
+    });
+    // Both offers on one mock turn — the real server shows at most one, but the mock exists to
+    // make each card reachable without a live model deciding to signal.
+    onEvent({
+      type: "end-prompt",
+      prompt: {
+        heading: "Shall we wrap up here?",
+        covered: "we've covered the Master of Data Science, its fees and the February intake",
+        body: "I can email you a summary of everything we discussed, or we can keep going.",
+        email: "visitor@example.com",
+      },
+    });
     onEvent({ type: "done" });
+  },
+
+  submitContact: async (input: GuestContactRequest): Promise<void> => {
+    console.log("[mock] POST /guest/contact", input);
+    await delay(400);
+  },
+
+  confirmConversationEnd: async (
+    input: GuestConversationEndRequest,
+  ): Promise<GuestConversationEndResponse> => {
+    console.log("[mock] POST /guest/conversation-end", input);
+    await delay(400);
+    return { ok: true, summary_queued: input.action === "end" };
   },
 };

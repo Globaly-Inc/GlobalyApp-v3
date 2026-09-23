@@ -4,5 +4,7 @@ import { embedRealApi } from "./real-api";
 
 export const embedApi = createApi({ mock: embedMockApi, real: embedRealApi });
 export type {
-  EmbedChatEvent, EmbedPublicConfig, EmbedStoredMessage, EmbedThread, GuestMessageRequest,
+  EmbedChatEvent, EmbedContactPrompt, EmbedEndPrompt, EmbedPublicConfig, EmbedStoredMessage,
+  EmbedThread, GuestContactRequest, GuestConversationEndRequest, GuestConversationEndResponse,
+  GuestMessageRequest,
 } from "./types";
