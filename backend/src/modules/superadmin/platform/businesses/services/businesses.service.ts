@@ -415,6 +415,12 @@ export async function updateStatus(id: number, status: BusinessStatus) {
 export async function sendClaimRequest(id: number) {
   const biz = await repo.findBusinessDetail(id);
   if (!biz) throw new NotFoundError("Business not found");
+  // Guards every caller (single send, the bulk inline fallback, and the queue worker below) —
+  // without it, an already-claimed business reachable only through a stale/off-page selection
+  // gets silently flipped back to claim_status "claim_pending" and re-emailed, reopening it.
+  if (biz.claim_status === "claimed") {
+    throw new ConflictError("This business is already claimed");
+  }
 
   // MUST match the address acceptClaim resolves the claimant against, or the link would be
   // mailed to one person and the account created for another. An owner-bearing listing resolves
@@ -460,6 +466,10 @@ export async function sendClaimRequest(id: number) {
 export async function sendInstitutionClaimRequest(id: number) {
   const inst = await repo.findInstitutionById(id);
   if (!inst) throw new NotFoundError("Institution not found");
+  // See sendClaimRequest's matching guard above — same reason.
+  if (inst.claim_status === "claimed") {
+    throw new ConflictError("This institution is already claimed");
+  }
 
   // Exactly the business rule, and it MUST match acceptInstitutionClaim's resolveClaimant:
   // an institution with an owner (promote sets one when the job has a named agent) resolves by
