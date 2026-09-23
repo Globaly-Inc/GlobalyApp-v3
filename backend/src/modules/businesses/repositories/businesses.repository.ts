@@ -128,6 +128,7 @@ export async function insertBusiness(data: {
   postcode?: string | null;
   registration_licenses?: Record<string, unknown> | null;
   claim_status?: string;
+  origin?: string;
 }): Promise<BusinessRecord> {
   const [row] = await masterKnex<BusinessRecord>("businesses").insert(data).returning("*");
   return row;

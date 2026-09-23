@@ -130,6 +130,7 @@ async function promoteInstitution(job: any, overview: OverviewRow | undefined) {
       : {}),
     subdomain: await repo.claimSubdomain(slugifyCourseName(name), seed),
     source_job_id: job.id,
+    origin: "seeded",
     status: "pending",
     claim_status: "unclaimed",
     // account_status stays 0 and schema_provisioned_at NULL until claim regardless of owner.
@@ -171,6 +172,7 @@ async function promoteBusiness(job: any, overview: OverviewRow | undefined) {
     ...(owner ? { owner_id: owner.id } : {}),
     subdomain: await repo.claimSubdomain(slugifyCourseName(name), seed),
     source_job_id: job.id,
+    origin: "seeded",
     status: "unverified",
     claim_status: "unclaimed",
     // Ownerless is rendered correctly already: the admin list computes
@@ -231,6 +233,7 @@ async function promoteAgent(agent: AgentRow, jobId: string) {
         subdomain: await repo.claimSubdomain(slugifyCourseName(name), seed),
         source_job_id: jobId,
         source_agent_id: agent.id,
+        origin: "seeded",
         status: "unverified",
         claim_status: "unclaimed",
       });

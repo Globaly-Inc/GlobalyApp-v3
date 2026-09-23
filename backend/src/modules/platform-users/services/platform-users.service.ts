@@ -179,6 +179,7 @@ export async function onboardInstitution(userId: number, data: OnboardingInstitu
     address: data.address,
     postcode: data.postcode,
     claim_status: "claimed",
+    origin: "signup",
   });
 
   try {

@@ -1,5 +1,7 @@
 export type BusinessStatus = "unverified" | "claim_pending" | "claimed" | "verified" | "suspended" | "rejected";
 export type BusinessClaimStatus = "unclaimed" | "claim_pending" | "claimed";
+/** How the listing came to exist: scraped/extracted, added via the admin form, or self-registered. */
+export type BusinessOrigin = "seeded" | "admin" | "signup";
 
 /**
  * Which table the row came from. Businesses and institutions are the same kind of record kept in
@@ -36,6 +38,7 @@ export type Business = {
   is_unclaimed: boolean;
   profile_views: number;
   source_job_id: string | null;
+  origin: BusinessOrigin;
   branch_count: number;
   service_count: number;
 };
@@ -53,6 +56,10 @@ export type BusinessListParams = {
    *  server-side (before pagination), so a picker restricted to one type doesn't miss matches
    *  sitting past the first page. */
   business_type?: string;
+  /** Applied server-side, same as business_type — so pagination totals stay correct across
+   *  every page rather than only filtering whatever page happened to already be fetched. */
+  origin?: BusinessOrigin;
+  ownership?: "owned" | "unclaimed";
   page?: number;
   limit?: number;
   sort?: BusinessSort;
@@ -124,6 +131,7 @@ export type InstitutionDetail = {
   owner_last_name: string | null;
   owner_email: string | null;
   source_job_id: string | null;
+  origin: BusinessOrigin;
   /** Borrowed from the source extraction job (course/campus counts) — 0 when there's no source_job_id. */
   branch_count: number;
   service_count: number;

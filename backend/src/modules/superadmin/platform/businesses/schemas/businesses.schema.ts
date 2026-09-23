@@ -89,6 +89,10 @@ export const ListQuerySchema = PaginationSchema.extend({
   // page of results, or a page full of non-agent businesses hides real agencies on later pages.
   business_type: z.string().optional(),
   sort: z.enum(BusinessSortOptions).default("name_asc"),
+  // Applied server-side so pagination totals stay correct — the same reason business_type is,
+  // above. "all"/absent means no filter.
+  origin: z.enum(["seeded", "admin", "signup"]).optional(),
+  ownership: z.enum(["owned", "unclaimed"]).optional(),
 });
 
 export const StatusPatchSchema = z.object({

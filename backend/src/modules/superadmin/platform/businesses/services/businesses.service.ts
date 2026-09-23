@@ -158,7 +158,7 @@ export async function createBusiness(input: BusinessCreateInput) {
           account_status: 1,
         }, trx);
         const trxBusiness = await repo.insertBusiness(
-          { ...businessInput, subdomain, owner_id: trxOwner.id, source_job_id: null },
+          { ...businessInput, subdomain, owner_id: trxOwner.id, source_job_id: null, origin: "admin" },
           trx,
         );
         return { owner: trxOwner, business: trxBusiness };
@@ -254,6 +254,7 @@ async function createInstitution(input: BusinessCreateInput) {
           facebook_url: input.facebook_url ?? null,
           instagram_url: input.instagram_url ?? null,
           twitter_url: input.twitter_url ?? null,
+          origin: "admin",
           // Left at its default ("unclaimed") — same as admin-created businesses. The owner
           // account is synthesized from the form, not logged in, so `is_unclaimed` should stay
           // true until they actually verify/log in, matching createBusiness's behavior.
@@ -334,31 +335,33 @@ export async function listBusinesses(
   kind?: "business" | "institution",
   sort: BusinessSort = "name_asc",
   businessType?: string,
+  origin?: string,
+  ownership?: string,
 ) {
   const scope = kind ? (kind === "institution" ? "institutions" : "businesses") : await resolveListScope(category, categorySlug);
 
   if (scope === "institutions") {
     const [rawRows, total] = await Promise.all([
-      repo.listInstitutions(limit, offset, search, status, sort),
-      repo.countInstitutions(search, status),
+      repo.listInstitutions(limit, offset, search, status, sort, origin, ownership),
+      repo.countInstitutions(search, status, origin, ownership),
     ]);
     return { rows: await Promise.all(rawRows.map(withImagePreviews)), total };
   }
 
   if (scope === "businesses") {
     const [rawRows, total] = await Promise.all([
-      repo.listBusinesses(limit, offset, search, status, category, categorySlug, sort, businessType),
-      repo.countBusinesses(search, status, category, categorySlug, businessType),
+      repo.listBusinesses(limit, offset, search, status, category, categorySlug, sort, businessType, origin, ownership),
+      repo.countBusinesses(search, status, category, categorySlug, businessType, origin, ownership),
     ]);
     return { rows: await Promise.all(rawRows.map(withImagePreviews)), total };
   }
 
   const depth = limit + offset;
   const [bizRows, instRows, bizTotal, instTotal] = await Promise.all([
-    repo.listBusinesses(depth, 0, search, status, undefined, undefined, sort),
-    repo.listInstitutions(depth, 0, search, status, sort),
-    repo.countBusinesses(search, status),
-    repo.countInstitutions(search, status),
+    repo.listBusinesses(depth, 0, search, status, undefined, undefined, sort, undefined, origin, ownership),
+    repo.listInstitutions(depth, 0, search, status, sort, origin, ownership),
+    repo.countBusinesses(search, status, undefined, undefined, undefined, origin, ownership),
+    repo.countInstitutions(search, status, origin, ownership),
   ]);
 
   const merged = [...bizRows, ...instRows].sort(sortComparator(sort)).slice(offset, offset + limit);

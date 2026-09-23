@@ -19,7 +19,6 @@ import {
   updateBusinessPublished,
   updateBusinessStatus,
 } from "../store/businesses-slice";
-import { filterBusinessesBySourceAndOwnership } from "../utils";
 import type { Business, BusinessSort, ListingRef } from "../apis/types";
 import { BusinessCard } from "./shared/business-card";
 import { DeleteBusinessDialog } from "./shared/delete-business-dialog";
@@ -153,6 +152,8 @@ export function BusinessesView() {
     search: debouncedSearch || undefined,
     status: statusFilter !== "all" ? statusFilter : undefined,
     category: categoryFilter !== "all" ? Number(categoryFilter) : undefined,
+    origin: sourceFilter !== "all" ? (sourceFilter as Business["origin"]) : undefined,
+    ownership: ownershipFilter !== "all" ? (ownershipFilter as "owned" | "unclaimed") : undefined,
     sort: sort as BusinessSort,
     page,
     limit,
@@ -166,7 +167,7 @@ export function BusinessesView() {
     lastBusinessesFetchKey.current = key;
     dispatch(fetchBusinesses(params));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch, debouncedSearch, statusFilter, categoryFilter, sort, page, limit]);
+  }, [dispatch, debouncedSearch, statusFilter, categoryFilter, sourceFilter, ownershipFilter, sort, page, limit]);
 
   const categoryOptions = useMemo(
     () => [
@@ -180,18 +181,13 @@ export function BusinessesView() {
     [categories],
   );
 
-  const filteredBusinesses = useMemo(
-    () => filterBusinessesBySourceAndOwnership(businesses, sourceFilter, ownershipFilter),
-    [businesses, sourceFilter, ownershipFilter],
-  );
-
   // The claims tab is the same list, pre-filtered: anything an admin has sent a claim
   // request for and nobody has accepted yet. Accepted ones flip to "claimed" and drop out.
   const displayed = tab === "claims"
     ? businesses.filter((b) => b.claim_status === "claim_pending")
-    : filteredBusinesses;
+    : businesses;
 
-  const visibleKeys = filteredBusinesses.map(keyOf);
+  const visibleKeys = businesses.map(keyOf);
   const allVisibleSelected = visibleKeys.length > 0 && visibleKeys.every((k) => selected.has(k));
   const someSelected = selected.size > 0;
 
@@ -201,6 +197,20 @@ export function BusinessesView() {
       const [kind, id] = k.split("-");
       return { kind: kind as ListingRef["kind"], id: Number(id) };
     });
+
+  /** Same eligibility rule as the per-card button (business-card.tsx): every status except
+   *  "claimed" — a pending request can be resent, only an already-claimed listing is excluded. */
+  const selectedUnclaimedRefs = (): ListingRef[] => {
+    const unclaimedKeys = new Set(businesses.filter((b) => b.claim_status !== "claimed").map(keyOf));
+    return selectedRefs().filter((r) => unclaimedKeys.has(`${r.kind}-${r.id}`));
+  };
+
+  /** How many of the current selection are actually eligible for a given bulk status change —
+   *  e.g. Verify shouldn't count/re-touch a business that's already verified. */
+  const selectedEligibleCount = (targetStatus: Business["status"]): number => {
+    const eligibleKeys = new Set(businesses.filter((b) => b.status !== targetStatus).map(keyOf));
+    return selectedRefs().filter((r) => eligibleKeys.has(`${r.kind}-${r.id}`)).length;
+  };
 
   const toggleOne = (key: string) => {
     setSelected((s) => {
@@ -251,7 +261,7 @@ export function BusinessesView() {
         // sendClaimRequest / sendInstitutionClaimRequest on the backend.
         toast.success(`Claim request sent to ${b.owner_email ?? b.email ?? "the listed contact"}`);
       } else {
-        const refs = selectedRefs();
+        const refs = selectedUnclaimedRefs();
         await dispatch(sendBulkClaimRequests(refs)).unwrap();
         toast.success(`Queued claim requests for ${refs.length} businesses`);
         clearSelection();
@@ -292,7 +302,8 @@ export function BusinessesView() {
   };
 
   const bulkUpdateStatus = async (target: "verified" | "suspended") => {
-    const refs = selectedRefs();
+    const eligibleKeys = new Set(businesses.filter((b) => b.status !== target).map(keyOf));
+    const refs = selectedRefs().filter((r) => eligibleKeys.has(`${r.kind}-${r.id}`));
     if (refs.length === 0) return;
     setBulkBusy(true);
     const results = await Promise.all(
@@ -401,16 +412,16 @@ export function BusinessesView() {
         onCategoryChange={resetPage(setCategoryFilter)}
         categoryOptions={categoryOptions}
         sourceFilter={sourceFilter}
-        onSourceChange={setSourceFilter}
+        onSourceChange={resetPage(setSourceFilter)}
         ownershipFilter={ownershipFilter}
-        onOwnershipChange={setOwnershipFilter}
+        onOwnershipChange={resetPage(setOwnershipFilter)}
         sort={sort}
         onSortChange={resetPage(setSort)}
         hasActiveFilters={hasActiveFilters}
         onClearFilters={clearFilters}
       />
 
-      {status !== "loading" && filteredBusinesses.length > 0 && (
+      {status !== "loading" && displayed.length > 0 && (
         <div className="flex items-center gap-3 px-1">
           <Checkbox checked={allVisibleSelected} onCheckedChange={toggleAllVisible} aria-label="Select all visible" />
           <span className="text-xs text-muted-foreground">
@@ -435,12 +446,15 @@ export function BusinessesView() {
       {someSelected && (
         <BusinessSelectionBar
           count={selected.size}
+          verifiableCount={selectedEligibleCount("verified")}
+          suspendableCount={selectedEligibleCount("suspended")}
+          unclaimedCount={selectedUnclaimedRefs().length}
           bulkBusy={bulkBusy}
           onClear={clearSelection}
           onVerify={() => bulkUpdateStatus("verified")}
           onSuspend={() => bulkUpdateStatus("suspended")}
           onDeleteClick={() => setBulkDeleteOpen(true)}
-          onSendClaimRequestsClick={() => setClaimRequestTarget({ kind: "bulk", count: selected.size })}
+          onSendClaimRequestsClick={() => setClaimRequestTarget({ kind: "bulk", count: selectedUnclaimedRefs().length })}
         />
       )}
         </>

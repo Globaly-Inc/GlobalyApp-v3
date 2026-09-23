@@ -25,16 +25,3 @@ export function isValidPhoneForCountry(phoneNumber: string, iso2: string | undef
   return isValidPhoneNumber(phoneNumber, iso2.toUpperCase() as CountryCode);
 }
 
-export function filterBusinessesBySourceAndOwnership<T extends { is_unclaimed: boolean }>(
-  businesses: T[],
-  sourceFilter: string,
-  ownershipFilter: string,
-): T[] {
-  return businesses.filter((b) => {
-    if (sourceFilter === "pre-seeded" && !b.is_unclaimed) return false;
-    if (sourceFilter === "user-created" && b.is_unclaimed) return false;
-    if (ownershipFilter === "owned" && b.is_unclaimed) return false;
-    if (ownershipFilter === "unclaimed" && !b.is_unclaimed) return false;
-    return true;
-  });
-}

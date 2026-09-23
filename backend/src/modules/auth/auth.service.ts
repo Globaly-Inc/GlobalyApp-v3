@@ -217,7 +217,10 @@ export async function registerUser(
 
   const existing = await platformUserRepo.findByEmail(email);
   if (existing) {
-    // Anti-enumeration: return identical response, send "someone tried to register" email
+    // Reveals account existence by design — the product wants sign-up to tell the caller
+    // directly that the email is already registered (EMAIL_ALREADY_EXISTS, handled by the
+    // frontend as an inline field error), on top of notifying the real owner by email in case
+    // the caller isn't them.
     queueEmail({
       to: email,
       subject: "Registration attempt on your GlobalyApp account",
@@ -228,7 +231,7 @@ export async function registerUser(
         footnote: "If this wasn't you, no action is needed.",
       }),
     }).catch((err) => logger.warn("Registration notice email failed", { email, err: err.message }));
-    return { message: "Check your email for next steps." };
+    throw new AppError("An account already exists with this email. Please sign in instead.", 409, "EMAIL_ALREADY_EXISTS");
   }
 
   // W1 (click -> registration) is decided HERE and never re-evaluated: the token's own `exp` is the

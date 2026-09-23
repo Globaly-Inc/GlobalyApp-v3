@@ -105,9 +105,14 @@ export function BusinessCard({
                   Institution
                 </Badge>
               )}
-              {b.is_unclaimed && (
+              {b.origin === "seeded" && (
                 <Badge variant="outline" className="px-1.5 py-0 text-[10px] text-amber-700 dark:text-amber-400">
-                  Pre-seeded
+                  Seeded
+                </Badge>
+              )}
+              {b.origin === "admin" && (
+                <Badge variant="outline" className="px-1.5 py-0 text-[10px] text-violet-700 dark:text-violet-400">
+                  Admin-added
                 </Badge>
               )}
               {b.is_published ? (
