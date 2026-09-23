@@ -11,6 +11,9 @@ import {
   courseCategoryForLevel, categoryForServiceSlug, shouldDemoteForDuration, type CourseCategory,
 } from "./lookup-catalog.js";
 import { coercePartialDate, morePrecise, normaliseStored, partialDatesAgree } from "./partial-date.js";
+import { parseCourseName, canonicalCourseUrl } from "./course-name.js";
+import { resolveCourse, type CandidateRow } from "./course-resolver.js";
+import { classifyEntity, type EntityClassification } from "./entity-classifier.js";
 import { parseAddress } from "./address-parser.js";
 
 const logger = createChildLogger("staging-writer");
@@ -47,6 +50,14 @@ export interface ExtractedCourse {
   english_requirements?: ExtractedEnglishReq[];
   campus_names?: string[];
   study_units?: ExtractedStudyUnit[];
+  /** Model's own label: course | short_course | module | specialization | other. One vote in
+   *  entity-classifier.ts, never the whole decision. */
+  entity_type?: string | null;
+  /** Programme this item belongs to when it is a module or specialisation, as the page names it. */
+  parent_program?: string | null;
+  /** Closed list: own_detail_page | award_in_name | fees_stated | duration_stated | unit_code |
+   *  credit_points | listed_under_program_heading. */
+  evidence?: string[] | null;
   /** LLM-flagged link to this course's own curriculum page — routing only, not persisted. */
   curriculum_page_url?: string | null;
   /** LLM-flagged link to this course's own fees/tuition page — routing only, not persisted. */
@@ -1925,42 +1936,124 @@ async function courseHasExisting(table: string, courseId: string): Promise<boole
   return !!row;
 }
 
-export async function writeCourse(jobId: string, course: ExtractedCourse, campusIdMap: Map<string, string>): Promise<string | null> {
-  // ── Dedup: check if this course name already exists for this job ──
-  // Both sides MUST apply the same normalisation as normaliseCourseName(). A bare
-  // LOWER(TRIM(name)) keeps the trailing ")" that the JS side strips, so "Nursing BSc (Hons)"
-  // compared "nursing bsc (hons)" against "nursing bsc (hons" and never matched itself — every
-  // re-extraction of a bracket-suffixed course (…(Hons), …(BSAsE), …(PhD) — most of a catalogue)
-  // inserted a DUPLICATE row instead of merging, so one copy carried the lookup links and the
-  // other did not. Caught by the end-to-end linking check.
-  const normName = normaliseCourseName(course.name);
-  let existing = await masterKnex(`${S}.extraction_courses`)
-    .where({ job_id: jobId })
-    .whereRaw(
-      "regexp_replace(regexp_replace(lower(trim(name)), '\\s+', ' ', 'g'), '[^a-z0-9]+$', '') = ?",
-      [normName],
-    )
-    .first();
+export interface WriteCourseContext {
+  /** The page this item was extracted from. */
+  pageUrl?: string | null;
+  /** How many courses the model returned for that page — 1 means the page is about this course. */
+  coursesOnPage?: number;
+}
 
-  if (!existing) {
-    const sig = degreeSignature(course.name);
-    if (sig) {
-      const candidates = await masterKnex(`${S}.extraction_courses`).where({ job_id: jobId }).select("*");
-      const sameSubjectAndQualifier = candidates.filter((c: Record<string, unknown>) => {
-        const other = degreeSignature(c.name as string);
-        return other && other.subject === sig.subject && other.qualifier === sig.qualifier;
-      });
-      // A catalogue can hold BOTH "Biology BSc" and "Biology BSc (Hons)" as separate courses,
-      // and a reordered, marker-less name like "BSc Biology" matches both on subject+qualifier
-      // alone — picking either would silently attach data to the wrong one. Narrow by the
-      // honours marker first; merge only once exactly one candidate survives, never guess among
-      // several (matches this module's own "unmatched -> unlinked, never guessed" convention).
-      const honoursNarrowed = sameSubjectAndQualifier.filter(
-        (c) => degreeSignature(c.name as string)?.honours === sig.honours,
-      );
-      const finalMatches = honoursNarrowed.length === 1 ? honoursNarrowed : sameSubjectAndQualifier;
-      if (finalMatches.length === 1) existing = finalMatches[0];
+const jobInstitutionUrlCache = new Map<string, string | null>();
+async function jobInstitutionUrl(jobId: string): Promise<string | null> {
+  if (!jobInstitutionUrlCache.has(jobId)) {
+    const row = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).first("institution_url");
+    jobInstitutionUrlCache.set(jobId, (row?.institution_url as string | undefined) ?? null);
+  }
+  return jobInstitutionUrlCache.get(jobId) ?? null;
+}
+
+/** Unit codes and names already staged for a job — the cheapest "this is a unit" evidence there is. */
+async function jobUnitIndex(jobId: string): Promise<{ codes: Set<string>; names: Set<string> }> {
+  const rows: Array<{ unit_code: string | null; unit_name: string }> = await masterKnex(`${S}.extraction_study_units`)
+    .where({ job_id: jobId }).select("unit_code", "unit_name");
+  return {
+    codes: new Set(rows.map((r) => r.unit_code?.replace(/[\s-]/g, "").toUpperCase()).filter((c): c is string => !!c)),
+    names: new Set(rows.map((r) => normaliseUnitName(r.unit_name))),
+  };
+}
+
+/**
+ * Every course of the job as the resolver sees it — identity parts computed from the stored name
+ * with the same parser the incoming course goes through, so no identity column has to exist. A job
+ * holds hundreds of courses, not millions; one query per write is what the old name lookup cost.
+ */
+export async function jobCourseIndex(jobId: string, institutionUrl: string | null): Promise<CandidateRow[]> {
+  const rows: Array<{ id: string; job_id: string; name: string; source_url: string | null }> =
+    await masterKnex(`${S}.extraction_courses`).where({ job_id: jobId }).select("id", "job_id", "name", "source_url");
+  const perUrl = new Map<string, number>();
+  for (const r of rows) if (r.source_url) perUrl.set(r.source_url, (perUrl.get(r.source_url) ?? 0) + 1);
+  return rows.map((r) => {
+    const p = parseCourseName(r.name);
+    // A URL that several courses share is a list page, not any one course's own page.
+    const own = r.source_url && (perUrl.get(r.source_url) ?? 0) === 1 ? canonicalCourseUrl(r.source_url, institutionUrl) : null;
+    return {
+      id: r.id, job_id: r.job_id, institution_key: null, name_key: p.key, qualifier_norm: p.qualifier,
+      subject_norm: p.subject, specialisation_norm: p.specialisation, variant_flags: p.flags,
+      course_code: p.code, canonical_url: own,
+    };
+  });
+}
+
+/** A "course" that is really a unit: store it where units live, linked to its programme when the
+ *  page named one we hold. Returns nothing course-shaped, so the page counter does not tick. */
+async function writeReclassifiedUnit(jobId: string, course: ExtractedCourse, cls: EntityClassification, index: CandidateRow[]) {
+  const unitId = await upsertStudyUnit(jobId, {
+    unit_code: cls.unitCode,
+    unit_name: course.name.replace(/^[A-Z]{2,4}[ -]?\d{3,4}[A-Z]?\s*[-–:]\s*/, "").trim() || course.name,
+    description: course.description ?? null,
+  });
+  let parentId: string | null = null;
+  if (cls.parentProgram) {
+    const key = parseCourseName(cls.parentProgram).key;
+    parentId = index.find((c) => c.name_key === key)?.id ?? null;
+    if (parentId) {
+      await masterKnex(`${S}.extraction_course_study_unit_assignments`)
+        .insert({ job_id: jobId, course_id: parentId, study_unit_id: unitId })
+        .onConflict(["course_id", "study_unit_id"]).ignore();
     }
+  }
+  await writeJobEvent(jobId, "entity_reclassified", {
+    phase: "courses",
+    message: `"${course.name}" stored as a study unit, not a course (${cls.reason})`,
+    data: { name: course.name, reason: cls.reason, unit_id: unitId, parent_course_id: parentId, parent_program: cls.parentProgram, url: course.source_url ?? null },
+  });
+  logger.info("Reclassified course as study unit", { jobId, name: course.name, reason: cls.reason, unitId, parentId });
+}
+
+export async function writeCourse(
+  jobId: string, course: ExtractedCourse, campusIdMap: Map<string, string>, ctx: WriteCourseContext = {},
+): Promise<string | null> {
+  const parsed = parseCourseName(course.name);
+  const institutionUrl = await jobInstitutionUrl(jobId);
+  const coursesOnPage = ctx.coursesOnPage ?? 1;
+  // A URL identifies a course only when it is that course's own page: not the home page, and not a
+  // list page that yielded several courses.
+  const isListPage = coursesOnPage > 1 && (course.source_url ?? null) === (ctx.pageUrl ?? course.source_url ?? null);
+  const canonicalUrl = isListPage ? null : canonicalCourseUrl(course.source_url, institutionUrl);
+  const index = await jobCourseIndex(jobId, institutionUrl);
+
+  // ── Classify: a programme, or a unit that only exists inside one? ──
+  const units = await jobUnitIndex(jobId);
+  const cls = classifyEntity(
+    { name: course.name, entity_type: course.entity_type, parent_program: course.parent_program, evidence: course.evidence },
+    { coursesOnPage, jobUnitCodes: units.codes, jobUnitNames: units.names },
+  );
+  if (cls.verdict === "drop") {
+    await writeJobEvent(jobId, "dropped_entity", {
+      phase: "courses", level: "warn", message: `"${course.name}" not stored (${cls.reason})`,
+      data: { name: course.name, reason: cls.reason, url: course.source_url ?? null },
+    });
+    return null;
+  }
+  if (cls.verdict === "module") {
+    await writeReclassifiedUnit(jobId, course, cls, index);
+    return null;
+  }
+
+  // ── Resolve: is this a course the job already holds? ──
+  // Deterministic tiers (course-resolver.ts): only an identical verdict merges. A variant or a
+  // possible duplicate is inserted as its own row — with a job event, so it is visible in review —
+  // because merging on similarity is how two genuinely different programmes become one.
+  const res = resolveCourse({ jobId, parsed, canonicalUrl }, index);
+  let existing: Record<string, any> | undefined = res.outcome === "identical" && res.match
+    ? await masterKnex(`${S}.extraction_courses`).where({ id: res.match.id }).first()
+    : undefined;
+  if (res.outcome === "possible_duplicate" || cls.verdict === "unsupported_standalone") {
+    const reason = res.outcome === "possible_duplicate" ? `possible_duplicate:${res.reason}` : `unsupported_standalone:${cls.reason}`;
+    await writeJobEvent(jobId, "course_needs_review", {
+      phase: "courses", level: "warn", message: `"${course.name}" stored but flagged (${reason})`,
+      data: { name: course.name, reason, candidate_id: res.match?.id ?? null, url: course.source_url ?? null },
+    });
   }
 
   let courseId: string;
@@ -2040,6 +2133,9 @@ export async function writeCourse(jobId: string, course: ExtractedCourse, campus
 
     const [courseRow] = await masterKnex(`${S}.extraction_courses`).insert(courseInsert).returning("id");
     courseId = courseRow.id;
+    if (res.outcome !== "new") {
+      logger.info("Course resolved", { jobId, courseId, name: course.name, outcome: res.outcome, tier: res.tier, reason: res.reason, match: res.match?.id });
+    }
     logLookupLink(jobId, courseId, course, link, await isCourseInScope(jobId, link.degree_level_code));
   }
 

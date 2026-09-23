@@ -12,8 +12,10 @@ import {
 } from "./agentcis-product-mappers.js";
 import {
   normaliseCurrency, upsertEligibility, upsertEnglishRequirement, upsertFee, upsertIntake,
-  resolveCourseLookups, durationToWeeks, upsertStudyOption, resolveDurationWeeks,
+  resolveCourseLookups, durationToWeeks, upsertStudyOption, resolveDurationWeeks, jobCourseIndex,
 } from "./staging-writer.js";
+import { parseCourseName, canonicalCourseUrl } from "./course-name.js";
+import { resolveCourse } from "./course-resolver.js";
 
 export interface StagingCounters {
   branches_extracted: number;
@@ -66,6 +68,17 @@ export async function stageProduct(
     study_options: studyOptions,
     description,
   });
+
+  // This import used to insert with no lookup at all, so a product listed twice in the feed, or
+  // spelled two ways, became two rows. Same parser and resolver as writeCourse; only an identical
+  // verdict inside this job reuses the row.
+  const parsed = parseCourseName(cName);
+  const canonicalUrl = canonicalCourseUrl(sourceUrl, website);
+  const resolution = resolveCourse({ jobId, parsed, canonicalUrl }, await jobCourseIndex(jobId, website));
+  if (resolution.outcome === "identical" && resolution.match) {
+    counters.skipped_products++;
+    return;
+  }
 
   const [course] = await masterKnex(`${S}.extraction_courses`)
     .insert({

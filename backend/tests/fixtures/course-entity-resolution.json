@@ -1,0 +1,614 @@
+{
+  "_readme": "Labelled cases for the course entity classifier and resolver. Each case gives two extracted items from the SAME institution unless `institution_b` differs. `expected` is one of: identical (auto-merge), variant (link, keep both), possible_duplicate (flag, keep both), separate (no relation), module (b is a unit of a), separate_institution. Names and contexts are taken from live extraction rows (Amberton, UEL, Widener, Curtin, Columbia, Cornell) or are minimal synthetic variants of them. Add a case whenever a reviewer overturns a decision.",
+  "cases": [
+    {
+      "id": "exact-1",
+      "group": "true_duplicate",
+      "a": {
+        "name": "MBA General Management"
+      },
+      "b": {
+        "name": "MBA General Management"
+      },
+      "expected": "identical"
+    },
+    {
+      "id": "punct-1",
+      "group": "true_duplicate",
+      "a": {
+        "name": "Certificate - Finance (Graduate)"
+      },
+      "b": {
+        "name": "Certificate – Finance – Graduate"
+      },
+      "expected": "identical"
+    },
+    {
+      "id": "punct-2",
+      "group": "true_duplicate",
+      "a": {
+        "name": "MA School Counseling"
+      },
+      "b": {
+        "name": "MA - School Counseling"
+      },
+      "expected": "identical"
+    },
+    {
+      "id": "punct-3",
+      "group": "true_duplicate",
+      "a": {
+        "name": "Human - Environment Relations, M.Sc."
+      },
+      "b": {
+        "name": "Human-Environment Relations, M.Sc."
+      },
+      "expected": "identical"
+    },
+    {
+      "id": "sep-word-1",
+      "group": "true_duplicate",
+      "a": {
+        "name": "Master of Business Administration in General Management"
+      },
+      "b": {
+        "name": "Master of Business Administration - General Management"
+      },
+      "expected": "identical"
+    },
+    {
+      "id": "sep-word-2",
+      "group": "true_duplicate",
+      "a": {
+        "name": "Bachelor of Business in Entrepreneurship"
+      },
+      "b": {
+        "name": "Bachelor of Business - Entrepreneurship"
+      },
+      "expected": "identical"
+    },
+    {
+      "id": "abbr-1",
+      "group": "abbreviation",
+      "a": {
+        "name": "Master of Business Administration"
+      },
+      "b": {
+        "name": "MBA"
+      },
+      "expected": "identical"
+    },
+    {
+      "id": "abbr-2",
+      "group": "abbreviation",
+      "a": {
+        "name": "Master of Business Administration – General Management"
+      },
+      "b": {
+        "name": "MBA – General Management"
+      },
+      "expected": "identical"
+    },
+    {
+      "id": "abbr-3",
+      "group": "abbreviation",
+      "a": {
+        "name": "Master of Arts in Marriage and Family Therapy"
+      },
+      "b": {
+        "name": "MA Marriage & Family Therapy"
+      },
+      "expected": "identical"
+    },
+    {
+      "id": "abbr-4",
+      "group": "abbreviation",
+      "a": {
+        "name": "BS in Human Relations and Business"
+      },
+      "b": {
+        "name": "BS Human Relations & Business"
+      },
+      "expected": "identical"
+    },
+    {
+      "id": "abbr-5",
+      "group": "abbreviation",
+      "a": {
+        "name": "B.A in Economics"
+      },
+      "b": {
+        "name": "B.A. in Economics"
+      },
+      "expected": "identical"
+    },
+    {
+      "id": "order-1",
+      "group": "true_duplicate",
+      "a": {
+        "name": "Data Science MSc"
+      },
+      "b": {
+        "name": "MSc Data Science"
+      },
+      "expected": "identical"
+    },
+    {
+      "id": "order-2",
+      "group": "true_duplicate",
+      "a": {
+        "name": "Information Science, B.Sc."
+      },
+      "b": {
+        "name": "Bachelor of Science in Information Science"
+      },
+      "expected": "identical"
+    },
+    {
+      "id": "dual-1",
+      "group": "true_duplicate",
+      "a": {
+        "name": "Bachelor of Arts / Bachelor of Commerce"
+      },
+      "b": {
+        "name": "Bachelor of Arts, Bachelor of Commerce"
+      },
+      "expected": "identical"
+    },
+    {
+      "id": "url-1",
+      "group": "true_duplicate",
+      "a": {
+        "name": "Juris Doctor (JD)",
+        "source_url": "https://www.widener.edu/academics/graduate-studies/juris-doctor-jd-degree-programs"
+      },
+      "b": {
+        "name": "Juris Doctor",
+        "source_url": "http://www.widener.edu/academics/graduate-studies/juris-doctor-jd-degree-programs/"
+      },
+      "expected": "identical",
+      "note": "same canonical URL after scheme/trailing-slash normalisation"
+    },
+    {
+      "id": "spec-1",
+      "group": "false_duplicate",
+      "a": {
+        "name": "MBA General Management"
+      },
+      "b": {
+        "name": "MBA International Business"
+      },
+      "expected": "separate"
+    },
+    {
+      "id": "spec-2",
+      "group": "false_duplicate",
+      "a": {
+        "name": "Bachelor of Business Administration in Marketing"
+      },
+      "b": {
+        "name": "Bachelor of Business Administration in International Business"
+      },
+      "expected": "separate"
+    },
+    {
+      "id": "spec-3",
+      "group": "false_duplicate",
+      "a": {
+        "name": "Master of Business (Finance)"
+      },
+      "b": {
+        "name": "Master of Business and Innovation (Finance)"
+      },
+      "expected": "separate",
+      "note": "different subject, same specialisation"
+    },
+    {
+      "id": "spec-4",
+      "group": "false_duplicate",
+      "a": {
+        "name": "Biological Sciences, Ecology Concentration, B.S."
+      },
+      "b": {
+        "name": "Biological Sciences, Physiology Concentration, B.S."
+      },
+      "expected": "separate"
+    },
+    {
+      "id": "spec-5",
+      "group": "false_duplicate",
+      "a": {
+        "name": "Curriculum and Teaching - Elementary Education, M.A."
+      },
+      "b": {
+        "name": "Curriculum and Teaching - Secondary Education, M.A."
+      },
+      "expected": "separate"
+    },
+    {
+      "id": "sim-1",
+      "group": "false_duplicate",
+      "a": {
+        "name": "Atmospheric Science, B.Sc."
+      },
+      "b": {
+        "name": "Earth and Atmospheric Sciences, B.Sc."
+      },
+      "expected": "separate",
+      "note": "trigram 0.66; different subject"
+    },
+    {
+      "id": "sim-2",
+      "group": "false_duplicate",
+      "a": {
+        "name": "Minor in Biophysics"
+      },
+      "b": {
+        "name": "Minor in Physics"
+      },
+      "expected": "separate"
+    },
+    {
+      "id": "sim-3",
+      "group": "false_duplicate",
+      "a": {
+        "name": "Bachelor of Nursing (Honours)"
+      },
+      "b": {
+        "name": "Bachelor of Business (Honours)"
+      },
+      "expected": "separate"
+    },
+    {
+      "id": "code-1",
+      "group": "false_duplicate",
+      "a": {
+        "name": "Doctor of Philosophy 254HC"
+      },
+      "b": {
+        "name": "Doctor of Philosophy 254LC"
+      },
+      "expected": "separate",
+      "note": "different institution codes"
+    },
+    {
+      "id": "level-1",
+      "group": "different_level",
+      "a": {
+        "name": "Bachelor of Business Administration"
+      },
+      "b": {
+        "name": "Master of Business Administration"
+      },
+      "expected": "separate"
+    },
+    {
+      "id": "level-2",
+      "group": "different_level",
+      "a": {
+        "name": "Graduate Diploma of Business Administration"
+      },
+      "b": {
+        "name": "Graduate Certificate of Business Administration"
+      },
+      "expected": "separate"
+    },
+    {
+      "id": "level-3",
+      "group": "different_level",
+      "a": {
+        "name": "Forensic Psychology MPhil"
+      },
+      "b": {
+        "name": "Forensic Psychology PhD"
+      },
+      "expected": "separate"
+    },
+    {
+      "id": "level-4",
+      "group": "different_level",
+      "a": {
+        "name": "Information Science, B.A."
+      },
+      "b": {
+        "name": "Information Science, Ph.D."
+      },
+      "expected": "separate"
+    },
+    {
+      "id": "level-5",
+      "group": "different_level",
+      "a": {
+        "name": "Doctor of Business Administration"
+      },
+      "b": {
+        "name": "Master of Business Administration"
+      },
+      "expected": "separate"
+    },
+    {
+      "id": "hons-1",
+      "group": "different_level",
+      "a": {
+        "name": "BSc Biology"
+      },
+      "b": {
+        "name": "BSc (Hons) Biology"
+      },
+      "expected": "variant",
+      "note": "same award and subject; honours is a variant flag, link not merge"
+    },
+    {
+      "id": "var-1",
+      "group": "variant",
+      "a": {
+        "name": "Artificial Intelligence MSc"
+      },
+      "b": {
+        "name": "Artificial Intelligence MSc with Placement Year"
+      },
+      "expected": "variant"
+    },
+    {
+      "id": "var-2",
+      "group": "variant",
+      "a": {
+        "name": "Animation and Game Design BA (Hons)"
+      },
+      "b": {
+        "name": "Animation and Game Design BA (Hons) with Foundation Year"
+      },
+      "expected": "variant"
+    },
+    {
+      "id": "var-3",
+      "group": "variant",
+      "a": {
+        "name": "Education Top-Up (Online) - BA (Hons)"
+      },
+      "b": {
+        "name": "Education Top Up Online BA (Hons)"
+      },
+      "expected": "identical",
+      "note": "same flags on both sides"
+    },
+    {
+      "id": "var-4",
+      "group": "variant",
+      "a": {
+        "name": "Master of Business Administration"
+      },
+      "b": {
+        "name": "MBA - Sustainable Business MBA with Placement Year"
+      },
+      "expected": "possible_duplicate",
+      "note": "specialisation present on one side only"
+    },
+    {
+      "id": "mod-1",
+      "group": "study_unit",
+      "a": {
+        "name": "Master of Business Administration",
+        "page_context": {
+          "url": "https://example.edu/mba",
+          "headings": [
+            "Master of Business Administration",
+            "Program Courses"
+          ]
+        }
+      },
+      "b": {
+        "name": "Strategic Management",
+        "page_context": {
+          "url": "https://example.edu/mba",
+          "heading_path": [
+            "Master of Business Administration",
+            "Program Courses"
+          ]
+        }
+      },
+      "expected": "module"
+    },
+    {
+      "id": "mod-2",
+      "group": "study_unit",
+      "a": {
+        "name": "Master of Business Administration"
+      },
+      "b": {
+        "name": "Financial Management",
+        "page_context": {
+          "heading_path": [
+            "MBA",
+            "Core courses"
+          ],
+          "credit_points": 6
+        }
+      },
+      "expected": "module"
+    },
+    {
+      "id": "mod-3",
+      "group": "study_unit",
+      "a": {
+        "name": "Master of Business Administration"
+      },
+      "b": {
+        "name": "Business Analytics",
+        "page_context": {
+          "heading_path": [
+            "MBA",
+            "Electives"
+          ]
+        }
+      },
+      "expected": "module"
+    },
+    {
+      "id": "mod-4",
+      "group": "study_unit",
+      "a": {
+        "name": "Master of Arts - Marriage & Family Therapy"
+      },
+      "b": {
+        "name": "CSL6832 – Multicultural Counseling",
+        "source_url": "https://amberton.edu/courses/csl6832-multicultural-counseling"
+      },
+      "expected": "module",
+      "note": "unit code pattern; same code exists in extraction_study_units for the job",
+      "job_unit_codes": [
+        "CSL6832"
+      ]
+    },
+    {
+      "id": "mod-5",
+      "group": "study_unit",
+      "a": {
+        "name": "Master of Business Administration"
+      },
+      "b": {
+        "name": "Executive Leadership (MGT5670)"
+      },
+      "expected": "module"
+    },
+    {
+      "id": "mod-6",
+      "group": "study_unit",
+      "a": {
+        "name": "Master of Arts - School Counseling"
+      },
+      "b": {
+        "name": "School Counseling Practicum II",
+        "source_url": "https://amberton.edu/courses/school-counseling-practicum-ii"
+      },
+      "expected": "module",
+      "note": "no code; practicum vocabulary, no award word, page under /courses/ where the site's programmes live under /degree-programs/"
+    },
+    {
+      "id": "mod-7",
+      "group": "study_unit",
+      "a": {
+        "name": "Bachelor of Arts – Professional Development"
+      },
+      "b": {
+        "name": "Effective Writing Skills",
+        "source_url": "https://amberton.edu/courses/effective-writing-skills",
+        "page_context": {
+          "entity_type": "module",
+          "evidence": [
+            "credit_points"
+          ]
+        }
+      },
+      "expected": "module"
+    },
+    {
+      "id": "stand-1",
+      "group": "standalone_similar_name",
+      "a": {
+        "name": "Master of Financial Management",
+        "page_context": {
+          "evidence": [
+            "award_in_name",
+            "fees_stated",
+            "own_detail_page"
+          ]
+        }
+      },
+      "b": {
+        "name": "Financial Management",
+        "page_context": {
+          "heading_path": [
+            "MBA",
+            "Core courses"
+          ]
+        }
+      },
+      "expected": "separate",
+      "note": "a is a course, b is a module of a different programme; never merged"
+    },
+    {
+      "id": "stand-2",
+      "group": "standalone_similar_name",
+      "a": {
+        "name": "Financial Management",
+        "page_context": {
+          "evidence": [
+            "own_detail_page",
+            "fees_stated",
+            "duration_stated"
+          ],
+          "url": "https://example.edu/short-courses/financial-management"
+        }
+      },
+      "b": {
+        "name": "Financial Management",
+        "page_context": {
+          "heading_path": [
+            "MBA",
+            "Program Courses"
+          ]
+        }
+      },
+      "expected": "separate",
+      "note": "same name; a is a short course with its own page, b is a module"
+    },
+    {
+      "id": "stand-3",
+      "group": "standalone_similar_name",
+      "a": {
+        "name": "Public Relations",
+        "page_context": {
+          "url": "https://amberton.edu/programs-and-courses/public-relations",
+          "evidence": []
+        }
+      },
+      "b": {
+        "name": "Bachelor of Arts - Professional Development"
+      },
+      "expected": "separate",
+      "note": "a has no award and no evidence: expected classification outcome is unsupported_standalone (review), not module and not merge",
+      "expected_class_a": "unsupported_standalone"
+    },
+    {
+      "id": "inst-1",
+      "group": "different_institution",
+      "a": {
+        "name": "Master of Business Administration",
+        "institution": "widener.edu"
+      },
+      "b": {
+        "name": "Master of Business Administration",
+        "institution_b": "amberton.edu"
+      },
+      "expected": "separate_institution"
+    },
+    {
+      "id": "inst-2",
+      "group": "different_institution",
+      "a": {
+        "name": "BSc (Hons) Computer Science",
+        "institution": "uel.ac.uk"
+      },
+      "b": {
+        "name": "BSc (Hons) Computer Science",
+        "institution_b": "abertay.ac.uk"
+      },
+      "expected": "separate_institution"
+    },
+    {
+      "id": "page-1",
+      "group": "page_type",
+      "a": {
+        "name": "MSc (Hons) Civil Engineering with Sustainability",
+        "source_url": "https://uel.ac.uk/about/governance/manual-general-regulations/courses-exemptions-uel-academic-regulations"
+      },
+      "b": {
+        "name": "Civil Engineering with Sustainability MSc",
+        "source_url": "https://uel.ac.uk/postgraduate/courses/msc-civil-engineering-sustainability"
+      },
+      "expected": "variant",
+      "note": "a carries a stray (Hons) from a governance page; same award, subject and specialisation so it links as a variant rather than merging. Reviewer may merge."
+    }
+  ]
+}

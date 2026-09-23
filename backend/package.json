@@ -19,6 +19,8 @@
     "fees:normalise": "node --import tsx scripts/normalise-course-fees.ts",
     "institutions:backfill-jobs": "node --import tsx scripts/backfill-institution-jobs.ts",
     "eligibility:backfill": "node --import tsx scripts/eligibility-backfill.ts",
+    "courses:merge-duplicates": "node --import tsx scripts/merge-duplicate-courses.ts",
+    "test:course-entity-resolution": "node --import tsx tests/course-entity-resolution.ts",
     "ai:evals": "node --import tsx scripts/ai-evals/run-evals.ts",
     "gcs:cors": "node --import tsx scripts/set-gcs-cors.ts",
     "seed:globalyapp": "node --import tsx node_modules/.bin/knex seed:run --knexfile knexfile.ts --env globalyapp",
