@@ -18,6 +18,7 @@
     "chunk:backfill": "node --import tsx scripts/chunk-backfill.ts",
     "fees:normalise": "node --import tsx scripts/normalise-course-fees.ts",
     "institutions:backfill-jobs": "node --import tsx scripts/backfill-institution-jobs.ts",
+    "backfill:institution-branches": "node --import tsx scripts/backfill-institution-branches.ts",
     "eligibility:backfill": "node --import tsx scripts/eligibility-backfill.ts",
     "ai:evals": "node --import tsx scripts/ai-evals/run-evals.ts",
     "gcs:cors": "node --import tsx scripts/set-gcs-cors.ts",
