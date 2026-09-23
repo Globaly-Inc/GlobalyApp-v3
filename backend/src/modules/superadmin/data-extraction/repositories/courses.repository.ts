@@ -4,13 +4,17 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 const T = `${S}.extraction_courses`;
 
-export type CourseListFilters = { search?: string; status?: string; scope?: "in" | "out"; excluded?: string[] | null };
-export type CourseSort = "newest" | "oldest" | "name_asc" | "name_desc";
+export type CourseListFilters = {
+  search?: string; status?: string; scope?: "in" | "out"; excluded?: string[] | null;
+  courseCategory?: "academic" | "short_course";
+};
+export type CourseSort = "newest" | "oldest" | "name_asc" | "name_desc" | "recently_updated";
 
-function filteredCoursesQuery(jobId: string, { search, status, scope, excluded }: CourseListFilters) {
+function filteredCoursesQuery(jobId: string, { search, status, scope, excluded, courseCategory }: CourseListFilters) {
   const q = masterKnex(T).where({ job_id: jobId });
   if (search) q.where((b) => b.whereILike("name", `%${search}%`).orWhereILike("description", `%${search}%`));
   if (status) q.where("verification_status", status);
+  if (courseCategory) q.where("course_category", courseCategory);
   if (scope && excluded) {
     // Mirrors isCourseInScope on a SCOPED job: the level must be resolved AND not excluded.
     const inScope = "(degree_level_code IS NOT NULL AND NOT (degree_level_code = ANY(?)))";
@@ -32,6 +36,7 @@ export async function listCoursesByJob(
     case "name_asc": return q.orderBy("name", "asc");
     case "name_desc": return q.orderBy("name", "desc");
     case "newest": return q.orderBy("created_at", "desc");
+    case "recently_updated": return q.orderBy("updated_at", "desc");
     default: return q.orderBy("created_at", "asc");
   }
 }

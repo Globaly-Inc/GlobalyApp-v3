@@ -16,12 +16,19 @@ import { ServiceColumnPicker } from "../services/service-column-picker";
 import { ServiceManagementTable, type ColumnKey, type SortColumn, type SortState } from "../services/service-management-table";
 
 const PAGE_SIZE = 10;
-const DEFAULT_COLUMNS: ColumnKey[] = ["category", "degree_level", "area_of_study", "duration", "location", "price", "status"];
+const DEFAULT_COLUMNS: ColumnKey[] = ["category", "degree_level", "area_of_study", "price", "status"];
 const STATUS_OPTIONS = [
   { value: "all", label: "All statuses" },
   { value: "published", label: "Published" },
   { value: "draft", label: "Draft" },
 ];
+// Institutions only — extraction_courses.course_category splits their catalog into degree
+// programs and standalone offerings, so the tab shows one or the other rather than a single
+// list where a workshop sits next to a Bachelor's degree with no way to tell them apart.
+const COURSE_CATEGORY_TABS = [
+  { value: "academic", label: "Academic Courses" },
+  { value: "short_course", label: "Short Courses" },
+] as const;
 
 export function ServicesTab({ businessId, readOnly = false }: Readonly<{ businessId: number; readOnly?: boolean }>) {
   const router = useRouter();
@@ -31,6 +38,7 @@ export function ServicesTab({ businessId, readOnly = false }: Readonly<{ busines
   const [deleting, setDeleting] = useState(false);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [courseCategory, setCourseCategory] = useState<"academic" | "short_course">("academic");
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState<SortState>({ column: null, direction: "asc" });
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -38,7 +46,10 @@ export function ServicesTab({ businessId, readOnly = false }: Readonly<{ busines
 
   const [hasLoaded, setHasLoaded] = useState(false);
   const fetchPage = (p: number) => {
-    dispatch(fetchServices({ id: businessId, params: { search: search || undefined, page: p, limit: PAGE_SIZE } })).finally(() => setHasLoaded(true));
+    dispatch(fetchServices({
+      id: businessId,
+      params: { search: search || undefined, page: p, limit: PAGE_SIZE, course_category: readOnly ? courseCategory : undefined },
+    })).finally(() => setHasLoaded(true));
   };
 
   // Debounced, backend-driven search — the backend already supports `search` (and, for
@@ -52,7 +63,7 @@ export function ServicesTab({ businessId, readOnly = false }: Readonly<{ busines
     const timer = setTimeout(() => fetchPage(1), isFirstRun ? 0 : 300);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch, businessId, search]);
+  }, [dispatch, businessId, search, courseCategory]);
 
   const handlePageChange = (p: number) => {
     setPage(p);
@@ -146,6 +157,23 @@ export function ServicesTab({ businessId, readOnly = false }: Readonly<{ busines
           </Button>
         )}
       </div>
+
+      {readOnly && (
+        <div className="mb-3 flex gap-1 rounded-lg border bg-muted/40 p-1 w-fit">
+          {COURSE_CATEGORY_TABS.map((t) => (
+            <button
+              key={t.value}
+              type="button"
+              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                courseCategory === t.value ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"
+              }`}
+              onClick={() => setCourseCategory(t.value)}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+      )}
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">

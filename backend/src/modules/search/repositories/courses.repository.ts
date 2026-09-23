@@ -5,6 +5,8 @@
 import { masterKnex } from "../../../core/db/master-pool.js";
 import { SUPERADMIN_SCHEMA as S } from "../../superadmin/consts.js";
 import { courseSlug, parseCourseIdFragment } from "../utils/slug.js";
+import * as filesRepo from "../../../shared/storage/files.repository.js";
+import * as storage from "../../../shared/storage/storageService.js";
 
 export type CourseSearchFilters = {
   country?: string;
@@ -215,10 +217,22 @@ const CARD_COLUMNS = [CAMPUS_LOCATIONS, installmentColumn("domestic"), installme
  * rows out): a left join would leave an unpublished institution's course reachable by direct link
  * even though search excludes it.
  */
-function courseQuery() {
+/**
+ * `previewSchemaName` lets the owning institution's own member bypass the `is_published` gate
+ * for their own courses — the self-service "Preview" button. Verified by the route from the
+ * caller's JWT (see utils/preview-auth.ts); never take it from an unauthenticated source.
+ */
+function courseQuery(previewSchemaName?: string) {
   return masterKnex(`${S}.extraction_courses as ec`)
     .leftJoin("countries as c", (j) => j.on(masterKnex.raw("upper(c.iso2) = upper(ec.country_code)")))
-    .join("institutions as inst", (j) => j.on("inst.source_job_id", "ec.job_id").andOnVal("inst.is_published", true))
+    .join("institutions as inst", (j) => {
+      j.on("inst.source_job_id", "ec.job_id");
+      if (previewSchemaName) {
+        j.andOn((sub) => sub.onVal("inst.is_published", true).orOnVal("inst.schema_name", previewSchemaName));
+      } else {
+        j.andOnVal("inst.is_published", true);
+      }
+    })
     .joinRaw(topFee("domestic", "dfee"))
     .joinRaw(topFee("international", "ifee"))
     .whereRaw(PUBLICLY_VISIBLE);
@@ -496,18 +510,18 @@ export async function listCourseCampuses(courseId: string, jobId: string) {
     .orderBy("cam.name");
 }
 
-export async function findPublicCourseBySlug(slug: string) {
+export async function findPublicCourseBySlug(slug: string, previewSchemaName?: string) {
   const fragment = parseCourseIdFragment(slug);
   if (!fragment) return null;
 
-  const course = await courseQuery()
+  const course = await courseQuery(previewSchemaName)
     .whereRaw("left(replace(ec.id::text, '-', ''), 6) = ?", [fragment])
     .select(...LIST_COLUMNS, ...CARD_COLUMNS, ...DETAIL_COLUMNS)
     .first();
   if (!course) return null;
 
   // Every junction below carries a unique (course_id, entity_id), so none of these joins fan out.
-  const [intakes, eligibility, englishRequirements, studyUnits, studyOptions] = await Promise.all([
+  const [intakes, eligibility, englishRequirements, studyUnits, studyOptions, media] = await Promise.all([
     masterKnex(`${S}.extraction_intakes as ei`)
       .join(`${S}.extraction_course_intake_assignments as ia`, "ia.intake_id", "ei.id")
       .where("ia.course_id", course.id)
@@ -528,7 +542,15 @@ export async function findPublicCourseBySlug(slug: string) {
       .where("oa.course_id", course.id)
       .select("o.id", "o.name", "o.study_mode", "o.study_load", "o.duration_value", "o.duration_unit", "o.applicable_to")
       .orderBy("o.created_at"),
+    // Files an admin uploaded through the service editor's Media tab (uploaded_files, entity_type
+    // "service", entity_id = this course's own id) — never wired to any public page before, so a
+    // course with real uploaded photos only ever showed its single scraped image_url.
+    filesRepo.listFilesByEntity("service", course.id, "media"),
   ]);
+
+  const mediaUrls = await Promise.all(
+    media.map((f) => storage.getSignedViewUrl(f.storage_path).catch(() => null)),
+  );
 
   return {
     ...course,
@@ -536,5 +558,6 @@ export async function findPublicCourseBySlug(slug: string) {
     intakes, eligibility, englishRequirements,
     study_units: studyUnits,
     study_options: studyOptions,
+    media: media.map((f, i) => ({ id: f.id, url: mediaUrls[i], mime_type: f.mime_type })).filter((m) => m.url),
   };
 }

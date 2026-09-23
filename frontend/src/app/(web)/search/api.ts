@@ -181,9 +181,14 @@ export async function getTests(): Promise<PlatformTest[]> {
   return res.json();
 }
 
-export async function getCourseBySlug(slug: string): Promise<CourseDetail | null> {
+export async function getCourseBySlug(slug: string, previewToken?: string): Promise<CourseDetail | null> {
   if (USE_MOCK_DATA) return mockGetCourseBySlug(slug);
-  const res = await fetch(`${API_BASE}/search/courses/${slug}`, { next: { revalidate: 30 } });
+  // Owner-preview path (see the self-service course table's name link) — carries the viewer's
+  // own access token so an unpublished institution's owner can still see its course pages;
+  // must never be served through the anonymous 30s cache other visitors hit.
+  const res = await fetch(`${API_BASE}/search/courses/${slug}`, previewToken
+    ? { headers: { Authorization: `Bearer ${previewToken}` }, cache: "no-store" }
+    : { next: { revalidate: 30 } });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error("Failed to load course");
   const data = await res.json();
@@ -200,9 +205,14 @@ export async function getCourseBySlug(slug: string): Promise<CourseDetail | null
   };
 }
 
-export async function getInstitutionBySlug(slug: string): Promise<InstitutionDetail | null> {
+export async function getInstitutionBySlug(slug: string, previewToken?: string): Promise<InstitutionDetail | null> {
   if (USE_MOCK_DATA) return mockGetInstitutionBySlug(slug);
-  const res = await fetch(`${API_BASE}/search/institutions/${slug}`, { next: { revalidate: 30 } });
+  // The owner-preview path (see the self-service "Preview" button) carries the viewer's own
+  // access token so an unpublished institution's owner can still see it — that response must
+  // never be shared through the anonymous 30s cache other visitors hit.
+  const res = await fetch(`${API_BASE}/search/institutions/${slug}`, previewToken
+    ? { headers: { Authorization: `Bearer ${previewToken}` }, cache: "no-store" }
+    : { next: { revalidate: 30 } });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error("Failed to load institution");
   const data = await res.json();
@@ -219,7 +229,9 @@ export async function getInstitutionBySlug(slug: string): Promise<InstitutionDet
 }
 
 export async function getInstitutionCourses(
-  slug: string, params: Pick<SearchFilterParams, "page" | "search" | "degree_level"> & { limit?: number },
+  slug: string,
+  params: Pick<SearchFilterParams, "page" | "search" | "degree_level"> & { limit?: number },
+  previewToken?: string,
 ): Promise<Paginated<SearchCourse>> {
   if (USE_MOCK_DATA) return mockGetInstitutionCourses(slug, params);
   const qs = new URLSearchParams();
@@ -227,7 +239,9 @@ export async function getInstitutionCourses(
   if (params.search) qs.set("search", params.search);
   if (params.degree_level) qs.set("degree_level", params.degree_level);
   if (params.limit) qs.set("limit", String(params.limit));
-  const res = await fetch(`${API_BASE}/search/institutions/${slug}/courses?${qs}`, { next: { revalidate: 30 } });
+  const res = await fetch(`${API_BASE}/search/institutions/${slug}/courses?${qs}`, previewToken
+    ? { headers: { Authorization: `Bearer ${previewToken}` }, cache: "no-store" }
+    : { next: { revalidate: 30 } });
   if (!res.ok) throw new Error("Failed to load institution courses");
   return res.json();
 }

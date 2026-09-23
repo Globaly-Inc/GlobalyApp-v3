@@ -14,7 +14,7 @@ import { InstitutionRolesList } from "./institution-roles-list";
 import { InstitutionRoleDrawer } from "./institution-role-drawer";
 
 const SUB_TABS = [
-  { value: "members", label: "Members" },
+  { value: "members", label: "Users" },
   { value: "invitations", label: "Sent Invitations" },
   { value: "roles", label: "Roles" },
 ] as const;
@@ -36,7 +36,7 @@ export function InstitutionMembersTab({
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Users className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-semibold">Members</span>
+          <span className="text-sm font-semibold">Users</span>
           <Badge variant="secondary">{total}</Badge>
         </div>
         {!readOnly && (subTab === "roles" ? (
@@ -45,7 +45,7 @@ export function InstitutionMembersTab({
           </Button>
         ) : (
           <Button className="h-10" onClick={() => setInviteOpen(true)}>
-            <Plus className="mr-1.5 h-3.5 w-3.5" /> Add Member
+            <Plus className="mr-1.5 h-3.5 w-3.5" /> Add User
           </Button>
         ))}
       </div>

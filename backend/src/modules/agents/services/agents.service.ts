@@ -24,7 +24,7 @@ import { masterKnex } from "../../../core/db/master-pool.js";
 import * as repo from "../repositories/agents.repository.js";
 import * as platformUserRepo from "../../platform-users/repositories/platform-users.repository.js";
 import * as businessRepo from "../../businesses/repositories/businesses.repository.js";
-import type { AgentPatchInput, InviteAgentInput, RoleCreateInput, RolePatchInput } from "../schemas/agents.schema.js";
+import type { AgentPatchInput, ContactInput, ContactPatch, InviteAgentInput, RoleCreateInput, RolePatchInput } from "../schemas/agents.schema.js";
 
 const logger = createChildLogger("agents-service");
 
@@ -169,11 +169,16 @@ async function createInvitation(
   const business = await repo.findBusinessByDbName(orgId);
   if (!business) throw new NotFoundError("Organization not found");
 
-  // Check if email is already an agent in this business
+  // Check if email is already an agent in this business — but a dormant "Add Contact" row
+  // (is_contact_only, never accepted an invite) isn't a real agent yet, and insertAgent upserts
+  // on platform_user_id, so inviting one safely promotes it rather than colliding. Only a
+  // genuine already-accepted agent blocks a re-invite.
   const existingUser = await platformUserRepo.findByEmail(input.email);
   if (existingUser) {
     const existingAgent = await repo.findAgentByPlatformUserId(db, existingUser.id);
-    if (existingAgent) throw new ConflictError("User is already an agent in this business");
+    if (existingAgent && !existingAgent.is_contact_only) {
+      throw new ConflictError("User is already an agent in this business");
+    }
   }
 
   // Check for pending invitation with same email
@@ -274,11 +279,27 @@ export async function acceptInvitation(orgId: string, token: string) {
     added_by: invitation.invited_by,
     addedby_admin_id: (details.addedby_admin_id as unknown as number | null) ?? null,
     admin_point_of_contact: Boolean(details.admin_point_of_contact),
+    // Accepting an invite makes this a real agent — clears is_contact_only so it lands in Users,
+    // regardless of admin_point_of_contact (see insertAgent: that flag is never touched on an
+    // existing row's accept, only used here for a brand-new row).
+    is_contact_only: false,
     first_name: platformUser.first_name,
     last_name: platformUser.last_name,
     email: platformUser.email,
     phone: platformUser.phone,
     position: (details.position as string) ?? null,
+    // Explicit resets, not omissions — insertAgent's upsert only overwrites columns actually
+    // present in this object, so leaving these out would resurrect a soft-deleted or dormant
+    // contact row with its stale CRM data (an old is_primary: true could also collide with
+    // another agent's primary flag, since accepting an invite never calls resetPrimaryAgents).
+    job_title: null,
+    department: null,
+    linkedin_url: null,
+    other_url: null,
+    tags: [],
+    preferred_channel: null,
+    is_primary: false,
+    notes: null,
   });
 
   // Write to master DB index so getMe/verifyOtp can list this business
@@ -348,7 +369,16 @@ export async function updateAgent(db: Knex, businessId: number, id: number, patc
     ...(patch.is_owner !== undefined ? { is_owner: patch.is_owner } : {}),
     ...(patch.position !== undefined ? { position: patch.position } : {}),
     ...(patch.is_public !== undefined ? { is_public: patch.is_public } : {}),
+    ...(patch.job_title !== undefined ? { job_title: patch.job_title } : {}),
+    ...(patch.department !== undefined ? { department: patch.department } : {}),
+    ...(patch.linkedin_url !== undefined ? { linkedin_url: patch.linkedin_url } : {}),
+    ...(patch.other_url !== undefined ? { other_url: patch.other_url } : {}),
+    ...(patch.tags !== undefined ? { tags: patch.tags } : {}),
+    ...(patch.preferred_channel !== undefined ? { preferred_channel: patch.preferred_channel } : {}),
+    ...(patch.is_primary !== undefined ? { is_primary: patch.is_primary } : {}),
+    ...(patch.notes !== undefined ? { notes: patch.notes } : {}),
   });
+  if (patch.is_primary) await repo.resetPrimaryAgents(db, id);
   const [enriched] = await enrichAgents([updated]);
 
   if (patch.role !== undefined || patch.is_owner !== undefined) {
@@ -360,8 +390,132 @@ export async function updateAgent(db: Knex, businessId: number, id: number, patc
       is_owner: patch.is_owner ?? agent.is_owner,
     });
   }
+  // Mirrored onto user_business_index too — that's what resolveOrgScope/listUserBusinesses
+  // actually reads on login, so without this a suspended agent could still log in and still had
+  // this business in their session scope (see the account_status migration's comment).
+  if (patch.account_status !== undefined) {
+    await platformUserRepo.setUserBusinessIndexStatus(agent.platform_user_id, businessId, patch.account_status);
+  }
 
   return enriched;
+}
+
+// ── Contacts ("Add Contact" — a dormant agent row, not a separate table) ──
+// Same underlying `agents` table as the Users tab; contacts are just agents viewed/created
+// through a CRM-shaped form. No invite email is ever sent for these.
+
+function splitFullName(fullName: string): { first_name: string; last_name: string | null } {
+  const [first, ...rest] = fullName.trim().split(/\s+/);
+  return { first_name: first ?? fullName, last_name: rest.length > 0 ? rest.join(" ") : null };
+}
+
+function toContact(agent: any) {
+  return {
+    id: String(agent.id),
+    full_name: [agent.first_name, agent.last_name].filter(Boolean).join(" ") || agent.email || "",
+    job_title: agent.job_title ?? null,
+    department: agent.department ?? null,
+    email: agent.email ?? null,
+    phone: agent.phone ?? null,
+    phone_country_code: null, // ponytail: not tracked separately on agents — phone is stored combined
+    linkedin_url: agent.linkedin_url ?? null,
+    other_url: agent.other_url ?? null,
+    tags: agent.tags ?? [],
+    preferred_channel: agent.preferred_channel ?? null,
+    is_primary: agent.is_primary ?? false,
+    notes: agent.notes ?? null,
+    created_at: agent.created_at,
+    updated_at: agent.updated_at,
+  };
+}
+
+/** Contacts view of the same agents list — all agents, primary first. */
+export async function listContacts(db: Knex, limit: number, offset: number, search?: string) {
+  const [rows, total] = await Promise.all([
+    repo.listContactRows(db, limit, offset, search),
+    repo.countContactRows(db, search),
+  ]);
+  const enriched = await enrichAgents(rows);
+  return { rows: enriched.map(toContact), total };
+}
+
+/** "Add Contact" — finds or silently creates a dormant platform_user (account_status 0, no
+ * OTP/invite email), then a real agent row for them with role "member", is_owner false. */
+export async function createContact(db: Knex, businessId: number, input: ContactInput) {
+  const role = await repo.findRoleByName(db, "member");
+  if (!role) throw new NotFoundError('Role "member" not found');
+
+  let platformUser = await platformUserRepo.findByEmail(input.email);
+  if (!platformUser) {
+    const { first_name, last_name } = splitFullName(input.full_name);
+    platformUser = await platformUserRepo.insert({
+      first_name,
+      last_name: last_name ?? "",
+      email: input.email,
+      account_status: 0, // dormant — no OTP/invite email sent
+    });
+  } else {
+    const existingAgent = await repo.findAgentByPlatformUserId(db, platformUser.id);
+    if (existingAgent) throw new ConflictError("A member/contact with this email already exists");
+  }
+
+  if (input.is_primary) await repo.resetPrimaryAgents(db);
+
+  const { first_name, last_name } = splitFullName(input.full_name);
+  const agent = await repo.insertAgent(db, {
+    platform_user_id: platformUser.id,
+    role_id: role.id,
+    is_owner: false,
+    account_status: 1,
+    // Contacts default to being a point of contact — see listContacts (only shows POC rows).
+    admin_point_of_contact: true,
+    // Not yet a real agent — excluded from Users (listAgents) until they accept a real invite
+    // (insertAgent's upsert clears this), independent of the POC flag above.
+    is_contact_only: true,
+    first_name,
+    last_name,
+    email: platformUser.email,
+    phone: input.phone ?? null,
+    job_title: input.job_title ?? null,
+    department: input.department ?? null,
+    linkedin_url: input.linkedin_url ?? null,
+    other_url: input.other_url ?? null,
+    tags: input.tags ?? [],
+    preferred_channel: input.preferred_channel ?? null,
+    is_primary: input.is_primary ?? false,
+    notes: input.notes ?? null,
+  });
+
+  // Deliberately NOT writing user_business_index here: that's what resolveOrgScope/login reads
+  // to decide which businesses a platform_user can access. A dormant contact-only row must not
+  // grant that — especially when `platformUser` was already an existing, active account (found
+  // by email above), which would otherwise gain real member access to this business the next
+  // time they log in, without ever being invited or accepting. The index is only written when
+  // a real invite is accepted (acceptInvitation).
+  return toContact(agent);
+}
+
+export async function updateContact(db: Knex, id: number, patch: ContactPatch) {
+  const agent = await repo.findAgentById(db, id);
+  if (!agent) throw new NotFoundError("Contact not found");
+
+  if (patch.is_primary) await repo.resetPrimaryAgents(db, id);
+
+  const nameFields = patch.full_name !== undefined ? splitFullName(patch.full_name) : {};
+  const updated = await repo.updateAgent(db, id, {
+    ...nameFields,
+    ...(patch.job_title !== undefined ? { job_title: patch.job_title } : {}),
+    ...(patch.department !== undefined ? { department: patch.department } : {}),
+    ...(patch.linkedin_url !== undefined ? { linkedin_url: patch.linkedin_url } : {}),
+    ...(patch.other_url !== undefined ? { other_url: patch.other_url } : {}),
+    ...(patch.tags !== undefined ? { tags: patch.tags } : {}),
+    ...(patch.preferred_channel !== undefined ? { preferred_channel: patch.preferred_channel } : {}),
+    ...(patch.is_primary !== undefined ? { is_primary: patch.is_primary } : {}),
+    ...(patch.notes !== undefined ? { notes: patch.notes } : {}),
+    ...(patch.phone !== undefined ? { phone: patch.phone } : {}),
+  });
+  const [final] = await enrichAgents([updated]);
+  return toContact(final);
 }
 
 export async function removeAgent(db: Knex, businessId: number, id: number) {

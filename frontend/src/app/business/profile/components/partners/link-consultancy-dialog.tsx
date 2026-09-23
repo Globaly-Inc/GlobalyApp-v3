@@ -31,7 +31,7 @@ export function LinkConsultancyDialog({
   isInstitution: boolean;
   editRelation?: BusinessRelation | null;
 }>) {
-  const partnerLabel = isInstitution ? "education agency" : "institution";
+  const partnerLabel = isInstitution ? "counsellor" : "institution";
   const dispatch = useAppDispatch();
   const isEdit = !!editRelation;
 
@@ -120,7 +120,7 @@ export function LinkConsultancyDialog({
             },
           }),
         ).unwrap();
-        toast.success(`${isInstitution ? "Education agency" : "Institution"} linked`);
+        toast.success(`${isInstitution ? "Counsellor" : "Institution"} linked`);
       }
       onOpenChange(false);
     } catch (e) {
@@ -173,7 +173,7 @@ export function LinkConsultancyDialog({
                 onChange={setPartnerRef}
                 options={results.map((b) => ({ value: `${b.kind}:${b.id}`, label: b.business_name }))}
                 placeholder={`Select a verified ${partnerLabel}...`}
-                searchPlaceholder={`Search verified ${partnerLabel === "education agency" ? "education agencies" : "institutions"}...`}
+                searchPlaceholder={`Search verified ${partnerLabel === "counsellor" ? "counsellors" : "institutions"}...`}
                 loading={loading}
                 onQueryChange={handleQueryChange}
               />

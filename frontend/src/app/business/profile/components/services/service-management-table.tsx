@@ -5,21 +5,22 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PriceEditPopover } from "@/app/admin/platform/businesses/components/services/price-edit-popover";
+import { coursePublicHref } from "../../utils";
 import type { BusinessService } from "../../apis/types";
 
 export type SortColumn = "name" | "category" | "degree_level" | "area_of_study" | "duration" | "price" | "status";
 export type SortState = { column: SortColumn | null; direction: "asc" | "desc" };
 
-export type ColumnKey = "category" | "degree_level" | "area_of_study" | "duration" | "location" | "price" | "status";
+export type ColumnKey = "category" | "degree_level" | "area_of_study" | "price" | "status";
 
 export const COLUMN_LABELS: Record<ColumnKey, string> = {
   category: "Category", degree_level: "Degree Level", area_of_study: "Subject Area",
-  duration: "Duration", location: "Location", price: "Price", status: "Status",
+  price: "Price", status: "Status",
 };
 
 const SORTABLE: Partial<Record<ColumnKey, SortColumn>> = {
   category: "category", degree_level: "degree_level", area_of_study: "area_of_study",
-  duration: "duration", price: "price", status: "status",
+  price: "price", status: "status",
 };
 
 export function ServiceManagementTable({
@@ -101,7 +102,22 @@ export function ServiceManagementTable({
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
                     <Package className="h-4 w-4" />
                   </div>
-                  <span className="font-medium">{s.name}</span>
+                  {readOnly ? (
+                    <button
+                      type="button"
+                      className="font-medium hover:underline"
+                      onClick={() => {
+                        // Opens synchronously (inside the click gesture) so popup blockers don't
+                        // catch it, then redirects it once the preview token comes back.
+                        const tab = window.open("", "_blank");
+                        coursePublicHref(s.name, s.id).then((href) => { if (tab) tab.location.href = href; });
+                      }}
+                    >
+                      {s.name}
+                    </button>
+                  ) : (
+                    <span className="font-medium">{s.name}</span>
+                  )}
                 </div>
               </td>
               {!readOnly && (
@@ -129,8 +145,6 @@ export function ServiceManagementTable({
               )}
               {visibleColumns.has("degree_level") && <td className="p-3 whitespace-nowrap">{s.degree_level ?? <span className="text-muted-foreground">—</span>}</td>}
               {visibleColumns.has("area_of_study") && <td className="p-3 whitespace-nowrap">{s.area_of_study ?? <span className="text-muted-foreground">—</span>}</td>}
-              {visibleColumns.has("duration") && <td className="p-3 whitespace-nowrap">{s.duration ?? <span className="text-muted-foreground">—</span>}</td>}
-              {visibleColumns.has("location") && <td className="p-3 whitespace-nowrap text-muted-foreground">—</td>}
               {visibleColumns.has("price") && (
                 <td className="p-3 whitespace-nowrap">
                   {readOnly

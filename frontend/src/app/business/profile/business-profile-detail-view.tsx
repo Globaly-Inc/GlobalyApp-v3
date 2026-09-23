@@ -13,6 +13,7 @@ import { fetchMe, useAuthState, switchAccount } from "@/app/auth/store/auth-slic
 import { fetchMyProfile, updateMyProfile } from "@/app/business/store/business-onboarding-slice";
 import { businessApi } from "@/app/business/apis";
 import type { SocialLinks } from "@/app/business/apis/types";
+import { authApi } from "@/app/auth/apis";
 import { SocialLinksDialog } from "./components/social-links-dialog";
 import { BranchesTab } from "./components/tabs/branches-tab";
 import { ServicesTab } from "./components/tabs/services-tab";
@@ -31,6 +32,16 @@ function parseTab(raw: string | null): Tab {
   return (VALID_TABS as readonly string[]).includes(raw ?? "") ? (raw as Tab) : "profile";
 }
 
+// Mirrors backend's `courseSlug(name, id)` scheme (see courses.routes.ts) used for institution
+// public URLs: slugified name + the id zero-padded to 6 digits, no dedicated slug column.
+function institutionPublicSlug(name: string, id: number): string {
+  const slugified = name
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return `${slugified}-${String(id).padStart(6, "0")}`;
+}
+
 export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId: number }>) {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -41,7 +52,6 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
   const [savingSocials, setSavingSocials] = useState(false);
   const [contextReady, setContextReady] = useState(false);
   const [imageUploading, setImageUploading] = useState<"logo" | "cover" | null>(null);
-  const [previewMode, setPreviewMode] = useState(false);
 
   const { user: authUser, initializing } = useAuthState();
   const isBusiness = authUser?.user_category === "business";
@@ -163,8 +173,30 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
       {tab === "profile" ? (
         <>
           <div className="flex flex-wrap items-center justify-end gap-3">
-            <Button variant="outline" size="sm" onClick={() => setPreviewMode((v) => !v)}>
-              <Eye className="mr-1.5 h-3.5 w-3.5" /> {previewMode ? "Exit preview" : "Preview"}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => {
+                if (!isViewingInstitution) {
+                  window.open(`/business/${profile.subdomain}`, "_blank");
+                  return;
+                }
+                // Mints a short-lived, single-purpose preview token (never the caller's own
+                // session access token) so an unpublished institution's owner can still preview
+                // it — see issuePreviewToken (backend) and the matching bypass in
+                // findPublicInstitutionBySlug. Opens the tab synchronously (inside the click
+                // gesture) so popup blockers don't catch it, then redirects once the token
+                // comes back.
+                const path = `/institution/${institutionPublicSlug(profile.business_name, profile.id)}`;
+                const tab = window.open("", "_blank");
+                authApi.mintPreviewToken()
+                  .then(({ preview_token }) => {
+                    if (tab) tab.location.href = `${path}?preview_token=${encodeURIComponent(preview_token)}`;
+                  })
+                  .catch(() => { if (tab) tab.location.href = path; });
+              }}
+            >
+              <Eye className="mr-1.5 h-3.5 w-3.5" /> Preview
             </Button>
             <div className="flex items-center gap-2">
               <span className="text-sm text-muted-foreground">{profile.is_published ? "Published" : "Unpublished"}</span>
@@ -175,7 +207,7 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
           <ProfileHeaderCard
             profile={profile}
             countries={countries}
-            previewMode={previewMode}
+            previewMode={false}
             onCoverFile={(file) => handleImageFile("cover", file)}
             coverUploading={imageUploading === "cover"}
             onLogoFile={(file) => handleImageFile("logo", file)}
@@ -183,12 +215,7 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
             onEditSocials={() => setSocialOpen(true)}
           />
 
-          <ProfileTab
-            profile={profile}
-            countries={countries}
-            readOnly={previewMode}
-            isInstitution={isViewingInstitution}
-          />
+          <ProfileTab profile={profile} countries={countries} isInstitution={isViewingInstitution} />
         </>
       ) : (
         <Card>

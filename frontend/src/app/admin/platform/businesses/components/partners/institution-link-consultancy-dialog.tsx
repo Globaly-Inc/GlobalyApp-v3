@@ -109,12 +109,12 @@ export function InstitutionLinkConsultancyDialog({
             },
           }),
         ).unwrap();
-        toast.success("Education agency linked");
+        toast.success("Counsellor linked");
       }
       dispatch(fetchInstitutionPartners({ id: institutionId }));
       onOpenChange(false);
     } catch (e) {
-      toast.error(isEdit ? "Couldn't update partnership" : "Couldn't link education agency", { description: (e as Error).message });
+      toast.error(isEdit ? "Couldn't update partnership" : "Couldn't link counsellor", { description: (e as Error).message });
     } finally {
       setSaving(false);
     }
@@ -125,7 +125,7 @@ export function InstitutionLinkConsultancyDialog({
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4" /> {isEdit ? "Edit partnership" : "Link education agency"}
+            <ShieldCheck className="h-4 w-4" /> {isEdit ? "Edit partnership" : "Link counsellor"}
           </SheetTitle>
           <SheetDescription>
             {isEdit ? (
@@ -133,7 +133,7 @@ export function InstitutionLinkConsultancyDialog({
                 Update the partnership with <strong>{editRelation?.partner_name}</strong>.
               </>
             ) : (
-              "Authorise a verified education agency to represent this institution."
+              "Authorise a verified counsellor to represent this institution."
             )}
           </SheetDescription>
         </SheetHeader>
@@ -141,7 +141,7 @@ export function InstitutionLinkConsultancyDialog({
         <div className="flex flex-col gap-5 px-4">
           <div className="flex flex-col gap-2">
             <Label>
-              Education agency <span className="text-destructive">*</span>
+              Counsellor <span className="text-destructive">*</span>
             </Label>
             {isEdit ? (
               <div className="flex h-10 items-center rounded-md border bg-muted/40 px-3 text-sm">{editRelation?.partner_name}</div>
@@ -150,8 +150,8 @@ export function InstitutionLinkConsultancyDialog({
                 value={selected}
                 onChange={setSelected}
                 options={results.map((b) => ({ value: String(b.id), label: b.business_name }))}
-                placeholder="Select a verified education agency..."
-                searchPlaceholder="Search verified education agencies..."
+                placeholder="Select a verified counsellor..."
+                searchPlaceholder="Search verified counsellors..."
                 loading={loading}
                 onQueryChange={handleQueryChange}
               />
@@ -195,7 +195,7 @@ export function InstitutionLinkConsultancyDialog({
           </Button>
           <Button onClick={handleSubmit} disabled={!selected || saving}>
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {isEdit ? "Save changes" : "Link education agency"}
+            {isEdit ? "Save changes" : "Link counsellor"}
           </Button>
         </SheetFooter>
       </SheetContent>

@@ -2,6 +2,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { NotFoundError } from "../../../shared/errors.js";
 import { buildPaginatedResponse, paginationToOffset } from "../../../shared/pagination.js";
+import { resolvePreviewSchemaName } from "../utils/preview-auth.js";
 import * as storage from "../../../shared/storage/storageService.js";
 import { withImagePreviews } from "../../businesses/services/businesses.service.js";
 import * as repo from "../repositories/businesses.repository.js";
@@ -64,7 +65,7 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
   // has no source_job_id — simply gets empty arrays and the page drops those sections.
   app.get("/search/institutions/:slug", async (req, reply) => {
     const { slug } = SlugParam.parse(req.params);
-    const institution = await repo.findPublicInstitutionBySlug(slug);
+    const institution = await repo.findPublicInstitutionBySlug(slug, resolvePreviewSchemaName(req));
     if (!institution) throw new NotFoundError("Institution not found");
 
     const jobId = institution.job_id;
@@ -101,7 +102,7 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
 
   app.get("/search/institutions/:slug/courses", async (req, reply) => {
     const { slug } = SlugParam.parse(req.params);
-    const institution = await repo.findPublicInstitutionBySlug(slug);
+    const institution = await repo.findPublicInstitutionBySlug(slug, resolvePreviewSchemaName(req));
     if (!institution) throw new NotFoundError("Institution not found");
 
     const { search, degree_level, ...pagination } = CourseListQuery.omit({ country: true, city: true }).parse(req.query);

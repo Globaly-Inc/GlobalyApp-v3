@@ -32,6 +32,7 @@ import type {
   BusinessCreateInput, BusinessPatchInput, BusinessStatus, EnquirySettingsPatchInput, InstitutionPartnerInput, InstitutionPartnerPatch,
   InstitutionPatchInput, MemberInviteInput, MemberPatchInput, RoleCreateInput, RolePatchInput,
 } from "../schemas/businesses.schema.js";
+import type { ContactInput, ContactPatch } from "../../../../agents/schemas/agents.schema.js";
 
 const logger = createChildLogger("superadmin-businesses-service");
 
@@ -687,8 +688,17 @@ export async function updateEnquirySettings(id: number, data: EnquirySettingsPat
 
 export async function inviteInstitutionMember(id: number, input: InstitutionInviteInput) {
   const inst = await requireProvisionedInstitution(id);
+  // Institutions created directly by admin/scraping (never self-onboarded or claimed) can have
+  // schema_provisioned_at set without account_status ever being flipped to 1 — createInstitution's
+  // own admin-create path sets both together (see its own account_status: 1 call above), but an
+  // institution promoted straight from extraction data skips that. findInstitutionBySchemaName,
+  // which the invite-accept page relies on, filters on account_status: 1, so an invite sent before
+  // this is set would generate an accept link that always 404s ("Organization not found") even
+  // though the invitation itself was created successfully. Sending an invite is exactly the
+  // "this institution's workspace is now real" moment, so activate it here if it isn't already.
+  if (inst.account_status !== 1) await userRepo.updateInstitution(inst.id, { account_status: 1 });
   const tenantDb = await getKnex(inst.id, inst.schema_name);
-  return institutionMembersService.inviteMemberAsAdmin(tenantDb, inst.id, inst.schema_name, input);
+  return institutionMembersService.inviteMemberAsSuperadmin(tenantDb, inst.id, inst.schema_name, input);
 }
 
 export async function listInstitutionInvitations(id: number, pagination: PaginationInput) {
@@ -712,7 +722,7 @@ export async function resendInstitutionInvitation(id: number, invitationId: stri
 export async function setInstitutionMemberStatus(id: number, platformUserId: number, accountStatus: number) {
   const inst = await requireProvisionedInstitution(id);
   const tenantDb = await getKnex(inst.id, inst.schema_name);
-  await institutionMembersService.setMemberStatus(tenantDb, platformUserId, accountStatus);
+  await institutionMembersService.setMemberStatus(tenantDb, inst.id, platformUserId, accountStatus);
 }
 
 export async function listMembers(
@@ -745,6 +755,57 @@ export async function removeMember(id: number, memberId: number) {
   const biz = await requireBusiness(id);
   const tenantDb = await getKnex(biz.id, schemaName(biz.schema_name));
   await agentsService.removeAgent(tenantDb, Number(biz.id), memberId);
+}
+
+// ── Contacts ("Add Contact" — a dormant agent/member row, not a separate table) ──
+
+export async function listContacts(id: number, limit: number, offset: number, search?: string) {
+  const biz = await requireBusiness(id);
+  const tenantDb = await getKnex(biz.id, schemaName(biz.schema_name));
+  return agentsService.listContacts(tenantDb, limit, offset, search);
+}
+
+export async function createContact(id: number, input: ContactInput) {
+  const biz = await requireBusiness(id);
+  const tenantDb = await getKnex(biz.id, schemaName(biz.schema_name));
+  return agentsService.createContact(tenantDb, Number(biz.id), input);
+}
+
+export async function updateContact(id: number, contactId: number, patch: ContactPatch) {
+  const biz = await requireBusiness(id);
+  const tenantDb = await getKnex(biz.id, schemaName(biz.schema_name));
+  return agentsService.updateContact(tenantDb, contactId, patch);
+}
+
+export async function deleteContact(id: number, contactId: number) {
+  const biz = await requireBusiness(id);
+  const tenantDb = await getKnex(biz.id, schemaName(biz.schema_name));
+  await agentsService.removeAgent(tenantDb, Number(biz.id), contactId);
+}
+
+export async function listInstitutionContacts(id: number, limit: number, offset: number, search?: string) {
+  const inst = await requireProvisionedInstitution(id);
+  const tenantDb = await getKnex(inst.id, inst.schema_name);
+  return institutionMembersService.listContacts(tenantDb, limit, offset, search);
+}
+
+export async function createInstitutionContact(id: number, input: ContactInput) {
+  const inst = await requireProvisionedInstitution(id);
+  const tenantDb = await getKnex(inst.id, inst.schema_name);
+  return institutionMembersService.createContact(tenantDb, Number(inst.id), input);
+}
+
+export async function updateInstitutionContact(id: number, contactId: number, patch: ContactPatch) {
+  const inst = await requireProvisionedInstitution(id);
+  const tenantDb = await getKnex(inst.id, inst.schema_name);
+  return institutionMembersService.updateContact(tenantDb, contactId, patch);
+}
+
+export async function deleteInstitutionContact(id: number, contactId: number) {
+  const inst = await requireProvisionedInstitution(id);
+  const tenantDb = await getKnex(inst.id, inst.schema_name);
+  const contact = await institutionMembersService.getMember(tenantDb, contactId);
+  await institutionMembersService.removeMember(tenantDb, Number(inst.id), contact.platform_user_id);
 }
 
 export async function listActivity(id: number, limit: number, offset: number) {
