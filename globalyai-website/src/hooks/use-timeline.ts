@@ -38,8 +38,9 @@ export function useTimeline({ durations, active = true, loop = true, restDelay =
    * step it belongs to. Without this, pausing or scrolling away threw the
    * elapsed time out and a beat interrupted 100ms from its end waited its
    * whole duration over again on resume, which reads as the demo hanging.
-   * The tag is what keeps a hand scrub honest: jumping to another chapter
-   * finds no carry-over for that step and starts it at full length.
+   * The tag is what keeps a hand scrub honest: the effect drops a carry-over
+   * the moment the timeline is on any other step, so a chapter arrived at by
+   * hand always starts at full length.
    */
   const remainingRef = useRef<{ step: number; ms: number } | null>(null);
 
@@ -53,6 +54,15 @@ export function useTimeline({ durations, active = true, loop = true, restDelay =
   const toggle = useCallback(() => setPlaying((value) => !value), []);
 
   useEffect(() => {
+    // A carry-over is only good while the timeline stays on the step it was
+    // taken from. Dropping it here rather than where it is read is what makes
+    // a scrub while paused count: that path returns early below, so a visitor
+    // who paused mid-chapter, moved to another and came back would otherwise
+    // resume this one on the old remainder.
+    if (remainingRef.current && remainingRef.current.step !== step) {
+      remainingRef.current = null;
+    }
+
     if (reducedMotion) {
       // Settle on the final step once, then leave the index alone — otherwise
       // this would snap back on every render and a visitor who has asked for
@@ -70,8 +80,8 @@ export function useTimeline({ durations, active = true, loop = true, restDelay =
     if (isLast && !loop) return;
 
     const full = (durations[step] ?? 1200) + (isLast ? restDelay : 0);
-    const carried = remainingRef.current;
-    const hold = carried?.step === step ? carried.ms : full;
+    // Anything still held belongs to this step; the guard above saw to that.
+    const hold = remainingRef.current?.ms ?? full;
 
     const startedAt = Date.now();
     let fired = false;
