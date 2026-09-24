@@ -1,0 +1,1661 @@
+@import "tailwindcss";
+
+/* ──────────────────────────────────────────────────────────────
+   GlobalyAI design system.
+
+   Visual language follows the freudly.ai reference: Nunito Sans throughout,
+   semibold (600) headings rather than heavy ones, very generous rounding
+   (30px cards, fully-round pills), one soft shadow, a pale blue-lavender
+   field behind white cards, and pastel-tinted accent cards. No dark sections.
+
+   The brand color stays Globaly's own #012E8A (ported from GlobalyApp-v3)
+   rather than the reference's violet — the pastel field is already blue-
+   tinted, so the navy sits in it naturally.
+   ────────────────────────────────────────────────────────────── */
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-body: var(--body);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-accent: var(--accent);
+  --color-soft: var(--surface-soft);
+
+  --font-sans: var(--font-nunito-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-nunito-sans), ui-sans-serif, system-ui, sans-serif;
+
+  --radius-sm: 12px;
+  --radius-md: 18px;
+  --radius-lg: 22px;
+  --radius-xl: 26px;
+  --radius-2xl: 30px;
+  --radius-3xl: 35px;
+}
+
+:root {
+  --background: #ffffff;
+  --card: #ffffff;
+
+  /* The pale blue-lavender field the whole page sits on. */
+  --surface-soft: #f0f4ff;
+  --surface-subtle: #f8f9fd;
+  --surface-tint: #e6ecff;
+
+  /* Near-black for headings, a softer gray for body copy — the reference
+     never sets body text to full black. */
+  --foreground: #161928;
+  --body: #404040;
+  --muted-foreground: #737c93;
+  --border: #e6ecff;
+  --border-strong: #d8e1f8;
+  /* A visible outline for the depicted form fields. --border-strong is a
+     divider tint — about 1.3:1 on white — which disappears entirely when it
+     has to carry a shape rather than separate two blocks. This clears the 3:1
+     WCAG asks of a non-text boundary. */
+  --field-outline: #97a8c8;
+
+  /* Globaly's brand navy, literal rather than an hsl() triple: hsl(220 99% 27%)
+     compiles to #012e89, one step off the specified color. */
+  --negative: #b4554d;
+  --primary: #012e8a;
+  --primary-foreground: #ffffff;
+  --primary-bright: #2f6be0;
+  --accent: #19c6e6;
+
+  /* Pastel card fills, matching the reference's tinted-card treatment. */
+  --pastel-blue: #e8eeff;
+  --pastel-lavender: #efe6ff;
+  --pastel-mint: #e2f8f7;
+  --pastel-peach: #fff1e8;
+  --pastel-green: #f1fbdf;
+
+  /* The demos' own surfaces. Named here so the same components can be
+     re-themed by a scope rather than forked per variation. */
+  --skeleton-1: #dde5f5;
+  --skeleton-2: #e7edf9;
+  --skeleton-3: #eef2fa;
+  --ok-bg: hsl(150 60% 94%);
+  --ok-text: hsl(150 70% 26%);
+  --warn-bg: hsl(42 95% 97%);
+  --warn-border: hsl(38 90% 88%);
+  --warn-text: hsl(30 60% 28%);
+
+  /* One shadow, used everywhere. */
+  --shadow-soft: 0 4px 12px rgb(17 44 85 / 0.1);
+  --shadow-lift: 0 14px 34px -12px rgb(17 44 85 / 0.16);
+  --shadow-panel: 0 24px 60px -28px rgb(17 44 85 / 0.28);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+  }
+  html {
+    scroll-behavior: smooth;
+    scroll-padding-top: 6rem;
+    -webkit-text-size-adjust: 100%;
+  }
+  body {
+    background-color: var(--background);
+    color: var(--body);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+  /* Semibold, not heavy. This one rule is most of why the reference reads as
+     friendly rather than corporate. */
+  h1, h2, h3, h4, h5, h6 {
+    font-family: var(--font-display);
+    font-weight: 600;
+    color: var(--foreground);
+    letter-spacing: -0.01em;
+    line-height: 1.2;
+    text-wrap: balance;
+  }
+  button, a, [role="button"], summary, label[for] {
+    cursor: pointer;
+  }
+  :focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 3px;
+    border-radius: 8px;
+  }
+}
+
+@layer components {
+  /* Page shell. The reference runs a 1420px max width. */
+  .shell {
+    width: 100%;
+    margin-inline: auto;
+    max-width: 1300px;
+    padding-inline: 1.25rem;
+  }
+  @media (min-width: 768px) {
+    .shell { padding-inline: 2.5rem; }
+  }
+
+  /* The large tinted container that holds a group of white cards. */
+  .panel-soft {
+    background: var(--surface-soft);
+    border-radius: 35px;
+  }
+
+  /* A white card on the pastel field. */
+  .card-soft {
+    background: var(--card);
+    border-radius: 30px;
+    box-shadow: var(--shadow-soft);
+  }
+
+  /* The problem section only. Flat, bordered and unlifted, so it reads as
+     unresolved beside .card-soft, which is white and carries a shadow. The
+     three problem cards were indistinguishable from the feature cards until
+     they lost the lift and the blue. */
+  .card-flat {
+    background: #ffffff;
+    border: 1px solid #e4e4e7;
+    border-radius: 30px;
+  }
+
+  /* The problem band. A neutral grey ground, deliberately outside the page's
+     blue field, so the section reads as the "before" at a glance rather than
+     on inspection. An earlier pass tinted the cards #f8f9fd against white,
+     which was too close to see. */
+  .band-problem {
+    background: #f4f4f5;
+  }
+
+  /* Pastel accent cards. The two radial blooms are the reference's technique —
+     they keep a flat tint from looking like a solid color swatch. */
+  .card-tint {
+    border-radius: 30px;
+    box-shadow: var(--shadow-soft);
+  }
+  .tint-blue {
+    background:
+      radial-gradient(circle at left bottom, #d6e2ff 0, transparent 62%),
+      radial-gradient(circle at right top, #dce6ff 0, transparent 62%),
+      linear-gradient(-45deg, #f4f7ff, var(--pastel-blue) 50%, #f4f7ff);
+  }
+  .tint-lavender {
+    background:
+      radial-gradient(circle at left bottom, #ddd0ff 0, transparent 62%),
+      radial-gradient(circle at right top, #e4d9ff 0, transparent 62%),
+      linear-gradient(-45deg, #f8f4ff, var(--pastel-lavender) 50%, #f8f4ff);
+  }
+  .tint-mint {
+    background:
+      radial-gradient(circle at left bottom, #c8f1ee 0, transparent 62%),
+      radial-gradient(circle at right top, #d3f4f2 0, transparent 62%),
+      linear-gradient(-45deg, #f2fdfc, var(--pastel-mint) 50%, #f2fdfc);
+  }
+  .tint-peach {
+    background:
+      radial-gradient(circle at left bottom, #ffe0cd 0, transparent 62%),
+      radial-gradient(circle at right top, #ffe7d8 0, transparent 62%),
+      linear-gradient(-45deg, #fff8f3, var(--pastel-peach) 50%, #fff8f3);
+  }
+  .tint-green {
+    background:
+      radial-gradient(circle at left bottom, #e3f6bf 0, transparent 62%),
+      radial-gradient(circle at right top, #eafad3 0, transparent 62%),
+      linear-gradient(-45deg, #fafdf2, var(--pastel-green) 50%, #fafdf2);
+  }
+
+  /* The hero's field: a pale wash that fades into the white page. */
+  .hero-field {
+    background: linear-gradient(180deg, #eaf1ff 0%, #f2f6ff 55%, #ffffff 100%);
+  }
+
+  /* The dark hero. The film's closing frame is the one moment on this page
+     that stops people, and it is a glowing orb on #141b2e; the hero now shares
+     that ground so the page opens on it rather than arriving at it nine
+     sections later. Deeper than the card at the top and lifting to the card's
+     own value at the bottom, so the panel inside reads as a lit surface rather
+     than a patch of the same color. */
+  .hero-dark {
+    background: linear-gradient(180deg, #0b1020 0%, #111a2f 58%, #141b2e 100%);
+  }
+
+  /* The blue bloom behind the panel, on the dark ground. The pale field's two
+     soft blooms disappear entirely down here. */
+  .hero-dark-bloom {
+    background: radial-gradient(38rem 26rem at 72% 38%, rgb(47 107 224 / 0.28), transparent 70%);
+  }
+
+  /* The brand gradient, on short heading fragments and the CTA. */
+  .gradient-text {
+    background: linear-gradient(120deg, var(--primary), var(--primary-bright) 60%, #1e9fd0);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+
+  /* The reference's signature headline device: a key phrase lifted into a
+     white rounded chip that sits inline in the sentence. */
+  .headline-chip {
+    display: inline-block;
+    background: #ffffff;
+    border-radius: 100px;
+    box-shadow: var(--shadow-soft);
+    padding: 0.06em 0.42em;
+    color: var(--primary);
+  }
+
+  .eyebrow {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--primary);
+  }
+}
+
+@layer utilities {
+  /* Scroll reveal. Paired with useReveal(). */
+  .reveal {
+    opacity: 0;
+    transform: translateY(24px);
+    transition:
+      opacity 0.7s cubic-bezier(0.16, 1, 0.3, 1),
+      transform 0.7s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  .reveal[data-visible="true"] {
+    opacity: 1;
+    transform: none;
+  }
+
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: none; }
+  }
+  .animate-fade-up {
+    animation: fade-up 0.62s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  /* A chat bubble arriving: a slight rise and settle, never a bounce. */
+  @keyframes word-swap {
+    from { opacity: 0; transform: translateY(0.28em); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .animate-word-swap { animation: word-swap 0.42s cubic-bezier(0.22, 1, 0.36, 1) both; }
+
+  @keyframes msg-in {
+    from { opacity: 0; transform: translateY(10px) scale(0.985); }
+    to   { opacity: 1; transform: none; }
+  }
+  .animate-msg-in {
+    animation: msg-in 0.42s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes caret {
+    0%, 45%   { opacity: 1; }
+    55%, 100% { opacity: 0; }
+  }
+  .animate-caret { animation: caret 1.05s steps(1) infinite; }
+
+  @keyframes typing-dot {
+    0%, 60%, 100% { opacity: 0.28; transform: translateY(0); }
+    30%           { opacity: 1;    transform: translateY(-3px); }
+  }
+  .animate-typing-dot { animation: typing-dot 1.25s ease-in-out infinite; }
+
+  @keyframes pulse-ring {
+    0%        { transform: scale(0.85); opacity: 0.7; }
+    70%, 100% { transform: scale(2.1);  opacity: 0; }
+  }
+  .animate-pulse-ring { animation: pulse-ring 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite; }
+
+  /* Knowledge sources traveling down their connector into GlobalyAI. */
+  @keyframes flow-down {
+    0%   { opacity: 0; transform: translateY(-6px); }
+    18%  { opacity: 1; }
+    82%  { opacity: 1; }
+    100% { opacity: 0; transform: translateY(26px); }
+  }
+  .animate-flow-down { animation: flow-down 2.6s ease-in-out infinite; }
+
+  .text-balance { text-wrap: balance; }
+  .text-pretty  { text-wrap: pretty; }
+
+  .shadow-soft  { box-shadow: var(--shadow-soft); }
+  .shadow-lift  { box-shadow: var(--shadow-lift); }
+  .shadow-panel { box-shadow: var(--shadow-panel); }
+}
+
+/* Motion here is explanatory rather than decorative — but a visitor who has
+   asked for less of it still gets the whole story, because every animated
+   element renders in its final state and the demos fall back to showing all
+   steps at once (see useTimeline). */
+@media (prefers-reduced-motion: reduce) {
+  html { scroll-behavior: auto; }
+  *, *::before, *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+  .reveal { opacity: 1 !important; transform: none !important; }
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Variation 2 — the daily.dev-referenced dark treatment.
+
+   Scoped to .v2 rather than a media query or a root swap, so the two
+   variations can be served side by side from one stylesheet and variation 1
+   is untouched. The token NAMES are the same ones the shared components
+   already read, so anything built against them re-themes for free.
+
+   Colours are daily.dev's own dark theme, read from its stylesheet:
+   bg #0f0f12, elevated surface #17171c, borders #2a2a30 / #1a1a20,
+   muted text #d4d4d8. Its purple accent is replaced by Globaly's blue —
+   #012E8A is invisible on near-black, so the brighter #2f6be0 carries the
+   brand here, with the aqua as the secondary highlight.
+   ────────────────────────────────────────────────────────────── */
+@layer components {
+  .v2 {
+    --background: #0f0f12;
+    --surface: #17171c;
+    --surface-2: #1c1c23;
+    --border: #2a2a30;
+    --border-subtle: #1a1a20;
+    --foreground: #ffffff;
+    --body: #d4d4d8;
+    --muted-foreground: #8b8b96;
+    --accent: #2f6be0;
+    --accent-soft: #6f9bff;
+    --accent-2: #19c6e6;
+
+    background-color: var(--background);
+    color: var(--body);
+    font-family: var(--font-plus-jakarta), ui-sans-serif, system-ui, sans-serif;
+
+    /* Three fixed blooms behind everything. Fixed rather than scrolling so the
+       light reads as coming from the page rather than sliding past it, and
+       kept under 8% alpha — any stronger and the cards stop being the
+       brightest thing on screen. */
+    background-image:
+      radial-gradient(ellipse 70% 40% at 80% 2%, rgb(47 107 224 / 0.16), transparent 60%),
+      radial-gradient(ellipse 60% 35% at 10% 38%, rgb(25 198 230 / 0.07), transparent 62%),
+      radial-gradient(ellipse 70% 40% at 85% 78%, rgb(47 107 224 / 0.1), transparent 62%);
+    background-attachment: fixed;
+  }
+
+  /* Heavier and tighter than variation 1's semibold Nunito — the reference's
+     headlines are the loudest thing on its page. */
+  .v2 :is(h1, h2, h3, h4) {
+    font-family: var(--font-plus-jakarta), ui-sans-serif, system-ui, sans-serif;
+    font-weight: 800;
+    color: var(--foreground);
+    letter-spacing: -0.03em;
+    line-height: 1.08;
+  }
+
+  /* The card the whole layout is built from: one step up from the page, with
+     a hairline that only just separates it. */
+  .v2-card {
+    position: relative;
+    background:
+      linear-gradient(158deg, rgb(47 107 224 / 0.1), rgb(47 107 224 / 0) 42%),
+      var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 24px;
+  }
+  /* The lit edge. A mask-composited ring rather than a border-image: it has to
+     fade around the corner, which a border colour cannot do. */
+  .v2-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(158deg, rgb(111 155 255 / 0.4), rgb(255 255 255 / 0.05) 38%, rgb(25 198 230 / 0.16));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    opacity: 0.85;
+    pointer-events: none;
+    transition: opacity 0.3s ease;
+  }
+  .v2-card:hover::before { opacity: 1; }
+
+  /* The accent variant: same construction, more blue. For the card in a pair
+     that is meant to read as the answer. */
+  .v2-card-accent {
+    position: relative;
+    background:
+      linear-gradient(158deg, rgb(47 107 224 / 0.24), rgb(47 107 224 / 0.06) 58%),
+      var(--surface);
+    border: 1px solid rgb(47 107 224 / 0.35);
+    border-radius: 24px;
+  }
+  .v2-card-accent::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(158deg, rgb(111 155 255 / 0.75), rgb(47 107 224 / 0.15) 45%, rgb(25 198 230 / 0.4));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  /* Nested cards get the same idea at a quarter strength — they sit on a
+     surface that is already lit, so a full ring would double up. */
+  .v2-card-inset {
+    background:
+      linear-gradient(158deg, rgb(47 107 224 / 0.07), rgb(47 107 224 / 0) 55%),
+      var(--surface-2);
+  }
+  .v2-card-inset {
+    border: 1px solid var(--border-subtle);
+    border-radius: 16px;
+  }
+
+  /* The glow behind the hero. Reference uses a saturated bloom top-right; this
+     is the same gesture in brand blue. */
+  .v2-glow {
+    background:
+      radial-gradient(ellipse 60% 50% at 78% 8%, rgb(47 107 224 / 0.28), transparent 62%),
+      radial-gradient(ellipse 50% 40% at 15% 0%, rgb(25 198 230 / 0.12), transparent 60%);
+  }
+
+  .v2-accent-text {
+    background: linear-gradient(100deg, var(--accent-soft), var(--accent-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+}
+
+/* The product demos, re-themed dark for variation 2.
+
+   .v2 reassigns the very tokens the demos read, so left alone their copy
+   would render white on white. Rather than restoring the light palette, this
+   gives them daily.dev's own product-shot treatment: near-black surfaces, a
+   translucent glass frame over the page glow, and a gradient hairline instead
+   of a shadow — shadows do nothing on a near-black ground.
+
+   The demos themselves are token-driven, so nothing here forks a component. */
+@layer components {
+  .v2 .dark-island {
+    --card: #1b1b23;
+    --background: #15151b;
+    --surface-soft: #15151b;
+    --surface-subtle: #121217;
+    --foreground: #ffffff;
+    --body: #cdd4e4;
+    --muted-foreground: #8b93a7;
+    --border: rgb(255 255 255 / 0.09);
+    --border-strong: rgb(255 255 255 / 0.16);
+    --field-outline: rgb(255 255 255 / 0.24);
+
+    /* The demos' own blue has to lift off a near-black ground. */
+    --primary: #2f6be0;
+    --primary-bright: #5b8dff;
+    --accent: #19c6e6;
+
+    --skeleton-1: rgb(255 255 255 / 0.13);
+    --skeleton-2: rgb(255 255 255 / 0.09);
+    --skeleton-3: rgb(255 255 255 / 0.06);
+
+    --ok-bg: rgb(83 197 120 / 0.16);
+    --ok-text: #6ee7a0;
+    --warn-bg: rgb(250 193 0 / 0.1);
+    --warn-border: rgb(250 193 0 / 0.28);
+    --warn-text: #f3c969;
+
+    /* Shadows are invisible here; the glow and the hairline do that work. */
+    --shadow-soft: 0 1px 0 rgb(255 255 255 / 0.04);
+    --shadow-lift: 0 18px 40px -20px rgb(0 0 0 / 0.8);
+    --shadow-panel: 0 30px 70px -30px rgb(0 0 0 / 0.9);
+
+    color: var(--body);
+    font-family: var(--font-nunito-sans), ui-sans-serif, system-ui, sans-serif;
+  }
+  .v2 .dark-island :is(h1, h2, h3, h4) {
+    color: var(--foreground);
+    font-family: var(--font-nunito-sans), ui-sans-serif, system-ui, sans-serif;
+    font-weight: 700;
+    letter-spacing: -0.01em;
+  }
+
+  /* The glass frame. The gradient border is drawn as a mask-composited ring so
+     it can fade around the edge, which a plain border cannot do. */
+  .v2 .dark-island > * {
+    position: relative;
+    background-color: rgb(20 20 26 / 0.72);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    box-shadow:
+      0 30px 70px -30px rgb(0 0 0 / 0.9),
+      0 0 70px -20px rgb(47 107 224 / 0.25);
+  }
+  .v2 .dark-island > *::after {
+    content: ;
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: linear-gradient(150deg, rgb(255 255 255 / 0.22), rgb(255 255 255 / 0.04) 45%, rgb(47 107 224 / 0.3));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Variation 3 — the agentic treatment.
+
+   The genre this borrows from (agent and dev-tool product sites) reads as
+   instrumentation rather than marketing: a neutral near-black rather than a
+   tinted one, a precise grotesque for prose, a mono for anything the machine
+   wrote, small radii, hairline rules, and a dotted grid under it all.
+
+   The accent is Globaly's aqua rather than the usual terminal lime — it is
+   already the brand's second colour and it carries the same technical read
+   against a neutral black.
+   ────────────────────────────────────────────────────────────── */
+@layer components {
+  .v3 {
+    --background: #0a0a0b;
+    --surface: #101012;
+    --surface-2: #17171a;
+    --border: #232327;
+    --border-subtle: #1a1a1d;
+    --foreground: #f5f5f6;
+    --body: #a1a1aa;
+    --muted-foreground: #6b6b74;
+
+    --accent: #19c6e6;
+    --accent-dim: #0e7f95;
+    --accent-wash: rgb(25 198 230 / 0.1);
+    --ok: #4ade80;
+    --pending: #fbbf24;
+
+    background-color: var(--background);
+    color: var(--body);
+    font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  /* The dotted grid. Fixed, and masked so it fades out down the page rather
+     than tiling forever. */
+  .v3-grid {
+    background-image: radial-gradient(rgb(255 255 255 / 0.07) 1px, transparent 1px);
+    background-size: 28px 28px;
+    mask-image: radial-gradient(ellipse 80% 70% at 50% 0%, #000 20%, transparent 78%);
+    -webkit-mask-image: radial-gradient(ellipse 80% 70% at 50% 0%, #000 20%, transparent 78%);
+  }
+
+  .v3 :is(h1, h2, h3, h4) {
+    font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+    font-weight: 600;
+    color: var(--foreground);
+    letter-spacing: -0.035em;
+    line-height: 1.06;
+  }
+
+  /* Anything the machine wrote — step names, timings, statuses, counts.
+     Shared by the agentic variations. */
+  .mono-ui {
+    font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+    font-feature-settings: normal;
+  }
+
+  .v3-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+  }
+
+  /* A hairline that fades at both ends, for separating trace rows without
+     boxing them in. */
+  .v3-rule {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border) 12%, var(--border) 88%, transparent);
+  }
+
+  .v3-accent-text {
+    color: var(--accent);
+  }
+
+  /* A pulse travelling along one hairline edge of the retrieval field.
+     The rail is a 1px rule and this is a gradient sliding across it, so a
+     live edge costs one element and no canvas. The blanket reduced-motion
+     rule stops it, which is why the field lights every edge in that mode
+     instead of relying on the pulse to show which are active. */
+  @keyframes v3-rail-run {
+    from { background-position: -45% 0; }
+    to   { background-position: 145% 0; }
+  }
+  .v3-rail-run {
+    background-image: linear-gradient(90deg, transparent, var(--accent), transparent);
+    background-size: 45% 100%;
+    background-repeat: no-repeat;
+    animation: v3-rail-run 1.5s linear infinite;
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Variation 4 — agentic, in daylight.
+
+   Same instrumentation as variation 3 (run trace, mono for machine output,
+   hairline rules) on an off-white ground, with colour doing the work the dark
+   background did there. The spectrum is anchored on the brand: indigo through
+   the brand blue into the aqua, with amber reserved for a waiting state so it
+   still reads as status rather than decoration.
+   ────────────────────────────────────────────────────────────── */
+@layer components {
+  .v4 {
+    --background: #fbfbfd;
+    --surface: #ffffff;
+    --surface-2: #f6f7fb;
+    --border: #e7e8ef;
+    --border-subtle: #eff0f5;
+    --foreground: #111119;
+    --body: #52525f;
+    --muted-foreground: #8a8a99;
+
+    --violet: #6d5bf0;
+    --blue: #2f6be0;
+    --aqua: #12b5d4;
+    --amber: #f59e0b;
+
+    --accent: var(--blue);
+    --ok: #047857;
+    --pending: #b45309;
+
+    background-color: var(--background);
+    color: var(--body);
+    font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  .v4 :is(h1, h2, h3, h4) {
+    font-family: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+    font-weight: 600;
+    color: var(--foreground);
+    letter-spacing: -0.035em;
+    line-height: 1.08;
+  }
+
+  /* The aurora. Three wide, heavily-feathered blooms — on white the alpha has
+     to stay very low or the colour turns to poster paint. Fixed, so the page
+     moves through the light rather than dragging it along. */
+  .v4-aurora {
+    background-image:
+      radial-gradient(ellipse 55% 45% at 12% 0%, rgb(109 91 240 / 0.16), transparent 62%),
+      radial-gradient(ellipse 50% 40% at 88% 6%, rgb(18 181 212 / 0.16), transparent 62%),
+      radial-gradient(ellipse 60% 45% at 50% 100%, rgb(245 158 11 / 0.08), transparent 65%);
+    background-attachment: fixed;
+  }
+
+  .v4-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: 0 1px 2px rgb(17 17 25 / 0.04), 0 8px 24px -12px rgb(17 17 25 / 0.08);
+  }
+
+  /* A card whose border is the spectrum. Same mask-composited ring as the dark
+     variations — a border colour cannot run a gradient around a corner. */
+  .v4-card-gradient {
+    position: relative;
+    background: var(--surface);
+    border-radius: 14px;
+    box-shadow: 0 1px 2px rgb(17 17 25 / 0.04), 0 14px 36px -14px rgb(47 107 224 / 0.22);
+  }
+  .v4-card-gradient::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1.25px;
+    background: linear-gradient(135deg, var(--violet), var(--blue) 45%, var(--aqua));
+    -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    pointer-events: none;
+  }
+
+  .v4-gradient-text {
+    background: linear-gradient(115deg, var(--violet), var(--blue) 42%, var(--aqua) 78%);
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+    color: transparent;
+  }
+
+  .v4-gradient-fill {
+    background: linear-gradient(115deg, var(--violet), var(--blue) 45%, var(--aqua));
+  }
+
+  /* A faint spectrum wash for panel interiors. */
+  .v4-wash {
+    background:
+      linear-gradient(135deg, rgb(109 91 240 / 0.05), rgb(18 181 212 / 0.05)),
+      var(--surface);
+  }
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Variation 5 - the gravity well.
+
+   Follows antigravity.google, taken darker. That page is a near-black navy
+   lit by one directional source; this drops the ground to #050508 so the
+   light has further to travel and the field around the cursor reads as the
+   only thing generating it.
+
+   One accent, #5b8cff, an electric sibling of the brand navy. It is the only
+   chromatic value on the page: every surface, border and text tone is a
+   neutral, so the accent always means "this is the product doing something".
+
+   Radius rule, applied everywhere: controls 10px, cards 16px, chips 8px.
+   ────────────────────────────────────────────────────────────── */
+@layer components {
+  .v5 {
+    --background: #050508;
+    --surface: #0b0b11;
+    --surface-2: #121219;
+    --surface-3: #1a1a23;
+    --border: #1e1e28;
+    --border-strong: #2a2a36;
+    --foreground: #f4f4f7;
+    --body: #9a9aa8;
+    /* Lifted off the usual dim grey: this tone carries the stat labels and
+       the footer meta at 13px, so it has to clear 4.5:1 on #050508 rather
+       than merely look quiet. */
+    --muted-foreground: #78788a;
+
+    --accent: #5b8cff;
+    --accent-dim: #2d4a8f;
+    --accent-wash: rgb(91 140 255 / 0.08);
+
+    /* The demo components under /demo read these. Setting them here is what
+       re-themes the live console dark without touching its markup. */
+    --card: #0d0d14;
+    --primary: #5b8cff;
+    --primary-foreground: #050508;
+    --surface-soft: #0b0b11;
+    --field-outline: #2a2a36;
+    --warn-bg: rgb(251 191 36 / 0.07);
+    --warn-border: rgb(251 191 36 / 0.22);
+    --warn-text: #e8c07a;
+
+    --r-control: 10px;
+    --r-card: 16px;
+    --r-chip: 8px;
+
+    background-color: var(--background);
+    color: var(--body);
+    font-family: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+  }
+
+  .v5 :is(h1, h2, h3, h4) {
+    font-family: var(--font-geist), ui-sans-serif, system-ui, sans-serif;
+    font-weight: 600;
+    color: var(--foreground);
+    letter-spacing: -0.032em;
+    line-height: 1.08;
+  }
+
+  .v5 .mono-ui {
+    font-family: var(--font-geist-mono), ui-monospace, monospace;
+    font-feature-settings: normal;
+  }
+
+  /* The light source. Two stacked radials: a wide cool wash that sets the
+     ambient level, and a tighter core that gives it a direction. Both are
+     positioned from --mx / --my, which the pointer field writes to, so the
+     whole page appears lit by wherever the cursor is. Falls back to the
+     declared 50%/0% when no pointer has moved. */
+  .v5-lit {
+    background:
+      radial-gradient(
+        60rem 40rem at calc(var(--mx, 50%)) calc(var(--my, 0%)),
+        rgb(91 140 255 / 0.13),
+        transparent 62%
+      ),
+      radial-gradient(
+        26rem 18rem at calc(var(--mx, 50%)) calc(var(--my, 0%)),
+        rgb(120 165 255 / 0.1),
+        transparent 68%
+      );
+    transition: background-position 120ms linear;
+  }
+
+  .v5-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--r-card);
+  }
+
+  /* Border catches the cursor as it passes. The mask keeps the lit edge on
+     the border box only, so the card face stays flat and unglowing. */
+  .v5-edge {
+    position: relative;
+    isolation: isolate;
+  }
+
+  .v5-edge::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    padding: 1px;
+    background: radial-gradient(
+      14rem 14rem at var(--cx, 50%) var(--cy, 50%),
+      rgb(91 140 255 / 0.55),
+      transparent 70%
+    );
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask-composite: exclude;
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    opacity: 0;
+    transition: opacity 260ms ease;
+    pointer-events: none;
+  }
+
+  .v5-edge:hover::before { opacity: 1; }
+
+  .v5-rule {
+    height: 1px;
+    background: linear-gradient(90deg, transparent, var(--border-strong) 15%, var(--border-strong) 85%, transparent);
+  }
+
+  .v5-accent-text { color: var(--accent); }
+
+  /* The levitation. Applied to the hero console so it sits off the page
+     rather than on it, which is the reference's whole idea. */
+  .v5-lift {
+    box-shadow:
+      0 2px 8px rgb(0 0 0 / 0.5),
+      0 24px 60px -18px rgb(0 0 0 / 0.85),
+      0 60px 120px -40px rgb(91 140 255 / 0.28);
+  }
+
+  /* The institution rail. Runs the full width of the viewport and pads itself
+     to the shell's gutter, so the first card lines up with the heading above
+     it and the last one runs off the edge instead of stopping at a margin.
+     Percentages rather than vw: vw includes the scrollbar and would push the
+     page sideways by its width. */
+  .v5-rail {
+    --rail-gutter: max(1.25rem, calc((100% - 1300px) / 2 + 1.25rem));
+    padding-inline: var(--rail-gutter);
+    /* Without this the snap points sit at the padding box, and a mandatory
+       snap immediately scrolls the first card out under the gutter. */
+    scroll-padding-inline: var(--rail-gutter);
+    scrollbar-width: none;
+    overscroll-behavior-x: contain;
+  }
+
+  .v5-rail::-webkit-scrollbar { display: none; }
+
+  @media (min-width: 768px) {
+    .v5-rail {
+      --rail-gutter: max(2.5rem, calc((100% - 1300px) / 2 + 2.5rem));
+    }
+  }
+
+  /* Keyboard users get the rail's focus ring on the rail itself, since it is
+     the thing that scrolls. */
+  .v5-rail:focus-visible {
+    outline: 1px solid var(--accent);
+    outline-offset: -1px;
+  }
+
+  /* Nav links draw their own underline from the left on hover, at the accent
+     and one pixel tall, so the header has the same "lights up when pointed at"
+     behaviour as everything below it. */
+  .v5-underline {
+    position: relative;
+  }
+
+  .v5-underline::after {
+    content: "";
+    position: absolute;
+    inset-inline: 0;
+    bottom: -6px;
+    height: 1px;
+    background: var(--accent);
+    transform: scaleX(0);
+    transform-origin: left;
+    transition: transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .v5-underline:hover::after,
+  .v5-underline:focus-visible::after {
+    transform: scaleX(1);
+  }
+
+  /* The footage is a light source, not a picture: every placement fades it out
+     before it reaches an edge so it never reads as a video in a box. */
+  .v5-glow-mask {
+    mask-image: radial-gradient(60% 60% at 50% 50%, #000 15%, transparent 78%);
+    -webkit-mask-image: radial-gradient(60% 60% at 50% 50%, #000 15%, transparent 78%);
+  }
+
+  .v5-fade-mask {
+    mask-image: linear-gradient(to bottom, transparent, #000 35%, #000 70%, transparent);
+    -webkit-mask-image: linear-gradient(to bottom, transparent, #000 35%, #000 70%, transparent);
+  }
+}
+
+@layer components {
+  /* Aly riding the cursor through the field. Centred on the pointer, trailing
+     it by the transition, and invisible until a pointer has actually moved so
+     a touch device never sees an orb parked in the top-left corner. */
+  .v5-attractor {
+    transform: translate3d(calc(var(--px, 0px) - 50%), calc(var(--py, 0px) - 50%), 0);
+    transition:
+      transform 480ms cubic-bezier(0.22, 1, 0.36, 1),
+      opacity 400ms ease;
+    opacity: 0;
+    will-change: transform;
+    pointer-events: none;
+  }
+
+  .v5-lit[data-live="true"] .v5-attractor { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  /* The blanket above kills the transition, which would leave the orb
+     snapping to the cursor. Hide it instead. */
+  .v5-attractor { display: none; }
+}
+
+/* ──────────────────────────────────────────────────────────────
+   Variation 6 - variation 1, grown up, and dual-mode.
+
+   Variation 1 is the pastel-and-rounded direction, light only. This keeps its
+   friendliness and adds the two things it never had: a dark mode, and a page
+   that responds to being touched.
+
+   Light is variation 1, not a page that borrows from it: the same palette
+   values, the same pale blue field under the same white lifted cards, the
+   same five pastels on the cards that carry the argument, and the same
+   rounding. Every token below is the one :root already ships, so the two
+   pages cannot drift apart. Dark is daily.dev's own palette, the same values
+   variation 2 reads (#0F0F12 ground, #17171C surface, #2A2A30 hairline,
+   #D4D4D8 body), because the navy disappears on near-black: #2F6BE0 carries
+   the brand there, with the aqua #19C6E6 as the second note. One accent
+   family in both modes.
+
+   What is themed and what is not: the palette, the surfaces and the pastels
+   are per-mode, and everything structural - the type, the rounding, the
+   layout - is shared, so a visitor flipping the switch sees the colour
+   change and nothing move.
+
+   Type is Plus Jakarta Sans, the Globaly brand face from the design system,
+   not a third choice invented for this page, set semibold and barely tracked
+   in, which is variation 1's weight rather than the heavier one this page
+   started with.
+
+   Radius rule, one system, applied everywhere: interactive controls are full
+   pills, cards are variation 1's 30px, chips and inputs 16px. Nothing else.
+
+   Theme is set by data-theme on the .v6 root and defaults to the OS setting.
+   ────────────────────────────────────────────────────────────── */
+@layer components {
+  .v6 {
+    /* Light is variation 1's palette, not an approximation of it: every value
+       below is the one :root already ships, so the reference page and this
+       one cannot drift apart. */
+    --background: #ffffff;
+    --surface: #ffffff;
+    --surface-soft: #f0f4ff;
+    --surface-2: #e6ecff;
+    --surface-subtle: #f8f9fd;
+    --card: #ffffff;
+    --surface-3: #d8e3fb;
+    --border: #e6ecff;
+    --border-strong: #d8e1f8;
+    --foreground: #161928;
+    --body: #404040;
+    --muted-foreground: #737c93;
+
+    --primary: #012e8a;
+    --primary-bright: #2f6be0;
+    --primary-foreground: #ffffff;
+    --accent: #19c6e6;
+
+    /* Variation 1's three shadows, unchanged. The lift is what carries a
+       white card on the pale blue field; without it the card and the field
+       are two flat tones meeting at an invisible edge. */
+    --shadow-soft: 0 4px 12px rgb(17 44 85 / 0.1);
+    --shadow-lift: 0 14px 34px -12px rgb(17 44 85 / 0.16);
+    --shadow-panel: 0 24px 60px -28px rgb(17 44 85 / 0.28);
+
+    /* The surface. In light this is variation 1's .card-soft - white, lifted,
+       no inner highlight - rather than a frosted sheet, because the pastel
+       field is the thing that has to read and glass mutes it. The 6% of
+       translucency left is only so the aurora under the hero and the close
+       still passes through the panel instead of stopping at its edge. */
+    --glass-fill: rgb(255 255 255 / 0.94);
+    --glass-edge: #e6ecff;
+    --glass-inner: transparent;
+    --glass-shadow: var(--shadow-soft);
+
+    /* The wash behind everything. Three blooms, positioned rather than
+       animated, so the motion on the page comes from the footage and the
+       cursor rather than from a background that never stops moving. Held
+       well back in light: variation 1's ground is a clean pale blue, and a
+       bloom strong enough to see on white reads as a smudge on it. */
+    --bloom-1: rgb(47 107 224 / 0.09);
+    --bloom-2: rgb(25 198 230 / 0.07);
+    --bloom-3: rgb(121 94 236 / 0.06);
+
+    /* How hard the aurora footage is allowed to burn through. Themed, because
+       the same clip behaves oppositely per mode - see the rule that uses it.
+       Held low in light: at anything higher the clip's shapes resolve into
+       grey-lavender circles over the hero, and variation 1's ground is a
+       clean pale blue with nothing floating in it. What is left reads as
+       movement in the field rather than as objects in front of it. */
+    --aurora-strength: 0.2;
+
+    /* Variation 1's rounding, and it applies in both modes: one system, and
+       the corners must not change under a visitor who flips the switch. */
+    --r-card: 30px;
+    --r-chip: 16px;
+
+    background-color: var(--background);
+    color: var(--body);
+    font-family: var(--font-plus-jakarta), ui-sans-serif, system-ui, sans-serif;
+    color-scheme: light;
+  }
+
+  .v6[data-theme="dark"] {
+    --background: #0f0f12;
+    --surface: #17171c;
+    --surface-soft: #131317;
+    --surface-2: #1c1c23;
+    --card: #1c1c23;
+    --surface-3: #26262e;
+
+    /* The shared demo components (film stage, chat, lead card) are token
+       driven and were written against the light palette, so on this page they
+       need the same treatment variation 2 gives them in .v2 .dark-island.
+       Values mirrored from there rather than re-picked, so the two dark
+       treatments of the same components cannot drift apart. Without these the
+       placeholder bars stay at their light values and read as bright white
+       blocks on a near-black stage. */
+    --surface-subtle: #111116;
+
+    --skeleton-1: rgb(255 255 255 / 0.13);
+    --skeleton-2: rgb(255 255 255 / 0.09);
+    --skeleton-3: rgb(255 255 255 / 0.06);
+
+    --ok-bg: rgb(83 197 120 / 0.16);
+    --ok-text: #6ee7a0;
+    --warn-bg: rgb(250 193 0 / 0.1);
+    --warn-border: rgb(250 193 0 / 0.28);
+    --warn-text: #f3c969;
+
+    /* Shadows do nothing on a near-black ground; a hairline does the work. */
+    --shadow-soft: 0 1px 0 rgb(255 255 255 / 0.04);
+    --shadow-lift: 0 18px 40px -20px rgb(0 0 0 / 0.8);
+    --shadow-panel: 0 30px 70px -30px rgb(0 0 0 / 0.9);
+    --border: #2a2a30;
+    --border-strong: #3a3a45;
+    --foreground: #ffffff;
+    --body: #d4d4d8;
+    --muted-foreground: #9a9aa6;
+
+    --primary: #2f6be0;
+    --primary-bright: #6f9bff;
+    --primary-foreground: #ffffff;
+    --accent: #19c6e6;
+
+    --glass-fill: rgb(28 28 35 / 0.62);
+    --glass-edge: rgb(255 255 255 / 0.1);
+    --glass-inner: rgb(255 255 255 / 0.14);
+    --glass-shadow: 0 26px 60px -30px rgb(0 0 0 / 0.8);
+
+    --bloom-1: rgb(47 107 224 / 0.2);
+    --bloom-2: rgb(25 198 230 / 0.1);
+    --bloom-3: rgb(121 94 236 / 0.12);
+
+    --aurora-strength: 0.34;
+
+    color-scheme: dark;
+  }
+
+  /* Semibold, not heavy, and barely tracked in. This one rule is most of why
+     variation 1 reads as friendly rather than corporate, and it is the part
+     of that page's type that survives the change of face: Plus Jakarta Sans
+     stays, because it is the brand face from the design system and a theme
+     switch must not swap a typeface. */
+  .v6 :is(h1, h2, h3, h4) {
+    font-family: var(--font-plus-jakarta), ui-sans-serif, system-ui, sans-serif;
+    font-weight: 600;
+    color: var(--foreground);
+    letter-spacing: -0.016em;
+    line-height: 1.15;
+    text-wrap: balance;
+  }
+
+  /* Both themes change every token at once, so transition the two properties
+     that would otherwise snap. Anything more and the whole page flickers on
+     toggle. */
+  .v6,
+  .v6 .v6-tint {
+    transition:
+      background-color 320ms ease,
+      color 320ms ease;
+  }
+
+  /* The hero's own ground, under the aurora. Without it the light theme opens
+     on plain white and the aurora reads as a stain rather than a field; the
+     dark theme opens on the page background and the hero has no edge at all.
+     Fades to transparent at the bottom so the Proof strip sits on the page
+     colour rather than on a hard seam. */
+  .v6-hero-field {
+    background: linear-gradient(180deg, #eaf1ff 0%, #f2f6ff 55%, transparent 100%);
+  }
+
+  .v6[data-theme="dark"] .v6-hero-field {
+    background: linear-gradient(180deg, #0c1222 0%, #101827 52%, transparent 100%);
+  }
+
+  /* ── Variation 1's surfaces, light mode only ───────────────
+     Everything below paints only when the page is light, so the dark
+     treatment is exactly what it was. The selector is :not([data-theme="dark"])
+     rather than [data-theme="light"] because the server renders the root with
+     no attribute at all and an OS-light visitor would otherwise get one paint
+     of the wrong surface before the inline script runs. */
+
+  /* Variation 1's field: the full-bleed pale blue band that a row of white
+     cards sits on. It is the single strongest thing about that page's colour
+     and this one had none of it. */
+  .v6:not([data-theme="dark"]) .v6-field {
+    background: var(--surface-soft);
+  }
+
+  /* Variation 1's .panel-soft: the same pale blue, as a rounded container
+     rather than a band, for the strip under the hero and the footer. It
+     replaces the card there rather than sitting inside it, so the lift and
+     the hairline both go. */
+  .v6:not([data-theme="dark"]) .v6-soft {
+    background: var(--surface-soft);
+    border-color: transparent;
+    box-shadow: none;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  /* ── Pastel accent cards ───────────────────────────────────
+     Variation 1's signature: one tinted card beside white ones, its flat
+     colour broken by two radial blooms so it reads as a lit surface rather
+     than a paint swatch. Values lifted from .tint-* at the top of this file.
+
+     Light only, and deliberately: the same pastel over #0F0F12 is a bruise.
+     In dark these cards stay glass and the accent is carried by the gradient
+     numeral and rule that are already on them. */
+  .v6:not([data-theme="dark"]) :is(.v6-tint-blue, .v6-tint-lavender, .v6-tint-mint, .v6-tint-peach, .v6-tint-green) {
+    border-color: transparent;
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .v6:not([data-theme="dark"]) .v6-tint-blue {
+    background:
+      radial-gradient(circle at left bottom, #d6e2ff 0, transparent 62%),
+      radial-gradient(circle at right top, #dce6ff 0, transparent 62%),
+      linear-gradient(-45deg, #f4f7ff, var(--pastel-blue) 50%, #f4f7ff);
+  }
+
+  .v6:not([data-theme="dark"]) .v6-tint-lavender {
+    background:
+      radial-gradient(circle at left bottom, #ddd0ff 0, transparent 62%),
+      radial-gradient(circle at right top, #e4d9ff 0, transparent 62%),
+      linear-gradient(-45deg, #f8f4ff, var(--pastel-lavender) 50%, #f8f4ff);
+  }
+
+  .v6:not([data-theme="dark"]) .v6-tint-mint {
+    background:
+      radial-gradient(circle at left bottom, #c8f1ee 0, transparent 62%),
+      radial-gradient(circle at right top, #d3f4f2 0, transparent 62%),
+      linear-gradient(-45deg, #f2fdfc, var(--pastel-mint) 50%, #f2fdfc);
+  }
+
+  .v6:not([data-theme="dark"]) .v6-tint-peach {
+    background:
+      radial-gradient(circle at left bottom, #ffe0cd 0, transparent 62%),
+      radial-gradient(circle at right top, #ffe7d8 0, transparent 62%),
+      linear-gradient(-45deg, #fff8f3, var(--pastel-peach) 50%, #fff8f3);
+  }
+
+  .v6:not([data-theme="dark"]) .v6-tint-green {
+    background:
+      radial-gradient(circle at left bottom, #e3f6bf 0, transparent 62%),
+      radial-gradient(circle at right top, #eafad3 0, transparent 62%),
+      linear-gradient(-45deg, #fafdf2, var(--pastel-green) 50%, #fafdf2);
+  }
+
+  /* A tinted card is already a surface; the cursor light on top of it turns
+     the pastel muddy where it lands. */
+  .v6:not([data-theme="dark"]) :is(.v6-tint-blue, .v6-tint-lavender, .v6-tint-mint, .v6-tint-peach, .v6-tint-green).v6-spot::after {
+    content: none;
+  }
+
+  /* The icon well. Variation 1 fills it with the pale blue and drops the
+     border; on the pale band that is what keeps it from reading as a second
+     little card inside the card. */
+  .v6-icon-well {
+    border: 1px solid var(--border);
+    background: var(--surface);
+  }
+
+  .v6:not([data-theme="dark"]) .v6-icon-well {
+    border-color: transparent;
+    background: var(--surface-soft);
+  }
+
+  /* A tinted card's own icon well cannot be pale blue against lavender or
+     mint, so it goes white and keeps the card's lift. */
+  .v6:not([data-theme="dark"]) :is(.v6-tint-blue, .v6-tint-lavender, .v6-tint-mint, .v6-tint-peach, .v6-tint-green) .v6-icon-well {
+    background: rgb(255 255 255 / 0.7);
+  }
+
+
+  /* ── Figure cards ──────────────────────────────────────────
+     The mockups sit on a different surface from the cards that describe them.
+     Before this they did not: a search result and the paragraph about it were
+     the same glass with the same hairline, and a reader scanning the section
+     met six identical panels and read none of them.
+
+     Each row of <ProblemSolution /> carries its own hue in --fig, and the
+     figure card spends it three ways: a bloom from the top left, a fainter one
+     from the bottom right, and a tinted edge. Unlike the pastel cards above
+     this works in both themes. What is a bruise at pastel strength is a lit
+     screen at a tenth of it.
+
+     The ground is darker than the card in dark and cooler than white in light,
+     both ways recessed, because a screen is a thing you look into. */
+  .v6-screen {
+    --fig: 47 107 224;
+    border-color: rgb(var(--fig) / 0.2);
+    background:
+      radial-gradient(130% 90% at 8% 0%, rgb(var(--fig) / 0.14) 0, transparent 58%),
+      radial-gradient(100% 80% at 100% 100%, rgb(var(--fig) / 0.09) 0, transparent 60%),
+      var(--surface-subtle);
+    backdrop-filter: none;
+    -webkit-backdrop-filter: none;
+  }
+
+  .v6[data-theme="dark"] .v6-screen {
+    background:
+      radial-gradient(130% 90% at 8% 0%, rgb(var(--fig) / 0.22) 0, transparent 58%),
+      radial-gradient(100% 80% at 100% 100%, rgb(var(--fig) / 0.13) 0, transparent 60%),
+      #0b0b0f;
+  }
+
+  /* The sweep that crosses the page grid while the search runs. It is what
+     makes the grid read as being searched rather than as eight thumbnails. */
+  @keyframes v6-sweep {
+    0%        { transform: translateY(-60%); opacity: 0; }
+    12%, 72%  { opacity: 1; }
+    100%      { transform: translateY(560%); opacity: 0; }
+  }
+  .v6-sweep { animation: v6-sweep 3.2s cubic-bezier(0.4, 0, 0.2, 1) infinite; }
+
+  /* ── Glass ─────────────────────────────────────────────────
+     A translucent panel with the light caught along its top edge. The inner
+     highlight is what stops it reading as a div with blur on it. */
+  .v6-glass {
+    position: relative;
+    background: var(--glass-fill);
+    border: 1px solid var(--glass-edge);
+    border-radius: var(--r-card);
+    backdrop-filter: blur(20px) saturate(150%);
+    -webkit-backdrop-filter: blur(20px) saturate(150%);
+    box-shadow:
+      inset 0 1px 0 var(--glass-inner),
+      var(--glass-shadow);
+  }
+
+  /* Blur is a rendering luxury. Where the viewer has asked for less of it, or
+     the browser cannot do it, the panel becomes an opaque card and the layout
+     is unchanged. */
+  @supports not (backdrop-filter: blur(4px)) {
+    .v6-glass { background: var(--surface); }
+  }
+
+  @media (prefers-reduced-transparency: reduce) {
+    .v6-glass {
+      background: var(--surface);
+      backdrop-filter: none;
+      -webkit-backdrop-filter: none;
+    }
+  }
+
+  /* ── Spotlight ─────────────────────────────────────────────
+     A card that lights where the cursor is. --sx / --sy are written straight
+     to the element by useSpotlight, never through React state. */
+  .v6-spot::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(
+      16rem 16rem at var(--sx, 50%) var(--sy, 0%),
+      rgb(47 107 224 / 0.14),
+      transparent 68%
+    );
+    opacity: 0;
+    transition: opacity 320ms ease;
+    pointer-events: none;
+  }
+
+  .v6-spot:hover::after,
+  .v6-spot:focus-within::after { opacity: 1; }
+
+  /* ── Gradients ─────────────────────────────────────────────
+     One gradient, two uses: as the fill behind the primary control, and
+     clipped to the one word per page that carries the argument. */
+  .v6-gradient {
+    background-image: linear-gradient(104deg, var(--primary-bright), var(--accent));
+  }
+
+  .v6-gradient-text {
+    background-image: linear-gradient(104deg, var(--primary-bright), var(--accent));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .v6-bloom {
+    background-image:
+      radial-gradient(ellipse 60% 45% at 78% 0%, var(--bloom-1), transparent 62%),
+      radial-gradient(ellipse 50% 40% at 8% 18%, var(--bloom-2), transparent 64%),
+      radial-gradient(ellipse 60% 40% at 60% 100%, var(--bloom-3), transparent 62%);
+  }
+
+  /* ── Controls ──────────────────────────────────────────────
+     Pills, per the radius rule, with a physical press. The magnetic offset is
+     written to --mx / --my by useMagnetic and is capped small on purpose: the
+     button should lean toward the cursor, not chase it. */
+  .v6-magnetic {
+    transform: translate3d(var(--mx, 0px), var(--my, 0px), 0);
+    transition: transform 260ms cubic-bezier(0.16, 1, 0.3, 1);
+  }
+
+  .v6-magnetic:active {
+    transform: translate3d(var(--mx, 0px), var(--my, 0px), 0) scale(0.97);
+  }
+
+  /* ── Motion ────────────────────────────────────────────────
+     Two keyframes for the whole page: the drift under the hero panel, and the
+     sheen that crosses a question chip when it is chosen. */
+  @keyframes v6-float {
+    0%, 100% { transform: translate3d(0, 0, 0); }
+    50% { transform: translate3d(0, -10px, 0); }
+  }
+
+  .v6-float { animation: v6-float 9s ease-in-out infinite; }
+
+  @keyframes v6-sheen {
+    from { transform: translateX(-120%); }
+    to { transform: translateX(220%); }
+  }
+
+  .v6-sheen {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .v6-sheen::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(100deg, transparent 20%, rgb(255 255 255 / 0.35) 50%, transparent 80%);
+    animation: v6-sheen 1.1s cubic-bezier(0.16, 1, 0.3, 1);
+    pointer-events: none;
+  }
+
+  /* The playhead under the question currently being asked in the hero panel.
+     Its duration is set per step from the component, since each answer takes
+     as long as it takes to type plus a fixed time to read. This is what tells
+     the eye the row is a progress indicator rather than a disabled button. */
+  @keyframes v6-chip-progress {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+  }
+
+  .v6-chip-progress {
+    transform-origin: left;
+    animation: v6-chip-progress linear forwards;
+  }
+
+  /* ── Thoughts ─────────────────────────────
+     A thought bubble has always been drawn as a trail of circles running
+     from the thinker to the bubble, growing as it goes. That is the whole
+     connector here: no rules, just dots. Each trail draws itself outward
+     from the core and its bubble arrives at the end of it, one spoke at a
+     time, so the figure assembles the way a thought does rather than
+     switching on all at once.
+
+     The entrance runs once and is gated on the figure being in view, which
+     is why the base class starts at zero and the -in classes carry both as
+     their fill mode. The only loop afterwards is a shimmer along the dots.
+     Nothing carrying text animates at all once it has arrived, so no
+     question is ever caught mid-fade below AA. */
+  /* ── The learning figure ───────────────────────────────────
+     The bubbles and their trails arrive once, when the figure is first seen.
+     After that a spark carries each new question into the brain (see "The
+     core thinking" below), and the glow around the brain breathes, slowly,
+     so the thing the questions arrive at is not dead between arrivals. */
+  @keyframes v6-row {
+    from { opacity: 0; transform: translate3d(12px, 0, 0); }
+    to { opacity: 1; transform: none; }
+  }
+
+  .v6-row { opacity: 0; }
+
+  .v6-row-in { animation: v6-row 0.6s cubic-bezier(0.16, 1, 0.3, 1) both; }
+
+  @keyframes v6-core-breathe {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.06); }
+  }
+
+  /* Outside the clip's mask, so the light spills past the sphere rather than
+     stopping at its edge. */
+  .v6-core-glow {
+    background: radial-gradient(circle at 50% 50%, rgb(47 107 224 / 0.26), transparent 62%);
+    animation: v6-core-breathe 7s ease-in-out infinite;
+  }
+
+  .v6[data-theme="dark"] .v6-core-glow {
+    background: radial-gradient(circle at 50% 50%, rgb(47 107 224 / 0.42), transparent 64%);
+  }
+
+  /* Feathered rather than a hard circle: the footage is a body of light, and
+     a crisp edge turns it back into a video playing in a hole. */
+  .v6-core-mask {
+    mask-image: radial-gradient(circle at 50% 50%, #000 56%, transparent 92%);
+    -webkit-mask-image: radial-gradient(circle at 50% 50%, #000 56%, transparent 92%);
+  }
+
+  /* ── The core thinking ─────────────────────────────────────
+     A question arrives every 2.6s (learning.tsx). It pops into its row, a
+     spark leaves 0.25s later and takes 0.9s to reach the core, and the core
+     flares and throws a ripple at 1.05s, as the spark lands. Between
+     arrivals two arcs keep circling the ring, so the core is never idle. */
+  @keyframes v6-pop {
+    0% { opacity: 0; transform: translate3d(0, 6px, 0) scale(0.96); filter: blur(4px); }
+    60% { opacity: 1; transform: scale(1.015); filter: blur(0); }
+    100% { opacity: 1; transform: none; filter: none; }
+  }
+
+  .v6-pop {
+    animation: v6-pop 0.55s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  @keyframes v6-ripple {
+    0% { opacity: 0.8; transform: scale(0.92); }
+    100% { opacity: 0; transform: scale(1.5); }
+  }
+
+  .v6-core-ripple {
+    border: 1px solid var(--primary-bright);
+    opacity: 0;
+    animation: v6-ripple 1.4s cubic-bezier(0.16, 1, 0.3, 1) 1.05s both;
+  }
+
+  @keyframes v6-flare {
+    0%, 100% { opacity: 0; }
+    30% { opacity: 1; }
+  }
+
+  .v6-core-flare {
+    background: radial-gradient(circle at 50% 50%, rgb(56 189 248 / 0.4), transparent 62%);
+    opacity: 0;
+    animation: v6-flare 1.5s ease-out 1.05s both;
+  }
+
+  @keyframes v6-orbit {
+    to { transform: rotate(360deg); }
+  }
+
+  /* An arc a fifth of the way round, as a masked conic gradient: only a 1.5px
+     ring at the edge of the box shows, so it reads as light running the ring. */
+  .v6-core-orbit {
+    background: conic-gradient(from 0deg, transparent 0 70%, var(--primary-bright) 94%, transparent 100%);
+    mask: radial-gradient(closest-side, transparent calc(100% - 1.5px), #000 calc(100% - 1.5px));
+    -webkit-mask: radial-gradient(closest-side, transparent calc(100% - 1.5px), #000 calc(100% - 1.5px));
+    opacity: 0.9;
+    animation: v6-orbit 3.2s linear infinite;
+  }
+
+  .v6-core-orbit-slow {
+    opacity: 0.4;
+    animation-duration: 7s;
+    animation-direction: reverse;
+  }
+
+  @keyframes v6-think-dot {
+    0%, 60%, 100% { opacity: 0.3; transform: none; }
+    30% { opacity: 1; transform: translate3d(0, -2px, 0); }
+  }
+
+  .v6-think-dot { animation: v6-think-dot 1.2s ease-in-out infinite; }
+
+  /* The trail a question travels on. Resting dots are the edge colour; the
+     spark flashes each one in turn, bubble to brain, 0.2s apart, so the last
+     lands as the brain pulses. */
+  .v6-trail-dot {
+    background: var(--border-strong);
+    transition: background-color 0.5s, box-shadow 0.5s;
+  }
+
+  .v6-trail-lit {
+    background: var(--primary-bright);
+    box-shadow: 0 0 8px var(--primary-bright);
+  }
+
+  @keyframes v6-trail-spark {
+    0%, 100% { opacity: 0; transform: scale(1); }
+    35% { opacity: 1; transform: scale(1.6); }
+  }
+
+  .v6-trail-spark {
+    background: var(--primary-bright);
+    box-shadow: 0 0 12px var(--primary-bright);
+    opacity: 0;
+    animation: v6-trail-spark 0.6s ease-out both;
+  }
+
+  /* The brain's own disc: a soft lit centre on the card surface, so the
+     icon sits in light rather than on a flat plate. */
+  .v6-brain-well {
+    background:
+      radial-gradient(circle at 50% 42%, rgb(47 107 224 / 0.16), transparent 70%),
+      var(--surface);
+  }
+
+  .v6-brain { filter: drop-shadow(0 0 6px rgb(56 189 248 / 0.35)); }
+  .v6-brain-lit { filter: drop-shadow(0 0 14px rgb(56 189 248 / 0.7)); }
+
+  /* A question landing: the brain swells and brightens as the spark hits. */
+  @keyframes v6-brain-pulse {
+    0%, 100% { transform: scale(1); }
+    35% { transform: scale(1.1); filter: drop-shadow(0 0 16px rgb(56 189 248 / 0.8)); }
+  }
+
+  .v6-brain-pulse { animation: v6-brain-pulse 1.1s cubic-bezier(0.16, 1, 0.3, 1) 1.05s both; }
+
+
+  /* The dotted field behind the hero, so the glass has something to refract. */
+  .v6-dots {
+    background-image: radial-gradient(currentColor 1px, transparent 1px);
+    background-size: 26px 26px;
+    color: var(--border-strong);
+    opacity: 0.5;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .v6-float,
+  .v6-sweep,
+  .v6-sheen::after { animation: none; }
+  /* The sweep has finished its pass rather than never started one. */
+  .v6-sweep { opacity: 0; }
+  .v6-magnetic { transform: none; transition: none; }
+  /* The panel settles on its last exchange under reduced motion, so the
+     playhead sits full rather than never arriving. */
+  .v6-chip-progress { animation: none; transform: scaleX(1); }
+
+  /* The loop makes its case in one frame as well as in thirty: the pipe
+     rests full and every tick rests lit. */
+  /* The figure rests assembled: every trail drawn, every bubble arrived. */
+  /* The bubbles are simply there, no light runs, the glow holds still. */
+  .v6-row,
+  .v6-row-in { animation: none; opacity: 1; transform: none; }
+  .v6-core-glow { animation: none; transform: none; }
+  /* Nothing arrives under reduced motion; the arcs rest in place. */
+  .v6-pop,
+  .v6-think-dot,
+  .v6-brain-pulse,
+  .v6-core-orbit { animation: none; }
+  .v6-trail-spark,
+  .v6-core-ripple,
+  .v6-core-flare { animation: none; opacity: 0; }
+}
+
+@layer components {
+  /* The aurora carries differently per mode: pale blobs on white need to be
+     nearly at full strength to register, while a lit blob on near-black is
+     already the brightest thing in the frame and has to be held well back.
+     Dark was set at 0.62, which read as a hard teal wedge cutting across the
+     headline rather than as light behind it.
+
+     One token drives both placements so they cannot drift apart again — the
+     close previously carried a flat 0.8 from a utility class, which was tuned
+     against white and applied to both modes. */
+  .v6-aurora-hero { opacity: var(--aurora-strength); }
+
+  /* The close already sits behind a radial scrim, so it needs a little less
+     than the hero to land at the same weight. */
+  .v6-aurora-close { opacity: calc(var(--aurora-strength) * 0.9); }
+}
