@@ -31,7 +31,9 @@ const COURSE_CATEGORY_TABS = [
   { value: "short_course", label: "Short Courses" },
 ] as const;
 
-export function ServicesTab({ businessId, readOnly = false }: Readonly<{ businessId: number; readOnly?: boolean }>) {
+export function ServicesTab({
+  businessId, readOnly = false, isInstitution = false,
+}: Readonly<{ businessId: number; readOnly?: boolean; isInstitution?: boolean }>) {
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { items: services, status, total } = useAppSelector((state) => state.businessProfileDetail.services);
@@ -229,6 +231,7 @@ export function ServicesTab({ businessId, readOnly = false }: Readonly<{ busines
           onPriceSave={handlePriceSave}
           onDelete={setDeletingService}
           readOnly={readOnly}
+          isInstitution={isInstitution}
         />
       )}
 

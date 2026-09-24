@@ -1,6 +1,7 @@
-import { httpDelete, httpGet, httpPatch, httpPost, httpPut } from "@/lib/api/http";
+import { httpDelete, httpGet, httpPatch, httpPost, httpPostForm, httpPut } from "@/lib/api/http";
 import type {
-  Accreditation, Category, Lookup, LookupKind, Paginated, RegistrationType, SearchListParams,
+  Accreditation, AccreditationInput, Category, FeeType, IssuingOrganization, Lookup, LookupKind, Paginated,
+  RegistrationType, SearchListParams,
 } from "@/app/admin/platform/categories/apis/types";
 import type {
   ActivityListParams, ActivityListResult, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchListResult, BranchPatch,
@@ -13,7 +14,7 @@ import type {
   ServiceEligibilityInput, ServiceEligibilityPatch, ServiceFee, ServiceFeeInput, ServiceFeePatch, ServiceInput,
   ServiceIntake, ServiceIntakeInput, ServiceIntakePatch, ServicePatch, ServiceSearchParams, ServiceSearchResult,
   ServiceStudyOption, ServiceStudyOptionInput, ServiceStudyOptionPatch, ServiceStudyUnit, ServiceStudyUnitInput,
-  ServiceStudyUnitPatch,
+  ServiceStudyUnitPatch, ServiceMediaFile,
 } from "./types";
 
 /** Generic list/create/update/delete client for one service child resource — same shape for
@@ -217,12 +218,30 @@ export const businessProfileDetailRealApi = {
   unlinkServiceAccreditation: (serviceId: string, id: number): Promise<void> =>
     httpDelete(`${BASE}/services/${serviceId}/accreditations/${id}`),
 
+  getServiceMedia: (serviceId: string): Promise<{ files: ServiceMediaFile[] }> =>
+    httpGet(`${BASE}/services/${serviceId}/media`),
+  uploadServiceMedia: (serviceId: string, file: File): Promise<ServiceMediaFile> => {
+    const form = new FormData();
+    form.append("file", file);
+    return httpPostForm(`${BASE}/services/${serviceId}/media`, form);
+  },
+  deleteServiceMedia: (serviceId: string, fileId: number): Promise<void> =>
+    httpDelete(`${BASE}/services/${serviceId}/media/${fileId}`),
+
   getServiceCategories: (params: SearchListParams = {}): Promise<Paginated<Category>> =>
     httpGet(`${BASE}/service-categories${toSearchListQuery({ limit: 10, ...params })}`),
   getLookups: (kind: LookupKind, params: SearchListParams = {}): Promise<Paginated<Lookup>> =>
     httpGet(`${BASE}/${kind}${toSearchListQuery(params)}`),
   getAccreditations: (params: SearchListParams = {}): Promise<Paginated<Accreditation>> =>
     httpGet(`${BASE}/accreditations${toSearchListQuery(params)}`),
+  createAccreditation: (input: AccreditationInput): Promise<Accreditation> =>
+    httpPost(`${BASE}/accreditations`, input),
+  getIssuingOrganizations: (params: SearchListParams = {}): Promise<Paginated<IssuingOrganization>> =>
+    httpGet(`${BASE}/issuing-organizations${toSearchListQuery(params)}`),
+  createIssuingOrganization: (name: string): Promise<IssuingOrganization> =>
+    httpPost(`${BASE}/issuing-organizations`, { name }),
+  getFeeTypes: (params: SearchListParams = {}): Promise<Paginated<FeeType>> =>
+    httpGet(`${BASE}/fee-types${toSearchListQuery(params)}`),
   /** Unpaginated: the server returns one country's handful, already falling back to the generic set. */
   getRegistrationTypes: (countryId?: number | null): Promise<{ data: RegistrationType[] }> =>
     httpGet(`${BASE}/registration-types${countryId ? `?country_id=${countryId}` : ""}`),

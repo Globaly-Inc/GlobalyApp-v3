@@ -4,8 +4,9 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { buildPaginatedResponse, paginationToOffset, PaginationSchema } from "../../../shared/pagination.js";
-import { requireBusinessContext, requireBusinessOrInstitutionContext } from "../../../core/plugins/auth.plugin.js";
+import { requireBusinessOrInstitutionContext } from "../../../core/plugins/auth.plugin.js";
 import * as categoriesService from "../../superadmin/platform/categories/services/categories.service.js";
+import { AccreditationInputSchema, IssuingOrgInputSchema } from "../../superadmin/platform/categories/schemas/categories.schema.js";
 const CategoryListQuery = PaginationSchema.extend({
   search: z.string().trim().min(1).optional(),
 });
@@ -15,7 +16,7 @@ const RegistrationTypesQuery = z.object({
 });
 
 export async function businessLookupsRoutes(app: FastifyInstance) {
-  app.get("/service-categories", { preHandler: requireBusinessContext }, async (req, reply) => {
+  app.get("/service-categories", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
     const { search, ...pagination } = CategoryListQuery.parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
     const [rows, total] = await Promise.all([
@@ -42,7 +43,7 @@ export async function businessLookupsRoutes(app: FastifyInstance) {
     ["degree-levels", "degree_levels"],
     ["areas-of-study", "areas_of_study"],
   ] as const) {
-    app.get(`/${path}`, { preHandler: requireBusinessContext }, async (req, reply) => {
+    app.get(`/${path}`, { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
       const { search, ...pagination } = CategoryListQuery.parse(req.query);
       const { limit, offset } = paginationToOffset(pagination);
       const [rows, total] = await Promise.all([
@@ -72,6 +73,41 @@ export async function businessLookupsRoutes(app: FastifyInstance) {
     const [rows, total] = await Promise.all([
       categoriesService.listAccreditations(limit, offset),
       categoriesService.countAccreditations(),
+    ]);
+    return reply.send(buildPaginatedResponse(rows, total, pagination));
+  });
+
+  // Accreditations/issuing orgs are a shared global catalog (same one admin curates) — the
+  // "Add a new accreditation" path in the self-service Accreditations tab mirrors admin's
+  // one-for-one, so it writes to the same catalog rather than a business-scoped copy.
+  app.get("/issuing-organizations", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
+    const { search, ...pagination } = CategoryListQuery.parse(req.query);
+    const { limit, offset } = paginationToOffset(pagination);
+    const [rows, total] = await Promise.all([
+      categoriesService.listIssuingOrganizations(limit, offset, search),
+      categoriesService.countIssuingOrganizations(search),
+    ]);
+    return reply.send(buildPaginatedResponse(rows, total, pagination));
+  });
+
+  app.post("/issuing-organizations", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
+    const data = IssuingOrgInputSchema.parse(req.body);
+    return reply.status(201).send(await categoriesService.createIssuingOrganization(data));
+  });
+
+  app.post("/accreditations", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
+    const data = AccreditationInputSchema.parse(req.body);
+    return reply.status(201).send(await categoriesService.createAccreditation(data));
+  });
+
+  // Read-only — the admin catalog also lets an admin propose/review new fee types, which stays
+  // admin-only; a self-service caller only ever picks from the existing approved list.
+  app.get("/fee-types", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
+    const pagination = PaginationSchema.parse(req.query);
+    const { limit, offset } = paginationToOffset(pagination);
+    const [rows, total] = await Promise.all([
+      categoriesService.listFeeTypes(limit, offset),
+      categoriesService.countFeeTypes(),
     ]);
     return reply.send(buildPaginatedResponse(rows, total, pagination));
   });

@@ -159,6 +159,8 @@ export type ServiceStudyUnitPatch = Partial<ServiceStudyUnitInput>;
 
 export type ServiceAccreditationLink = { id: number; accreditation_id: number };
 
+export type ServiceMediaFile = { id: number; original_name: string; mime_type: string; size_bytes: number; url: string };
+
 export type Member = {
   id: number;
   platform_user_id: number;

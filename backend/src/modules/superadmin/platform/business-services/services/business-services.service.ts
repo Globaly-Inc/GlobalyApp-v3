@@ -5,6 +5,9 @@ import { masterKnex } from "../../../../../core/db/master-pool.js";
 import { provisionBusinessSchema } from "../../../../../core/business/provisioner.js";
 import { generateText } from "../../../../../shared/ai/gemini.js";
 import * as coursesRepo from "../../../data-extraction/repositories/courses.repository.js";
+import * as jobsRepo from "../../../data-extraction/repositories/jobs.repository.js";
+import * as promoteRepo from "../../../data-extraction/repositories/promote.repository.js";
+import * as userRepo from "../../../../platform-users/repositories/platform-users.repository.js";
 import { NotFoundError } from "../../../../../shared/errors.js";
 import * as platformRepo from "../../platform.repository.js";
 import * as repo from "../repositories/business-services.repository.js";
@@ -72,12 +75,30 @@ async function ensureServiceExists(
 
 /** Institution services are always extraction_courses rows under the institution's own
  * source_job_id — no tenant schema, no materializing, no stand-in vs real distinction; a course
- * row IS the real row. Every institution gets a source_job_id when created (see
- * businesses.service.ts's createInstitution / platform-users.service's onboardInstitution), so a
- * missing one means the institution record itself is broken, not a normal "not found". */
-function requireInstitutionJobId(inst: { source_job_id: string | null }) {
-  if (!inst.source_job_id) throw new NotFoundError("Institution has no course catalog");
-  return inst.source_job_id;
+ * row IS the real row. */
+const SELF_HEALED_JOB_URL_DOMAIN = "self-service.globalyhub.invalid";
+
+/**
+ * An institution's course catalog lives in extraction_* keyed on job_id — a real institution
+ * with none (created before self-service/admin-create started minting one, e.g. via the v2
+ * import seeder) can't add a single course otherwise. Mints and persists one on first use
+ * instead of hard-failing, mirroring onboardInstitution's own mintSelfServiceJob.
+ */
+async function requireInstitutionJobId(inst: { id: number; institution_name: string; subdomain: string; source_job_id: string | null }) {
+  if (inst.source_job_id) return inst.source_job_id;
+  const row = await jobsRepo.insertJob({
+    institution_name: inst.institution_name,
+    institution_url: `https://${SELF_HEALED_JOB_URL_DOMAIN}/${inst.subdomain}`,
+    source_type: "self_service",
+    // "exported" (not "done") — see mintSelfServiceJob's matching comment: without it the
+    // institution's own courses fail the public/preview visibility check and never show, on top
+    // of keeping pipeline workers off it.
+    status: "exported",
+    business_category_id: await promoteRepo.findCategoryIdBySlug("institutions"),
+  });
+  const jobId = row.id as string;
+  await userRepo.updateInstitution(inst.id, { source_job_id: jobId });
+  return jobId;
 }
 
 /** Merges each row with its degree_level/area_of_study names and first study-option duration —
@@ -372,7 +393,7 @@ export async function requireServiceForRead(businessId: number, serviceId: strin
 
 export async function requireInstitutionServiceForRead(institutionId: number, serviceId: string) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   const service = await instRepo.getService(institutionId, jobId, serviceId);
   if (!service) throw new NotFoundError("Service not found");
 }
@@ -418,7 +439,7 @@ function withInstitutionListExtras<T extends { id: string }>(
 
 export async function listInstitutionServices(institutionId: number) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   const rows = await instRepo.listServices(institutionId, jobId);
   const extras = await instRepo.getServiceListExtras(institutionId, jobId, rows.map((r) => r.id));
   return withInstitutionListExtras(rows, extras);
@@ -426,7 +447,7 @@ export async function listInstitutionServices(institutionId: number) {
 
 export async function searchInstitutionServices(institutionId: number, limit: number, offset: number, search?: string) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   const { rows, total } = await instRepo.searchServices(institutionId, jobId, limit, offset, search);
   const extras = await instRepo.getServiceListExtras(institutionId, jobId, rows.map((r) => r.id));
   return { rows: withInstitutionListExtras(rows, extras), total };
@@ -434,19 +455,19 @@ export async function searchInstitutionServices(institutionId: number, limit: nu
 
 export async function createInstitutionService(institutionId: number, data: ServiceInput, adminId?: number) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   return instRepo.createService(institutionId, jobId, data, adminId);
 }
 
 export async function updateInstitutionService(institutionId: number, serviceId: string, data: ServicePatchInput, adminId: number) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   return instRepo.updateService(institutionId, jobId, serviceId, data, adminId);
 }
 
 export async function deleteInstitutionService(institutionId: number, serviceId: string) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   return instRepo.deleteService(institutionId, jobId, serviceId);
 }
 
@@ -500,7 +521,7 @@ async function keysToFieldIds(values: { key: string; value: unknown }[]) {
 
 export async function getInstitutionServiceFieldValues(institutionId: number, serviceId: string) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   const [values, awardedBy] = await Promise.all([
     instRepo.getServiceFieldValues(institutionId, jobId, serviceId),
     instRepo.getAwardedBy(jobId, serviceId),
@@ -511,7 +532,7 @@ export async function getInstitutionServiceFieldValues(institutionId: number, se
 
 export async function upsertInstitutionServiceFieldValues(institutionId: number, serviceId: string, values: ServiceFieldValuesInput["values"]) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   const [keyed, awardedBy] = await Promise.all([fieldIdsToKeys(values), fieldIdToAwardedBy(values)]);
   if (awardedBy !== undefined) await instRepo.setAwardedBy(jobId, serviceId, awardedBy);
   return instRepo.upsertServiceFieldValues(institutionId, jobId, serviceId, keyed);
@@ -519,138 +540,138 @@ export async function upsertInstitutionServiceFieldValues(institutionId: number,
 
 export async function listInstitutionServiceFees(institutionId: number, serviceId: string) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   return instRepo.listServiceFees(institutionId, jobId, serviceId);
 }
 
 export async function createInstitutionServiceFee(institutionId: number, serviceId: string, data: ServiceFeeInput) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   return instRepo.createServiceFee(institutionId, jobId, serviceId, data);
 }
 
 export async function updateInstitutionServiceFee(institutionId: number, serviceId: string, feeId: string, data: ServiceFeePatchInput) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   return instRepo.updateServiceFee(institutionId, jobId, serviceId, feeId, data);
 }
 
 export async function deleteInstitutionServiceFee(institutionId: number, serviceId: string, feeId: string) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   return instRepo.deleteServiceFee(institutionId, jobId, serviceId, feeId);
 }
 
 export async function listInstitutionServiceIntakes(institutionId: number, serviceId: string) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   return instRepo.listServiceIntakes(institutionId, jobId, serviceId);
 }
 
 export async function createInstitutionServiceIntake(institutionId: number, serviceId: string, data: ServiceIntakeInput) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   return instRepo.createServiceIntake(institutionId, jobId, serviceId, data);
 }
 
 export async function updateInstitutionServiceIntake(institutionId: number, serviceId: string, intakeId: string, data: ServiceIntakePatchInput) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   return instRepo.updateServiceIntake(institutionId, jobId, serviceId, intakeId, data);
 }
 
 export async function deleteInstitutionServiceIntake(institutionId: number, serviceId: string, intakeId: string) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   return instRepo.deleteServiceIntake(institutionId, jobId, serviceId, intakeId);
 }
 
 export async function listInstitutionServiceEligibility(institutionId: number, serviceId: string) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   return instRepo.listServiceEligibility(institutionId, jobId, serviceId);
 }
 
 export async function createInstitutionServiceEligibility(institutionId: number, serviceId: string, data: ServiceEligibilityInput) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   return instRepo.createServiceEligibility(institutionId, jobId, serviceId, data);
 }
 
 export async function updateInstitutionServiceEligibility(institutionId: number, serviceId: string, eligibilityId: string, data: ServiceEligibilityPatchInput) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   return instRepo.updateServiceEligibility(institutionId, jobId, serviceId, eligibilityId, data);
 }
 
 export async function deleteInstitutionServiceEligibility(institutionId: number, serviceId: string, eligibilityId: string) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   return instRepo.deleteServiceEligibility(institutionId, jobId, serviceId, eligibilityId);
 }
 
 export async function listInstitutionServiceStudyOptions(institutionId: number, serviceId: string) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   return instRepo.listServiceStudyOptions(institutionId, jobId, serviceId);
 }
 
 export async function createInstitutionServiceStudyOption(institutionId: number, serviceId: string, data: ServiceStudyOptionInput) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   return instRepo.createServiceStudyOption(institutionId, jobId, serviceId, data);
 }
 
 export async function updateInstitutionServiceStudyOption(institutionId: number, serviceId: string, optionId: string, data: ServiceStudyOptionPatchInput) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   return instRepo.updateServiceStudyOption(institutionId, jobId, serviceId, optionId, data);
 }
 
 export async function deleteInstitutionServiceStudyOption(institutionId: number, serviceId: string, optionId: string) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   return instRepo.deleteServiceStudyOption(institutionId, jobId, serviceId, optionId);
 }
 
 export async function listInstitutionServiceStudyUnits(institutionId: number, serviceId: string) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   return instRepo.listServiceStudyUnits(institutionId, jobId, serviceId);
 }
 
 export async function createInstitutionServiceStudyUnit(institutionId: number, serviceId: string, data: ServiceStudyUnitInput) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   return instRepo.createServiceStudyUnit(institutionId, jobId, serviceId, data);
 }
 
 export async function updateInstitutionServiceStudyUnit(institutionId: number, serviceId: string, unitId: string, data: ServiceStudyUnitPatchInput) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   return instRepo.updateServiceStudyUnit(institutionId, jobId, serviceId, unitId, data);
 }
 
 export async function deleteInstitutionServiceStudyUnit(institutionId: number, serviceId: string, unitId: string) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   return instRepo.deleteServiceStudyUnit(institutionId, jobId, serviceId, unitId);
 }
 
 export async function listInstitutionServiceAccreditations(institutionId: number, serviceId: string) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   return instRepo.listServiceAccreditations(institutionId, jobId, serviceId);
 }
 
 export async function createInstitutionServiceAccreditation(institutionId: number, serviceId: string, accreditationId: number) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   return instRepo.createServiceAccreditation(institutionId, jobId, serviceId, accreditationId);
 }
 
 export async function deleteInstitutionServiceAccreditation(institutionId: number, serviceId: string, rowId: string) {
   const inst = await requireInstitution(institutionId);
-  const jobId = requireInstitutionJobId(inst);
+  const jobId = await requireInstitutionJobId(inst);
   return instRepo.deleteServiceAccreditation(institutionId, jobId, serviceId, rowId);
 }

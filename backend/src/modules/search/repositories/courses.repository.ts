@@ -518,7 +518,22 @@ export async function findPublicCourseBySlug(slug: string, previewSchemaName?: s
     .whereRaw("left(replace(ec.id::text, '-', ''), 6) = ?", [fragment])
     .select(...LIST_COLUMNS, ...CARD_COLUMNS, ...DETAIL_COLUMNS)
     .first();
-  if (!course) return null;
+  if (!course) {
+    // ponytail: temporary diagnostic for the preview-404 report — pinpoints which half of
+    // PUBLICLY_VISIBLE/the institution join is failing without needing DB shell access.
+    // Remove once the preview flow is confirmed working end to end.
+    const diag = await masterKnex(`${S}.extraction_courses as ec`)
+      .leftJoin(`${S}.extraction_jobs as ej`, "ej.id", "ec.job_id")
+      .leftJoin("institutions as inst", "inst.source_job_id", "ec.job_id")
+      .whereRaw("left(replace(ec.id::text, '-', ''), 6) = ?", [fragment])
+      .select(
+        "ec.id as course_id", "ec.job_id", "ec.verification_status",
+        "ej.status as job_status", "inst.id as institution_id", "inst.schema_name", "inst.is_published",
+      )
+      .first();
+    console.warn("[course-preview-404]", { slug, fragment, previewSchemaName, diag: diag ?? "no matching extraction_courses row at all" });
+    return null;
+  }
 
   // Every junction below carries a unique (course_id, entity_id), so none of these joins fan out.
   const [intakes, eligibility, englishRequirements, studyUnits, studyOptions, media] = await Promise.all([

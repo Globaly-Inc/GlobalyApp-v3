@@ -228,7 +228,11 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
               <PartnersTab businessId={businessId} businessName={profile.business_name} isInstitution={isViewingInstitution} />
             )}
             {tab === "team" && <MembersTab businessId={businessId} />}
-            {tab === "services" && <ServicesTab businessId={businessId} readOnly={isViewingInstitution} />}
+            {/* Self-service is always the org's own claimed account — unlike admin's pre-seeded/
+                unclaimed case, there's no legitimate read-only state here, so an institution
+                gets the same full "Add service"/manage UI a business does (backend now writes
+                a manually-added course into the institution's own extraction catalog). */}
+            {tab === "services" && <ServicesTab businessId={businessId} isInstitution={isViewingInstitution} />}
             {tab === "scholarships" && <ScholarshipsTab businessId={businessId} />}
             {tab === "activity" && <ActivityTab businessId={businessId} />}
           </CardContent>

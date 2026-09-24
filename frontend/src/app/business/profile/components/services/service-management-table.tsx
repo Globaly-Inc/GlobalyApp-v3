@@ -35,6 +35,7 @@ export function ServiceManagementTable({
   onPriceSave,
   onDelete,
   readOnly = false,
+  isInstitution = false,
 }: Readonly<{
   services: BusinessService[];
   visibleColumns: Set<ColumnKey>;
@@ -48,6 +49,10 @@ export function ServiceManagementTable({
   onDelete: (service: BusinessService) => void;
   /** Institutions' rows are extracted courses, not real business_services — no edit/publish/delete backing them. */
   readOnly?: boolean;
+  /** Only courses have a public page — the service name
+   *  opens it directly, independent of readOnly (an institution's rows are fully editable now,
+   *  but still only ever courses with a real public URL to preview). */
+  isInstitution?: boolean;
 }>) {
   const allSelected = services.length > 0 && services.every((s) => selectedIds.has(s.id));
   const toggleAll = () => onSelectedIdsChange(allSelected ? new Set() : new Set(services.map((s) => s.id)));
@@ -102,7 +107,7 @@ export function ServiceManagementTable({
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
                     <Package className="h-4 w-4" />
                   </div>
-                  {readOnly ? (
+                  {isInstitution ? (
                     <button
                       type="button"
                       className="font-medium hover:underline"

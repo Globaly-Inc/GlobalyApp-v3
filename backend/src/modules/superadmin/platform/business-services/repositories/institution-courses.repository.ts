@@ -107,6 +107,11 @@ export async function createService(_institutionId: number, jobId: string, data:
   const { price, ...rest } = data;
   if (typeof rest.service_category_id === "number") await requireActiveCategory(rest.service_category_id);
   const row = await coursesRepo.insertCourse({
+    // Neither the admin nor self-service Add Service form has a control for this yet, so a
+    // manually-added course would otherwise save with course_category NULL — invisible under
+    // the Academic/Short Courses split tabs on the Services list (an exact-match filter) even
+    // though it displays as "Academic Course" there by label alone. Academic is the common case.
+    course_category: "academic",
     ...rest,
     job_id: jobId,
     international_fee_total: price ?? null,

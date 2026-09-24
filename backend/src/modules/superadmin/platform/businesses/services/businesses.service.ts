@@ -85,11 +85,14 @@ function withScheme(url: string): string {
  * own before it has anywhere to put a course — same shape as an AI or AgentCIS job, minus
  * the crawl.
  *
- * `status: "done"` is what keeps the crawl off it: the pipeline workers claim through the
- * partial index on status IN ('pending','processing','stalled'), so a job created as pending
- * would go and scrape the institution's website. The source is named by `source_type`
- * instead — never by a new status string, which would render as undefined against the
- * frontend's fixed STATUS_CONFIG record.
+ * `status: "exported"` keeps the crawl off it (the pipeline workers only claim through the
+ * partial index on status IN ('pending','processing','stalled')) while also making it publicly
+ * visible immediately — a manually-created institution never goes through the admin
+ * promote step that would otherwise set this, and without it its courses fail the public/
+ * preview visibility check (courses.repository.ts's PUBLICLY_VISIBLE requires status =
+ * 'exported') and 404 even for the owner previewing their own listing. The source is named by
+ * `source_type` instead — never by a new status string, which would render as undefined
+ * against the frontend's fixed STATUS_CONFIG record.
  */
 async function mintManualInstitutionJob(
   input: BusinessCreateInput,
@@ -121,7 +124,7 @@ async function mintManualInstitutionJob(
     institution_name: input.business_name,
     institution_url: url,
     source_type: "manual",
-    status: "done",
+    status: "exported",
     // Promote routes by category, and refuses an uncategorised job from a non-agentcis source.
     business_category_id: input.business_category_id,
   }, trx);
