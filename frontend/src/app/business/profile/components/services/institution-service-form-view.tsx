@@ -7,8 +7,8 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import { Combobox } from "@/components/combobox";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -22,13 +22,13 @@ import { EligibilityTab } from "./tabs/eligibility-tab";
 import { StudyOptionsTab } from "./tabs/study-options-tab";
 import { StudyUnitsTab } from "./tabs/study-units-tab";
 import { AccreditationsTab } from "./tabs/accreditations-tab";
-import { PublicBadge, ServiceSummaryBodyExtras, ServiceSummarySidebarExtras } from "./service-summary-extras";
+import { ServiceSummaryBodyExtras, ServiceSummarySidebarExtras, VisibilityToggle } from "./service-summary-extras";
 import { coursePublicHref } from "../../utils";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import type { Accreditation, Category, Lookup } from "@/app/admin/platform/categories/apis/types";
 import { businessProfileDetailApi } from "../../apis";
 import {
-  createService, fetchServices, toggleServicePublished, updateService, updateServiceFieldValues,
+  createService, updateService, updateServiceFieldValues,
 } from "../../store/business-profile-detail-slice";
 import { ApiError } from "@/lib/api/http";
 import type { ServiceInput } from "../../apis/types";
@@ -63,12 +63,17 @@ export function InstitutionServiceFormView({ businessId, serviceId }: Readonly<{
     const existing = serviceId ? services.find((s) => s.id === serviceId) : undefined;
     return existing ? toForm(existing) : EMPTY_FORM;
   });
+  const [fieldValues, setFieldValues] = useState<Record<number, unknown>>({});
+  const [publicVisibility, setPublicVisibility] = useState<Record<string, boolean>>(() => {
+    const existing = serviceId ? services.find((s) => s.id === serviceId) : undefined;
+    return existing?.public_visibility ?? {};
+  });
+  const [savingVisibility, setSavingVisibility] = useState(false);
   const [isPublished, setIsPublished] = useState(() => {
     const existing = serviceId ? services.find((s) => s.id === serviceId) : undefined;
     return existing?.is_published ?? false;
   });
   const [publishing, setPublishing] = useState(false);
-  const [fieldValues, setFieldValues] = useState<Record<number, unknown>>({});
   const [tab, setTab] = useState<Tab>("summary");
   const [saving, setSaving] = useState(false);
   const [generatingDescription, setGeneratingDescription] = useState(false);
@@ -97,11 +102,13 @@ export function InstitutionServiceFormView({ businessId, serviceId }: Readonly<{
     businessProfileDetailApi.getAccreditations().then((res) => setAccreditations(res.data));
     if (isEdit && serviceId) {
       if (!services.some((s) => s.id === serviceId)) {
-        dispatch(fetchServices({ id: businessId, params: { limit: 100 } })).then((res) => {
-          if (fetchServices.fulfilled.match(res)) {
-            const found = res.payload.data.find((s) => s.id === serviceId);
-            if (found) { setForm(toForm(found)); setIsPublished(found.is_published); }
-          }
+        // The list/search page load only covers the first 100 services — a catalog bigger than
+        // that would leave this course unfound and the editor blank, so fall back to a direct
+        // single-service lookup instead of assuming "not on this page" means "doesn't exist".
+        businessProfileDetailApi.getService(serviceId).then((found) => {
+          setForm(toForm(found));
+          setPublicVisibility(found.public_visibility ?? {});
+          setIsPublished(found.is_published);
         });
       }
       businessProfileDetailApi.getServiceFieldValues(serviceId).then((values) => {
@@ -126,12 +133,21 @@ export function InstitutionServiceFormView({ businessId, serviceId }: Readonly<{
   // Every institution service lives in extraction_courses regardless of category
   // (service_category_id is a plain column there — see institution-courses.repository.ts), so
   // changing category on an existing service is a normal update, not a cross-table move.
-  // Auto-saves like handleTogglePublish — a category pick that's silently lost until some other
+  // Auto-saves on change — a category pick that's silently lost until some other
   // save fires would be confusing. Fences the rollback below to whichever category save is the
   // LATEST one in flight — without this, an earlier request that fails after a later one already
   // succeeded would restore the earlier (now-stale) category/fields/tab right over the successful
   // selection, leaving the form disagreeing with Redux and the server.
   const categorySaveSeqRef = useRef(0);
+  // Field ids touched since the start of a category save's own refetch. If the user edits a
+  // field while that refetch is still in flight, its response keeps every OTHER field it fetched
+  // but preserves whatever the user just typed into these — rather than either discarding their
+  // edit, or (worse) discarding every other already-saved field along with it.
+  const fieldsEditedDuringReloadRef = useRef<Set<number>>(new Set());
+  const setFieldValue = (id: number, value: unknown) => {
+    fieldsEditedDuringReloadRef.current.add(id);
+    setFieldValues((f) => ({ ...f, [id]: value }));
+  };
   const [savingCategory, setSavingCategory] = useState(false);
   const handleCategoryChange = async (categoryId: number | null) => {
     const changed = categoryId !== form.service_category_id;
@@ -143,6 +159,7 @@ export function InstitutionServiceFormView({ businessId, serviceId }: Readonly<{
 
     set("service_category_id", categoryId);
     setFieldValues({});
+    fieldsEditedDuringReloadRef.current = new Set();
     const nextIsCourse = serviceCategories.find((c) => c.id === categoryId)?.slug === "courses";
     if (!nextIsCourse && tab !== "summary" && tab !== "fees") setTab("summary");
 
@@ -157,12 +174,69 @@ export function InstitutionServiceFormView({ businessId, serviceId }: Readonly<{
         setTab(previousTab);
       }
       toast.error("Couldn't update category", { description: (e as ApiError).message });
+      return;
     } finally {
       if (categorySaveSeqRef.current === seq) setSavingCategory(false);
+    }
+
+    // The cleared fieldValues above was a local guess (this category's schema_field ids differ
+    // from the old one's) — re-fetch so a category switched away and back doesn't leave degree
+    // level/area of study/awarded by blank even though the server still has them saved. Its own
+    // failure must not roll back the category change above, which the server already committed.
+    if (categorySaveSeqRef.current === seq && nextIsCourse) {
+      try {
+        const values = await businessProfileDetailApi.getServiceFieldValues(serviceId);
+        if (categorySaveSeqRef.current === seq) {
+          const map: Record<number, unknown> = {};
+          for (const v of values) map[v.schema_field_id] = v.value;
+          const editedIds = fieldsEditedDuringReloadRef.current;
+          setFieldValues((current) => {
+            const merged = { ...map };
+            for (const id of editedIds) merged[id] = current[id];
+            return merged;
+          });
+        }
+      } catch {
+        toast.error("Category saved, but couldn't reload its details — refresh to see them.");
+      }
     }
   };
 
   const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((f) => ({ ...f, [key]: value }));
+
+  // Controls whether that section shows on the public /course/[slug] page (see that page's own
+  // isVisible) — same "absent/not-false means public" rule as the profile pages' visibility.
+  const isSectionVisible = (section: string) => publicVisibility[section] !== false;
+  const toggleSectionVisibility = async (section: string) => {
+    if (!serviceId) return;
+    const previous = publicVisibility;
+    const next = { ...publicVisibility, [section]: !isSectionVisible(section) };
+    setPublicVisibility(next);
+    setSavingVisibility(true);
+    try {
+      await dispatch(updateService({ id: businessId, serviceId, patch: { public_visibility: next } })).unwrap();
+    } catch (e) {
+      setPublicVisibility(previous);
+      toast.error("Couldn't update visibility", { description: (e as ApiError).message });
+    } finally {
+      setSavingVisibility(false);
+    }
+  };
+  const sectionVisibility = { isVisible: isSectionVisible, onToggle: toggleSectionVisibility, disabled: savingVisibility || !serviceId };
+
+  const handleTogglePublish = async (next: boolean) => {
+    if (!serviceId) return;
+    setPublishing(true);
+    try {
+      await dispatch(updateService({ id: businessId, serviceId, patch: { is_published: next } })).unwrap();
+      setIsPublished(next);
+      toast.success(next ? "Service published" : "Service unpublished");
+    } catch (e) {
+      toast.error("Couldn't update publish status", { description: (e as ApiError).message });
+    } finally {
+      setPublishing(false);
+    }
+  };
 
   const canSave = form.name.trim().length >= 2 && !!form.service_category_id;
 
@@ -269,20 +343,6 @@ export function InstitutionServiceFormView({ businessId, serviceId }: Readonly<{
     }
   };
 
-  const handleTogglePublish = async (next: boolean) => {
-    if (!serviceId) return;
-    setPublishing(true);
-    try {
-      await dispatch(toggleServicePublished({ id: businessId, serviceId, is_published: next })).unwrap();
-      setIsPublished(next);
-      toast.success(next ? "Service published" : "Service unpublished");
-    } catch (e) {
-      toast.error("Couldn't update publish status", { description: (e as ApiError).message });
-    } finally {
-      setPublishing(false);
-    }
-  };
-
   const handleNameBlur = async () => {
     if (!isEdit || !serviceId || form.name === savedNameRef.current || !form.name.trim()) return;
     savedNameRef.current = form.name;
@@ -350,7 +410,7 @@ export function InstitutionServiceFormView({ businessId, serviceId }: Readonly<{
                 Preview
               </Button>
               <div className="flex items-center gap-2">
-                <Label className="text-sm text-muted-foreground">{isPublished ? "Published" : "Unpublished"}</Label>
+                <Label className="text-sm text-muted-foreground">{isPublished ? "Published" : "Draft"}</Label>
                 <Switch checked={isPublished} disabled={publishing} onCheckedChange={handleTogglePublish} />
               </div>
             </>
@@ -445,7 +505,7 @@ export function InstitutionServiceFormView({ businessId, serviceId }: Readonly<{
                   <div className="flex items-center gap-2">
                     <FileText className="h-5 w-5 text-primary" />
                     <h2 className="text-sm font-semibold">Description</h2>
-                    <PublicBadge />
+                    <VisibilityToggle section="description" visibility={sectionVisibility} />
                   </div>
                   {isEdit && (
                     <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingDescription((v) => !v)} aria-label="Edit description">
@@ -494,7 +554,7 @@ export function InstitutionServiceFormView({ businessId, serviceId }: Readonly<{
               </Card>
 
               {isEdit && serviceId && (
-                <ServiceSummaryBodyExtras serviceId={serviceId} isCourse={isCourse} degreeLevels={degreeLevels} onNavigateTab={setTab} />
+                <ServiceSummaryBodyExtras serviceId={serviceId} isCourse={isCourse} degreeLevels={degreeLevels} onNavigateTab={setTab} visibility={sectionVisibility} />
               )}
             </>
           ) : tab === "fees" ? (
@@ -521,9 +581,9 @@ export function InstitutionServiceFormView({ businessId, serviceId }: Readonly<{
             degreeLevels={degreeLevels}
             areasOfStudy={areasOfStudy}
             accreditations={accreditations}
-            onChangeDegreeLevel={(v) => { const id = schemaFieldIdByKey.degree_level; if (id != null) setFieldValues((f) => ({ ...f, [id]: v })); }}
-            onChangeAreaOfStudy={(v) => { const id = schemaFieldIdByKey.area_of_study; if (id != null) setFieldValues((f) => ({ ...f, [id]: v })); }}
-            onChangeAwardedBy={(v) => { const id = schemaFieldIdByKey.awarded_by; if (id != null) setFieldValues((f) => ({ ...f, [id]: v })); }}
+            onChangeDegreeLevel={(v) => { const id = schemaFieldIdByKey.degree_level; if (id != null) setFieldValue(id, v); }}
+            onChangeAreaOfStudy={(v) => { const id = schemaFieldIdByKey.area_of_study; if (id != null) setFieldValue(id, v); }}
+            onChangeAwardedBy={(v) => { const id = schemaFieldIdByKey.awarded_by; if (id != null) setFieldValue(id, v); }}
             onSearchDegreeLevel={(q) => debouncedSearchCourseField("degree_level", q)}
             onSearchAreaOfStudy={(q) => debouncedSearchCourseField("area_of_study", q)}
             onSearchAwardedBy={(q) => debouncedSearchCourseField("awarded_by", q)}
@@ -547,7 +607,7 @@ export function InstitutionServiceFormView({ businessId, serviceId }: Readonly<{
             <CategoryExtraFields
               fields={(selectedCategory?.schema_fields ?? []).filter((f) => !["degree_level", "area_of_study", "awarded_by"].includes(f.key))}
               values={fieldValues}
-              onChangeField={(id, v) => setFieldValues((f) => ({ ...f, [id]: v }))}
+              onChangeField={(id, v) => setFieldValue(id, v)}
               onSave={handleSaveCourseDetails}
             />
           )}
@@ -556,7 +616,7 @@ export function InstitutionServiceFormView({ businessId, serviceId }: Readonly<{
             <ServiceSummarySidebarExtras
               serviceId={serviceId}
               name={form.name} hasCategory={!!form.service_category_id} description={form.description}
-              isCourse={isCourse} tab={tab} onNavigateTab={setTab}
+              isCourse={isCourse} tab={tab} onNavigateTab={setTab} visibility={sectionVisibility}
             />
           )}
         </div>

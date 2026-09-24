@@ -7,8 +7,9 @@ import {
 } from "../../superadmin/platform/business-services/schemas/business-services.schema.js";
 import * as service from "../../superadmin/platform/business-services/services/business-services.service.js";
 import * as coursesRepo from "../../superadmin/data-extraction/repositories/courses.repository.js";
+import { getFeePricesForCourses } from "../../superadmin/platform/business-services/repositories/institution-courses.repository.js";
 import { isInstitutionCategory } from "../../superadmin/data-extraction/repositories/promote.repository.js";
-import { ForbiddenError } from "../../../shared/errors.js";
+import { ForbiddenError, NotFoundError } from "../../../shared/errors.js";
 import type { CourseListFilters } from "../../superadmin/data-extraction/repositories/courses.repository.js";
 import * as activityService from "../services/activity.service.js";
 
@@ -24,8 +25,9 @@ function courseToBusinessService(c: {
   id: string; name: string; description: string | null; subject_area: string | null;
   degree_level: string | null; duration_weeks: number | null; domestic_fee_total: string | number | null;
   domestic_currency: string | null; created_at: Date; course_category: string | null;
-  service_category_id: number | null;
-}) {
+  service_category_id: number | null; public_visibility?: Record<string, boolean> | null;
+  is_published?: boolean;
+}, feePrice?: string) {
   return {
     id: c.id,
     // Was hardcoded null — extraction_courses has had a real service_category_id column since
@@ -36,9 +38,18 @@ function courseToBusinessService(c: {
     category_name: c.course_category === "short_course" ? "Short Course" : "Academic Course",
     name: c.name,
     description: c.description,
-    price: c.domestic_fee_total != null ? `${c.domestic_currency ?? ""} ${c.domestic_fee_total}`.trim() : null,
-    is_published: true,
-    public_visibility: null,
+    // The real price is the Fees tab (extraction_course_fees) — domestic_fee_total is a legacy
+    // column nothing writes to anymore, so it's only the fallback for a course with no fees yet.
+    price: feePrice ?? (c.domestic_fee_total != null ? `${c.domestic_currency ?? ""} ${c.domestic_fee_total}`.trim() : null),
+    // Was hardcoded true — same duplicate-mapper bug as public_visibility below: extraction_courses
+    // has a real is_published column now (migration 20260925_003).
+    is_published: c.is_published ?? false,
+    // Was hardcoded null — same bug as service_category_id above: extraction_courses has a real
+    // public_visibility column (migration 20260925_002), left unread here meant the edit page's
+    // toggles (which seed their initial state from whatever's already in the list) always looked
+    // "all public" regardless of what was actually saved, until the direct getService fallback
+    // ran — which never fires for a service already present in this list.
+    public_visibility: c.public_visibility ?? {},
     created_at: c.created_at,
     degree_level: c.degree_level,
     area_of_study: c.subject_area,
@@ -53,7 +64,8 @@ async function searchInstitutionCourses(sourceJobId: string | null, limit: numbe
     coursesRepo.listCoursesByJob(sourceJobId, limit, offset, filters),
     coursesRepo.countCoursesByJob(sourceJobId, filters),
   ]);
-  return { rows: rows.map(courseToBusinessService), total };
+  const prices = await getFeePricesForCourses(sourceJobId, rows.map((r) => r.id));
+  return { rows: rows.map((r) => courseToBusinessService(r, prices.get(r.id))), total };
 }
 
 /**
@@ -138,6 +150,18 @@ export async function businessServicesRoutes(app: FastifyInstance) {
     const created = await service.createService(Number(req.business!.id), data);
     await activityService.logActivity(req.db, Number(req.auth.sub), "SERVICE_CREATED", "service", created.id, { name: created.name });
     return reply.status(201).send(created);
+  });
+
+  // Single-service lookup — the edit page's fallback when the service isn't already in whatever
+  // page of the list/search it happened to load (search.ts's default limit is 100; a catalog
+  // bigger than that would otherwise show a blank editor for anything past the first page).
+  app.get("/services/:subId", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
+    const { subId } = SubIdSchema.parse(req.params);
+    const found = req.auth.orgType === "institution"
+      ? await service.getInstitutionService(Number(req.institution!.id), subId)
+      : await service.getService(Number(req.business!.id), subId);
+    if (!found) throw new NotFoundError("Service not found");
+    return reply.send(found);
   });
 
   app.patch("/services/:subId", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {

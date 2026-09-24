@@ -36,25 +36,105 @@ async function coursesCategoryId(): Promise<number | null> {
 // successfully, leaving the row pointing at a category the frontend can never resolve schema_fields
 // or an icon/name for.
 async function requireActiveCategory(id: number) {
-  const row = await masterKnex("service_categories").whereNull("deleted_at").where({ id, is_active: true }).first("id");
+  const row = await masterKnex("service_categories").whereNull("deleted_at").where({ id, is_active: true }).first("id", "slug");
   if (!row) throw new NotFoundError("Service category not found");
+  return row as { id: number; slug: string };
+}
+
+// The Academic/Short Courses list-tab split reads extraction_courses.course_category (an enum,
+// separate from service_category_id) — whichever category the user actually picked must be
+// reflected there too, or a course filed under the "Short Courses" service_category still shows
+// up under the Academic Courses tab (course_category left at its "academic" default). Only the
+// real "courses" category counts as academic — every OTHER category (Short Courses, or any other
+// non-course service category the editor offers) is a non-course offering, so it defaults to
+// short_course rather than mislabeling it as an academic course.
+function courseCategoryForSlug(slug: string): "academic" | "short_course" {
+  return slug === "courses" ? "academic" : "short_course";
+}
+
+const STUDENT_TYPE_LABEL: Record<string, string> = { domestic: "Domestic", international: "International" };
+
+// The list's "Price" is really the Fees tab (extraction_course_fees, junctioned via
+// extraction_course_fee_assignments) — domestic_fee_total/international_fee_total are a legacy
+// single-value column nothing writes to anymore now that fees are managed there, so a course
+// added or edited through the Fees tab always showed a blank price without this. Sums the
+// installments WITHIN each fee row (a fee's own total_amount already covers that), grouped by
+// (student_type, currency) — a domestic fee and an international fee are different amounts for
+// different audiences, so they're never added together into one number; only fees that are
+// genuinely the same audience/currency (e.g. tuition + application fee, both domestic AUD) sum.
+// A "both" fee (applies to every student) is folded INTO each specific audience's total below —
+// it's not a third, separate amount nobody actually pays on its own once a domestic- or
+// international-only fee also exists. Grouped by period_type too ("Per Year" vs "One Time" etc) —
+// a one-time application fee and a per-year tuition fee are not the same kind of money, so they're
+// never summed into one figure; each period gets its own labelled amount.
+export async function getFeePricesForCourses(jobId: string, courseIds: string[]) {
+  const map = new Map<string, string>();
+  if (courseIds.length === 0) return map;
+  const rows = await masterKnex(`${S}.extraction_course_fee_assignments as a`)
+    .join(`${S}.extraction_course_fees as f`, "f.id", "a.course_fee_id")
+    .where("a.job_id", jobId)
+    .whereIn("a.course_id", courseIds)
+    .whereNotNull("f.total_amount")
+    .select("a.course_id", "f.total_amount", "f.currency", "f.student_type", "f.period_type")
+    // Deterministic row order — the totals below are built by iterating these rows in order, so
+    // an unordered result set could silently reshuffle which amount lands first in the label,
+    // moving a course in the Fee-sorted list even though nothing about its fees changed.
+    .orderBy(["f.period_type", "f.student_type", "f.currency"]);
+  const totalsByCourse = new Map<string, Map<string, number>>();
+  for (const r of rows) {
+    const period = r.period_type ?? "";
+    const groupKey = `${period}|${r.student_type ?? "both"}|${r.currency ?? ""}`;
+    const byGroup = totalsByCourse.get(r.course_id) ?? new Map<string, number>();
+    byGroup.set(groupKey, (byGroup.get(groupKey) ?? 0) + Number(r.total_amount));
+    totalsByCourse.set(r.course_id, byGroup);
+  }
+  for (const [courseId, byGroup] of totalsByCourse) {
+    const periods = new Set([...byGroup.keys()].map((k) => k.split("|")[0]));
+    const multiPeriod = periods.size > 1;
+    const parts: string[] = [];
+    for (const period of periods) {
+      const inPeriod = new Map([...byGroup].filter(([k]) => k.startsWith(`${period}|`)));
+      const audiences = new Set([...inPeriod.keys()].map((k) => k.split("|")[1]));
+      const hasSpecificAudience = audiences.has("domestic") || audiences.has("international");
+      const suffix = multiPeriod && period ? ` (${period})` : "";
+      if (!hasSpecificAudience) {
+        // Only "both" fees (or only one currency/audience) — nothing to fold in, show as-is.
+        for (const [groupKey, total] of inPeriod) {
+          parts.push(`${groupKey.split("|")[2]} ${total.toLocaleString()}${suffix}`.trim());
+        }
+        continue;
+      }
+      const currencies = new Set([...inPeriod.keys()].map((k) => k.split("|")[2]));
+      for (const currency of currencies) {
+        const both = inPeriod.get(`${period}|both|${currency}`) ?? 0;
+        for (const audience of ["domestic", "international"] as const) {
+          const specific = inPeriod.get(`${period}|${audience}|${currency}`);
+          if (specific == null && both === 0) continue;
+          const total = (specific ?? 0) + both;
+          parts.push(`${STUDENT_TYPE_LABEL[audience]}: ${currency} ${total.toLocaleString()}${suffix}`.trim());
+        }
+      }
+    }
+    map.set(courseId, parts.join(" · "));
+  }
+  return map;
 }
 
 async function courseToService(c: {
   id: string; name: string; description: string | null; subject_area: string | null;
   domestic_fee_total: string | null; international_fee_total: string | null; created_at: string;
-  service_category_id?: number | null;
-}) {
+  service_category_id?: number | null; public_visibility?: Record<string, boolean> | null;
+  is_published?: boolean;
+}, feePrice?: string) {
   return {
     id: c.id,
     service_category_id: c.service_category_id ?? (await coursesCategoryId()),
     name: c.name,
     description: c.description,
-    price: c.international_fee_total ?? c.domestic_fee_total,
-    // extraction_courses has no publish/visibility flags — every course an institution can see
-    // via this admin is already live. ponytail: fixed true/{} until per-course visibility is asked for.
-    is_published: true,
-    public_visibility: {} as Record<string, boolean>,
+    price: feePrice ?? c.international_fee_total ?? c.domestic_fee_total,
+    // Real column now (migration 20260925_003) — draft until the owner publishes it.
+    is_published: c.is_published ?? false,
+    public_visibility: c.public_visibility ?? {},
     created_at: c.created_at,
     category_name: c.subject_area,
   };
@@ -62,7 +142,8 @@ async function courseToService(c: {
 
 export async function listServices(_institutionId: number, jobId: string) {
   const rows = await coursesRepo.listCoursesByJob(jobId, 10000, 0, {}, "newest");
-  return Promise.all(rows.map(courseToService));
+  const prices = await getFeePricesForCourses(jobId, rows.map((r) => r.id));
+  return Promise.all(rows.map((r) => courseToService(r, prices.get(r.id))));
 }
 
 export async function searchServices(_institutionId: number, jobId: string, limit: number, offset: number, search?: string) {
@@ -70,7 +151,8 @@ export async function searchServices(_institutionId: number, jobId: string, limi
     coursesRepo.listCoursesByJob(jobId, limit, offset, { search }, "recently_updated"),
     coursesRepo.countCoursesByJob(jobId, { search }),
   ]);
-  return { rows: await Promise.all(rows.map(courseToService)), total };
+  const prices = await getFeePricesForCourses(jobId, rows.map((r) => r.id));
+  return { rows: await Promise.all(rows.map((r) => courseToService(r, prices.get(r.id)))), total };
 }
 
 // getServiceListExtras (degree_level/area_of_study/duration "table" columns) — extraction_courses
@@ -100,34 +182,54 @@ async function requireCourse(jobId: string, serviceId: string) {
 export async function getService(_institutionId: number, jobId: string, serviceId: string) {
   const course = await coursesRepo.findCourseById(serviceId);
   if (!course || course.job_id !== jobId) return undefined;
-  return courseToService(course);
+  const prices = await getFeePricesForCourses(jobId, [serviceId]);
+  return courseToService(course, prices.get(serviceId));
 }
 
 export async function createService(_institutionId: number, jobId: string, data: Record<string, unknown>, adminId?: number) {
   const { price, ...rest } = data;
-  if (typeof rest.service_category_id === "number") await requireActiveCategory(rest.service_category_id);
+  const category = typeof rest.service_category_id === "number" ? await requireActiveCategory(rest.service_category_id) : null;
   const row = await coursesRepo.insertCourse({
-    // Neither the admin nor self-service Add Service form has a control for this yet, so a
-    // manually-added course would otherwise save with course_category NULL — invisible under
-    // the Academic/Short Courses split tabs on the Services list (an exact-match filter) even
-    // though it displays as "Academic Course" there by label alone. Academic is the common case.
-    course_category: "academic",
+    // Falls back to "academic" only when no category was picked at all (shouldn't happen —
+    // service_category_id is required on create — but keeps a NULL row from being invisible
+    // under both list tabs rather than one).
+    course_category: category ? courseCategoryForSlug(category.slug) : "academic",
     ...rest,
     job_id: jobId,
+    // A new course has no pre-existing domestic/international split to preserve, so the one
+    // "Price" field sets both — the public course page reads them as two separate prices, and
+    // leaving domestic null left a brand-new course showing no price at all for domestic students.
+    domestic_fee_total: price ?? null,
     international_fee_total: price ?? null,
+    // Draft by default — matches a plain business's own services, which never auto-published
+    // either. The owner publishes explicitly once the listing is actually ready.
+    is_published: false,
     created_by_platform_user_id: adminId ?? null,
   });
   return getService(_institutionId, jobId, row.id);
 }
 
 export async function updateService(institutionId: number, jobId: string, serviceId: string, data: Record<string, unknown>, adminId: number) {
-  await requireCourse(jobId, serviceId);
+  const course = await requireCourse(jobId, serviceId);
   // service_category_id is a real column now (migration 20260921_004) — every institution service
   // category lives in this same table, so changing it is a plain column update, not a cross-table
-  // move. is_published/public_visibility still have no backing column (see courseToService).
-  const { price, is_published: _p, public_visibility: _v, ...rest } = data;
-  if (typeof rest.service_category_id === "number") await requireActiveCategory(rest.service_category_id);
-  const patch = "price" in data ? { ...rest, international_fee_total: price ?? null } : rest;
+  // move. is_published and public_visibility are also real columns now (migrations 20260925_002/003).
+  const { price, is_published, public_visibility, ...rest } = data;
+  const category = typeof rest.service_category_id === "number" ? await requireActiveCategory(rest.service_category_id) : null;
+  // The single "Price" control only ever edits whichever column courseToService actually
+  // displayed (international, falling back to domestic) — never the other one. Writing both
+  // would silently collapse a course that legitimately has different domestic/international
+  // fees (e.g. from extraction data) down to one shared amount the moment either is touched.
+  const priceColumn = course.international_fee_total != null ? "international_fee_total" : "domestic_fee_total";
+  const patch = {
+    ...rest,
+    ...("price" in data ? { [priceColumn]: price ?? null } : {}),
+    // Keep course_category in lockstep whenever the category actually changes — see
+    // courseCategoryForSlug's comment for why the list-tab split depends on this.
+    ...(category ? { course_category: courseCategoryForSlug(category.slug) } : {}),
+    ...(is_published !== undefined ? { is_published } : {}),
+    ...(public_visibility !== undefined ? { public_visibility: JSON.stringify(public_visibility) } : {}),
+  };
   await coursesRepo.updateCourse(serviceId, patch, adminId);
   return getService(institutionId, jobId, serviceId);
 }

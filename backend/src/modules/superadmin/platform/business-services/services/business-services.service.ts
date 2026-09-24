@@ -97,8 +97,18 @@ async function requireInstitutionJobId(inst: { id: number; institution_name: str
     business_category_id: await promoteRepo.findCategoryIdBySlug("institutions"),
   });
   const jobId = row.id as string;
-  await userRepo.updateInstitution(inst.id, { source_job_id: jobId });
-  return jobId;
+
+  // Two concurrent first-time requests can both reach here before either persists — only let the
+  // one that finds source_job_id still null win the write, so every caller settles on the same
+  // job id instead of each keeping its own (which would silently split the catalog across two jobs).
+  const [claimed] = await masterKnex("institutions")
+    .where({ id: inst.id, source_job_id: null })
+    .update({ source_job_id: jobId, updated_at: masterKnex.fn.now() })
+    .returning("source_job_id");
+  if (claimed) return claimed.source_job_id as string;
+
+  const current = await masterKnex("institutions").where({ id: inst.id }).select("source_job_id").first();
+  return current!.source_job_id as string;
 }
 
 /** Merges each row with its degree_level/area_of_study names and first study-option duration —
@@ -165,6 +175,11 @@ export async function searchServices(businessId: number, limit: number, offset: 
 
   const { rows, total } = await repo.searchServices(businessId, biz.schema_name, limit, offset, search);
   return { rows: await withListExtras(businessId, biz.schema_name, rows), total };
+}
+
+export async function getService(businessId: number, serviceId: string) {
+  const biz = await requireBusiness(businessId);
+  return repo.getService(businessId, biz.schema_name, serviceId);
 }
 
 export async function createService(businessId: number, data: ServiceInput) {
@@ -451,6 +466,12 @@ export async function searchInstitutionServices(institutionId: number, limit: nu
   const { rows, total } = await instRepo.searchServices(institutionId, jobId, limit, offset, search);
   const extras = await instRepo.getServiceListExtras(institutionId, jobId, rows.map((r) => r.id));
   return { rows: withInstitutionListExtras(rows, extras), total };
+}
+
+export async function getInstitutionService(institutionId: number, serviceId: string) {
+  const inst = await requireInstitution(institutionId);
+  const jobId = await requireInstitutionJobId(inst);
+  return instRepo.getService(institutionId, jobId, serviceId);
 }
 
 export async function createInstitutionService(institutionId: number, data: ServiceInput, adminId?: number) {

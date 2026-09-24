@@ -112,8 +112,17 @@ export function CourseFeesTab({ serviceId, isCourse = true }: Readonly<{ service
         setFees((f) => f.map((x) => (x.id === editing.id ? updated : x)));
         toast.success("Fee updated");
       } else {
-        const created = await Promise.all(inputs.map((input) => businessProfileDetailApi.serviceFees.create(serviceId, input)));
-        setFees((f) => [...f, ...created]);
+        // allSettled, not all — the split (domestic + international) form fires two independent
+        // creates; a failure on one must not discard a fee the other already created on the
+        // server, or the user retries and gets a duplicate.
+        const results = await Promise.allSettled(inputs.map((input) => businessProfileDetailApi.serviceFees.create(serviceId, input)));
+        const created = results.filter((r) => r.status === "fulfilled").map((r) => r.value);
+        const failed = results.find((r): r is PromiseRejectedResult => r.status === "rejected");
+        if (created.length > 0) setFees((f) => [...f, ...created]);
+        if (failed) {
+          toast.error(created.length > 0 ? "Only one fee was saved" : "Couldn't save fee", { description: (failed.reason as Error).message });
+          return;
+        }
         toast.success(created.length > 1 ? "Fees added" : "Fee added");
       }
       setFormOpen(false);

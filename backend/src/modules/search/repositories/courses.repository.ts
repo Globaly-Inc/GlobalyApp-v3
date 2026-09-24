@@ -235,7 +235,13 @@ function courseQuery(previewSchemaName?: string) {
     })
     .joinRaw(topFee("domestic", "dfee"))
     .joinRaw(topFee("international", "ifee"))
-    .whereRaw(PUBLICLY_VISIBLE);
+    .whereRaw(PUBLICLY_VISIBLE)
+    // A course's own draft/publish state (migration 20260925_003) — same preview bypass as the
+    // institution's is_published above, so the owner's own "Preview" button still shows a draft.
+    .where((b) => {
+      b.where("ec.is_published", true);
+      if (previewSchemaName) b.orWhere("inst.schema_name", previewSchemaName);
+    });
 }
 
 function baseQuery({
@@ -467,7 +473,7 @@ export async function listCourseFilterOptions() {
 // The provider and place columns the detail page needs on top of the card: the awarding
 // institution (its own hero/link) and the destination country's seasonal weather.
 const DETAIL_COLUMNS = [
-  "ec.job_id",
+  "ec.job_id", "ec.public_visibility",
   "inst.id as institution_id", "inst.institution_name", "inst.cover_url as institution_cover_url",
   "inst.website as institution_website", "inst.city as institution_city",
   "inst.gallery_images as institution_gallery_images",
@@ -519,19 +525,22 @@ export async function findPublicCourseBySlug(slug: string, previewSchemaName?: s
     .select(...LIST_COLUMNS, ...CARD_COLUMNS, ...DETAIL_COLUMNS)
     .first();
   if (!course) {
-    // ponytail: temporary diagnostic for the preview-404 report — pinpoints which half of
-    // PUBLICLY_VISIBLE/the institution join is failing without needing DB shell access.
-    // Remove once the preview flow is confirmed working end to end.
-    const diag = await masterKnex(`${S}.extraction_courses as ec`)
-      .leftJoin(`${S}.extraction_jobs as ej`, "ej.id", "ec.job_id")
-      .leftJoin("institutions as inst", "inst.source_job_id", "ec.job_id")
-      .whereRaw("left(replace(ec.id::text, '-', ''), 6) = ?", [fragment])
-      .select(
-        "ec.id as course_id", "ec.job_id", "ec.verification_status",
-        "ej.status as job_status", "inst.id as institution_id", "inst.schema_name", "inst.is_published",
-      )
-      .first();
-    console.warn("[course-preview-404]", { slug, fragment, previewSchemaName, diag: diag ?? "no matching extraction_courses row at all" });
+    // ponytail: temporary diagnostic for the preview-404 report, gated to the authenticated
+    // preview path only — an ordinary public miss (a stale link, someone guessing a slug) is
+    // unauthenticated and hits this on every request, so it must not pay for an extra query/log
+    // it never asked for. Remove once the preview flow is confirmed working end to end.
+    if (previewSchemaName) {
+      const diag = await masterKnex(`${S}.extraction_courses as ec`)
+        .leftJoin(`${S}.extraction_jobs as ej`, "ej.id", "ec.job_id")
+        .leftJoin("institutions as inst", "inst.source_job_id", "ec.job_id")
+        .whereRaw("left(replace(ec.id::text, '-', ''), 6) = ?", [fragment])
+        .select(
+          "ec.id as course_id", "ec.job_id", "ec.verification_status",
+          "ej.status as job_status", "inst.id as institution_id", "inst.schema_name", "inst.is_published",
+        )
+        .first();
+      console.warn("[course-preview-404]", { slug, fragment, previewSchemaName, diag: diag ?? "no matching extraction_courses row at all" });
+    }
     return null;
   }
 
@@ -563,16 +572,34 @@ export async function findPublicCourseBySlug(slug: string, previewSchemaName?: s
     filesRepo.listFilesByEntity("service", course.id, "media"),
   ]);
 
-  const mediaUrls = await Promise.all(
-    media.map((f) => storage.getSignedViewUrl(f.storage_path).catch(() => null)),
-  );
+  // A section the owner marked Hidden must not leak through the API response either — the
+  // frontend page only skips rendering the card, but the raw JSON (signed media URLs, fee
+  // amounts, description text) would otherwise still be there for anyone to read directly.
+  const visibility = (course.public_visibility ?? {}) as Record<string, boolean>;
+  const isVisible = (section: string) => visibility[section] !== false;
+
+  const mediaVisible = isVisible("media");
+  const mediaUrls = mediaVisible
+    ? await Promise.all(media.map((f) => storage.getSignedViewUrl(f.storage_path).catch(() => null)))
+    : [];
+
+  const feesVisible = isVisible("fees");
+  const feeRedaction = feesVisible ? {} : {
+    domestic_fee_total: null, domestic_currency: null, domestic_fee_period: null, domestic_fee_installment: null,
+    international_fee_total: null, international_currency: null, international_fee_period: null, international_fee_installment: null,
+    domestic_fee_installments: null, international_fee_installments: null,
+  };
 
   return {
     ...course,
+    ...feeRedaction,
     slug: courseSlug(course.name, course.id),
-    intakes, eligibility, englishRequirements,
-    study_units: studyUnits,
-    study_options: studyOptions,
-    media: media.map((f, i) => ({ id: f.id, url: mediaUrls[i], mime_type: f.mime_type })).filter((m) => m.url),
+    description: isVisible("description") ? course.description : null,
+    intakes: isVisible("intakes") ? intakes : [],
+    eligibility: isVisible("eligibility") ? eligibility : [],
+    englishRequirements: isVisible("eligibility") ? englishRequirements : [],
+    study_units: isVisible("study_units") ? studyUnits : [],
+    study_options: isVisible("study_units") ? studyOptions : [],
+    media: mediaVisible ? media.map((f, i) => ({ id: f.id, url: mediaUrls[i], mime_type: f.mime_type })).filter((m) => m.url) : [],
   };
 }

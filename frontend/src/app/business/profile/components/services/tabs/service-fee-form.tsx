@@ -9,7 +9,6 @@ import { Combobox } from "@/components/combobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
 import { businessProfileDetailApi } from "../../../apis";
 import { geoApi } from "@/app/geo/apis";
 import { CURRENCY_OPTIONS, ENABLED_FEE_TYPES, PERIOD_TYPE_OPTIONS, STUDENT_TYPE_OPTIONS } from "@/app/admin/data/all-extractions/const";
@@ -48,11 +47,9 @@ export function ServiceFeeForm({
   const [periodType, setPeriodType] = useState(fee?.period_type ?? "Per Year");
   const [currency, setCurrency] = useState(fee?.currency ?? "AUD");
   const [name, setName] = useState(fee?.name ?? "");
-  const [description, setDescription] = useState("");
   const [installments, setInstallments] = useState<FeeFormInstallment[]>(() => toFormInstallments(fee));
   const [split, setSplit] = useState(false);
   const [intlInstallments, setIntlInstallments] = useState<FeeFormInstallment[]>(() => [emptyFeeInstallment(0)]);
-  const [saveForReuse, setSaveForReuse] = useState(false);
   const [feeTypes, setFeeTypes] = useState<{ value: string; label: string }[]>([]);
   const [currencyOptions, setCurrencyOptions] = useState(CURRENCY_OPTIONS);
   const [errors, setErrors] = useState<Record<string, string>>({});
@@ -162,17 +159,6 @@ export function ServiceFeeForm({
           <Input id="fee-name" value={name} onChange={(e) => setName(e.target.value)} placeholder="e.g. Semester Fee, Tuition Fee, Application Fee" />
         </div>
 
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="fee-description">Description</Label>
-          <Textarea
-            id="fee-description"
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={2}
-            placeholder="What the page says about this fee — per-credit breakdown, range, what it covers"
-          />
-        </div>
-
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <Label htmlFor="fee-period">
@@ -209,11 +195,6 @@ export function ServiceFeeForm({
             onDirty={() => clearError("intlInstallments")}
           />
         )}
-
-        <div className="flex items-center justify-between rounded-lg border border-border px-3 py-2.5">
-          <span className="text-sm">Save this for future uses</span>
-          <Switch checked={saveForReuse} onCheckedChange={setSaveForReuse} />
-        </div>
       </CardContent>
       <CardFooter className="justify-end gap-2">
         <Button variant="outline" className="cursor-pointer" onClick={onCancel} disabled={saving}>

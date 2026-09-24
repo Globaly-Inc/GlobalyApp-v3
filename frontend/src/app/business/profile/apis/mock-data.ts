@@ -161,6 +161,12 @@ export const businessProfileDetailMockApi = {
     await delay(300);
     return { data: mockServices, total: mockServices.length };
   },
+  getService: async (serviceId: string): Promise<BusinessService> => {
+    await delay(200);
+    const found = mockServices.find((s) => s.id === serviceId);
+    if (!found) throw new Error("Service not found");
+    return found;
+  },
   createService: async (input: ServiceInput): Promise<BusinessService> => {
     await delay(300);
     const service: BusinessService = {

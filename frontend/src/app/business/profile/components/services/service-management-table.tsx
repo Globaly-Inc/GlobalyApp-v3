@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowDown, ArrowUp, ArrowUpDown, Eye, EyeOff, Package, Pencil, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, BookOpen, Eye, EyeOff, Package, Pencil, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -8,14 +8,14 @@ import { PriceEditPopover } from "@/app/admin/platform/businesses/components/ser
 import { coursePublicHref } from "../../utils";
 import type { BusinessService } from "../../apis/types";
 
-export type SortColumn = "name" | "category" | "degree_level" | "area_of_study" | "duration" | "price" | "status";
+export type SortColumn = "name" | "category" | "degree_level" | "area_of_study" | "price" | "status";
 export type SortState = { column: SortColumn | null; direction: "asc" | "desc" };
 
 export type ColumnKey = "category" | "degree_level" | "area_of_study" | "price" | "status";
 
 export const COLUMN_LABELS: Record<ColumnKey, string> = {
   category: "Category", degree_level: "Degree Level", area_of_study: "Subject Area",
-  price: "Price", status: "Status",
+  price: "Fee", status: "Status",
 };
 
 const SORTABLE: Partial<Record<ColumnKey, SortColumn>> = {
@@ -92,10 +92,10 @@ export function ServiceManagementTable({
                 {sort.column === "name" ? (sort.direction === "asc" ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />) : <ArrowUpDown className="h-3 w-3 text-muted-foreground/50" />}
               </button>
             </th>
-            {!readOnly && <th className="p-3 text-left">Actions</th>}
             {[...visibleColumns].map((col) => (
               <th key={col} className="p-3 text-left whitespace-nowrap">{headerButton(col, COLUMN_LABELS[col])}</th>
             ))}
+            {!readOnly && <th className="p-3 text-left">Actions</th>}
           </tr>
         </thead>
         <tbody>
@@ -105,7 +105,7 @@ export function ServiceManagementTable({
               <td className="p-3">
                 <div className="flex items-center gap-2">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                    <Package className="h-4 w-4" />
+                    {isInstitution ? <BookOpen className="h-4 w-4" /> : <Package className="h-4 w-4" />}
                   </div>
                   {isInstitution ? (
                     <button
@@ -125,6 +125,33 @@ export function ServiceManagementTable({
                   )}
                 </div>
               </td>
+              {visibleColumns.has("category") && (
+                <td className="p-3">
+                  {s.category_name ? <Badge variant="secondary" className="text-[10px]">{s.category_name}</Badge> : <span className="text-muted-foreground">—</span>}
+                </td>
+              )}
+              {visibleColumns.has("degree_level") && <td className="p-3 whitespace-nowrap">{s.degree_level ?? <span className="text-muted-foreground">—</span>}</td>}
+              {visibleColumns.has("area_of_study") && <td className="p-3 whitespace-nowrap">{s.area_of_study ?? <span className="text-muted-foreground">—</span>}</td>}
+              {visibleColumns.has("price") && (
+                <td className="p-3 whitespace-nowrap">
+                  {/* Institutions' price is whatever the Fees tab says (extraction_course_fees) —
+                      there's no single editable price column to back this popover, so it would
+                      silently do nothing (see institution-courses.repository.ts's getFeePricesForCourses). */}
+                  {readOnly || isInstitution ? (
+                    s.price ?? <span className="text-muted-foreground">—</span>
+                  ) : (
+                    <div className="flex items-center gap-1">
+                      <span>{s.price ?? <span className="text-muted-foreground">—</span>}</span>
+                      <PriceEditPopover price={s.price} onSave={(next) => onPriceSave(s.id, next)} />
+                    </div>
+                  )}
+                </td>
+              )}
+              {visibleColumns.has("status") && !readOnly && (
+                <td className="p-3">
+                  <Badge variant={s.is_published ? "default" : "secondary"} className="text-[10px]">{s.is_published ? "Published" : "Draft"}</Badge>
+                </td>
+              )}
               {!readOnly && (
                 <td className="p-3">
                   <div className="flex items-center gap-1">
@@ -141,25 +168,6 @@ export function ServiceManagementTable({
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
-                </td>
-              )}
-              {visibleColumns.has("category") && (
-                <td className="p-3">
-                  {s.category_name ? <Badge variant="secondary" className="text-[10px]">{s.category_name}</Badge> : <span className="text-muted-foreground">—</span>}
-                </td>
-              )}
-              {visibleColumns.has("degree_level") && <td className="p-3 whitespace-nowrap">{s.degree_level ?? <span className="text-muted-foreground">—</span>}</td>}
-              {visibleColumns.has("area_of_study") && <td className="p-3 whitespace-nowrap">{s.area_of_study ?? <span className="text-muted-foreground">—</span>}</td>}
-              {visibleColumns.has("price") && (
-                <td className="p-3 whitespace-nowrap">
-                  {readOnly
-                    ? (s.price ?? <span className="text-muted-foreground">—</span>)
-                    : <PriceEditPopover price={s.price} onSave={(next) => onPriceSave(s.id, next)} />}
-                </td>
-              )}
-              {visibleColumns.has("status") && !readOnly && (
-                <td className="p-3">
-                  <Badge variant={s.is_published ? "default" : "secondary"} className="text-[10px]">{s.is_published ? "Published" : "Draft"}</Badge>
                 </td>
               )}
             </tr>

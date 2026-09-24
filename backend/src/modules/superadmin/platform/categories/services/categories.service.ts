@@ -184,6 +184,17 @@ export function createAccreditation(data: AccreditationInput) {
   }, scope_country_ids);
 }
 
+/**
+ * Same insert as createAccreditation, for a self-service submitter (business/institution)
+ * instead of an admin — starts unapproved and non-global (the `accreditations` table's own
+ * default) so it needs an admin's reviewAccreditation before it counts as a vetted, global
+ * catalog entry other organizations can be assumed to trust.
+ */
+export function proposeAccreditation(data: AccreditationInput) {
+  const { scope_country_ids: _ignored, ...rest } = data;
+  return repo.insertAccreditation({ ...rest, business_id: null, status: "pending", is_global: false }, []);
+}
+
 async function requireAccreditation(id: number) {
   const row = await repo.findAccreditationById(id);
   if (!row) throw new NotFoundError("Accreditation not found");

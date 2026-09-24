@@ -136,6 +136,7 @@ export const businessProfileDetailRealApi = {
     const { data, meta } = await httpGet<{ data: BusinessService[]; meta: { total: number } }>(`${BASE}/services/search${toServiceSearchQuery(params)}`);
     return { data, total: meta.total };
   },
+  getService: (serviceId: string): Promise<BusinessService> => httpGet(`${BASE}/services/${serviceId}`),
   createService: (input: ServiceInput): Promise<BusinessService> => httpPost(`${BASE}/services`, input),
   updateService: (serviceId: string, patch: ServicePatch): Promise<BusinessService> =>
     httpPatch(`${BASE}/services/${serviceId}`, patch),

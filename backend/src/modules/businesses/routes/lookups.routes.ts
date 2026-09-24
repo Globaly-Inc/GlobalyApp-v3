@@ -95,9 +95,12 @@ export async function businessLookupsRoutes(app: FastifyInstance) {
     return reply.status(201).send(await categoriesService.createIssuingOrganization(data));
   });
 
+  // Unlike admin's createAccreditation, this starts pending/non-global — an admin has to
+  // reviewAccreditation it before it's a vetted, globally-trusted catalog entry (see
+  // proposeAccreditation's comment).
   app.post("/accreditations", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
     const data = AccreditationInputSchema.parse(req.body);
-    return reply.status(201).send(await categoriesService.createAccreditation(data));
+    return reply.status(201).send(await categoriesService.proposeAccreditation(data));
   });
 
   // Read-only — the admin catalog also lets an admin propose/review new fee types, which stays

@@ -6,7 +6,7 @@
 // of admin's kind/orgId-parameterised businessesApi.
 
 import { useEffect, useRef, useState } from "react";
-import { Award, BookOpen, CalendarDays, CheckCircle2, Circle, DollarSign, Globe2, Pencil, ShieldCheck } from "lucide-react";
+import { Award, BookOpen, CalendarDays, CheckCircle2, Circle, DollarSign, EyeOff, Globe2, Pencil, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
@@ -22,6 +22,7 @@ import type { ServiceEligibility, ServiceFee, ServiceIntake, ServiceMediaFile, S
 type FeeInstallment = { label?: string; lines: { amount: number }[] };
 type LanguageTestRow = { test_type_name: string; overall_score: number };
 
+/** Static — used where there's no section key to toggle (e.g. no visibility prop supplied). */
 export function PublicBadge() {
   return (
     <Badge variant="secondary" className="gap-1 text-[11px]">
@@ -31,19 +32,49 @@ export function PublicBadge() {
   );
 }
 
+export type SectionVisibility = {
+  isVisible: (section: string) => boolean;
+  onToggle: (section: string) => void;
+  disabled: boolean;
+};
+
+/** Same badge, but a click flips whether this section shows on the public course page
+ * (course.public_visibility — see the [slug] page's isVisible). */
+export function VisibilityToggle({ section, visibility }: Readonly<{ section: string; visibility: SectionVisibility }>) {
+  const visible = visibility.isVisible(section);
+  return (
+    <button
+      type="button"
+      disabled={visibility.disabled}
+      onClick={() => visibility.onToggle(section)}
+      className="cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+      title={visible ? "Shown on the public course page — click to hide" : "Hidden from the public course page — click to show"}
+    >
+      <Badge variant={visible ? "secondary" : "outline"} className="gap-1 text-[11px]">
+        {visible ? <Globe2 className="h-3 w-3" /> : <EyeOff className="h-3 w-3" />}
+        {visible ? "Public" : "Hidden"}
+      </Badge>
+    </button>
+  );
+}
+
 /** Matches V1's plain-div card header (BusinessServiceEditor.tsx): icon h-5 w-5 text-primary,
  * h2 font-semibold text-sm, border-b, px-5 py-4 — shadcn's CardHeader/CardTitle read visually
  * smaller/lighter, so summary cards use this instead for same-to-same parity. */
 function SummaryCardHeader({
-  icon: Icon, title, count, action,
-}: Readonly<{ icon: React.ComponentType<{ className?: string }>; title: string; count?: number; action?: React.ReactNode }>) {
+  icon: Icon, title, count, action, section, visibility,
+}: Readonly<{
+  icon: React.ComponentType<{ className?: string }>; title: string; count?: number; action?: React.ReactNode;
+  /** Omit for a card with no public-page equivalent (e.g. Accreditations, not rendered there yet). */
+  section?: string; visibility?: SectionVisibility;
+}>) {
   return (
     <div className="flex items-center justify-between border-b px-5 py-4">
       <div className="flex items-center gap-2">
         <Icon className="h-5 w-5 text-primary" />
         <h2 className="text-sm font-semibold">{title}</h2>
         {count != null && <Badge variant="secondary" className="text-xs">{count}</Badge>}
-        <PublicBadge />
+        {section && visibility && <VisibilityToggle section={section} visibility={visibility} />}
       </div>
       {action}
     </div>
@@ -94,10 +125,11 @@ function useServiceSummaryData(serviceId: string, refreshKey: string | number) {
 }
 
 export function ServiceSummaryBodyExtras({
-  serviceId, isCourse, degreeLevels, onNavigateTab,
+  serviceId, isCourse, degreeLevels, onNavigateTab, visibility,
 }: Readonly<{
   serviceId: string; isCourse: boolean; degreeLevels: Lookup[];
   onNavigateTab: (tab: "study-units" | "accreditations" | "eligibility") => void;
+  visibility: SectionVisibility;
 }>) {
   // This card only exists while tab === "summary" (its parent unmounts it otherwise), so a plain
   // mount-once fetch is enough — it's naturally refreshed every time the caller returns here.
@@ -128,7 +160,7 @@ export function ServiceSummaryBodyExtras({
     <>
       {isCourse && (
       <Card className="gap-0 overflow-hidden">
-        <SummaryCardHeader icon={BookOpen} title="Study units" count={studyUnits.length} action={<ManageButton hasData={studyUnits.length > 0} onClick={() => onNavigateTab("study-units")} />} />
+        <SummaryCardHeader icon={BookOpen} title="Study units" count={studyUnits.length} section="study_units" visibility={visibility} action={<ManageButton hasData={studyUnits.length > 0} onClick={() => onNavigateTab("study-units")} />} />
         <CardContent className="p-4">
           {studyUnits.length === 0 ? (
             <p className="py-2 text-center text-sm italic text-muted-foreground">No study units assigned yet.</p>
@@ -183,7 +215,7 @@ export function ServiceSummaryBodyExtras({
 
       {isCourse && (
       <Card className="gap-0 overflow-hidden">
-        <SummaryCardHeader icon={ShieldCheck} title="Eligibility" count={eligibility.length} action={<ManageButton hasData={eligibility.length > 0} onClick={() => onNavigateTab("eligibility")} />} />
+        <SummaryCardHeader icon={ShieldCheck} title="Eligibility" count={eligibility.length} section="eligibility" visibility={visibility} action={<ManageButton hasData={eligibility.length > 0} onClick={() => onNavigateTab("eligibility")} />} />
         <CardContent className="p-4">
           {eligibility.length === 0 ? (
             <p className="text-sm italic text-muted-foreground">No eligibility requirements configured yet.</p>
@@ -223,6 +255,8 @@ export function ServiceSummaryBodyExtras({
           icon={ShieldCheck}
           title="Media"
           count={media.length}
+          section="media"
+          visibility={visibility}
           action={
             <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => setEditingMedia((v) => !v)} aria-label="Edit media">
               <Pencil className="h-3.5 w-3.5" />
@@ -238,11 +272,12 @@ export function ServiceSummaryBodyExtras({
 }
 
 export function ServiceSummarySidebarExtras({
-  serviceId, name, hasCategory, description, isCourse, tab, onNavigateTab,
+  serviceId, name, hasCategory, description, isCourse, tab, onNavigateTab, visibility,
 }: Readonly<{
   serviceId: string; name: string; hasCategory: boolean; description: string; isCourse: boolean;
   tab: string;
   onNavigateTab: (tab: "fees" | "intakes" | "eligibility") => void;
+  visibility: SectionVisibility;
 }>) {
   // Unlike the body extras above, this sidebar renders for every tab (it's not gated on
   // tab === "summary"), so it never unmounts while a fee/intake gets added elsewhere —
@@ -267,7 +302,7 @@ export function ServiceSummarySidebarExtras({
   return (
     <>
       <Card className="gap-0 overflow-hidden">
-        <SummaryCardHeader icon={DollarSign} title={isCourse ? "Course fees" : "Service fees"} action={<ManageButton hasData={fees.length > 0} onClick={() => onNavigateTab("fees")} />} />
+        <SummaryCardHeader icon={DollarSign} title={isCourse ? "Course fees" : "Service fees"} section="fees" visibility={visibility} action={<ManageButton hasData={fees.length > 0} onClick={() => onNavigateTab("fees")} />} />
         <CardContent className="p-5">
           {fees.length === 0 ? (
             <p className="text-sm italic text-muted-foreground">No fees configured yet.</p>
@@ -297,7 +332,7 @@ export function ServiceSummarySidebarExtras({
 
       {isCourse && (
       <Card className="gap-0 overflow-hidden">
-        <SummaryCardHeader icon={CalendarDays} title="Intakes" action={<ManageButton hasData={intakes.length > 0} onClick={() => onNavigateTab("intakes")} />} />
+        <SummaryCardHeader icon={CalendarDays} title="Intakes" section="intakes" visibility={visibility} action={<ManageButton hasData={intakes.length > 0} onClick={() => onNavigateTab("intakes")} />} />
         <CardContent className="space-y-3 p-5">
           {intakes.length === 0 ? (
             <p className="text-sm italic text-muted-foreground">No intakes configured yet.</p>

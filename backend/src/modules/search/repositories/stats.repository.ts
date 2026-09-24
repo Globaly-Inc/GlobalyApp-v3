@@ -44,6 +44,7 @@ export async function getPlatformStats(): Promise<PlatformStats> {
       (select count(*) from ${S}.extraction_courses ec
         where exists (select 1 from ${S}.extraction_jobs ej
                        where ej.id = ec.job_id and ej.status = 'exported')
+          and ec.is_published
           and ${NOT_REJECTED}) as courses,
 
       (select count(*) from businesses b
