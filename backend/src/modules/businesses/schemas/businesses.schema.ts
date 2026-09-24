@@ -4,8 +4,9 @@ import { z } from "zod";
 import { BUSINESS_TYPES } from "../consts.js";
 
 export {
-  StartExtractionSchema, SiteUrlsQuerySchema, SiteUrlSnapshotQuerySchema,
-  type StartExtractionInput, type SiteUrlsQueryInput, type SiteUrlSnapshotQueryInput,
+  StartExtractionSchema, SiteUrlsQuerySchema, SiteUrlSnapshotQuerySchema, SiteUrlSnapshotUpdateSchema, SiteUrlRefreshSchema,
+  type StartExtractionInput, type SiteUrlsQueryInput, type SiteUrlSnapshotQueryInput, type SiteUrlSnapshotUpdateInput,
+  type SiteUrlRefreshInput,
 } from "../../superadmin/data-extraction/schemas/self-service.schema.js";
 
 export const BusinessRegisterSchema = z.object({

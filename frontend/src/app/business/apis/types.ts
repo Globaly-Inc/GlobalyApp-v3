@@ -183,4 +183,41 @@ export type SiteUrlSnapshot = {
   url: string;
   scraped_at: string;
   markdown: string;
+  edited: boolean;
+};
+
+export type SiteUrlRefreshResult = {
+  queued: string[];
+  rejected: { url: string; error: string }[];
+};
+
+export type OnboardingStep = {
+  key: string;
+  label: string;
+  detail: string;
+  duration: string | null;
+  done: boolean;
+};
+
+export type OnboardingProgress = {
+  steps: OnboardingStep[];
+  completed: number;
+  total: number;
+};
+
+export type WidgetAnalyticsMonth = {
+  month: string;
+  visitors: number;
+  conversationsClosed: number;
+  conversions: number;
+};
+
+export type WidgetAnalytics = {
+  stats: {
+    visitors: { value: number; deltaPct: number };
+    conversationsClosed: { value: number; deltaPct: number };
+    conversions: { value: number; delta: number };
+    conversionRate: { value: number; deltaPts: number };
+  };
+  monthly: WidgetAnalyticsMonth[];
 };

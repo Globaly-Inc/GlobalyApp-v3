@@ -3,7 +3,7 @@ import type {
   AiAssistInput, AiAssistResult,
   BusinessCategoryOption, BusinessProfile, BusinessProfilePatch, BusinessRegisterInput,
   RegisterBusinessResult, InstitutionRegisterInput, RegisterInstitutionResult, StartExtractionInput,
-  ExtractionStatus, SiteUrlsQuery, SiteUrlsPage, SiteUrlSnapshot,
+  ExtractionStatus, SiteUrlsQuery, SiteUrlsPage, SiteUrlSnapshot, SiteUrlRefreshResult, OnboardingProgress, WidgetAnalytics,
 } from "./types";
 
 // Institution accounts render through this exact same business-profile UI (there is no
@@ -213,5 +213,36 @@ export const businessRealApi = {
       ? "/institutions/me/extraction-site-urls/snapshot"
       : "/businesses/me/extraction-site-urls/snapshot";
     return httpGet<SiteUrlSnapshot>(`${base}?url=${encodeURIComponent(url)}`);
+  },
+
+  updateExtractionSiteUrlSnapshot: (url: string, markdown: string): Promise<SiteUrlSnapshot> => {
+    const base = isInstitutionContext()
+      ? "/institutions/me/extraction-site-urls/snapshot"
+      : "/businesses/me/extraction-site-urls/snapshot";
+    return httpPatch<SiteUrlSnapshot>(base, { url, markdown });
+  },
+
+  refreshExtractionSiteUrls: (urls: string[]): Promise<SiteUrlRefreshResult> => {
+    const base = isInstitutionContext()
+      ? "/institutions/me/extraction-site-urls/refresh"
+      : "/businesses/me/extraction-site-urls/refresh";
+    return httpPost<SiteUrlRefreshResult>(base, { urls });
+  },
+
+  getOnboardingProgress: (): Promise<OnboardingProgress> => {
+    const base = isInstitutionContext() ? "/institutions/me/onboarding" : "/businesses/me/onboarding";
+    return httpGet<OnboardingProgress>(base);
+  },
+
+  markCoursesReviewed: (): Promise<{ reviewed: boolean }> => {
+    const base = isInstitutionContext()
+      ? "/institutions/me/onboarding/review-courses"
+      : "/businesses/me/onboarding/review-courses";
+    return httpPost(base, {});
+  },
+
+  getWidgetAnalytics: (): Promise<WidgetAnalytics> => {
+    const base = isInstitutionContext() ? "/institutions/me/widget-analytics" : "/businesses/me/widget-analytics";
+    return httpGet<WidgetAnalytics>(base);
   },
 };

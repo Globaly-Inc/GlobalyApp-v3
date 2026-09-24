@@ -43,9 +43,6 @@ const EMPTY: WidgetAnalytics = {
   monthly: ["Apr", "May", "Jun", "Jul", "Aug", "Sep"].map((month) => ({ month, visitors: 0, conversationsClosed: 0, conversions: 0 })),
 };
 
-/** A live summary of the chat widget's own numbers — real ai_widget_visitors data, one layout at
- * every stage. Before the widget has ever had a real visitor every count is naturally 0, which
- * this renders exactly like any other value rather than swapping to a separate empty state. */
 export function DashboardPreview() {
   const [series, setSeries] = useState<SeriesKey>("conversationsClosed");
   const [data, setData] = useState<WidgetAnalytics | null>(null);

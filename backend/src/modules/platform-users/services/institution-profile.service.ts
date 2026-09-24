@@ -5,10 +5,13 @@ import * as storage from "../../../shared/storage/storageService.js";
 import * as repo from "../repositories/platform-users.repository.js";
 import * as jobsRepo from "../../superadmin/data-extraction/repositories/jobs.repository.js";
 import { createJob, getSelfServiceStatus } from "../../superadmin/data-extraction/services/jobs.service.js";
-import { listSiteUrls, getSnapshotMarkdownByUrl } from "../../superadmin/data-extraction/services/site-urls.service.js";
+import { listSiteUrls, getSnapshotMarkdownByUrl, updateSnapshotMarkdown, refreshSiteUrls } from "../../superadmin/data-extraction/services/site-urls.service.js";
+import { getInstitutionOnboardingProgress, markCoursesReviewedForInstitution } from "../../businesses/services/onboarding-progress.service.js";
+import { getWidgetAnalytics } from "../../ai-counsellor/services/widget-analytics.service.js";
 import { ConflictError, BadRequestError, NotFoundError } from "../../../shared/errors.js";
 import type {
   InstitutionProfilePatchInput, StartExtractionInput, SiteUrlsQueryInput, SiteUrlSnapshotQueryInput,
+  SiteUrlSnapshotUpdateInput, SiteUrlRefreshInput,
 } from "../schemas/institution-profile.schema.js";
 import type { InstitutionRecord } from "../../../core/types.js";
 
@@ -126,4 +129,32 @@ export async function getExtractionSiteUrlSnapshot(institution: InstitutionRecor
   const sourceJobId = (await withPublicSourceJobId(institution)).source_job_id;
   if (!sourceJobId) throw new NotFoundError("No extraction started for this institution");
   return getSnapshotMarkdownByUrl(sourceJobId, query.url);
+}
+
+/** Write half of the above — the owner correcting what was scraped from their own page. */
+export async function updateExtractionSiteUrlSnapshot(institution: InstitutionRecord, input: SiteUrlSnapshotUpdateInput, editorId: number) {
+  const sourceJobId = (await withPublicSourceJobId(institution)).source_job_id;
+  if (!sourceJobId) throw new NotFoundError("No extraction started for this institution");
+  return updateSnapshotMarkdown(sourceJobId, input.url, input.markdown, editorId);
+}
+
+/** Re-pull one or more of the institution's own pages from the live site. */
+export async function refreshExtractionSiteUrls(institution: InstitutionRecord, input: SiteUrlRefreshInput) {
+  const sourceJobId = (await withPublicSourceJobId(institution)).source_job_id;
+  if (!sourceJobId) throw new NotFoundError("No extraction started for this institution");
+  return refreshSiteUrls(sourceJobId, input.urls);
+}
+
+export async function getOnboardingProgress(institution: InstitutionRecord) {
+  const sourceJobId = (await withPublicSourceJobId(institution)).source_job_id;
+  return getInstitutionOnboardingProgress(institution.id, sourceJobId, institution.schema_name);
+}
+
+export async function markOnboardingCoursesReviewed(institution: InstitutionRecord) {
+  await markCoursesReviewedForInstitution(institution.id);
+  return { reviewed: true };
+}
+
+export async function getMyWidgetAnalytics(institution: InstitutionRecord) {
+  return getWidgetAnalytics({ kind: "institution", id: institution.id }, institution.id, institution.schema_name);
 }

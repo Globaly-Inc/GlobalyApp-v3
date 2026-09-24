@@ -12,13 +12,6 @@ import { BusinessQuickActions } from "@/app/business/portal/components/business-
 import { BusinessHero } from "@/app/business/portal/components/business-hero";
 import { BusinessStatsSidebar } from "@/app/business/portal/components/business-stats-sidebar";
 
-/** Moved out of the portal home into its own nav tab — a header + identity/shortcuts sidebar
- *  give the feed some visual weight instead of a lone centered column. The clock/weather/timezone
- *  hero moved here too (2026-09-23) when the portal home's hero became an onboarding-progress
- *  banner instead — this is its new home, not a duplicate. The stats sidebar moved here the same
- *  day for the same reason (portal's right column became the "Get set up" checklist) rather than
- *  being dropped — it fetches its own enquiries/services/credits since a visitor can land here
- *  directly without ever loading the portal page first. */
 export function SocialView() {
   const dispatch = useAppDispatch();
   const profile = useAppSelector((state) => state.businessOnboarding.profile);

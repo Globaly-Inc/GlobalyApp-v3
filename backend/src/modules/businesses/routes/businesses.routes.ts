@@ -3,7 +3,8 @@
 import type { FastifyInstance } from "fastify";
 import {
   BusinessRegisterSchema, BusinessProfilePatchSchema, BusinessSearchQuerySchema, ClaimAcceptSchema, ClaimRequestByEmailSchema,
-  AiAssistSchema, StartExtractionSchema, SiteUrlsQuerySchema, SiteUrlSnapshotQuerySchema,
+  AiAssistSchema, StartExtractionSchema, SiteUrlsQuerySchema, SiteUrlSnapshotQuerySchema, SiteUrlSnapshotUpdateSchema,
+  SiteUrlRefreshSchema,
 } from "../schemas/businesses.schema.js";
 import { requireBusinessContext, requireBusinessOrInstitutionContext } from "../../../core/plugins/auth.plugin.js";
 import * as service from "../services/businesses.service.js";
@@ -80,6 +81,41 @@ export async function businessRoutes(app: FastifyInstance) {
   }, async (req, reply) => {
     const query = SiteUrlSnapshotQuerySchema.parse(req.query);
     const result = await service.getExtractionSiteUrlSnapshot(req.auth.orgId!, query);
+    return reply.send(result);
+  });
+
+  app.patch("/me/extraction-site-urls/snapshot", {
+    preHandler: requireBusinessContext,
+    config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+  }, async (req, reply) => {
+    const input = SiteUrlSnapshotUpdateSchema.parse(req.body);
+    const result = await service.updateExtractionSiteUrlSnapshot(req.auth.orgId!, input, Number(req.auth.sub));
+    return reply.send(result);
+  });
+
+  // Synchronous, not queued — capped at 10 URLs (SiteUrlRefreshSchema) so this stays inside a
+  // normal request timeout instead of needing the pipeline's batch/queue machinery.
+  app.post("/me/extraction-site-urls/refresh", {
+    preHandler: requireBusinessContext,
+    config: { rateLimit: { max: 5, timeWindow: "5 minutes" } },
+  }, async (req, reply) => {
+    const input = SiteUrlRefreshSchema.parse(req.body);
+    const result = await service.refreshExtractionSiteUrls(req.auth.orgId!, input);
+    return reply.send(result);
+  });
+
+  app.get("/me/onboarding", { preHandler: requireBusinessContext }, async (req, reply) => {
+    const result = await service.getOnboardingProgress(req.auth.orgId!);
+    return reply.send(result);
+  });
+
+  app.post("/me/onboarding/review-courses", { preHandler: requireBusinessContext }, async (req, reply) => {
+    const result = await service.markOnboardingCoursesReviewed(req.auth.orgId!);
+    return reply.send(result);
+  });
+
+  app.get("/me/widget-analytics", { preHandler: requireBusinessContext }, async (req, reply) => {
+    const result = await service.getMyWidgetAnalytics(req.auth.orgId!);
     return reply.send(result);
   });
 

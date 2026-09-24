@@ -13,13 +13,10 @@ import { GetSetUpChecklist } from "./get-set-up-checklist";
 import { NeedAHandCard } from "./need-a-hand-card";
 
 /**
- * Home = hero + a "get set up" checklist rail. Main column: extraction card, chat-widget
- * analytics, recent enquiries. Right column: the checklist, quick actions, then support — no
- * credits card (removed; fetchCredits() below stays because BusinessShell's header pill still
- * reads the same shared state). The old stats grid is gone entirely — its "Views" tile was
- * hardcoded to 0, not a real metric.
- * `profile` is already guaranteed by BusinessShell (it blocks rendering behind a spinner until the
- * profile loads), so this view doesn't need its own fetch or loading state for it.
+ * fetchCredits() below stays even without a credits card here — BusinessShell's header pill still
+ * reads the same shared state. `profile` is already guaranteed by BusinessShell (it blocks
+ * rendering behind a spinner until the profile loads), so this view doesn't need its own fetch or
+ * loading state for it.
  */
 export function BusinessPortalView() {
   const dispatch = useAppDispatch();

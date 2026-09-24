@@ -51,7 +51,6 @@ export async function getWidgetAnalytics(owner: EmbedOwner, orgId: number, schem
   const rateNow = conversionRate(converted.length, visitors.length);
   const rateLastMonth = conversionRate(convertedLastMonth, visitorsLastMonth);
 
-  // Last 6 calendar months, oldest first — matches the reference card's "Growth over 6 months".
   const monthStarts = Array.from({ length: 6 }, (_, i) => startOfMonth(now, 5 - i));
   const monthly = monthStarts.map((start, i) => {
     const end = i < 5 ? monthStarts[i + 1] : now;

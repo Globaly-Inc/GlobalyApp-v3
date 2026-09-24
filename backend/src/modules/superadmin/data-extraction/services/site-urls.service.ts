@@ -6,7 +6,9 @@ import { buildPaginatedResponse, paginationToOffset } from "../../../../shared/p
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { logAudit } from "../shared/audit.js";
 import * as repo from "../repositories/site-urls.repository.js";
-import { readSnapshot, snapshotPathFor } from "../lib/page-store.js";
+import { readSnapshot, snapshotPathFor, writeManualEdit } from "../lib/page-store.js";
+import { queueService } from "../../../../shared/queue/queueService.js";
+import { SELF_SERVICE_QUEUES } from "../shared/self-service-queues.js";
 import type { ListSiteUrlsQuery, PatchSiteUrlInput, BulkExcludeInput, ListSnapshotsQuery, AddSiteUrlInput } from "../schemas/site-urls.schema.js";
 
 async function requireJob(jobId: string) {
@@ -107,5 +109,29 @@ export async function getSnapshotMarkdownByUrl(jobId: string, url: string) {
   if (!owns) throw new NotFoundError("This page isn't part of this job's site");
   const page = await readSnapshot(url, "main");
   if (!page) throw new NotFoundError("Snapshot not found — it may not have been scraped yet");
-  return { url, scraped_at: page.scraped_at, markdown: page.markdown };
+  return { url, scraped_at: page.scraped_at, markdown: page.markdown, edited: page.updated_by_platform_user_id != null };
+}
+
+export async function updateSnapshotMarkdown(jobId: string, url: string, markdown: string, editorId: number) {
+  await requireJob(jobId);
+  const owns = await masterKnex(`${S}.extraction_site_urls`).where({ job_id: jobId, url }).first("id");
+  if (!owns) throw new NotFoundError("This page isn't part of this job's site");
+  const page = await writeManualEdit(url, editorId, markdown);
+  if (!page) throw new NotFoundError("Snapshot not found — it may not have been scraped yet");
+  return { url, scraped_at: page.scraped_at, markdown: page.markdown, edited: true };
+}
+
+export async function refreshSiteUrls(jobId: string, urls: string[]) {
+  await requireJob(jobId);
+  const owned = new Set(
+    await masterKnex(`${S}.extraction_site_urls`).where({ job_id: jobId }).whereIn("url", urls).pluck("url"),
+  );
+  const queued: string[] = [];
+  const rejected: { url: string; error: string }[] = [];
+  for (const url of urls) {
+    if (!owned.has(url)) { rejected.push({ url, error: "Not part of this job's site" }); continue; }
+    await queueService.publish(SELF_SERVICE_QUEUES.SITE_URL_REFRESH, { url });
+    queued.push(url);
+  }
+  return { queued, rejected };
 }

@@ -2,7 +2,8 @@ import type {
   AiAssistInput, AiAssistResult,
   BusinessCategoryOption, BusinessProfile, BusinessProfilePatch, BusinessRegisterInput,
   RegisterBusinessResult, InstitutionRegisterInput, RegisterInstitutionResult, StartExtractionInput,
-  ExtractionStatus, SiteUrl, SiteUrlCategory, SiteUrlsPage, SiteUrlsQuery, SiteUrlSnapshot,
+  ExtractionStatus, SiteUrl, SiteUrlCategory, SiteUrlsPage, SiteUrlsQuery, SiteUrlSnapshot, SiteUrlRefreshResult,
+  OnboardingProgress, OnboardingStep, WidgetAnalytics,
 } from "./types";
 
 function delay(ms: number) {
@@ -10,6 +11,8 @@ function delay(ms: number) {
 }
 
 let mockExtractionProgressPct = 0;
+let mockReviewedCourses = false;
+const mockEditedSnapshots: Record<string, string> = {};
 
 const MOCK_SITE_URLS: Omit<SiteUrl, "id" | "created_at">[] = [
   { url: "https://www.morgan.edu/", source: "homepage", category: "overview", category_source: "heuristic" },
@@ -223,14 +226,96 @@ export const businessMockApi = {
     await delay(400);
     const found = MOCK_SITE_URLS.find((u) => u.url === url);
     if (!found) throw new Error("This page isn't part of this job's site");
+    const edited = mockEditedSnapshots[url];
     return {
       url,
       scraped_at: new Date().toISOString(),
-      markdown:
+      markdown: edited ??
         `# ${found.category ? found.category.replace(/_/g, " ") : "Page"}\n\n` +
         `This is a mock snapshot of the content Scrapling captured from **${url}**.\n\n` +
         "In a real extraction this shows the exact markdown handed to the model — headings, " +
         "paragraphs, tables, and links exactly as the page rendered them at fetch time.",
+      edited: edited !== undefined,
+    };
+  },
+
+  updateExtractionSiteUrlSnapshot: async (url: string, markdown: string): Promise<SiteUrlSnapshot> => {
+    console.log("[mock] PATCH /businesses/me/extraction-site-urls/snapshot", url);
+    await delay(400);
+    const found = MOCK_SITE_URLS.find((u) => u.url === url);
+    if (!found) throw new Error("This page isn't part of this job's site");
+    mockEditedSnapshots[url] = markdown;
+    return { url, scraped_at: new Date().toISOString(), markdown, edited: true };
+  },
+
+  refreshExtractionSiteUrls: async (urls: string[]): Promise<SiteUrlRefreshResult> => {
+    console.log("[mock] POST /businesses/me/extraction-site-urls/refresh", urls);
+    await delay(300);
+    const queued: string[] = [];
+    const rejected: { url: string; error: string }[] = [];
+    for (const url of urls) {
+      if (MOCK_SITE_URLS.some((u) => u.url === url)) {
+        // The real worker clears this once it re-scrapes; the mock has no background job, so
+        // clear it immediately so a "View" right after still shows something changed.
+        delete mockEditedSnapshots[url];
+        queued.push(url);
+      } else {
+        rejected.push({ url, error: "Not part of this job's site" });
+      }
+    }
+    return { queued, rejected };
+  },
+
+  getOnboardingProgress: async (): Promise<OnboardingProgress> => {
+    console.log("[mock] GET /businesses/me/onboarding");
+    await delay(300);
+    const extractionDone = mockExtractionProgressPct >= 100;
+    const steps: OnboardingStep[] = [
+      { key: "create_account", label: "Create your account", detail: "", duration: null, done: true },
+      { key: "verify_email", label: "Verify your work email", detail: "", duration: null, done: true },
+      {
+        key: "extract_website", label: "Extract your website data",
+        detail: "Build your profile from your website", duration: "~15 min", done: extractionDone,
+      },
+      {
+        key: "review_courses", label: "Review courses & services",
+        detail: "Check what we found, fix gaps", duration: "~10 min", done: mockReviewedCourses,
+      },
+      {
+        key: "customize_assistant", label: "Customise your AI assistant",
+        detail: "Name, greeting and tone of voice", duration: "~5 min", done: false,
+      },
+      {
+        key: "add_chat_widget", label: "Add the chat widget to your site",
+        detail: "Paste one line of code, or send it to IT", duration: "~5 min", done: false,
+      },
+      {
+        key: "invite_team", label: "Invite your team",
+        detail: "Admissions staff who answer enquiries", duration: "~2 min", done: false,
+      },
+    ];
+    return { steps, completed: steps.filter((s) => s.done).length, total: steps.length };
+  },
+
+  markCoursesReviewed: async (): Promise<{ reviewed: boolean }> => {
+    console.log("[mock] POST /businesses/me/onboarding/review-courses");
+    await delay(300);
+    mockReviewedCourses = true;
+    return { reviewed: true };
+  },
+
+  getWidgetAnalytics: async (): Promise<WidgetAnalytics> => {
+    console.log("[mock] GET /businesses/me/widget-analytics");
+    await delay(300);
+    const zeroMonth = { visitors: 0, conversationsClosed: 0, conversions: 0 };
+    return {
+      stats: {
+        visitors: { value: 0, deltaPct: 0 },
+        conversationsClosed: { value: 0, deltaPct: 0 },
+        conversions: { value: 0, delta: 0 },
+        conversionRate: { value: 0, deltaPts: 0 },
+      },
+      monthly: ["Apr", "May", "Jun", "Jul", "Aug", "Sep"].map((month) => ({ month, ...zeroMonth })),
     };
   },
 
