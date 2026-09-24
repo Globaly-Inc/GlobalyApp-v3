@@ -449,6 +449,13 @@ export async function recordProfile(
       const value = incoming[key];
       if (typeof value === "string" && value) patch[key] = value;
     }
+    // Except the nationality pair, which is one statement stored in two columns: a turn that
+    // supplied either half replaces both. Otherwise "Nepali" then "actually, Kashmiri" keeps
+    // Nepal beside the new wording, and "Nepali" then "I'm from India" keeps "Nepali" as the raw.
+    if ("nationality" in patch || "nationality_raw" in patch) {
+      patch.nationality ??= null;
+      patch.nationality_raw ??= null;
+    }
 
     for (const key of PROFILE_KEYS) {
       const add = incoming[key];

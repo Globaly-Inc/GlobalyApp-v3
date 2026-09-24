@@ -49,9 +49,14 @@ const CSV_COLUMNS = ["Name", "Email", "Status", "Messages", "First seen", "Last 
  *
  * Quoting unconditionally rather than only when a comma appears — a name with a comma in it is
  * exactly the row nobody tests, and the check costs more than just always quoting.
+ *
+ * Quoting does not stop Excel/Sheets evaluating a cell that starts with = + - @, and names here
+ * are typed by anonymous widget visitors — so a leading apostrophe defuses them, the same guard
+ * the subscriber export uses.
  */
 function csvCell(value: string): string {
-  return `"${value.replace(/"/g, '""')}"`;
+  const defused = /^[=+\-@\t\r]/.test(value) ? `'${value}` : value;
+  return `"${defused.replace(/"/g, '""')}"`;
 }
 
 export function visitorsToCsv(rows: WidgetVisitor[]): string {

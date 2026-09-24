@@ -16,6 +16,8 @@ type AiWidgetVisitorsState = {
   counts: VisitorCounts;
   status: "idle" | "loading" | "failed";
   error: string | null;
+  /** The latest fetch. Filters change faster than responses arrive; only this one may write. */
+  requestId: string | null;
 };
 
 const initialState: AiWidgetVisitorsState = {
@@ -24,6 +26,7 @@ const initialState: AiWidgetVisitorsState = {
   counts: { all: 0, visitor: 0, lead: 0 },
   status: "idle",
   error: null,
+  requestId: null,
 };
 
 const aiWidgetVisitorsSlice = createSlice({
@@ -32,17 +35,20 @@ const aiWidgetVisitorsSlice = createSlice({
   reducers: {},
   extraReducers: (builder) => {
     builder
-      .addCase(fetchVisitors.pending, (state) => {
+      .addCase(fetchVisitors.pending, (state, action) => {
+        state.requestId = action.meta.requestId;
         state.status = "loading";
         state.error = null;
       })
       .addCase(fetchVisitors.fulfilled, (state, action) => {
+        if (action.meta.requestId !== state.requestId) return;
         state.status = "idle";
         state.items = action.payload.data;
         state.total = action.payload.total;
         state.counts = action.payload.counts;
       })
       .addCase(fetchVisitors.rejected, (state, action) => {
+        if (action.meta.requestId !== state.requestId) return;
         state.status = "failed";
         state.error = action.error.message ?? "Failed to load visitors.";
       });

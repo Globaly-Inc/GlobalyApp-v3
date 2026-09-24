@@ -509,6 +509,27 @@ const parsed = (p: Record<string, unknown>) => JSON.parse(p as unknown as string
   ok(seen.locked, true, "the read that feeds the merge takes a row lock");
 }
 
+// Nationality is one statement in two columns: a correction replaces BOTH halves, or the stale
+// one survives beside it. "Nepali" -> "Kashmiri" (no country) must clear Nepal; "Nepali" ->
+// "India" (exact match, no raw) must clear the old "Nepali" wording.
+{
+  const { db, captured } = fakeDb({ nationality: "Nepal", nationality_raw: "Nepali" });
+  await recordProfile(db, 1, { nationality_raw: "Kashmiri" });
+  ok(captured.nationality, null, "an unmatched nationality correction clears the old country");
+  ok(captured.nationality_raw, "Kashmiri", "and records the new wording");
+}
+{
+  const { db, captured } = fakeDb({ nationality: "Nepal", nationality_raw: "Nepali" });
+  await recordProfile(db, 1, { nationality: "India" });
+  ok(captured.nationality, "India", "a matched nationality correction writes the country");
+  ok(captured.nationality_raw, null, "and clears the previous wording");
+}
+{
+  const { db, captured } = fakeDb({ nationality: "Nepal", nationality_raw: "Nepali" });
+  await recordProfile(db, 1, { age: "22" });
+  ok("nationality" in captured || "nationality_raw" in captured, false, "a turn without nationality leaves both halves alone");
+}
+
 // THE ONE THAT MATTERS: restating the same test later fills in detail instead of duplicating.
 {
   const { db, captured } = fakeDb({ language_tests: [{ test_type: "IELTS", overall_score: "7.0" }] });
@@ -582,6 +603,17 @@ for (const msg of [
   "I'm interested in the Master of Computer Science",
   "I want to study data science",
 ]) ok(worthExtracting(msg), true, `prefilter accepts attribute: ${msg.slice(0, 40)}`);
+
+// A bare answer carries no keyword of its own, so it is judged by the question it answers.
+// Without this, "22" to "how old are you?" was never sent to the model at all.
+ok(worthExtracting("22", "Great choice! How old are you?"), true, "prefilter accepts a bare answer to an age question");
+ok(worthExtracting("Nepali", "Thanks. What is your nationality?"), true, "prefilter accepts a bare answer to a nationality question");
+ok(worthExtracting("yes", "Would you like to see the fees?"), false, "prefilter still skips 'yes' to a logistics question");
+// Only the LAST question counts — a course mention earlier in the turn must not qualify "ok".
+ok(worthExtracting("ok", "The MBA course is great. Shall I continue?"), false, "prefilter ignores background words outside the last question");
+for (const msg of ["I'm Nepali", "I am an Italian", "im Chinese", "I'm British"]) {
+  ok(worthExtracting(msg), true, `prefilter accepts demonym: ${msg}`);
+}
 
 // DELIBERATE over-fire, asserted so nobody "fixes" it later. "tell me about" has to match, or
 // "Can you tell me about your MBA?" — the canonical study_preference phrasing — is never looked
@@ -765,7 +797,7 @@ deep(cleanProfile({ age: "early 30s" }), { age: "early 30s" }, "age is stored ve
   const { db, captured } = fakeDb({});
   await recordProfile(db, 1, { nationality_raw: "Kashmiri" });
   ok(captured.nationality_raw, "Kashmiri", "an unmatched nationality keeps the visitor's wording");
-  ok("nationality" in captured, false, "and files them under no country");
+  ok(captured.nationality ?? null, null, "and files them under no country");
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

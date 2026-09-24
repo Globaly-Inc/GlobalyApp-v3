@@ -24,9 +24,10 @@ const logger = createChildLogger("profile-extract");
  *   than "also append an invisible block"; and
  * - the main reply's prompt gets ~1.4k tokens shorter on every single turn.
  *
- * It reads the recent TRANSCRIPT rather than one message, which is what makes "I'm 22" after
- * "how old are you?" and "yes, 7 in each" after an IELTS question resolvable at all. The prompt
- * carries the weight of keeping the counsellor's own words out of the record — see the rules.
+ * It reads the recent TRANSCRIPT rather than one message, which is what makes "22" after
+ * "how old are you?" and "yes, 7 in each" after an IELTS question resolvable at all — but it
+ * returns only what the LATEST message states. The prompt carries the weight of keeping the
+ * counsellor's own words, and the visitor's already-recorded ones, out of this turn's record.
  */
 
 /** How much conversation the extraction sees. Mirrors conclusion-detect deliberately. */
@@ -56,7 +57,7 @@ export const LOOKS_LIKE_BACKGROUND = new RegExp(
     "honours|honors|first class|second class|distinction|band|overall|score|scored|semester|transcript",
     "work|worked|working|job|role|intern|internship|experience|employed|employer|company",
     // Age. The bare-number form is handled separately below.
-    "years old|yrs old|age|aged|birthday|born in",
+    "years old|yrs old|how old|age|aged|birthday|born in",
     // Gender, only ever as an explicit self-description.
     "male|female|man|woman|non-binary|nonbinary|transgender|he/him|she/her|they/them|pronouns",
     // Nationality — framing, never country names.
@@ -71,10 +72,26 @@ export const LOOKS_LIKE_BACKGROUND = new RegExp(
 /** "I'm 22", "I am 25", "22 years old" — an age with no surrounding keyword. */
 const BARE_AGE = /\b(i'?m|i am|im|age)\s*:?\s*\d{1,2}\b|\b\d{1,2}\s*(years?|yrs?)\b/i;
 
+/**
+ * "I'm Nepali", "I am an Italian", "im Chinese" — a demonym, which no framing word above catches.
+ * Matched by SUFFIX (-i, -an, -ese, -ish), not a list of nationalities. Over-fires on "I'm Rohan";
+ * that is one cheap call returning {}.
+ */
+const DEMONYM = /\b(i'?m|i am|im)\s+(an?\s+)?[a-z]+(i|an|ese|ish)\b/i;
+
+/** The last question in a counsellor turn: "…great choice. How old are you?" -> "How old are you?" */
+function lastQuestion(text: string): string | undefined {
+  return text.match(/[^.?!\n]*\?/g)?.pop();
+}
+
 const SYSTEM = [
-  "You read a conversation between a student and a university counsellor, and extract what the STUDENT has said about themselves. Return ONLY a JSON object. No prose, no code fence, no explanation.",
+  "You read a conversation between a student and a university counsellor, and extract what the student's LATEST message says about themselves. Return ONLY a JSON object. No prose, no code fence, no explanation.",
   "",
-  "Shape — include ONLY the keys the conversation actually revealed:",
+  "The conversation ends with the latest message. Everything before it is context: use it to understand what the latest message means (the question it answers, what \"it\" or \"that one\" refers to), but NEVER return a fact that only appears earlier. Those were already recorded, and returning them again overwrites later corrections.",
+  '  COUNSELLOR: "How old are you?"  STUDENT (latest): "22"          -> {"age":"22"}',
+  '  STUDENT: "I\'m 22"  ...  STUDENT (latest): "tell me about the MBA" -> {"study_preference":"MBA"}   (age is NOT returned)',
+  "",
+  "Shape — include ONLY the keys the latest message actually revealed:",
   '{"age":"","gender":"","nationality":"","study_preference":"",',
   '"qualifications":[{"qualification_type":"","degree_title":"","subject_area":"","institution_name":"","grading_system":"","grade_value":"","is_current":false,"start_date":"","end_date":""}],',
   '"language_tests":[{"test_status":"","test_type":"","overall_score":"","test_date":"","sub_scores":{}}],',
@@ -104,19 +121,19 @@ const SYSTEM = [
   '  "two years as a junior developer at Infosys, still there"',
   '  -> {"work_experiences":[{"job_title":"Junior Developer","organization_name":"Infosys","is_current":true}]}',
   "",
-  "One conversation often reveals SEVERAL of these at once. Return every key it revealed — never stop at the first:",
+  "One message often reveals SEVERAL of these at once. Return every key it revealed — never stop at the first:",
   '  "I\'m 24, from Nepal, done bachelors in computing with an upper second class and 7 in ielts. Interested in the MSc Data Science."',
   '  -> {"age":"24","nationality":"Nepal","study_preference":"MSc Data Science","qualifications":[{"qualification_type":"Bachelor","degree_title":"Bachelors in Computing","subject_area":"Computing","grading_system":"UK Honours","grade_value":"Upper Second Class"}],"language_tests":[{"test_type":"IELTS","overall_score":"7"}]}',
   "",
   "Rules:",
   "- Record only what THEY stated about THEMSELVES. Never a course's entry requirement, never the counsellor's recommendation, never an inference.",
-  "- Read the WHOLE conversation, not just the last message. An answer often sits in a reply to the counsellor's question (\"how old are you?\" / \"22\").",
-  "- If they CORRECT something they said earlier, return the corrected value.",
+  "- The latest message is often a bare reply to the counsellor's question (\"how old are you?\" / \"22\"). Read the question to understand it.",
+  "- If the latest message CORRECTS something they said earlier, return the corrected value.",
   "- Scores and grades stay EXACTLY as written: '7.0' stays '7.0', '2:1' stays '2:1', '3.6 GPA' stays '3.6'. Never convert, never round, never normalise.",
   "- A test they PLAN to sit is not a test they took: test_status 'planned', no score.",
   "- Omit any key they did not give. No nulls, no empty strings, no placeholders, no guesses.",
   "- Each array holds a LIST of objects, even when there is only one. Never emit a bare object.",
-  "- The conversation reveals nothing about them: return exactly {}",
+  "- The latest message reveals nothing new about them: return exactly {}",
 ].join("\n");
 
 /**
@@ -128,9 +145,21 @@ const SYSTEM = [
  * guarding against a cheap failure (one wasted call returning `{}`) at the price of an expensive
  * one, so it is gone.
  */
-export function worthExtracting(message: string): boolean {
+export function worthExtracting(message: string, previousCounsellorTurn?: string): boolean {
   const text = message.trim();
-  return LOOKS_LIKE_BACKGROUND.test(text) || BARE_AGE.test(text);
+  if (LOOKS_LIKE_BACKGROUND.test(text) || BARE_AGE.test(text) || DEMONYM.test(text)) return true;
+  // An answer carries no keyword of its own — "22", "Nepali", "yes, 7 in each" — so it is judged
+  // by the question it answers. Only the counsellor's LAST question counts: almost every
+  // counsellor turn mentions a course somewhere, and matching the whole turn would make every
+  // reply qualify.
+  const question = previousCounsellorTurn && lastQuestion(previousCounsellorTurn);
+  return !!question && LOOKS_LIKE_BACKGROUND.test(question);
+}
+
+/** The counsellor's most recent words, or undefined at the start of a chat. */
+function lastCounsellorTurn(history: Turn[]): string | undefined {
+  const turn = [...history].reverse().find((t) => t.role === "model");
+  return turn?.parts.map((p) => p.text).join(" ");
 }
 
 /** The recent conversation as plain labelled lines, newest last. */
@@ -153,14 +182,17 @@ function transcriptOf(history: Turn[], latestUserMessage: string): string {
  * Never throws: this runs beside a reply that has already been streamed to the visitor, and a
  * failed extraction must cost them nothing. Both the model call and the parse resolve to null.
  *
- * The prefilter still reads only the LATEST message — the decision is "did this turn add
- * anything", and a transcript would make every turn after the first one qualify forever.
+ * The prefilter reads only the LATEST message (plus the question it answers) — the decision is
+ * "did this turn add anything", and a transcript would make every turn qualify forever. The
+ * model is held to the same line: earlier turns are context for reading the latest message, not
+ * facts to return. Re-returning them would overwrite an owner's correction with a value the
+ * visitor never restated, and resurrect a record entry the owner deleted.
  */
 export async function extractProfile(
   history: Turn[],
   latestUserMessage: string,
 ): Promise<VisitorProfile | null> {
-  if (!worthExtracting(latestUserMessage)) return null;
+  if (!worthExtracting(latestUserMessage, lastCounsellorTurn(history))) return null;
 
   try {
     const raw = await generateText({

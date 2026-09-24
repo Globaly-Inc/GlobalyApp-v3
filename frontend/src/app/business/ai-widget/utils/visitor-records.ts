@@ -24,22 +24,20 @@ const str = (v: unknown): string | null => (typeof v === "string" && v ? v : nul
 /**
  * Sub-score keys, as the popups spell them.
  *
- * The extractor is told to key sub-scores "by skill" and emits lowercase — the prompt's own
- * example is `{"writing":"7","speaking":"7"}` — while the popups read and write `Writing`,
- * `Speaking`, `Reading & Writing`. Without this, opening an extracted IELTS score in the popup
- * shows four empty boxes and saving would silently strand the original keys beside the new ones.
+ * The popups key each input by `label.toLowerCase().replace(/[^a-z]+/g, "_")` — "Writing" is
+ * `writing`, "Reading & Writing" is `reading_writing` (test-score-dialog / academic-test-dialog).
+ * The extractor mostly emits that already, but not always ("Writing", "reading & writing"), so
+ * every key is put through the popups' own transform. Anything else shows an empty input for a
+ * score that exists, and saving strands the original key beside the new one.
  *
- * Same transform as `subScoreLabel` in the profile's record-sections, which is already relied on
- * to DISPLAY those lowercase keys; this applies it one step earlier so the popup can read them
- * too. It maps every label both catalogues currently use, including the multi-word ones
- * ("reading & writing" → "Reading & Writing", "analytical_writing" → "Analytical Writing").
+ * Two spellings of one skill collapse to one key here, later value winning.
  */
 function canonicalSubScores(raw: unknown): Record<string, string> | null {
   if (!raw || typeof raw !== "object" || Array.isArray(raw)) return null;
   const out: Record<string, string> = {};
   for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
     if (typeof value !== "string" || !value) continue;
-    out[key.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase())] = value;
+    out[key.toLowerCase().replace(/[^a-z]+/g, "_").replace(/^_|_$/g, "")] = value;
   }
   return Object.keys(out).length ? out : null;
 }

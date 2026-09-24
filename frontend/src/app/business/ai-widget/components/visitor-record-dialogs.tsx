@@ -3,7 +3,8 @@
 // The Personal Profile's own popups, unchanged, pointed at a visitor's jsonb instead of at the
 // platform_user_* tables. Importing them rather than copying them is the whole point: the fields
 // a record has are defined in one place, and a change to the profile's Education popup reaches
-// this page on the same deploy.
+// this page on the same deploy. `partial` is the one concession: a chat states records without
+// institutions or dates, and correcting one must not force the owner to invent them.
 import { QualificationDialog } from "@/app/personal/profile/qualification-dialog";
 import { WorkExperienceDialog } from "@/app/personal/profile/work-experience-dialog";
 import { TestScoreDialog } from "@/app/personal/profile/test-score-dialog";
@@ -61,6 +62,7 @@ export function VisitorRecordDialogs({
         item={entry && section === "qualifications" ? toQualification(entry, index ?? 0) : null}
         saving={saving}
         onSave={(data) => save(fromQualification(data))}
+        partial
       />
 
       <WorkExperienceDialog
@@ -69,6 +71,7 @@ export function VisitorRecordDialogs({
         item={entry && section === "work_experiences" ? toWorkExperience(entry, index ?? 0) : null}
         saving={saving}
         onSave={(data) => save(fromWorkExperience(data))}
+        partial
       />
 
       <TestScoreDialog
