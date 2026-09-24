@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PaginationSchema } from "../../../shared/pagination.js";
 
 export const SendMessageSchema = z.object({
   session_id: z.coerce.number().int().positive().optional(),
@@ -62,6 +63,16 @@ export const EmbedConfigIdParamSchema = z.object({
 
 export const EmbedKeyQuerySchema = z.object({
   key: z.string().uuid(),
+});
+
+/**
+ * The owner's visitors/leads list. `status` is a FILTER over derived state, never a value the
+ * caller can write — nothing in this module accepts a status as input, because the row's own
+ * name/email is what decides it (see visitors.repository's STATUS_SQL).
+ */
+export const VisitorListQuerySchema = PaginationSchema.extend({
+  status: z.enum(["all", "visitor", "lead"]).default("all"),
+  search: z.string().trim().max(120).optional(),
 });
 
 export const GuestSessionQuerySchema = z.object({

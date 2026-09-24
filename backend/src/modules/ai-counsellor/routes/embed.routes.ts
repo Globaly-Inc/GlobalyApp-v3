@@ -5,8 +5,11 @@ import {
   EmbedConfigCreateSchema,
   EmbedConfigIdParamSchema,
   EmbedKeyQuerySchema,
+  VisitorListQuerySchema,
 } from "../schemas/chat.schema.js";
+import { buildPaginatedResponse } from "../../../shared/pagination.js";
 import * as embedRepo from "../repositories/embed.repository.js";
+import * as visitorsRepo from "../repositories/visitors.repository.js";
 import { ensureOwnerSiteIndex } from "../services/site-index.service.js";
 import { NotFoundError } from "../../../shared/errors.js";
 import { createChildLogger } from "../../../shared/logger.js";
@@ -65,6 +68,24 @@ export async function embedRoutes(app: FastifyInstance) {
     startSiteIndex(owner);
 
     return reply.send({ ok: true });
+  });
+
+  /**
+   * The org's own widget visitors and leads.
+   *
+   * Scoped by `req.db` alone, and that is the whole isolation story: ai_widget_visitors lives
+   * in the tenant schema, so the connection the tenant plugin resolved from this token is the
+   * only rowset reachable. No `recipientFilter` here — unlike ai_embed_configs, which is a
+   * central table and therefore needs one.
+   *
+   * `counts` rides along with the page so the All/Visitors/Leads tabs can show tallies without
+   * three more requests, and `meta.total` is the count for the filter actually applied.
+   */
+  app.get("/embed/visitors", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
+    const { status, search, ...pagination } = VisitorListQuerySchema.parse(req.query ?? {});
+    const counts = await visitorsRepo.visitorCounts(req.db, { search });
+    const data = await visitorsRepo.listQuery(req.db, { ...pagination, status, search });
+    return reply.send({ ...buildPaginatedResponse(data, counts[status], pagination), counts });
   });
 }
 

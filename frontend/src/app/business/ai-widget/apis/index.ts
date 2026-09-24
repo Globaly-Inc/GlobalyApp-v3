@@ -3,4 +3,8 @@ import { aiWidgetMockApi } from "./mock-data";
 import { aiWidgetRealApi } from "./real-api";
 
 export const aiWidgetApi = createApi({ mock: aiWidgetMockApi, real: aiWidgetRealApi });
-export type { CreateEmbedConfigInput, EmbedConfig } from "./types";
+export type {
+  CreateEmbedConfigInput, EmbedConfig,
+  VisitorCounts, VisitorListParams, VisitorListResult, VisitorProfileEntry,
+  VisitorStatus, VisitorStatusFilter, WidgetVisitor,
+} from "./types";

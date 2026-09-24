@@ -24,10 +24,13 @@ import { ActivityTab } from "./components/tabs/activity-tab";
 import { ProfileTab } from "./components/tabs/profile-tab";
 import { ProfileHeaderCard } from "./components/profile-header-card";
 import { SiteUrlsCard } from "../portal/components/site-urls-card";
+// Lives in the ai-widget feature because that is whose data it is — the same reason
+// /business/settings/ai-embed renders AiWidgetView from there rather than forking it.
+import { VisitorsTab } from "@/app/business/ai-widget/components/visitors-tab";
 
 // Tab switching happens only via the sidebar (`BUSINESS_NAV_GROUPS`) — this page renders no
 // second, in-content tab strip.
-const VALID_TABS = ["profile", "branches", "partners", "team", "services", "scholarships", "activity", "site_mapping"] as const;
+const VALID_TABS = ["profile", "branches", "partners", "team", "visitors", "services", "scholarships", "activity", "site_mapping"] as const;
 type Tab = (typeof VALID_TABS)[number];
 function parseTab(raw: string | null): Tab {
   return (VALID_TABS as readonly string[]).includes(raw ?? "") ? (raw as Tab) : "profile";
@@ -67,7 +70,9 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
   // Partners/Scholarships/Activity have no institution-side data — the sidebar never links
   // there for an institution, but fall back to profile if the URL is edited directly. Branches
   // DOES apply to institutions (a university's own campuses) and is linked from the sidebar.
-  const institutionTabAllowed = ["profile", "branches", "team", "services", "partners", "scholarships", "site_mapping"].includes(parsedTab);
+  // "visitors" is in this list because an institution runs the same embed widget a business does
+  // and its visitors land in its own tenant schema — there is nothing business-only about them.
+  const institutionTabAllowed = ["profile", "branches", "team", "visitors", "services", "partners", "scholarships", "site_mapping"].includes(parsedTab);
   const isDisallowedForRole = (isInstitution && !institutionTabAllowed) || (isBusiness && parsedTab === "scholarships");
   const tab = isDisallowedForRole ? "profile" : parsedTab;
 
@@ -228,6 +233,7 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
               <PartnersTab businessId={businessId} businessName={profile.business_name} isInstitution={isViewingInstitution} />
             )}
             {tab === "team" && <MembersTab businessId={businessId} />}
+            {tab === "visitors" && <VisitorsTab />}
             {tab === "services" && <ServicesTab businessId={businessId} readOnly={isViewingInstitution} />}
             {tab === "scholarships" && <ScholarshipsTab businessId={businessId} />}
             {tab === "activity" && <ActivityTab businessId={businessId} />}

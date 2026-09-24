@@ -15,7 +15,6 @@
  * theirs. All ids are prefixed so a second copy of the tag is a no-op.
  */
 (function () {
-  var ORB = "https://storage.googleapis.com/globalyapp-public-images/ai/avatar/globaly-orb-rose-crimson-240.gif";
   var ID = "globaly-ai-launcher";
   if (document.getElementById(ID)) return; // tag pasted twice
 
@@ -57,14 +56,13 @@
     "width:56px;height:56px;padding:0;border:0;border-radius:9999px;background:#fff;cursor:pointer;" +
     "box-shadow:0 6px 20px rgba(0,0,0,.18);display:flex;align-items:center;justify-content:center;overflow:hidden";
 
-  // The orb is a 240x240 GIF that only fills the middle ~59% of its frame, so it is
-  // scaled up and nudged down to sit centred in the button — same correction the
-  // in-app AlyOrbIcon applies.
+  // The azure orb only fills the middle of its frame, so it is scaled up and nudged
+  // down to sit centred in the button — same correction the in-app AlyOrbIcon applies.
   var orb = document.createElement("img");
-  orb.src = ORB;
+  orb.src = origin + "/globaly-orb-azure.svg";
   orb.alt = "";
   orb.setAttribute("aria-hidden", "true");
-  orb.style.cssText = "width:56px;height:56px;transform:translateY(3.3%) scale(1.7)";
+  orb.style.cssText = "width:56px;height:56px;transform:translateY(3.1%) scale(1.75)";
 
   var cross = document.createElement("span");
   cross.textContent = "×";
