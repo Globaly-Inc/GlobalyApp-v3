@@ -55,7 +55,7 @@ function institutionsAsOrgs(institutions: AuthMeInstitution[]): SwitcherOrg[] {
 // "Representative" is hidden for institutions for now — not a removal, just not shown here yet.
 // Order is explicit (Profile, Branches, Services, Scholarships, Team) rather than following
 // BUSINESS_NAV_GROUPS' own item order, which is tuned for the plain-business sidebar instead.
-const INSTITUTION_BUSINESS_ITEM_ORDER = ["Business Profile", "Branches", "Services", "Scholarships", "Team"];
+const INSTITUTION_BUSINESS_ITEM_ORDER = ["Business Profile", "Branches", "Services", "Scholarships", "Team", "Site contents"];
 // Enquiries and Messages used to be hidden here: both called requireBusinessContext routes and
 // just produced a 403 for an institution. They now serve either org kind, because an enquiry
 // nobody represents falls back to the institution that owns the course and it works that lead in

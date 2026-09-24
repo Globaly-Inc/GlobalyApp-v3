@@ -2,6 +2,7 @@ import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { businessApi } from "../apis";
 import type {
   BusinessProfile, BusinessProfilePatch, BusinessRegisterInput, InstitutionRegisterInput, StartExtractionInput,
+  OnboardingProgress,
 } from "../apis/types";
 
 // Result isn't stored in this slice's state — a successful registration hard-navigates
@@ -34,13 +35,18 @@ export const startExtraction = createAsyncThunk(
   (input: StartExtractionInput) => businessApi.startExtraction(input),
 );
 
+export const fetchOnboardingProgress = createAsyncThunk("businessOnboarding/fetchOnboardingProgress", () =>
+  businessApi.getOnboardingProgress(),
+);
+
 type BusinessOnboardingState = {
   profile: BusinessProfile | null;
+  onboardingProgress: OnboardingProgress | null;
   status: "idle" | "loading" | "saving" | "failed";
   error: string | null;
 };
 
-const initialState: BusinessOnboardingState = { profile: null, status: "idle", error: null };
+const initialState: BusinessOnboardingState = { profile: null, onboardingProgress: null, status: "idle", error: null };
 
 const businessOnboardingSlice = createSlice({
   name: "businessOnboarding",
@@ -78,6 +84,9 @@ const businessOnboardingSlice = createSlice({
       })
       .addCase(startExtraction.fulfilled, (state, action) => {
         state.profile = action.payload;
+      })
+      .addCase(fetchOnboardingProgress.fulfilled, (state, action) => {
+        state.onboardingProgress = action.payload;
       })
       .addCase(registerBusiness.pending, (state) => {
         state.status = "saving";

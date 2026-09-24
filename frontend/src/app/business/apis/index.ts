@@ -7,5 +7,5 @@ export type {
   BusinessType, BusinessProfile, BusinessProfilePatch, BusinessRegisterInput, RegisterBusinessResult,
   InstitutionRegisterInput, RegisterInstitutionResult, SelectOption, SocialLinks, StartExtractionInput,
   ExtractionStatus, ExtractionCounts, SiteUrl, SiteUrlCategory, SiteUrlCounts, SiteUrlsQuery, SiteUrlsPage,
-  SiteUrlSnapshot,
+  SiteUrlSnapshot, SiteUrlRefreshResult, OnboardingProgress, OnboardingStep, WidgetAnalytics, WidgetAnalyticsMonth,
 } from "./types";
