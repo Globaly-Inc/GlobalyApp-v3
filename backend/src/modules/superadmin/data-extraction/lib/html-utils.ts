@@ -180,9 +180,11 @@ export function classifierDistrusted(
  * The bar for entry is deliberately high: observed with ZERO courses AND administrative at any
  * institution, not merely unproductive on one site. Things kept OUT despite low yield, because
  * they are genuinely academic somewhere: `/search` (explorecourses.stanford.edu/search IS a
- * course search), `/people/` (20 pages, 43 courses), `/registrar`, `/alumni`, `financial-aid`,
- * `scholarship`, `tuition-and-fees`, and every institution-specific slug (`arts-science`,
+ * course search), `/people/` (20 pages, 43 courses), `/registrar`, `/alumni`, `tuition-and-fees`,
+ * and every institution-specific slug (`arts-science`,
  * `global-affairs`) that happened to yield nothing on a single job.
+ * `financial-aid` and `scholarship` WERE on that kept list until 2026-09-24: their 2 courses from
+ * 32 pages turned out to be fabrications (the award's eligible-degree list staged as courses).
  *
  * `courseleaf` and `/wen/` are the CourseLeaf (Leepfrog) CMS's own admin surface, which much of
  * the US sector runs — so those two generalise well beyond the site they were found on.
@@ -208,6 +210,11 @@ const NON_COURSE_PATH_MARKERS = [
   // courses because "public-policy" and "policy-studies" are subjects people enrol in.
   // A denied page costs a few cents; a denied PROGRAMME costs a course that will never appear.
   "/policies", "policy-statements",
+  // Scholarship / funding pages. They list the degrees an award can be held with, and the course
+  // prompt staged one course per listed degree even when told not to (seen live: Curtin's Global
+  // Scholars Program page became 30 courses whose only "entry requirement" was the award's own
+  // criteria). Compound or slash-anchored, per the rule above.
+  "/scholarship", "-scholarship", "scholars-program", "scholars-programme", "/bursar", "/bursaries", "/financial-aid",
 ];
 
 /** Is this URL university infrastructure rather than a programme page? Path-only, like the
@@ -456,6 +463,15 @@ export function stripMarkdownJunk(md: string): string {
 
 /** Truncate markdown to a max character length, breaking at line boundaries */
 // ponytail: 120K chars — Gemini 2.5 Flash handles ~1M tokens, 60K was leaving data on the table
+/**
+ * Text budget for the per-course data step (extraction-step.worker handleCourseDataStep). Was
+ * 24,000 chars: a UEL course page is ~100k and its "Academic requirements" section sits past that
+ * mark, so the eligibility re-extraction saw only the page's header and returned nothing (Flash) or
+ * a placeholder row (the fallback model). Pages appended for the data type land after the course
+ * page, so they need the course page to fit first.
+ */
+export const COURSE_DATA_TEXT_CAP = 60_000;
+
 export function truncateMarkdown(md: string, maxLength = 120_000): string {
   // Junk removal runs before the cut, so stripped noise buys back budget for real content
   // instead of the tail of the page being lost to it.

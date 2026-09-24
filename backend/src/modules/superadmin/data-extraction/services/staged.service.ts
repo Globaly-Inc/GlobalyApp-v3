@@ -129,6 +129,26 @@ export async function deleteEligibility(id: string, adminId: number) {
   return { deleted: true };
 }
 
+// ── Scholarships ──
+
+export async function createScholarship(data: Record<string, unknown>, adminId: number) {
+  const row = await repo.scholarships.insert(data, adminId);
+  await logAudit(adminId, "SCHOLARSHIP_CREATE", { entityType: "extraction_scholarships", entityId: row.id });
+  return { id: row.id };
+}
+
+export async function patchScholarship(id: string, data: Record<string, unknown>, adminId: number) {
+  await repo.scholarships.update(id, data, adminId);
+  await logAudit(adminId, "SCHOLARSHIP_PATCH", { entityType: "extraction_scholarships", entityId: id });
+  return { updated: true };
+}
+
+export async function deleteScholarship(id: string, adminId: number) {
+  await repo.scholarships.delete(id);
+  await logAudit(adminId, "SCHOLARSHIP_DELETE", { entityType: "extraction_scholarships", entityId: id });
+  return { deleted: true };
+}
+
 // ── Study units ──
 
 export async function createStudyUnit(data: Record<string, unknown>, adminId: number) {

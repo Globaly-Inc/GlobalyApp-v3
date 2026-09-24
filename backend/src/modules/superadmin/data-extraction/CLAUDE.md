@@ -531,6 +531,45 @@ The centralized error handler maps these to HTTP responses.
    when a job has nothing queued yet to resume from — no V2 equivalent to
    port, this is a cost fix.
 
+## Eligibility is admission only; scholarships have their own sink (2026-09-24)
+
+Reported: the eligibility field "captures scholarship criteria and general application information".
+Reproduced on Gemini 3.5 Flash with `tests/eligibility-vs-scholarship.live.ts` (costs LLM calls; runs
+both write paths on real pages and flags off-topic rows): Curtin's Global Scholars Program page was
+staged as 30 courses, each with "Global Scholars Program Entry — must be new-to-Curtin" as its only
+requirement; UEL's MA page yielded Portfolio + Interview rows; Curtin's Master of Dietetics yielded
+Personal Statement, Referee Reports and Interview. Stored data agreed (43 rows named after paperwork,
+14 "requirements" on one course, most of them inherent-requirements prose from an appended page).
+Four causes, four fixes, none a V2 behaviour:
+- **No definition of the field.** Both eligibility prompts described the shape of a requirement, never
+  its scope, so anything under a heading containing "requirement"/"eligib" qualified. `ELIGIBILITY_SCOPE_RULE`
+  (extraction-prompts.ts) is shared by the course prompt and the per-course prompt: prior study,
+  language, admission tests — and an explicit exclusion list (scholarships, paperwork, visa, inherent
+  requirements, …), decided by section meaning not keywords.
+- **Nowhere to put scholarships.** A model with scholarship content and no field for it filed it under
+  the nearest heading. The course prompt now has a `scholarships[]` array per course, persisted by
+  `upsertScholarship` (job-scoped, deduped on name) into `extraction_scholarships` + the course junction
+  (migration `20260924_001`) — which is also what fills the admin Scholarships tab from a crawl. The
+  course prompt also refuses to stage a scholarship/funding page as courses (its "eligible degrees"
+  list is the award's scope, not a catalogue).
+- **Nothing re-checked the kind.** `isAdmissionRequirement` (staging-writer.ts) drops a row whose NAME
+  is paperwork/scholarship/visa/inherent-requirement or whose description is about a scholarship, at
+  the two LLM write paths (writeCourse, step worker) — same placement as `isExtractableFee`, never
+  inside `upsertEligibility` (AgentCIS import). Age/residency/work-experience rows are deliberately
+  kept. `npm run test:eligibility-scope` (verified red with the guard neutered).
+- **The per-course step fed the model the wrong text.** `urlsForType("eligibility_urls")` appended
+  every Site-Context page in the `eligibility` category, whose definition (classifier prompt and
+  `/how-to-apply` path signal) included application-process pages — those are now `other`. And the
+  combined text was cut at 24,000 chars, before UEL's "Academic requirements" (offset ~40k) and
+  Curtin's "Course-specific requirements" (~23k), so the eligibility re-extraction returned nothing on
+  Flash and a placeholder row on the fallback model. Cap is now `COURSE_DATA_TEXT_CAP` (60k, html-utils)
+  and the prompt says appended "--- Source:" pages are institution-wide context, not this course's rows.
+Found alongside: Gemini was returning **403 "dunning decision is deny"** (billing suspended on the GCP
+project) and every call silently ran on the OpenRouter fallback (`OPENROUTER_MODEL`, gpt-4.1-nano
+locally), unmetered and with the reason unlogged. The fallback warn now carries the model and error.
+Check `extraction_llm_usage` has recent Gemini rows before trusting any quality judgement — none here
+after 2026-09-21.
+
 ## Site snapshot to GCS (2026-09-16)
 
 Not a V2 behavior — explicitly requested. Right after URL discovery, the job worker publishes a

@@ -39,6 +39,7 @@
     "test:eligibility-extraction": "node --import tsx tests/eligibility-extraction.ts",
     "test:partial-date": "node --import tsx tests/partial-date.ts",
     "test:fee-scope": "node --import tsx tests/fee-scope.ts",
+    "test:eligibility-scope": "node --import tsx tests/eligibility-scope.ts",
     "test:subdomain-cert-log": "node --import tsx tests/subdomain-cert-log.ts",
     "test:sitemap-parsing": "node --import tsx tests/sitemap-parsing.ts",
     "test:classify-failure": "node --import tsx tests/classify-failure.ts",

@@ -145,7 +145,7 @@ export async function getSelfServiceStatus(jobId: string) {
 }
 
 export async function getTabCounts(jobId: string) {
-  const [branches, agents, courses, fees, intakes, eligibility, units, studyOptions, accreditations, visaServices] =
+  const [branches, agents, courses, fees, intakes, eligibility, scholarships, units, studyOptions, accreditations, visaServices] =
     await Promise.all([
       reviewRepo.countCampusesByJob(jobId),
       reviewRepo.countAgentsByJob(jobId),
@@ -153,13 +153,14 @@ export async function getTabCounts(jobId: string) {
       coursesRepo.countCourseFeesByJob(jobId),
       coursesRepo.countIntakesByJob(jobId),
       coursesRepo.countEligibilityByJob(jobId),
+      coursesRepo.countScholarshipsByJob(jobId),
       coursesRepo.countStudyUnitsByJob(jobId),
       coursesRepo.countStudyOptionsByJob(jobId),
       stagedRepo.countAccreditationsByJob(jobId),
       visaRepo.countVisaServicesByJob(jobId),
     ]);
   return {
-    branches, agents, courses, fees, intakes, eligibility, units,
+    branches, agents, courses, fees, intakes, eligibility, scholarships, units,
     study_options: studyOptions, accreditations, visa_services: visaServices,
   };
 }

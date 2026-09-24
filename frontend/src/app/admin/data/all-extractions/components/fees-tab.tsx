@@ -66,7 +66,9 @@ function FeeCard({
 }>) {
   const [editingLinks, setEditingLinks] = useState(false);
   const [showAll, setShowAll] = useState(false);
-  const visible = showAll ? linked : linked.slice(0, CHIP_LIMIT);
+  // Chips read alphabetically, whatever order the links were made in.
+  const sorted = [...linked].sort((a, b) => (a.name ?? "").localeCompare(b.name ?? "", undefined, { sensitivity: "base" }));
+  const visible = showAll ? sorted : sorted.slice(0, CHIP_LIMIT);
 
   return (
     <Card className="group overflow-hidden">

@@ -158,6 +158,22 @@ export const CreateEligibilitySchema = z.object({
 
 export const PatchEligibilitySchema = CreateEligibilitySchema.omit({ job_id: true }).partial();
 
+// ── Scholarships ──
+// Mirrors eligibility: a job-scoped shared row linked to courses via the junction endpoint.
+export const CreateScholarshipSchema = z.object({
+  job_id: z.string().uuid(),
+  name: z.string().trim().min(1),
+  applicable_to: z.string().nullish(),
+  coverage_type: z.string().nullish(),
+  amount: z.number().nullish(),
+  currency: z.string().nullish(),
+  deadline: z.string().nullish(),
+  application_url: z.string().nullish(),
+  description: z.string().nullish(),
+});
+
+export const PatchScholarshipSchema = CreateScholarshipSchema.omit({ job_id: true }).partial();
+
 // ── Study units (CE7-CE8) ──
 // .nullish() — unit code/credit points/description are routinely left blank on create.
 export const CreateStudyUnitSchema = z.object({
@@ -196,6 +212,7 @@ export const JUNCTION_SLUGS = [
   "course-fees",
   "intakes",
   "eligibility-requirements",
+  "scholarships",
   "study-units",
   "accreditations",
   "campuses",

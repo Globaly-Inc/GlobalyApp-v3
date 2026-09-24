@@ -17,7 +17,7 @@ import { getPage, getDocument, isPdfUrl, mergeUrlLists } from "../lib/page-store
 import { GUIDED_KEY_CATEGORY } from "../lib/url-categories.js";
 import { snapshotSite, snapshotRunOutcome } from "../lib/site-snapshot.js";
 import type { SnapshotBatch } from "../lib/site-snapshot.js";
-import { truncateMarkdown, domainOf, extractSocialLinks, extractHrefsFromHtml, extractDomainEmails, fixMalformedAbsoluteUrl } from "../lib/html-utils.js";
+import { truncateMarkdown, domainOf, extractSocialLinks, extractHrefsFromHtml, extractDomainEmails, fixMalformedAbsoluteUrl, COURSE_DATA_TEXT_CAP } from "../lib/html-utils.js";
 import { extractJson, setLlmContext } from "../lib/llm-client.js";
 import {
   institutionExtractionPrompt, INSTITUTION_EXTRACTION_SYSTEM,
@@ -39,6 +39,7 @@ import {
   upsertStudyUnit,
   feeTypeFor,
   isExtractableFee,
+  isAdmissionRequirement,
   upsertFee,
   normaliseCourseCategory,
   resolveCourseLookups,
@@ -1381,7 +1382,7 @@ async function handleCourseDataStep(
     if (extraMd) combined += `\n\n---\nSource: ${extra}\n\n${extraMd}`;
   }
 
-  const pageText = truncateMarkdown(combined, 24000);
+  const pageText = truncateMarkdown(combined, COURSE_DATA_TEXT_CAP);
   const extracted = await extractJson<Record<string, unknown>>({
     system,
     prompt: courseDataPrompt(sourceUrl, pageText, dataType, job.guidance_notes),
@@ -1588,6 +1589,11 @@ async function handleCourseDataStep(
       const reqs = (extracted.requirements as Array<Record<string, unknown>>) || [];
       for (const req of reqs) {
         const description = (req.description as string | null) ?? null;
+        // Same guard as writeCourse — see isAdmissionRequirement.
+        if (!isAdmissionRequirement({ name: req.name as string | null, description })) {
+          logger.info("eligibility-scope: dropped non-admission row", { jobId, courseId, name: req.name ?? null });
+          continue;
+        }
         let scoreType = normaliseScoreType(req.score_type);
         let scoreValue = coerceMoney(req.min_score);
         if (!scoreType && scoreValue == null && !req.min_score_percent) {

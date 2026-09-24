@@ -59,6 +59,14 @@ export const eligibility = {
   delete: (id: string) => deleteEntity("extraction_eligibility_requirements", id),
 };
 
+// ── Scholarships ──
+
+export const scholarships = {
+  insert: (data: Record<string, unknown>, adminId: number) => insertEntity("extraction_scholarships", data, adminId),
+  update: (id: string, data: Record<string, unknown>, adminId: number) => updateEntity("extraction_scholarships", id, data, adminId),
+  delete: (id: string) => deleteEntity("extraction_scholarships", id),
+};
+
 // ── Study units ──
 
 export const studyUnits = {
@@ -135,6 +143,7 @@ const JUNCTION_TABLE_MAP: Record<string, { table: string; entityCol: string }> =
   "course-fees": { table: "extraction_course_fee_assignments", entityCol: "course_fee_id" },
   intakes: { table: "extraction_course_intake_assignments", entityCol: "intake_id" },
   "eligibility-requirements": { table: "extraction_course_eligibility_assignments", entityCol: "eligibility_requirement_id" },
+  scholarships: { table: "extraction_course_scholarship_assignments", entityCol: "scholarship_id" },
   "study-units": { table: "extraction_course_study_unit_assignments", entityCol: "study_unit_id" },
   accreditations: { table: "extraction_course_accreditation_assignments", entityCol: "extraction_accreditation_id" },
   campuses: { table: "extraction_course_campuses", entityCol: "campus_id" },

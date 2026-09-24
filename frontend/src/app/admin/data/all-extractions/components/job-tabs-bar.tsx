@@ -14,6 +14,7 @@ import {
   ShieldCheck,
   Globe2,
   Link2,
+  Award,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollRow } from "@/components/scroll-row";
@@ -29,6 +30,7 @@ export type JobTab =
   | "fees"
   | "intakes"
   | "eligibility"
+  | "scholarships"
   | "units"
   | "study_options"
   | "accreditations"
@@ -44,6 +46,7 @@ const TABS: { value: JobTab; label: string; icon: LucideIcon; countKey?: keyof T
   { value: "fees", label: "Fees", icon: DollarSign, countKey: "fees" },
   { value: "intakes", label: "Intakes", icon: Calendar, countKey: "intakes" },
   { value: "eligibility", label: "Eligibility", icon: GraduationCap, countKey: "eligibility" },
+  { value: "scholarships", label: "Scholarships", icon: Award, countKey: "scholarships" },
   { value: "units", label: "Study Units", icon: BookOpen, countKey: "units" },
   { value: "study_options", label: "Study Options", icon: Clock, countKey: "study_options" },
   { value: "accreditations", label: "Accreditations", icon: ShieldCheck, countKey: "accreditations" },

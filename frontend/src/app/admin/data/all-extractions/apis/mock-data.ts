@@ -14,6 +14,8 @@ import type {
   CreateJobParams,
   EligibilityParams,
   EligibilityRequirement,
+  Scholarship,
+  ScholarshipParams,
   EditableTable,
   ExtractionJob,
   Intake,
@@ -58,9 +60,9 @@ const mockLibrary: LibraryAccreditation[] = [
 ];
 
 const EMPTY_COURSE_LINKS: CourseLinks = {
-  course_fees: [], intakes: [], eligibility_requirements: [], study_units: [],
+  course_fees: [], intakes: [], eligibility_requirements: [], scholarships: [], study_units: [],
   study_options: [], accreditations: [],
-  fee_assignments: [], intake_assignments: [], eligibility_assignments: [],
+  fee_assignments: [], intake_assignments: [], eligibility_assignments: [], scholarship_assignments: [],
   study_unit_assignments: [], study_option_assignments: [], accreditation_assignments: [],
   course_campuses: [],
 };
@@ -762,6 +764,41 @@ export const allExtractionsMockApi = {
     await delay(200);
   },
 
+  // ── Scholarships ────────────────────────────────────────────────
+
+  getScholarships: async (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string } = {},
+  ): Promise<Paginated<Scholarship>> => {
+    console.log("[mock] GET scholarships for job", jobId, params);
+    await delay(250);
+    const now = new Date().toISOString();
+    const all: Scholarship[] = [
+      { id: "sch-1", name: "International Excellence Scholarship", applicable_to: "international", coverage_type: "partial_tuition", amount: 5000, currency: "AUD", deadline: "2027-01-31", application_url: "https://example.edu/scholarships/excellence", description: "Awarded on academic merit to commencing international students.", created_at: now },
+      { id: "sch-2", name: "Regional Access Bursary", applicable_to: "domestic", coverage_type: "stipend", amount: 2000, currency: "AUD", deadline: null, application_url: null, description: null, created_at: now },
+    ];
+    const filtered = params.search
+      ? all.filter((r) => r.name.toLowerCase().includes(params.search!.toLowerCase()))
+      : all;
+    const page = params.page ?? 1;
+    const limit = params.limit ?? 20;
+    return {
+      data: filtered.slice((page - 1) * limit, page * limit),
+      meta: { page, limit, total: filtered.length, totalPages: Math.ceil(filtered.length / limit) },
+    };
+  },
+
+  createScholarship: async (params: { job_id: string } & ScholarshipParams): Promise<{ id: string }> => {
+    console.log("[mock] POST scholarship", params);
+    await delay(300);
+    return { id: uuid() };
+  },
+
+  deleteScholarship: async (id: string): Promise<void> => {
+    console.log("[mock] DELETE scholarship", id);
+    await delay(200);
+  },
+
   // ── Study Units ──────────────────────────────────────────────────
 
   getStudyUnits: async (
@@ -983,7 +1020,7 @@ export const allExtractionsMockApi = {
         branches: job.agent_count ? 1 : 0,
         agents: job.agent_count ?? 0,
         courses: job.courses_extracted,
-        fees: 0, intakes: 0, eligibility: 0, units: 0, study_options: 0, accreditations: 0, visa_services: 0,
+        fees: 0, intakes: 0, eligibility: 0, scholarships: 0, units: 0, study_options: 0, accreditations: 0, visa_services: 0,
       },
       courseLinks: EMPTY_COURSE_LINKS,
       visaServices: [],

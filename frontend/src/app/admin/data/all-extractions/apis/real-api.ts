@@ -18,6 +18,8 @@ import type {
   CreateJobParams,
   EligibilityParams,
   EligibilityRequirement,
+  Scholarship,
+  ScholarshipParams,
   EditableTable,
   ExtractionJob,
   ExtractionStatus,
@@ -447,6 +449,26 @@ export const allExtractionsRealApi = {
 
   deleteEligibilityRequirement: async (id: string): Promise<void> => {
     await httpDelete(`/admin/data-extraction/eligibility-requirements/${id}`);
+  },
+
+  // ── Scholarships ────────────────────────────────────────────────
+
+  getScholarships: (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string } = {},
+  ): Promise<Paginated<Scholarship>> => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.search) query.set("search", params.search);
+    return httpGet<Paginated<Scholarship>>(`/admin/data-extraction/jobs/${jobId}/scholarships?${query}`);
+  },
+
+  createScholarship: async (params: { job_id: string } & ScholarshipParams): Promise<{ id: string }> =>
+    httpPost<{ id: string }>("/admin/data-extraction/scholarships", params),
+
+  deleteScholarship: async (id: string): Promise<void> => {
+    await httpDelete(`/admin/data-extraction/scholarships/${id}`);
   },
 
   // ── Study Units ──────────────────────────────────────────────────
