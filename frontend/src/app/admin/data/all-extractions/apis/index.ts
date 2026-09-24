@@ -24,6 +24,7 @@ export type {
   CourseFee,
   Intake,
   EligibilityRequirement,
+  Scholarship,
   StudyUnit,
   StudyOption,
   Accreditation,

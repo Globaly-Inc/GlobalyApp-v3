@@ -130,6 +130,23 @@ export async function countEligibilityByJob(jobId: string, filters: EligibilityL
   return Number(row.count);
 }
 
+export type ScholarshipListFilters = { search?: string };
+
+function filteredScholarshipsQuery(jobId: string, { search }: ScholarshipListFilters) {
+  const q = masterKnex(`${S}.extraction_scholarships`).where({ job_id: jobId });
+  if (search) q.where((b) => b.whereILike("name", `%${search}%`).orWhereILike("description", `%${search}%`));
+  return q;
+}
+
+export async function listScholarshipsByJob(jobId: string, limit: number, offset: number, filters: ScholarshipListFilters = {}) {
+  return filteredScholarshipsQuery(jobId, filters).orderBy("created_at", "asc").limit(limit).offset(offset);
+}
+
+export async function countScholarshipsByJob(jobId: string, filters: ScholarshipListFilters = {}) {
+  const [row] = await filteredScholarshipsQuery(jobId, filters).count("id as count");
+  return Number(row.count);
+}
+
 export type IntakeListFilters = { search?: string };
 
 function filteredIntakesQuery(jobId: string, { search }: IntakeListFilters) {
@@ -185,6 +202,7 @@ export async function getCourseLinks(jobId: string) {
     intakes: `${S}.extraction_intakes`,
     study_options: `${S}.extraction_study_options`,
     eligibility_requirements: `${S}.extraction_eligibility_requirements`,
+    scholarships: `${S}.extraction_scholarships`,
     accreditations: `${S}.extraction_accreditations`,
     course_fees: `${S}.extraction_course_fees`,
     study_units: `${S}.extraction_study_units`,
@@ -192,6 +210,7 @@ export async function getCourseLinks(jobId: string) {
     study_option_assignments: `${S}.extraction_course_study_option_assignments`,
     accreditation_assignments: `${S}.extraction_course_accreditation_assignments`,
     eligibility_assignments: `${S}.extraction_course_eligibility_assignments`,
+    scholarship_assignments: `${S}.extraction_course_scholarship_assignments`,
     course_campuses: `${S}.extraction_course_campuses`,
     fee_assignments: `${S}.extraction_course_fee_assignments`,
     study_unit_assignments: `${S}.extraction_course_study_unit_assignments`,

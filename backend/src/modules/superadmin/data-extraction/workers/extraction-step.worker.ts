@@ -17,7 +17,7 @@ import { getPage, getDocument, isPdfUrl, mergeUrlLists } from "../lib/page-store
 import { GUIDED_KEY_CATEGORY } from "../lib/url-categories.js";
 import { snapshotSite, snapshotRunOutcome } from "../lib/site-snapshot.js";
 import type { SnapshotBatch } from "../lib/site-snapshot.js";
-import { truncateMarkdown, domainOf, extractSocialLinks, extractHrefsFromHtml, extractDomainEmails, fixMalformedAbsoluteUrl } from "../lib/html-utils.js";
+import { truncateMarkdown, domainOf, extractSocialLinks, extractHrefsFromHtml, extractDomainEmails, fixMalformedAbsoluteUrl, COURSE_DATA_TEXT_CAP } from "../lib/html-utils.js";
 import { extractJson, setLlmContext } from "../lib/llm-client.js";
 import {
   institutionExtractionPrompt, INSTITUTION_EXTRACTION_SYSTEM,
@@ -39,6 +39,7 @@ import {
   upsertStudyUnit,
   feeTypeFor,
   isExtractableFee,
+  isAdmissionRequirement,
   upsertFee,
   normaliseCourseCategory,
   resolveCourseLookups,
@@ -1381,7 +1382,7 @@ async function handleCourseDataStep(
     if (extraMd) combined += `\n\n---\nSource: ${extra}\n\n${extraMd}`;
   }
 
-  const pageText = truncateMarkdown(combined, 24000);
+  const pageText = truncateMarkdown(combined, COURSE_DATA_TEXT_CAP);
   const extracted = await extractJson<Record<string, unknown>>({
     system,
     prompt: courseDataPrompt(sourceUrl, pageText, dataType, job.guidance_notes),
@@ -1566,10 +1567,32 @@ async function handleCourseDataStep(
       // stale requirements into every other course on the job. Scoped to the ids these
       // assignments actually pointed at, so an admin's deliberately-unassigned institution-wide
       // requirement is untouched.
-      const priorIds = await masterKnex(`${S}.extraction_course_eligibility_assignments`)
+      //
+      // AN EXTRACTION THAT FOUND NOTHING REPLACES NOTHING — the same rule the English branch below
+      // and the fees path apply. The scope filter runs BEFORE the delete: a run whose every row is
+      // scholarship or paperwork content (or a scrape miss returning `[]`) has learned nothing
+      // about the course's entry bar, and clearing reviewed requirements on that signal would leave
+      // the course with none (review, 2026-09-24).
+      const reqs = ((extracted.requirements as Array<Record<string, unknown>>) || []).filter((req) => {
+        const keep = isAdmissionRequirement({
+          name: req.name as string | null, description: (req.description as string | null) ?? null,
+          min_score: req.min_score as number | null, min_score_percent: req.min_score_percent as number | null,
+          min_degree_level: req.min_degree_level as string | null, academic_tests: req.academic_tests as unknown[] | null,
+        });
+        if (!keep) logger.info("eligibility-scope: dropped non-admission row", { jobId, courseId, name: req.name ?? null });
+        return keep;
+      });
+      if (reqs.length === 0) {
+        logger.warn("Eligibility extraction found no admission requirements — existing rows kept", {
+          courseId, extracted: ((extracted.requirements as unknown[]) || []).length,
+        });
+      }
+      const priorIds = reqs.length === 0 ? [] : await masterKnex(`${S}.extraction_course_eligibility_assignments`)
         .where({ course_id: courseId })
         .pluck("eligibility_requirement_id");
-      await masterKnex(`${S}.extraction_course_eligibility_assignments`).where({ course_id: courseId }).delete();
+      if (reqs.length > 0) {
+        await masterKnex(`${S}.extraction_course_eligibility_assignments`).where({ course_id: courseId }).delete();
+      }
       const orphanIds = priorIds.filter((id): id is string => id != null);
       if (orphanIds.length > 0) {
         // A requirement still assigned to another course is shared and must survive; only the
@@ -1585,7 +1608,6 @@ async function handleCourseDataStep(
           await masterKnex(`${S}.extraction_eligibility_requirements`).whereIn("id", unreferenced).delete();
         }
       }
-      const reqs = (extracted.requirements as Array<Record<string, unknown>>) || [];
       for (const req of reqs) {
         const description = (req.description as string | null) ?? null;
         let scoreType = normaliseScoreType(req.score_type);

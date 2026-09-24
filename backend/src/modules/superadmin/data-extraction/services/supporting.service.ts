@@ -82,6 +82,7 @@ const TABLE_TO_STEP: Record<string, string> = {
   extraction_intakes: "intakes",
   extraction_course_fees: "fees",
   extraction_eligibility_requirements: "eligibility",
+  extraction_scholarships: "scholarships",
   extraction_study_units: "study_units",
   extraction_accreditations: "accreditations",
   extraction_study_options: "study_options",

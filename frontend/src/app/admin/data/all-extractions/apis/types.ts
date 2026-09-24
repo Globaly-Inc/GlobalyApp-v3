@@ -175,6 +175,7 @@ export type JunctionSlug =
   | "course-fees"
   | "intakes"
   | "eligibility-requirements"
+  | "scholarships"
   | "study-units"
   | "study-options"
   | "accreditations"
@@ -184,12 +185,14 @@ export type CourseLinks = {
   course_fees: CourseFee[];
   intakes: Intake[];
   eligibility_requirements: EligibilityRequirement[];
+  scholarships: Scholarship[];
   study_units: StudyUnit[];
   study_options: StudyOption[];
   accreditations: Accreditation[];
   fee_assignments: CourseAssignment[];
   intake_assignments: CourseAssignment[];
   eligibility_assignments: CourseAssignment[];
+  scholarship_assignments: CourseAssignment[];
   study_unit_assignments: CourseAssignment[];
   study_option_assignments: CourseAssignment[];
   accreditation_assignments: CourseAssignment[];
@@ -203,6 +206,7 @@ export type TabCounts = {
   fees: number;
   intakes: number;
   eligibility: number;
+  scholarships: number;
   units: number;
   study_options: number;
   accreditations: number;
@@ -359,6 +363,7 @@ export type EditableTable =
   | "extraction_intakes"
   | "extraction_course_fees"
   | "extraction_eligibility_requirements"
+  | "extraction_scholarships"
   | "extraction_study_units"
   | "extraction_accreditations"
   | "extraction_study_options"
@@ -545,6 +550,31 @@ export type EligibilityParams = {
   language_tests?: LanguageTest[];
   academic_tests?: AcademicTest[];
 };
+export type Scholarship = ActorFields & {
+  id: string;
+  name: string;
+  applicable_to: string | null;
+  coverage_type: string | null;
+  amount: number | null;
+  currency: string | null;
+  deadline: string | null;
+  application_url: string | null;
+  description: string | null;
+  created_at: string;
+  updated_at?: string;
+};
+
+export type ScholarshipParams = {
+  name?: string;
+  applicable_to?: string;
+  coverage_type?: string | null;
+  amount?: number | null;
+  currency?: string | null;
+  deadline?: string | null;
+  application_url?: string | null;
+  description?: string | null;
+};
+
 export type StudyUnit = ActorFields & { id: string; unit_code: string | null; unit_name: string; credit_points: number | null; unit_type: string | null; description: string | null; created_at: string; updated_at?: string };
 
 export type StudyUnitParams = {

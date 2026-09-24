@@ -16,6 +16,7 @@ import { AgentsTab } from "./agents-tab";
 import { FeesTab } from "./fees-tab";
 import { IntakesTab } from "./intakes-tab";
 import { EligibilityTab } from "./eligibility-tab";
+import { ScholarshipsTab } from "./scholarships-tab";
 import { StudyUnitsTab } from "./study-units-tab";
 import { StudyOptionsTab } from "./study-options-tab";
 import { AccreditationsTab } from "./accreditations-tab";
@@ -24,7 +25,7 @@ import { SiteTab } from "./site-tab";
 
 const COURSE_JOB_TABS: JobTab[] = [
   "overview", "site", "institution", "branches", "agents",
-  "courses", "fees", "intakes", "eligibility", "units", "study_options", "accreditations",
+  "courses", "fees", "intakes", "eligibility", "scholarships", "units", "study_options", "accreditations",
 ];
 
 const VISA_SERVICE_JOB_TABS: JobTab[] = ["overview", "site", "institution", "visa_services"];
@@ -93,6 +94,8 @@ export function JobDetailView({ jobId }: Readonly<{ jobId: string }>) {
         return <IntakesTab jobId={jobId} job={full.job} onReload={reload} />;
       case "eligibility":
         return <EligibilityTab jobId={jobId} job={full.job} onReload={reload} />;
+      case "scholarships":
+        return <ScholarshipsTab jobId={jobId} job={full.job} onReload={reload} />;
       case "units":
         return <StudyUnitsTab jobId={jobId} job={full.job} onReload={reload} />;
       case "study_options":

@@ -12,6 +12,7 @@ import {
   Clock,
   ShieldCheck,
   Globe2,
+  Award,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -25,6 +26,7 @@ import { TabSummaryCard, type TabCard } from "./tab-summary-card";
 
 // ponytail: V3's course_data step is per-course (needs course_id), so the four
 // course-data cards show Run disabled and point at the Courses tab instead.
+const MANUAL_ONLY = "No extraction step writes scholarships yet — add them from the Scholarships tab";
 const PER_COURSE_ONLY = "Re-run this from a course row in the Courses tab — V3 runs course data per course";
 
 function SectionHeader({ title, description, cards }: Readonly<{ title: string; description: string; cards: TabCard[] }>) {
@@ -81,6 +83,7 @@ export function OverviewTab({
     { key: "fees", label: "Fees", icon: DollarSign, count: courseLinks.course_fees.length, updated: latestTimestamp(courseLinks.course_fees), tab: "fees", runBlockedReason: PER_COURSE_ONLY },
     { key: "intakes", label: "Intakes", icon: Calendar, count: courseLinks.intakes.length, updated: latestTimestamp(courseLinks.intakes), tab: "intakes", runBlockedReason: PER_COURSE_ONLY },
     { key: "eligibility", label: "Eligibility", icon: GraduationCap, count: courseLinks.eligibility_requirements.length, updated: latestTimestamp(courseLinks.eligibility_requirements), tab: "eligibility", runBlockedReason: PER_COURSE_ONLY },
+    { key: "scholarships", label: "Scholarships", icon: Award, count: courseLinks.scholarships.length, updated: latestTimestamp(courseLinks.scholarships), tab: "scholarships", runBlockedReason: MANUAL_ONLY },
     { key: "units", label: "Study Units", icon: BookOpen, count: courseLinks.study_units.length, updated: latestTimestamp(courseLinks.study_units), tab: "units", runBlockedReason: PER_COURSE_ONLY },
     { key: "study_options", label: "Study Options", icon: Clock, count: courseLinks.study_options.length, updated: latestTimestamp(courseLinks.study_options), tab: "study_options", step: "courses" },
     { key: "accreditations", label: "Accreditations", icon: ShieldCheck, count: courseLinks.accreditations.length, updated: latestTimestamp(courseLinks.accreditations), tab: "accreditations", step: "courses" },

@@ -241,7 +241,9 @@ export async function extractJson<T>(opts: {
     if (isORConfigured()) {
       // Not cached and not metered: a different model's answer under this model's key would
       // be wrong, and orExtractJson reports no usage. Rare path; the log line is the record.
-      logger.warn("Gemini extractJson failed — falling back to OpenRouter");
+      // The reason matters: a 403 "dunning decision is deny" is a suspended billing account, and
+      // every extraction then silently runs on the fallback model until someone notices.
+      logger.warn("Gemini extractJson failed — falling back to OpenRouter", { model: modelId, err: String((geminiErr as Error)?.message ?? geminiErr).slice(0, 300) });
       return orExtractJson<T>({ system: opts.system, prompt: opts.prompt, maxTokens: opts.maxTokens });
     }
     throw geminiErr;

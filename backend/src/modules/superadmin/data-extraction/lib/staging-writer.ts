@@ -49,6 +49,7 @@ export interface ExtractedCourse {
   study_options?: ExtractedStudyOption[];
   eligibility?: ExtractedEligibility[];
   english_requirements?: ExtractedEnglishReq[];
+  scholarships?: ExtractedScholarship[];
   campus_names?: string[];
   study_units?: ExtractedStudyUnit[];
   /** Model's own label: course | short_course | module | specialization | other. One vote in
@@ -358,6 +359,17 @@ export interface ExtractedEligibility {
   score_type?: string | null;
   min_score?: number | string | null;
   academic_tests?: ExtractedAcademicTest[] | null;
+}
+
+export interface ExtractedScholarship {
+  name?: string | null;
+  applicable_to?: string | null;
+  coverage_type?: string | null;
+  amount?: number | string | null;
+  currency?: string | null;
+  deadline?: string | null;
+  application_url?: string | null;
+  description?: string | null;
 }
 
 export interface ExtractedEnglishReq {
@@ -1450,6 +1462,109 @@ export function eligibilityRowsAgree(
 }
 
 /**
+ * Rows the model returned as eligibility that are not admission criteria: a scholarship's own
+ * conditions, application paperwork, visa/accommodation notes, "inherent requirements". Named in
+ * ELIGIBILITY_SCOPE_RULE, and re-checked here because the model does not always obey the rule and
+ * nothing downstream re-reads the kind — every stored row is a criterion the eligibility engine
+ * measures a real student against. Same shape as isExtractableFee, and like it applied only at the
+ * LLM write paths (writeCourse, the step worker), never inside upsertEligibility, which the AgentCIS
+ * import also uses for the institution's own structured data.
+ *
+ * Conservative on purpose: the NAME decides, plus a description that is about a scholarship. Age,
+ * residency and work-experience rows are left alone — on an enabling course "Aged 17 or over" is
+ * the admission bar, and the rule can't tell that apart from marketing without the page.
+ */
+const NON_ADMISSION_NAME =
+  /scholar|bursar|\bgrants?\b|funding|financial (aid|support)|fee (waiver|reduction|discount)|tuition (waiver|discount)|personal statement|statement of purpose|referee|reference (letter|report)|recommendation|interview|audition|portfolio|\bcv\b|r[eé]sum[eé]|supporting document|supplementary document|application document|\bdocuments\b|how to apply|application (process|fee|form|deadline|checklist)|\bvisa\b|immigration|accommodation|living cost|inherent requirement|fitness to practi|police (check|clearance)|working with children|immunis|vaccin|first aid|criminal (record|history)/i;
+// "scholar" not "scholarship": Curtin's award is the "Global Scholars Program".
+const SCHOLARSHIP_DESC = /scholar|bursar(y|ies)|financial (aid|support)|fee waiver/i;
+/**
+ * Wording that frames the row's conditions as conditions FOR AN AWARD rather than for admission:
+ * "GPA 3.5 to hold the Excellence Scholarship", "considered for the Dean's Scholarship",
+ * "scholarship worth £5,000". A row like that is the award's criterion however it is named, and a
+ * GPA in it is the award's bar, not the course's (review, 2026-09-24). A bare availability note
+ * ("scholarships are available") matches none of this and leaves the row alone.
+ */
+const SCHOLARSHIP_CONDITION =
+  /(hold|holding|receiv\w*|retain\w*|qualif\w*|eligible for|considered for|awarded|apply(ing)? for|entitled to|renew\w*)[^.]{0,50}(scholar|bursar)|(scholar|bursar)[^.]{0,60}(worth|valued|of up to|per (year|annum)|covers|tuition (fee )?(reduction|discount|waiver))|[£€]\s?\d|\$\s?\d|\b(GBP|USD|AUD|EUR|CAD|NZD|INR|NPR|SGD|MYR|AED)\s?\d/i;
+/** Wording that states prior study, a grade, a language bar or an admission test. */
+const ADMISSION_VOCAB =
+  /degree|bachelor|master|diploma|certificate|honours|qualification|high school|year 12|a[- ]level|gpa|cgpa|grade|percent|%|atar|ucas|ib\b|ielts|toefl|pte\b|duolingo|gre\b|gmat|\bsat\b|\bact\b|lsat|mcat|prerequisite|english language|proficiency/i;
+
+export function isAdmissionRequirement(row: {
+  name?: string | null;
+  description?: string | null;
+  min_score?: number | string | null;
+  min_score_percent?: number | string | null;
+  min_degree_level?: string | null;
+  academic_tests?: unknown[] | null;
+}): boolean {
+  if (NON_ADMISSION_NAME.test(row.name ?? "")) return false;
+  // A scholarship mention condemns a row only when the row states nothing admission-like of its
+  // own — no score, no degree level, no test, no prior-study wording. A genuine requirement that
+  // adds "scholarships are available" keeps its degree/GPA/IELTS content and must survive (review,
+  // 2026-09-24). A scholarship's OWN GPA bar is indistinguishable from a course's by regex; keeping
+  // that row is the lesser error, and the prompt's scope rule is what separates the two.
+  const desc = row.description ?? "";
+  if (!SCHOLARSHIP_DESC.test(desc)) return true;
+  // Conditions stated FOR the award are the award's, whatever substance they carry.
+  if (SCHOLARSHIP_CONDITION.test(desc)) return false;
+  const hasSubstance =
+    row.min_score != null || row.min_score_percent != null || !!row.min_degree_level
+    || (Array.isArray(row.academic_tests) && row.academic_tests.length > 0)
+    || ADMISSION_VOCAB.test(`${row.name ?? ""} ${desc}`);
+  return hasSubstance;
+}
+
+const COVERAGE_TYPES = new Set(["full_tuition", "partial_tuition", "stipend", "living_allowance", "other"]);
+
+/**
+ * Upsert a scholarship for a job — one row per (job, name), blanks filled by later pages, shared
+ * across courses through extraction_course_scholarship_assignments like eligibility rows. The
+ * course prompt's scholarships array exists mainly as the SINK that keeps scholarship criteria out of
+ * eligibility (a model with nowhere to put content files it under the nearest heading); persisting it
+ * is what makes the admin Scholarships tab fill from a crawl.
+ */
+export async function upsertScholarship(jobId: string, s: ExtractedScholarship, sourceUrl: string | null): Promise<string | null> {
+  const name = (s.name ?? "").trim();
+  if (!name) return null;
+  const deadline = coercePartialDate(s.deadline);
+  const currency = (s.currency ?? "").trim().toUpperCase();
+  const coverage = (s.coverage_type ?? "").trim().toLowerCase();
+  const fields: Record<string, unknown> = {
+    applicable_to: s.applicable_to ?? "both",
+    coverage_type: COVERAGE_TYPES.has(coverage) ? coverage : null,
+    amount: coerceMoney(s.amount),
+    currency: /^[A-Z]{3}$/.test(currency) ? currency : null,
+    // The column is `date`: a month-only deadline ("2027-01") stays in the description rather than
+    // becoming an invented day — the same rule intakes follow (CLAUDE.md (k)).
+    deadline: deadline && deadline.length === 10 ? deadline : null,
+    application_url: s.application_url ?? null,
+    description: s.description ?? null,
+    source_url: sourceUrl,
+  };
+  // One statement, not find-then-insert: two page workers extracting the same award at once both
+  // saw no row and each inserted one (review, 2026-09-24). The unique index on
+  // (job_id, LOWER(TRIM(name))) is the conflict target; the loser's values fill the winner's blanks
+  // and never overwrite a stated one — the same merge rule upsertStudyOption uses.
+  const T = `${S}.extraction_scholarships`;
+  const TEXT_COLS = new Set(["applicable_to", "coverage_type", "currency", "application_url", "description", "source_url"]);
+  const merge = Object.fromEntries(
+    Object.keys(fields).map((k) => [
+      k,
+      // '' counts as blank on text columns; amount/deadline are typed, so plain COALESCE.
+      masterKnex.raw(TEXT_COLS.has(k) ? `COALESCE(NULLIF(${T}.${k}, ''), EXCLUDED.${k})` : `COALESCE(${T}.${k}, EXCLUDED.${k})`),
+    ]),
+  );
+  const [row] = await masterKnex(T)
+    .insert({ job_id: jobId, name, ...fields })
+    .onConflict(masterKnex.raw("(job_id, LOWER(TRIM(name)))"))
+    .merge({ ...merge, updated_at: masterKnex.fn.now() })
+    .returning("id");
+  return row.id;
+}
+
+/**
  * Upsert an eligibility requirement for a job — deduplicates by normalised name + audience, with
  * the gating values required not to contradict (see eligibilityRowsAgree), mirroring upsertIntake
  * above and for the same reason (see its comment).
@@ -2210,6 +2325,10 @@ export async function writeCourse(
   // ── Eligibility requirements + assignments ──
   if (course.eligibility?.length && !(isAgentcisJob && await courseHasExisting("extraction_course_eligibility_assignments", courseId))) {
     for (const elig of course.eligibility) {
+      if (!isAdmissionRequirement(elig)) {
+        logger.info("eligibility-scope: dropped non-admission row", { jobId, courseId, name: elig.name ?? null });
+        continue;
+      }
       let scoreType = normaliseScoreType(elig.score_type);
       let scoreValue = coerceMoney(elig.min_score);
       if (!scoreType && scoreValue == null && !elig.min_score_percent) {
@@ -2232,6 +2351,17 @@ export async function writeCourse(
       await masterKnex(`${S}.extraction_course_eligibility_assignments`)
         .insert({ job_id: jobId, course_id: courseId, eligibility_requirement_id: eligId })
         .onConflict(["course_id", "eligibility_requirement_id"]).ignore();
+    }
+  }
+
+  // ── Scholarships + assignments ──
+  if (course.scholarships?.length) {
+    for (const s of course.scholarships) {
+      const scholarshipId = await upsertScholarship(jobId, s, course.source_url ?? null);
+      if (!scholarshipId) continue;
+      await masterKnex(`${S}.extraction_course_scholarship_assignments`)
+        .insert({ job_id: jobId, course_id: courseId, scholarship_id: scholarshipId })
+        .onConflict(["course_id", "scholarship_id"]).ignore();
     }
   }
 

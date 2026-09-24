@@ -76,8 +76,20 @@ for (const url of [
   "https://www.example.edu/people/faculty-research",       // 20 pages -> 43 courses
   "https://www.example.edu/admissions/tuition-and-fees",   // 2 pages -> 6 courses
   "https://www.example.edu/registrar/course-offerings",    // 9 pages -> 6 courses
-  "https://www.example.edu/financial-aid/scholarships",    // 32 pages -> 2 courses
 ]) ok(!looksLikeNonCourseUrl(url), `kept despite low yield: ${url}`);
+
+// Scholarship / funding pages ARE denied (2026-09-24). The 2 courses that 32 such pages once
+// yielded were the failure this fixes — a scholarship page lists the degrees the award can be held
+// with, and the course prompt stages one course per listed degree with the award's own criteria as
+// its "entry requirement" (Curtin's Global Scholars Program page became 30 such courses).
+for (const url of [
+  "https://www.example.edu/financial-aid/scholarships",
+  "https://curtin.edu.au/study/international-students/global-scholars-program",
+  "https://curtin.edu.au/study/international-students/curtin-english/curtin-english-scholarship",
+  "https://uni.example/study/bursaries",
+]) ok(looksLikeNonCourseUrl(url), `scholarship page denied: ${url}`);
+// …but a programme whose SUBJECT is scholarship-adjacent is not.
+ok(!looksLikeNonCourseUrl("https://uni.example/courses/master-of-financial-planning"), "financial planning programme survives");
 
 // A word appearing in a HOSTNAME must not deny the URL — the hostname-bleed bug, mirrored.
 ok(!looksLikeNonCourseUrl("https://library.example.edu/programs/bachelor-of-science"),

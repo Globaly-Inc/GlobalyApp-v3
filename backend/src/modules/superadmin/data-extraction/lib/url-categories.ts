@@ -46,7 +46,9 @@ const PATH_SIGNALS: [SiteUrlCategory, string[]][] = [
   ["accreditations", ["/accreditation", "/accredited", "/cricos", "/teqsa", "/registration", "/recognition", "/affiliation", "/rankings"]],
   ["fees", ["/fee", "/tuition", "/scholarship", "/cost", "/pricing", "/payment"]],
   ["intake", ["/intake", "/academic-calendar", "/key-dates", "/important-dates", "/semester-dates", "/term-dates", "/application-dates", "/apply-by"]],
-  ["eligibility", ["/entry-requirement", "/admission-requirement", "/eligibility", "/english-requirement", "/english-language", "/how-to-apply"]],
+  // "/how-to-apply" is deliberately NOT here: an application-process page appended to a course's
+  // eligibility extraction is where document checklists and personal statements came from.
+  ["eligibility", ["/entry-requirement", "/admission-requirement", "/eligibility", "/english-requirement", "/english-language"]],
   ["study_options", ["/study-option", "/study-mode", "/delivery-mode", "/part-time", "/full-time", "/online-study", "/distance", "/flexible-study"]],
   ["study_units", ["/unit-", "/units/", "/module", "/subject-outline", "/unit-outline"]],
   ["branches", ["campus", "location", "/branch", "/centre", "/center", "/office"]], // bare: "/our-campuses", "/study-locations"
@@ -54,7 +56,7 @@ const PATH_SIGNALS: [SiteUrlCategory, string[]][] = [
   ["contact_us", ["/contact", "/enquir", "/inquir", "/get-in-touch"]],
   ["about_us", ["/about", "/who-we-are", "/our-story", "/history", "/mission", "/vision", "/governance", "/leadership"]],
   ["overview", ["/overview", "/at-a-glance", "/why-"]],
-  ["other", ["/news", "/event", "/blog", "/staff", "/research", "/career", "/login", "/privacy", "/alumni", "/sport", "/giving", "/donate", "/media", "/sitemap", "/search"]],
+  ["other", ["/how-to-apply", "/news", "/event", "/blog", "/staff", "/research", "/career", "/login", "/privacy", "/alumni", "/sport", "/giving", "/donate", "/media", "/sitemap", "/search"]],
 ];
 
 /** Free, path-only guess. null = no signal; the model pass decides. Course detection is NOT here — that is html-utils.looksLikeCourseUrl and the classifier. */
