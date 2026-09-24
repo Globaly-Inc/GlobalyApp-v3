@@ -5,9 +5,16 @@ const nextConfig: NextConfig = {
     root: __dirname,
   },
   images: {
-    // Placeholder photography on /variation5 only, pending real campus
-    // photography. Drop this entry once the real assets land in /public.
-    remotePatterns: [{ protocol: "https", hostname: "picsum.photos" }],
+    // The motion posters are served from the public GCS bucket — see
+    // MOTION_CDN in src/lib/imagery.ts. next/image refuses a remote host that
+    // is not listed here, so the two move together.
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "storage.googleapis.com",
+        pathname: "/globalyapp-public-images/**",
+      },
+    ],
   },
   // The marketing site is never meant to be framed by anyone.
   async headers() {
