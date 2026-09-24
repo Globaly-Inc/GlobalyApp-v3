@@ -28,8 +28,10 @@ const ENABLED = process.env.PAGE_SNAPSHOTS !== "0";
 export const SNAPSHOT_PREFIX = "extraction/www";
 /** Fees and intakes move on a yearly cycle; 30 days is conservative for all of them. */
 const DEFAULT_MAX_AGE_DAYS = Number(process.env.PAGE_SNAPSHOT_MAX_AGE_DAYS) || 30;
-/** Nothing real is this big after stripMarkdownJunk (applied in getPage); a hostile page must not be either. */
-const MAX_STORED_CHARS = 1_000_000;
+/** Nothing real is this big after stripMarkdownJunk (applied in getPage); a hostile page must not
+ *  be either. Exported so the manual-edit schema can reject an oversized edit with a 400 instead
+ *  of silently truncating what someone typed. */
+export const MAX_STORED_CHARS = 1_000_000;
 /** Same floor every caller already applies. */
 const MIN_USABLE_CHARS = 50;
 
@@ -62,6 +64,7 @@ export interface StoredPage {
   content_hash: string;
   scraper: Page["scraper"];
   scraped_at: Date;
+  updated_by_platform_user_id: number | null;
 }
 
 // ── Test seam: the scraper, Vision, the table and the clock ──
@@ -72,16 +75,22 @@ export const _pageDeps = {
     return createDocumentExtractor().extract({ file_url: url, file_name: fileName });
   },
   findPage: async (url: string, mode: PageMode): Promise<StoredPage | undefined> =>
-    masterKnex(TABLE).where({ url, mode }).select("id", "markdown", "links", "content_hash", "scraper", "scraped_at").first(),
+    masterKnex(TABLE).where({ url, mode })
+      .select("id", "markdown", "links", "content_hash", "scraper", "scraped_at", "updated_by_platform_user_id")
+      .first(),
   savePage: async (row: {
     url: string; mode: PageMode; domain: string; markdown: string; links: string[]; content_hash: string; scraper: string;
+    updated_by_platform_user_id?: number;
   }): Promise<string> => {
+    const editorPatch = row.updated_by_platform_user_id !== undefined
+      ? { updated_by_platform_user_id: row.updated_by_platform_user_id } : {};
     const [saved] = await masterKnex(TABLE)
-      .insert({ ...row, links: JSON.stringify(row.links) })
+      .insert({ ...row, links: JSON.stringify(row.links), ...editorPatch })
       .onConflict(["url", "mode"])
       .merge({
         markdown: row.markdown, links: JSON.stringify(row.links), content_hash: row.content_hash,
         scraper: row.scraper, scraped_at: masterKnex.fn.now(), updated_at: masterKnex.fn.now(),
+        ...editorPatch,
       })
       .returning("id");
     return typeof saved === "string" ? saved : saved.id;
@@ -218,6 +227,26 @@ async function lookup(key: string, mode: PageMode): Promise<StoredPage | undefin
 /** A stored page by URL, file included. Undefined when there is none (or the file is gone). Never scrapes. */
 export const readSnapshot = (url: string, mode: PageMode = "main") => lookup(normaliseUrl(url), mode);
 
+export async function refreshLivePage(url: string): Promise<Page> {
+  const key = normaliseUrl(url);
+  const mode: PageMode = "main";
+  const before = await _pageDeps.findPage(key, mode);
+  const editorId = before?.updated_by_platform_user_id ?? null;
+
+  // Cleared only long enough for store() to accept a fresh write below. If the fetch fails to
+  // produce one (blocked, not found, too thin), the marker is put back — otherwise a manual
+  // edit is left unprotected against the very next ordinary crawl despite nothing having
+  // actually replaced it.
+  if (editorId != null) await masterKnex(TABLE).where({ url: key, mode }).update({ updated_by_platform_user_id: null });
+
+  const page = isPdfUrl(url) ? await getDocument(url, { fresh: true }) : await getPage(url, { fresh: true });
+
+  if (editorId != null && !page.pageId) {
+    await masterKnex(TABLE).where({ url: key, mode }).update({ updated_by_platform_user_id: editorId });
+  }
+  return page;
+}
+
 function fromStored(stored: StoredPage, withLinks: boolean | undefined): Page {
   return {
     markdown: stored.markdown,
@@ -235,6 +264,12 @@ async function store(
   url: string, key: string, mode: PageMode, markdown: string, links: string[], scraper: string,
 ): Promise<string | null> {
   if (!ENABLED) return null;
+
+  const existing = await _pageDeps.findPage(key, mode);
+  if (existing?.updated_by_platform_user_id != null) {
+    logger.info("Skipped storing a fresh scrape — page was manually edited", { key, mode });
+    return existing.id;
+  }
   // One bound for file, row and hash. Nothing real is this long after stripMarkdownJunk; a hostile
   // page must not become an unbounded GCS write on every fresh rerun, and the hash has to be of
   // the text actually stored or the file could never re-hash to its row on read.

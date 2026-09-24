@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Award, Bot, BookOpen, Building2, CalendarDays, CreditCard, Coins, GraduationCap, Handshake, Home, MapPin, Megaphone, MessageSquare, PenLine, Plug, Receipt, Settings, Share2, Users } from "lucide-react";
+import { Award, Bot, BookOpen, Building2, CalendarDays, CreditCard, Coins, GraduationCap, Globe, Handshake, Home, Inbox, MapPin, Megaphone, MessageSquare, PenLine, Plug, Receipt, Settings, Users } from "lucide-react";
 
 export type BusinessNavItem = { icon: LucideIcon; label: string; href: string };
 export type BusinessNavGroup = { icon: LucideIcon; label: string; items: BusinessNavItem[] };
@@ -12,7 +12,8 @@ export type BusinessNavGroup = { icon: LucideIcon; label: string; items: Busines
 // in-content tab strip.
 export const BUSINESS_NAV_GROUPS: BusinessNavGroup[] = [
   { icon: Home, label: "Home", items: [{ icon: Home, label: "Home", href: "/business/portal" }] },
-  { icon: Share2, label: "Social", items: [{ icon: Share2, label: "Social", href: "/business/social" }] },
+  // Commented out for now — not ready to ship yet.
+  // { icon: Share2, label: "Social", items: [{ icon: Share2, label: "Social", href: "/business/social" }] },
   {
     icon: Building2,
     label: "Business",
@@ -22,6 +23,7 @@ export const BUSINESS_NAV_GROUPS: BusinessNavGroup[] = [
       { icon: Handshake, label: "Representative", href: "/business/profile?tab=partners" },
       { icon: Users, label: "Team", href: "/business/profile?tab=team" },
       { icon: BookOpen, label: "Services", href: "/business/profile?tab=services" },
+      { icon: Globe, label: "Site contents", href: "/business/profile?tab=site_mapping" },
     ],
   },
   // No features behind these yet — each routes to a ComingSoon placeholder until built.
@@ -49,8 +51,7 @@ export const BUSINESS_NAV_GROUPS: BusinessNavGroup[] = [
       { icon: Bot, label: "AI embed", href: "/business/settings/ai-embed" },
     ],
   },
-  { icon: MessageSquare, label: "Messages", items: [{ icon: MessageSquare, label: "Messages", href: "/business/messages" }],
-},
+  { icon: Inbox, label: "Inbox", items: [{ icon: Inbox, label: "Inbox", href: "/business/messages" }] },
 ];
 
 export const INSTITUTION_SCHOLARSHIPS_ITEM: BusinessNavItem = {

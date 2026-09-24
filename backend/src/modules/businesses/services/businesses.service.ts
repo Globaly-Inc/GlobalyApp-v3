@@ -19,12 +19,14 @@ import { issueCode } from "../../referrals/services/codes.service.js";
 import { createSystemPost } from "../../feed/services/feed.service.js";
 import type {
   BusinessRegisterInput, BusinessProfilePatchInput, AiAssistInput, StartExtractionInput, SiteUrlsQueryInput,
-  SiteUrlSnapshotQueryInput,
+  SiteUrlSnapshotQueryInput, SiteUrlSnapshotUpdateInput, SiteUrlRefreshInput,
 } from "../schemas/businesses.schema.js";
 import { generateSubdomain } from "../../../shared/subdomain.js";
 import { createJob, getSelfServiceStatus } from "../../superadmin/data-extraction/services/jobs.service.js";
 import { isInstitutionCategory } from "../../superadmin/data-extraction/repositories/promote.repository.js";
-import { listSiteUrls, getSnapshotMarkdownByUrl } from "../../superadmin/data-extraction/services/site-urls.service.js";
+import { listSiteUrls, getSnapshotMarkdownByUrl, updateSnapshotMarkdown, refreshSiteUrls } from "../../superadmin/data-extraction/services/site-urls.service.js";
+import { getBusinessOnboardingProgress, markCoursesReviewedForBusiness } from "./onboarding-progress.service.js";
+import { getWidgetAnalytics } from "../../ai-counsellor/services/widget-analytics.service.js";
 
 const logger = createChildLogger("businesses-service");
 const CLAIM_TOKEN_TTL_MS = 72 * 60 * 60 * 1000; // 72 hours, matching admin claim-request convention
@@ -292,6 +294,43 @@ export async function getExtractionSiteUrlSnapshot(orgId: string, query: SiteUrl
   if (!business) throw new NotFoundError("Business not found");
   if (!business.source_job_id) throw new NotFoundError("No extraction started for this business");
   return getSnapshotMarkdownByUrl(business.source_job_id, query.url);
+}
+
+/** Write half of the above — the owner correcting what was scraped from their own page. */
+export async function updateExtractionSiteUrlSnapshot(orgId: string, input: SiteUrlSnapshotUpdateInput, editorId: number) {
+  const business = await repo.findBusinessByDbName(orgId);
+  if (!business) throw new NotFoundError("Business not found");
+  if (!business.source_job_id) throw new NotFoundError("No extraction started for this business");
+  return updateSnapshotMarkdown(business.source_job_id, input.url, input.markdown, editorId);
+}
+
+/** Re-pull one or more of the business's own pages from the live site. */
+export async function refreshExtractionSiteUrls(orgId: string, input: SiteUrlRefreshInput, editorId: number) {
+  const business = await repo.findBusinessByDbName(orgId);
+  if (!business) throw new NotFoundError("Business not found");
+  if (!business.source_job_id) throw new NotFoundError("No extraction started for this business");
+  return refreshSiteUrls(business.source_job_id, input.urls, editorId);
+}
+
+export async function getOnboardingProgress(orgId: string) {
+  const business = await repo.findBusinessByDbName(orgId);
+  if (!business) throw new NotFoundError("Business not found");
+  return getBusinessOnboardingProgress(
+    Number(business.id), business.source_job_id, business.schema_name, business.business_category_id ?? null,
+  );
+}
+
+export async function markOnboardingCoursesReviewed(orgId: string) {
+  const business = await repo.findBusinessByDbName(orgId);
+  if (!business) throw new NotFoundError("Business not found");
+  await markCoursesReviewedForBusiness(Number(business.id));
+  return { reviewed: true };
+}
+
+export async function getMyWidgetAnalytics(orgId: string) {
+  const business = await repo.findBusinessByDbName(orgId);
+  if (!business) throw new NotFoundError("Business not found");
+  return getWidgetAnalytics({ kind: "business", id: Number(business.id) }, Number(business.id), business.schema_name);
 }
 
 /**

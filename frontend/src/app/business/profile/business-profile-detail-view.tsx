@@ -23,10 +23,11 @@ import { ScholarshipsTab } from "./components/tabs/scholarships-tab";
 import { ActivityTab } from "./components/tabs/activity-tab";
 import { ProfileTab } from "./components/tabs/profile-tab";
 import { ProfileHeaderCard } from "./components/profile-header-card";
+import { SiteUrlsCard } from "../portal/components/site-urls-card";
 
 // Tab switching happens only via the sidebar (`BUSINESS_NAV_GROUPS`) — this page renders no
 // second, in-content tab strip.
-const VALID_TABS = ["profile", "branches", "partners", "team", "services", "scholarships", "activity"] as const;
+const VALID_TABS = ["profile", "branches", "partners", "team", "services", "scholarships", "activity", "site_mapping"] as const;
 type Tab = (typeof VALID_TABS)[number];
 function parseTab(raw: string | null): Tab {
   return (VALID_TABS as readonly string[]).includes(raw ?? "") ? (raw as Tab) : "profile";
@@ -66,7 +67,7 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
   // Partners/Scholarships/Activity have no institution-side data — the sidebar never links
   // there for an institution, but fall back to profile if the URL is edited directly. Branches
   // DOES apply to institutions (a university's own campuses) and is linked from the sidebar.
-  const institutionTabAllowed = ["profile", "branches", "team", "services", "partners", "scholarships"].includes(parsedTab);
+  const institutionTabAllowed = ["profile", "branches", "team", "services", "partners", "scholarships", "site_mapping"].includes(parsedTab);
   const isDisallowedForRole = (isInstitution && !institutionTabAllowed) || (isBusiness && parsedTab === "scholarships");
   const tab = isDisallowedForRole ? "profile" : parsedTab;
 
@@ -217,6 +218,8 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
 
           <ProfileTab profile={profile} countries={countries} isInstitution={isViewingInstitution} />
         </>
+      ) : tab === "site_mapping" ? (
+        <SiteUrlsCard />
       ) : (
         <Card>
           <CardContent>

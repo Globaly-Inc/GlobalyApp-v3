@@ -183,4 +183,46 @@ export type SiteUrlSnapshot = {
   url: string;
   scraped_at: string;
   markdown: string;
+  edited: boolean;
+  /** Only set on a save: whether the correction triggered a course re-extraction ("triggered",
+   *  possibly for several courses sharing this listing page), was skipped for having too many
+   *  courses to safely re-run at once ("shared_page"), or neither applies ("none"). failedCount is
+   *  courses that matched but couldn't be queued — they still hold the old extraction. */
+  reExtraction?: { outcome: "triggered" | "shared_page" | "none"; courseCount: number; failedCount: number };
+};
+
+export type SiteUrlRefreshResult = {
+  queued: string[];
+  rejected: { url: string; error: string }[];
+};
+
+export type OnboardingStep = {
+  key: string;
+  label: string;
+  detail: string;
+  duration: string | null;
+  done: boolean;
+};
+
+export type OnboardingProgress = {
+  steps: OnboardingStep[];
+  completed: number;
+  total: number;
+};
+
+export type WidgetAnalyticsMonth = {
+  month: string;
+  visitors: number;
+  conversationsClosed: number;
+  conversions: number;
+};
+
+export type WidgetAnalytics = {
+  stats: {
+    visitors: { value: number; deltaPct: number };
+    conversationsClosed: { value: number; deltaPct: number };
+    conversions: { value: number; delta: number };
+    conversionRate: { value: number; deltaPts: number };
+  };
+  monthly: WidgetAnalyticsMonth[];
 };

@@ -2,12 +2,20 @@
 
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { NotFoundError } from "../../../../shared/errors.js";
+import { createChildLogger } from "../../../../shared/logger.js";
 import { buildPaginatedResponse, paginationToOffset } from "../../../../shared/pagination.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { logAudit } from "../shared/audit.js";
 import * as repo from "../repositories/site-urls.repository.js";
+import * as pageEdits from "../repositories/page-edits.repository.js";
 import { readSnapshot, snapshotPathFor } from "../lib/page-store.js";
+import { canonicalCourseUrl } from "../lib/course-name.js";
+import { dispatchStep } from "./step.service.js";
+import { queueService } from "../../../../shared/queue/queueService.js";
+import { SELF_SERVICE_QUEUES } from "../shared/self-service-queues.js";
 import type { ListSiteUrlsQuery, PatchSiteUrlInput, BulkExcludeInput, ListSnapshotsQuery, AddSiteUrlInput } from "../schemas/site-urls.schema.js";
+
+const logger = createChildLogger("site-urls-service");
 
 async function requireJob(jobId: string) {
   const job = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).select("id").first();
@@ -105,7 +113,98 @@ export async function getSnapshotMarkdownByUrl(jobId: string, url: string) {
   await requireJob(jobId);
   const owns = await masterKnex(`${S}.extraction_site_urls`).where({ job_id: jobId, url }).first("id");
   if (!owns) throw new NotFoundError("This page isn't part of this job's site");
+  // This job's own correction, if it has one — kept apart from the shared row so a job never
+  // reads another job's edit of a URL they happen to have in common.
+  const edit = await pageEdits.findManualEdit(jobId, url);
+  if (edit) return { url, scraped_at: edit.updated_at, markdown: edit.markdown, edited: true };
   const page = await readSnapshot(url, "main");
   if (!page) throw new NotFoundError("Snapshot not found — it may not have been scraped yet");
-  return { url, scraped_at: page.scraped_at, markdown: page.markdown };
+  return { url, scraped_at: page.scraped_at, markdown: page.markdown, edited: false };
+}
+
+export type CourseReExtractionOutcome = "triggered" | "shared_page" | "none";
+export interface CourseReExtractionResult {
+  outcome: CourseReExtractionOutcome;
+  courseCount: number;
+  /** Matched this page but couldn't be queued — these still hold the old extraction and need a
+   *  retry (re-saving the same correction re-attempts every matched course from scratch). */
+  failedCount: number;
+}
+
+/** Above this, a "shared listing page" is more likely a misclassified institution-wide page than
+ *  a real course listing — refuse rather than fire this many LLM calls off one edit/refresh. */
+const MAX_SHARED_PAGE_COURSES = 20;
+
+/**
+ * A listing page can be the source_url for several courses at once. Each dispatch below tells
+ * courseDataPrompt which course to extract by name, so re-running it once per course sharing the
+ * page is safe — every course gets its OWN slice of the page instead of all of them getting the
+ * same generic answer.
+ */
+export async function triggerCourseReExtraction(jobId: string, url: string, actorId: number): Promise<CourseReExtractionResult> {
+  const none: CourseReExtractionResult = { outcome: "none", courseCount: 0, failedCount: 0 };
+  const siteUrl = await masterKnex(`${S}.extraction_site_urls`).where({ job_id: jobId, url }).first("category");
+  if (siteUrl?.category !== "course") return none;
+
+  const job = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).first("institution_url");
+  if (!job) return none;
+  const target = canonicalCourseUrl(url, job.institution_url);
+  if (!target) return none;
+
+  const courses: { id: string; source_url: string | null }[] =
+    await masterKnex(`${S}.extraction_courses`).where({ job_id: jobId }).select("id", "source_url");
+  const matches = courses.filter((c) => canonicalCourseUrl(c.source_url, job.institution_url) === target);
+  if (matches.length === 0) return none;
+
+  if (matches.length > MAX_SHARED_PAGE_COURSES) {
+    logger.warn("Page correction affects too many courses to re-extract automatically", { jobId, url, courseCount: matches.length });
+    return { outcome: "shared_page", courseCount: matches.length, failedCount: 0 };
+  }
+
+  let dispatched = 0;
+  let failed = 0;
+  for (const match of matches) {
+    try {
+      await dispatchStep(jobId, { step: "course_data", course_id: match.id, data_type: "course" }, actorId);
+      dispatched++;
+    } catch (err) {
+      failed++;
+      logger.warn("Couldn't trigger course re-extraction after a page correction", { jobId, url, courseId: match.id, err: String(err) });
+    }
+  }
+  return { outcome: dispatched > 0 ? "triggered" : "none", courseCount: dispatched, failedCount: failed };
+}
+
+export async function updateSnapshotMarkdown(jobId: string, url: string, markdown: string, editorId: number) {
+  await requireJob(jobId);
+  const owns = await masterKnex(`${S}.extraction_site_urls`).where({ job_id: jobId, url }).first("id");
+  if (!owns) throw new NotFoundError("This page isn't part of this job's site");
+  const edit = await pageEdits.upsertManualEdit(jobId, url, markdown, editorId);
+  const reExtraction = await triggerCourseReExtraction(jobId, url, editorId);
+  return { url, scraped_at: edit.updated_at, markdown: edit.markdown, edited: true, reExtraction };
+}
+
+export async function refreshSiteUrls(jobId: string, urls: string[], editorId: number) {
+  await requireJob(jobId);
+  const owned = new Set(
+    await masterKnex(`${S}.extraction_site_urls`).where({ job_id: jobId }).whereIn("url", urls).pluck("url"),
+  );
+  const queued: string[] = [];
+  const rejected: { url: string; error: string }[] = [];
+  for (const url of urls) {
+    if (!owned.has(url)) { rejected.push({ url, error: "Not part of this job's site" }); continue; }
+    try {
+      // An explicit refresh means "show me what's live now" — drop this job's own correction so
+      // it doesn't keep masking the fresh pull that's about to happen.
+      await pageEdits.deleteManualEdit(jobId, url);
+      await queueService.publish(SELF_SERVICE_QUEUES.SITE_URL_REFRESH, { url, jobId, editorId });
+      queued.push(url);
+    } catch (err) {
+      // Isolated per URL: a publish failure partway through must not discard the URLs already
+      // queued earlier in this same loop, or the caller has no way to know they shouldn't retry
+      // (and re-queue) work that already went through.
+      rejected.push({ url, error: err instanceof Error ? err.message : "Failed to queue refresh" });
+    }
+  }
+  return { queued, rejected };
 }
