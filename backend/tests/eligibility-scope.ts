@@ -24,9 +24,11 @@ check(false, { name: "Academic Referee Reports", description: "External applican
 check(false, { name: "Design Major Portfolio", description: "Please include a visual portfolio of 5–10 images." });
 check(false, { name: "Relational skills Inherent Requirement", description: "Dietetic practice requires the ability to use interpersonal skills." });
 check(false, { name: "New-to-Curtin Student Status", description: "You must be a new-to-Curtin student to apply for the Global Scholars Program." }); // live after-fix leak
-// A scholarship's own GPA bar under an innocent name is KEPT: regex cannot tell it from a course
-// GPA, and dropping genuine requirements (below) is the worse error. The prompt owns this split.
-check(true, { name: "Academic Entry", description: "Minimum GPA of 3.5 to hold the International Excellence Scholarship, worth £5,000." });
+// A scholarship's OWN criterion under an innocent name drops when the text frames its conditions
+// as conditions for the award (hold/considered for/awarded/worth/amount), even with a GPA in it.
+check(false, { name: "Academic Entry", description: "Minimum GPA of 3.5 to hold the International Excellence Scholarship, worth £5,000." });
+check(false, { name: "Academic Requirements", description: "Applicants with a GPA of 3.8 or above are automatically considered for the Dean's Scholarship." });
+check(false, { name: "Eligibility", description: "International students with an ATAR of 95 receive a bursary of AUD 10,000 per year." });
 // Genuine requirements that merely MENTION a scholarship survive (review, 2026-09-24)
 check(true, { name: "Academic Entry", description: "Bachelor's degree with a 2:1 or equivalent. Scholarships are available for international applicants." });
 check(true, { name: "Entry Requirements", description: "Applicants need IELTS 6.5 overall. Scholars from partner institutions may be exempt." });

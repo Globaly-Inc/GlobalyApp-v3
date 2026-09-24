@@ -1478,6 +1478,15 @@ const NON_ADMISSION_NAME =
   /scholar|bursar|\bgrants?\b|funding|financial (aid|support)|fee (waiver|reduction|discount)|tuition (waiver|discount)|personal statement|statement of purpose|referee|reference (letter|report)|recommendation|interview|audition|portfolio|\bcv\b|r[eé]sum[eé]|supporting document|supplementary document|application document|\bdocuments\b|how to apply|application (process|fee|form|deadline|checklist)|\bvisa\b|immigration|accommodation|living cost|inherent requirement|fitness to practi|police (check|clearance)|working with children|immunis|vaccin|first aid|criminal (record|history)/i;
 // "scholar" not "scholarship": Curtin's award is the "Global Scholars Program".
 const SCHOLARSHIP_DESC = /scholar|bursar(y|ies)|financial (aid|support)|fee waiver/i;
+/**
+ * Wording that frames the row's conditions as conditions FOR AN AWARD rather than for admission:
+ * "GPA 3.5 to hold the Excellence Scholarship", "considered for the Dean's Scholarship",
+ * "scholarship worth £5,000". A row like that is the award's criterion however it is named, and a
+ * GPA in it is the award's bar, not the course's (review, 2026-09-24). A bare availability note
+ * ("scholarships are available") matches none of this and leaves the row alone.
+ */
+const SCHOLARSHIP_CONDITION =
+  /(hold|holding|receiv\w*|retain\w*|qualif\w*|eligible for|considered for|awarded|apply(ing)? for|entitled to|renew\w*)[^.]{0,50}(scholar|bursar)|(scholar|bursar)[^.]{0,60}(worth|valued|of up to|per (year|annum)|covers|tuition (fee )?(reduction|discount|waiver))|[£€]\s?\d|\$\s?\d|\b(GBP|USD|AUD|EUR|CAD|NZD|INR|NPR|SGD|MYR|AED)\s?\d/i;
 /** Wording that states prior study, a grade, a language bar or an admission test. */
 const ADMISSION_VOCAB =
   /degree|bachelor|master|diploma|certificate|honours|qualification|high school|year 12|a[- ]level|gpa|cgpa|grade|percent|%|atar|ucas|ib\b|ielts|toefl|pte\b|duolingo|gre\b|gmat|\bsat\b|\bact\b|lsat|mcat|prerequisite|english language|proficiency/i;
@@ -1498,6 +1507,8 @@ export function isAdmissionRequirement(row: {
   // that row is the lesser error, and the prompt's scope rule is what separates the two.
   const desc = row.description ?? "";
   if (!SCHOLARSHIP_DESC.test(desc)) return true;
+  // Conditions stated FOR the award are the award's, whatever substance they carry.
+  if (SCHOLARSHIP_CONDITION.test(desc)) return false;
   const hasSubstance =
     row.min_score != null || row.min_score_percent != null || !!row.min_degree_level
     || (Array.isArray(row.academic_tests) && row.academic_tests.length > 0)
