@@ -12,7 +12,10 @@ const nextConfig: NextConfig = {
       {
         protocol: "https",
         hostname: "storage.googleapis.com",
-        pathname: "/globalyapp-public-images/**",
+        // Scoped to the site's own prefix: the bucket is shared, and a
+        // wider pattern would let the optimizer spend egress on any image
+        // in it that someone happened to point a URL at.
+        pathname: "/globalyapp-public-images/website/**",
       },
     ],
   },
