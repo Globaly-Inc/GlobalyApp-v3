@@ -202,6 +202,10 @@ export function ScholarshipsTab({ jobId, job, onReload }: Readonly<{ jobId: stri
         step="courses"
         label="Scholarships"
         runLabel="Run Scholarship Extraction"
+        // Scholarships are written by the course crawl (writeCourse's scholarships[] sink); no step
+        // extracts them on their own, and dispatching "courses" on a finished job processes zero
+        // pages while reporting success. Disabled until a scholarships step exists.
+        runBlockedReason="Scholarships are extracted with the course crawl — re-run a course from the Courses tab"
         progress={(job.pipeline_progress as Record<string, unknown> | null)?.courses}
         lastUpdated={latestTimestamp(scholarships)}
         hasData={total > 0}

@@ -24,8 +24,14 @@ check(false, { name: "Academic Referee Reports", description: "External applican
 check(false, { name: "Design Major Portfolio", description: "Please include a visual portfolio of 5–10 images." });
 check(false, { name: "Relational skills Inherent Requirement", description: "Dietetic practice requires the ability to use interpersonal skills." });
 check(false, { name: "New-to-Curtin Student Status", description: "You must be a new-to-Curtin student to apply for the Global Scholars Program." }); // live after-fix leak
-// Scholarship criteria under an innocent name: the description decides
-check(false, { name: "Academic Entry", description: "Minimum GPA of 3.5 to hold the International Excellence Scholarship, worth £5,000." });
+// A scholarship's own GPA bar under an innocent name is KEPT: regex cannot tell it from a course
+// GPA, and dropping genuine requirements (below) is the worse error. The prompt owns this split.
+check(true, { name: "Academic Entry", description: "Minimum GPA of 3.5 to hold the International Excellence Scholarship, worth £5,000." });
+// Genuine requirements that merely MENTION a scholarship survive (review, 2026-09-24)
+check(true, { name: "Academic Entry", description: "Bachelor's degree with a 2:1 or equivalent. Scholarships are available for international applicants." });
+check(true, { name: "Entry Requirements", description: "Applicants need IELTS 6.5 overall. Scholars from partner institutions may be exempt." });
+check(true, { name: "Entry", description: "Scholarship holders still need to meet the standard entry bar.", min_degree_level: "Bachelor" });
+check(true, { name: "Entry", description: "See the funding page for scholarships.", academic_tests: [{ test_name: "GMAT" }] });
 
 // Genuine admission criteria that must survive — including ones whose wording brushes the noise list
 check(true, { name: "Academic Entry", description: "Bachelor's degree in a relevant field with a minimum GPA of 3.0." });

@@ -1590,7 +1590,11 @@ async function handleCourseDataStep(
       for (const req of reqs) {
         const description = (req.description as string | null) ?? null;
         // Same guard as writeCourse — see isAdmissionRequirement.
-        if (!isAdmissionRequirement({ name: req.name as string | null, description })) {
+        if (!isAdmissionRequirement({
+          name: req.name as string | null, description,
+          min_score: req.min_score as number | null, min_score_percent: req.min_score_percent as number | null,
+          min_degree_level: req.min_degree_level as string | null, academic_tests: req.academic_tests as unknown[] | null,
+        })) {
           logger.info("eligibility-scope: dropped non-admission row", { jobId, courseId, name: req.name ?? null });
           continue;
         }

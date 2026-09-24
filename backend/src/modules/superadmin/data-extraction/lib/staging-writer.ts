@@ -1478,11 +1478,31 @@ const NON_ADMISSION_NAME =
   /scholar|bursar|\bgrants?\b|funding|financial (aid|support)|fee (waiver|reduction|discount)|tuition (waiver|discount)|personal statement|statement of purpose|referee|reference (letter|report)|recommendation|interview|audition|portfolio|\bcv\b|r[eé]sum[eé]|supporting document|supplementary document|application document|\bdocuments\b|how to apply|application (process|fee|form|deadline|checklist)|\bvisa\b|immigration|accommodation|living cost|inherent requirement|fitness to practi|police (check|clearance)|working with children|immunis|vaccin|first aid|criminal (record|history)/i;
 // "scholar" not "scholarship": Curtin's award is the "Global Scholars Program".
 const SCHOLARSHIP_DESC = /scholar|bursar(y|ies)|financial (aid|support)|fee waiver/i;
+/** Wording that states prior study, a grade, a language bar or an admission test. */
+const ADMISSION_VOCAB =
+  /degree|bachelor|master|diploma|certificate|honours|qualification|high school|year 12|a[- ]level|gpa|cgpa|grade|percent|%|atar|ucas|ib\b|ielts|toefl|pte\b|duolingo|gre\b|gmat|\bsat\b|\bact\b|lsat|mcat|prerequisite|english language|proficiency/i;
 
-export function isAdmissionRequirement(row: { name?: string | null; description?: string | null }): boolean {
+export function isAdmissionRequirement(row: {
+  name?: string | null;
+  description?: string | null;
+  min_score?: number | string | null;
+  min_score_percent?: number | string | null;
+  min_degree_level?: string | null;
+  academic_tests?: unknown[] | null;
+}): boolean {
   if (NON_ADMISSION_NAME.test(row.name ?? "")) return false;
-  // A description about a scholarship is the scholarship's criteria, whatever the row is called.
-  return !SCHOLARSHIP_DESC.test(row.description ?? "");
+  // A scholarship mention condemns a row only when the row states nothing admission-like of its
+  // own — no score, no degree level, no test, no prior-study wording. A genuine requirement that
+  // adds "scholarships are available" keeps its degree/GPA/IELTS content and must survive (review,
+  // 2026-09-24). A scholarship's OWN GPA bar is indistinguishable from a course's by regex; keeping
+  // that row is the lesser error, and the prompt's scope rule is what separates the two.
+  const desc = row.description ?? "";
+  if (!SCHOLARSHIP_DESC.test(desc)) return true;
+  const hasSubstance =
+    row.min_score != null || row.min_score_percent != null || !!row.min_degree_level
+    || (Array.isArray(row.academic_tests) && row.academic_tests.length > 0)
+    || ADMISSION_VOCAB.test(`${row.name ?? ""} ${desc}`);
+  return hasSubstance;
 }
 
 const COVERAGE_TYPES = new Set(["full_tuition", "partial_tuition", "stipend", "living_allowance", "other"]);
@@ -1512,21 +1532,24 @@ export async function upsertScholarship(jobId: string, s: ExtractedScholarship, 
     description: s.description ?? null,
     source_url: sourceUrl,
   };
-  const existing = await masterKnex(`${S}.extraction_scholarships`)
-    .where({ job_id: jobId })
-    .whereRaw("LOWER(TRIM(name)) = ?", [name.toLowerCase()])
-    .orderBy("created_at", "asc")
-    .first();
-  if (existing) {
-    const updates = Object.fromEntries(
-      Object.entries(fields).filter(([k, v]) => v != null && (existing[k] == null || existing[k] === "")),
-    );
-    if (Object.keys(updates).length > 0) {
-      await masterKnex(`${S}.extraction_scholarships`).where({ id: existing.id }).update({ ...updates, updated_at: masterKnex.fn.now() });
-    }
-    return existing.id;
-  }
-  const [row] = await masterKnex(`${S}.extraction_scholarships`).insert({ job_id: jobId, name, ...fields }).returning("id");
+  // One statement, not find-then-insert: two page workers extracting the same award at once both
+  // saw no row and each inserted one (review, 2026-09-24). The unique index on
+  // (job_id, LOWER(TRIM(name))) is the conflict target; the loser's values fill the winner's blanks
+  // and never overwrite a stated one — the same merge rule upsertStudyOption uses.
+  const T = `${S}.extraction_scholarships`;
+  const TEXT_COLS = new Set(["applicable_to", "coverage_type", "currency", "application_url", "description", "source_url"]);
+  const merge = Object.fromEntries(
+    Object.keys(fields).map((k) => [
+      k,
+      // '' counts as blank on text columns; amount/deadline are typed, so plain COALESCE.
+      masterKnex.raw(TEXT_COLS.has(k) ? `COALESCE(NULLIF(${T}.${k}, ''), EXCLUDED.${k})` : `COALESCE(${T}.${k}, EXCLUDED.${k})`),
+    ]),
+  );
+  const [row] = await masterKnex(T)
+    .insert({ job_id: jobId, name, ...fields })
+    .onConflict(masterKnex.raw("(job_id, LOWER(TRIM(name)))"))
+    .merge({ ...merge, updated_at: masterKnex.fn.now() })
+    .returning("id");
   return row.id;
 }
 

@@ -24,6 +24,9 @@ export async function up(knex: Knex): Promise<void> {
     t.timestamp("updated_at", { useTz: true }).notNullable().defaultTo(knex.fn.now());
   });
   await knex.raw(`CREATE INDEX idx_extraction_scholarships_job_id ON ${S}.extraction_scholarships (job_id)`);
+  // upsertScholarship's ON CONFLICT target: two page workers extracting the same award at once must
+  // land on ONE row, not two with the course links split between them.
+  await knex.raw(`CREATE UNIQUE INDEX extraction_scholarships_job_name_uniq ON ${S}.extraction_scholarships (job_id, LOWER(TRIM(name)))`);
 
   await knex.schema.withSchema(S).createTable("extraction_course_scholarship_assignments", (t) => {
     t.uuid("id").primary().defaultTo(knex.raw("gen_random_uuid()"));

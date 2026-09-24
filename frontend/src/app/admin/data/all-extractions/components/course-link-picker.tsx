@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Link2, Loader2, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -31,7 +31,10 @@ export function CourseLinkPicker({
 }: Readonly<{
   jobId: string;
   excludeIds: string[];
-  onSelect: (courseId: string, name: string | null) => void;
+  /** Called once per picked course, IN SEQUENCE — a returned promise is awaited before the next
+   *  pick fires. Tab callers link-then-reload inside it, so firing all picks at once let an early
+   *  request's reload land last and show a list missing later links (review, 2026-09-24). */
+  onSelect: (courseId: string, name: string | null) => void | Promise<unknown>;
   disabled?: boolean;
   className?: string;
 }>) {
@@ -40,6 +43,9 @@ export function CourseLinkPicker({
   const [loading, setLoading] = useState(false);
   const [search, setSearch] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
+  const [linking, setLinking] = useState(false);
+  // The job has more courses than MAX_PAGES × PAGE — the local list is a prefix, not the whole job.
+  const [truncated, setTruncated] = useState(false);
 
   // The whole job's course list, loaded when the dialog opens and sorted by the server. Filtering is
   // then local and instant — a job holds hundreds of courses, not thousands.
@@ -50,18 +56,43 @@ export function CourseLinkPicker({
     setLoading(true);
     const all: Course[] = [];
     try {
+      let totalPages = 1;
       for (let page = 1; page <= MAX_PAGES; page++) {
         const res = await allExtractionsApi.getCourses(jobId, { page, limit: PAGE, sort: "name_asc" });
         all.push(...res.data.map((c) => ({ id: c.id, name: c.name })));
-        if (page >= res.meta.totalPages) break;
+        totalPages = res.meta.totalPages;
+        if (page >= totalPages) break;
       }
       setCourses(all);
+      setTruncated(totalPages > MAX_PAGES);
     } catch {
       toast.error("Couldn't load courses");
     } finally {
       setLoading(false);
     }
   };
+
+  // Past the cap, a course beyond the loaded prefix is unreachable by local filtering (review,
+  // 2026-09-24: a deep-scraped job can stage more than 2,000). So while truncated, the search box
+  // also asks the list endpoint — which searches the whole job — and merges its hits in. Debounced
+  // like every other search box here; setState happens inside the async callback, not the effect.
+  useEffect(() => {
+    const q = search.trim();
+    if (!truncated || !q) return;
+    const t = setTimeout(async () => {
+      try {
+        const res = await allExtractionsApi.getCourses(jobId, { page: 1, limit: PAGE, search: q, sort: "name_asc" });
+        setCourses((prev) => {
+          const seen = new Set(prev.map((c) => c.id));
+          const extra = res.data.filter((c) => !seen.has(c.id)).map((c) => ({ id: c.id, name: c.name }));
+          return extra.length ? [...prev, ...extra] : prev;
+        });
+      } catch {
+        // Local results still show; a failed remote search just means no extra rows.
+      }
+    }, 300);
+    return () => clearTimeout(t);
+  }, [jobId, search, truncated]);
 
   const visible = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -78,9 +109,14 @@ export function CourseLinkPicker({
       ? prev.filter((id) => !visible.some((c) => c.id === id))
       : [...new Set([...prev, ...visible.map((c) => c.id)])]));
 
-  const confirm = () => {
-    for (const id of picked) onSelect(id, courses.find((c) => c.id === id)?.name ?? null);
-    setOpen(false);
+  const confirm = async () => {
+    setLinking(true);
+    try {
+      for (const id of picked) await onSelect(id, courses.find((c) => c.id === id)?.name ?? null);
+    } finally {
+      setLinking(false);
+      setOpen(false);
+    }
   };
 
   return (
@@ -95,7 +131,7 @@ export function CourseLinkPicker({
         {disabled ? "All courses linked" : "Link courses…"}
       </Button>
 
-      <Dialog open={open} onOpenChange={setOpen}>
+      <Dialog open={open} onOpenChange={(next) => { if (!linking) setOpen(next); }}>
         <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>Link courses</DialogTitle>
@@ -106,6 +142,11 @@ export function CourseLinkPicker({
             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search courses…" className="h-9 pl-8" autoFocus />
           </div>
+          {truncated && !loading && (
+            <p className="px-2 text-xs text-muted-foreground">
+              Showing the first {(PAGE * MAX_PAGES).toLocaleString()} courses alphabetically — search to find the rest.
+            </p>
+          )}
 
           {!loading && visible.length > 0 && (
             <label className="flex cursor-pointer items-center gap-2.5 px-2 text-xs text-muted-foreground">
@@ -135,11 +176,12 @@ export function CourseLinkPicker({
           </div>
 
           <DialogFooter className="sm:flex-row">
-            <Button type="button" variant="outline" className="h-10 w-1/3 cursor-pointer" onClick={() => setOpen(false)}>
+            <Button type="button" variant="outline" className="h-10 w-1/3 cursor-pointer" disabled={linking} onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button type="button" className="h-10 w-2/3 cursor-pointer" disabled={picked.length === 0} onClick={confirm}>
-              Link {picked.length || ""} course{picked.length === 1 ? "" : "s"}
+            <Button type="button" className="h-10 w-2/3 cursor-pointer gap-1.5" disabled={picked.length === 0 || linking} onClick={confirm}>
+              {linking && <Loader2 className="h-4 w-4 animate-spin" />}
+              {linking ? "Linking…" : `Link ${picked.length || ""} course${picked.length === 1 ? "" : "s"}`}
             </Button>
           </DialogFooter>
         </DialogContent>
