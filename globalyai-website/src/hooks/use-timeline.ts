@@ -18,8 +18,10 @@ interface TimelineOptions {
  * Advances a step index along a timeline of hold times — the engine behind
  * every conversation demo on the page.
  *
- * Two behaviors matter as much as the animation itself:
+ * Three behaviors matter as much as the animation itself:
  *  - Paused while off screen, so a long page is not driving several timers.
+ *  - A pause keeps what is left of the current hold, so resuming picks the
+ *    beat up where it stopped rather than replaying its whole duration.
  *  - Under `prefers-reduced-motion` it settles on the final step immediately
  *    and never ticks, so the full conversation is readable as a static
  *    transcript rather than being hidden behind motion the visitor declined.
@@ -30,10 +32,20 @@ export function useTimeline({ durations, active = true, loop = true, restDelay =
 
   const [step, setStep] = useState(0);
   const [playing, setPlaying] = useState(true);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const settledRef = useRef(false);
+  /**
+   * What is left of the current hold when it is interrupted, tagged with the
+   * step it belongs to. Without this, pausing or scrolling away threw the
+   * elapsed time out and a beat interrupted 100ms from its end waited its
+   * whole duration over again on resume, which reads as the demo hanging.
+   * The tag is what keeps a hand scrub honest: jumping to another chapter
+   * finds no carry-over for that step and starts it at full length.
+   */
+  const remainingRef = useRef<{ step: number; ms: number } | null>(null);
 
   const restart = useCallback(() => {
+    // Starting over is not resuming, so any half-spent hold goes with it.
+    remainingRef.current = null;
     setStep(0);
     setPlaying(true);
   }, []);
@@ -57,13 +69,25 @@ export function useTimeline({ durations, active = true, loop = true, restDelay =
     const isLast = step >= lastStep;
     if (isLast && !loop) return;
 
-    const hold = (durations[step] ?? 1200) + (isLast ? restDelay : 0);
-    timerRef.current = setTimeout(() => {
+    const full = (durations[step] ?? 1200) + (isLast ? restDelay : 0);
+    const carried = remainingRef.current;
+    const hold = carried?.step === step ? carried.ms : full;
+
+    const startedAt = Date.now();
+    let fired = false;
+    const timer = setTimeout(() => {
+      fired = true;
+      remainingRef.current = null;
       setStep((current) => (current >= lastStep ? 0 : current + 1));
     }, hold);
 
     return () => {
-      if (timerRef.current) clearTimeout(timerRef.current);
+      clearTimeout(timer);
+      // Only an interruption owes time to the next run. A timer that already
+      // fired has handed the step on and settled its own account.
+      if (!fired) {
+        remainingRef.current = { step, ms: Math.max(0, hold - (Date.now() - startedAt)) };
+      }
     };
   }, [step, active, playing, loop, restDelay, durations, lastStep, reducedMotion]);
 

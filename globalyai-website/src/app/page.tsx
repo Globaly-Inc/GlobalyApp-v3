@@ -2,7 +2,7 @@ import { Hero, Navbar } from "@/components/v6/hero";
 import { Footer } from "@/components/v6/footer";
 import { ProductFilm } from "@/components/v6/film";
 import { Learning } from "@/components/v6/learning";
-import { Faq, Features, FinalCta, Institutions, ProblemSolution, Proof } from "@/components/v6/sections";
+import { Control, Faq, Features, FinalCta, HowItWorks, Institutions, ProblemSolution, Proof } from "@/components/v6/sections";
 import { ThemeScript, V6_ROOT_ID } from "@/components/v6/theme";
 
 /**
@@ -50,9 +50,11 @@ export default function Variation6() {
         <Proof />
         <ProblemSolution />
         <ProductFilm />
+        <HowItWorks />
         <Features />
         <Institutions />
         <Learning />
+        <Control />
         <Faq />
         <FinalCta />
       </main>

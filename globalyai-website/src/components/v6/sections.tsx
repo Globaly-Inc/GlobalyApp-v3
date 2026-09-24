@@ -841,6 +841,7 @@ export function Faq() {
                     </button>
                   </h3>
                   <div
+                    aria-hidden={!isOpen}
                     className={cn(
                       "grid transition-all duration-300 ease-out motion-reduce:transition-none",
                       isOpen ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",

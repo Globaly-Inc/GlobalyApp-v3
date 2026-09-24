@@ -179,107 +179,111 @@ export function Learning() {
 
         <Reveal delay={90}>
           <GlassPanel spotlight={false} className="mt-14 p-6 sm:p-8 lg:px-10 lg:py-14">
-            {/* Desktop: the brain in the centre, three bubbles either side. */}
-            <div
-              ref={ref}
-              className="relative hidden h-[30rem] lg:block"
-              onMouseLeave={() => setActive(null)}
-            >
-              {SLOTS.map((slot, index) =>
-                TRAIL.map((dot, step) => (
-                  <span
-                    key={`${index}-${step}`}
-                    aria-hidden="true"
-                    className={cn(
-                      "v6-row v6-trail-dot absolute -translate-y-1/2 rounded-full",
-                      slot.side === "left" ? "-translate-x-1/2" : "translate-x-1/2",
-                      inView && "v6-row-in",
-                      lit === index && "v6-trail-lit",
-                    )}
-                    style={{
-                      ...trailDot(slot, dot.at),
-                      width: dot.size,
-                      height: dot.size,
-                      animationDelay: `${0.3 + index * 0.1 + step * 0.06}s`,
-                    }}
-                  />
-                )),
-              )}
-
-              {/* The light carrying the newest question in: the same dots
-                  again, flashing bubble to brain in turn. Keyed on the arrival
-                  so each one is fresh and replays. */}
-              {arriving !== null &&
-                TRAIL.map((dot, step) => {
-                  const slot = SLOTS[arriving] ?? SLOTS[0];
-                  return (
+            {/* One observer for both layouts. The desktop figure is display:none
+                below lg, where it can never intersect, so observing it there left
+                the stacked version parked on its first six questions. */}
+            <div ref={ref}>
+              {/* Desktop: the brain in the centre, three bubbles either side. */}
+              <div
+                className="relative hidden h-[30rem] lg:block"
+                onMouseLeave={() => setActive(null)}
+              >
+                {SLOTS.map((slot, index) =>
+                  TRAIL.map((dot, step) => (
                     <span
-                      key={`spark-${arrivals}-${step}`}
+                      key={`${index}-${step}`}
                       aria-hidden="true"
                       className={cn(
-                        "v6-trail-spark absolute -translate-y-1/2 rounded-full",
+                        "v6-row v6-trail-dot absolute -translate-y-1/2 rounded-full",
                         slot.side === "left" ? "-translate-x-1/2" : "translate-x-1/2",
+                        inView && "v6-row-in",
+                        lit === index && "v6-trail-lit",
                       )}
                       style={{
                         ...trailDot(slot, dot.at),
                         width: dot.size,
                         height: dot.size,
-                        animationDelay: `${0.25 + step * 0.2}s`,
+                        animationDelay: `${0.3 + index * 0.1 + step * 0.06}s`,
                       }}
                     />
-                  );
-                })}
+                  )),
+                )}
 
-              {/* The label hangs below the brain rather than stacking under
-                  it, so the brain itself is the thing centred on the trails. */}
-              <div className="absolute left-1/2 top-1/2 w-[12rem] -translate-x-1/2 -translate-y-1/2">
-                <LearningCore lit={active !== null} pulse={arrivals} />
-                <div className="absolute inset-x-0 top-full flex justify-center">
+                {/* The light carrying the newest question in: the same dots
+                    again, flashing bubble to brain in turn. Keyed on the arrival
+                    so each one is fresh and replays. */}
+                {arriving !== null &&
+                  TRAIL.map((dot, step) => {
+                    const slot = SLOTS[arriving] ?? SLOTS[0];
+                    return (
+                      <span
+                        key={`spark-${arrivals}-${step}`}
+                        aria-hidden="true"
+                        className={cn(
+                          "v6-trail-spark absolute -translate-y-1/2 rounded-full",
+                          slot.side === "left" ? "-translate-x-1/2" : "translate-x-1/2",
+                        )}
+                        style={{
+                          ...trailDot(slot, dot.at),
+                          width: dot.size,
+                          height: dot.size,
+                          animationDelay: `${0.25 + step * 0.2}s`,
+                        }}
+                      />
+                    );
+                  })}
+
+                {/* The label hangs below the brain rather than stacking under
+                    it, so the brain itself is the thing centred on the trails. */}
+                <div className="absolute left-1/2 top-1/2 w-[12rem] -translate-x-1/2 -translate-y-1/2">
+                  <LearningCore lit={active !== null} pulse={arrivals} />
+                  <div className="absolute inset-x-0 top-full flex justify-center">
+                    <StatusLabel word={STATUS[status] ?? STATUS[0]} paused={!thinking} />
+                  </div>
+                </div>
+
+                <ul>
+                  {SLOTS.map((slot, index) => (
+                    <li
+                      key={index}
+                      onMouseEnter={() => setActive(index)}
+                      className={cn(
+                        "v6-row absolute -translate-y-1/2",
+                        inView && "v6-row-in",
+                      )}
+                      style={{
+                        top: `${slot.y}%`,
+                        width: `${BUBBLE_W}rem`,
+                        [slot.side]: `${slot.inset}rem`,
+                        animationDelay: `${0.2 + index * 0.1}s`,
+                      }}
+                    >
+                      <ChatBubble
+                        question={rows[index] ?? index}
+                        side={slot.side}
+                        lit={lit === index}
+                        popping={arriving === index}
+                      />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              {/* Below lg: the brain, then the same six bubbles stacked. */}
+              <div className="lg:hidden">
+                <div className="flex flex-col items-center">
+                  <LearningCore className="max-w-[9rem]" pulse={arrivals} />
                   <StatusLabel word={STATUS[status] ?? STATUS[0]} paused={!thinking} />
                 </div>
+
+                <ul className="mx-auto mt-10 grid max-w-md gap-7 px-3">
+                  {rows.map((question, index) => (
+                    <li key={index}>
+                      <ChatBubble question={question} lit={arriving === index} popping={arriving === index} />
+                    </li>
+                  ))}
+                </ul>
               </div>
-
-              <ul>
-                {SLOTS.map((slot, index) => (
-                  <li
-                    key={index}
-                    onMouseEnter={() => setActive(index)}
-                    className={cn(
-                      "v6-row absolute -translate-y-1/2",
-                      inView && "v6-row-in",
-                    )}
-                    style={{
-                      top: `${slot.y}%`,
-                      width: `${BUBBLE_W}rem`,
-                      [slot.side]: `${slot.inset}rem`,
-                      animationDelay: `${0.2 + index * 0.1}s`,
-                    }}
-                  >
-                    <ChatBubble
-                      question={rows[index] ?? index}
-                      side={slot.side}
-                      lit={lit === index}
-                      popping={arriving === index}
-                    />
-                  </li>
-                ))}
-              </ul>
-            </div>
-
-            {/* Below lg: the brain, then the same six bubbles stacked. */}
-            <div className="lg:hidden">
-              <div className="flex flex-col items-center">
-                <LearningCore className="max-w-[9rem]" pulse={arrivals} />
-                <StatusLabel word={STATUS[status] ?? STATUS[0]} paused={!thinking} />
-              </div>
-
-              <ul className="mx-auto mt-10 grid max-w-md gap-7 px-3">
-                {rows.map((question, index) => (
-                  <li key={index}>
-                    <ChatBubble question={question} lit={arriving === index} popping={arriving === index} />
-                  </li>
-                ))}
-              </ul>
             </div>
           </GlassPanel>
         </Reveal>
