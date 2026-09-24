@@ -14,6 +14,8 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { scrapeRenderedHtml, mapUrlsDetailed } from "../lib/scraper.js";
 import { getPage, getDocument, isPdfUrl, mergeUrlLists } from "../lib/page-store.js";
+import { canonicalCourseUrl } from "../lib/course-name.js";
+import * as pageEdits from "../repositories/page-edits.repository.js";
 import { GUIDED_KEY_CATEGORY } from "../lib/url-categories.js";
 import { snapshotSite, snapshotRunOutcome } from "../lib/site-snapshot.js";
 import type { SnapshotBatch } from "../lib/site-snapshot.js";
@@ -225,6 +227,15 @@ async function handleQueuePagesStep(jobId: string) {
 async function scrapeUrl(url: string): Promise<string | null> {
   const r = await getPage(url, { onlyMainContent: true });
   return r.markdown && r.markdown.length > 50 ? r.markdown : null;
+}
+
+async function findManualEditMarkdown(jobId: string, url: string, institutionUrl: string | null): Promise<string | null> {
+  const direct = await pageEdits.findManualEdit(jobId, url);
+  if (direct) return direct.markdown;
+  const target = canonicalCourseUrl(url, institutionUrl);
+  if (!target) return null;
+  const edits = await pageEdits.findManualEditsForJob(jobId);
+  return edits.find((e) => canonicalCourseUrl(e.url, institutionUrl) === target)?.markdown ?? null;
 }
 
 /** Like scrapeUrl but falls back to Gemini vision for PDF URLs — through the snapshot store,
@@ -1363,7 +1374,7 @@ async function handleCourseDataStep(
   const scCd = await masterKnex(`${S}.extraction_jobs`).select("stop_requested").where({ id: jobId }).first();
   if (scCd?.stop_requested) { logger.info("Stop requested, aborting", { jobId }); return; }
 
-  const markdown = await scrapeUrl(sourceUrl);
+  const markdown = (await findManualEditMarkdown(jobId, sourceUrl, job.institution_url)) ?? await scrapeUrl(sourceUrl);
   if (!markdown) {
     throw new Error(`Failed to scrape course page: ${sourceUrl}`);
   }
@@ -1385,7 +1396,7 @@ async function handleCourseDataStep(
   const pageText = truncateMarkdown(combined, COURSE_DATA_TEXT_CAP);
   const extracted = await extractJson<Record<string, unknown>>({
     system,
-    prompt: courseDataPrompt(sourceUrl, pageText, dataType, job.guidance_notes),
+    prompt: courseDataPrompt(sourceUrl, pageText, dataType, job.guidance_notes, course.name),
   });
 
   // Route by data type

@@ -100,7 +100,7 @@ export async function businessRoutes(app: FastifyInstance) {
     config: { rateLimit: { max: 5, timeWindow: "5 minutes" } },
   }, async (req, reply) => {
     const input = SiteUrlRefreshSchema.parse(req.body);
-    const result = await service.refreshExtractionSiteUrls(req.auth.orgId!, input);
+    const result = await service.refreshExtractionSiteUrls(req.auth.orgId!, input, Number(req.auth.sub));
     return reply.send(result);
   });
 

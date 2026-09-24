@@ -64,7 +64,7 @@ export async function institutionProfileRoutes(app: FastifyInstance) {
     config: { rateLimit: { max: 5, timeWindow: "5 minutes" } },
   }, async (req, reply) => {
     const input = SiteUrlRefreshSchema.parse(req.body);
-    const result = await service.refreshExtractionSiteUrls(req.institution!, input);
+    const result = await service.refreshExtractionSiteUrls(req.institution!, input, Number(req.auth.sub));
     return reply.send(result);
   });
 

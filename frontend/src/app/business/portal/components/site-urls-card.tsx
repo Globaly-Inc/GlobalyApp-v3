@@ -116,9 +116,29 @@ export function SiteUrlsCard() {
     if (!snapshot) return;
     setSaving(true);
     try {
-      setSnapshot(await businessApi.updateExtractionSiteUrlSnapshot(snapshot.url, draft));
+      const updated = await businessApi.updateExtractionSiteUrlSnapshot(snapshot.url, draft);
+      setSnapshot(updated);
       setEditing(false);
-      toast.success("Page content updated");
+      const re = updated.reExtraction;
+      if (re?.outcome === "shared_page") {
+        toast.success("Page content updated", {
+          description: `This page lists ${re.courseCount} courses — too many to re-extract automatically; please update them individually.`,
+        });
+      } else if (re && re.failedCount > 0) {
+        // Some of the courses sharing this page couldn't be queued — say so explicitly rather
+        // than a plain success, since those still hold the old extraction until re-saved.
+        toast.warning("Page content updated", {
+          description: re.courseCount > 0
+            ? `${re.courseCount} course${re.courseCount === 1 ? "" : "s"} refreshed, but ${re.failedCount} couldn't be queued — edit and save this page again to retry ${re.failedCount === 1 ? "it" : "them"}.`
+            : `Couldn't queue re-extraction for ${re.failedCount} course${re.failedCount === 1 ? "" : "s"} sharing this page — edit and save this page again to retry.`,
+        });
+      } else if (re?.outcome === "triggered" && re.courseCount > 1) {
+        toast.success("Page content updated", {
+          description: `${re.courseCount} courses on this page are being refreshed from your correction.`,
+        });
+      } else {
+        toast.success("Page content updated");
+      }
     } catch (e) {
       toast.error("Couldn't save", { description: e instanceof Error ? e.message : "Please try again." });
     } finally {
@@ -157,12 +177,19 @@ export function SiteUrlsCard() {
     for (let i = 0; i < urls.length; i += REFRESH_BATCH_SIZE) batches.push(urls.slice(i, i + REFRESH_BATCH_SIZE));
     setBulkRefreshing(true);
     try {
-      const results = await Promise.all(batches.map((batch) => businessApi.refreshExtractionSiteUrls(batch)));
-      reportRefreshResult(results.reduce(
-        (acc, r) => ({ queued: [...acc.queued, ...r.queued], rejected: [...acc.rejected, ...r.rejected] }),
-        { queued: [] as string[], rejected: [] as { url: string; error: string }[] },
-      ));
-      setSelected(new Set());
+      const results = await Promise.allSettled(batches.map((batch) => businessApi.refreshExtractionSiteUrls(batch)));
+      const merged = { queued: [] as string[], rejected: [] as { url: string; error: string }[] };
+      results.forEach((r, i) => {
+        if (r.status === "fulfilled") {
+          merged.queued.push(...r.value.queued);
+          merged.rejected.push(...r.value.rejected);
+        } else {
+          const error = r.reason instanceof Error ? r.reason.message : "Request failed";
+          merged.rejected.push(...batches[i]!.map((url) => ({ url, error })));
+        }
+      });
+      reportRefreshResult(merged);
+      setSelected(new Set(merged.rejected.map((r) => r.url)));
     } catch (e) {
       toast.error("Couldn't refresh", { description: e instanceof Error ? e.message : "Please try again." });
     } finally {

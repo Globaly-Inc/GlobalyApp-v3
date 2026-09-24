@@ -305,11 +305,11 @@ export async function updateExtractionSiteUrlSnapshot(orgId: string, input: Site
 }
 
 /** Re-pull one or more of the business's own pages from the live site. */
-export async function refreshExtractionSiteUrls(orgId: string, input: SiteUrlRefreshInput) {
+export async function refreshExtractionSiteUrls(orgId: string, input: SiteUrlRefreshInput, editorId: number) {
   const business = await repo.findBusinessByDbName(orgId);
   if (!business) throw new NotFoundError("Business not found");
   if (!business.source_job_id) throw new NotFoundError("No extraction started for this business");
-  return refreshSiteUrls(business.source_job_id, input.urls);
+  return refreshSiteUrls(business.source_job_id, input.urls, editorId);
 }
 
 export async function getOnboardingProgress(orgId: string) {

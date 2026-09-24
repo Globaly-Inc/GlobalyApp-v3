@@ -184,6 +184,11 @@ export type SiteUrlSnapshot = {
   scraped_at: string;
   markdown: string;
   edited: boolean;
+  /** Only set on a save: whether the correction triggered a course re-extraction ("triggered",
+   *  possibly for several courses sharing this listing page), was skipped for having too many
+   *  courses to safely re-run at once ("shared_page"), or neither applies ("none"). failedCount is
+   *  courses that matched but couldn't be queued — they still hold the old extraction. */
+  reExtraction?: { outcome: "triggered" | "shared_page" | "none"; courseCount: number; failedCount: number };
 };
 
 export type SiteUrlRefreshResult = {

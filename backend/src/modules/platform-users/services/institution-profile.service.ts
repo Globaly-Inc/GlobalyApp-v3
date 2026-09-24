@@ -139,10 +139,10 @@ export async function updateExtractionSiteUrlSnapshot(institution: InstitutionRe
 }
 
 /** Re-pull one or more of the institution's own pages from the live site. */
-export async function refreshExtractionSiteUrls(institution: InstitutionRecord, input: SiteUrlRefreshInput) {
+export async function refreshExtractionSiteUrls(institution: InstitutionRecord, input: SiteUrlRefreshInput, editorId: number) {
   const sourceJobId = (await withPublicSourceJobId(institution)).source_job_id;
   if (!sourceJobId) throw new NotFoundError("No extraction started for this institution");
-  return refreshSiteUrls(sourceJobId, input.urls);
+  return refreshSiteUrls(sourceJobId, input.urls, editorId);
 }
 
 export async function getOnboardingProgress(institution: InstitutionRecord) {

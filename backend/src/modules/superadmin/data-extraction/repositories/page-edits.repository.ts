@@ -17,6 +17,10 @@ export async function findManualEdit(jobId: string, url: string): Promise<PageMa
   return masterKnex(T).where({ job_id: jobId, url }).select("markdown", "editor_id", "updated_at").first();
 }
 
+export async function findManualEditsForJob(jobId: string): Promise<{ url: string; markdown: string }[]> {
+  return masterKnex(T).where({ job_id: jobId }).select("url", "markdown");
+}
+
 export async function upsertManualEdit(jobId: string, url: string, markdown: string, editorId: number): Promise<PageManualEdit> {
   const [row] = await masterKnex(T)
     .insert({ job_id: jobId, url, markdown, editor_id: editorId })

@@ -853,8 +853,12 @@ export function courseDataPrompt(
   pageText: string,
   dataType: string,
   guidanceNotes?: string | null,
+  courseName?: string | null,
 ) {
   const guidance = guidanceNotes ? `\nOperator guidance: ${guidanceNotes}` : "";
+  const targeting = courseName
+    ? `\nThis page may describe more than one course or program. Extract ${dataType} for ONLY the course named "${courseName}" — ignore every other course/program mentioned on the page. If that course isn't described here, return an empty/null result rather than another course's data.`
+    : "";
 
   const schemas: Record<string, string> = {
     fees: `{
@@ -900,7 +904,7 @@ ${ELIGIBILITY_SCOPE_RULE}
 }`,
   };
 
-  return `Extract ${dataType} information for this course page.
+  return `Extract ${dataType} information for this course page.${targeting}
 Source URL: ${url}${guidance}
 
 Page content:
