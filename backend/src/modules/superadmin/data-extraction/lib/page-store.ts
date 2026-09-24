@@ -227,30 +227,24 @@ async function lookup(key: string, mode: PageMode): Promise<StoredPage | undefin
 /** A stored page by URL, file included. Undefined when there is none (or the file is gone). Never scrapes. */
 export const readSnapshot = (url: string, mode: PageMode = "main") => lookup(normaliseUrl(url), mode);
 
-export async function writeManualEdit(url: string, editorId: number, markdown: string): Promise<StoredPage | undefined> {
-  const key = normaliseUrl(url);
-  const mode: PageMode = "main";
-  const existing = await lookup(key, mode);
-  if (!existing) return undefined;
-
-  const bounded = markdown.slice(0, MAX_STORED_CHARS);
-  const scrapedAt = new Date(_pageDeps.now());
-  const inFile = await _pageDeps
-    .writeObject(snapshotPathFor(key, mode), renderSnapshotFile({ url: key, mode, scraper: existing.scraper, scrapedAt: scrapedAt.toISOString() }, bounded, existing.links))
-    .catch((err) => { logger.warn("Failed to upload manually-edited snapshot file — keeping text in the row", { key, err: String(err) }); return false; });
-  const content_hash = hashOf(bounded);
-  await _pageDeps.savePage({
-    url: key, mode, domain: domainOf(url), markdown: inFile ? "" : bounded, links: existing.links,
-    content_hash, scraper: existing.scraper, updated_by_platform_user_id: editorId,
-  });
-  return { id: existing.id, markdown: bounded, links: existing.links, content_hash, scraper: existing.scraper, scraped_at: scrapedAt, updated_by_platform_user_id: editorId };
-}
-
 export async function refreshLivePage(url: string): Promise<Page> {
   const key = normaliseUrl(url);
   const mode: PageMode = "main";
-  await masterKnex(TABLE).where({ url: key, mode }).update({ updated_by_platform_user_id: null });
-  return getPage(url, { fresh: true });
+  const before = await _pageDeps.findPage(key, mode);
+  const editorId = before?.updated_by_platform_user_id ?? null;
+
+  // Cleared only long enough for store() to accept a fresh write below. If the fetch fails to
+  // produce one (blocked, not found, too thin), the marker is put back — otherwise a manual
+  // edit is left unprotected against the very next ordinary crawl despite nothing having
+  // actually replaced it.
+  if (editorId != null) await masterKnex(TABLE).where({ url: key, mode }).update({ updated_by_platform_user_id: null });
+
+  const page = isPdfUrl(url) ? await getDocument(url, { fresh: true }) : await getPage(url, { fresh: true });
+
+  if (editorId != null && !page.pageId) {
+    await masterKnex(TABLE).where({ url: key, mode }).update({ updated_by_platform_user_id: editorId });
+  }
+  return page;
 }
 
 function fromStored(stored: StoredPage, withLinks: boolean | undefined): Page {

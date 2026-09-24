@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Combobox } from "@/components/combobox";
 import { Pagination } from "@/components/ui/pagination";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { businessApi } from "@/app/business/apis";
 import { deleteServiceThunk, fetchServices, toggleServicePublished, updateService } from "../../store/business-profile-detail-slice";
 import type { BusinessService } from "../../apis/types";
 import { DeleteServiceDialog } from "../services/delete-service-dialog";
@@ -51,6 +52,16 @@ export function ServicesTab({ businessId, readOnly = false }: Readonly<{ busines
       params: { search: search || undefined, page: p, limit: PAGE_SIZE, course_category: readOnly ? courseCategory : undefined },
     })).finally(() => setHasLoaded(true));
   };
+
+  // The "Review courses & services" onboarding step is marked done here, once this tab has
+  // actually loaded in front of the owner — not on the checklist link's click, which fired before
+  // navigation even landed.
+  const reviewedRef = useRef(false);
+  useEffect(() => {
+    if (!hasLoaded || reviewedRef.current) return;
+    reviewedRef.current = true;
+    businessApi.markCoursesReviewed().catch(() => {});
+  }, [hasLoaded]);
 
   // Debounced, backend-driven search — the backend already supports `search` (and, for
   // institutions, filters their extraction courses by it too), so this no longer fetches

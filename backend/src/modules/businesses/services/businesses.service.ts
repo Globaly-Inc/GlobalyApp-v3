@@ -315,7 +315,9 @@ export async function refreshExtractionSiteUrls(orgId: string, input: SiteUrlRef
 export async function getOnboardingProgress(orgId: string) {
   const business = await repo.findBusinessByDbName(orgId);
   if (!business) throw new NotFoundError("Business not found");
-  return getBusinessOnboardingProgress(Number(business.id), business.source_job_id, business.schema_name);
+  return getBusinessOnboardingProgress(
+    Number(business.id), business.source_job_id, business.schema_name, business.business_category_id ?? null,
+  );
 }
 
 export async function markOnboardingCoursesReviewed(orgId: string) {

@@ -6,7 +6,8 @@ import { buildPaginatedResponse, paginationToOffset } from "../../../../shared/p
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { logAudit } from "../shared/audit.js";
 import * as repo from "../repositories/site-urls.repository.js";
-import { readSnapshot, snapshotPathFor, writeManualEdit } from "../lib/page-store.js";
+import * as pageEdits from "../repositories/page-edits.repository.js";
+import { readSnapshot, snapshotPathFor } from "../lib/page-store.js";
 import { queueService } from "../../../../shared/queue/queueService.js";
 import { SELF_SERVICE_QUEUES } from "../shared/self-service-queues.js";
 import type { ListSiteUrlsQuery, PatchSiteUrlInput, BulkExcludeInput, ListSnapshotsQuery, AddSiteUrlInput } from "../schemas/site-urls.schema.js";
@@ -107,18 +108,21 @@ export async function getSnapshotMarkdownByUrl(jobId: string, url: string) {
   await requireJob(jobId);
   const owns = await masterKnex(`${S}.extraction_site_urls`).where({ job_id: jobId, url }).first("id");
   if (!owns) throw new NotFoundError("This page isn't part of this job's site");
+  // This job's own correction, if it has one — kept apart from the shared row so a job never
+  // reads another job's edit of a URL they happen to have in common.
+  const edit = await pageEdits.findManualEdit(jobId, url);
+  if (edit) return { url, scraped_at: edit.updated_at, markdown: edit.markdown, edited: true };
   const page = await readSnapshot(url, "main");
   if (!page) throw new NotFoundError("Snapshot not found — it may not have been scraped yet");
-  return { url, scraped_at: page.scraped_at, markdown: page.markdown, edited: page.updated_by_platform_user_id != null };
+  return { url, scraped_at: page.scraped_at, markdown: page.markdown, edited: false };
 }
 
 export async function updateSnapshotMarkdown(jobId: string, url: string, markdown: string, editorId: number) {
   await requireJob(jobId);
   const owns = await masterKnex(`${S}.extraction_site_urls`).where({ job_id: jobId, url }).first("id");
   if (!owns) throw new NotFoundError("This page isn't part of this job's site");
-  const page = await writeManualEdit(url, editorId, markdown);
-  if (!page) throw new NotFoundError("Snapshot not found — it may not have been scraped yet");
-  return { url, scraped_at: page.scraped_at, markdown: page.markdown, edited: true };
+  const edit = await pageEdits.upsertManualEdit(jobId, url, markdown, editorId);
+  return { url, scraped_at: edit.updated_at, markdown: edit.markdown, edited: true };
 }
 
 export async function refreshSiteUrls(jobId: string, urls: string[]) {
@@ -130,6 +134,9 @@ export async function refreshSiteUrls(jobId: string, urls: string[]) {
   const rejected: { url: string; error: string }[] = [];
   for (const url of urls) {
     if (!owned.has(url)) { rejected.push({ url, error: "Not part of this job's site" }); continue; }
+    // An explicit refresh means "show me what's live now" — drop this job's own correction so it
+    // doesn't keep masking the fresh pull that's about to happen.
+    await pageEdits.deleteManualEdit(jobId, url);
     await queueService.publish(SELF_SERVICE_QUEUES.SITE_URL_REFRESH, { url });
     queued.push(url);
   }

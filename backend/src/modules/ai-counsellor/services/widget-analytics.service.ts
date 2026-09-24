@@ -49,6 +49,7 @@ export async function getWidgetAnalytics(owner: EmbedOwner, orgId: number, schem
 
   const conversionRate = (num: number, denom: number) => (denom > 0 ? Math.round((num / denom) * 1000) / 10 : 0);
   const rateNow = conversionRate(converted.length, visitors.length);
+  const rateThisMonth = conversionRate(convertedThisMonth, visitorsThisMonth);
   const rateLastMonth = conversionRate(convertedLastMonth, visitorsLastMonth);
 
   const monthStarts = Array.from({ length: 6 }, (_, i) => startOfMonth(now, 5 - i));
@@ -67,7 +68,7 @@ export async function getWidgetAnalytics(owner: EmbedOwner, orgId: number, schem
       visitors: { value: visitors.length, deltaPct: pctChange(visitorsThisMonth, visitorsLastMonth) },
       conversationsClosed: { value: closed.length, deltaPct: pctChange(closedThisMonth, closedLastMonth) },
       conversions: { value: converted.length, delta: convertedThisMonth - convertedLastMonth },
-      conversionRate: { value: rateNow, deltaPts: Math.round((rateNow - rateLastMonth) * 10) / 10 },
+      conversionRate: { value: rateNow, deltaPts: Math.round((rateThisMonth - rateLastMonth) * 10) / 10 },
     },
     monthly,
   };

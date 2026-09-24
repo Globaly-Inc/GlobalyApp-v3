@@ -146,11 +146,22 @@ export function SiteUrlsCard() {
     }
   };
 
+  // Selection can span multiple pages, but the endpoint caps a single request at 10 URLs
+  // (SiteUrlRefreshSchema) — chunk and merge results rather than sending it all in one request
+  // that fails validation outright.
+  const REFRESH_BATCH_SIZE = 10;
+
   const refreshSelected = async () => {
     const urls = [...selected];
+    const batches: string[][] = [];
+    for (let i = 0; i < urls.length; i += REFRESH_BATCH_SIZE) batches.push(urls.slice(i, i + REFRESH_BATCH_SIZE));
     setBulkRefreshing(true);
     try {
-      reportRefreshResult(await businessApi.refreshExtractionSiteUrls(urls));
+      const results = await Promise.all(batches.map((batch) => businessApi.refreshExtractionSiteUrls(batch)));
+      reportRefreshResult(results.reduce(
+        (acc, r) => ({ queued: [...acc.queued, ...r.queued], rejected: [...acc.rejected, ...r.rejected] }),
+        { queued: [] as string[], rejected: [] as { url: string; error: string }[] },
+      ));
       setSelected(new Set());
     } catch (e) {
       toast.error("Couldn't refresh", { description: e instanceof Error ? e.message : "Please try again." });
@@ -159,7 +170,19 @@ export function SiteUrlsCard() {
     }
   };
 
-  if (page && (!page.counts || page.counts.total === 0)) return null;
+  if (page && (!page.counts || page.counts.total === 0)) {
+    return (
+      <Card>
+        <CardContent className="flex flex-col items-center gap-2 py-10 text-center">
+          <Globe className="h-8 w-8 text-muted-foreground/40" />
+          <p className="text-sm font-medium">No pages discovered yet</p>
+          <p className="text-xs text-muted-foreground">
+            Once your website extraction finishes crawling, the pages it found will show up here.
+          </p>
+        </CardContent>
+      </Card>
+    );
+  }
 
   const counts = page?.counts;
   const activeCategories = counts ? CATEGORY_ORDER.filter((c) => counts.by_category[c] > 0) : [];

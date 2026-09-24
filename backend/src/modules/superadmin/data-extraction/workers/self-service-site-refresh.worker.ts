@@ -10,9 +10,12 @@ await queueService.consume(SELF_SERVICE_QUEUES.SITE_URL_REFRESH, async (msg) => 
   const { url } = JSON.parse(msg!.content.toString());
   logger.info("Refreshing page from live site", { url });
 
-  await refreshLivePage(url);
-
-  logger.info("Page refreshed", { url });
+  const page = await refreshLivePage(url);
+  if (page.pageId) {
+    logger.info("Page refreshed", { url });
+  } else {
+    logger.warn("Page refresh produced no usable content — stored snapshot left unchanged", { url, blocked: page.blocked, notFound: page.notFound });
+  }
 });
 
 logger.info(`Self-service site refresh worker started — consuming "${SELF_SERVICE_QUEUES.SITE_URL_REFRESH}" queue`);

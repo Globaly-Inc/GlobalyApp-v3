@@ -5,7 +5,6 @@ import { CheckCircle2, Circle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
-import { businessApi } from "../../apis";
 import type { OnboardingProgress } from "../../apis/types";
 
 /** Where each step's "Start now" sends the owner. extract_website has no route of its own — its
@@ -15,7 +14,7 @@ const STEP_LINKS: Record<string, string> = {
   review_courses: "/business/profile?tab=services",
   customize_assistant: "/business/settings/ai-embed",
   add_chat_widget: "/business/settings/ai-embed",
-  invite_team: "/business/profile?tab=members",
+  invite_team: "/business/profile?tab=team",
 };
 
 export function GetSetUpChecklist({ progress }: Readonly<{ progress: OnboardingProgress }>) {
@@ -63,9 +62,6 @@ export function GetSetUpChecklist({ progress }: Readonly<{ progress: OnboardingP
                 {isCurrent && href && (
                   <Link
                     href={href}
-                    onClick={() => {
-                      if (step.key === "review_courses") businessApi.markCoursesReviewed().catch(() => {});
-                    }}
                     className="mt-1.5 inline-flex h-7 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground hover:bg-primary/90"
                   >
                     Start now
