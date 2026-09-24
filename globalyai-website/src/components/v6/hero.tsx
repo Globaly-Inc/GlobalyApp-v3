@@ -59,8 +59,8 @@ const AUDIENCES = ["university", "institution", "college", "school"] as const;
  * AskPanel. The panel is the real loss. It was this variation's whole
  * argument, three questions the visitor picks from and the assistant answers
  * with its sources cited, which is the product acted out rather than claimed.
- * <HowItWorks /> describes the same four moves two sections down, but it
- * describes them.
+ * Nothing on the page replaces it: <HowItWorks />, which described the same
+ * four moves in prose, was itself dropped on 24 Sep 2026.
  *
  * The aurora and dot field stay. They are the ground this variation is built
  * on and they work in both themes.

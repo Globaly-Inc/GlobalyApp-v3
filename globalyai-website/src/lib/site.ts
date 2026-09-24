@@ -19,18 +19,17 @@ export const siteConfig = {
   founder: { name: "Amit Ranjitkar", role: "Founder & CEO", email: "amit@globalyapp.com" },
 } as const;
 
-/** The floating nav. Deliberately four links — see the brief's "keep it minimal". */
-export const NAV_LINKS = [
-  { label: "Product", href: "#product" },
-  { label: "How it works", href: "#how-it-works" },
-  { label: "For Institutions", href: "#institutions" },
-  { label: "Privacy", href: "#privacy" },
-] as const;
-
+/**
+ * The footer nav, and the only list of links on the page — the bar itself
+ * carries the logo, the theme toggle and the CTA and nothing else.
+ *
+ * Every entry has to name a section the page actually mounts. How It Works
+ * and Privacy went with their sections (24 Sep 2026); a link to a section
+ * that exists in the source but is not rendered just parks the visitor at
+ * the footer with nothing to show for the click.
+ */
 export const FOOTER_LINKS = [
   { label: "Product", href: "#product" },
-  { label: "How It Works", href: "#how-it-works" },
   { label: "For Institutions", href: "#institutions" },
-  { label: "Privacy", href: "#privacy" },
   { label: "Contact", href: CAL_BOOKING_URL },
 ] as const;
