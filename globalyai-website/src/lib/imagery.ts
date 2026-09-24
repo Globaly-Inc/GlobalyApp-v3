@@ -164,14 +164,27 @@ export const V6_IMAGERY = {
   },
 } as const satisfies Record<string, ImageSlot>;
 
+/**
+ * Where the clips are served from.
+ *
+ * The motion assets are the heaviest thing on the site and they never change
+ * between deploys, so they live in the public GCS bucket rather than in
+ * /public: the repo stays free of a megabyte of binaries and the bucket's
+ * caching does the work. Moving the bucket is one edit here.
+ *
+ * next/image is handed these URLs for the posters, so the hostname has to
+ * stay in `images.remotePatterns` in next.config.ts.
+ */
+const MOTION_CDN = "https://storage.googleapis.com/globalyapp-public-images/website";
+
 export const MOTION = {
   field: {
     brief:
       "Pale blue points drifting in black, converging toward one luminous core and dispersing again. No text, no objects, no camera cuts.",
     width: 1280,
     height: 720,
-    src: "/motion/v5-field.mp4",
-    poster: "/motion/v5-field-poster.webp",
+    src: `${MOTION_CDN}/v5-field.mp4`,
+    poster: `${MOTION_CDN}/v5-field-poster.webp`,
   },
 
   /**
@@ -187,16 +200,16 @@ export const MOTION = {
       "Soft pale blue, lavender and aqua blobs drifting on white. Heavy blur, no hard edges, no objects.",
     width: 1280,
     height: 720,
-    src: "/motion/v6-aurora-light.mp4",
-    poster: "/motion/v6-aurora-light-poster.webp",
+    src: `${MOTION_CDN}/v6-aurora-light.mp4`,
+    poster: `${MOTION_CDN}/v6-aurora-light-poster.webp`,
   },
   auroraDark: {
     brief:
       "One slow liquid mass of blue and cyan on near-black, morphing without ever resolving into an object.",
     width: 1280,
     height: 720,
-    src: "/motion/v6-aurora-dark.mp4",
-    poster: "/motion/v6-aurora-dark-poster.webp",
+    src: `${MOTION_CDN}/v6-aurora-dark.mp4`,
+    poster: `${MOTION_CDN}/v6-aurora-dark-poster.webp`,
   },
 
   /**
@@ -211,15 +224,15 @@ export const MOTION = {
       "A pale aqua sphere of light on white with fine filaments drifting inside it, turning slowly. Soft focus, no hard edges, no objects, no text.",
     width: 640,
     height: 640,
-    src: "/motion/v6-core-light.mp4",
-    poster: "/motion/v6-core-light-poster.webp",
+    src: `${MOTION_CDN}/v6-core-light.mp4`,
+    poster: `${MOTION_CDN}/v6-core-light-poster.webp`,
   },
   coreDark: {
     brief:
       "A cyan sphere of light on black with luminous filaments coiling inside it, turning slowly. Never resolves into an object.",
     width: 640,
     height: 640,
-    src: "/motion/v6-core-dark.mp4",
-    poster: "/motion/v6-core-dark-poster.webp",
+    src: `${MOTION_CDN}/v6-core-dark.mp4`,
+    poster: `${MOTION_CDN}/v6-core-dark-poster.webp`,
   },
 } as const;
