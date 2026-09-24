@@ -12,6 +12,8 @@ import {
   CreateIntakeSchema,
   CreateEligibilitySchema,
   PatchEligibilitySchema,
+  CreateScholarshipSchema,
+  PatchScholarshipSchema,
   CreateStudyUnitSchema,
   PatchStudyUnitSchema,
   CreateStagedAccreditationSchema,
@@ -102,6 +104,24 @@ export async function stagedRoutes(app: FastifyInstance) {
   app.delete("/eligibility-requirements/:id", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
     return reply.send(await service.deleteEligibility(id, adminId(req)));
+  });
+
+  // ── Scholarships ──
+
+  app.post("/scholarships", async (req, reply) => {
+    const input = CreateScholarshipSchema.parse(req.body);
+    return reply.send(await service.createScholarship(input, adminId(req)));
+  });
+
+  app.patch("/scholarships/:id", async (req, reply) => {
+    const { id } = UuidParamSchema.parse(req.params);
+    const input = PatchScholarshipSchema.parse(req.body);
+    return reply.send(await service.patchScholarship(id, input, adminId(req)));
+  });
+
+  app.delete("/scholarships/:id", async (req, reply) => {
+    const { id } = UuidParamSchema.parse(req.params);
+    return reply.send(await service.deleteScholarship(id, adminId(req)));
   });
 
   // ── Study units ──

@@ -7,7 +7,7 @@ import type { SearchBusiness } from "../../search/types";
 
 export function InstitutionsCarousel({ institutions, loading }: Readonly<{ institutions: SearchBusiness[]; loading: boolean }>) {
   return (
-    <section className="py-16 bg-muted/30">
+    <section className="py-16 bg-primary/5">
       <div className="container mx-auto px-4">
         <Reveal>
           <div className="flex items-center justify-between mb-6">
@@ -29,7 +29,7 @@ export function InstitutionsCarousel({ institutions, loading }: Readonly<{ insti
                   <Reveal key={inst.id} delay={idx * 0.07} className="flex-shrink-0">
                     <Link
                       href={`/institution/${inst.slug}`}
-                      className="group block w-44 md:w-48 bg-background border border-border rounded-xl p-4 hover:shadow-md transition-shadow"
+                      className="group flex flex-col h-full w-44 md:w-48 bg-background border border-border rounded-xl p-4 hover:shadow-md transition-shadow"
                     >
                       <div className="aspect-square rounded-lg overflow-hidden bg-muted mb-3 flex items-center justify-center p-2">
                         {inst.logo_url ? (

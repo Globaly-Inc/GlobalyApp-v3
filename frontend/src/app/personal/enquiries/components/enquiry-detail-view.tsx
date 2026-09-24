@@ -120,14 +120,18 @@ export function EnquiryDetailView({ enquiryId }: Readonly<{ enquiryId: string }>
             <p className="text-sm text-muted-foreground">{STATUS_EXPLANATIONS[enquiry.status]}</p>
           </div>
 
-          <div>
-            <p className="mb-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
-              Your message
-            </p>
-            <p className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-sm whitespace-pre-line">
-              {enquiry.message}
-            </p>
-          </div>
+          {/* The whole section goes when there is no message, rather than leaving an empty
+              bordered box under a heading. The message is optional — see 20260830_009. */}
+          {enquiry.message && (
+            <div>
+              <p className="mb-1.5 text-[11px] font-medium tracking-wide text-muted-foreground uppercase">
+                Your message
+              </p>
+              <p className="rounded-lg border border-border bg-muted/30 px-3 py-2.5 text-sm whitespace-pre-line">
+                {enquiry.message}
+              </p>
+            </div>
+          )}
 
           <div className="grid grid-cols-1 gap-3 border-t pt-4 sm:grid-cols-3">
             <DetailStat icon={CalendarDays} label="Preferred intake" value={intake} />

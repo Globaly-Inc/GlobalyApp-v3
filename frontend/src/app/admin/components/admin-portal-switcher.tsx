@@ -14,6 +14,7 @@ import { useAppDispatch } from "@/lib/hooks";
 import { switchAccount } from "@/app/auth/store/auth-slice";
 import { saveSelectedOrgId } from "@/lib/session";
 import type { AuthMeBusiness, AuthMeInstitution } from "@/app/auth/apis";
+import { PERSONAL_PORTAL_HOME } from "@/app/personal/const";
 
 type Org = { org_id: string; name: string; logo_url: string | null };
 
@@ -68,7 +69,7 @@ export function AdminPortalSwitcher({
         <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-56">
-        <DropdownMenuItem className="cursor-pointer gap-2" onClick={() => router.push("/personal/portal")}>
+        <DropdownMenuItem className="cursor-pointer gap-2" onClick={() => router.push(PERSONAL_PORTAL_HOME)}>
           <UserIcon className="h-4 w-4" /> Personal Portal
         </DropdownMenuItem>
         <DropdownMenuSeparator />

@@ -21,13 +21,14 @@ export async function coursesRoutes(app: FastifyInstance) {
   app.get("/jobs/:id/courses", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
     const pagination = PaginationSchema.parse(req.query);
-    const { search, status, sort } = z.object({
+    const { search, status, sort, scope } = z.object({
       search: z.string().optional(),
       status: z.string().optional(),
       sort: z.enum(["newest", "oldest", "name_asc", "name_desc"]).optional(),
+      scope: z.enum(["in", "out"]).optional(),
     }).parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
-    return reply.send(await service.listCourses(id, limit, offset, pagination, { search, status, sort }));
+    return reply.send(await service.listCourses(id, limit, offset, pagination, { search, status, sort, scope }));
   });
 
   // RC2: GET /jobs/:id/course-links
@@ -63,6 +64,15 @@ export async function coursesRoutes(app: FastifyInstance) {
     return reply.send(await service.listEligibility(id, limit, offset, pagination, { search }));
   });
 
+  // GET /jobs/:id/scholarships — paginated + searchable, unlike course-links' full dump
+  app.get("/jobs/:id/scholarships", async (req, reply) => {
+    const { id } = UuidParamSchema.parse(req.params);
+    const pagination = PaginationSchema.parse(req.query);
+    const { search } = z.object({ search: z.string().optional() }).parse(req.query);
+    const { limit, offset } = paginationToOffset(pagination);
+    return reply.send(await service.listScholarships(id, limit, offset, pagination, { search }));
+  });
+
   // GET /jobs/:id/intakes — paginated + searchable, unlike course-links' full dump
   app.get("/jobs/:id/intakes", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
@@ -70,6 +80,15 @@ export async function coursesRoutes(app: FastifyInstance) {
     const { search } = z.object({ search: z.string().optional() }).parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
     return reply.send(await service.listIntakes(id, limit, offset, pagination, { search }));
+  });
+
+  // GET /jobs/:id/course-fees — paginated + searchable, unlike course-links' full dump
+  app.get("/jobs/:id/course-fees", async (req, reply) => {
+    const { id } = UuidParamSchema.parse(req.params);
+    const pagination = PaginationSchema.parse(req.query);
+    const { search } = z.object({ search: z.string().optional() }).parse(req.query);
+    const { limit, offset } = paginationToOffset(pagination);
+    return reply.send(await service.listCourseFees(id, limit, offset, pagination, { search }));
   });
 
   // C15: POST /jobs/:jobId/courses

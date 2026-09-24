@@ -12,14 +12,14 @@ import { categoriesApi } from "../apis";
 import { ADD_LABEL, CATEGORY_TABS, LOOKUP_KIND, LOOKUP_TITLE, ROUTE_SEGMENT, TAB_DESCRIPTION } from "../const";
 import {
   fetchAccreditations, fetchBusinessCategories, fetchCatalog, fetchFeeTypes, fetchIssuingOrganizations,
-  fetchLookup, fetchOtherServiceCategories, fetchServiceCategories, fetchTests, removeAccreditation, removeFeeType, reviewAccreditation, reviewFeeType,
-  saveAccreditation, saveCategory, saveFeeType, saveLookup, saveTest,
-  toggleCategory, toggleLookup, toggleTest,
+  fetchLookup, fetchOtherServiceCategories, fetchRegistrationTypes, fetchServiceCategories, fetchTests, removeAccreditation, removeFeeType, removeRegistrationType, reviewAccreditation, reviewFeeType,
+  saveAccreditation, saveCategory, saveFeeType, saveLookup, saveRegistrationType, saveTest,
+  toggleCategory, toggleLookup, toggleRegistrationType, toggleTest,
 } from "../store/categories-slice";
 import type { CategoryKind } from "../store/categories-slice";
 import type {
   Accreditation, AccreditationInput, Category, CategoryInput, FeeType, FeeTypeInput,
-  Lookup, LookupInput, ModerationStatus, Test, TestInput,
+  Lookup, LookupInput, ModerationStatus, RegistrationType, RegistrationTypeInput, Test, TestInput,
 } from "../apis/types";
 import type { CategoryTab } from "../types";
 import { AccreditationDialog } from "./accreditation-dialog";
@@ -30,11 +30,13 @@ import { ConfirmDeleteDialog } from "./confirm-delete-dialog";
 import { FeeTypeDialog } from "./fee-type-dialog";
 import { FeeTypeList } from "./fee-type-list";
 import { LookupDialog } from "./lookup-dialog";
+import { RegistrationTypeDialog } from "./registration-type-dialog";
+import { RegistrationTypeList } from "./registration-type-list";
 import { LookupList } from "./lookup-list";
 import { TestDialog } from "./test-dialog";
 import { TestList } from "./test-list";
 
-type Deleting = { kind: "fee_type" | "accreditation"; id: number; name: string };
+type Deleting = { kind: "fee_type" | "accreditation" | "registration_type"; id: number; name: string };
 
 export function CategoriesView() {
   const dispatch = useAppDispatch();
@@ -48,6 +50,7 @@ export function CategoriesView() {
   const [feeTypeDialog, setFeeTypeDialog] = useState<{ open: boolean; editing: FeeType | null }>({ open: false, editing: null });
   const [accreditationDialog, setAccreditationDialog] = useState<{ open: boolean; editing: Accreditation | null }>({ open: false, editing: null });
   const [testDialog, setTestDialog] = useState<{ open: boolean; editing: Test | null }>({ open: false, editing: null });
+  const [registrationTypeDialog, setRegistrationTypeDialog] = useState<{ open: boolean; editing: RegistrationType | null }>({ open: false, editing: null });
   const [deleting, setDeleting] = useState<Deleting | null>(null);
   const fetchedRef = useRef(false);
   useEffect(() => {
@@ -87,6 +90,7 @@ export function CategoriesView() {
     setTab(next);
     if (next === "other_service") dispatch(fetchOtherServiceCategories({}));
     if (next === "tests") dispatch(fetchTests({}));
+    if (next === "registration_types") dispatch(fetchRegistrationTypes({}));
   };
   const lookupTab = tab === "degree_levels" || tab === "areas_of_study" ? tab : null;
   const lookupList = lookupTab === "degree_levels" ? catalog.degreeLevels : catalog.areasOfStudy;
@@ -100,6 +104,7 @@ export function CategoriesView() {
     else if (tab === "tests") dispatch(fetchTests({ page }));
     else if (tab === "fee_types") dispatch(fetchFeeTypes({ page }));
     else if (tab === "accreditations") dispatch(fetchAccreditations({ page }));
+    else if (tab === "registration_types") dispatch(fetchRegistrationTypes({ page }));
   };
 
   const activePagination = isCategoryTab
@@ -110,7 +115,9 @@ export function CategoriesView() {
         ? catalog.tests
         : tab === "fee_types"
           ? catalog.feeTypes
-          : catalog.accreditations;
+          : tab === "registration_types"
+            ? catalog.registrationTypes
+            : catalog.accreditations;
 
   const handleAdd = () => {
     if (isCategoryTab) setCategoryDialog({ open: true, editing: null });
@@ -118,6 +125,7 @@ export function CategoriesView() {
     else if (tab === "tests") setTestDialog({ open: true, editing: null });
     else if (tab === "fee_types") setFeeTypeDialog({ open: true, editing: null });
     else if (tab === "accreditations") setAccreditationDialog({ open: true, editing: null });
+    else if (tab === "registration_types") setRegistrationTypeDialog({ open: true, editing: null });
   };
 
   const handleSaveCategory = (input: CategoryInput) =>
@@ -150,15 +158,26 @@ export function CategoriesView() {
       accreditationDialog.editing ? "Accreditation updated" : "Accreditation created",
     );
 
+  const handleSaveRegistrationType = (input: RegistrationTypeInput) =>
+    run(
+      dispatch(saveRegistrationType({ id: registrationTypeDialog.editing?.id ?? null, input })),
+      registrationTypeDialog.editing ? "Registration type updated" : "Registration type created",
+    );
+
   const handleReview = (kind: Deleting["kind"], id: number, decision: ModerationStatus) => {
+    // Registration types carry no moderation status, so the lists never call this for them.
     const thunk = kind === "fee_type" ? reviewFeeType : reviewAccreditation;
     void run(dispatch(thunk({ id, decision })), decision === "approved" ? "Approved" : "Rejected");
   };
 
   const handleConfirmDelete = async () => {
     if (!deleting) return;
-    const thunk = deleting.kind === "fee_type" ? removeFeeType : removeAccreditation;
-    const ok = await run(dispatch(thunk(deleting.id)), "Deleted");
+    const ok = await run(
+      deleting.kind === "registration_type"
+        ? dispatch(removeRegistrationType({ id: deleting.id }))
+        : dispatch((deleting.kind === "fee_type" ? removeFeeType : removeAccreditation)(deleting.id)),
+      "Deleted",
+    );
     if (ok) setDeleting(null);
   };
 
@@ -218,6 +237,17 @@ export function CategoriesView() {
             onReview={(id, decision) => handleReview("fee_type", id, decision)}
             onEdit={(editing) => setFeeTypeDialog({ open: true, editing })}
             onDelete={(item) => setDeleting({ kind: "fee_type", id: item.id, name: item.name })}
+          />
+        )}
+
+        {tab === "registration_types" && (
+          <RegistrationTypeList
+            items={catalog.registrationTypes.data}
+            onToggle={(id, is_active) =>
+              void run(dispatch(toggleRegistrationType({ id, is_active })), "Registration type updated")
+            }
+            onEdit={(editing) => setRegistrationTypeDialog({ open: true, editing })}
+            onDelete={(item) => setDeleting({ kind: "registration_type", id: item.id, name: item.code })}
           />
         )}
 
@@ -321,6 +351,18 @@ export function CategoriesView() {
         onSave={handleSaveAccreditation}
         saving={saving}
       />
+
+      {tab === "registration_types" && (
+        <RegistrationTypeDialog
+          open={registrationTypeDialog.open}
+          onOpenChange={(open) => setRegistrationTypeDialog((s) => ({ ...s, open }))}
+          editing={registrationTypeDialog.editing}
+          countries={catalog.countries}
+          nextSortOrder={catalog.registrationTypes.total + 1}
+          onSave={handleSaveRegistrationType}
+          saving={saving}
+        />
+      )}
 
       <ConfirmDeleteDialog
         open={deleting !== null}

@@ -14,6 +14,8 @@ import type {
   CreateJobParams,
   EligibilityParams,
   EligibilityRequirement,
+  Scholarship,
+  ScholarshipParams,
   EditableTable,
   ExtractionJob,
   Intake,
@@ -24,8 +26,15 @@ import type {
   JunctionSlug,
   LibraryAccreditation,
   LibraryAccreditationInput,
+  MissingDetailCandidate,
   Paginated,
   QueueItem,
+  GetSiteUrlsParams,
+  SiteUrl,
+  SiteUrlCategory,
+  SiteUrlsPage,
+  SnapshotMarkdown,
+  SnapshotRow,
   StudyOption,
   StudyOptionParams,
   StudyUnit,
@@ -34,8 +43,9 @@ import type {
   UpdateCourseParams,
   VisaService,
 } from "./types";
+import { SITE_URL_CATEGORIES } from "./types";
 
-import { MODE_STATUS_FILTER, STATUS_CONFIG } from "../const";
+import { MODE_STATUS_FILTER, statusesForFilterValue } from "../const";
 import type { SortOrder } from "../const";
 import type { ExtractionStatus, GetJobsParams, GetJobsResult } from "./types";
 
@@ -50,9 +60,9 @@ const mockLibrary: LibraryAccreditation[] = [
 ];
 
 const EMPTY_COURSE_LINKS: CourseLinks = {
-  course_fees: [], intakes: [], eligibility_requirements: [], study_units: [],
+  course_fees: [], intakes: [], eligibility_requirements: [], scholarships: [], study_units: [],
   study_options: [], accreditations: [],
-  fee_assignments: [], intake_assignments: [], eligibility_assignments: [],
+  fee_assignments: [], intake_assignments: [], eligibility_assignments: [], scholarship_assignments: [],
   study_unit_assignments: [], study_option_assignments: [], accreditation_assignments: [],
   course_campuses: [],
 };
@@ -84,9 +94,22 @@ let mockJobs: ExtractionJob[] = [
   { id: "23", institution_name: "Queensland University of Technology (QUT)", institution_url: "https://qut.edu.au", status: "done", total_pages_found: 65, courses_extracted: 58, verification_score: 55, verification_total: 58, pages_scraped: 65, pages_failed: 0, agent_count: 2, created_at: "2026-06-10T09:00:00Z", updated_at: "2026-06-10T09:00:00Z" },
 ];
 
-function rawStatusesForLabel(label: string): ExtractionStatus[] {
-  return (Object.keys(STATUS_CONFIG) as ExtractionStatus[]).filter((s) => STATUS_CONFIG[s].label === label);
-}
+const mockSiteUrls: SiteUrl[] = [
+  { id: "su-1", url: "https://example.edu/", source: "homepage", category: "overview", category_source: "heuristic", excluded: false, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" },
+  { id: "su-2", url: "https://example.edu/courses/bachelor-of-computer-science", source: "sitemap", category: "course", category_source: "heuristic", excluded: false, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" },
+  { id: "su-3", url: "https://example.edu/courses/master-of-data-science", source: "sitemap", category: "course", category_source: "llm", excluded: false, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" },
+  { id: "su-4", url: "https://example.edu/news/open-day-2027", source: "sitemap", category: "other", category_source: "heuristic", excluded: false, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" },
+  { id: "su-5", url: "https://example.edu/staff/directory", source: "map", category: "other", category_source: "admin", excluded: true, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" },
+  { id: "su-6", url: "https://example.edu/study/fees", source: "guided", category: "fees", category_source: "heuristic", excluded: false, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" },
+  { id: "su-7", url: "https://example.edu/about/history", source: "map", category: null, category_source: null, excluded: false, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" },
+  { id: "su-8", url: "https://example.edu/contact", source: "map", category: "contact_us", category_source: "llm", excluded: false, created_at: "2026-09-18T00:00:00Z", updated_at: "2026-09-18T00:00:00Z" },
+];
+
+const mockSnapshots: SnapshotRow[] = [
+  { id: "11111111-1111-4111-8111-111111111111", url: "https://example.edu/courses/bachelor-of-computer-science", scraper: "scrapling", scraped_at: "2026-09-18T01:00:00Z", content_hash: "3f2a91c4d0e1", link_count: 64, site_url_id: "a1111111-1111-4111-8111-111111111111", category: "course", category_source: "heuristic", excluded: false, gcs_path: "extraction/www/example.edu/example.edu/courses_bachelor-of-computer-science-3f2a91c4.md" },
+  { id: "22222222-2222-4222-8222-222222222222", url: "https://example.edu/courses/master-of-data-science", scraper: "scrapling", scraped_at: "2026-09-18T01:00:05Z", content_hash: "7b10de55a9c2", link_count: 51, site_url_id: "a2222222-2222-4222-8222-222222222222", category: "course", category_source: "admin", excluded: false, gcs_path: "extraction/www/example.edu/example.edu/courses_master-of-data-science-7b10de55.md" },
+  { id: "33333333-3333-4333-8333-333333333333", url: "https://example.edu/news/open-day-2027", scraper: "crawl4ai", scraped_at: "2026-09-18T01:00:09Z", content_hash: "c0ffee00beef", link_count: 12, site_url_id: "a3333333-3333-4333-8333-333333333333", category: "other", category_source: "llm", excluded: false, gcs_path: "extraction/www/example.edu/example.edu/news_open-day-2027-c0ffee00.md" },
+];
 
 export const allExtractionsMockApi = {
   getJobs: async (params: GetJobsParams): Promise<GetJobsResult> => {
@@ -96,7 +119,7 @@ export const allExtractionsMockApi = {
     const baseStatuses = MODE_STATUS_FILTER[params.mode];
     const statuses =
       params.statusLabel && params.statusLabel !== "all"
-        ? rawStatusesForLabel(params.statusLabel).filter((s) => !baseStatuses || baseStatuses.includes(s))
+        ? statusesForFilterValue(params.statusLabel).filter((s) => !baseStatuses || baseStatuses.includes(s))
         : baseStatuses;
 
     let filtered = statuses ? mockJobs.filter((j) => statuses.includes(j.status)) : [...mockJobs];
@@ -211,6 +234,18 @@ export const allExtractionsMockApi = {
     );
   },
 
+  deepScrapeJob: async (id: string): Promise<void> => {
+    console.log("[mock] POST /admin/data-extraction/jobs/" + id + "/deep-scrape");
+    await delay(200);
+    mockJobs = mockJobs.map((j) => (j.id === id ? { ...j, status: "processing" } : j));
+  },
+
+  enrichFromWebJob: async (id: string): Promise<void> => {
+    console.log("[mock] POST /admin/data-extraction/jobs/" + id + "/enrich-from-web");
+    await delay(200);
+    mockJobs = mockJobs.map((j) => (j.id === id ? { ...j, status: "processing" } : j));
+  },
+
   rerunJob: async (id: string): Promise<void> => {
     console.log("[mock] POST /admin/data-extraction/jobs/" + id + "/rerun");
     await delay(200);
@@ -244,7 +279,7 @@ export const allExtractionsMockApi = {
       short_name: null,
       source_url: null,
       degree_level: i % 2 === 0 ? "bachelor" : "master",
-      subject_area: "General Studies",
+      subject_area: "General Studies", subject_area_code: null, degree_level_code: null,
       duration_weeks: 104,
       study_mode: "full-time",
       description: `Mock course ${i + 1} description`,
@@ -284,7 +319,7 @@ export const allExtractionsMockApi = {
     console.log("[mock] POST course for job", jobId, params);
     await delay(300);
     const now = new Date().toISOString();
-    return { id: uuid(), name: params.name, short_name: null, source_url: params.source_url ?? null, degree_level: params.degree_level ?? null, subject_area: params.subject_area ?? null, duration_weeks: params.duration_weeks ?? null, study_mode: params.study_mode ?? null, description: params.description ?? null, domestic_fee_total: null, domestic_currency: null, international_fee_total: null, international_currency: null, awarding_institution: null, career_paths: null, verification_status: null, created_at: now, updated_at: now };
+    return { id: uuid(), name: params.name, short_name: null, source_url: params.source_url ?? null, degree_level: params.degree_level ?? null, subject_area: params.subject_area ?? null, subject_area_code: null, degree_level_code: null, duration_weeks: params.duration_weeks ?? null, study_mode: params.study_mode ?? null, description: params.description ?? null, domestic_fee_total: null, domestic_currency: null, international_fee_total: null, international_currency: null, awarding_institution: null, career_paths: null, verification_status: null, created_at: now, updated_at: now };
   },
 
   updateCourse: async (id: string, params: UpdateCourseParams): Promise<void> => {
@@ -457,9 +492,97 @@ export const allExtractionsMockApi = {
     await delay(200);
   },
 
+  findMissingInstitutionDetails: async (jobId: string): Promise<{ fields: MissingDetailCandidate[] }> => {
+    console.log("[mock] POST find-missing-institution-details", jobId);
+    await delay(600);
+    return {
+      fields: [
+        { field: "email", label: "Email", value: "admissions@example.edu", source_url: "https://example.edu/contact" },
+        { field: "phone", label: "Phone", value: "+1 555 0100", source_url: "https://example.edu/contact" },
+      ],
+    };
+  },
+
+  findMissingCampusDetails: async (campusId: string): Promise<{ fields: MissingDetailCandidate[] }> => {
+    console.log("[mock] POST campus find-missing-details", campusId);
+    await delay(600);
+    return {
+      fields: [
+        { field: "postcode", label: "Postcode", value: "94305", source_url: null },
+        { field: "map_link", label: "Map link", value: "https://www.google.com/maps/search/?api=1&query=37.4275,-122.1697", source_url: null },
+      ],
+    };
+  },
+
   updateContext: async (id: string, params: UpdateContextParams): Promise<void> => {
     console.log("[mock] PATCH context", id, params);
     await delay(200);
+  },
+
+  // ── Site tab (one-step-at-a-time chain) ──────────────
+
+  getSiteUrls: async (jobId: string, params: GetSiteUrlsParams = {}): Promise<SiteUrlsPage> => {
+    console.log("[mock] GET site-urls", jobId, params);
+    await delay(250);
+    let rows = mockSiteUrls.filter((r) => r.excluded === (params.excluded ?? r.excluded));
+    if (params.category === "unclassified") rows = rows.filter((r) => r.category === null);
+    else if (params.category) rows = rows.filter((r) => r.category === params.category);
+    if (params.q) rows = rows.filter((r) => r.url.includes(params.q!));
+    const limit = params.limit ?? 20;
+    const page = params.page ?? 1;
+    const active = mockSiteUrls.filter((r) => !r.excluded);
+    const counts = {
+      total: mockSiteUrls.length,
+      unclassified: active.filter((r) => r.category === null).length,
+      dead: 0,
+      excluded: mockSiteUrls.filter((r) => r.excluded).length,
+      by_category: Object.fromEntries(SITE_URL_CATEGORIES.map((c) => [c, active.filter((r) => r.category === c).length])) as Record<SiteUrlCategory, number>,
+    };
+    return {
+      data: rows.slice((page - 1) * limit, page * limit),
+      meta: { page, limit, total: rows.length, totalPages: Math.max(1, Math.ceil(rows.length / limit)) },
+      counts,
+    };
+  },
+
+  addSiteUrl: async (jobId: string, url: string, category: SiteUrlCategory): Promise<void> => {
+    console.log("[mock] POST site-urls", jobId, url, category);
+    await delay(150);
+    const now = new Date().toISOString();
+    const existing = mockSiteUrls.find((r) => r.url === url);
+    if (existing) { existing.category = category; existing.category_source = "admin"; existing.excluded = false; existing.updated_at = now; return; }
+    mockSiteUrls.push({ id: `su-${mockSiteUrls.length + 1}`, url, source: "admin", category, category_source: "admin", excluded: false, created_at: now, updated_at: now });
+  },
+
+  patchSiteUrl: async (id: string, patch: { excluded?: boolean; category?: SiteUrlCategory | null }): Promise<void> => {
+    console.log("[mock] PATCH site-url", id, patch);
+    await delay(150);
+    const row = mockSiteUrls.find((r) => r.id === id);
+    if (!row) return;
+    if (patch.excluded !== undefined) row.excluded = patch.excluded;
+    if (patch.category !== undefined) { row.category = patch.category; row.category_source = patch.category === null ? null : "admin"; }
+  },
+
+  bulkExcludeSiteUrls: async (jobId: string, ids: string[], excluded: boolean): Promise<void> => {
+    console.log("[mock] POST site-urls bulk-exclude", jobId, ids.length, excluded);
+    await delay(200);
+    for (const r of mockSiteUrls) if (ids.includes(r.id)) r.excluded = excluded;
+  },
+
+  getSnapshots: async (jobId: string, params: { page?: number; limit?: number; q?: string } = {}): Promise<Paginated<SnapshotRow>> => {
+    console.log("[mock] GET snapshots", jobId, params);
+    await delay(250);
+    const rows = params.q ? mockSnapshots.filter((r) => r.url.includes(params.q!)) : mockSnapshots;
+    const limit = params.limit ?? 20;
+    const page = params.page ?? 1;
+    return { data: rows.slice((page - 1) * limit, page * limit), meta: { page, limit, total: rows.length, totalPages: Math.max(1, Math.ceil(rows.length / limit)) } };
+  },
+
+  getSnapshotMarkdown: async (jobId: string, pageId: string): Promise<SnapshotMarkdown> => {
+    console.log("[mock] GET snapshot markdown", jobId, pageId);
+    await delay(200);
+    const row = mockSnapshots.find((r) => r.id === pageId) ?? mockSnapshots[0]!;
+    return { id: row.id, url: row.url, scraped_at: row.scraped_at, markdown: `# ${row.url}\n\nMock snapshot markdown for this page.\n\n| Programme | Fee |\n| --- | --- |\n| MSc Example | $32,000 |\n` };
   },
 
   getQueue: async (jobId: string): Promise<QueueItem[]> => {
@@ -504,21 +627,34 @@ export const allExtractionsMockApi = {
 
   // ── Course Fees ────────────────────────────────────────────────
 
-  getCourseFees: async (jobId: string): Promise<CourseFee[]> => {
-    console.log("[mock] GET course-fees for job", jobId);
+  getCourseFees: async (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string } = {},
+  ): Promise<Paginated<CourseFee>> => {
+    console.log("[mock] GET course-fees for job", jobId, params);
     await delay(250);
     const now = new Date().toISOString();
-    return [
-      { id: "fee-1", name: "Standard Tuition", student_type: "domestic", period_type: "Per Year", currency: "CAD", total_amount: 12500, created_at: now },
-      { id: "fee-2", name: "International Tuition", student_type: "international", period_type: "Per Year", currency: "CAD", total_amount: 28000, created_at: now },
+    const all: CourseFee[] = [
+      { id: "fee-1", name: "Standard Tuition", description: "Domestic tuition, 30 credits at CAD 416.67 per credit", student_type: "domestic", period_type: "Per Year", currency: "CAD", total_amount: 12500, created_at: now },
+      { id: "fee-2", name: "International Tuition", description: null, student_type: "international", period_type: "Per Year", currency: "CAD", total_amount: 28000, created_at: now },
     ];
+    const filtered = params.search
+      ? all.filter((f) => (f.name ?? "").toLowerCase().includes(params.search!.toLowerCase()))
+      : all;
+    const page = params.page ?? 1;
+    const limit = params.limit ?? 20;
+    return {
+      data: filtered.slice((page - 1) * limit, page * limit),
+      meta: { page, limit, total: filtered.length, totalPages: Math.ceil(filtered.length / limit) },
+    };
   },
 
   createCourseFee: async (params: { job_id: string } & CourseFeeParams): Promise<CourseFee> => {
     console.log("[mock] POST course-fee", params);
     await delay(300);
     return {
-      id: uuid(), name: params.name ?? null, student_type: params.student_type ?? null,
+      id: uuid(), name: params.name ?? null, description: params.description ?? null,
+      student_type: params.student_type ?? null,
       period_type: params.period_type ?? null, currency: params.currency ?? null,
       total_amount: params.total_amount ?? null, installments: params.installments ?? [],
       save_for_reuse: params.save_for_reuse ?? false, created_at: new Date().toISOString(),
@@ -548,6 +684,10 @@ export const allExtractionsMockApi = {
       { id: "intake-1", intake_name: "Semester 1 2026", start_date: "2026-02-15", end_date: "2026-06-30", orientation_date: "2026-02-10", admission_deadline: "2026-01-15", intake_month: 2, intake_year: 2026, created_at: now },
       { id: "intake-2", intake_name: "Semester 2 2026", start_date: "2026-07-20", end_date: "2026-11-30", orientation_date: "2026-07-15", admission_deadline: "2026-06-20", intake_month: 7, intake_year: 2026, created_at: now },
       { id: "intake-3", intake_name: "Summer Intensive 2027", start_date: "2027-01-05", end_date: "2027-02-20", orientation_date: "2027-01-02", admission_deadline: "2026-12-01", intake_month: 1, intake_year: 2027, created_at: now },
+      // Month-precision throughout, which is what a calendar page stating "applications close in
+      // December 2026" actually gives. Kept in the mock so the Month selector and the
+      // "December 2026" rendering are exercised without a backend.
+      { id: "intake-4", intake_name: "Autumn 2026-2027", start_date: "2026-09", end_date: "2026-12", orientation_date: null, admission_deadline: "2026-12", intake_month: 9, intake_year: 2026, custom_dates: [{ name: "Scholarship Deadline", date: "2026-11" }, { name: "Exam Date", date: "2026-12-11" }], created_at: now },
     ];
     const filtered = params.search
       ? all.filter((i) => (i.intake_name ?? "").toLowerCase().includes(params.search!.toLowerCase()))
@@ -567,7 +707,8 @@ export const allExtractionsMockApi = {
       id: uuid(), intake_name: params.intake_name ?? null, start_date: params.start_date ?? null,
       end_date: params.end_date ?? null, orientation_date: params.orientation_date ?? null,
       admission_deadline: params.admission_deadline ?? null, intake_month: params.intake_month ?? null,
-      intake_year: params.intake_year ?? null, created_at: new Date().toISOString(),
+      intake_year: params.intake_year ?? null, custom_dates: params.custom_dates ?? [],
+      created_at: new Date().toISOString(),
     };
   },
 
@@ -620,6 +761,41 @@ export const allExtractionsMockApi = {
 
   deleteEligibilityRequirement: async (id: string): Promise<void> => {
     console.log("[mock] DELETE eligibility-requirement", id);
+    await delay(200);
+  },
+
+  // ── Scholarships ────────────────────────────────────────────────
+
+  getScholarships: async (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string } = {},
+  ): Promise<Paginated<Scholarship>> => {
+    console.log("[mock] GET scholarships for job", jobId, params);
+    await delay(250);
+    const now = new Date().toISOString();
+    const all: Scholarship[] = [
+      { id: "sch-1", name: "International Excellence Scholarship", applicable_to: "international", coverage_type: "partial_tuition", amount: 5000, currency: "AUD", deadline: "2027-01-31", application_url: "https://example.edu/scholarships/excellence", description: "Awarded on academic merit to commencing international students.", created_at: now },
+      { id: "sch-2", name: "Regional Access Bursary", applicable_to: "domestic", coverage_type: "stipend", amount: 2000, currency: "AUD", deadline: null, application_url: null, description: null, created_at: now },
+    ];
+    const filtered = params.search
+      ? all.filter((r) => r.name.toLowerCase().includes(params.search!.toLowerCase()))
+      : all;
+    const page = params.page ?? 1;
+    const limit = params.limit ?? 20;
+    return {
+      data: filtered.slice((page - 1) * limit, page * limit),
+      meta: { page, limit, total: filtered.length, totalPages: Math.ceil(filtered.length / limit) },
+    };
+  },
+
+  createScholarship: async (params: { job_id: string } & ScholarshipParams): Promise<{ id: string }> => {
+    console.log("[mock] POST scholarship", params);
+    await delay(300);
+    return { id: uuid() };
+  },
+
+  deleteScholarship: async (id: string): Promise<void> => {
+    console.log("[mock] DELETE scholarship", id);
     await delay(200);
   },
 
@@ -828,23 +1004,24 @@ export const allExtractionsMockApi = {
             phone: "+1 555 0100",
             address: null,
             zip_code: null,
+            ownership_type: null,
             facebook_url: null,
             instagram_url: null,
             twitter_url: null,
             linkedin_url: null,
             youtube_url: null,
+            other_social_links: null,
             updated_at: now,
           }
         : null,
       campuses: job.agent_count ? [{ id: "c1", updated_at: now }] : [],
       agents: Array.from({ length: job.agent_count ?? 0 }, (_, i) => ({ id: `a${i}`, updated_at: now })),
-      courses: Array.from({ length: job.courses_extracted }, (_, i) => ({
-        id: `co${i}`,
-        name: `Course ${i + 1}`,
-        verification_status: i % 3 === 0 ? "confirmed" : "pending",
-        updated_at: now,
-      })),
-      coursesTotal: job.courses_extracted,
+      tabCounts: {
+        branches: job.agent_count ? 1 : 0,
+        agents: job.agent_count ?? 0,
+        courses: job.courses_extracted,
+        fees: 0, intakes: 0, eligibility: 0, scholarships: 0, units: 0, study_options: 0, accreditations: 0, visa_services: 0,
+      },
       courseLinks: EMPTY_COURSE_LINKS,
       visaServices: [],
     };

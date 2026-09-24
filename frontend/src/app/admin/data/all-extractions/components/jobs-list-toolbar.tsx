@@ -1,6 +1,6 @@
 "use client";
 
-import { ListFilter, Plus, Search } from "lucide-react";
+import { ListFilter, Plus, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
@@ -9,15 +9,12 @@ import {
   MODE_HEADINGS,
   SORT_OPTIONS,
   SOURCE_FILTER_OPTIONS,
-  STATUS_CONFIG,
+  STATUS_FILTER_OPTIONS,
   type DashboardMode,
   type SortOrder,
 } from "../const";
 
-const STATUS_FILTER_OPTIONS = [
-  { value: "all", label: "All statuses" },
-  ...[...new Set(Object.values(STATUS_CONFIG).map((c) => c.label))].map((label) => ({ value: label, label })),
-];
+const STATUS_COMBOBOX_OPTIONS = [{ value: "all", label: "All statuses" }, ...STATUS_FILTER_OPTIONS];
 
 type Props = Readonly<{
   mode: DashboardMode;
@@ -40,6 +37,8 @@ type Props = Readonly<{
   showDeclinedToggle: boolean;
   showDeclined: boolean;
   onToggleShowDeclined: () => void;
+  hasActiveFilters: boolean;
+  onClearFilters: () => void;
   showNewExtractionButton: boolean;
   onNewExtraction: () => void;
 }>;
@@ -66,6 +65,8 @@ export function JobsListToolbar({
   showDeclinedToggle,
   showDeclined,
   onToggleShowDeclined,
+  hasActiveFilters,
+  onClearFilters,
   showNewExtractionButton,
   onNewExtraction,
 }: Props) {
@@ -95,7 +96,7 @@ export function JobsListToolbar({
         </div>
 
         <Combobox
-          options={STATUS_FILTER_OPTIONS}
+          options={STATUS_COMBOBOX_OPTIONS}
           value={statusFilter}
           onChange={onStatusFilterChange}
           className="h-8 w-40 text-xs cursor-pointer"
@@ -130,6 +131,17 @@ export function JobsListToolbar({
             onChange={onSourceFilterChange}
             className="h-8 w-36 text-xs cursor-pointer"
           />
+        )}
+
+        {hasActiveFilters && (
+          <Button
+            variant="ghost"
+            className="h-8 gap-1.5 text-xs text-muted-foreground cursor-pointer"
+            onClick={onClearFilters}
+          >
+            <X className="h-3.5 w-3.5" />
+            Clear filters
+          </Button>
         )}
 
         {showDeclinedToggle && (

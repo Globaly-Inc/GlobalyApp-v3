@@ -16,13 +16,14 @@ import { config } from "../../../config.js";
 import { getKnex } from "../../../core/db/pool-manager.js";
 import { schemaName } from "../../../core/db/knex.js";
 import { provisionOnClaim } from "../../../core/business/provisioner.js";
+import { seedBranchesFromJob } from "../../superadmin/data-extraction/lib/branch-sync.js";
 import { claimBusinessEmail } from "../../../shared/mail/templates.js";
 import { queueEmail } from "../../auth/auth.service.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import * as repo from "../repositories/platform-users.repository.js";
 import * as institutionMembers from "./institution-members.service.js";
 import { createSystemPost } from "../../feed/services/feed.service.js";
-import { guessImageMimeType } from "../../feed/services/feed-media.service.js";
+import { reconcileTenantMirror } from "../../enquiries/services/tenant-sync.service.js";
 
 const logger = createChildLogger("institution-claim-service");
 const WELCOME_POST_IMAGE = `${config.WEB_APP_URL}/welcome-post.png`;
@@ -71,6 +72,25 @@ async function resolveClaimant(
 }
 
 /**
+ * Issues a fresh claim link for an institution nobody owns yet.
+ *
+ * Exported because the claim page is not the only thing that needs one: an enquiry falling back
+ * to an unclaimed institution has to put a way in inside its notification, or the mail asks
+ * someone to sign into an account that cannot be signed into.
+ *
+ * Reuses a live token rather than replacing it, so an acquisition mail already in the inbox
+ * keeps working; returns null once the institution has been claimed.
+ */
+export async function mintInstitutionClaimUrl(institutionId: number): Promise<string | null> {
+  const token = await repo.ensureInstitutionClaimToken(
+    institutionId,
+    randomBytes(32).toString("hex"),
+    new Date(Date.now() + CLAIM_TOKEN_TTL_MS),
+  );
+  return token ? `${config.WEB_APP_URL}/invite/institution/accept?token=${token}` : null;
+}
+
+/**
  * Self-serve claim trigger. Resolves silently either way — no found/not-found signal, same
  * anti-enumeration stance as requestClaimByEmail on the business side.
  */
@@ -79,10 +99,9 @@ export async function requestInstitutionClaim(email: string): Promise<void> {
   const institution = await repo.findUnclaimedInstitutionByContactEmail(email);
   if (!institution) return;
 
-  const token = randomBytes(32).toString("hex");
-  await repo.setInstitutionClaimPending(institution.id, token, new Date(Date.now() + CLAIM_TOKEN_TTL_MS));
-
-  const claimUrl = `${config.WEB_APP_URL}/invite/institution/accept?token=${token}`;
+  const claimUrl = await mintInstitutionClaimUrl(institution.id);
+  // Null means it was claimed between the lookup above and the write — nothing left to send.
+  if (!claimUrl) return;
   // Personalise only if someone already registered on this address.
   const existingUser = await repo.findByEmail(email);
   const ownerName =
@@ -122,6 +141,12 @@ export async function acceptInstitutionClaim(
       schema_name: institution.schema_name,
     });
 
+    if (institution.source_job_id) {
+      await seedBranchesFromJob(Number(institution.id), institution.schema_name, institution.source_job_id).catch((err) =>
+        logger.warn("Branch seeding from extraction failed", { institutionId: institution.id, err: err instanceof Error ? err.message : String(err) }),
+      );
+    }
+
     // addMember writes the tenant `members` row AND user_institution_index. The index is what
     // makes login hand out institution context — without it the owner would claim
     // successfully and then find no institution to enter. Idempotent, so a retried claim is
@@ -140,7 +165,7 @@ export async function acceptInstitutionClaim(
     await repo.updateUser(owner.id, { is_personal_account: true });
     await repo.addAccountCategory(owner.id, {
       type: "institution",
-      role: institution.institution_type ?? "institution",
+      role: "institution",
     });
 
     // Last, exactly as activateClaimedListing does for a business: account_status 1 is what
@@ -148,17 +173,27 @@ export async function acceptInstitutionClaim(
     // listUserInstitutions, so it must not flip until the schema and the owner member exist.
     await repo.updateInstitution(institution.id, { account_status: 1 });
 
+    // Leads that arrived while nobody could sign in — the enquiry fallback mails unclaimed
+    // institutions precisely to get them here, so the schema starts with them already in it.
+    // Best-effort on purpose: the claim is already committed by this point (token cleared,
+    // member added, account_status flipped), so throwing here would 500 a claim that actually
+    // worked and cannot be retried. The inbox reconciles on read, which is what makes a miss
+    // here recoverable rather than permanent.
+    await reconcileTenantMirror({ kind: "institution", id: Number(institution.id) });
+
     logger.info("Promoted institution claimed", { institutionId: institution.id, jobId: institution.source_job_id });
 
     createSystemPost({
       authorId: owner.id,
       institutionId: Number(institution.id),
       content: `**@all** 🎉 We've just joined **GlobalyApp**! Excited to be part of the community.`,
+      // Always the landscape banner, never the institution's own logo: a square logo forced into
+      // the feed's wide image box gets center-cropped into an unrecognisable zoom.
       media: [
         {
-          storage_path: institution.logo_url ?? WELCOME_POST_IMAGE,
+          storage_path: WELCOME_POST_IMAGE,
           type: "image",
-          mime_type: institution.logo_url ? guessImageMimeType(institution.logo_url) : "image/png",
+          mime_type: "image/png",
         },
       ],
     }).catch((err) => logger.warn("Welcome post creation error", { institutionId: institution.id, err: err.message }));

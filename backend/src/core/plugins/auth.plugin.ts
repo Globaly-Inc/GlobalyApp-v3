@@ -45,7 +45,16 @@ export const authPlugin = fp(async (app) => {
 
     try {
       const token = header.slice(7);
-      req.auth = jwt.verify(token, config.JWT_SECRET) as AuthClaims;
+      const claims = jwt.verify(token, config.JWT_SECRET) as AuthClaims & { purpose?: string };
+      // issuePreviewToken (auth.service.ts) mints these for the self-service "Preview" button —
+      // deliberately without sub/orgRole, and never meant to authenticate a real session. Only
+      // resolvePreviewSchemaName (search/utils/preview-auth.ts) reads one, on public routes this
+      // plugin never guards, so this codepath should never see one; reject it outright in case
+      // it's ever pointed at a protected route.
+      if (claims.purpose === "preview") {
+        return reply.status(401).send({ error: "Invalid token" });
+      }
+      req.auth = claims;
     } catch {
       return reply.status(401).send({ error: "Invalid token" });
     }

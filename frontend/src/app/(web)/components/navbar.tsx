@@ -4,25 +4,25 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Menu, X, Sparkles, ChevronDown } from "lucide-react";
+import { Menu, X, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Sheet, SheetContent, SheetTitle, SheetTrigger } from "@/components/ui/sheet";
 import { cn } from "@/lib/utils";
 import { ensureBusinessContext } from "@/lib/api/http";
-import { toast } from "sonner";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { logout, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchFullProfile } from "@/app/personal/store/profile-slice";
 import type { AuthUser } from "@/app/auth/apis/types";
+import { LOGO, LOGO_WHITE } from "@/lib/public-assets";
+import { PERSONAL_PORTAL_HOME } from "@/app/personal/const";
 import { NAV_LINKS } from "../const/index";
 
 /** Where a signed-in user's own profile lives. */
@@ -56,13 +56,14 @@ export function Navbar() {
     router.push("/auth/sign-in");
   };
 
+
   const initial = (profile?.first_name?.[0] ?? user?.email?.[0] ?? "U").toUpperCase();
 
   return (
-    <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur-md">
+    <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur-md print:hidden">
       <div className="container mx-auto flex h-16 items-center px-3 sm:px-4 gap-1">
         <Link href="/" className="flex items-center flex-shrink-0">
-          <Image src="/globaly-logo.png" alt="Globaly.ai" width={753} height={157} className="h-8 w-auto" priority />
+          <Image src={LOGO.src} alt="Globalyapp" width={LOGO.width} height={LOGO.height} className="h-8 w-auto" priority />
         </Link>
 
         <nav className="hidden items-center gap-1 lg:flex flex-1 justify-start ml-8">
@@ -83,25 +84,13 @@ export function Navbar() {
         </nav>
 
         <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
-          <Link
-            href="/ai"
-            className="hidden md:inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 h-8 text-xs font-semibold bg-primary/10 text-primary hover:bg-primary/15 transition-colors"
-            aria-label="Open AI Counsellor"
-          >
-            <Sparkles className="h-3.5 w-3.5" />
-            <span>AI Counsellor</span>
-          </Link>
-
           {!initializing && (
             user ? (
-              // The same profile badge as the portal shell, so signing in doesn't change what the account
-              // control looks like between the marketing site and the app. No credits pill here — there is no
-              // credits balance in V3 to put in it.
               <DropdownMenu>
                 <DropdownMenuTrigger
                   render={
                     <button
-                      className="flex items-center gap-1.5 rounded-full border border-border py-1 pl-1 pr-2 hover:bg-muted cursor-pointer"
+                      className="flex items-center gap-1.5 rounded-md border border-border py-1 pl-1 pr-2 hover:bg-muted cursor-pointer"
                       type="button"
                       aria-label="Account menu"
                     />
@@ -114,30 +103,30 @@ export function Navbar() {
                   <ChevronDown className="h-4 w-4 text-muted-foreground" />
                 </DropdownMenuTrigger>
                 <DropdownMenuContent align="end" className="w-56 p-1.5">
-                  <DropdownMenuLabel className="px-1.5 py-1.5 font-normal">
-                    <p className="text-sm font-medium truncate">
-                      {[profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || "User"}
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate">{user.email}</p>
-                  </DropdownMenuLabel>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push(profileHref(user))}>
-                    My Profile
+                  <DropdownMenuItem
+                    className="cursor-pointer px-1.5 py-1.5 flex items-center gap-2"
+                    onClick={() => router.push(profileHref(user))}
+                  >
+                    <Avatar className="size-8 shrink-0">
+                      {profile?.photo_url && <AvatarImage src={profile.photo_url} alt={profile.first_name} />}
+                      <AvatarFallback className="text-primary-foreground!">{initial}</AvatarFallback>
+                    </Avatar>
+                    <div className="min-w-0">
+                      <p className="text-sm font-medium truncate">
+                        {[user.first_name, user.last_name].filter(Boolean).join(" ") || "User"}
+                      </p>
+                      <p className="text-xs text-muted-foreground truncate">{user.email}</p>
+                    </div>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/personal/portal")}>
+                  <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push(PERSONAL_PORTAL_HOME)}>
                     Personal Portal
                   </DropdownMenuItem>
-                  {/* Entering needs an ORG-SCOPED token, not just a route change: ensureBusinessContext()
-                      reads the memberships, picks the selected org, and calls /auth/switch-account.
-                      Navigating without it lands on a 403. */}
                   <DropdownMenuItem
                     className="cursor-pointer px-1.5 py-1.5"
                     onClick={async () => {
                       if (await ensureBusinessContext()) router.push("/business/portal");
-                      else toast.error("Could not open the Business Portal", {
-                        description: "Your business membership could not be confirmed. Please sign in again.",
-                      });
+                      else router.push("/business/onboarding");
                     }}
                   >
                     Business Portal
@@ -166,8 +155,9 @@ export function Navbar() {
                 >
                   Sign In
                 </Button>
+                {/* The brand navy rather than .btn-gold's aqua, matching the reference's CTA. */}
                 <Button
-                  className="btn-gold h-10 rounded-full px-5"
+                  className="h-10 rounded-full px-5 shadow-sm"
                   nativeButton={false}
                   render={<Link href="/auth/sign-up" />}
                 >
@@ -187,7 +177,7 @@ export function Navbar() {
               <SheetTitle className="sr-only">Menu</SheetTitle>
               <div className="flex items-center justify-between mb-6">
                 <Link href="/" onClick={() => setMobileOpen(false)}>
-                  <Image src="/globaly-logo-white.png" alt="Globaly.ai" width={776} height={188} className="h-7 w-auto" />
+                  <Image src={LOGO_WHITE.src} alt="Globalyapp" width={LOGO_WHITE.width} height={LOGO_WHITE.height} className="h-7 w-auto" />
                 </Link>
                 <Button
                   variant="ghost"
@@ -223,7 +213,7 @@ export function Navbar() {
                           nativeButton={false}
                           render={
                             <Link
-                              href={"/personal/portal"}
+                              href={PERSONAL_PORTAL_HOME}
                               onClick={() => setMobileOpen(false)}
                             />
                           }
@@ -240,9 +230,8 @@ export function Navbar() {
                                 setMobileOpen(false);
                                 router.push("/business/portal");
                               } else {
-                                toast.error("Could not open the Business Portal", {
-                                  description: "Your business membership could not be confirmed. Please sign in again.",
-                                });
+                                setMobileOpen(false);
+                                router.push("/business/onboarding");
                               }
                             }}
                           >

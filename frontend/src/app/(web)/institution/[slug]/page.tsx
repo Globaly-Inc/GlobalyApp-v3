@@ -8,23 +8,26 @@ import { ProfileSection } from "../../components/profile/profile-section";
 import { ProfileContactCard } from "../../components/profile/profile-contact-card";
 import { ProfileLocationsCard } from "../../components/profile/profile-locations-card";
 import {
-  joinParts, toProfileSocials, type ProfileData, type ProfileLocation,
+  joinParts, toGalleryItems, toProfileSocials, type ProfileData, type ProfileLocation,
 } from "../../components/profile/profile-data";
 import type { InstitutionDetail } from "../../search/types";
 import { InstitutionStats } from "./components/institution-stats";
 import { InstitutionSubjectAreas } from "./components/institution-subject-areas";
 import { InstitutionCoursesSection } from "./components/institution-courses-section";
-import { ProfileGallery, type GalleryItem } from "../../components/profile/profile-gallery";
+import { InstitutionRepresentatives } from "./components/institution-representatives";
+import { ProfileGallery } from "../../components/profile/profile-gallery";
 import { InstitutionTeamCard } from "./components/institution-sidebar";
+import { PageViews } from "../../components/page-views";
 
 type InstitutionPageProps = Readonly<{
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ page?: string; search?: string; level?: string }>;
+  searchParams: Promise<{ page?: string; search?: string; level?: string; preview_token?: string }>;
 }>;
 
-export async function generateMetadata({ params }: InstitutionPageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: InstitutionPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const institution = await getInstitutionBySlug(slug);
+  const { preview_token } = await searchParams;
+  const institution = await getInstitutionBySlug(slug, preview_token);
   if (!institution) return { title: "Institution — Globaly" };
   return {
     title: `${institution.business_name} — Globaly`,
@@ -37,6 +40,10 @@ export async function generateMetadata({ params }: InstitutionPageProps): Promis
  * so its own address stands in as the single campus rather than leaving the map card empty.
  */
 function toLocations(institution: InstitutionDetail): ProfileLocation[] {
+  // `show_locations` false means the owner set the Locations card to Private. The server already
+  // withheld the campuses; the own-address fallback below is built here, so it stops here too.
+  if (institution.show_locations === false) return [];
+
   if (institution.campuses.length > 0) {
     return institution.campuses.map((campus) => ({
       id: campus.id,
@@ -86,27 +93,21 @@ function toProfileData(institution: InstitutionDetail): ProfileData {
     locations: toLocations(institution),
     // The profile no longer surfaces a Registration & Licenses card.
     registration: [],
+    gallery: toGalleryItems(institution.gallery_image_urls, institution.video_urls),
   };
-}
-
-/** V1's gallery mixes photos and videos in one carousel; V3 stores them in two columns. */
-function toGalleryItems(institution: InstitutionDetail): GalleryItem[] {
-  return [
-    ...(institution.gallery_image_urls ?? []).filter((url): url is string => Boolean(url))
-      .map((url) => ({ type: "image" as const, url })),
-    ...(institution.video_urls ?? []).filter(Boolean).map((url) => ({ type: "video" as const, url })),
-  ];
 }
 
 export default async function InstitutionPage({ params, searchParams }: InstitutionPageProps) {
   const { slug } = await params;
-  const { page: pageParam, search, level } = await searchParams;
+  const { page: pageParam, search, level, preview_token } = await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
 
-  const institution = await getInstitutionBySlug(slug);
+  const institution = await getInstitutionBySlug(slug, preview_token);
   if (!institution) notFound();
 
-  const { data: courses, meta } = await getInstitutionCourses(slug, { page, search, degree_level: level });
+  // The catalog scrolls inside its card rather than paging, so ask for the whole first page of
+  // it — 100 is the API cap. Past that the section falls back to showing its pager.
+  const { data: courses, meta } = await getInstitutionCourses(slug, { page, search, degree_level: level, limit: 100 }, preview_token);
   const profile = toProfileData(institution);
   // The stats and the subject grid count the whole catalog; `meta.total` counts only the
   // level/search currently shown.
@@ -114,10 +115,13 @@ export default async function InstitutionPage({ params, searchParams }: Institut
 
   return (
     <div className="container mx-auto max-w-6xl space-y-4 px-4 py-6 md:space-y-6">
-      <p className="text-xs text-muted-foreground">
-        <Link href="/" className="hover:text-primary">Home</Link> /{" "}
-        <Link href="/search?tab=institutions" className="hover:text-primary">Institutions</Link> / {institution.business_name}
-      </p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          <Link href="/" className="hover:text-primary">Home</Link> /{" "}
+          <Link href="/search?tab=institutions" className="hover:text-primary">Institutions</Link> / {institution.business_name}
+        </p>
+        <PageViews type="institution" id={institution.id} className="shrink-0" />
+      </div>
 
       <ProfileHero data={profile} />
 
@@ -153,7 +157,9 @@ export default async function InstitutionPage({ params, searchParams }: Institut
 
           <ProfileLocationsCard locations={profile.locations} />
 
-          <ProfileGallery items={toGalleryItems(institution)} />
+          <InstitutionRepresentatives representatives={institution.representatives} />
+
+          <ProfileGallery items={profile.gallery} />
         </div>
 
         <div className="space-y-4 md:space-y-6">

@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import styles from "./coming-soon.module.css";
 
-// Interactive gold constellation (drifts, links to the cursor, gentle pull).
+// Interactive constellation in the accent aqua (drifts, links to the cursor, gentle pull).
 export function ComingSoonConstellation() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
@@ -19,7 +19,7 @@ export function ComingSoonConstellation() {
     let w = 0, h = 0, dpr = Math.min(window.devicePixelRatio || 1, 2);
     type Node = { x: number; y: number; vx: number; vy: number };
     let nodes: Node[] = [];
-    const goldRGB = "245, 190, 74";
+    const accentRGB = "35, 221, 246";
     const pointer = { x: 0, y: 0, active: false };
     const CURSOR_R = 190;
 
@@ -57,7 +57,7 @@ export function ComingSoonConstellation() {
           const b = nodes[j]!;
           const dist = Math.hypot(a.x - b.x, a.y - b.y);
           if (dist < LINK) {
-            ctx.strokeStyle = `rgba(${goldRGB}, ${(1 - dist / LINK) * 0.22})`;
+            ctx.strokeStyle = `rgba(${accentRGB}, ${(1 - dist / LINK) * 0.22})`;
             ctx.lineWidth = 1;
             ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
           }
@@ -67,16 +67,16 @@ export function ComingSoonConstellation() {
         for (const n of nodes) {
           const dist = Math.hypot(pointer.x - n.x, pointer.y - n.y);
           if (dist < CURSOR_R) {
-            ctx.strokeStyle = `rgba(${goldRGB}, ${(1 - dist / CURSOR_R) * 0.6})`;
+            ctx.strokeStyle = `rgba(${accentRGB}, ${(1 - dist / CURSOR_R) * 0.6})`;
             ctx.lineWidth = 1.2;
             ctx.beginPath(); ctx.moveTo(pointer.x, pointer.y); ctx.lineTo(n.x, n.y); ctx.stroke();
           }
         }
-        ctx.fillStyle = `rgba(${goldRGB}, 0.9)`;
+        ctx.fillStyle = `rgba(${accentRGB}, 0.9)`;
         ctx.beginPath(); ctx.arc(pointer.x, pointer.y, 2.5, 0, Math.PI * 2); ctx.fill();
       }
       for (const n of nodes) {
-        ctx.fillStyle = `rgba(${goldRGB}, 0.55)`;
+        ctx.fillStyle = `rgba(${accentRGB}, 0.55)`;
         ctx.beginPath(); ctx.arc(n.x, n.y, 1.6, 0, Math.PI * 2); ctx.fill();
       }
     };

@@ -1,0 +1,289 @@
+/**
+ * lookup-catalog — binding a course to the platform's CLOSED lookup lists. Pure: the lists are
+ * injected, so this never touches the database (at runtime they are read from
+ * public.areas_of_study / public.degree_levels, seeded from database/seeders/globalyapp).
+ *
+ * What this guards:
+ *   - a value that matches nothing on the list links to nothing (never invents a category),
+ *   - a course still lands on an area and a level when the model didn't answer — from the subject
+ *     wording, then the course's own name,
+ *   - the placements that follow the PLATFORM rather than intuition (Psychology → Health and
+ *     Medicine, Economics → Social Studies and Media, Environmental Management → Social Studies),
+ *   - the ordering traps: "human resource management" beats "management", short subjects like
+ *     "IT" never match inside another word,
+ *   - empty lists link nothing rather than crashing.
+ *
+ * Deliberately not an npm script — the running system reports its own link health through the
+ * verify worker's `lookup_links_verified` / `lookup_lists_unhealthy` job events. This is the
+ * offline check on the matcher itself. Run it directly:
+ *   node --import tsx tests/lookup-catalog.ts
+ */
+import {
+  resolveAreaOfStudy, resolveDegreeLevel, type LookupLists, courseCategoryForLevel, categoryForServiceSlug, lookupListsHealth, shouldDemoteForDuration,
+} from "../src/modules/superadmin/data-extraction/lib/lookup-catalog.js";
+
+let passed = 0;
+let failed = 0;
+
+function eq(actual: unknown, expected: unknown, label: string) {
+  const a = JSON.stringify(actual), e = JSON.stringify(expected);
+  if (a === e) passed++;
+  else { failed++; console.error(`FAIL: ${label} — expected ${e}, got ${a}`); }
+}
+
+// The lists exactly as the seeders define them (active rows, in sort order).
+const LISTS: LookupLists = {
+  areas: [
+    { slug: "agriculture_veterinary_medicine", name: "Agriculture and Veterinary Medicine" },
+    { slug: "applied_pure_science", name: "Applied and Pure Science" },
+    { slug: "architecture_construction", name: "Architecture and Construction" },
+    { slug: "business_management", name: "Business and Management" },
+    { slug: "computer_science_it", name: "Computer Science and IT" },
+    { slug: "creative_arts_design", name: "Creative Arts and Design" },
+    { slug: "education_training", name: "Education and Training" },
+    { slug: "engineering", name: "Engineering" },
+    { slug: "health_medicine", name: "Health and Medicine" },
+    { slug: "humanities", name: "Humanities" },
+    { slug: "law", name: "Law" },
+    { slug: "personal_care_fitness", name: "Personal Care and Fitness" },
+    { slug: "social_studies_media", name: "Social Studies and Media" },
+    { slug: "travel_hospitality", name: "Travel and Hospitality" },
+  ],
+  levels: [
+    { slug: "school", name: "School" },
+    { slug: "high_school", name: "High School" },
+    { slug: "certificate", name: "Certificate" },
+    { slug: "diploma", name: "Diploma" },
+    { slug: "advance_diploma", name: "Advance Diploma" },
+    { slug: "non_aqf_award", name: "Non AQF Award" },
+    { slug: "bachelor", name: "Bachelor" },
+    { slug: "graduate_diploma", name: "Graduate Diploma" },
+    { slug: "master", name: "Master" },
+    { slug: "master_research", name: "Master (Research)" },
+    { slug: "doctoral", name: "PHD" },
+  ],
+};
+
+const lvl = (pick: unknown, name?: string) => resolveDegreeLevel(LISTS, pick, name)?.slug ?? null;
+const area = (pick: unknown, ...texts: unknown[]) => resolveAreaOfStudy(LISTS, pick, ...texts)?.slug ?? null;
+
+// ── The model's pick is validated against the live list ──
+eq(area("Health and Medicine"), "health_medicine", "the model's area name resolves");
+eq(area("health_medicine"), "health_medicine", "…and its slug");
+eq(area("HEALTH AND MEDICINE"), "health_medicine", "…case-insensitively");
+eq(area("Health & Medicine"), "health_medicine", "…with '&' for 'and'");
+eq(area("Computer Science and IT"), "computer_science_it", "another area");
+eq(area("Social Studies and Media"), "social_studies_media", "another area");
+eq(area(null), null, "no pick → null");
+eq(area(undefined, "Humanities"), "humanities", "the subject text IS an area name (older rows, re-runs)");
+eq(area("Not A Real Area", "Law"), "law", "an invalid pick falls back to the subject text");
+
+// ── Placing a subject that is not itself an area name ──
+// Needed for every row the model did not classify: staged before the prompt asked, re-run during
+// an outage, admin edit. The 14 areas cover essentially every discipline, so these must LAND.
+eq(area(undefined, "Nursing"), "health_medicine", "a bare subject reaches its area");
+eq(area("Nursing"), "health_medicine", "…including when the MODEL answered with a subject, not an area");
+eq(area(undefined, "Civil Engineering"), "engineering", "engineering");
+eq(area(undefined, "Marine Biology"), "applied_pure_science", "a subject inside a longer phrase");
+eq(area(undefined, "Human Resource Management"), "business_management", "the longest phrase wins over bare 'management'");
+eq(area(undefined, "Environmental Management"), "social_studies_media", "…so this follows the platform, not the word 'management'");
+eq(area(undefined, "Psychology"), "health_medicine", "placement follows the PLATFORM's taxonomy, not intuition");
+eq(area(undefined, "Economics"), "social_studies_media", "…and so does Economics");
+eq(area(undefined, "Public Health"), "health_medicine", "health beats the bare word 'public'");
+eq(area(undefined, "International Business"), "business_management", "business beats the bare word 'international'");
+eq(area(undefined, "Hospitality Management"), "travel_hospitality", "hospitality beats 'management'");
+eq(area(undefined, "Cyber Security"), "computer_science_it", "a keyword with no listed phrase");
+eq(area(undefined, "Culinary Arts"), "travel_hospitality", "…and the listed phrase beats the 'arts' keyword");
+eq(area(undefined, "IT"), "computer_science_it", "a two-letter subject matches only exactly");
+eq(area(undefined, "Credit Risk"), null, "…and never inside another word — 'credit' is not 'IT'");
+eq(area(undefined, "Law and Society"), "law", "a three-letter subject inside a phrase, via keywords");
+
+// Not subjects: enrolment states and offering buckets a catalogue put where a subject goes.
+eq(area(undefined, "Various"), null, "'Various' is not a discipline");
+eq(area(undefined, "Graduate Studies"), null, "an enrolment bucket is not a discipline");
+eq(area(undefined, "Community Auditing"), null, "…nor is an enrolment status");
+eq(area(undefined, "N/A"), null, "…nor is a placeholder");
+eq(area("Underwater Basket Weaving"), null, "an unplaceable value links to NOTHING — never invents a category");
+
+// The course NAME is the last candidate, for pages that never state a subject.
+eq(area(undefined, null, "Bachelor of Nursing"), "health_medicine", "the course name places it");
+eq(area(undefined, "Benjamin Franklin Seminars", "Chemistry BSc"), "applied_pure_science", "an unplaceable subject falls through to the name");
+eq(area(undefined, null, "Diploma of Project Management"), "business_management", "…and a qualification word doesn't get in the way");
+
+eq(lvl("Bachelor"), "bachelor", "the model's level name resolves");
+eq(lvl("PHD"), "doctoral", "PHD resolves to the app-wide `doctoral` slug");
+eq(lvl("Master (Research)"), "master_research", "a level with punctuation");
+eq(lvl("Underwater Studies"), null, "a level outside the list links to nothing");
+
+// ── The platform's Course Level → Degree Level folds ──
+eq(lvl("Associate Degree"), "bachelor", "Associate Degree folds into Bachelor");
+eq(lvl("Bachelor Honours Degree"), "bachelor", "Bachelor Honours folds into Bachelor");
+eq(lvl("Undergraduate Higher Diploma"), "bachelor", "Undergraduate Higher Diploma folds into Bachelor");
+eq(lvl("Graduate Certificate"), "graduate_diploma", "Graduate Certificate folds into Graduate Diploma");
+eq(lvl("Masters Degree (Extended)"), "master", "Masters (Extended) folds into Master");
+eq(lvl("Kindergarten Studies"), "school", "every school stage folds into School");
+eq(lvl("Primary School Studies"), "school", "Primary School Studies → School");
+eq(lvl("Junior Secondary Studies"), "school", "Junior Secondary Studies → School");
+eq(lvl("Certificate II"), "certificate", "Certificate II → Certificate");
+eq(lvl("Other"), "non_aqf_award", "a retired 'Other' folds into Non AQF Award");
+eq(lvl("Short Course"), "non_aqf_award", "short course → Non AQF Award");
+
+// ── The course's own qualification, when the model didn't answer ──
+eq(lvl(null, "Anthropology Ph.D."), "doctoral", "Ph.D. in the name");
+eq(lvl(null, "Economics A.B."), "bachelor", "A.B. is a Bachelor");
+eq(lvl(null, "Computer Science BSc (Hons)"), "bachelor", "BSc (Hons)");
+eq(lvl(null, "Medicine and Surgery MBChB"), "bachelor", "MBChB is a Bachelor");
+eq(lvl(null, "Finance M.Fin."), "master", "M.Fin. is a Master");
+eq(lvl(null, "History MPhil"), "master_research", "MPhil is a research master");
+eq(lvl(null, "Juris Doctor (JD)"), "doctoral", "JD folds onto the one doctoral level");
+eq(lvl(null, "Diploma of Nursing"), "diploma", "Diploma by words");
+eq(lvl(null, "Advanced Diploma of Engineering"), "advance_diploma", "Advanced → the platform's 'Advance Diploma'");
+eq(lvl(null, "Certificate IV in Business"), "certificate", "AQF Cert IV");
+eq(lvl(null, "Year 12 Studies"), "high_school", "senior secondary");
+eq(lvl(null, "Finance Undergraduate Minor"), "non_aqf_award", "a minor is a Non AQF Award");
+eq(lvl(null, "Minor Surgery MSc"), "master", "'Minor' inside an MSc title is still a Master");
+eq(lvl(null, "Master In Teaching"), "master", "'in' is as valid a preposition as 'of'");
+eq(lvl(null, "Bachelor In Nursing"), "bachelor", "…on the undergraduate side too");
+eq(lvl(null, "Master in Research"), "master_research", "…and it doesn't shadow the research master");
+eq(lvl(null, "Educational Specialist (EdS)"), "master", "EdS folds onto the nearest platform level");
+eq(lvl(null, "Nursing"), null, "nothing to go on → unlinked, not guessed");
+
+// The name is verbatim from the page, so it outranks a vaguer model answer …
+eq(lvl("Other", "Anthropology Ph.D."), "doctoral", "the name beats a vague 'Other'");
+// … except where the model read the page and was MORE specific than a bare 'Certificate'.
+eq(lvl("Graduate Certificate", "Certificate in Clinical Education"), "graduate_diploma", "a more specific model answer wins over a bare 'Certificate'");
+eq(lvl("Certificate", "Certificate in Clinical Education"), "certificate", "…but not when the model also just said Certificate");
+
+// ── Every seeded level must be reachable from a real course name ──
+// Selecting a level is useless if nothing can resolve INTO it.
+eq(lvl(null, "Primary School Studies"), "school", "school");
+eq(lvl(null, "Certificate IV in Business"), "certificate", "certificate");
+eq(lvl(null, "Diploma of Nursing"), "diploma", "diploma");
+eq(lvl(null, "Advanced Diploma of Engineering"), "advance_diploma", "advance diploma");
+eq(lvl(null, "Undergraduate Minor in Music"), "non_aqf_award", "non-award");
+eq(lvl(null, "Bachelor of Science in Nursing"), "bachelor", "bachelor");
+eq(lvl(null, "Graduate Certificate in Data Analytics"), "graduate_diploma", "graduate diploma");
+eq(lvl(null, "Master of Business Administration"), "master", "master");
+eq(lvl(null, "Master of Philosophy in History"), "master_research", "research master");
+eq(lvl(null, "Doctor of Philosophy in Chemistry"), "doctoral", "doctoral");
+
+// A school qualification almost always has "certificate" in its name, and the bare certificate
+// row used to swallow every one of them — so picking High School matched nothing real.
+eq(lvl(null, "Year 12 Certificate of Education"), "high_school", "Year 12 Certificate is a school qualification");
+eq(lvl(null, "Higher School Certificate"), "high_school", "the NSW HSC");
+eq(lvl(null, "Victorian Certificate of Education"), "high_school", "the VCE");
+eq(lvl(null, "Western Australian Certificate of Education"), "high_school", "the WACE");
+eq(lvl(null, "Queensland Certificate of Education"), "high_school", "the QCE");
+eq(lvl(null, "General Certificate of Education"), "high_school", "the UK GCE");
+// …but a BARE "certificate of education" is the tertiary CertEd, and a name match outranks the
+// model's own answer, so matching it here would silently override a correct "Certificate".
+eq(lvl(null, "Certificate of Education"), "certificate", "the tertiary CertEd stays a certificate");
+eq(lvl(null, "Certificate in Education"), "certificate", "…however it is worded");
+eq(lvl("Certificate", "Professional Certificate of Education"), "certificate", "a model-stated Certificate is not overridden");
+eq(lvl(null, "General Certificate of Secondary Education"), "high_school", "the GCSE");
+// …without dragging real certificates or teaching qualifications with it.
+eq(lvl(null, "Certificate III in Aged Care"), "certificate", "an AQF certificate is untouched");
+eq(lvl(null, "Advanced Diploma of Primary School Teaching"), "advance_diploma", "a teaching diploma stays a diploma");
+eq(lvl(null, "Master of Teaching (Secondary)"), "master", "…and a teaching master stays a master");
+
+// ── A one- or two-day course is NOT an academic certificate ──
+// These carry the word "certificate" (or no qualification at all), so the certificate row claimed
+// them and they landed in Academic Courses jobs.
+eq(lvl(null, "AI in Business Microcertificate (Online)"), "non_aqf_award", "a microcertificate");
+eq(lvl(null, "Advanced Negotiation Microcredential"), "non_aqf_award", "a microcredential");
+eq(lvl(null, "Ancient Masterpieces of World Literature (Individual Certificate)"), "non_aqf_award", "an individual certificate");
+eq(lvl(null, "AI Fundamentals for Business Leaders (Live Online, Half-Day)"), "non_aqf_award", "a half-day workshop");
+eq(lvl(null, "Negotiation Essentials: Two Day Intensive"), "non_aqf_award", "a two-day course");
+eq(lvl(null, "7.03.2x Genetics: Analysis and Application"), "non_aqf_award", "an edX MOOC code");
+eq(lvl(null, "7.QBWx Quantitative Biology Workshop"), "non_aqf_award", "…including a lettered one");
+
+// …without taking real credentials with it.
+eq(lvl(null, "Undergraduate Certificate in Environmental Engineering"), "certificate", "an undergraduate certificate is real");
+eq(lvl(null, "Global Public Administration, Certificate"), "certificate", "a named certificate is real");
+eq(lvl(null, "Certificate IV in Business"), "certificate", "an AQF certificate is real");
+eq(lvl(null, "Graduate Certificate in Data Analytics"), "graduate_diploma", "a graduate certificate is postgraduate");
+eq(lvl(null, "Postgraduate APRN Certificate - Family Nurse Practitioner"), "graduate_diploma", "…with words between 'postgraduate' and 'certificate'");
+eq(lvl(null, "Postgraduate Executive Leadership Certificate"), "graduate_diploma", "…however long the middle");
+eq(lvl(null, "Undergraduate Certificate in Child Life"), "certificate", "an UNDERgraduate certificate is not postgraduate");
+eq(lvl(null, "Diploma of Nursing"), "diploma", "a diploma is untouched");
+eq(lvl(null, "Bachelor of Science in Daydreaming Studies"), "bachelor", "a degree is not caught by the day pattern");
+
+// Duration is the other short-course tell, applied in resolveCourseLookups (it needs the whole
+// course, not just the name) — see tests run against the live resolver. The taxonomy side asserted
+// here is only that the levels it demotes TO and FROM sit in the right buckets.
+eq(courseCategoryForLevel("certificate"), "academic", "certificate is academic until demoted");
+eq(courseCategoryForLevel("non_aqf_award"), "short_course", "…and non-award is where it lands");
+
+// ── The stepper's service category is a second, coarser scope ──
+// "Academic Courses" must not stage a certificate or a short course; "Short Courses" must not
+// stage a bachelor or a master. Every seeded level lands in exactly one bucket.
+eq(categoryForServiceSlug("courses"), "academic", "the Academic Courses category");
+eq(categoryForServiceSlug("short_courses"), "short_course", "the Short Courses category");
+eq(categoryForServiceSlug("accommodation"), null, "a non-course vertical scopes nothing");
+eq(categoryForServiceSlug(null), null, "no category chosen scopes nothing");
+
+// Academic Courses is seeded as "Degree programs, diplomas, and certificates", so a certificate
+// and a diploma are ACADEMIC. Short Courses is "Professional development and language courses" —
+// the non-award bucket alone.
+for (const slug of ["school", "high_school", "certificate", "diploma", "advance_diploma",
+                    "bachelor", "graduate_diploma", "master", "master_research", "doctoral"]) {
+  eq(courseCategoryForLevel(slug), "academic", `${slug} is academic`);
+}
+eq(courseCategoryForLevel("non_aqf_award"), "short_course", "the non-award bucket is the short course");
+eq(courseCategoryForLevel(null), null, "an unlinked course has no category from its level");
+// A level in neither bucket would be out of scope on BOTH kinds of job — the health check says so.
+for (const l of LISTS.levels) {
+  eq(typeof courseCategoryForLevel(l.slug), "string", `every seeded level has a bucket: ${l.slug}`);
+}
+eq(lookupListsHealth(LISTS).ok, true, "the seeded lists are healthy, category buckets included");
+
+eq(courseCategoryForLevel("some_new_level_from_admin_api"), null, "an admin-added level has no bucket");
+eq(lookupListsHealth({ ...LISTS, levels: [...LISTS.levels, { slug: "brand_new", name: "Brand New" }] }).ok,
+   false, "…and the health check says so rather than letting it linger");
+
+// ── An ADMIN edit resolves from the pick alone ──
+// normaliseCoursePatch passes name: "" precisely so the course NAME cannot act as a fallback.
+// With the name in play, clearing the picker on "Bachelor of Nursing" re-derived `bachelor` and
+// the admin could never remove the link.
+eq(lvl(null, "Bachelor of Nursing"), "bachelor", "extraction: the name is a fallback");
+eq(lvl(null, ""), null, "admin edit: no name, so a cleared pick stays cleared");
+eq(area(null, null, ""), null, "…and the same for the area");
+eq(lvl("Master", ""), "master", "a picked level still applies");
+eq(area("health_medicine", null, ""), "health_medicine", "the picker's slug still applies");
+eq(lvl("Not A Level", ""), null, "an unmatched pick clears rather than guessing");
+
+// ── Empty lists (seeders never run) must not crash or link ──
+const EMPTY: LookupLists = { areas: [], levels: [] };
+eq(resolveAreaOfStudy(EMPTY, "Health and Medicine"), null, "no seeded areas → nothing links");
+eq(resolveDegreeLevel(EMPTY, "Bachelor", "Nursing BSc"), null, "no seeded levels → nothing links");
+
+// ── A short duration demotes only when the NAME does not assert a credential ──
+// The destructive direction: under a scoped Academic job a demotion is a deletion, so a real
+// award delivered as an intensive must survive. The permissive direction still has to hold —
+// a 4-week "Certificate in Excel" is what the rule exists to catch.
+for (const [name, level] of [
+  ["Certificate III in Business", "certificate"],
+  ["Certificate IV in Ageing Support", "certificate"],
+  ["Undergraduate Certificate in Data Science", "certificate"],
+  ["Graduate Certificate in Cyber Security", "certificate"],
+  ["Advanced Diploma of Engineering", "advance_diploma"],
+  ["Diploma of Nursing", "diploma"],
+  ["Diploma in Project Management", "diploma"],
+] as const) {
+  eq(shouldDemoteForDuration(level, 3, name), false, `"${name}" survives a 3-week run — the name claims the credential`);
+}
+for (const [name, level] of [
+  ["Certificate in Excel", "certificate"],
+  ["Professional Certificate in Leadership", "certificate"],
+  ["Digital Marketing Certificate", "certificate"],
+  ["Leadership Essentials", "certificate"],
+] as const) {
+  eq(shouldDemoteForDuration(level, 3, name), true, `"${name}" claims no credential — a 3-week run demotes it`);
+}
+eq(shouldDemoteForDuration("certificate", 52, "Certificate in Excel"), false, "a year-long run is not short, whatever the name");
+eq(shouldDemoteForDuration("certificate", null, "Certificate in Excel"), false, "no stated duration never demotes");
+eq(shouldDemoteForDuration("bachelor", 3, "Bachelor of Nursing"), false, "a degree is never reached by the duration rule");
+eq(shouldDemoteForDuration(null, 3, "Something"), false, "an unresolved level is left alone");
+
+console.log(`\n${passed} passed, ${failed} failed`);
+if (failed > 0) process.exit(1);

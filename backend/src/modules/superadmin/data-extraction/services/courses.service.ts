@@ -3,27 +3,38 @@
 import { NotFoundError } from "../../../../shared/errors.js";
 import { buildPaginatedResponse, type PaginationInput } from "../../../../shared/pagination.js";
 import { logAudit } from "../shared/audit.js";
+import { withActorNames } from "../shared/actor-names.js";
 import * as repo from "../repositories/courses.repository.js";
 import type { CreateCourseInput, PatchCourseInput } from "../schemas/courses.schema.js";
+import { resolveCourseLookups, jobExcludedLevels } from "../lib/staging-writer.js";
 
 export async function listCourses(
   jobId: string,
   limit: number,
   offset: number,
   pagination: PaginationInput,
-  filters: { search?: string; status?: string; sort?: repo.CourseSort },
+  filters: { search?: string; status?: string; sort?: repo.CourseSort; scope?: "in" | "out" },
 ) {
-  const { sort, ...listFilters } = filters;
+
+  const excluded = filters.scope ? await jobExcludedLevels(jobId) : undefined;
+  const { sort, ...listFilters } = { ...filters, excluded };
   const [courses, total, statusCounts] = await Promise.all([
     repo.listCoursesByJob(jobId, limit, offset, listFilters, sort),
     repo.countCoursesByJob(jobId, listFilters),
     repo.countCoursesByStatus(jobId),
   ]);
-  return { ...buildPaginatedResponse(courses, total, pagination), statusCounts };
+  return { ...buildPaginatedResponse(await withActorNames(courses), total, pagination), statusCounts };
 }
 
+// The entity tables carry created_by ids; the *_assignments rows don't. Names are attached
+// here so the Fees/Intakes/Units tabs and the course panel can say who added a row — without
+// this every fee read as "Extracted automatically", admin-added or not.
+const ACTOR_KEYS = ["course_fees", "intakes", "study_options", "study_units", "eligibility_requirements", "scholarships"] as const;
+
 export async function getCourseLinks(jobId: string) {
-  return repo.getCourseLinks(jobId);
+  const links = await repo.getCourseLinks(jobId);
+  const named = await Promise.all(ACTOR_KEYS.map(async (k) => [k, await withActorNames(links[k] ?? [])] as const));
+  return { ...links, ...Object.fromEntries(named) };
 }
 
 export async function listStudyUnits(
@@ -37,7 +48,7 @@ export async function listStudyUnits(
     repo.listStudyUnitsByJob(jobId, limit, offset, filters),
     repo.countStudyUnitsByJob(jobId, filters),
   ]);
-  return buildPaginatedResponse(studyUnits, total, pagination);
+  return buildPaginatedResponse(await withActorNames(studyUnits), total, pagination);
 }
 
 export async function listStudyOptions(
@@ -51,7 +62,7 @@ export async function listStudyOptions(
     repo.listStudyOptionsByJob(jobId, limit, offset, filters),
     repo.countStudyOptionsByJob(jobId, filters),
   ]);
-  return buildPaginatedResponse(studyOptions, total, pagination);
+  return buildPaginatedResponse(await withActorNames(studyOptions), total, pagination);
 }
 
 export async function listEligibility(
@@ -65,7 +76,21 @@ export async function listEligibility(
     repo.listEligibilityByJob(jobId, limit, offset, filters),
     repo.countEligibilityByJob(jobId, filters),
   ]);
-  return buildPaginatedResponse(rows, total, pagination);
+  return buildPaginatedResponse(await withActorNames(rows), total, pagination);
+}
+
+export async function listScholarships(
+  jobId: string,
+  limit: number,
+  offset: number,
+  pagination: PaginationInput,
+  filters: { search?: string },
+) {
+  const [rows, total] = await Promise.all([
+    repo.listScholarshipsByJob(jobId, limit, offset, filters),
+    repo.countScholarshipsByJob(jobId, filters),
+  ]);
+  return buildPaginatedResponse(await withActorNames(rows), total, pagination);
 }
 
 export async function listIntakes(
@@ -79,14 +104,56 @@ export async function listIntakes(
     repo.listIntakesByJob(jobId, limit, offset, filters),
     repo.countIntakesByJob(jobId, filters),
   ]);
-  return buildPaginatedResponse(rows, total, pagination);
+  return buildPaginatedResponse(await withActorNames(rows), total, pagination);
+}
+
+export async function listCourseFees(
+  jobId: string,
+  limit: number,
+  offset: number,
+  pagination: PaginationInput,
+  filters: { search?: string },
+) {
+  const [rows, total] = await Promise.all([
+    repo.listCourseFeesByJob(jobId, limit, offset, filters),
+    repo.countCourseFeesByJob(jobId, filters),
+  ]);
+  return buildPaginatedResponse(await withActorNames(rows), total, pagination);
+}
+
+/**
+ * Put an admin-supplied level/subject onto the platform's closed lists, through the same resolver
+ * extraction uses. The pickers cannot create rows, so the picked value IS the area/level name —
+ * passed as both the model-pick and the subject text. A value that matches nothing clears the
+ * link rather than being stored as something a course can never link to.
+ */
+async function applyCourseLookups(
+  data: Record<string, unknown>,
+  input: { name?: string; degree_level?: string | null; subject_area?: string | null },
+) {
+  const link = await resolveCourseLookups({
+    name: input.name ?? "",
+    degree_level: input.degree_level,
+    subject_area: input.subject_area,
+    area_of_study: input.subject_area,
+  });
+  if ("degree_level" in input) {
+    data.degree_level = link.degree_level;
+    data.degree_level_code = link.degree_level_code;
+  }
+  if ("subject_area" in input) data.subject_area_code = link.subject_area_code;
 }
 
 export async function createCourse(jobId: string, input: CreateCourseInput, adminId: number) {
+  const data: Record<string, unknown> = { ...input };
+  // A manually created course obeys the same closed lists as an extracted one — without this it
+  // is inserted with the picked text and no *_code, i.e. reported as unlinked until someone edits it.
+  await applyCourseLookups(data, input);
   const row = await repo.insertCourse({
     job_id: jobId,
-    ...input,
+    ...data,
     verification_status: "manual",
+    created_by_platform_user_id: adminId,
   });
   await logAudit(adminId, "COURSE_CREATE", {
     entityType: "extraction_courses",
@@ -99,7 +166,8 @@ export async function createCourse(jobId: string, input: CreateCourseInput, admi
 export async function patchCourse(id: string, input: PatchCourseInput, adminId: number) {
   const data: Record<string, unknown> = { ...input };
   if (input.career_paths) data.career_paths = input.career_paths;
-  const found = await repo.updateCourse(id, data);
+  if ("degree_level" in input || "subject_area" in input) await applyCourseLookups(data, input);
+  const found = await repo.updateCourse(id, data, adminId);
   if (!found) throw new NotFoundError("Course not found");
   await logAudit(adminId, "COURSE_PATCH", { entityType: "extraction_courses", entityId: id });
   return { updated: true };
@@ -109,7 +177,7 @@ export async function approveCourse(id: string, adminId: number) {
   const found = await repo.updateCourse(id, {
     verification_status: "confirmed",
     last_verified_at: new Date().toISOString(),
-  });
+  }, adminId);
   if (!found) throw new NotFoundError("Course not found");
   await logAudit(adminId, "COURSE_APPROVE", { entityType: "extraction_courses", entityId: id });
   return { updated: true };
@@ -119,7 +187,7 @@ export async function bulkVerifyCourses(ids: string[], approve: boolean, adminId
   const data = approve
     ? { verification_status: "confirmed", last_verified_at: new Date().toISOString() }
     : { verification_status: "flagged" };
-  const updated = await repo.updateCoursesByIds(ids, data);
+  const updated = await repo.updateCoursesByIds(ids, data, adminId);
   if (updated === 0) throw new NotFoundError("No courses found");
   await logAudit(adminId, approve ? "COURSE_APPROVE" : "COURSE_REJECT", {
     entityType: "extraction_courses",
@@ -129,7 +197,7 @@ export async function bulkVerifyCourses(ids: string[], approve: boolean, adminId
 }
 
 export async function rejectCourse(id: string, adminId: number) {
-  const found = await repo.updateCourse(id, { verification_status: "flagged" });
+  const found = await repo.updateCourse(id, { verification_status: "flagged" }, adminId);
   if (!found) throw new NotFoundError("Course not found");
   await logAudit(adminId, "COURSE_REJECT", { entityType: "extraction_courses", entityId: id });
   return { updated: true };

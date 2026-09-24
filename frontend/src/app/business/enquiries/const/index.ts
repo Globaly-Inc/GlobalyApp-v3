@@ -83,3 +83,6 @@ export const INBOX_FILTERS: readonly {
   { key: "unlocked", label: "Unlocked", statuses: ["unlocked", "in_conversation", "converted"] },
   { key: "closed", label: "Closed", statuses: ["closed", "no_match", "expired"] },
 ];
+
+/** Rows per page in the business inbox. Matches My Enquiries and the other paginated lists. */
+export const INBOX_PAGE_SIZE = 10;

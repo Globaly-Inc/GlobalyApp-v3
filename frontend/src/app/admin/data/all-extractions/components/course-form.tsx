@@ -1,7 +1,7 @@
 "use client";
 
 import { z } from "zod";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { BookOpen, Loader2, Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,8 +9,8 @@ import { Combobox } from "@/components/combobox";
 import { FieldError } from "@/components/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LookupCombobox } from "@/components/lookup-combobox";
 import { Textarea } from "@/components/ui/textarea";
-import { categoriesApi } from "@/app/admin/platform/categories/apis";
 import { STUDY_MODE_OPTIONS } from "../const";
 import type { CreateCourseParams } from "../apis/types";
 
@@ -26,7 +26,6 @@ const courseSchema = z.object({
   degreeLevel: z.string().trim().transform((v) => v || null),
   studyMode: z.string().trim().transform((v) => v || null),
   subjectArea: z.string().trim().transform((v) => v || null),
-  duration: z.string().trim().transform((v) => (v ? Number(v) || null : null)),
   description: z.string().trim().transform((v) => v || null),
 });
 
@@ -44,20 +43,8 @@ export function CourseForm({
   const [degreeLevel, setDegreeLevel] = useState("");
   const [studyMode, setStudyMode] = useState("");
   const [subjectArea, setSubjectArea] = useState("");
-  const [duration, setDuration] = useState("");
   const [description, setDescription] = useState("");
-  const [degreeLevels, setDegreeLevels] = useState<{ value: string; label: string }[]>([]);
-  const [subjectAreas, setSubjectAreas] = useState<{ value: string; label: string }[]>([]);
   const [errors, setErrors] = useState<Record<string, string>>({});
-
-  useEffect(() => {
-    categoriesApi.getLookups("degree-levels", { limit: 100 })
-      .then((res) => setDegreeLevels(res.data.map((d) => ({ value: d.name, label: d.name }))))
-      .catch(() => setDegreeLevels([]));
-    categoriesApi.getLookups("areas-of-study", { limit: 100 })
-      .then((res) => setSubjectAreas(res.data.map((a) => ({ value: a.name, label: a.name }))))
-      .catch(() => setSubjectAreas([]));
-  }, []);
 
   const handleSave = () => {
     const result = courseSchema.safeParse({
@@ -66,7 +53,6 @@ export function CourseForm({
       degreeLevel,
       studyMode,
       subjectArea,
-      duration,
       description,
     });
 
@@ -88,7 +74,6 @@ export function CourseForm({
       ...(d.degreeLevel ? { degree_level: d.degreeLevel } : { degree_level: null }),
       ...(d.studyMode ? { study_mode: d.studyMode } : { study_mode: null }),
       ...(d.subjectArea ? { subject_area: d.subjectArea } : { subject_area: null }),
-      ...(d.duration ? { duration_weeks: d.duration } : { duration_weeks: null }),
       ...(d.description ? { description: d.description } : { description: null }),
     });
   };
@@ -137,38 +122,21 @@ export function CourseForm({
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <Label>Degree level</Label>
-            <Combobox
-              options={degreeLevels}
-              value={degreeLevel}
-              onChange={setDegreeLevel}
-              placeholder="Select"
-              loading={degreeLevels.length === 0}
-              creatable
-            />
+            <LookupCombobox kind="degree-levels" value={degreeLevel} onChange={setDegreeLevel} placeholder="Select" creatable />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label>Study mode</Label>
-            <Combobox options={STUDY_MODE_OPTIONS} value={studyMode} onChange={setStudyMode} placeholder="Select" creatable />
+            <Combobox options={STUDY_MODE_OPTIONS} value={studyMode} onChange={setStudyMode} placeholder="Select" />
           </div>
 
           <div className="flex flex-col gap-1.5">
             <Label>Subject area</Label>
-            <Combobox
-              options={subjectAreas}
+            <LookupCombobox
+              kind="areas-of-study"
               value={subjectArea}
               onChange={setSubjectArea}
               placeholder="Select or type subject area"
-              loading={subjectAreas.length === 0}
               creatable
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="course-form-duration">Duration (weeks)</Label>
-            <Input
-              id="course-form-duration"
-              value={duration}
-              onChange={(e) => setDuration(e.target.value)}
-              inputMode="numeric"
             />
           </div>
         </div>

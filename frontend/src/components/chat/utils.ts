@@ -1,4 +1,4 @@
-import type { EnquiryMessage, ChatThread } from "./types";
+import type { EnquiryMessage, ChatThread, MessageKind } from "./types";
 
 /** Last activity, falling back to when the business unlocked — a thread with no messages
  * still needs a date, and the unlock is when the conversation became possible. */
@@ -54,11 +54,42 @@ export function listStamp(iso: string): string {
 }
 
 /**
+ * What to call this conversation: the name its admin gave it, or the counterpart when nobody has.
+ *
+ * Every heading, list row, search hit and avatar fallback goes through here. A renamed thread is
+ * renamed for everyone on it — the other agents and the student — so having one place that decides
+ * the label is what stops half the UI showing the new name and half the old one.
+ */
+export function threadTitle(thread: Pick<ChatThread, "title" | "counterpart_name">): string {
+  return thread.title?.trim() || thread.counterpart_name;
+}
+
+/**
+ * Which picture to show for this conversation: the one its admin set, or the counterpart's when
+ * nobody has. Companion to threadTitle, and routed through the same single place for the same
+ * reason — a changed photo changes it for everyone on the thread.
+ */
+export function threadAvatar(thread: Pick<ChatThread, "thread_photo" | "counterpart_avatar">): string | null {
+  return thread.thread_photo ?? thread.counterpart_avatar;
+}
+
+/**
+ * Everything except a typed message is a thread event, and every event renders as a pill rather
+ * than a bubble. Lives here rather than beside the type so types.ts stays type-only — a value
+ * export there is unresolvable to bare node, which is what runs self-check.ts.
+ */
+export const isThreadEvent = (kind: MessageKind): boolean => kind !== "message";
+
+/**
  * Same rule as V2's `shouldGroupMessages`: consecutive messages from one sender inside
  * five minutes render without repeating the avatar and name.
  */
 export function isGroupedWith(current: EnquiryMessage, previous: EnquiryMessage | undefined): boolean {
   if (!previous) return false;
+  // A thread event breaks the run on both sides. Without this, a message sent just after someone
+  // was added would group onto the event — losing its avatar and header — because the event
+  // carries the acting admin's sender_id.
+  if (isThreadEvent(current.kind) || isThreadEvent(previous.kind)) return false;
   if (current.sender_id !== previous.sender_id) return false;
   const minutes = Math.abs(new Date(current.created_at).getTime() - new Date(previous.created_at).getTime()) / 60000;
   return minutes < 5;
@@ -83,10 +114,10 @@ export function previewText(body: string): string {
  * an email or a document, not for re-importing.
  */
 export function conversationToText(
-  thread: Pick<ChatThread, "counterpart_name" | "course_name">,
+  thread: Pick<ChatThread, "title" | "counterpart_name" | "course_name">,
   messages: EnquiryMessage[],
 ): string {
-  const lines = [`Conversation with ${thread.counterpart_name}`, `Course: ${thread.course_name}`, ""];
+  const lines = [`Conversation with ${threadTitle(thread)}`, `Course: ${thread.course_name}`, ""];
   let lastDay = "";
   for (const m of messages) {
     const day = dateSeparatorLabel(m.created_at);

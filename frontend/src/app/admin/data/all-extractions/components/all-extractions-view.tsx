@@ -3,6 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ListOrdered, ShieldCheck, Stamp, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { ScrollRow } from "@/components/scroll-row";
 import { JobsList } from "./jobs-list";
 import { MaraAgentsView } from "../../mara-agents/components/mara-agents-view";
 import { VisasView } from "../../visas/components/visas-view";
@@ -43,7 +44,7 @@ export function AllExtractionsView() {
         </p>
       </div>
 
-      <div className="mb-4 w-full overflow-x-auto border-b border-border">
+      <ScrollRow className="mb-4 w-full border-b border-border">
         <div className="inline-flex w-max gap-1 pb-px">
           {TABS.map((tab) => {
             const isActive = active === tab.value;
@@ -65,7 +66,7 @@ export function AllExtractionsView() {
             );
           })}
         </div>
-      </div>
+      </ScrollRow>
 
       {active === "all" && <JobsList mode="all" />}
       {active === "mara" && <MaraAgentsView />}

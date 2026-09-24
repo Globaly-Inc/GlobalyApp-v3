@@ -49,9 +49,7 @@ export async function chatRoutes(app: FastifyInstance) {
       : undefined;
 
     // Phase 2: credit gate (user wallet) — embed messages are business-paid
-    // ponytail: gate disabled while testing RAG results — re-enable before launch
-    const CREDIT_GATE_ENABLED = false;
-    if (CREDIT_GATE_ENABLED && !embed) {
+    if (!embed) {
       const hasCredits = await creditService.checkBalance(userId);
       if (!hasCredits) throw new PaymentRequiredError();
     }
@@ -87,7 +85,17 @@ export async function chatRoutes(app: FastifyInstance) {
     if (session.platform_user_id !== userId) throw new ForbiddenError("Not your session");
 
     const messages = await messagesRepo.findBySession(id, { limit: 100 });
-    return reply.send({ messages });
+    // Re-enrich cards with current institution media (one batch query).
+    // Cards are persisted as JSON at send time, so stored cover_url may be null if the
+    // institution's cover was uploaded after the message was saved.
+    const enriched = await Promise.all(
+      messages.map(async (msg) => {
+        const cards = (msg.cards ?? []) as Parameters<typeof chatService.withInstitutionMedia>[0];
+        if (!cards.length) return msg;
+        return { ...msg, cards: await chatService.withInstitutionMedia(cards) };
+      }),
+    );
+    return reply.send({ messages: enriched });
   });
 
   // PATCH /sessions/:id — update title, archive, or delete (hard delete, messages cascade)

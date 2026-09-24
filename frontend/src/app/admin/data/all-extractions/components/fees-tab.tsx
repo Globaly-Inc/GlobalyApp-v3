@@ -1,24 +1,27 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Clock, DollarSign, Link2, Loader2, Pencil, Plus, Trash2, Type, X } from "lucide-react";
+import { Clock, DollarSign, FileText, Link2, Loader2, Pencil, Plus, Trash2, Type, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Combobox } from "@/components/combobox";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Pagination } from "@/components/ui/pagination";
 import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
 import { feeAmount, latestTimestamp } from "../utils";
+import { CourseLinkPicker } from "./course-link-picker";
 import { EditableField, saveFormAndLearn, useFieldSaver, type EditableFieldProps } from "./editable-field";
 import { FeeForm } from "./fee-form";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
-import type { CourseFee, CourseFeeParams, CourseLinks, CourseRow, ExtractionJob } from "../apis/types";
+import { RowActors } from "./row-actors";
+import type { CourseFee, CourseFeeParams, CourseLinks, ExtractionJob } from "../apis/types";
+
+type LinkedCourse = { id: string; name: string | null };
 
 const CHIP_LIMIT = 6;
 const DEFAULT_PAGE_SIZE = 10;
@@ -37,9 +40,9 @@ function Field({ icon: Icon, className, ...field }: Readonly<EditableFieldProps 
 }
 
 function FeeCard({
+  jobId,
   fee,
-  courses,
-  linkedCourseIds,
+  linked,
   selected,
   busy,
   onToggleSelect,
@@ -49,9 +52,9 @@ function FeeCard({
   onUnlinkCourse,
   onSaveField,
 }: Readonly<{
+  jobId: string;
   fee: CourseFee;
-  courses: CourseRow[];
-  linkedCourseIds: string[];
+  linked: LinkedCourse[];
   selected: boolean;
   busy: boolean;
   onToggleSelect: () => void;
@@ -63,9 +66,9 @@ function FeeCard({
 }>) {
   const [editingLinks, setEditingLinks] = useState(false);
   const [showAll, setShowAll] = useState(false);
-  const linked = courses.filter((c) => linkedCourseIds.includes(c.id));
-  const unlinked = courses.filter((c) => !linkedCourseIds.includes(c.id));
-  const visible = showAll ? linked : linked.slice(0, CHIP_LIMIT);
+  // Chips read alphabetically, whatever order the links were made in.
+  const sorted = [...linked].sort((a, b) => (a.name ?? "").localeCompare(b.name ?? "", undefined, { sensitivity: "base" }));
+  const visible = showAll ? sorted : sorted.slice(0, CHIP_LIMIT);
 
   return (
     <Card className="group overflow-hidden">
@@ -98,9 +101,13 @@ function FeeCard({
 
       <CardContent className="flex flex-col gap-3 p-4">
         <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
-          <Field icon={Type} label="Fee Name" value={fee.name} onSave={(v) => onSaveField("name", v)} multiline />
+          <Field icon={Type} label="Fee Name" value={fee.name} onSave={(v) => onSaveField("name", v)} />
           <Field icon={DollarSign} label="Currency" value={fee.currency} onSave={(v) => onSaveField("currency", v)} />
           <Field icon={Clock} label="Period Type" value={fee.period_type} onSave={(v) => onSaveField("period_type", v)} />
+          <Field
+            icon={FileText} label="Description" value={fee.description} multiline
+            className="md:col-span-2" onSave={(v) => onSaveField("description", v)}
+          />
         </div>
 
         {fee.installments && fee.installments.length > 0 && (
@@ -117,7 +124,7 @@ function FeeCard({
           <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
           {visible.map((course) => (
             <Badge key={course.id} className="gap-1 bg-primary/10 text-xs text-primary">
-              {course.name}
+              {course.name ?? "Unnamed course"}
               {editingLinks && (
                 <button type="button" className="cursor-pointer" title="Unlink course" onClick={() => onUnlinkCourse(course.id)}>
                   <X className="h-3 w-3" />
@@ -141,15 +148,14 @@ function FeeCard({
         </div>
 
         {editingLinks && (
-          <Combobox
-            options={unlinked.map((c) => ({ value: c.id, label: c.name }))}
-            value=""
-            onChange={onLinkCourse}
-            placeholder={unlinked.length ? "Link a course…" : "All courses linked"}
-            disabled={unlinked.length === 0}
+          <CourseLinkPicker
+            jobId={jobId}
+            excludeIds={linked.map((c) => c.id)}
+            onSelect={onLinkCourse}
             className="h-8 text-xs"
           />
         )}
+        <RowActors row={fee} className="border-t border-border pt-2" />
       </CardContent>
     </Card>
   );
@@ -158,15 +164,11 @@ function FeeCard({
 export function FeesTab({
   jobId,
   job,
-  courses,
   onReload,
-  onJumpToContext,
 }: Readonly<{
   jobId: string;
   job: ExtractionJob;
-  courses: CourseRow[];
   onReload: () => void;
-  onJumpToContext: () => void;
 }>) {
   const [links, setLinks] = useState<CourseLinks | null>(null);
   const [loading, setLoading] = useState(true);
@@ -196,7 +198,9 @@ export function FeesTab({
 
   const saveField = useFieldSaver(jobId, load);
   const { confirm, dialog } = useConfirmDelete();
-  const fees = links?.course_fees ?? [];
+  // A fee added from a course without "Save this for future uses" belongs to that course only.
+  // Extracted fees (no creator) are always listed — this tab is where they get edited.
+  const fees = (links?.course_fees ?? []).filter((f) => f.save_for_reuse || f.created_by_platform_user_id == null);
   const allSelected = fees.length > 0 && selectedIds.length === fees.length;
   const totalPages = Math.max(1, Math.ceil(fees.length / pageSize));
   const currentPage = Math.min(page, totalPages);
@@ -215,30 +219,34 @@ export function FeesTab({
     }
   };
 
-  const handleCreate = (values: CourseFeeParams) =>
+  // The form hands back one fee, or two when domestic and international were filled together.
+  const handleCreate = (values: CourseFeeParams[]) =>
     run(async () => {
-      await allExtractionsApi.createCourseFee({ job_id: jobId, ...values });
+      for (const v of values) await allExtractionsApi.createCourseFee({ job_id: jobId, ...v });
       setAdding(false);
-    }, "Fee added");
+    }, values.length > 1 ? `${values.length} fees added` : "Fee added");
 
-  const handleUpdate = (fee: CourseFee, values: CourseFeeParams) =>
+  const handleUpdate = (fee: CourseFee, values: CourseFeeParams[]) =>
     run(async () => {
-      await saveFormAndLearn("extraction_course_fees", fee, values, jobId);
+      await saveFormAndLearn("extraction_course_fees", fee, values[0]!, jobId);
       setEditingId(null);
     }, "Fee updated");
 
   const handleDelete = async (ids: string[]) => {
     const many = ids.length > 1;
-    if (!(await confirm(many ? `Delete ${ids.length} fees?` : "Delete fee?"))) return;
+    if (!(await confirm(many ? `Delete ${ids.length} fees?` : "Delete fee?"))) {
+      return;
+    }
     await run(async () => {
       await Promise.all(ids.map((id) => allExtractionsApi.deleteCourseFee(id)));
       setSelectedIds((prev) => prev.filter((id) => !ids.includes(id)));
     }, many ? `${ids.length} fees deleted` : "Fee deleted");
   };
 
-  // Which courses each fee is attached to, from the assignment rows.
-  const coursesForFee = (feeId: string) =>
-    (links?.fee_assignments ?? []).filter((a) => a.course_fee_id === feeId).map((a) => a.course_id);
+  const coursesForFee = (feeId: string): LinkedCourse[] =>
+    (links?.fee_assignments ?? [])
+      .filter((a) => a.course_fee_id === feeId)
+      .map((a) => ({ id: a.course_id, name: a.course_name }));
 
   return (
     <div>
@@ -251,11 +259,7 @@ export function FeesTab({
         progress={(job.pipeline_progress as Record<string, unknown> | null)?.enrichment}
         lastUpdated={latestTimestamp(fees)}
         hasData={fees.length > 0}
-        guidedUrls={job.guided_urls}
-        contextKey="extract_fields"
-        contextLabel="extract fields"
         onChanged={onReload}
-        onAddContext={onJumpToContext}
       />
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -287,7 +291,7 @@ export function FeesTab({
       <div className="space-y-3">
         <Dialog open={adding} onOpenChange={setAdding}>
           <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl p-0 border-0 bg-transparent shadow-none">
-            <FeeForm saving={saving} onCancel={() => setAdding(false)} onSave={handleCreate} />
+            <FeeForm jobId={jobId} saving={saving} onCancel={() => setAdding(false)} onSave={handleCreate} />
           </DialogContent>
         </Dialog>
 
@@ -311,6 +315,7 @@ export function FeesTab({
           editingId === fee.id ? (
             <FeeForm
               key={fee.id}
+              jobId={jobId}
               fee={fee}
               saving={saving}
               onCancel={() => setEditingId(null)}
@@ -319,9 +324,9 @@ export function FeesTab({
           ) : (
             <FeeCard
               key={fee.id}
+              jobId={jobId}
               fee={fee}
-              courses={courses}
-              linkedCourseIds={coursesForFee(fee.id)}
+              linked={coursesForFee(fee.id)}
               selected={selectedIds.includes(fee.id)}
               busy={saving}
               onToggleSelect={() =>

@@ -8,6 +8,7 @@ const configs: EmbedConfig[] = [
   {
     id: 1,
     business_id: 1,
+    institution_id: null,
     embed_key: "a3b8f2c1-4d5e-6f70-8192-a3b4c5d6e7f8",
     display_name: "Acme University Counsellor",
     logo_url: null,
@@ -35,6 +36,7 @@ export const aiWidgetMockApi = {
     const config: EmbedConfig = {
       id: seq++,
       business_id: 1,
+    institution_id: null,
       embed_key: uuid(),
       display_name: input.display_name ?? null,
       logo_url: input.logo_url ?? null,
@@ -56,5 +58,12 @@ export const aiWidgetMockApi = {
     await delay(300);
     const config = configs.find((c) => c.id === id);
     if (config) config.is_active = false;
+  },
+
+  reactivateConfig: async (id: number): Promise<void> => {
+    console.log("[mock] PATCH /ai-chat/embed/configs/" + id + "/activate");
+    await delay(300);
+    const config = configs.find((c) => c.id === id);
+    if (config) config.is_active = true;
   },
 };

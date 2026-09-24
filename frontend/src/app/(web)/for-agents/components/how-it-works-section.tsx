@@ -64,7 +64,7 @@ const HOW_IT_WORKS: Array<{
 
 export function HowItWorksSection() {
   return (
-    <section className="py-16 bg-muted/30">
+    <section className="py-16 bg-primary/5">
       <div className="container mx-auto px-4">
         <Reveal className="text-center mb-12">
           <h2 className="text-2xl md:text-3xl font-bold mb-3">

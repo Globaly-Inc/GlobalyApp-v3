@@ -14,7 +14,10 @@ import type { Knex } from "knex";
 import { BadRequestError, ConflictError, NotFoundError } from "../../../shared/errors.js";
 import * as storage from "../../../shared/storage/storageService.js";
 import * as messagesRepo from "../repositories/messages.repository.js";
+import * as threadMembersRepo from "../repositories/thread-members.repository.js";
 import * as media from "./message-media.service.js";
+import { markInConversation } from "./tenant-sync.service.js";
+import { recipientOf, sameRecipient, type Recipient } from "../shared/recipient.js";
 
 export type SenderRole = "student" | "business";
 
@@ -22,15 +25,18 @@ export type SenderRole = "student" | "business";
  * The opening message posted on the business's behalf the moment it unlocks a lead, so
  * the student sees the conversation has started rather than an empty box.
  *
- * Deliberately generic: the thread header already names the business and the course, and
- * personalising it would mean joining the student and course rows inside the unlock
- * transaction for text nobody reads twice.
+ * Addressed by first name, not the full name: this is the first line of a chat, where
+ * "Hi Rojan!" is what a person would type and "Hi Rojan Byanjankar!" is what a mail merge
+ * would. Falls back to a bare "Hi!" when the student has no first name on record, so a
+ * missing value can never render as "Hi undefined!" or "Hi !".
  *
  * ponytail: one fixed greeting for everyone — swap for a per-business template column if
  * businesses ask to customise it.
  */
-export const UNLOCK_GREETING =
-  "Hi! Thanks for your enquiry — we've unlocked it and we're happy to help. Ask us anything here and we'll get back to you shortly.";
+export function unlockGreeting(studentFirstName?: string | null): string {
+  const name = studentFirstName?.trim();
+  return `Hi${name ? ` ${name}` : ""}! Thanks for your enquiry. We've unlocked it and we're happy to help. Feel free to ask us anything here, and we'll get back to you shortly.`;
+}
 
 export interface EnquiryMessageDto {
   id: number;
@@ -57,6 +63,12 @@ export interface EnquiryMessageDto {
   reactions: MessageReaction[];
   /** Set once the sender edited it — the UI shows V2's "(edited)" marker. */
   edited_at: string | null;
+  /**
+   * Anything but 'message' is a thread event, not something anyone typed. The client renders those
+   * as a one-line pill and picks its icon from this value — see MessageList. `sender_*` still
+   * describes who caused the event, because that is who the sentence names.
+   */
+  kind: messagesRepo.MessageKind;
 }
 
 /** A reaction chip: the emoji, who used it, and whether the viewer is among them. */
@@ -86,9 +98,14 @@ function groupReactions(rows: messagesRepo.ReactionRow[], viewerUserId: number):
 
 type ThreadContext = {
   distribution_id: string;
-  business_id: number;
+  // Exactly one is set — a distribution belongs to a business or, via the fallback, to an
+  // institution. Use `recipientOf(ctx)` rather than reading either directly.
+  business_id: number | null;
+  institution_id: number | null;
   status: string;
   unlocked_at: Date | null;
+  /** Set once the student left this thread. Their side goes 404; the business's is unaffected. */
+  student_left_at: Date | null;
   enquiry_id: string;
   student_id: number;
 };
@@ -107,12 +124,40 @@ async function loadThread(distributionId: string): Promise<ThreadContext> {
 async function assertStudentParticipant(distributionId: string, userId: number): Promise<ThreadContext> {
   const ctx = await loadThread(distributionId);
   if (ctx.student_id !== userId) throw new NotFoundError("Conversation not found");
+  // Leaving is the student's side of what removeMember is for the business: the thread is simply
+  // no longer theirs. 404 rather than 403, same as every other non-participant here.
+  if (ctx.student_left_at != null) throw new NotFoundError("Conversation not found");
   return ctx;
 }
 
-async function assertBusinessParticipant(distributionId: string, businessId: number): Promise<ThreadContext> {
+/**
+ * Two gates, and the order matters.
+ *
+ * The org check answers "is this thread ours"; the membership check answers "am I on it". Since
+ * threads became Spaces the membership check IS the authorization — being an agent of the business
+ * proves nothing on its own, whatever the role's permissions say. You have to have been put on this
+ * particular thread, by the unlock that created it or by its admin.
+ *
+ * Both failures are 404, never 403: telling a non-member that the thread exists is the leak the
+ * whole convention in this module exists to avoid.
+ *
+ * Every business-side operation — read, send, edit, delete, star, pin, react, reply — routes
+ * through here, which is why membership needed one change rather than thirty.
+ */
+async function assertBusinessParticipant(
+  distributionId: string,
+  recipient: Recipient,
+  userId: number,
+): Promise<ThreadContext> {
   const ctx = await loadThread(distributionId);
-  if (ctx.business_id !== businessId) throw new NotFoundError("Conversation not found");
+  if (!sameRecipient(recipientOf(ctx), recipient)) throw new NotFoundError("Conversation not found");
+  // Only once the thread exists. Before unlock there is no roster — it is seeded by the payment —
+  // and nothing to leak either, so the verdict the caller must hear is assertUnlocked's 409
+  // "unlock this enquiry", not a 404 that reads as "wrong business".
+  if (ctx.unlocked_at != null) {
+    const membership = await threadMembersRepo.findMembership(distributionId, userId);
+    if (!membership) throw new NotFoundError("Conversation not found");
+  }
   return ctx;
 }
 
@@ -134,9 +179,9 @@ const asStudent =
     assertStudentParticipant(distributionId, userId);
 
 const asBusiness =
-  (businessId: number): Guard =>
+  (recipient: Recipient, userId: number): Guard =>
   (distributionId) =>
-    assertBusinessParticipant(distributionId, businessId);
+    assertBusinessParticipant(distributionId, recipient, userId);
 
 /** A message in a thread the caller belongs to. Used by star/pin/react. */
 async function loadMessageThread(messageId: number, guard: Guard): Promise<ThreadContext> {
@@ -186,6 +231,9 @@ function toDto(
     reply_count: replyCount,
     reactions,
     edited_at: row.edited_at ? new Date(row.edited_at).toISOString() : null,
+    // Rows written before 20260901_002 have no kind; they read as ordinary messages, which is
+    // what they were rendered as anyway.
+    kind: row.kind ?? "message",
   };
 }
 
@@ -233,6 +281,9 @@ async function appendMessage(
     attachments,
     reply_to_id: replyToId,
   });
+  // Every message writes through here — student or business, top-level or reply — so
+  // this is the one place that can keep the business's own row on 'in_conversation'.
+  await markInConversation(recipientOf(ctx), ctx.enquiry_id);
   return toDto(
     row,
     senderUserId,
@@ -276,19 +327,24 @@ async function readThread(ctx: ThreadContext, viewerUserId: number): Promise<Enq
 }
 
 /**
- * Seeds the thread with UNLOCK_GREETING, on the unlock's own transaction so an unlocked
- * lead can never exist without its opener. Sent as the agent who unlocked, which is who
- * would have typed it — no synthetic system sender to special-case at render time.
+ * Seeds the thread with the greeting, on the unlock's own transaction so an unlocked lead can
+ * never exist without its opener. Sent as the agent who unlocked, which is who would have
+ * typed it — no synthetic system sender to special-case at render time.
+ *
+ * `studentId` comes from the caller because the unlock transaction has already locked and read
+ * the enquiry row; re-joining to it here would be a second read of something the caller holds.
  */
 export async function seedOnUnlock(
   trx: Knex.Transaction,
   distributionId: string,
   senderUserId: number,
+  studentId: number,
 ): Promise<void> {
+  const student = await trx("platform_users").where({ id: studentId }).first("first_name");
   await messagesRepo.insertInTrx(trx, {
     distribution_id: distributionId,
     sender_id: senderUserId,
-    body: UNLOCK_GREETING,
+    body: unlockGreeting(student?.first_name),
   });
 }
 
@@ -305,6 +361,9 @@ export async function listThreadsForStudent(studentId: number) {
     rows.map(async (r) => ({
       distribution_id: r.distribution_id,
       enquiry_id: r.enquiry_id,
+      // The same shared title the business sees — a renamed thread is renamed for everyone on it.
+      title: r.title,
+      thread_photo: await storage.resolvePreviewUrl(r.photo_url),
       business_name: r.business_name,
       // businesses.logo_url is a storage path, not a URL — same signing as enquiries.service.
       logo_url: await storage.resolvePreviewUrl(r.logo_url),
@@ -549,22 +608,22 @@ export async function sendAsStudent(
 
 export async function listForBusiness(
   distributionId: string,
-  businessId: number,
+  recipient: Recipient,
   viewerUserId: number,
 ): Promise<EnquiryMessageDto[]> {
-  const ctx = await assertBusinessParticipant(distributionId, businessId);
+  const ctx = await assertBusinessParticipant(distributionId, recipient, viewerUserId);
   assertUnlocked(ctx, "business");
   return readThread(ctx, viewerUserId);
 }
 
 export async function sendAsBusiness(
   distributionId: string,
-  businessId: number,
+  recipient: Recipient,
   userId: number,
   body: string,
   attachmentPaths: string[] = [],
 ): Promise<EnquiryMessageDto> {
-  const ctx = await assertBusinessParticipant(distributionId, businessId);
+  const ctx = await assertBusinessParticipant(distributionId, recipient, userId);
   assertUnlocked(ctx, "business");
   assertWritable(ctx);
   return appendMessage(ctx, userId, body, attachmentPaths);
@@ -591,14 +650,21 @@ export interface BusinessThreadSummaryDto {
  * has no thread, so it never appears — the list IS the set of conversations that exist.
  */
 export async function listThreadsForBusiness(
-  businessId: number,
+  recipient: Recipient,
   viewerUserId: number,
 ): Promise<BusinessThreadSummaryDto[]> {
-  const rows = await messagesRepo.listThreadsForBusiness(businessId, viewerUserId);
+  const rows = await messagesRepo.listThreadsForBusiness(recipient, viewerUserId);
   return Promise.all(
     rows.map(async (r) => ({
       distribution_id: r.distribution_id,
       enquiry_id: r.enquiry_id,
+      // Null unless the thread's admin named it. Both sides get the same value — that is the
+      // point of a shared title, see the 20260901_003 migration.
+      title: r.title,
+      // Stored as a storage path under private/, so it is signed per read like every other
+      // enquiry-chat object. Shared the same way the title is.
+      thread_photo: await storage.resolvePreviewUrl(r.photo_url),
+      my_role: r.my_role,
       student_name: r.student_name,
       // platform_users.photo_url is a storage path, not a URL — same signing as elsewhere.
       student_avatar: await storage.resolvePreviewUrl(r.student_photo_url),
@@ -617,20 +683,20 @@ export async function listThreadsForBusiness(
 
 export async function markReadAsBusiness(
   distributionId: string,
-  businessId: number,
+  recipient: Recipient,
   userId: number,
 ): Promise<void> {
-  const ctx = await assertBusinessParticipant(distributionId, businessId);
+  const ctx = await assertBusinessParticipant(distributionId, recipient, userId);
   assertUnlocked(ctx, "business");
   await messagesRepo.markThreadRead(distributionId, userId);
 }
 
 export async function toggleFavoriteAsBusiness(
   distributionId: string,
-  businessId: number,
+  recipient: Recipient,
   userId: number,
 ): Promise<boolean> {
-  const ctx = await assertBusinessParticipant(distributionId, businessId);
+  const ctx = await assertBusinessParticipant(distributionId, recipient, userId);
   assertUnlocked(ctx, "business");
   return messagesRepo.toggleFavorite(distributionId, userId);
 }
@@ -643,10 +709,10 @@ export interface BusinessStarredMessageDto extends EnquiryMessageDto {
 
 /** Every message this agent starred, across the business's threads, newest star first. */
 export async function listStarredForBusiness(
-  businessId: number,
+  recipient: Recipient,
   userId: number,
 ): Promise<BusinessStarredMessageDto[]> {
-  const rows = await messagesRepo.listStarredForBusiness(businessId, userId);
+  const rows = await messagesRepo.listStarredForBusiness(recipient, userId);
   return Promise.all(
     rows.map(async (r) => ({
       // student_id comes from the row, not from the viewer: on this side the viewer is a
@@ -669,64 +735,64 @@ export async function listStarredForBusiness(
 
 export async function editAsBusiness(
   messageId: number,
-  businessId: number,
+  recipient: Recipient,
   userId: number,
   body: string,
 ): Promise<EnquiryMessageDto> {
-  return editMessage(messageId, userId, body, asBusiness(businessId));
+  return editMessage(messageId, userId, body, asBusiness(recipient, userId));
 }
 
 export async function deleteAsBusiness(
   messageId: number,
-  businessId: number,
+  recipient: Recipient,
   userId: number,
 ): Promise<void> {
-  await loadOwnMessage(messageId, userId, asBusiness(businessId));
+  await loadOwnMessage(messageId, userId, asBusiness(recipient, userId));
   await messagesRepo.softDelete(messageId);
 }
 
 export async function listRepliesForBusiness(
   messageId: number,
-  businessId: number,
+  recipient: Recipient,
   userId: number,
 ): Promise<EnquiryMessageDto[]> {
-  return listReplies(messageId, userId, asBusiness(businessId), "business");
+  return listReplies(messageId, userId, asBusiness(recipient, userId), "business");
 }
 
 export async function sendReplyAsBusiness(
   messageId: number,
-  businessId: number,
+  recipient: Recipient,
   userId: number,
   body: string,
   attachmentPaths: string[] = [],
 ): Promise<EnquiryMessageDto> {
-  return sendReply(messageId, userId, body, attachmentPaths, asBusiness(businessId), "business");
+  return sendReply(messageId, userId, body, attachmentPaths, asBusiness(recipient, userId), "business");
 }
 
 export async function toggleReactionAsBusiness(
   messageId: number,
-  businessId: number,
+  recipient: Recipient,
   userId: number,
   emoji: string,
 ): Promise<boolean> {
-  assertWritable(await loadMessageThread(messageId, asBusiness(businessId)));
+  assertWritable(await loadMessageThread(messageId, asBusiness(recipient, userId)));
   return messagesRepo.toggleReaction(messageId, userId, emoji);
 }
 
 export async function togglePinAsBusiness(
   messageId: number,
-  businessId: number,
+  recipient: Recipient,
   userId: number,
 ): Promise<boolean> {
-  assertWritable(await loadMessageThread(messageId, asBusiness(businessId)));
+  assertWritable(await loadMessageThread(messageId, asBusiness(recipient, userId)));
   return messagesRepo.togglePin(messageId, userId);
 }
 
 export async function toggleStarAsBusiness(
   messageId: number,
-  businessId: number,
+  recipient: Recipient,
   userId: number,
 ): Promise<boolean> {
-  await loadMessageThread(messageId, asBusiness(businessId));
+  await loadMessageThread(messageId, asBusiness(recipient, userId));
   return messagesRepo.toggleStar(messageId, userId);
 }

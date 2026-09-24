@@ -6,7 +6,16 @@
 // data is what actually differs; a factory would parameterise more than it saved. Fold
 // them together if a third chat surface ever appears.
 
-import type { ChatThread, EnquiryMessage, MessageAttachment, StarredMessage } from "./types";
+import type {
+  ChatThread,
+  EnquiryMessage,
+  MemberCandidate,
+  MessageAttachment,
+  StarredMessage,
+  ThreadMember,
+  ThreadMembersResult,
+  ThreadRole,
+} from "./types";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -21,6 +30,9 @@ const mockThreadList: ChatThread[] = [
   {
     distribution_id: "dist-biz-1",
     enquiry_id: "enq-biz-1",
+    title: null,
+    thread_photo: null,
+    my_role: "admin",
     counterpart_name: "Aarav Sharma",
     counterpart_avatar: null,
     course_name: "Mock Bachelor of Computer Science",
@@ -35,6 +47,9 @@ const mockThreadList: ChatThread[] = [
   {
     distribution_id: "dist-biz-2",
     enquiry_id: "enq-biz-2",
+    title: null,
+    thread_photo: null,
+    my_role: "member",
     counterpart_name: "Mei Lin",
     counterpart_avatar: null,
     course_name: "Mock Master of Data Science",
@@ -62,6 +77,7 @@ const message = (over: Partial<EnquiryMessage> & { id: number; body: string }): 
   reply_count: 0,
   reactions: [],
   edited_at: null,
+  kind: "message",
   ...over,
 });
 
@@ -126,6 +142,19 @@ let mockNextId = 400;
 
 const threadOf = (messageId: number) =>
   [...mockThreads.entries()].find(([, list]) => list.some((m) => m.id === messageId));
+
+
+// Roster fixtures. The first two are 'auto' — the owner who administers the thread and the agent
+// who paid for it — so the UI's "not removable" path has something to exercise.
+let mockMembers: ThreadMember[] = [
+  { platform_user_id: 1, role: "admin", source: "auto", first_name: "Patricia", last_name: "Hurley", email: "patricia@example.com", photo_url: null, created_at: new Date().toISOString() },
+  { platform_user_id: 2, role: "member", source: "auto", first_name: "Sam", last_name: "Okonkwo", email: "sam@example.com", photo_url: null, created_at: new Date().toISOString() },
+];
+
+const MOCK_STAFF: MemberCandidate[] = [
+  { platform_user_id: 3, first_name: "Ines", last_name: "Duarte", email: "ines@example.com", photo_url: null },
+  { platform_user_id: 4, first_name: "Tom", last_name: "Reilly", email: "tom@example.com", photo_url: null },
+];
 
 export const businessMessagesMockApi = {
   listThreads: async (): Promise<{ threads: ChatThread[] }> => {
@@ -286,5 +315,69 @@ export const businessMessagesMockApi = {
     const parent = threadOf(messageId)?.[1].find((m) => m.id === messageId);
     if (parent) parent.reply_count += 1;
     return reply;
+  },
+
+  // ── Thread membership ── mirrors the server's rules, so mock mode is not a different product:
+  // only the admin may mutate, and 'auto' rows are not removable.
+  listMembers: async (distributionId: string): Promise<ThreadMembersResult> => {
+    console.log("[mock] GET /enquiry-distributions/:id/members", distributionId);
+    await delay(200);
+    // Same rule the server applies: the last one on an open thread cannot walk out of it.
+    const blocked = mockMembers.length <= 1;
+    return {
+      my_role: "admin",
+      my_user_id: mockMembers[0]?.platform_user_id ?? 1,
+      can_manage: true,
+      can_leave: !blocked,
+      leave_blocked_reason: blocked
+        ? "Before you can leave this conversation you need to add someone else from your organisation to this conversation, and make another member an admin."
+        : null,
+      members: mockMembers,
+    };
+  },
+  listMemberCandidates: async (distributionId: string): Promise<{ candidates: MemberCandidate[] }> => {
+    console.log("[mock] GET /enquiry-distributions/:id/member-candidates", distributionId);
+    await delay(200);
+    const taken = new Set(mockMembers.map((m) => m.platform_user_id));
+    return { candidates: MOCK_STAFF.filter((c) => !taken.has(c.platform_user_id)) };
+  },
+  addMembers: async (distributionId: string, userIds: number[]): Promise<{ added: number }> => {
+    await delay(250);
+    const added = MOCK_STAFF.filter((c) => userIds.includes(c.platform_user_id));
+    mockMembers = [
+      ...mockMembers,
+      ...added.map((c) => ({ ...c, role: "member" as const, source: "manual" as const, created_at: new Date().toISOString() })),
+    ];
+    return { added: added.length };
+  },
+  setMemberRole: async (distributionId: string, userId: number, role: ThreadRole): Promise<void> => {
+    await delay(200);
+    mockMembers = mockMembers.map((m) => (m.platform_user_id === userId ? { ...m, role } : m));
+  },
+  removeMember: async (distributionId: string, userId: number): Promise<void> => {
+    await delay(200);
+    mockMembers = mockMembers.filter((m) => m.platform_user_id !== userId);
+  },
+  setThreadPhoto: async (distributionId: string, photoPath: string | null): Promise<{ thread_photo: string | null }> => {
+    console.log("[mock] PATCH /enquiry-distributions/:id/photo", { distributionId, photoPath });
+    await delay(200);
+    const thread = mockThreadList.find((t) => t.distribution_id === distributionId);
+    // The mock upload hands back a blob: URL, so the path doubles as something renderable here.
+    const url = photoPath ? (mockUploads.get(photoPath)?.url ?? null) : null;
+    if (thread) thread.thread_photo = url;
+    return { thread_photo: url };
+  },
+  renameThread: async (distributionId: string, title: string | null): Promise<{ title: string | null }> => {
+    console.log("[mock] PATCH /enquiry-distributions/:id/title", { distributionId, title });
+    await delay(200);
+    const thread = mockThreadList.find((t) => t.distribution_id === distributionId);
+    if (thread) thread.title = title;
+    return { title };
+  },
+  leaveThread: async (distributionId: string): Promise<void> => {
+    console.log("[mock] POST /enquiry-distributions/:id/leave", distributionId);
+    await delay(200);
+    // ME is whoever mock mode signs you in as — the same row listMembers marks as the admin.
+    mockMembers = mockMembers.slice(1);
   },
 };

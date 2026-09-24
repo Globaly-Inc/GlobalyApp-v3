@@ -42,7 +42,7 @@ export default function PrivacyPolicyPage() {
                 such as your name, email address, phone number, educational background, and interests.
               </li>
               <li>Students may choose to create a public profile with additional information.</li>
-              <li>Agents and Providers may provide information about their services and programs.</li>
+              <li>Education Counselors and Providers may provide information about their services and programs.</li>
               <li>
                 <strong>Information collected automatically:</strong> We collect information about your use of the
                 Website, such as the pages you visit, the searches you perform, and the links you click.
@@ -62,7 +62,7 @@ export default function PrivacyPolicyPage() {
             <ul>
               <li>To operate and maintain the Website.</li>
               <li>To provide you with personalized recommendations and search results.</li>
-              <li>To connect you with agents and providers that may be able to assist you.</li>
+              <li>To connect you with education counselors and providers that may be able to assist you.</li>
               <li>To send you marketing communications (with your consent).</li>
               <li>To analyze how you use the Website.</li>
               <li>To improve the Website.</li>

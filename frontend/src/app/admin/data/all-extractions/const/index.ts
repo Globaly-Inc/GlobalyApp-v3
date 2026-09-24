@@ -14,7 +14,7 @@ import {
   XCircle,
   Pause,
 } from "lucide-react";
-import type { ExtractionStatus } from "../apis/types";
+import type { ExtractionStatus, SiteUrlCategory } from "../apis/types";
 
 export type StatusConfig = { label: string; icon: LucideIcon; className: string; spin?: boolean; accent: string };
 
@@ -47,6 +47,32 @@ export const ACTIVE_STATUSES: ExtractionStatus[] = ["mapping", "scraping", "extr
 export const PUBLISHABLE_STATUSES: ExtractionStatus[] = ["review", "verified", "done", "approved", "exported"];
 export const PAUSABLE_STATUSES: ExtractionStatus[] = ["scraping", "extracting"];
 export const FINISHED_STATUSES: ExtractionStatus[] = ["done", "completed", "approved", "verified", "exported", "pushed"];
+
+// Curated status filter shown in the toolbar dropdown — collapses the raw per-stage statuses
+// (mapping/scraping/extracting/processing/verifying, failed/stalled) into the handful of
+// states a user actually filters by, instead of every distinct STATUS_CONFIG label.
+export const STATUS_FILTER_OPTIONS: { value: string; label: string; statuses: ExtractionStatus[] }[] = [
+  { value: "pending", label: "Pending", statuses: ["pending"] },
+  { value: "in_progress", label: "In Progress", statuses: ACTIVE_STATUSES },
+  { value: "review", label: "Pending Review", statuses: ["review"] },
+  { value: "approved", label: "Approved", statuses: ["verified", "approved"] },
+  { value: "completed", label: "Completed", statuses: ["done", "completed"] },
+  { value: "published", label: "Published", statuses: ["exported", "pushed"] },
+  { value: "failed", label: "Failed", statuses: ["failed", "stalled"] },
+  { value: "declined", label: "Declined", statuses: ["declined"] },
+  { value: "paused", label: "Paused", statuses: ["paused"] },
+];
+
+export function statusesForFilterValue(value: string): ExtractionStatus[] {
+  return STATUS_FILTER_OPTIONS.find((o) => o.value === value)?.statuses ?? [];
+}
+
+/** Site tab: what kind of page a site URL is. Keys = backend lib/url-categories.ts SITE_URL_CATEGORIES. */
+export const SITE_URL_CATEGORY_LABELS: Record<SiteUrlCategory, string> = {
+  overview: "Overview", about_us: "About us", contact_us: "Contact us", course: "Courses", branches: "Branches",
+  agents: "Agents", fees: "Fees", study_units: "Study units", study_options: "Study options", intake: "Intake",
+  eligibility: "Eligibility", accreditations: "Accreditations", other: "Other",
+};
 
 // Every guided-URL bucket the backend actually reads. Keys must stay `*_urls` — the job
 // worker seeds the crawl from every key with that suffix, and the per-course data steps
@@ -119,7 +145,16 @@ export const SOURCE_FILTER_OPTIONS = [
   { value: "all", label: "All sources" },
   { value: "ai", label: "AI Extraction" },
   { value: "agentcis", label: "AgentCIS" },
+  { value: "manual", label: "Manual institution" },
+  { value: "self_service", label: "Self-registered" },
 ];
+
+/**
+ * source_type values that mean "this listing owns its catalog, nothing crawled it". Their jobs
+ * exist only to give extraction_* rows a job_id to hang off, so every dashboard list excludes
+ * them — they would otherwise show up as completed extractions.
+ */
+export const OWNED_JOB_SOURCE_TYPES = ["manual", "self_service"];
 
 /** Stages of the AI pipeline, in run order — keys match pipeline_progress. */
 export const PIPELINE_STAGES: { key: string; label: string; icon: LucideIcon }[] = [
@@ -165,10 +200,13 @@ export const ENGLISH_SUBSCORES = [
   { key: "speaking_score", label: "Speaking" },
 ] as const;
 
+// Values must match the DB CHECK constraint on extraction_eligibility_requirements.score_type
+// (superadmin/20260805_004_extraction_staged_entities.ts) — anything else fails on save.
 export const SCORE_TYPE_OPTIONS = [
   { value: "percentage", label: "Percentage (%)" },
-  { value: "gpa", label: "GPA" },
-  { value: "grade", label: "Grade" },
+  { value: "gpa_4", label: "GPA (out of 4.0)" },
+  { value: "gpa_10", label: "GPA (out of 10.0)" },
+  { value: "cgpa", label: "CGPA" },
 ];
 
 export const STUDENT_TYPE_OPTIONS = [
@@ -181,8 +219,24 @@ export const PERIOD_TYPE_OPTIONS = [
   { value: "Per Year", label: "Per Year" },
   { value: "Per Semester", label: "Per Semester" },
   { value: "Per Trimester", label: "Per Trimester" },
+  { value: "Per Term", label: "Per Term" },
+  { value: "Per Week", label: "Per Week" },
   { value: "Per Unit", label: "Per Unit" },
   { value: "Total", label: "Total" },
+];
+
+// Which of public.fee_types the fee form offers. Only tuition and the application fee are wanted
+// for now; the rest still exist in the table and the extractor still recognises them, they are
+// just not selectable here. Uncomment a line to bring one back.
+export const ENABLED_FEE_TYPES = [
+  "Tuition Fee",
+  "Application Fee",
+  // "Enrollment Fee",
+  // "Material Fee",
+  // "Exam Fee",
+  // "Late Payment Fee",
+  // "Health Insurance Fee",
+  // "Student Services Fee",
 ];
 
 export const CURRENCY_OPTIONS = ["AUD", "NZD", "CAD", "USD", "GBP", "EUR", "NPR", "INR"].map((c) => ({
@@ -214,9 +268,6 @@ export const APPLICABLE_TO_OPTIONS = [
   { value: "both", label: "Both" },
 ];
 
-/** guided_urls keys a pipeline step can require before it will run. */
-export type ContextKey = "branches_urls" | "agents_urls" | "course_list_urls" | "extract_fields";
-
 export type SortOrder = "newest" | "oldest" | "name_asc" | "name_desc";
 
 export const SORT_OPTIONS: { value: SortOrder; label: string }[] = [
@@ -225,3 +276,4 @@ export const SORT_OPTIONS: { value: SortOrder; label: string }[] = [
   { value: "name_asc", label: "Name A → Z" },
   { value: "name_desc", label: "Name Z → A" },
 ];
+

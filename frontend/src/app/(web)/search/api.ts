@@ -1,6 +1,6 @@
 import type {
   BusinessDetail, CourseDetail, CourseFilterOptions, InstitutionDetail, InstitutionFilterOptions,
-  Paginated, SearchBusiness, SearchCourse, SearchScholarship,
+  BusinessCategory, Paginated, SearchBusiness, SearchCourse, SearchScholarship, VisaServiceFilterOptions,
   SearchJob, SearchService, VisaServiceProviderDetail,
 } from "./types";
 import type { PlatformTest } from "@/lib/tests-catalog";
@@ -30,6 +30,18 @@ export type SearchFilterParams = {
   basis?: string;
   licensed_only?: boolean;
   institution_type?: string;
+  /** Courses tab: awarding institution, exact value from the facet list. */
+  institution?: string;
+  /** Courses tab: duration bucket in weeks, "min-max" ("157-" = 157 and up). */
+  duration?: string;
+  /** Institutions tab: matches when one of the institution’s courses is taught this way. */
+  study_mode?: string;
+  /** Education Counselor tabs: only businesses an admin has verified. */
+  verified_only?: boolean;
+  /** Visa services: properties of the services a provider offers. */
+  service_type?: string;
+  /** Scholarships: what the award pays for. */
+  coverage_type?: string;
   /** "YYYY-MM" from the Upcoming Intake picker. */
   intake_from?: string;
 };
@@ -51,6 +63,11 @@ function buildQuery(params: SearchFilterParams) {
   if (params.currency) qs.set("currency", params.currency);
   if (params.intake_year != null) qs.set("intake_year", String(params.intake_year));
   if (params.sort) qs.set("sort", params.sort);
+  if (params.institution) qs.set("institution", params.institution);
+  if (params.duration) qs.set("duration", params.duration);
+  if (params.study_mode) qs.set("study_mode", params.study_mode);
+  if (params.verified_only) qs.set("verified_only", "true");
+  if (params.service_type) qs.set("service_type", params.service_type);
   if (params.licensed_only) qs.set("licensed_only", "true");
   return qs;
 }
@@ -67,7 +84,9 @@ export const getCourses = (params: SearchFilterParams): Promise<Paginated<Search
 export const getInstitutions = (params: SearchFilterParams): Promise<Paginated<SearchBusiness>> =>
   USE_MOCK_DATA ? Promise.resolve(mockGetInstitutions(params)) : fetchPaginated<SearchBusiness>("search/institutions", params);
 
-const NO_INSTITUTION_FILTERS: InstitutionFilterOptions = { institution_types: [], intake_months: [] };
+const NO_INSTITUTION_FILTERS: InstitutionFilterOptions = {
+  institution_types: [], intake_months: [], subject_areas: [], degree_levels: [], study_modes: [],
+};
 
 /**
  * Facets for the institutions filter panel. These only populate optional filter controls, so a
@@ -77,6 +96,31 @@ export async function getInstitutionFilters(): Promise<InstitutionFilterOptions>
   if (USE_MOCK_DATA) return NO_INSTITUTION_FILTERS;
   const res = await fetch(`${API_BASE}/search/institutions/filters`, { next: { revalidate: 300 } });
   if (!res.ok) return NO_INSTITUTION_FILTERS;
+  return res.json();
+}
+
+const NO_VISA_FILTERS: VisaServiceFilterOptions = { service_types: [] };
+
+/**
+ * The category catalog behind the hero switcher. Public, so an anonymous visitor sees the same
+ * list a signed-in one does; an empty result leaves the switcher on its hardcoded fallback.
+ */
+export async function getBusinessCategories(): Promise<BusinessCategory[]> {
+  if (USE_MOCK_DATA) return [];
+  try {
+    const res = await fetch(`${API_BASE}/search/business-categories`, { next: { revalidate: 300 } });
+    if (!res.ok) return [];
+    return (await res.json()).categories ?? [];
+  } catch {
+    return [];
+  }
+}
+
+/** Facets for the visa-services panel. Optional controls, so a failure just empties them. */
+export async function getVisaServiceFilters(): Promise<VisaServiceFilterOptions> {
+  if (USE_MOCK_DATA) return NO_VISA_FILTERS;
+  const res = await fetch(`${API_BASE}/search/visa-services/filters`, { next: { revalidate: 300 } });
+  if (!res.ok) return NO_VISA_FILTERS;
   return res.json();
 }
 
@@ -108,6 +152,7 @@ export const getScholarshipsSearch = (params: SearchFilterParams): Promise<Pagin
   if (params.basis) qs.set("basis", params.basis);
   if (params.degree_level) qs.set("degree_level", params.degree_level);
   if (params.fee_min != null) qs.set("coverage_min", String(params.fee_min));
+  if (params.coverage_type) qs.set("coverage_type", params.coverage_type);
   return fetch(`${API_BASE}/scholarships?${qs}`, { next: { revalidate: 30 } }).then((res) => {
     if (!res.ok) throw new Error("Failed to load scholarships");
     return res.json();
@@ -136,9 +181,14 @@ export async function getTests(): Promise<PlatformTest[]> {
   return res.json();
 }
 
-export async function getCourseBySlug(slug: string): Promise<CourseDetail | null> {
+export async function getCourseBySlug(slug: string, previewToken?: string): Promise<CourseDetail | null> {
   if (USE_MOCK_DATA) return mockGetCourseBySlug(slug);
-  const res = await fetch(`${API_BASE}/search/courses/${slug}`, { next: { revalidate: 30 } });
+  // Owner-preview path (see the self-service course table's name link) — carries the viewer's
+  // own access token so an unpublished institution's owner can still see its course pages;
+  // must never be served through the anonymous 30s cache other visitors hit.
+  const res = await fetch(`${API_BASE}/search/courses/${slug}`, previewToken
+    ? { headers: { Authorization: `Bearer ${previewToken}` }, cache: "no-store" }
+    : { next: { revalidate: 30 } });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error("Failed to load course");
   const data = await res.json();
@@ -147,15 +197,22 @@ export async function getCourseBySlug(slug: string): Promise<CourseDetail | null
   return {
     ...data,
     campuses: data.campuses ?? [],
+    study_units: data.study_units ?? [],
+    study_options: data.study_options ?? [],
     institution: data.institution ? { ...data.institution, gallery_image_urls: data.institution.gallery_image_urls ?? [] } : null,
     weather: data.weather ?? null,
     city_link: data.city_link ?? null,
   };
 }
 
-export async function getInstitutionBySlug(slug: string): Promise<InstitutionDetail | null> {
+export async function getInstitutionBySlug(slug: string, previewToken?: string): Promise<InstitutionDetail | null> {
   if (USE_MOCK_DATA) return mockGetInstitutionBySlug(slug);
-  const res = await fetch(`${API_BASE}/search/institutions/${slug}`, { next: { revalidate: 30 } });
+  // The owner-preview path (see the self-service "Preview" button) carries the viewer's own
+  // access token so an unpublished institution's owner can still see it — that response must
+  // never be shared through the anonymous 30s cache other visitors hit.
+  const res = await fetch(`${API_BASE}/search/institutions/${slug}`, previewToken
+    ? { headers: { Authorization: `Bearer ${previewToken}` }, cache: "no-store" }
+    : { next: { revalidate: 30 } });
   if (res.status === 404) return null;
   if (!res.ok) throw new Error("Failed to load institution");
   const data = await res.json();
@@ -164,6 +221,7 @@ export async function getInstitutionBySlug(slug: string): Promise<InstitutionDet
   return {
     ...data,
     campuses: data.campuses ?? [],
+    representatives: data.representatives ?? [],
     members: data.members ?? [],
     subject_areas: data.subject_areas ?? [],
     degree_levels: data.degree_levels ?? [],
@@ -171,7 +229,9 @@ export async function getInstitutionBySlug(slug: string): Promise<InstitutionDet
 }
 
 export async function getInstitutionCourses(
-  slug: string, params: Pick<SearchFilterParams, "page" | "search" | "degree_level"> & { limit?: number },
+  slug: string,
+  params: Pick<SearchFilterParams, "page" | "search" | "degree_level"> & { limit?: number },
+  previewToken?: string,
 ): Promise<Paginated<SearchCourse>> {
   if (USE_MOCK_DATA) return mockGetInstitutionCourses(slug, params);
   const qs = new URLSearchParams();
@@ -179,7 +239,9 @@ export async function getInstitutionCourses(
   if (params.search) qs.set("search", params.search);
   if (params.degree_level) qs.set("degree_level", params.degree_level);
   if (params.limit) qs.set("limit", String(params.limit));
-  const res = await fetch(`${API_BASE}/search/institutions/${slug}/courses?${qs}`, { next: { revalidate: 30 } });
+  const res = await fetch(`${API_BASE}/search/institutions/${slug}/courses?${qs}`, previewToken
+    ? { headers: { Authorization: `Bearer ${previewToken}` }, cache: "no-store" }
+    : { next: { revalidate: 30 } });
   if (!res.ok) throw new Error("Failed to load institution courses");
   return res.json();
 }

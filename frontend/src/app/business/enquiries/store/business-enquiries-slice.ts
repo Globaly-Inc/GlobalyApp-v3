@@ -1,26 +1,25 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
-import { isInstitutionContext } from "@/lib/api/http";
 import { businessEnquiriesApi } from "../apis";
-import type { DistributionListItem } from "../apis/types";
+import type {
+  DistributionListItem,
+  DistributionListParams,
+} from "../apis/types";
 
-// Institution tenants share the /business/* shell but have no business context, and every
-// enquiry route sits behind requireBusinessContext — the whole substrate (representations,
-// enquiry_match_directory, enquiry_distributions) keys on business_id, so there is nothing
-// for an institution to read. Guarded in the thunks rather than at each call site: both the
-// inbox and the portal's stats rail dispatch these, and both otherwise surface the plumbing's
-// own "This endpoint requires a business context" as a load failure.
-const INSTITUTION_UNSUPPORTED = "Enquiries are only available for business accounts.";
+// Institution tenants share the /business/* shell, and these thunks used to short-circuit for
+// them: every enquiry route sat behind requireBusinessContext, so the request could only come
+// back as "This endpoint requires a business context". Both sides now serve either org kind —
+// an enquiry nobody represents falls back to the institution that owns the course, and it works
+// that lead here — so the guard is gone and the request is simply made.
 
-export const fetchDistributions = createAsyncThunk("businessEnquiries/fetchAll", async () => {
-  if (isInstitutionContext()) throw new Error(INSTITUTION_UNSUPPORTED);
-  const result = await businessEnquiriesApi.listDistributions();
-  return result.data;
-});
+export const fetchDistributions = createAsyncThunk(
+  "businessEnquiries/fetchAll",
+  // `| void` so a bare refresh after unlock/close lands on page 1 with no filters.
+  async (params: DistributionListParams | void = {}) => businessEnquiriesApi.listDistributions(params || {}),
+);
 
-export const fetchCredits = createAsyncThunk("businessEnquiries/fetchCredits", () => {
-  if (isInstitutionContext()) throw new Error(INSTITUTION_UNSUPPORTED);
-  return businessEnquiriesApi.getCredits();
-});
+export const fetchCredits = createAsyncThunk("businessEnquiries/fetchCredits", () =>
+  businessEnquiriesApi.getCredits(),
+);
 
 export const unlockDistribution = createAsyncThunk(
   "businessEnquiries/unlock",
@@ -50,6 +49,11 @@ export const closeDistribution = createAsyncThunk(
 
 type BusinessEnquiriesState = {
   items: DistributionListItem[];
+  /** Page state for the inbox — `total` is the FILTERED total the paginator uses. */
+  page: number;
+  total: number;
+  /** Per-status totals from the server, spanning every page — what the tabs count. */
+  countsByStatus: Record<string, number>;
   status: "idle" | "loading" | "failed";
   error: string | null;
   credits: number | null;
@@ -62,6 +66,9 @@ type BusinessEnquiriesState = {
 
 const initialState: BusinessEnquiriesState = {
   items: [],
+  page: 1,
+  total: 0,
+  countsByStatus: {},
   status: "idle",
   error: null,
   credits: null,
@@ -86,7 +93,10 @@ const businessEnquiriesSlice = createSlice({
       })
       .addCase(fetchDistributions.fulfilled, (state, action) => {
         state.status = "idle";
-        state.items = action.payload;
+        state.items = action.payload.data;
+        state.total = action.payload.meta.total;
+        state.page = action.payload.meta.page;
+        state.countsByStatus = action.payload.counts;
       })
       .addCase(fetchDistributions.rejected, (state, action) => {
         state.status = "failed";

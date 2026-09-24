@@ -1,6 +1,6 @@
 import { httpDelete, httpGet, httpPatch, httpPost, httpPut } from "@/lib/api/http";
 import type {
-  Accreditation, Category, Lookup, LookupKind, Paginated, SearchListParams,
+  Accreditation, Category, Lookup, LookupKind, Paginated, RegistrationType, SearchListParams,
 } from "@/app/admin/platform/categories/apis/types";
 import type {
   ActivityListParams, ActivityListResult, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchListResult, BranchPatch,
@@ -8,7 +8,7 @@ import type {
   Member, MemberInviteInput, MemberListParams, MemberListResult, MemberPatch, MemberRole,
   PartnerInstitutionCourse, PartnerInstitutionCourseListParams, PartnerInstitutionCourseListResult, PartnerInstitutionDetail, Permission,
   RelationInput, RelationListParams, RelationListResult, RelationPatch, Role, RoleCreateInput, RolePatch,
-  SchemaFieldValue, Scholarship, ScholarshipInput,
+  SchemaFieldValue, Scholarship, ScholarshipInput, ServiceAiAssistInput, ServiceAiAssistResult,
   ScholarshipListParams, ScholarshipListResult, ScholarshipPatch, ServiceAccreditationLink, ServiceEligibility,
   ServiceEligibilityInput, ServiceEligibilityPatch, ServiceFee, ServiceFeeInput, ServiceFeePatch, ServiceInput,
   ServiceIntake, ServiceIntakeInput, ServiceIntakePatch, ServicePatch, ServiceSearchParams, ServiceSearchResult,
@@ -62,6 +62,7 @@ function toServiceSearchQuery(params: ServiceSearchParams): string {
   if (params.page) q.set("page", String(params.page));
   if (params.limit) q.set("limit", String(params.limit));
   if (params.search) q.set("search", params.search);
+  if (params.course_category) q.set("course_category", params.course_category);
   const qs = q.toString();
   return qs ? `?${qs}` : "";
 }
@@ -87,6 +88,12 @@ function toBusinessSearchQuery(params: BusinessSearchParams): string {
   const q = new URLSearchParams();
   if (params.search) q.set("search", params.search);
   if (params.limit) q.set("limit", String(params.limit));
+  // Only sent when on: the branch picker must keep getting businesses only, since it stores a
+  // bare id with no kind alongside it.
+  if (params.include_institutions) q.set("include_institutions", "true");
+  // Representations picker: server enforces the verified consultancy<->institution pairing
+  // regardless of this flag — see businesses.service.ts searchBusinesses.
+  if (params.for_partner_link) q.set("for_partner_link", "true");
   const qs = q.toString();
   return qs ? `?${qs}` : "";
 }
@@ -113,15 +120,16 @@ export const businessProfileDetailRealApi = {
   searchBusinesses: (params: BusinessSearchParams = {}): Promise<BusinessSearchResult[]> =>
     httpGet(`${BASE}/search${toBusinessSearchQuery(params)}`),
 
-  getBranches: async (params: BranchListParams = {}): Promise<BranchListResult> => {
-    const { data, meta } = await httpGet<{ data: Branch[]; meta: { total: number } }>(`${BASE}/branches${toBranchQuery(params)}`);
+  getBranches: async (params: BranchListParams = {}, orgBase = BASE): Promise<BranchListResult> => {
+    const { data, meta } = await httpGet<{ data: Branch[]; meta: { total: number } }>(`${orgBase}/branches${toBranchQuery(params)}`);
     return { data, total: meta.total };
   },
-  createBranch: (input: BranchInput): Promise<Branch> => httpPost(`${BASE}/branches`, input),
-  updateBranch: (branchId: string, patch: BranchPatch): Promise<Branch> => httpPatch(`${BASE}/branches/${branchId}`, patch),
+  createBranch: (input: BranchInput, orgBase = BASE): Promise<Branch> => httpPost(`${orgBase}/branches`, input),
+  updateBranch: (branchId: string, patch: BranchPatch, orgBase = BASE): Promise<Branch> => httpPatch(`${orgBase}/branches/${branchId}`, patch),
+  // No institution twin — linking another registered org as a branch is business-to-business only.
   linkExistingBranch: (input: LinkExistingBranchInput): Promise<LinkExistingBranchResult> =>
     httpPost(`${BASE}/branches/link-existing`, input),
-  deleteBranch: (branchId: string): Promise<void> => httpDelete(`${BASE}/branches/${branchId}`),
+  deleteBranch: (branchId: string, orgBase = BASE): Promise<void> => httpDelete(`${orgBase}/branches/${branchId}`),
 
   searchServices: async (params: ServiceSearchParams = {}): Promise<ServiceSearchResult> => {
     const { data, meta } = await httpGet<{ data: BusinessService[]; meta: { total: number } }>(`${BASE}/services/search${toServiceSearchQuery(params)}`);
@@ -135,6 +143,8 @@ export const businessProfileDetailRealApi = {
     httpGet(`${BASE}/services/${serviceId}/field-values`),
   updateServiceFieldValues: (serviceId: string, values: SchemaFieldValue[]): Promise<SchemaFieldValue[]> =>
     httpPut(`${BASE}/services/${serviceId}/field-values`, { values }),
+  generateServiceDescription: (input: ServiceAiAssistInput): Promise<ServiceAiAssistResult> =>
+    httpPost(`${BASE}/services/ai-assist`, input),
 
   getMembers: async (params: MemberListParams = {}): Promise<MemberListResult> => {
     const { data, meta } = await httpGet<{ data: Member[]; meta: { total: number } }>(`${BASE}/members${toMemberQuery(params)}`);
@@ -213,4 +223,7 @@ export const businessProfileDetailRealApi = {
     httpGet(`${BASE}/${kind}${toSearchListQuery(params)}`),
   getAccreditations: (params: SearchListParams = {}): Promise<Paginated<Accreditation>> =>
     httpGet(`${BASE}/accreditations${toSearchListQuery(params)}`),
+  /** Unpaginated: the server returns one country's handful, already falling back to the generic set. */
+  getRegistrationTypes: (countryId?: number | null): Promise<{ data: RegistrationType[] }> =>
+    httpGet(`${BASE}/registration-types${countryId ? `?country_id=${countryId}` : ""}`),
 };

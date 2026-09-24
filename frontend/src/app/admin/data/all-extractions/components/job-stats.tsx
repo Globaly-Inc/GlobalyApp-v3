@@ -1,13 +1,14 @@
 import { Activity, BookOpen, FileSearch, Files } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { ExtractionStatusBadge } from "./status-badge";
-import type { CourseRow, ExtractionJob } from "../apis/types";
+import type { ExtractionJob } from "../apis/types";
 
 const STAT_STYLES = {
   blue: "bg-blue-50 text-blue-600 dark:bg-blue-500/10 dark:text-blue-400",
   violet: "bg-violet-50 text-violet-600 dark:bg-violet-500/10 dark:text-violet-400",
   emerald: "bg-emerald-50 text-emerald-600 dark:bg-emerald-500/10 dark:text-emerald-400",
   amber: "bg-amber-50 text-amber-600 dark:bg-amber-500/10 dark:text-amber-400",
+  rose: "bg-rose-50 text-rose-600 dark:bg-rose-500/10 dark:text-rose-400",
 } as const;
 
 function StatCard({
@@ -32,12 +33,12 @@ function StatCard({
 }
 
 export function JobStats({
-  job, courses = [], coursesTotal,
-}: Readonly<{ job: ExtractionJob; courses?: CourseRow[]; coursesTotal?: number }>) {
-  // coursesTotal is the real count; `courses` itself is capped (limit=100) — falling
-  // back to courses.length here would silently show 100 for any job with more.
-  const total = coursesTotal ?? (courses?.length || job.verification_total || 0);
+  job, coursesTotal,
+}: Readonly<{ job: ExtractionJob; coursesTotal?: number }>) {
+  const total = coursesTotal ?? job.verification_total ?? 0;
 
+  // LLM spend (tokens / $) is deliberately not shown here — admins asked for it off the cards.
+  // job.usage still arrives on the wire for the timeline and cost accounting.
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
       <StatCard icon={Files} color="blue" value={job.total_pages_found || "—"} label="Pages Found" />

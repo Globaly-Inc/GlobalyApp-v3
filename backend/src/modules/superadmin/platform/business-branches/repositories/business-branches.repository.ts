@@ -42,6 +42,35 @@ export async function createBranch(businessId: number, schemaName: string, data:
   return row;
 }
 
+export interface SeedCampus {
+  id: string;
+  name: string | null;
+  country: string | null;
+  state: string | null;
+  city: string | null;
+  address: string | null;
+  phone: string | null;
+  email: string | null;
+}
+
+export async function seedBranchesFromCampuses(businessId: number, schemaName: string, campuses: SeedCampus[]) {
+  if (campuses.length === 0) return;
+  const db = await getKnex(businessId, schemaName);
+  await db("business_branches")
+    .insert(campuses.map((c) => ({
+      uuid: c.id,
+      name: c.name ?? "Unnamed campus",
+      country: c.country,
+      state: c.state,
+      city: c.city,
+      address: c.address,
+      phone: c.phone,
+      email: c.email,
+    })))
+    .onConflict("uuid")
+    .ignore();
+}
+
 export async function findBranchById(businessId: number, schemaName: string, branchId: string) {
   const db = await getKnex(businessId, schemaName);
   return db("business_branches").where({ uuid: branchId }).whereNull("deleted_at").select(BRANCH_COLUMNS).first();

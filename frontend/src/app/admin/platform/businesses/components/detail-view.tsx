@@ -21,6 +21,7 @@ import { BusinessOverviewDialog } from "./business-detail/business-overview-dial
 import { InstitutionHeaderCard } from "./institution-header-card";
 import { InstitutionHeaderDialog } from "./institution-header-dialog";
 import { InstitutionOverviewDialog } from "./institution-overview-dialog";
+import { SocialMediaDialog } from "./social-media-dialog";
 import { DetailSidebar } from "./detail-sidebar";
 import { DetailTabs } from "./detail-tabs";
 
@@ -40,6 +41,7 @@ export function DetailView({ kind, id }: Readonly<{ kind: "business" | "institut
   const [publishBusy, setPublishBusy] = useState(false);
   const [headerOpen, setHeaderOpen] = useState(false);
   const [overviewOpen, setOverviewOpen] = useState(false);
+  const [socialOpen, setSocialOpen] = useState(false);
 
   const fetchedRef = useRef<string | null>(null);
   useEffect(() => {
@@ -57,7 +59,7 @@ export function DetailView({ kind, id }: Readonly<{ kind: "business" | "institut
   useEffect(() => {
     if (fetchedCatalogRef.current) return;
     fetchedCatalogRef.current = true;
-    if (kind === "business" && categories.length === 0) dispatch(fetchBusinessCategories({}));
+    if (categories.length === 0) dispatch(fetchBusinessCategories({}));
     if (countries.length === 0) dispatch(fetchCountries());
   }, []);
 
@@ -81,6 +83,11 @@ export function DetailView({ kind, id }: Readonly<{ kind: "business" | "institut
   const canVerify = !(detail.status === "unverified" && detail.is_unclaimed);
   // The owner has claimed this listing — superadmin can view its details but not edit them.
   const readOnly = !detail.is_unclaimed;
+  // Pre-seeded businesses/institutions have no tenant schema yet, so their branches/services tabs
+  // read the source extraction job's campuses/courses instead — those rows aren't editable here.
+  const isPreSeeded = kind === "business"
+    ? business?.account_status === 0 && !!business.source_job_id
+    : institution?.account_status === 0 && !!institution?.source_job_id;
 
   const handleSave = async (patch: BusinessPatch | InstitutionPatch) => {
     setSaving(true);
@@ -142,7 +149,7 @@ export function DetailView({ kind, id }: Readonly<{ kind: "business" | "institut
         <Button variant="ghost" className="gap-1.5" onClick={() => router.push("/admin/platform/businesses")}>
           <ArrowLeft className="h-4 w-4" /> Back
         </Button>
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap items-start gap-2">
           {detail.status !== "verified" && (
             <div className="text-right">
               <Button className="h-10" variant="outline" onClick={() => runStatus("verified")} disabled={!canVerify}>
@@ -184,6 +191,15 @@ export function DetailView({ kind, id }: Readonly<{ kind: "business" | "institut
           statusColor={STATUS_COLORS[detail.status]}
           sourceLabel={detail.is_unclaimed ? "Pre-seeded" : "Claimed"}
           readOnly={readOnly}
+          social={{
+            linkedin_url: detail.linkedin_url,
+            facebook_url: detail.facebook_url,
+            instagram_url: detail.instagram_url,
+            twitter_url: detail.twitter_url,
+            youtube_url: detail.youtube_url,
+            whatsapp_url: detail.whatsapp_url,
+          }}
+          onEditSocial={() => setSocialOpen(true)}
           enquiry={
             kind === "business" && business
               ? {
@@ -195,7 +211,7 @@ export function DetailView({ kind, id }: Readonly<{ kind: "business" | "institut
               : null
           }
         />
-        <DetailTabs kind={kind} id={id} businessName={business?.business_name} readOnly={readOnly} />
+        <DetailTabs kind={kind} id={id} businessName={business?.business_name} businessType={business?.business_type} readOnly={readOnly} isPreSeeded={isPreSeeded} />
       </div>
 
       {kind === "business" ? (
@@ -205,10 +221,25 @@ export function DetailView({ kind, id }: Readonly<{ kind: "business" | "institut
         </>
       ) : (
         <>
-          <InstitutionHeaderDialog open={headerOpen} onOpenChange={setHeaderOpen} institution={institution!} countries={countries} onSave={handleSave} saving={saving} />
+          <InstitutionHeaderDialog open={headerOpen} onOpenChange={setHeaderOpen} institution={institution!} categories={categories} countries={countries} onSave={handleSave} saving={saving} />
           <InstitutionOverviewDialog open={overviewOpen} onOpenChange={setOverviewOpen} institution={institution!} onSave={handleSave} saving={saving} />
         </>
       )}
+
+      <SocialMediaDialog
+        open={socialOpen}
+        onOpenChange={setSocialOpen}
+        values={{
+          linkedin_url: detail.linkedin_url,
+          facebook_url: detail.facebook_url,
+          instagram_url: detail.instagram_url,
+          twitter_url: detail.twitter_url,
+          youtube_url: detail.youtube_url,
+          whatsapp_url: detail.whatsapp_url,
+        }}
+        onSave={handleSave}
+        saving={saving}
+      />
     </div>
   );
 }

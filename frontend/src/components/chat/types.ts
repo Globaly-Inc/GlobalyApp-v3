@@ -18,6 +18,18 @@ export interface ChatThread {
   distribution_id: string;
   /** Where the thread came from, for the "View enquiry" link back. */
   enquiry_id: string;
+  /**
+   * A name the thread's admin gave it, shared by everyone on the thread — the other agents and the
+   * student alike. Null until someone names it, which is when each side falls back to
+   * `counterpart_name`. Read it through `threadTitle()`, never directly.
+   */
+  title: string | null;
+  /**
+   * A picture the thread's admin gave it, shared the same way `title` is. Signed URL, or null when
+   * nobody has set one — which is when each side falls back to `counterpart_avatar`. Read it
+   * through `threadAvatar()`, never directly.
+   */
+  thread_photo: string | null;
   /** Who the thread is with: the business for a student, the student for a business. */
   counterpart_name: string;
   /** Signed URL for their logo or photo; null when they have none. */
@@ -36,7 +48,26 @@ export interface ChatThread {
   unread_count: number;
   /** Pinned to the sidebar's Favorites section. Per viewer. */
   is_favorite: boolean;
+  /**
+   * This viewer's role on the thread — only an admin may rename it. Business side only: the student
+   * holds no `enquiry_thread_members` row, so their threads carry no role and cannot be renamed.
+   */
+  my_role?: "admin" | "member";
 }
+
+/**
+ * What a message row IS. Mirrors the CHECK on enquiry_messages.kind — see the 20260901_002
+ * migration for why the verb is stored rather than derived from the sentence.
+ */
+export type MessageKind =
+  | "message"
+  | "member_added"
+  | "member_removed"
+  | "member_left"
+  | "admin_granted"
+  | "admin_revoked"
+  | "renamed"
+  | "photo_changed";
 
 /** One file sent with a message. `url` is a freshly signed, expiring view URL. */
 export interface MessageAttachment {
@@ -75,6 +106,12 @@ export interface EnquiryMessage {
   reactions: MessageReaction[];
   /** Set once the sender edited it — the row shows V2's "(edited)" marker. */
   edited_at: string | null;
+  /**
+   * Anything but "message" is a thread event, not something a person typed. MessageList renders
+   * those as a one-line pill with no avatar, bubble or actions, and picks the icon from this value
+   * rather than by reading the sentence. `sender_*` still describes whoever caused it.
+   */
+  kind: MessageKind;
 }
 
 /** One reaction chip: the emoji, how many used it, who, and whether you did. */
@@ -91,4 +128,56 @@ export interface StarredMessage extends EnquiryMessage {
   /** Same neutrality as ChatThread: whoever the thread is with. */
   counterpart_name: string;
   course_name: string;
+}
+
+// ── Thread roster ──
+// Shared because both portals render the same roster through ThreadMembersSection. They differ in
+// what the server puts in it, not in its shape: see listMembersAsStudent for what the student's
+// copy withholds.
+
+export type ThreadRole = "admin" | "member";
+
+export type ThreadMember = {
+  platform_user_id: number;
+  role: ThreadRole;
+  /**
+   * 'auto' = the owner or the agent who unlocked. Structural, so not removable.
+   * 'student' = the enquiry's student, folded in by the server rather than a membership row —
+   * a party to the conversation, not a seat the agency administers, so nothing can act on them.
+   */
+  source: "auto" | "manual" | "student";
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  photo_url: string | null;
+  created_at: string;
+};
+
+export type ThreadMembersResult = {
+  /** The caller's own role, so the UI need not find itself in the list. */
+  my_role: ThreadRole;
+  /** Which row in `members` is the caller — the roster offers Leave there and manage elsewhere. */
+  my_user_id: number;
+  can_manage: boolean;
+  /** False while an open thread still needs them — the last member, or the last admin. */
+  can_leave: boolean;
+  /**
+   * Null when they can leave. Otherwise the exact sentence the leave endpoint would throw, so the
+   * panel never has to reason about the rules itself and cannot contradict the server.
+   */
+  leave_blocked_reason: string | null;
+  members: ThreadMember[];
+};
+
+/**
+ * What ThreadMembersSection needs from whichever portal mounts it.
+ *
+ * Only `listMembers` and `leaveThread` are required: every management action is business-only, and
+ * the student's payload reports can_manage false, so those handlers are never reachable there.
+ */
+export interface ThreadMembersApi {
+  listMembers: (distributionId: string) => Promise<ThreadMembersResult>;
+  leaveThread: (distributionId: string) => Promise<void>;
+  setMemberRole?: (distributionId: string, userId: number, role: ThreadRole) => Promise<void>;
+  removeMember?: (distributionId: string, userId: number) => Promise<void>;
 }

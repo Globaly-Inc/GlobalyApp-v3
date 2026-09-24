@@ -101,11 +101,26 @@ export async function addAccountCategory(userId: number, category: AccountCatego
 
 // ── Business Index (master DB) ──
 
+/** True if this user currently has a suspended (not removed) membership on at least one
+ * business — distinct from "has zero accessible businesses", which also happens for reasons
+ * that aren't suspension at all (removed from the business, the business itself deactivated,
+ * or they were simply never a member) and must never block login. */
+export async function hasSuspendedBusinessMembership(platformUserId: number): Promise<boolean> {
+  const row = await masterKnex("user_business_index")
+    .where({ platform_user_id: platformUserId, account_status: 0 })
+    .whereNull("deleted_at")
+    .first("platform_user_id");
+  return Boolean(row);
+}
+
 export async function listUserBusinesses(platformUserId: number) {
   return masterKnex("user_business_index")
     .join("businesses", "user_business_index.business_id", "businesses.id")
     .where("user_business_index.platform_user_id", platformUserId)
     .where("businesses.account_status", 1)
+    // The business being active doesn't mean THIS agent is — a suspended agent must not still
+    // show that business in their login scope.
+    .where("user_business_index.account_status", 1)
     .whereNull("user_business_index.deleted_at")
     .whereNull("businesses.deleted_at")
     .select(
@@ -137,6 +152,14 @@ export async function insertUserBusinessIndex(data: {
     .insert({ ...data, created_at: masterKnex.fn.now() })
     .onConflict(["platform_user_id", "business_id"])
     .merge({ role: data.role, is_owner: data.is_owner, deleted_at: null });
+}
+
+/** Mirrors a suspend/reinstate onto the login-path index row — see the account_status migration's
+ * comment for why this has to happen for a suspension to actually block login. */
+export async function setUserBusinessIndexStatus(platformUserId: number, businessId: number, accountStatus: number) {
+  await masterKnex("user_business_index")
+    .where({ platform_user_id: platformUserId, business_id: businessId })
+    .update({ account_status: accountStatus });
 }
 
 /** Mirrors softDeleteAgent — a removed member must stop appearing in their business list. */
@@ -285,14 +308,20 @@ export async function findInstitutionByUserId(userId: number) {
   return masterKnex<Record<string, unknown>>("institutions").where({ platform_user_id: userId }).whereNull("deleted_at").first<Record<string, unknown>>();
 }
 
-export async function insertInstitution(data: Record<string, unknown>) {
-  const [row] = await masterKnex("institutions").insert(data).returning("*");
+export async function insertInstitution(data: Record<string, unknown>, trx?: Knex.Transaction) {
+  const [row] = await (trx ?? masterKnex)("institutions").insert(data).returning("*");
   return row;
 }
 
 /** Hard delete — only used to roll back a registration whose schema provisioning failed. */
 export async function deleteInstitution(id: number) {
   await masterKnex("institutions").where({ id }).delete();
+}
+
+/** Hard delete — only used to roll back an admin-created owner whose institution/business
+ * provisioning failed after this user row was created. Never call on a real, already-active user. */
+export async function deleteUser(id: number) {
+  await masterKnex("platform_users").where({ id }).delete();
 }
 
 // ── Institution claim (promoted listings) ──
@@ -308,11 +337,24 @@ export async function deleteInstitution(id: number) {
  * Institutions this user can enter — the same gate listUserBusinesses applies:
  * account_status 1, plus a schema to actually connect to.
  */
+/** True if this user currently has a suspended (not removed) membership on at least one
+ * institution — see hasSuspendedBusinessMembership's comment. */
+export async function hasSuspendedInstitutionMembership(platformUserId: number): Promise<boolean> {
+  const row = await masterKnex("user_institution_index")
+    .where({ platform_user_id: platformUserId, account_status: 0 })
+    .whereNull("deleted_at")
+    .first("platform_user_id");
+  return Boolean(row);
+}
+
 export async function listUserInstitutions(platformUserId: number) {
   return masterKnex("user_institution_index")
     .join("institutions", "user_institution_index.institution_id", "institutions.id")
     .where("user_institution_index.platform_user_id", platformUserId)
     .where("institutions.account_status", 1)
+    // The institution being active doesn't mean THIS member is — a suspended member must not
+    // still show that institution in their login scope (see setUserInstitutionIndexStatus).
+    .where("user_institution_index.account_status", 1)
     .whereNotNull("institutions.schema_provisioned_at")
     .whereNull("user_institution_index.deleted_at")
     .whereNull("institutions.deleted_at")
@@ -338,6 +380,13 @@ export async function insertUserInstitutionIndex(data: {
     .insert({ ...data, created_at: masterKnex.fn.now() })
     .onConflict(["platform_user_id", "institution_id"])
     .merge({ role: data.role, is_owner: data.is_owner, deleted_at: null });
+}
+
+/** Mirrors a suspend/reinstate onto the login-path index row — see setMemberStatus. */
+export async function setUserInstitutionIndexStatus(platformUserId: number, institutionId: number, accountStatus: number) {
+  await masterKnex("user_institution_index")
+    .where({ platform_user_id: platformUserId, institution_id: institutionId })
+    .update({ account_status: accountStatus });
 }
 
 export async function softDeleteUserInstitutionIndex(platformUserId: number, institutionId: number) {
@@ -371,13 +420,39 @@ export async function findUnclaimedInstitutionByContactEmail(email: string) {
     .first();
 }
 
+/** Fresh token, replacing whatever was there — for a deliberate resend. Guarded so a claimed
+ *  institution is never walked back to `claim_pending`. */
 export async function setInstitutionClaimPending(id: number, token: string, expiresAt: Date) {
-  await masterKnex("institutions").where({ id }).update({
+  await masterKnex("institutions").where({ id }).whereNot("claim_status", "claimed").update({
     claim_token: token,
     claim_token_expires_at: expiresAt,
     claim_status: "claim_pending",
     updated_at: masterKnex.fn.now(),
   });
+}
+
+/** The institution twin of `ensureClaimToken` — see that for why reuse matters. The two claim
+ *  paths must not drift. */
+export async function ensureInstitutionClaimToken(
+  id: number,
+  token: string,
+  expiresAt: Date,
+): Promise<string | null> {
+  const live = "claim_token IS NOT NULL AND claim_token_expires_at > now()";
+  const [row] = await masterKnex("institutions")
+    .where({ id })
+    .whereNot("claim_status", "claimed")
+    .update({
+      claim_token: masterKnex.raw(`CASE WHEN ${live} THEN claim_token ELSE ? END`, [token]),
+      claim_token_expires_at: masterKnex.raw(
+        `CASE WHEN ${live} THEN claim_token_expires_at ELSE ? END`,
+        [expiresAt],
+      ),
+      claim_status: "claim_pending",
+      updated_at: masterKnex.fn.now(),
+    })
+    .returning("claim_token");
+  return (row as { claim_token?: string } | undefined)?.claim_token ?? null;
 }
 
 export async function clearInstitutionClaim(id: number) {
@@ -395,6 +470,32 @@ export async function updateInstitution(id: number, data: Record<string, unknown
     .update({ ...data, updated_at: masterKnex.fn.now() })
     .returning("*");
   return row;
+}
+
+export async function appendInstitutionMedia(
+  id: number,
+  column: "gallery_images" | "video_urls",
+  storagePath: string,
+): Promise<void> {
+  await masterKnex("institutions")
+    .where({ id })
+    .update({
+      [column]: masterKnex.raw("array_append(coalesce(??, ARRAY[]::text[]), ?)", [column, storagePath]),
+      updated_at: masterKnex.fn.now(),
+    });
+}
+
+export async function removeInstitutionMedia(
+  id: number,
+  column: "gallery_images" | "video_urls",
+  storagePath: string,
+): Promise<void> {
+  await masterKnex("institutions")
+    .where({ id })
+    .update({
+      [column]: masterKnex.raw("array_remove(??, ?)", [column, storagePath]),
+      updated_at: masterKnex.fn.now(),
+    });
 }
 
 // ── Countries / Cities ──

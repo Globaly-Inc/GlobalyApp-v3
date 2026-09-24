@@ -18,11 +18,15 @@ export type CourseCard = {
   institution_name: string;
   /** Resolved server-side from the institution record — the model is never asked for image URLs. */
   institution_logo_url: string | null;
+  institution_cover_url: string | null;
   course_name: string;
   degree_level: string;
   duration: string;
   annual_tuition_fee: number | null;
   currency: string;
+  /** How the fee is charged — "per year", "per semester", "per credit", "total". Absent on cards
+   * persisted before the backend started sending it; the card then shows no period at all. */
+  fee_period?: string | null;
   country: string;
   city: string | null;
   intakes: string[];
@@ -75,10 +79,12 @@ export type WireCourseCard = {
   name?: string;
   institution?: string;
   institution_logo_url?: string | null;
+  institution_cover_url?: string | null;
   degree_level?: string;
   duration?: string;
   fees?: number | null;
   currency?: string;
+  fee_period?: string | null;
   country?: string;
   city?: string | null;
   intakes?: string[];

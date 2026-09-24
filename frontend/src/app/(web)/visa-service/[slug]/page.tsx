@@ -3,7 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getVisaServiceProviderBySlug } from "../../search/api";
 import { EntityProfile } from "../../components/profile/entity-profile";
-import { joinParts, type ProfileData, type ProfileRegistration } from "../../components/profile/profile-data";
+import { PageViews } from "../../components/page-views";
+import { joinParts, toProfileSocials, type ProfileData, type ProfileRegistration } from "../../components/profile/profile-data";
 import type { VisaServiceProviderDetail } from "../../search/types";
 import { VisaServicesSection } from "./components/visa-services-section";
 
@@ -48,7 +49,7 @@ function toProfileData(provider: VisaServiceProviderDetail): ProfileData {
     email: provider.email,
     phone: provider.phone,
     addressLabel: joinParts(provider.address, provider.city, provider.state, provider.country_name),
-    socials: [],
+    socials: toProfileSocials(provider),
     locations: hasLocation
       ? [{
         id: provider.id,
@@ -64,6 +65,8 @@ function toProfileData(provider: VisaServiceProviderDetail): ProfileData {
       }]
       : [],
     registration: registrationRows(provider),
+    // Scraped catalog entries have no owner to upload media, so there is never a gallery.
+    gallery: [],
   };
 }
 
@@ -76,10 +79,13 @@ export default async function VisaServicePage({ params }: VisaServicePageProps) 
     <EntityProfile
       data={toProfileData(provider)}
       breadcrumb={
-        <p className="text-xs text-muted-foreground">
-          <Link href="/" className="hover:text-primary">Home</Link> /{" "}
-          <Link href="/search?tab=visa-services" className="hover:text-primary">Visa Services</Link> / {provider.business_name}
-        </p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground">
+            <Link href="/" className="hover:text-primary">Home</Link> /{" "}
+            <Link href="/search?tab=visa-services" className="hover:text-primary">Visa Services</Link> / {provider.business_name}
+          </p>
+          <PageViews type="visa-service" id={provider.id} className="shrink-0" />
+        </div>
       }
     >
       <VisaServicesSection services={provider.services} />

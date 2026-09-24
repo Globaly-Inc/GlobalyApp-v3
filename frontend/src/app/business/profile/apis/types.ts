@@ -66,6 +66,8 @@ export type BusinessService = {
   degree_level: string | null;
   area_of_study: string | null;
   duration: string | null;
+  /** Institutions only — extraction_courses.course_category. Absent for a real business's own services. */
+  course_category?: "academic" | "short_course";
 };
 
 export type ServiceInput = {
@@ -79,11 +81,15 @@ export type ServiceSearchParams = {
   search?: string;
   page?: number;
   limit?: number;
+  course_category?: "academic" | "short_course";
 };
 
 export type ServiceSearchResult = { data: BusinessService[]; total: number };
 
 export type ServicePatch = Partial<ServiceInput> & { is_published?: boolean; public_visibility?: Record<string, boolean> | null };
+
+export type ServiceAiAssistInput = { name: string; category_name?: string; hint?: string };
+export type ServiceAiAssistResult = { text: string };
 
 export type SchemaFieldValue = { schema_field_id: number; value: unknown };
 
@@ -257,6 +263,8 @@ export type BusinessRelation = {
 
 export type RelationInput = {
   partner_business_id: number;
+  /** Which table partner_business_id points at. Omitted means "business", as the API defaults. */
+  partner_kind?: PartnerKind;
   country_ids?: number[];
   valid_from?: string | null;
   valid_until?: string | null;
@@ -303,9 +311,17 @@ export type PartnerInstitutionCourseListParams = { search?: string; page?: numbe
 
 export type PartnerInstitutionCourseListResult = { data: PartnerInstitutionCourse[]; total: number };
 
-export type BusinessSearchParams = { search?: string; limit?: number };
+export type BusinessSearchParams = { search?: string; limit?: number; include_institutions?: boolean; for_partner_link?: boolean };
 
-export type BusinessSearchResult = { id: number; business_name: string; logo_url: string | null };
+// `business_name` is the label for both kinds — the API aliases institution_name onto it, the
+// same way listRelations coalesces the two into partner_name. `kind` is what disambiguates the
+// id, which is NOT unique across the two tables.
+export type BusinessSearchResult = {
+  kind: PartnerKind;
+  id: number;
+  business_name: string;
+  logo_url: string | null;
+};
 
 export type ActivityLogEntry = {
   id: string;

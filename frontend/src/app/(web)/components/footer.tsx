@@ -2,20 +2,21 @@ import Image from "next/image";
 import Link from "next/link";
 import { SocialIcon } from "./social-icon";
 import { NewsletterForm } from "./newsletter-form";
+import { LOGO_WHITE } from "@/lib/public-assets";
 import { FOOTER_LINKS, SOCIALS } from "../const/index";
 
 export function Footer() {
   return (
-    <footer className="bg-[hsl(var(--navy))] text-[hsl(var(--navy-foreground))]">
+    <footer className="bg-[hsl(var(--navy))] text-[hsl(var(--navy-foreground))] print:hidden">
       <div className="container mx-auto px-4 py-12">
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-8 mb-12">
           <div className="col-span-2 md:col-span-3 lg:col-span-1">
             <Link href="/" className="flex items-center mb-4">
-              <Image src="/globaly-logo-white.png" alt="Globaly" width={776} height={188} className="h-8 w-auto" />
+              <Image src={LOGO_WHITE.src} alt="Globalyapp" width={LOGO_WHITE.width} height={LOGO_WHITE.height} className="h-8 w-auto" />
             </Link>
             <p className="text-sm text-white/60 mb-4 max-w-xs">
-              Connecting Students with Domestic and International Education Providers, Education
-              Agents and Service Providers
+              Connecting Students with Domestic and International Education Providers,
+              Education Counselors and Service Providers
             </p>
             <div className="flex gap-3">
               {SOCIALS.map(({ name, href, label }) => (
@@ -39,9 +40,13 @@ export function Footer() {
               <ul className="space-y-2">
                 {links.map((link) => (
                   <li key={link.label}>
-                    <Link href={link.href} className="text-sm text-white/60 hover:text-white transition-colors">
-                      {link.label}
-                    </Link>
+                    {link.href ? (
+                      <Link href={link.href} className="text-sm text-white/60 hover:text-white transition-colors">
+                        {link.label}
+                      </Link>
+                    ) : (
+                      <span className="text-sm text-white/60">{link.label}</span>
+                    )}
                   </li>
                 ))}
               </ul>

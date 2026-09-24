@@ -4,9 +4,16 @@
 
 import type { FastifyInstance } from "fastify";
 import * as service from "../services/enquiries.service.js";
+import * as eligibilityService from "../services/eligibility.service.js";
 import * as messagesService from "../services/messages.service.js";
+import * as threadMembersService from "../services/thread-members.service.js";
 import * as mediaService from "../services/message-media.service.js";
-import { CreateEnquirySchema, EnquiryIdParamSchema, ListEnquiriesQuerySchema } from "../schemas/enquiries.schema.js";
+import {
+  CourseIdParamSchema,
+  CreateEnquirySchema,
+  EnquiryIdParamSchema,
+  ListEnquiriesQuerySchema,
+} from "../schemas/enquiries.schema.js";
 import {
   DistributionIdParamSchema,
   MessageIdParamSchema,
@@ -24,9 +31,16 @@ export async function enquiriesRoutes(app: FastifyInstance) {
   });
 
   app.get("/enquiries", async (req, reply) => {
-    const { page, limit, status } = ListEnquiriesQuerySchema.parse(req.query);
-    const result = await service.listEnquiriesForStudent(Number(req.auth.sub), { page, limit }, status);
+    const { page, limit, status, search } = ListEnquiriesQuerySchema.parse(req.query);
+    const result = await service.listEnquiriesForStudent(Number(req.auth.sub), { page, limit }, { status, search });
     return reply.send(result);
+  });
+
+  // Before /enquiries/:id — that one parses its id as a uuid, so "eligibility" would 400 rather
+  // than fall through if the order were reversed.
+  app.get("/enquiries/eligibility/:courseId", async (req, reply) => {
+    const { courseId } = CourseIdParamSchema.parse(req.params);
+    return reply.send(await eligibilityService.getVerdict(Number(req.auth.sub), courseId));
   });
 
   app.get("/enquiries/:id", async (req, reply) => {
@@ -151,5 +165,20 @@ export async function enquiriesRoutes(app: FastifyInstance) {
     const { id } = DistributionIdParamSchema.parse(req.params);
     const is_favorite = await messagesService.toggleFavoriteAsStudent(id, Number(req.auth.sub));
     return reply.send({ is_favorite });
+  });
+
+  // Read-only, and narrower than the business roster it mirrors — see listMembersAsStudent for
+  // what is withheld. There is no student-side counterpart to the add/role/remove routes.
+  app.get("/enquiry-messages/:id/members", async (req, reply) => {
+    const { id } = DistributionIdParamSchema.parse(req.params);
+    return reply.send(await threadMembersService.listMembersAsStudent(id, Number(req.auth.sub)));
+  });
+
+  // 409 while the enquiry is still open — a student cannot walk out on a lead an agency is
+  // actively working. The UI hides the action then, but the rule is enforced here.
+  app.post("/enquiry-messages/:id/leave", async (req, reply) => {
+    const { id } = DistributionIdParamSchema.parse(req.params);
+    await threadMembersService.leaveAsStudent(id, Number(req.auth.sub));
+    return reply.status(204).send();
   });
 }

@@ -2,7 +2,11 @@
 // session, so it must never import the token/refresh HTTP client.
 
 import type { CourseCard } from "@/app/ai/apis/types";
-import type { EmbedChatEvent, EmbedPublicConfig, GuestMessageRequest, WireCourseCard } from "./types";
+import type {
+  EmbedChatEvent, EmbedContactPrompt, EmbedEndPrompt, EmbedPublicConfig, EmbedThread,
+  GuestContactRequest, GuestConversationEndRequest, GuestConversationEndResponse,
+  GuestMessageRequest, WireCourseCard,
+} from "./types";
 
 const RAW_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 const BASE_URL = `${RAW_BASE.replace(/\/+$/, "")}/api/v3/ai-chat`;
@@ -23,10 +27,12 @@ function toCourseCard(w: WireCourseCard): CourseCard {
     course_name: w.name ?? "",
     institution_name: w.institution ?? "",
     institution_logo_url: w.institution_logo_url ?? null,
+    institution_cover_url: w.institution_cover_url ?? null,
     degree_level: w.degree_level ?? "",
     duration: w.duration ?? "",
     annual_tuition_fee: toFee(w.fees),
     currency: w.currency ?? "",
+    fee_period: w.fee_period ?? null,
     country: w.country ?? "",
     city: w.city ?? null,
     intakes: w.intakes ?? [],
@@ -36,6 +42,25 @@ function toCourseCard(w: WireCourseCard): CourseCard {
 }
 
 export const embedRealApi = {
+  /**
+   * The visitor's existing thread with THIS widget, so reopening the launcher resumes
+   * the conversation. A first-time visitor gets `{ session_id: null, messages: [] }`,
+   * and a failure resolves empty rather than throwing — an unreachable history endpoint
+   * must not stop someone from starting a new chat.
+   */
+  getThread: async (key: string, fingerprint: string): Promise<EmbedThread> => {
+    const params = new URLSearchParams({ embed_key: key, fingerprint });
+    try {
+      const res = await fetch(`${BASE_URL}/guest/session?${params}`);
+      if (!res.ok) return { session_id: null, messages: [] };
+      return res.json();
+    } catch {
+      return { session_id: null, messages: [] };
+    }
+  },
+
+  toCourseCards: (cards: WireCourseCard[]): CourseCard[] => cards.map(toCourseCard),
+
   resolveConfig: async (key: string): Promise<EmbedPublicConfig> => {
     const res = await fetch(`${BASE_URL}/embed/resolve?key=${encodeURIComponent(key)}`);
     if (!res.ok) throw new Error(res.status === 404 ? "This counsellor is unavailable." : "Failed to load.");
@@ -90,6 +115,10 @@ export const embedRealApi = {
         onEvent({ type: "cards", cards: (parsed as WireCourseCard[]).map(toCourseCard) });
       } else if (eventType === "chips") {
         onEvent({ type: "chips", chips: parsed as string[] });
+      } else if (eventType === "contact-prompt") {
+        onEvent({ type: "contact-prompt", prompt: parsed as EmbedContactPrompt });
+      } else if (eventType === "end-prompt") {
+        onEvent({ type: "end-prompt", prompt: parsed as EmbedEndPrompt });
       }
       // session / guest-meta / sources / usage — nothing to render in the widget
     };
@@ -106,5 +135,47 @@ export const embedRealApi = {
         else if (line === "") eventType = "";
       }
     }
+  },
+
+  /**
+   * The visitor's answer to the contact card — a submission or a "not now".
+   *
+   * "Not now" is posted rather than handled purely in React state because the decision has
+   * to outlive the tab: the cooldown that stops the card reappearing on the next message is
+   * counted server-side, so a dismissal the backend never heard about would be undone by the
+   * next reply.
+   */
+  submitContact: async (input: GuestContactRequest): Promise<void> => {
+    const res = await fetch(`${BASE_URL}/guest/contact`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new Error((body as { error?: string } | null)?.error ?? "Couldn't save your details. Please try again.");
+    }
+  },
+
+  /**
+   * The visitor's answer to the end-of-chat offer.
+   *
+   * Confirming is the only thing that sends a summary — there is no timer and no leave beacon
+   * any more. Returns whether a summary was actually queued, which is false when they
+   * confirmed without ever having given an address.
+   */
+  confirmConversationEnd: async (
+    input: GuestConversationEndRequest,
+  ): Promise<GuestConversationEndResponse> => {
+    const res = await fetch(`${BASE_URL}/guest/conversation-end`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      throw new Error((body as { error?: string } | null)?.error ?? "Something went wrong. Please try again.");
+    }
+    return res.json();
   },
 };

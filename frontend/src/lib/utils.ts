@@ -28,6 +28,28 @@ export function formatNumber(value: number | null | undefined) {
   return new Intl.NumberFormat("en-US").format(value);
 }
 
+/**
+ * A public price as the row stores it: "AUD 47,388", or "AUD 800 – 1,500" when `to` is given.
+ * `null` when there is no amount, so a caller can drop it in place of its own null check.
+ *
+ * No conversion — the figure is shown in the currency it was quoted in. The code is pulled out of
+ * whatever the column holds ("aud", "AUD$ 1,000") because scraped currency values are messy.
+ */
+export function amountLabel(
+  amount: number | string | null | undefined,
+  currency?: string | null,
+  to?: number | string | null,
+): string | null {
+  // An empty column is not zero — toNumberOrNull would read "" as 0 and quote a free course.
+  const num = (v: number | string | null | undefined) => (v === "" ? null : toNumberOrNull(v));
+  const low = num(amount);
+  if (low == null) return null;
+  const high = num(to);
+  const code = /[A-Za-z]{3}/.exec(currency ?? "")?.[0]?.toUpperCase();
+  const range = high == null ? "" : ` – ${formatNumber(Math.round(high))}`;
+  return `${code ? `${code} ` : ""}${formatNumber(Math.round(low))}${range}`;
+}
+
 /** Postgres `numeric`/`decimal` columns arrive over the wire as strings (pg avoids float precision loss) — coerce at the API boundary before a form treats it as a number. */
 export function toNumberOrNull(value: number | string | null | undefined): number | null {
   if (value == null) return null;

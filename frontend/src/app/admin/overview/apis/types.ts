@@ -14,6 +14,15 @@ export type FeatureUsage = {
   last_week: number;
 };
 
+export type RecentSignup = {
+  id: number;
+  uuid: string;
+  first_name: string | null;
+  last_name: string | null;
+  email: string;
+  created_at: string;
+};
+
 export type DashboardData = {
   preset: string;
   generated_at: string;
@@ -31,4 +40,11 @@ export type DashboardData = {
     businesses: GrowthPoint[];
     activity: GrowthPoint[];
   };
+  user_breakdown: {
+    by_category: { category: string; count: number }[];
+  };
+  extraction: {
+    by_status: { status: string; count: number }[];
+  };
+  recent_signups: RecentSignup[];
 };

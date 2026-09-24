@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, CornerUpLeft, Paperclip, Sparkles } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Copy, CornerUpLeft, Paperclip, Sparkles } from "lucide-react";
 import type { CourseCard as CourseCardType, Message, ResponseBlock } from "../apis/types";
 import { CourseCard } from "./course-card";
 import { FeedbackButtons } from "./feedback-buttons";
@@ -11,10 +11,12 @@ import { setReplyTo } from "../store/ai-chat-slice";
 import { splitQuote } from "../utils";
 import { useAppDispatch } from "@/lib/hooks";
 import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 
 type ChatMessageProps = {
   message: Message;
   onChipClick?: (chip: string) => void;
+  onSend?: (value: string) => void;
 };
 
 /** Cards size themselves to the container, not the viewport — the same grid has to
@@ -110,27 +112,58 @@ function Chips({ chips, onChipClick }: { chips: string[]; onChipClick?: (chip: s
   };
 
   return (
-    <div className="flex flex-col gap-2 pt-1">
+    <div className="flex flex-col gap-2.5 pt-1">
       <div className="flex flex-wrap gap-1.5">
         {chips.map((chip) => {
           const active = selected.includes(chip);
           return (
-            <Button
+            <button
               key={chip}
-              variant={active ? "default" : "outline"}
-              size="sm"
-              className="h-7 rounded-full text-xs font-normal"
+              type="button"
               onClick={() => toggle(chip)}
+              className={cn(
+                "rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-150",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                "active:scale-[0.96]",
+                active
+                  ? "border-primary bg-primary text-primary-foreground shadow-sm shadow-primary/30 scale-[1.02]"
+                  : "border-border/70 bg-muted/50 text-muted-foreground hover:border-primary/50 hover:bg-primary/8 hover:text-foreground hover:shadow-sm",
+              )}
             >
               {chip}
-            </Button>
+            </button>
           );
         })}
       </div>
       {selected.length > 0 && (
-        <Button size="sm" className="self-start rounded-full" onClick={sendSelected}>
-          Ask ({selected.length})
+        <Button size="sm" className="self-start rounded-full px-4 h-7 text-xs gap-1.5" onClick={sendSelected}>
+          Send {selected.length > 1 && `(${selected.length})`}
         </Button>
+      )}
+    </div>
+  );
+}
+
+const CARD_PAGE = 5;
+
+function CourseCardList({ cards }: { cards: CourseCardType[] }) {
+  const [expanded, setExpanded] = useState(false);
+  const visible = expanded ? cards : cards.slice(0, CARD_PAGE);
+  return (
+    <div className="flex flex-col gap-3">
+      <div className={CARD_GRID}>
+        {visible.map((card, i) => (
+          <CourseCard key={card.id ?? i} card={card} />
+        ))}
+      </div>
+      {cards.length > CARD_PAGE && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex items-center gap-1.5 self-start rounded-full border px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
+        >
+          {expanded ? <><ChevronUp className="size-3.5" /> Show less</> : <><ChevronDown className="size-3.5" /> View {cards.length - CARD_PAGE} more</>}
+        </button>
       )}
     </div>
   );
@@ -147,6 +180,7 @@ function AssistantTurn({
   chips,
   blocks,
   onChipClick,
+  onSend,
   footer,
 }: {
   content: string;
@@ -154,6 +188,7 @@ function AssistantTurn({
   chips: string[];
   blocks: ResponseBlock[];
   onChipClick?: (chip: string) => void;
+  onSend?: (value: string) => void;
   footer?: React.ReactNode;
 }) {
   // The model routinely answers its own question twice — once as a quick_replies
@@ -166,9 +201,9 @@ function AssistantTurn({
       <AssistantMark />
       <div className="flex min-w-0 flex-1 flex-col gap-4">
         {content && <MessageMarkdown text={content} />}
-        {blocks.length > 0 && <MessageBlocks blocks={blocks} onAction={onChipClick} />}
+        {blocks.length > 0 && <MessageBlocks blocks={blocks} onAction={onChipClick} onSend={onSend} />}
         {cards.length > 0 && (
-          <div className={CARD_GRID}>
+          <div className={cards.length === 1 ? "w-full max-w-[300px]" : CARD_GRID}>
             {cards.map((card, i) => (
               <CourseCard key={card.id ?? i} card={card} />
             ))}
@@ -181,7 +216,7 @@ function AssistantTurn({
   );
 }
 
-export function ChatMessage({ message, onChipClick }: ChatMessageProps) {
+export function ChatMessage({ message, onChipClick, onSend }: ChatMessageProps) {
   if (message.role === "user") {
     const { quote, body } = splitQuote(message.content);
     return (
@@ -209,6 +244,7 @@ export function ChatMessage({ message, onChipClick }: ChatMessageProps) {
       chips={message.chips}
       blocks={message.blocks}
       onChipClick={onChipClick}
+      onSend={onSend}
       footer={
         // Optimistic rows have no server id yet, so there's nothing to rate.
         message.id > 0 ? (
@@ -232,14 +268,16 @@ export function StreamingMessage({
   chips,
   blocks = [],
   onChipClick,
+  onSend,
 }: {
   content: string;
   cards: CourseCardType[];
   chips: string[];
   blocks?: ResponseBlock[];
   onChipClick?: (chip: string) => void;
+  onSend?: (value: string) => void;
 }) {
   return (
-    <AssistantTurn content={content} cards={cards} chips={chips} blocks={blocks} onChipClick={onChipClick} />
+    <AssistantTurn content={content} cards={cards} chips={chips} blocks={blocks} onChipClick={onChipClick} onSend={onSend} />
   );
 }

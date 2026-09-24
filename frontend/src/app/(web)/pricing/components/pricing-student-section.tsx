@@ -1,11 +1,27 @@
+"use client";
+
 import Link from "next/link";
 import { Check } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
-import { studentFeatures, earnCards, aiCosts } from "../data";
+import { studentFeatures, earnCards, aiCosts, SEARCHABLE_FEATURE_INDEX } from "../data";
+import { usePlatformStats } from "../../hooks/use-platform-stats";
+import { formatStatValue } from "../../types";
 
 export function PricingStudentSection() {
+  const { stats } = usePlatformStats();
+
+  // Everything a student can search from one box: the three catalogs plus marketplace services.
+  const features = studentFeatures.map((f, i) => {
+    if (i !== SEARCHABLE_FEATURE_INDEX || !stats) return f;
+    const listings = stats.courses + stats.institutions + stats.educationCounselors + stats.serviceListings;
+    return {
+      text: `Search & compare ${formatStatValue(listings)} listings`,
+      sub: `Courses, institutions, education counselors across ${formatStatValue(stats.countries)} countries`,
+    };
+  });
+
   return (
     <>
       {/* Student free forever */}
@@ -13,11 +29,11 @@ export function PricingStudentSection() {
         <div className="container mx-auto max-w-3xl px-4 text-center">
           <Badge className="mb-4 border-0 bg-emerald-100 px-4 py-1 text-sm text-emerald-700">Free forever</Badge>
           <h2 className="mb-3 text-3xl font-bold md:text-4xl">
-            Study abroad without paying a single cent to Globaly.
+            Study at home or overseas without paying a single cent to Globaly.
           </h2>
           <p className="mx-auto mb-8 max-w-xl text-muted-foreground">
             We believe every student deserves access to the best education guidance — regardless of budget. Your
-            profile, your applications, your AI counsellor, your entire study abroad journey. Free.
+            profile, your applications, your AI counsellor, your entire education journey. Free.
           </p>
 
           <Card className="mx-auto max-w-lg text-left">
@@ -26,7 +42,7 @@ export function PricingStudentSection() {
                 Everything included at $0
               </p>
               <div className="space-y-4">
-                {studentFeatures.map((f) => (
+                {features.map((f) => (
                   <div key={f.text} className="flex gap-3">
                     <Check className="mt-0.5 h-5 w-5 shrink-0 text-emerald-500" />
                     <div>

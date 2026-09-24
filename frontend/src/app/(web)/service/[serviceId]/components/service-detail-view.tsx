@@ -29,6 +29,7 @@ import { ReviewForm } from "@/app/personal/earn/services/components/review-form"
 import { CategoryCover } from "@/app/personal/earn/services/components/category-cover";
 import { BookingDialog } from "@/app/personal/earn/services/components/booking-dialog";
 import type { BookingAnswerValue } from "@/app/personal/earn/services/apis";
+import { PageViews } from "../../../components/page-views";
 
 export function ServiceDetailView({ serviceId }: Readonly<{ serviceId: number }>) {
   const router = useRouter();
@@ -167,6 +168,7 @@ export function ServiceDetailView({ serviceId }: Readonly<{ serviceId: number }>
                 <CalendarDays className="h-4 w-4" />
                 Listed {formatDate(service.created_at)}
               </span>
+              <PageViews type="service" id={service.id} />
             </div>
           </div>
         </div>

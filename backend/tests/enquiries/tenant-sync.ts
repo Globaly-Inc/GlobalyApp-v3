@@ -74,7 +74,7 @@ async function makeStudent(): Promise<number> {
   return user.id;
 }
 
-async function makeJobAndCourse(): Promise<{ jobId: string; courseId: string; overviewId: string }> {
+async function makeJobAndCourse(): Promise<{ jobId: string; courseId: string; overviewId: string; institutionId: number }> {
   const suffix = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
   const [job] = await masterKnex("superadmin.extraction_jobs")
     .insert({
@@ -88,7 +88,19 @@ async function makeJobAndCourse(): Promise<{ jobId: string; courseId: string; ov
   const [overview] = await masterKnex("superadmin.extraction_institution_overview")
     .insert({ job_id: job.id, name: `Tenant Sync Institution ${suffix}`, logo_url: "https://example.com/logo.png" })
     .returning("id");
-  return { jobId: job.id, courseId: course.id, overviewId: overview.id };
+  // The promoted institution — what a business_representations row targets and what the enquiry's
+  // institution_id points at.
+  const [institution] = await masterKnex("institutions")
+    .insert({
+      institution_name: `Tenant Sync Institution ${suffix}`,
+      subdomain: `tenant-sync-inst-${suffix}`,
+      email: `tenant-sync-inst-${suffix}@example.com`,
+      source_job_id: job.id,
+      status: "pending",
+      claim_status: "unclaimed",
+    })
+    .returning("id");
+  return { jobId: job.id, courseId: course.id, overviewId: overview.id, institutionId: institution.id };
 }
 
 /** Provisioned business (real schema, tenant migrations applied) — required to
@@ -107,25 +119,24 @@ async function makeProvisionedBusiness(): Promise<{ id: number; schemaUuid: stri
     })
     .returning(["id", "schema_name"]);
   await provisionBusinessSchema(row.schema_name);
-  await masterKnex("enquiry_match_directory").insert({
-    business_id: row.id,
-    subject_area: "Tenant Sync Subject",
-    country_code: "AU",
-    verification_status: "verified",
-    latitude: null,
-    longitude: null,
-    is_institution_contact: false,
-    is_suspended: false,
+  // Ranking attributes live on the business itself now. No coordinates: this suite only cares
+  // that a match happens at all, and an unknown distance still ranks (T3).
+  await masterKnex("businesses").where({ id: row.id }).update({
+    country_id: await getCountryId("AU"),
+    status: "verified",
+    enquiry_enabled: true,
   });
   return { id: row.id, schemaUuid: row.schema_name };
 }
 
-async function makeEnquiry(studentId: number, courseId: string, extractionJobId: string) {
+async function makeEnquiry(studentId: number, courseId: string, extractionJobId: string, institutionId: number) {
   const [row] = await masterKnex("enquiries")
     .insert({
       student_id: studentId,
       course_id: courseId,
       extraction_job_id: extractionJobId,
+      // Matching keys its whole candidate query on this — the same derivation createEnquiry does.
+      institution_id: institutionId,
       message: "This is a test enquiry message for tenant-sync tests.",
       status: "pending",
     })
@@ -137,8 +148,11 @@ async function cleanup(opts: { studentId: number; jobId: string; businessId: num
   await masterKnex("enquiry_distributions").where({ enquiry_id: opts.enquiryId }).delete();
   await masterKnex("audit_logs").where({ entity_id: opts.enquiryId }).delete();
   await masterKnex("enquiries").where({ id: opts.enquiryId }).delete();
-  await masterKnex("enquiry_match_directory").where({ business_id: opts.businessId }).delete();
+  await masterKnex("business_representations")
+    .where({ originator_id: opts.businessId, originator_type: "business" })
+    .delete();
   await masterKnex("businesses").where({ id: opts.businessId }).delete();
+  await masterKnex("institutions").where({ source_job_id: opts.jobId }).delete();
   await masterKnex("superadmin.extraction_institution_overview").where({ id: opts.overviewId }).delete();
   await masterKnex("superadmin.extraction_courses").where({ job_id: opts.jobId }).delete();
   await masterKnex("superadmin.extraction_jobs").where({ id: opts.jobId }).delete();
@@ -151,16 +165,18 @@ async function main() {
 
   await assert("matched distribution syncs a tenant enquiries row + shows up in business inbox listing", async () => {
     const studentId = await makeStudent();
-    const { jobId, courseId, overviewId } = await makeJobAndCourse();
+    const { jobId, courseId, overviewId, institutionId } = await makeJobAndCourse();
     const business = await makeProvisionedBusiness();
-    // Eligibility is representation-only — a directory row alone matches nothing.
-    await masterKnex("representations").insert({
-      business_id: business.id,
-      extraction_job_id: jobId,
-      extraction_course_id: courseId,
+    // Eligibility is the representation and nothing else — a business with perfect country and
+    // verification but no link to this institution matches nothing.
+    await masterKnex("business_representations").insert({
+      originator_id: business.id,
+      originator_type: "business",
+      target_id: institutionId,
+      target_type: "institution",
       status: "active",
     });
-    const enquiry = await makeEnquiry(studentId, courseId, jobId);
+    const enquiry = await makeEnquiry(studentId, courseId, jobId, institutionId);
 
     try {
       await runMatching(enquiry.id);
@@ -178,7 +194,8 @@ async function main() {
       eq(tenantRow.distribution_id, dist.id, "tenant row distribution_id");
       eq(tenantRow.status, "distributed", "tenant row status");
 
-      const inbox = await distributionsService.listForBusiness(tenantDb, {});
+      const recipient = { kind: "business" as const, id: business.id };
+      const inbox = (await distributionsService.listForBusiness(tenantDb, recipient, { page: 1, limit: 50 })).data;
       eq(inbox.length, 1, "inbox row count");
       eq(inbox[0].enquiry_id, enquiry.id, "inbox enquiry_id");
       eq(inbox[0].distribution_id, dist.id, "inbox distribution_id");
@@ -187,6 +204,24 @@ async function main() {
       eq(inbox[0].institution_name?.startsWith("Tenant Sync Institution"), true, "inbox institution_name");
       eq(inbox[0].tier, dist.tier, "inbox tier");
       eq(inbox[0].status, dist.status, "inbox status");
+
+      // ── 3. The mirror repairs itself on read ──
+      //
+      // Every writer of business_enquiries swallows its errors, and the listing treats a
+      // missing row as "no lead" — so a single flaked write used to lose the lead forever.
+      // Deleting the row is exactly what a swallowed failure leaves behind.
+      await tenantDb("business_enquiries").where({ enquiry_id: enquiry.id }).delete();
+      eq(
+        await tenantDb("business_enquiries").where({ enquiry_id: enquiry.id }).first(),
+        undefined,
+        "tenant row is gone before the repair",
+      );
+
+      const repaired = (await distributionsService.listForBusiness(tenantDb, recipient, { page: 1, limit: 50 })).data;
+      eq(repaired.length, 1, "the lead is back in the inbox");
+      eq(repaired[0].distribution_id, dist.id, "repaired distribution_id");
+      // Replayed from the central row, not reset to 'distributed'.
+      eq(repaired[0].status, dist.status, "repaired status comes from the central row");
     } finally {
       await cleanup({ studentId, jobId, businessId: business.id, enquiryId: enquiry.id, overviewId });
     }

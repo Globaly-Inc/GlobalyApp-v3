@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Bell, ChevronDown, Coins, Loader2, Sparkles } from "lucide-react";
+import { Bell, ChevronDown, Coins, Loader2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -24,6 +24,8 @@ import { BUSINESS_NAV_GROUPS, INSTITUTION_SCHOLARSHIPS_ITEM, withBusinessId } fr
 import { BusinessSwitcher, type SwitcherOrg } from "./components/business-switcher";
 import { PortalSidebar } from "@/components/portal-sidebar";
 import { cn } from "@/lib/utils";
+import { ICON } from "@/lib/public-assets";
+import { PERSONAL_PORTAL_HOME } from "@/app/personal/const";
 
 const SHELL_WIDTH = "mx-auto w-full max-w-7xl px-3 sm:px-4 md:px-6";
 
@@ -50,17 +52,20 @@ function institutionsAsOrgs(institutions: AuthMeInstitution[]): SwitcherOrg[] {
   }));
 }
 
-const INSTITUTION_BUSINESS_ITEMS = new Set(["Business Profile", "Representative", "Team", "Services"]);
-// Enquiries and Messages are the only other items backed by real pages, and both call
-// requireBusinessContext routes — offering them to an institution just produced a 403
-// ("This endpoint requires a business context"). Everything else in the sidebar is a
-// ComingSoon placeholder that makes no requests, so it stays.
-const INSTITUTION_HIDDEN_ITEMS = new Set(["Enquiries", "Messages"]);
+// "Representative" is hidden for institutions for now — not a removal, just not shown here yet.
+// Order is explicit (Profile, Branches, Services, Scholarships, Team) rather than following
+// BUSINESS_NAV_GROUPS' own item order, which is tuned for the plain-business sidebar instead.
+const INSTITUTION_BUSINESS_ITEM_ORDER = ["Business Profile", "Branches", "Services", "Scholarships", "Team", "Site contents"];
+// Enquiries and Messages used to be hidden here: both called requireBusinessContext routes and
+// just produced a 403 for an institution. They now serve either org kind, because an enquiry
+// nobody represents falls back to the institution that owns the course and it works that lead in
+// these very screens. Everything else in the sidebar is a ComingSoon placeholder that makes no
+// requests, so it stays — so outside the Business group there is nothing left to filter.
 const INSTITUTION_NAV_GROUPS = BUSINESS_NAV_GROUPS.map((group) => {
-  if (group.label !== "Business") {
-    return { ...group, items: group.items.filter((item) => !INSTITUTION_HIDDEN_ITEMS.has(item.label)) };
-  }
-  return { ...group, items: [...group.items.filter((item) => INSTITUTION_BUSINESS_ITEMS.has(item.label)), INSTITUTION_SCHOLARSHIPS_ITEM] };
+  if (group.label !== "Business") return group;
+  const byLabel = new Map([...group.items, INSTITUTION_SCHOLARSHIPS_ITEM].map((item) => [item.label, item]));
+  const items = INSTITUTION_BUSINESS_ITEM_ORDER.map((label) => byLabel.get(label)).filter((item) => item !== undefined);
+  return { ...group, items };
 }).filter((group) => group.items.length > 0);
 
 export function BusinessShell({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -116,18 +121,11 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
     };
   }, [dispatch]);
 
-  // A full reload is the honest way to re-switch: every slice already holds data
-  // fetched under the previous business, and there is no cross-slice reset.
-  //
-  // /business/profile/[businessId] is an exception: it owns its own org-reconciliation
-  // effect, switching context to whatever business the URL names (needed for deep links).
-  // Reloading the SAME url there would leave it pointed at the OLD business id, and that
-  // effect would immediately switch back — silently undoing this switch. Navigate to the
-  // new business's own profile url instead and let that page do the (now-agreeing) switch.
+  
   const handleSwitchBusiness = async (orgId: string) => {
     if (orgId === activeOrgId) return;
     saveSelectedOrgId(orgId);
-    if (pathname?.startsWith("/business/profile")) {
+    if (pathname === "/business/profile" || /^\/business\/profile\/\d/.test(pathname ?? "")) {
       const target = businesses.find((b) => b.org_id === orgId);
       if (target) {
         window.location.assign(`/business/profile/${target.id}`);
@@ -188,7 +186,7 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
   }
 
   const isInstitution = institutionOrgIds.has(activeOrgId ?? "");
-  const initial = profile?.business_name?.[0]?.toUpperCase() ?? "B";
+  const initial = (user?.first_name?.[0] ?? user?.email?.[0])?.toUpperCase() ?? "U";
   const activeBusinessId = businesses.find((b) => b.org_id === activeOrgId)?.id ?? null;
   const navGroups = withBusinessId(isInstitution ? INSTITUTION_NAV_GROUPS : BUSINESS_NAV_GROUPS, activeBusinessId);
 
@@ -200,13 +198,17 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
         <div className="flex h-16 items-center">
           <div className="flex h-16 shrink-0 items-center px-3 sm:px-4 md:w-20 md:justify-center md:px-0">
             <Link href="/" className="flex shrink-0 items-center">
-              <Image src="/globaly-red-icon.png" alt="Globaly" width={64} height={64} className="size-9 rounded-[10px]" />
+              <Image src={ICON.src} alt="Globalyapp" width={ICON.width} height={ICON.height} className="size-9 rounded-[10px]" />
             </Link>
           </div>
           {/* ~60% of the bar's height: it marks the rail's edge without reading as a second border. */}
           <span className="hidden md:block h-10 w-px shrink-0 bg-border" aria-hidden />
           <div className="flex min-w-0 items-center pl-3 md:pl-4">
-            <BusinessSwitcher businesses={businesses} activeOrgId={activeOrgId} onSwitch={handleSwitchBusiness} />
+            <BusinessSwitcher
+              businesses={businesses}
+              activeOrgId={activeOrgId}
+              onSwitch={handleSwitchBusiness}
+            />
           </div>
 
           <div className="flex items-center gap-2 ml-auto pr-3 sm:pr-4 md:pr-2">
@@ -217,13 +219,6 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
             >
               <Bell className="h-4.5 w-4.5" />
               <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-destructive" aria-hidden />
-            </Link>
-            <Link
-              href="/business/ai-widget"
-              className="hidden md:inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 h-8 text-xs font-semibold bg-primary/10 text-primary hover:bg-primary/15 transition-colors"
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              AI Counsellor
             </Link>
             <Link
               href="/business/credits"
@@ -240,7 +235,7 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
             <DropdownMenuTrigger
               render={
                 <button
-                  className="mr-3 sm:mr-4 md:mr-6 flex items-center gap-1.5 rounded-full border border-border py-1 pl-1 pr-2 hover:bg-muted cursor-pointer"
+                  className="mr-3 sm:mr-4 md:mr-6 flex items-center gap-1.5 rounded-md border border-border py-1 pl-1 pr-2 hover:bg-muted cursor-pointer"
                   type="button"
                   aria-label="Account menu"
                 />
@@ -252,16 +247,24 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
               </Avatar>
               <ChevronDown className="h-4 w-4 text-muted-foreground" />
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 p-1.5">
-              <div className="px-1.5 py-1.5">
-                <p className="text-sm font-medium truncate">{profile?.business_name || "Business"}</p>
-                <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
-              </div>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/business/profile")}>
-                My Profile
+            <DropdownMenuContent align="end" className="w-56 p-1.5 rounded-md">
+              <DropdownMenuItem
+                className="cursor-pointer px-1.5 py-1.5 flex items-center gap-2"
+                onClick={() => router.push("/business/profile")}
+              >
+                <Avatar className="size-8 shrink-0">
+                  {user?.photo_url && <AvatarImage src={user.photo_url} alt={user?.first_name ?? "User"} />}
+                  <AvatarFallback className="text-primary-foreground!">{initial}</AvatarFallback>
+                </Avatar>
+                <div className="min-w-0">
+                  <p className="text-sm font-medium truncate">
+                    {[user?.first_name, user?.last_name].filter(Boolean).join(" ") || "User"}
+                  </p>
+                  <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+                </div>
               </DropdownMenuItem>
-              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/personal/portal")}>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push(PERSONAL_PORTAL_HOME)}>
                 Personal Portal
               </DropdownMenuItem>
               <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/business/portal")}>

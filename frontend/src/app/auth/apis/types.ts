@@ -22,7 +22,10 @@ export type AuthMeInstitution = {
 };
 
 export type AuthUser = {
+  first_name: string | null;
+  last_name: string | null;
   email: string;
+  photo_url: string | null;
   type: "admin" | "platform_user" | "agent";
   role: string | null;
   /** Whether this platform_user is an admin at all, independent of `type` — a business-scoped

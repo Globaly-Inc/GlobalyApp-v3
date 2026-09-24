@@ -1,8 +1,242 @@
 // URL filtering and markdown utilities.
 // Scrapers return markdown, so we mostly work with URLs and text — not raw HTML.
 
+import { getDomain } from "tldts";
+
+
+// Local-parts that name a narrow mailbox rather than a general point of contact — a same-domain
+// scan turns these up constantly (footer privacy notices, webmaster credits) but they're a worse
+// answer than almost anything else on the same domain, so callers should prefer any other match
+// found before falling back to one of these.
+const LOW_PRIORITY_LOCAL_PARTS = new Set(["privacy", "webmaster", "postmaster", "noreply", "no-reply", "abuse"]);
+
+export function extractDomainEmails(text: string, institutionDomain: string): string[] {
+  const domain = institutionDomain.replace(/^www\./i, "").toLowerCase();
+  const re = /[a-zA-Z0-9._%+-]+@([a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/g;
+  const found = new Set<string>();
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text)) !== null) {
+    const emailDomain = m[1].toLowerCase();
+    if (emailDomain === domain || emailDomain.endsWith(`.${domain}`)) found.add(m[0]);
+  }
+  // Rank ordinary addresses ahead of low-priority ones (privacy@, webmaster@, ...) so the first
+  // entry is the best guess, not just whichever appeared first in the text.
+  return [...found].sort((a, b) => {
+    const aLow = LOW_PRIORITY_LOCAL_PARTS.has(a.split("@")[0].toLowerCase()) ? 1 : 0;
+    const bLow = LOW_PRIORITY_LOCAL_PARTS.has(b.split("@")[0].toLowerCase()) ? 1 : 0;
+    return aLow - bLow;
+  });
+}
+
+/**
+ * Every `href="..."` value in raw HTML — deliberately not the scraper's own `links` array,
+ * which (for Scrapling/Crawl4AI) is `extractLinksFromMarkdown()` in scraper.ts: a regex over
+ * the already-converted MARKDOWN text, looking for `[text](url)` or bare URLs. An icon-only
+ * anchor (`<a href="..."><span class="fab fa-facebook-f"></span></a>`, no visible text) never
+ * produces either pattern in markdown, so that array is exactly as blind to it as the LLM
+ * reading the same markdown — pulling from raw HTML is the only way to actually see it.
+ */
+export function extractHrefsFromHtml(html: string): string[] {
+  const hrefs = new Set<string>();
+  const re = /\bhref\s*=\s*["']([^"'#][^"']*)["']/gi;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(html)) !== null) hrefs.add(m[1]);
+  return [...hrefs];
+}
+
+export type SocialLinks = {
+  facebook_url: string | null;
+  instagram_url: string | null;
+  twitter_url: string | null;
+  linkedin_url: string | null;
+  youtube_url: string | null;
+  other_social_links: { label: string; url: string }[];
+};
+
+const KNOWN_PLATFORMS: { key: keyof Omit<SocialLinks, "other_social_links">; hosts: RegExp }[] = [
+  { key: "facebook_url", hosts: /(^|\.)facebook\.com$/i },
+  { key: "instagram_url", hosts: /(^|\.)instagram\.com$/i },
+  { key: "twitter_url", hosts: /(^|\.)(twitter\.com|x\.com)$/i },
+  { key: "linkedin_url", hosts: /(^|\.)linkedin\.com$/i },
+  { key: "youtube_url", hosts: /(^|\.)(youtube\.com|youtu\.be)$/i },
+];
+
+// A handful of other platforms worth a recognizable label instead of a generic "Link".
+const OTHER_PLATFORM_LABELS: { hosts: RegExp; label: string }[] = [
+  { hosts: /(^|\.)tiktok\.com$/i, label: "TikTok" },
+  { hosts: /(^|\.)threads\.net$/i, label: "Threads" },
+  { hosts: /(^|\.)wa\.me$|whatsapp\.com$/i, label: "WhatsApp" },
+  { hosts: /(^|\.)pinterest\.com$/i, label: "Pinterest" },
+  { hosts: /(^|\.)snapchat\.com$/i, label: "Snapchat" },
+  { hosts: /(^|\.)wechat\.com$/i, label: "WeChat" },
+];
+
+/**
+ * Classifies raw page links (the scraper's separate `links` array, not markdown text) into
+ * known social platforms by domain — deterministic, no LLM involved. Exists because an
+ * icon-only social footer (`<a href="..."><span class="fab fa-facebook-f"></span></a>`, no
+ * visible link text) is extremely common and gets stripped or blanked by HTML→markdown
+ * conversion before the LLM ever sees it — the raw href survives in `links` regardless of
+ * what markdown conversion did to the surrounding text.
+ */
+export function extractSocialLinks(links: string[]): SocialLinks {
+  const result: SocialLinks = {
+    facebook_url: null, instagram_url: null, twitter_url: null, linkedin_url: null, youtube_url: null,
+    other_social_links: [],
+  };
+  const seenOther = new Set<string>();
+
+  for (const link of links) {
+    let host: string;
+    try {
+      host = new URL(link).hostname;
+    } catch {
+      continue;
+    }
+
+    const known = KNOWN_PLATFORMS.find((p) => p.hosts.test(host));
+    if (known) {
+      if (!result[known.key]) result[known.key] = link;
+      continue;
+    }
+
+    const other = OTHER_PLATFORM_LABELS.find((p) => p.hosts.test(host));
+    if (other && !seenOther.has(link)) {
+      seenOther.add(link);
+      result.other_social_links.push({ label: other.label, url: link });
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Fixes a specific LLM extraction quirk: given a page with a root-relative asset URL like
+ * `<img src="/-/media/logos/foo.png">` (Sitecore's media-library convention, but any
+ * root-relative path triggers this), the LLM sometimes "helpfully" absolutizes it by
+ * prefixing `https://` without ever inserting the actual domain — producing
+ * `https://-/media/logos/foo.png`, which parses as a syntactically valid URL (hostname:
+ * "-") so nothing downstream catches it, but is completely broken.
+ *
+ * Detects this by hostname shape (a real one has a dot, or is "localhost") and re-resolves
+ * treating "hostname + pathname + search" as the real relative path it should have been.
+ */
+export function fixMalformedAbsoluteUrl(value: string | null | undefined, pageUrl: string): string | null {
+  if (!value) return value ?? null;
+  try {
+    const parsed = new URL(value);
+    if (parsed.hostname.includes(".") || parsed.hostname === "localhost") return value;
+    const relative = `/${parsed.hostname}${parsed.pathname}${parsed.search}`;
+    return new URL(relative, pageUrl).href;
+  } catch {
+    try {
+      return new URL(value, pageUrl).href;
+    } catch {
+      return value;
+    }
+  }
+}
+
+/** Floor under what the LLM URL classifier may keep before we stop believing it. */
+export const MIN_CLASSIFIER_KEEP_RATIO = 0.25;
+
+/**
+ * Below this much scraped markdown a page is navigation chrome, not content, and a course
+ * extraction call on it is spend with no chance of a return.
+ *
+ * ponytail: tuned against one real run (Yale, 266 extractions) rather than guessed — at 4,000 it
+ * skipped 74 zero-yield calls and lost 2 productive pages; 2,500 saved only 32; 5,000 saved 19
+ * more but cost 6. Re-measure against `extraction_pages` before moving it.
+ */
+export const MIN_EXTRACTABLE_CHARS = 4000;
+
+/**
+ * Has the URL classifier failed rather than filtered? It exists to NARROW a noisy heuristic list,
+ * so returning a small fraction of it is a failure signal, not a tighter answer.
+ *
+ * Live on Yale it returned 154 of 1,363 — keeping 151 catalog.yale.edu pages and dropping ~1,180
+ * siblings of identical shape — and because `extraction_llm_cache` keys on the exact prompt, every
+ * re-run replayed that answer for free and the job looked permanently stuck at 158 pages.
+ */
+export function classifierDistrusted(
+  heuristicCount: number,
+  classifierCount: number,
+  floor = MIN_CLASSIFIER_KEEP_RATIO,
+): boolean {
+  if (heuristicCount <= 0) return false;
+  return classifierCount < heuristicCount * floor;
+}
+
+/**
+ * Paths that are university INFRASTRUCTURE, never a programme a student can apply to.
+ *
+ * Measured over every page this pipeline has crawled: these markers appear on 250+ queued pages
+ * and produced ONE course between them. They are here because a catalogue HOST short-circuits
+ * `looksLikeCourseUrl` to true before any path is examined — so `catalog.yale.edu/departmental_
+ * academic_support/appxtender` (a help page for a document-management product) was queued,
+ * scraped at 325,703 characters and sent to Gemini, as were 146 of its siblings. One institution
+ * spent roughly $2 of its $6.55 on pages of this kind.
+ *
+ * The bar for entry is deliberately high: observed with ZERO courses AND administrative at any
+ * institution, not merely unproductive on one site. Things kept OUT despite low yield, because
+ * they are genuinely academic somewhere: `/search` (explorecourses.stanford.edu/search IS a
+ * course search), `/people/` (20 pages, 43 courses), `/registrar`, `/alumni`, `tuition-and-fees`,
+ * and every institution-specific slug (`arts-science`,
+ * `global-affairs`) that happened to yield nothing on a single job.
+ * `financial-aid` and `scholarship` WERE on that kept list until 2026-09-24: their 2 courses from
+ * 32 pages turned out to be fabrications (the award's eligible-degree list staged as courses).
+ *
+ * `courseleaf` and `/wen/` are the CourseLeaf (Leepfrog) CMS's own admin surface, which much of
+ * the US sector runs — so those two generalise well beyond the site they were found on.
+ *
+ * Deliberately NOT applied to guided URLs: the job worker unions those in AFTER this filter, so
+ * an academic calendar an operator adds under Context → Intakes still reaches the crawl even
+ * though `/calendar` is denied here.
+ */
+const NON_COURSE_PATH_MARKERS = [
+  // CMS / vendor admin surfaces
+  "courseleaf", "/wen/", "appxtender",
+  // Student-services and staff infrastructure
+  "academic_support", "academic-support", "resources-services",
+  "faculty-staff", "handbook-instructor",
+  // Registry process pages (the act of enrolling, not a thing to enrol in)
+  "registration_", "add_drop", "add-drop",
+  // Institutional boilerplate. EVERY marker here is a compound phrase, never a bare word, and
+  // that is not stylistic. A first cut of this list carried "library", "privacy", "accessibility",
+  // "calendar" and "/directory" — 26 pages of real benefit — and substring-matched
+  // `/library-and-information-science`, `/privacy-law-llm`, `/web-accessibility-certificate` and
+  // `/calendar-and-event-management`: eight of eleven real degree shapes, thrown away to save
+  // 10% of the list's value. Bare "policy" is the same trap, matching 76 pages that carry 20
+  // courses because "public-policy" and "policy-studies" are subjects people enrol in.
+  // A denied page costs a few cents; a denied PROGRAMME costs a course that will never appear.
+  "/policies", "policy-statements",
+  // Scholarship / funding pages. They list the degrees an award can be held with, and the course
+  // prompt staged one course per listed degree even when told not to (seen live: Curtin's Global
+  // Scholars Program page became 30 courses whose only "entry requirement" was the award's own
+  // criteria). Compound or slash-anchored, per the rule above.
+  "/scholarship", "-scholarship", "scholars-program", "scholars-programme", "/bursar", "/bursaries", "/financial-aid",
+];
+
+/** Is this URL university infrastructure rather than a programme page? Path-only, like the
+ *  positive signals — a marker matching a HOSTNAME by coincidence is the bug that turned a whole
+ *  admissions subdomain into "course pages". */
+export function looksLikeNonCourseUrl(url: string): boolean {
+  let path: string;
+  try {
+    path = new URL(url).pathname.toLowerCase();
+  } catch {
+    path = url.toLowerCase();
+  }
+  return NON_COURSE_PATH_MARKERS.some((m) => path.includes(m));
+}
+
 /** Heuristic: does this URL look like a course detail or listing page? */
 export function looksLikeCourseUrl(url: string): boolean {
+  // Checked BEFORE everything else, including the catalogue-host short-circuit below — that
+  // short-circuit returning true on the hostname alone is precisely how a catalogue's admin
+  // documentation got queued as course pages.
+  if (looksLikeNonCourseUrl(url)) return false;
+
   const signals = [
     "/course", "/program", "/degree", "/bachelor", "/master",
     "/diploma", "/certificate", "/undergraduate",
@@ -20,7 +254,10 @@ export function looksLikeCourseUrl(url: string): boolean {
   // A catalogue host counts on its own — explorecourses.stanford.edu/search is a
   // course search, but its path carries no signal.
   // School/faculty subdomains (som.ku.edu.np, soe.ku.edu.np) are programme hosts too
-  const catalogueHost = /^(explorecourses|bulletin|catalog|catalogue|courses|programs|handbook|study|so[a-z]|school|faculty)\./i;
+  // "catalog(ue)" needs the plural too — seen live on catalogs.uky.edu, which the
+  // singular-only form silently excluded even though it's exactly the kind of catalogue
+  // host this exists for.
+  const catalogueHost = /^(explorecourses|bulletin|catalog(?:ue)?s?|courses|programs|handbook|study|so[a-z]|school|faculty)\./i;
 
   let path: string;
   try {
@@ -77,16 +314,14 @@ const ASSET_EXTS = new Set([
   ".ico", ".woff", ".woff2", ".ttf", ".eot",
 ]);
 
-/**
- * Multi-label public suffixes we actually meet in this domain. Without these, "last
- * two labels" turns torrens.edu.au into edu.au and would scope a crawl to every
- * Australian university. Not the full PSL — just the education-bearing suffixes.
- */
-const MULTI_LABEL_SUFFIXES = new Set([
-  "edu.au", "ac.uk", "edu.sg", "ac.nz", "edu.my", "ac.in", "edu.in",
-  "edu.cn", "ac.jp", "edu.hk", "co.nz", "com.au", "org.au", "ac.za",
-  "edu.ph", "ac.th", "edu.vn", "edu.pk", "ac.ir", "edu.tr", "com.br",
-]);
+// Registrable domains come from the real Public Suffix List (tldts, data bundled — no runtime
+// fetch). This replaced a hand-kept list of "suffixes we actually meet", which was wrong twice in
+// review: a suffix missing from it (ac.id, edu.pl, co.uk) collapsed an institution to the REGISTRY
+// — "%.ac.id" asks a certificate log for every Indonesian university, and filterUrls scopes the
+// crawl to all of them. A shape heuristic patched the two-letter-ccTLD cases and still missed
+// private suffixes like blogspot.com / github.io / wixsite.com, where the tenants are unrelated
+// organisations. Every suffix the old list did carry resolves identically here, so nothing that
+// was already correct moves.
 
 /**
  * The site a URL belongs to, for crawl scope: its registrable domain.
@@ -98,18 +333,27 @@ const MULTI_LABEL_SUFFIXES = new Set([
  */
 export function siteOf(url: string): string {
   const host = new URL(url).hostname.toLowerCase().replace(/^www\./i, "");
-  const labels = host.split(".");
-  if (labels.length <= 2) return host;
-
-  const lastTwo = labels.slice(-2).join(".");
-  const keep = MULTI_LABEL_SUFFIXES.has(lastTwo) ? 3 : 2;
-  return labels.slice(-keep).join(".");
+  // Private suffixes included on purpose: two tenants of blogspot.com / github.io / wixsite.com
+  // are unrelated organisations, so tenant.blogspot.com is its own site, not part of a shared one.
+  // null means the host IS a public suffix (someone entered "https://ac.id") — fall back to the
+  // host itself rather than a truncation, and let isRegistrySuffix refuse the outward lookups.
+  return getDomain(host, { allowPrivateDomains: true }) ?? host;
 }
 
 /** Same site if it is the bare host or any subdomain of it. */
 export function isSameSite(candidate: string, site: string): boolean {
   const host = candidate.replace(/^www\./i, "").toLowerCase();
   return host === site || host.endsWith(`.${site}`);
+}
+
+/**
+ * True when a host is itself a public suffix (`ac.id`, `co.uk`, `blogspot.com`) rather than a
+ * registrable domain. Scoping anything OUTWARD to such a value covers every organisation in the
+ * registry — a certificate-log lookup on "%.ac.id" returns every Indonesian university — so a
+ * caller that reaches out must refuse instead of treating it as one institution.
+ */
+export function isRegistrySuffix(site: string): boolean {
+  return getDomain(site, { allowPrivateDomains: true }) === null;
 }
 
 /**
@@ -166,6 +410,21 @@ export function filterUrls(urls: string[], base: string): string[] {
  * bucket silently dropping out is how a job goes from 97 courses to 4.
  * A bare array (legacy shape) is returned as-is.
  */
+/**
+ * `url_blocklist_patterns` as regexes, case-insensitive. An entry that is not a valid regex is
+ * reported, not thrown: the list is optional admin input with no validation at its write path, and
+ * one bad entry must neither fail the site_map step nor (as the page worker's single try/catch did)
+ * silently disable every OTHER pattern for that page.
+ */
+export function compileBlocklist(patterns: string[]): { patterns: RegExp[]; invalid: string[] } {
+  const out: RegExp[] = [];
+  const invalid: string[] = [];
+  for (const p of patterns) {
+    try { out.push(new RegExp(p, "i")); } catch { invalid.push(p); }
+  }
+  return { patterns: out, invalid };
+}
+
 export function collectGuidedUrls(guided: unknown): string[] {
   if (Array.isArray(guided)) return guided.filter((u): u is string => typeof u === "string");
   if (!guided || typeof guided !== "object") return [];
@@ -177,12 +436,49 @@ export function collectGuidedUrls(guided: unknown): string[] {
   return out;
 }
 
+/**
+ * Strip provably information-free junk before sending markdown to the LLM: base64
+ * payloads, HTML comments, runs of identical lines, and blank-line runs. Deliberately
+ * conservative — extraction quality depends on real URLs (curriculum/fees links, logos),
+ * link text (course names live in links), and table rows surviving VERBATIM, so nothing
+ * that carries information is rewritten or shortened. Every stripped byte is a billed
+ * input token the model could never use.
+ */
+export function stripMarkdownJunk(md: string): string {
+  let out = md
+    // base64 data URIs: thousands of chars of pure noise (inline images, favicons)
+    .replace(/data:[a-zA-Z0-9/+.-]+;base64,[A-Za-z0-9+/=]{64,}/g, "data:omitted")
+    .replace(/<!--[\s\S]*?-->/g, "");
+
+  const lines = out.split("\n");
+  const deduped: string[] = [];
+  for (const line of lines) {
+    if (line.trim() !== "" && deduped[deduped.length - 1] === line) continue;
+    deduped.push(line);
+  }
+  out = deduped.join("\n");
+
+  return out.replace(/\n{3,}/g, "\n\n");
+}
+
 /** Truncate markdown to a max character length, breaking at line boundaries */
 // ponytail: 120K chars — Gemini 2.5 Flash handles ~1M tokens, 60K was leaving data on the table
+/**
+ * Text budget for the per-course data step (extraction-step.worker handleCourseDataStep). Was
+ * 24,000 chars: a UEL course page is ~100k and its "Academic requirements" section sits past that
+ * mark, so the eligibility re-extraction saw only the page's header and returned nothing (Flash) or
+ * a placeholder row (the fallback model). Pages appended for the data type land after the course
+ * page, so they need the course page to fit first.
+ */
+export const COURSE_DATA_TEXT_CAP = 60_000;
+
 export function truncateMarkdown(md: string, maxLength = 120_000): string {
-  if (md.length <= maxLength) return md;
-  const cut = md.lastIndexOf("\n", maxLength);
-  return md.slice(0, cut > 0 ? cut : maxLength);
+  // Junk removal runs before the cut, so stripped noise buys back budget for real content
+  // instead of the tail of the page being lost to it.
+  const cleaned = stripMarkdownJunk(md);
+  if (cleaned.length <= maxLength) return cleaned;
+  const cut = cleaned.lastIndexOf("\n", maxLength);
+  return cleaned.slice(0, cut > 0 ? cut : maxLength);
 }
 
 /** Extract domain from URL */
@@ -192,4 +488,58 @@ export function domainOf(url: string): string {
   } catch {
     return "unknown";
   }
+}
+
+// ponytail: self-check
+if (import.meta.url.endsWith("/html-utils.ts") && process.argv[1]?.endsWith("html-utils.ts")) {
+  const assert = (cond: boolean, msg: string) => { if (!cond) throw new Error(`FAIL: ${msg}`); };
+
+  const r = extractSocialLinks([
+    "https://www.facebook.com/ballstate",
+    "https://twitter.com/BallState",
+    "https://www.youtube.com/officialballstate",
+    "https://www.instagram.com/ballstateuniversity/",
+    "https://www.linkedin.com/school/ball-state-university/",
+    "https://www.tiktok.com/@ballstate/",
+    "https://www.bsu.edu/about",
+    "not a url",
+  ]);
+  assert(r.facebook_url === "https://www.facebook.com/ballstate", `facebook: ${r.facebook_url}`);
+  assert(r.twitter_url === "https://twitter.com/BallState", `twitter (twitter.com): ${r.twitter_url}`);
+  assert(r.youtube_url === "https://www.youtube.com/officialballstate", `youtube: ${r.youtube_url}`);
+  assert(r.instagram_url === "https://www.instagram.com/ballstateuniversity/", `instagram: ${r.instagram_url}`);
+  assert(r.linkedin_url === "https://www.linkedin.com/school/ball-state-university/", `linkedin: ${r.linkedin_url}`);
+  assert(r.other_social_links.length === 1 && r.other_social_links[0].label === "TikTok", `tiktok in other: ${JSON.stringify(r.other_social_links)}`);
+
+  const rX = extractSocialLinks(["https://x.com/BallState"]);
+  assert(rX.twitter_url === "https://x.com/BallState", `twitter (x.com): ${rX.twitter_url}`);
+
+  const rEmpty = extractSocialLinks([]);
+  assert(rEmpty.facebook_url === null && rEmpty.other_social_links.length === 0, "empty input returns all-null");
+
+  const hrefs = extractHrefsFromHtml(
+    `<a href="https://www.facebook.com/ballstate" title="Facebook"><span class="fab fa-facebook-f"></span></a>` +
+    `<a href="#top">Back to top</a><a href="/about">About</a>`,
+  );
+  assert(hrefs.includes("https://www.facebook.com/ballstate"), `icon-only anchor href captured: ${JSON.stringify(hrefs)}`);
+  assert(hrefs.includes("/about"), `relative href captured: ${JSON.stringify(hrefs)}`);
+  assert(!hrefs.includes("#top"), `fragment-only href excluded: ${JSON.stringify(hrefs)}`);
+
+  const fixed = fixMalformedAbsoluteUrl(
+    "https://-/media/www/images/logos/bsu-logo_top.png?h=112&w=402",
+    "https://www.bsu.edu/about/contactus",
+  );
+  assert(fixed === "https://www.bsu.edu/-/media/www/images/logos/bsu-logo_top.png?h=112&w=402", `fixMalformedAbsoluteUrl: ${fixed}`);
+  assert(fixMalformedAbsoluteUrl("https://www.facebook.com/ballstate", "https://www.bsu.edu") === "https://www.facebook.com/ballstate", "real absolute URL untouched");
+  assert(fixMalformedAbsoluteUrl(null, "https://www.bsu.edu") === null, "null passes through");
+
+  const domainEmails = extractDomainEmails(
+    "Contact privacy@gatech.edu for data requests. Vendors write to sales@othercorp.com. Also webmaster@mail.gatech.edu helps.",
+    "gatech.edu",
+  );
+  assert(domainEmails.includes("privacy@gatech.edu"), `same-domain email found: ${JSON.stringify(domainEmails)}`);
+  assert(domainEmails.includes("webmaster@mail.gatech.edu"), `subdomain email found: ${JSON.stringify(domainEmails)}`);
+  assert(!domainEmails.includes("sales@othercorp.com"), `off-domain email excluded: ${JSON.stringify(domainEmails)}`);
+
+  console.log("html-utils: all checks passed");
 }

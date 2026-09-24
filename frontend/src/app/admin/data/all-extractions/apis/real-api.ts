@@ -1,5 +1,5 @@
 import { httpDelete, httpGet, httpPatch, httpPost } from "@/lib/api/http";
-import { MODE_STATUS_FILTER, STATUS_CONFIG } from "../const";
+import { MODE_STATUS_FILTER, OWNED_JOB_SOURCE_TYPES, STATUS_CONFIG,statusesForFilterValue } from "../const";
 import type { SortOrder } from "../const";
 import type {
   Accreditation,
@@ -13,12 +13,13 @@ import type {
   CourseFeeParams,
   CourseFull,
   CourseLinks,
-  CourseRow,
   CreateCampusParams,
   CreateCourseParams,
   CreateJobParams,
   EligibilityParams,
   EligibilityRequirement,
+  Scholarship,
+  ScholarshipParams,
   EditableTable,
   ExtractionJob,
   ExtractionStatus,
@@ -33,20 +34,23 @@ import type {
   JunctionSlug,
   LibraryAccreditation,
   LibraryAccreditationInput,
+  MissingDetailCandidate,
   Paginated,
   QueueItem,
+  GetSiteUrlsParams,
+  SiteUrlCategory,
+  SiteUrlsPage,
+  SnapshotMarkdown,
+  SnapshotRow,
   StudyOption,
   StudyOptionParams,
   StudyUnit,
   StudyUnitParams,
+  TabCounts,
   UpdateContextParams,
   UpdateCourseParams,
   VisaService,
 } from "./types";
-
-function rawStatusesForLabel(label: string): ExtractionStatus[] {
-  return (Object.keys(STATUS_CONFIG) as ExtractionStatus[]).filter((s) => STATUS_CONFIG[s].label === label);
-}
 
 export const allExtractionsRealApi = {
   getJobs: async (params: GetJobsParams): Promise<GetJobsResult> => {
@@ -59,16 +63,23 @@ export const allExtractionsRealApi = {
     const baseStatuses = MODE_STATUS_FILTER[params.mode];
     const statuses =
       params.statusLabel && params.statusLabel !== "all"
-        ? rawStatusesForLabel(params.statusLabel).filter((s) => !baseStatuses || baseStatuses.includes(s))
+        ? statusesForFilterValue(params.statusLabel).filter((s) => !baseStatuses || baseStatuses.includes(s))
         : baseStatuses;
     if (statuses?.length) query.statuses = statuses.join(",");
     if (!params.showDeclined) query.exclude_statuses = "declined";
 
-    if (params.mode === "ai-ongoing") {
-      query.exclude_source_type = "agentcis";
+    // An admin-created institution ("manual") and a self-registered one ("self_service") each
+    // own a synthetic job, status "done", purely so their courses have a job_id to hang off.
+    // Neither is an extraction, so both stay out of every dashboard list unless asked for.
+    if (OWNED_JOB_SOURCE_TYPES.includes(params.sourceFilter ?? "")) {
+      query.source_type = params.sourceFilter!;
+    } else if (params.mode === "ai-ongoing") {
+      query.exclude_source_type = ["agentcis", ...OWNED_JOB_SOURCE_TYPES].join(",");
     } else if (params.mode === "completed" && params.sourceFilter && params.sourceFilter !== "all") {
       if (params.sourceFilter === "agentcis") query.source_type = "agentcis";
-      else query.exclude_source_type = "agentcis";
+      else query.exclude_source_type = ["agentcis", ...OWNED_JOB_SOURCE_TYPES].join(",");
+    } else {
+      query.exclude_source_type = OWNED_JOB_SOURCE_TYPES.join(",");
     }
 
     if (params.businessCategoryId) query.business_category_id = String(params.businessCategoryId);
@@ -123,15 +134,21 @@ export const allExtractionsRealApi = {
   rerunJob: (id: string): Promise<void> =>
     httpPost(`/admin/data-extraction/jobs/${id}/rerun`, {}),
 
+  deepScrapeJob: (id: string): Promise<void> =>
+    httpPost(`/admin/data-extraction/jobs/${id}/deep-scrape`, {}),
+
+  enrichFromWebJob: (id: string): Promise<void> =>
+    httpPost(`/admin/data-extraction/jobs/${id}/enrich-from-web`, {}),
+
   // Combines the job-detail endpoint with the four tables the Overview tab's
   // "Extraction Details by Tab" cards summarize — one round trip per card group,
   // same shape V2's OverviewTab.loadSummary() fetched.
   getJobFull: async (id: string): Promise<JobFull> => {
-    const [detail, campusesRes, agentsRes, coursesRes, courseLinks, visaServices] = await Promise.all([
+    const [detail, campusesRes, agentsRes, tabCounts, courseLinks, visaServices] = await Promise.all([
       httpGet<{ job: ExtractionJob; overview: InstitutionOverview | null }>(`/admin/data-extraction/jobs/${id}`),
       httpGet<{ campuses: CampusRow[] }>(`/admin/data-extraction/jobs/${id}/campuses`),
       httpGet<{ agents: AgentRow[] }>(`/admin/data-extraction/jobs/${id}/agents`),
-      httpGet<Paginated<CourseRow>>(`/admin/data-extraction/jobs/${id}/courses?limit=100`),
+      httpGet<TabCounts>(`/admin/data-extraction/jobs/${id}/tab-counts`),
       httpGet<CourseLinks>(`/admin/data-extraction/jobs/${id}/course-links`),
       httpGet<{ visa_services: VisaService[] }>(`/admin/data-extraction/jobs/${id}/visa-services`).then((r) => r.visa_services),
     ]);
@@ -140,8 +157,7 @@ export const allExtractionsRealApi = {
       overview: detail.overview,
       campuses: campusesRes.campuses,
       agents: agentsRes.agents,
-      courses: coursesRes.data,
-      coursesTotal: coursesRes.meta?.total ?? coursesRes.data.length,
+      tabCounts,
       courseLinks,
       visaServices,
     };
@@ -169,7 +185,7 @@ export const allExtractionsRealApi = {
     const res = await httpPost<{ id: string; name: string; created_at: string; updated_at: string }>(
       `/admin/data-extraction/jobs/${jobId}/courses`, params,
     );
-    return { ...params, id: res.id, name: params.name, short_name: null, source_url: params.source_url ?? null, degree_level: params.degree_level ?? null, subject_area: params.subject_area ?? null, duration_weeks: params.duration_weeks ?? null, study_mode: params.study_mode ?? null, description: params.description ?? null, domestic_fee_total: null, domestic_currency: null, international_fee_total: null, international_currency: null, awarding_institution: null, career_paths: null, verification_status: null, created_at: res.created_at, updated_at: res.updated_at };
+    return { ...params, id: res.id, name: params.name, short_name: null, source_url: params.source_url ?? null, degree_level: params.degree_level ?? null, subject_area: params.subject_area ?? null, subject_area_code: null, degree_level_code: null, duration_weeks: params.duration_weeks ?? null, study_mode: params.study_mode ?? null, description: params.description ?? null, domestic_fee_total: null, domestic_currency: null, international_fee_total: null, international_currency: null, awarding_institution: null, career_paths: null, verification_status: null, created_at: res.created_at, updated_at: res.updated_at };
   },
 
   updateCourse: async (id: string, params: UpdateCourseParams): Promise<void> => {
@@ -267,9 +283,53 @@ export const allExtractionsRealApi = {
     await httpPost("/admin/data-extraction/save-and-learn", params);
   },
 
+  // Looks up values for currently-empty institution overview fields only (homepage +
+  // best-effort /contact scrape), for the admin to individually accept via saveAndLearn.
+  findMissingInstitutionDetails: async (jobId: string): Promise<{ fields: MissingDetailCandidate[] }> =>
+    httpPost(`/admin/data-extraction/jobs/${jobId}/find-missing-institution-details`, {}),
+
+  // Geocodes a campus's existing address to backfill postcode/map link only.
+  findMissingCampusDetails: async (campusId: string): Promise<{ fields: MissingDetailCandidate[] }> =>
+    httpPost(`/admin/data-extraction/campuses/${campusId}/find-missing-details`, {}),
+
   updateContext: async (id: string, params: UpdateContextParams): Promise<void> => {
     await httpPatch(`/admin/data-extraction/jobs/${id}/context`, params);
   },
+
+  // ── Site tab (one-step-at-a-time chain) ──────────────
+
+  getSiteUrls: (jobId: string, params: GetSiteUrlsParams = {}): Promise<SiteUrlsPage> => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.category) query.set("category", params.category);
+    if (params.excluded !== undefined) query.set("excluded", String(params.excluded));
+    if (params.q) query.set("q", params.q);
+    return httpGet<SiteUrlsPage>(`/admin/data-extraction/jobs/${jobId}/site-urls?${query}`);
+  },
+
+  addSiteUrl: async (jobId: string, url: string, category: SiteUrlCategory): Promise<void> => {
+    await httpPost(`/admin/data-extraction/jobs/${jobId}/site-urls`, { url, category });
+  },
+
+  patchSiteUrl: async (id: string, patch: { excluded?: boolean; category?: SiteUrlCategory | null }): Promise<void> => {
+    await httpPatch(`/admin/data-extraction/site-urls/${id}`, patch);
+  },
+
+  bulkExcludeSiteUrls: async (jobId: string, ids: string[], excluded: boolean): Promise<void> => {
+    await httpPost(`/admin/data-extraction/jobs/${jobId}/site-urls/bulk-exclude`, { ids, excluded });
+  },
+
+  getSnapshots: (jobId: string, params: { page?: number; limit?: number; q?: string } = {}): Promise<Paginated<SnapshotRow>> => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.q) query.set("q", params.q);
+    return httpGet<Paginated<SnapshotRow>>(`/admin/data-extraction/jobs/${jobId}/snapshots?${query}`);
+  },
+
+  getSnapshotMarkdown: (jobId: string, pageId: string): Promise<SnapshotMarkdown> =>
+    httpGet<SnapshotMarkdown>(`/admin/data-extraction/jobs/${jobId}/snapshots/${pageId}`),
 
   getQueue: async (jobId: string): Promise<QueueItem[]> => {
     const { queue } = await httpGet<{ queue: QueueItem[] }>(`/admin/data-extraction/jobs/${jobId}/queue`);
@@ -302,15 +362,22 @@ export const allExtractionsRealApi = {
 
   // ── Course Fees ────────────────────────────────────────────────
 
-  getCourseFees: async (jobId: string): Promise<CourseFee[]> => {
-    // TODO: backend needs GET /admin/data-extraction/jobs/:id/course-fees
-    return [] as CourseFee[];
+  getCourseFees: (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string } = {},
+  ): Promise<Paginated<CourseFee>> => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.search) query.set("search", params.search);
+    return httpGet<Paginated<CourseFee>>(`/admin/data-extraction/jobs/${jobId}/course-fees?${query}`);
   },
 
   createCourseFee: async (params: { job_id: string } & CourseFeeParams): Promise<CourseFee> => {
     const res = await httpPost<{ id: string; created_at: string }>("/admin/data-extraction/course-fees", params);
     return {
-      id: res.id, name: params.name ?? null, student_type: params.student_type ?? null,
+      id: res.id, name: params.name ?? null, description: params.description ?? null,
+      student_type: params.student_type ?? null,
       period_type: params.period_type ?? null, currency: params.currency ?? null,
       total_amount: params.total_amount ?? null, installments: params.installments ?? [],
       save_for_reuse: params.save_for_reuse ?? false, created_at: res.created_at,
@@ -382,6 +449,26 @@ export const allExtractionsRealApi = {
 
   deleteEligibilityRequirement: async (id: string): Promise<void> => {
     await httpDelete(`/admin/data-extraction/eligibility-requirements/${id}`);
+  },
+
+  // ── Scholarships ────────────────────────────────────────────────
+
+  getScholarships: (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string } = {},
+  ): Promise<Paginated<Scholarship>> => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.search) query.set("search", params.search);
+    return httpGet<Paginated<Scholarship>>(`/admin/data-extraction/jobs/${jobId}/scholarships?${query}`);
+  },
+
+  createScholarship: async (params: { job_id: string } & ScholarshipParams): Promise<{ id: string }> =>
+    httpPost<{ id: string }>("/admin/data-extraction/scholarships", params),
+
+  deleteScholarship: async (id: string): Promise<void> => {
+    await httpDelete(`/admin/data-extraction/scholarships/${id}`);
   },
 
   // ── Study Units ──────────────────────────────────────────────────

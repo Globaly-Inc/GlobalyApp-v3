@@ -8,6 +8,7 @@
 // for; the three panels here are plain content, not a widget.
 
 import { cn } from "@/lib/utils";
+import { ScrollRow } from "@/components/scroll-row";
 
 export interface TabOption<T extends string> {
   value: T;
@@ -21,7 +22,7 @@ export function ServicesTabs<T extends string>({
   onChange,
 }: Readonly<{ options: readonly TabOption<T>[]; value: T; onChange: (value: T) => void }>) {
   return (
-    <div className="flex items-center gap-1 overflow-x-auto rounded-lg bg-muted p-1 w-full sm:w-fit sm:max-w-full">
+    <ScrollRow className="w-full sm:w-fit sm:max-w-full" rowClassName="flex items-center gap-1 rounded-lg bg-muted p-1">
       {options.map((opt) => (
         <button
           key={opt.value}
@@ -38,6 +39,6 @@ export function ServicesTabs<T extends string>({
           </span>
         </button>
       ))}
-    </div>
+    </ScrollRow>
   );
 }

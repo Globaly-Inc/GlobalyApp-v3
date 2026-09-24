@@ -3,10 +3,12 @@ import { z } from "zod";
 import { buildPaginatedResponse, paginationToOffset } from "../../../shared/pagination.js";
 import { requireBusinessContext, requireBusinessOrInstitutionContext } from "../../../core/plugins/auth.plugin.js";
 import {
-  ServiceFieldValuesInputSchema, ServiceInputSchema, ServicePatchInputSchema, ServiceSearchQuerySchema,
+  ServiceAiAssistSchema, ServiceFieldValuesInputSchema, ServiceInputSchema, ServicePatchInputSchema, ServiceSearchQuerySchema,
 } from "../../superadmin/platform/business-services/schemas/business-services.schema.js";
 import * as service from "../../superadmin/platform/business-services/services/business-services.service.js";
 import * as coursesRepo from "../../superadmin/data-extraction/repositories/courses.repository.js";
+import { isInstitutionCategory } from "../../superadmin/data-extraction/repositories/promote.repository.js";
+import { ForbiddenError } from "../../../shared/errors.js";
 import type { CourseListFilters } from "../../superadmin/data-extraction/repositories/courses.repository.js";
 import * as activityService from "../services/activity.service.js";
 
@@ -21,12 +23,12 @@ const SubIdSchema = z.object({ subId: z.string().uuid() });
 function courseToBusinessService(c: {
   id: string; name: string; description: string | null; subject_area: string | null;
   degree_level: string | null; duration_weeks: number | null; domestic_fee_total: string | number | null;
-  domestic_currency: string | null; created_at: Date;
+  domestic_currency: string | null; created_at: Date; course_category: string | null;
 }) {
   return {
     id: c.id,
     service_category_id: null,
-    category_name: c.subject_area,
+    category_name: c.course_category === "short_course" ? "Short Course" : "Academic Course",
     name: c.name,
     description: c.description,
     price: c.domestic_fee_total != null ? `${c.domestic_currency ?? ""} ${c.domestic_fee_total}`.trim() : null,
@@ -36,6 +38,7 @@ function courseToBusinessService(c: {
     degree_level: c.degree_level,
     area_of_study: c.subject_area,
     duration: c.duration_weeks != null ? `${c.duration_weeks} weeks` : null,
+    course_category: c.course_category === "short_course" ? "short_course" : "academic",
   };
 }
 
@@ -48,21 +51,70 @@ async function searchInstitutionCourses(sourceJobId: string | null, limit: numbe
   return { rows: rows.map(courseToBusinessService), total };
 }
 
+/**
+ * The source_job_id a listing's services must be read from, or null to use business_services.
+ *
+ * An institution reads its catalog through the job whatever its claim state — the extracted
+ * courses are never copied into a tenant schema. That holds for an institution in the
+ * `institutions` table AND for one filed in `businesses` under the institutions category,
+ * which is where an admin-created (manual) institution lives.
+ *
+ * Null when an institution-category listing has no job at all: one created before manual
+ * institutions started minting theirs still owns whatever business_services rows it has, and
+ * showing an empty catalog instead would be a regression, not a collapse.
+ */
+async function servicesSourceJobId(req: {
+  auth: { orgType?: string };
+  institution?: { source_job_id: string | null } | null;
+  business?: { source_job_id?: string | null; business_category_id?: number | null } | null;
+}): Promise<string | null> {
+  if (req.auth.orgType === "institution") return req.institution?.source_job_id ?? null;
+  const business = req.business;
+  if (!business?.source_job_id || !business.business_category_id) return null;
+  return (await isInstitutionCategory(Number(business.business_category_id)))
+    ? business.source_job_id
+    : null;
+}
+
+/**
+ * A listing whose services ARE its extracted courses must not also accumulate
+ * business_services rows: nothing reads them back, so the row would save and then vanish
+ * from the Services tab. Institutions edit their catalog through the extraction tables.
+ */
+async function refuseIfCatalogIsExtracted(req: Parameters<typeof servicesSourceJobId>[0]) {
+  if (await servicesSourceJobId(req)) {
+    throw new ForbiddenError(
+      "This institution's services are its course catalog — edit the courses, not business services.",
+    );
+  }
+}
+
 export async function businessServicesRoutes(app: FastifyInstance) {
   app.get("/services", { preHandler: requireBusinessContext }, async (req, reply) => {
     return reply.send(await service.listServices(Number(req.business!.id)));
   });
 
   app.get("/services/search", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
-    const { search, ...pagination } = ServiceSearchQuerySchema.parse(req.query);
+    const { search, course_category, ...pagination } = ServiceSearchQuerySchema.parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
-    const { rows, total } = req.auth.orgType === "institution"
-      ? await searchInstitutionCourses(req.institution!.source_job_id, limit, offset, { search })
+    const sourceJobId = await servicesSourceJobId(req);
+    const { rows, total } = sourceJobId
+      ? await searchInstitutionCourses(sourceJobId, limit, offset, { search, courseCategory: course_category })
       : await service.searchServices(Number(req.business!.id), limit, offset, search);
     return reply.send(buildPaginatedResponse(rows, total, pagination));
   });
 
+  app.post("/services/ai-assist", {
+    preHandler: requireBusinessContext,
+    config: { rateLimit: { max: 10, timeWindow: "1 minute" } },
+  }, async (req, reply) => {
+    const input = ServiceAiAssistSchema.parse(req.body);
+    const result = await service.generateServiceDescription(input);
+    return reply.send(result);
+  });
+
   app.post("/services", { preHandler: requireBusinessContext }, async (req, reply) => {
+    await refuseIfCatalogIsExtracted(req);
     const data = ServiceInputSchema.parse(req.body);
     const created = await service.createService(Number(req.business!.id), data);
     await activityService.logActivity(req.db, Number(req.auth.sub), "SERVICE_CREATED", "service", created.id, { name: created.name });
@@ -70,6 +122,7 @@ export async function businessServicesRoutes(app: FastifyInstance) {
   });
 
   app.patch("/services/:subId", { preHandler: requireBusinessContext }, async (req, reply) => {
+    await refuseIfCatalogIsExtracted(req);
     const { subId } = SubIdSchema.parse(req.params);
     const data = ServicePatchInputSchema.parse(req.body);
     const updated = await service.updateService(Number(req.business!.id), subId, data);
@@ -78,6 +131,7 @@ export async function businessServicesRoutes(app: FastifyInstance) {
   });
 
   app.delete("/services/:subId", { preHandler: requireBusinessContext }, async (req, reply) => {
+    await refuseIfCatalogIsExtracted(req);
     const { subId } = SubIdSchema.parse(req.params);
     await service.deleteService(Number(req.business!.id), subId);
     await activityService.logActivity(req.db, Number(req.auth.sub), "SERVICE_DELETED", "service", subId);

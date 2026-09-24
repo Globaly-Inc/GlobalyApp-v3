@@ -6,10 +6,10 @@ import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
-import { latestTimestamp } from "../utils";
-import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { latestTimestamp, pendingCourseLinks, runLimited } from "../utils";
+import type { CourseBulkLinkSelection, CourseBulkUpdatePatch } from "./course-bulk-update-form";
 import { CourseDetailPanel } from "./course-detail-panel";
-import { CourseForm } from "./course-form";
+import { CourseFormDialogs } from "./course-form-dialogs";
 import { CourseListPanel } from "./course-list-panel";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
@@ -18,16 +18,16 @@ import type { CampusFull, CourseFull, CourseLinks, CreateCourseParams, Extractio
 
 const DEFAULT_PAGE_SIZE = 10;
 
+const BULK_UPDATE_CONCURRENCY = 6;
+
 export function CoursesTab({
   jobId,
   job,
   onReload,
-  onJumpToContext,
 }: Readonly<{
   jobId: string;
   job: ExtractionJob;
   onReload: () => void;
-  onJumpToContext: () => void;
 }>) {
   const [courses, setCourses] = useState<CourseFull[]>([]);
   const [total, setTotal] = useState(0);
@@ -43,6 +43,7 @@ export function CoursesTab({
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE);
   const [adding, setAdding] = useState(false);
+  const [bulkUpdating, setBulkUpdating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const fetchedRef = useRef(false);
@@ -126,7 +127,9 @@ export function CoursesTab({
   };
 
   const deleteCourse = async (id: string) => {
-    if (!(await confirm("Delete course?", "This will permanently delete the course and its linked fees, intakes, and other data."))) return;
+    if (!(await confirm("Delete course?", "This will permanently delete the course and its linked fees, intakes, and other data."))) {
+      return;
+    }
     setSaving(true);
     try {
       await allExtractionsApi.deleteCourse(id);
@@ -143,7 +146,9 @@ export function CoursesTab({
 
   const bulkDelete = async () => {
     const many = selectedIds.length > 1;
-    if (!(await confirm(many ? `Delete ${selectedIds.length} courses?` : "Delete course?", "This will permanently delete the selected courses and their linked fees, intakes, and other data."))) return;
+    if (!(await confirm(many ? `Delete ${selectedIds.length} courses?` : "Delete course?", "This will permanently delete the selected courses and their linked fees, intakes, and other data."))) {
+      return;
+    }
     setSaving(true);
     try {
       const { queued } = await allExtractionsApi.bulkDeleteCourses(selectedIds);
@@ -161,6 +166,47 @@ export function CoursesTab({
       onReload();
     } catch (e) {
       toast.error("Delete failed", { description: (e as Error).message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const bulkUpdate = async (patch: CourseBulkUpdatePatch, linkSelection: CourseBulkLinkSelection) => {
+    setSaving(true);
+    try {
+      const patchTasks = Object.keys(patch).length
+        ? selectedIds.map((id) => () => allExtractionsApi.saveAndLearn({ table: "extraction_courses", id, patch, job_id: jobId }))
+        : [];
+
+      const linkTasks = pendingCourseLinks(
+        [
+          { junction: "course-fees", entityIds: linkSelection.feeIds, assignments: links?.fee_assignments, entityCol: "course_fee_id" },
+          { junction: "intakes", entityIds: linkSelection.intakeIds, assignments: links?.intake_assignments, entityCol: "intake_id" },
+          { junction: "eligibility-requirements", entityIds: linkSelection.eligibilityIds, assignments: links?.eligibility_assignments, entityCol: "eligibility_requirement_id" },
+          { junction: "study-options", entityIds: linkSelection.studyOptionIds, assignments: links?.study_option_assignments, entityCol: "study_option_id" },
+        ],
+        selectedIds,
+      ).map((l) => () => allExtractionsApi.assignJunction(l.junction, { job_id: jobId, course_id: l.course_id, entity_id: l.entity_id }));
+
+      const results = await runLimited([...patchTasks, ...linkTasks], BULK_UPDATE_CONCURRENCY);
+      const failed = results.filter((r) => r.status === "rejected");
+      const succeeded = results.length - failed.length;
+
+      if (failed.length === 0) {
+        toast.success(`${selectedIds.length} course${selectedIds.length === 1 ? "" : "s"} updated`);
+      } else if (succeeded === 0) {
+        const first = failed[0] as PromiseRejectedResult;
+        toast.error("Update failed", { description: (first.reason as Error)?.message });
+      } else {
+        toast.warning(`${succeeded} of ${results.length} update${results.length === 1 ? "" : "s"} succeeded`, {
+          description: `${failed.length} failed — try again for the affected courses.`,
+        });
+      }
+
+      setBulkUpdating(false);
+      setSelectedIds([]);
+      await load();
+      onReload();
     } finally {
       setSaving(false);
     }
@@ -191,11 +237,7 @@ export function CoursesTab({
         progress={(job.pipeline_progress as Record<string, unknown> | null)?.discovery}
         lastUpdated={latestTimestamp(courses)}
         hasData={total > 0}
-        guidedUrls={job.guided_urls}
-        contextKey="course_list_urls"
-        contextLabel="course list URLs"
         onChanged={onReload}
-        onAddContext={onJumpToContext}
       />
 
       {!loading && queuedCourseUrls === 0 && (
@@ -207,11 +249,17 @@ export function CoursesTab({
         </Card>
       )}
 
-      <Dialog open={adding} onOpenChange={setAdding}>
-        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl p-0 border-0 bg-transparent shadow-none">
-          <CourseForm saving={saving} onCancel={() => setAdding(false)} onSave={handleCreate} />
-        </DialogContent>
-      </Dialog>
+      <CourseFormDialogs
+        jobId={jobId}
+        adding={adding}
+        onAddingChange={setAdding}
+        onCreate={handleCreate}
+        bulkUpdating={bulkUpdating}
+        onBulkUpdatingChange={setBulkUpdating}
+        bulkCount={selectedIds.length}
+        onBulkUpdate={bulkUpdate}
+        saving={saving}
+      />
 
       {loading ? (
         <div className="flex justify-center py-16">
@@ -243,6 +291,7 @@ export function CoursesTab({
             onAdd={() => setAdding(true)}
             saving={saving}
             onBulkVerify={bulkVerify}
+            onBulkUpdate={() => setBulkUpdating(true)}
             onDelete={deleteCourse}
             onBulkDelete={bulkDelete}
             compact={!!selected}

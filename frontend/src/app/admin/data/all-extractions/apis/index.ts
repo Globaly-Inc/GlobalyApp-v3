@@ -24,10 +24,12 @@ export type {
   CourseFee,
   Intake,
   EligibilityRequirement,
+  Scholarship,
   StudyUnit,
   StudyOption,
   Accreditation,
   Paginated,
   VisaService,
   VisaServiceStatus,
+  MissingDetailCandidate,
 } from "./types";

@@ -12,6 +12,9 @@ const ENV_FALLBACK: Record<IntegrationKey, string | undefined> = {
   higgsfield_api_key: "HIGGSFIELD_API_KEY",
   gsc_service_account_json: undefined, // env uses GSC_KEY_FILE (a path) — handled by gsc-client itself
   gsc_site_url: "GSC_SITE_URL",
+  globalyos_crm_api_key: "GLOBALYOS_CRM_API_KEY",
+  globalyos_crm_url: "GLOBALYOS_CRM_URL",
+  pexels_api_key: "PEXELS_API_KEY",
 };
 
 const cache = new Map<IntegrationKey, { value: string | null; at: number }>();

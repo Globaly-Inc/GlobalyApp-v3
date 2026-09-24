@@ -115,6 +115,7 @@ const authSlice = createSlice({
       .addCase(verifySignInOtp.fulfilled, (state, action) => {
         state.status = "idle";
         state.user = action.payload;
+        state.initializing = false;
       })
       .addCase(verifySignInOtp.rejected, (state, action) => {
         state.status = "failed";

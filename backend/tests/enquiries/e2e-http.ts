@@ -10,17 +10,21 @@
  *
  *   register + verify a student -> onboard -> register a business (provisions a
  *   real tenant schema) -> seed a course/institution fixture + a verified
- *   representation for that business -> POST /enquiries (real matching, not
+ *   business_representations link for that business -> POST /enquiries (real matching, not
  *   direct-target) -> confirm GET /enquiries/:id embeds the matched business ->
  *   switch into the business's own context -> GET /enquiry-distributions (reads
  *   the business's own tenant DB, per the scope-reduction's tenant-sync design) ->
  *   confirm an enquiry_distributed email was queued for the business.
  *
+ * Also covers eligibility end to end: GET /enquiries/eligibility/:courseId scores the student
+ * against a course they fall short of, and POST /enquiries accepts that enquiry unchanged while
+ * storing the verdict on the row. Eligibility informs, it never gates.
+ *
  * DB is poked directly only for what has no public API: seeding
- * extraction_jobs/extraction_courses/extraction_institution_overview
- * (superadmin-ingested data, out of this module's scope to create) and creating
- * the `representations` row (deliberately internal-only in this phase, per the
- * scope-reduction plan).
+ * extraction_jobs/extraction_courses/extraction_institution_overview and the
+ * eligibility requirements (superadmin-ingested data, out of this module's scope to create),
+ * and creating the business_representations link, which the Partners tab owns — a different
+ * actor's flow from the student->business path under test here.
  */
 
 // Override with E2E_BASE_URL to run against a server on another port, e.g. when
@@ -137,7 +141,14 @@ async function main() {
          WHERE user_id = $1`,
         [studentUserId],
       );
-      await client.query(`INSERT INTO platform_user_qualifications (user_id) VALUES ($1)`, [studentUserId]);
+      // A real qualification, not just a row: the eligibility check compares
+      // qualification_type (a degree_levels slug) against a course's min_degree_level, and a
+      // NULL one can only ever produce "unknown".
+      await client.query(
+        `INSERT INTO platform_user_qualifications (user_id, qualification_type, grading_system, grade_value)
+         VALUES ($1, 'diploma', 'percentage', '72')`,
+        [studentUserId],
+      );
       await client.query(`INSERT INTO platform_user_language_tests (user_id) VALUES ($1)`, [studentUserId]);
     });
 
@@ -159,7 +170,7 @@ async function main() {
       businessToken = sw.data.access_token;
     });
 
-    await assert("seed an extraction_jobs/extraction_courses/institution-overview fixture + a verified representation", async () => {
+    await assert("seed an extraction_jobs/extraction_courses/institution fixture + a verified representation", async () => {
       const jobRes = await client.query(
         `INSERT INTO superadmin.extraction_jobs (institution_name, institution_url) VALUES ($1, $2) RETURNING id`,
         [`E2E Institution ${suffix}`, `https://e2e-${suffix}.example.com`],
@@ -184,38 +195,26 @@ async function main() {
         [studentUserId, `e2e-inst-${suffix}@example.com`, `e2e-inst-${suffix}`.slice(0, 20), `E2E Institution ${suffix}`, jobId],
       );
       institutionIntId = instRes.rows[0].id;
-      // Representations are internal-only in this phase (no HTTP CRUD) — seed directly.
+      // The eligibility link, seeded directly rather than through the Partners API: this suite is
+      // the student -> business path, and the partner tab is a different actor's flow.
       await client.query(
-        `INSERT INTO representations (business_id, extraction_job_id, extraction_course_id, status)
-         VALUES ($1, $2, $3, 'active')`,
-        [businessIntId, jobId, courseId],
+        `INSERT INTO business_representations
+           (originator_id, originator_type, target_id, target_type, status)
+         VALUES ($1, 'business', $2, 'institution', 'active')`,
+        [businessIntId, institutionIntId],
       );
-      // Geography is set directly because no portal writes it yet. Same country
-      // and ~150m from the student, so the country + distance tiers are actually
-      // exercised rather than sitting inert on NULLs.
+      // Geography, verification and the enquiry flag are set directly because no portal writes
+      // them yet. Same country and ~150m from the student, so the country + distance tiers are
+      // actually exercised rather than sitting inert on NULLs. These columns ARE the matcher's
+      // input now — there is no directory row synced from them any more.
       await client.query(
         `UPDATE businesses SET country_id = (SELECT id FROM countries WHERE iso2 = 'AU'),
                                latitude = -33.8700, longitude = 151.2100,
+                               status = 'verified', enquiry_enabled = true,
                                email = $2
          WHERE id = $1`,
         [businessIntId, `e2e-shared-inbox-${suffix}@example.com`],
       );
-      // Let the sync build the directory row from the representation + business,
-      // rather than hand-inserting it — that exercises the real sync path
-      // (verified status, geo, enquiry_enabled, sole-representer flag).
-      const { syncForBusiness } = await import("../../src/modules/enquiries/services/match-directory-sync.service.js");
-      await syncForBusiness(businessIntId);
-
-      const { rows: dir } = await client.query(
-        `SELECT subject_area, country_code, verification_status, latitude, is_institution_contact
-         FROM enquiry_match_directory WHERE business_id = $1`,
-        [businessIntId],
-      );
-      eq(dir.length, 1, "sync produced one directory row");
-      eq(dir[0].subject_area, "Computer Science", "directory subject_area from the represented course");
-      eq(dir[0].country_code, "AU", "directory country_code from the business");
-      eq(dir[0].verification_status, "verified", "directory verification_status from the business");
-      eq(dir[0].is_institution_contact, true, "sole representer flagged as institution contact");
     });
 
     await assert("POST /enquiries creates a pending enquiry (real matching, not direct-target)", async () => {
@@ -358,6 +357,58 @@ async function main() {
       await client.query(`DELETE FROM superadmin.extraction_jobs WHERE id = $1`, [otherJobId]);
     });
 
+    await assert("falling short of the requirements is scored and stored, and never blocks the send", async () => {
+      // A course at the SAME institution (so it is represented) whose entry requirement the
+      // student definitively fails: they hold a diploma, this asks for a master's.
+      const course = await client.query(
+        `INSERT INTO superadmin.extraction_courses (job_id, name, subject_area)
+         VALUES ($1, $2, $3) RETURNING id`,
+        [jobId, `E2E Selective Course ${suffix}`, "Computer Science"],
+      );
+      const selectiveCourseId = course.rows[0].id;
+      const requirement = await client.query(
+        `INSERT INTO superadmin.extraction_eligibility_requirements
+           (job_id, applicable_to, min_degree_level) VALUES ($1, 'both', $2) RETURNING id`,
+        [jobId, "Master's"],
+      );
+      // Assigned to this course only — which is also what keeps it from leaking onto the other
+      // course as an institution-level requirement.
+      await client.query(
+        `INSERT INTO superadmin.extraction_course_eligibility_assignments
+           (job_id, course_id, eligibility_requirement_id) VALUES ($1, $2, $3)`,
+        [jobId, selectiveCourseId, requirement.rows[0].id],
+      );
+
+      const check = await api("GET", `/enquiries/eligibility/${selectiveCourseId}`, undefined, studentToken);
+      eq(check.status, 200, "eligibility check status");
+      eq(check.data.status, "not_eligible", "verdict");
+      eq(check.data.percentage, 0, "the one comparable criterion failed");
+      eq(check.data.criteria[0].status, "fail", "the degree criterion fails");
+      eq(check.data.criteria[0].actual, "diploma", "what the student holds");
+
+      const sent = await api("POST", "/enquiries", {
+        course_id: selectiveCourseId,
+        message: "I would like to apply even though I may not meet the entry requirements.",
+      }, studentToken);
+      eq(sent.status, 201, "falling short must not refuse the enquiry");
+      eq(sent.data.eligibility_snapshot.status, "not_eligible", "the verdict is stored on the enquiry");
+      eq(sent.data.eligibility_snapshot.percentage, 0, "and so is the score");
+
+      const { runMatching } = await import("../../src/modules/enquiries/services/matching.service.js");
+      await runMatching(sent.data.id);
+
+      await client.query(`DELETE FROM enquiry_email_queue WHERE enquiry_id = $1`, [sent.data.id]);
+      const { rows: dists } = await client.query(`SELECT id FROM enquiry_distributions WHERE enquiry_id = $1`, [sent.data.id]);
+      if (dists.length) {
+        await client.query(`DELETE FROM audit_logs WHERE entity_id = ANY($1::uuid[])`, [dists.map((d: any) => d.id)]);
+        await client.query(`DELETE FROM enquiry_distributions WHERE enquiry_id = $1`, [sent.data.id]);
+      }
+      await client.query(`DELETE FROM audit_logs WHERE entity_id = $1`, [sent.data.id]);
+      await client.query(`DELETE FROM enquiries WHERE id = $1`, [sent.data.id]);
+      await client.query(`DELETE FROM superadmin.extraction_courses WHERE id = $1`, [selectiveCourseId]);
+      await client.query(`DELETE FROM superadmin.extraction_eligibility_requirements WHERE id = $1`, [requirement.rows[0].id]);
+    });
+
     await assert("a second, unrelated business cannot see this enquiry in its own tenant inbox", async () => {
       const otherEmail = `e2e-other-${suffix}@example.com`;
       await api("POST", "/auth/register", { first_name: "Other", last_name: "Student", email: otherEmail });
@@ -379,8 +430,10 @@ async function main() {
       await client.query(`DELETE FROM enquiry_email_queue WHERE business_id = $1`, [businessIntId]);
       await client.query(`DELETE FROM audit_logs WHERE entity_id = $1`, [enquiryId]);
       await client.query(`DELETE FROM enquiries WHERE id = $1`, [enquiryId]);
-      await client.query(`DELETE FROM enquiry_match_directory WHERE business_id = $1`, [businessIntId]);
-      await client.query(`DELETE FROM representations WHERE business_id = $1`, [businessIntId]);
+      await client.query(
+        `DELETE FROM business_representations WHERE originator_id = $1 AND originator_type = 'business'`,
+        [businessIntId],
+      );
       await client.query(`DELETE FROM businesses WHERE business_name LIKE $1`, [`E2E%${suffix}`]);
       await client.query(`DELETE FROM institutions WHERE source_job_id = $1`, [jobId]);
       await client.query(`DELETE FROM superadmin.extraction_institution_overview WHERE job_id = $1`, [jobId]);

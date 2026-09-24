@@ -4,16 +4,18 @@ import { Navbar } from "./components/navbar";
 import { Footer } from "./components/footer";
 import { CookieConsent } from "./components/cookie-consent";
 import { BackToTop } from "./components/back-to-top";
+import { LOGO } from "@/lib/public-assets";
 import { CompareTray } from "./search/components/compare-tray";
+import { PreviewLock } from "./components/preview-lock";
 
 const TITLE = "Globaly — World #1 AI Integrated Education Ecosystem";
 const OG_DESCRIPTION =
-  "Connecting Students with Domestic and International Education Providers, Education Agents and Service Providers";
+  "Connecting Students with Domestic and International Education Providers, Education Counselors and Service Providers";
 
 export const metadata: Metadata = {
   title: TITLE,
   description:
-    "Globaly is the World #1 AI Integrated Education Ecosystem — connecting students with counsellors, education agents, institutions and service providers worldwide. Search, enroll and settle.",
+    "Globaly is the World #1 AI Integrated Education Ecosystem — connecting students with counsellors, education counselors, institutions and service providers worldwide. Search, enroll and settle.",
   authors: [{ name: "Globaly.ai" }],
   alternates: { canonical: "https://www.globalyapp.com/" },
   verification: { google: "BZ5srMbEp1MHzey_WGmXmNAbMx7Bh6Bf-WTM6UsKb94" },
@@ -23,14 +25,14 @@ export const metadata: Metadata = {
     title: TITLE,
     description: OG_DESCRIPTION,
     url: "https://www.globalyapp.com/",
-    images: ["/globaly-logo.png"],
+    images: [LOGO.src],
   },
   twitter: {
     card: "summary_large_image",
     site: "@GlobalyAI",
     title: TITLE,
     description: OG_DESCRIPTION,
-    images: ["/globaly-logo.png"],
+    images: [LOGO.src],
   },
 };
 
@@ -38,9 +40,9 @@ const ORGANIZATION_JSON_LD = {
   "@context": "https://schema.org",
   "@type": "Organization",
   name: "Globaly",
-  alternateName: "Globaly.app",
+  alternateName: "Globalyapp",
   url: "https://www.globalyapp.com",
-  logo: "https://www.globalyapp.com/globaly-logo.png",
+  logo: LOGO.src,
   description: OG_DESCRIPTION,
   sameAs: [
     "https://www.linkedin.com/company/globaly-app",
@@ -64,6 +66,7 @@ const WEBSITE_JSON_LD = {
 
 export default function WebLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
+    <PreviewLock>
     <div className="flex min-h-screen flex-col">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(ORGANIZATION_JSON_LD) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(WEBSITE_JSON_LD) }} />
@@ -74,5 +77,6 @@ export default function WebLayout({ children }: Readonly<{ children: ReactNode }
       <BackToTop />
       <CompareTray />
     </div>
+    </PreviewLock>
   );
 }

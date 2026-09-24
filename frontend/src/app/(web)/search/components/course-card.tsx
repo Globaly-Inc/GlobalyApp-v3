@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { Calendar, CircleCheck, Clock, FileText, GraduationCap } from "lucide-react";
+import { Calendar, Clock, FileText, GraduationCap } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { flagFromIso2 } from "@/lib/utils";
+import { amountLabel, flagFromIso2 } from "@/lib/utils";
+import { CampusChips } from "./campus-chips";
 import { CourseCompareButton } from "./course-compare-button";
 import { FavouriteButton } from "./favourite-button";
 import { coursePrice, formatDuration, formatNextIntake } from "../course-card-utils";
@@ -17,7 +18,7 @@ function CourseStat({
       <Icon className="h-4 w-4 shrink-0 text-muted-foreground" />
       <div className="min-w-0">
         <p className="text-xs text-muted-foreground leading-tight">{label}</p>
-        <p className="truncate text-sm font-medium text-foreground leading-tight">{value}</p>
+        <p className="truncate text-sm font-medium text-slate-700 leading-relaxed">{value}</p>
       </div>
     </div>
   );
@@ -30,11 +31,11 @@ export function CourseCard({
   const nextIntakeLabel = formatNextIntake(course.next_intake_year, course.next_intake_month);
   const price = coursePrice(course, feePeriod);
   const flag = flagFromIso2(course.country_code ?? "");
+  const campuses = course.campus_locations ?? [];
 
   const feeCurrency = course.domestic_currency ?? course.international_currency ?? undefined;
-  const annualTuition = course.domestic_fee_total != null
-    ? Number(course.domestic_fee_total)
-    : course.international_fee_total != null ? Number(course.international_fee_total) : null;
+  const annualPrice = coursePrice(course, "per_year");
+  const annualTuition = annualPrice?.label === "Per Year" ? annualPrice.amount : null;
 
   return (
     <div className="group relative overflow-hidden rounded-xl border border-border bg-card transition-all hover:border-primary/40 hover:shadow-md">
@@ -56,12 +57,12 @@ export function CourseCard({
                 <GraduationCap className="h-8 w-8 text-muted-foreground" />
               )}
             </div>
-
-            <div className="min-w-0 flex-1">
-              <h3 className="text-lg font-semibold leading-snug text-foreground transition-colors group-hover:text-primary">
-                {course.name}
-              </h3>
-
+            <div className="flex-1 min-w-0">
+              <div className="flex items-start justify-between gap-2">
+                <h3 className="flex-1 min-w-0 font-semibold text-foreground group-hover:text-primary transition-colors leading-snug text-[15px] line-clamp-2">
+                  {course.name}
+                </h3>
+              </div>
               {course.awarding_institution && (
                 <p className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
                   <GraduationCap className="h-4 w-4 shrink-0" />
@@ -71,6 +72,7 @@ export function CourseCard({
                   {flag && <span aria-hidden="true">{flag}</span>}
                 </p>
               )}
+              <CampusChips locations={campuses} />
             </div>
 
             <div className="pointer-events-auto relative z-10 flex shrink-0 items-center gap-3 self-start">
@@ -78,9 +80,11 @@ export function CourseCard({
                 course={{
                   id: course.id, slug: course.slug, name: course.name,
                   institutionName: course.awarding_institution ?? undefined,
+                  institutionLogoUrl: course.institution_logo_url ?? course.image_url,
                   countryName: course.country_name ?? undefined,
                   durationLabel, subjectArea: course.subject_area,
                   nextIntakeLabel, annualTuition, feeCurrency,
+                  branches: course.campus_locations, level: course.degree_level,
                 }}
               />
               <FavouriteButton itemType="course" itemId={course.id} />
@@ -97,22 +101,25 @@ export function CourseCard({
 
         {/* pointer-events-auto + z-10, same as the controls above: the card-wide overlay Link sits
             at inset-0, so anything meant to stay clickable has to opt back in. */}
-        <div className="pointer-events-auto relative z-10 flex w-full flex-col justify-center gap-3 border-t border-border bg-muted/30 p-5 sm:w-48 sm:shrink-0 sm:border-l sm:border-t-0">
+        <div className="pointer-events-auto relative z-10 flex w-full flex-col justify-between gap-6 border-t border-border p-5 sm:w-48 sm:shrink-0 sm:border-l sm:border-t-0">
           {price ? (
             <div>
               <p className="text-xs text-muted-foreground">{price.label}</p>
-              <p className="text-lg font-bold leading-tight text-foreground">{price.amount}</p>
+              <p className="text-xl font-bold leading-tight text-foreground">
+                {amountLabel(price.amount, price.currency)}
+              </p>
             </div>
           ) : (
             <p className="text-xs italic text-muted-foreground">Fees on enquiry</p>
           )}
 
           <div className="flex flex-col gap-2">
+            {/* ponytail: hidden for now on request — restore when eligibility scoring ships
             <Link href={`/course/${course.slug}#eligibility`}>
               <Button size="sm" variant="outline" className="h-9 w-full gap-1.5 text-xs font-normal text-muted-foreground">
                 Eligibility<CircleCheck className="h-3.5 w-3.5" />
               </Button>
-            </Link>
+            </Link> */}
             {/* Carries the course into the enquiry dialog, which opens prefilled from
                 ?course_id= (see personal/enquiries/components/enquiries-view.tsx).
                 Anonymous visitors are bounced to sign-in by PersonalShell, which

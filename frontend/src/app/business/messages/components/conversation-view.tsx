@@ -9,6 +9,7 @@ import {
   deleteMessage,
   editMessage,
   fetchThreadMessages,
+  fetchThreads,
   markThreadRead,
   sendThreadMessage,
   toggleMessagePin,
@@ -122,6 +123,27 @@ export function ConversationView({
           enquiryHref="/business/enquiries"
           onBack={onBack}
           onToggleFavorite={() => dispatch(toggleThreadFavorite(id))}
+          // Admins only. The new name is shared, so the thread list has to be re-read rather than
+          // patched locally — the sidebar row, search and Forward all render the same label.
+          onRename={
+            thread.my_role === "admin"
+              ? async (title) => {
+                  await businessMessagesApi.renameThread(id, title);
+                  dispatch(fetchThreads());
+                }
+              : undefined
+          }
+          // Upload, then point the thread at the path that came back — the same two steps the
+          // composer takes for an attachment, and the reason the server can verify the uploader.
+          onChangePhoto={
+            thread.my_role === "admin"
+              ? async (file) => {
+                  const { storage_path } = await businessMessagesApi.uploadAttachment(file);
+                  await businessMessagesApi.setThreadPhoto(id, storage_path);
+                  dispatch(fetchThreads());
+                }
+              : undefined
+          }
         />
 
         {/* Keyed so switching conversations remounts both: the list resets its scroll
@@ -180,7 +202,18 @@ export function ConversationView({
             onClose={() => setThreadParentId(null)}
           />
         ) : (
-          <ChatInfoPanel messages={messages} onJumpToMessage={jumpToMessage} />
+          <ChatInfoPanel
+            messages={messages}
+            onJumpToMessage={jumpToMessage}
+            distributionId={id}
+            showMembers
+            // Leaving removes this thread from their inbox, so the open conversation has to close
+            // with it — the list is the authority for what may be selected.
+            onLeft={() => {
+              dispatch(fetchThreads());
+              onBack();
+            }}
+          />
         )}
       </div>
     </div>

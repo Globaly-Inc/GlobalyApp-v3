@@ -8,9 +8,13 @@
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", Segoe UI Symbol, "Noto Color Emoji";
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", Segoe UI Symbol, "Noto Color Emoji";
   --font-mono: var(--font-geist-mono);
-  --font-heading: var(--font-fraunces);
+  /* var(--heading-font), not var(--font-fraunces) directly: @theme inline bakes a
+     token's value into the generated CSS, so naming the face here would compile
+     every heading to `font-family: var(--font-fraunces)` and leave nothing for the
+     theme font to reassign. Same indirection --color-primary uses. */
+  --font-heading: var(--heading-font);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -51,7 +55,7 @@
 }
 
 :root {
-  /* Globaly Editorial Red Design System — ported verbatim from GlobalyApp-V2 */
+  /* Globaly Editorial Design System — ported from GlobalyApp-V2, recolored from the original red/maroon brand to #012E8A */
   /* Cloud white, matching GlobalyOS's `--background: 210 20% 99%`: a hair off pure white, so white cards,
      the header and the sidebar read as surfaces on a page instead of merging into it. */
   --background: hsl(210 20% 99%);
@@ -60,19 +64,21 @@
   --card-foreground: hsl(222 47% 11%);
   --popover: hsl(0 0% 100%);
   --popover-foreground: hsl(222 47% 11%);
-  --primary: hsl(0 63% 31%);
+  /* The brand colour, literal rather than hsl(220 99% 27%): that triple rounds
+     to #012e89 once compiled, a step off the specified hex. */
+  --primary: #012E8A;
   --primary-foreground: hsl(0 0% 100%);
-  --secondary: hsl(0 30% 96%);
-  --secondary-foreground: hsl(0 63% 31%);
+  --secondary: hsl(220 30% 96%);
+  --secondary-foreground: #012E8A;
   --muted: hsl(210 17% 96%);
   --muted-foreground: hsl(215 16% 47%);
-  --accent: hsl(0 86% 80%);
-  --accent-foreground: hsl(0 63% 25%);
+  --accent: hsl(220 86% 80%);
+  --accent-foreground: hsl(220 99% 22%);
   --destructive: hsl(0 84% 60%);
   --destructive-foreground: hsl(0 0% 100%);
   --border: hsl(215 16% 90%);
   --input: hsl(215 16% 90%);
-  --ring: hsl(0 63% 31%);
+  --ring: #012E8A;
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -81,21 +87,32 @@
   --radius: 0.625rem;
   --sidebar: hsl(222 47% 11%);
   --sidebar-foreground: hsl(240 5% 85%);
-  --sidebar-primary: hsl(0 63% 45%);
+  --sidebar-primary: hsl(220 99% 40%);
   --sidebar-primary-foreground: hsl(0 0% 100%);
   --sidebar-accent: hsl(222 30% 18%);
   --sidebar-accent-foreground: hsl(0 0% 95%);
   --sidebar-border: hsl(222 30% 18%);
-  --sidebar-ring: hsl(0 63% 45%);
+  --sidebar-ring: hsl(220 99% 40%);
 
   /* Extra brand tokens — kept as raw "H S% L%" triples (not pre-wrapped in
      hsl()) so ported V2 markup using hsl(var(--token)) works unchanged. */
-  --gold: 38 92% 50%;
-  --gold-foreground: 0 0% 100%;
+  /* The bright accent against the navy brand. Still named --gold for the ported
+     V2 markup that reads it; the value is now the aqua that replaced the gold. */
+  --gold: 187 92% 55%;
+  /* Navy, not white: white on a 55%-lightness aqua is ~1.6:1 and unreadable. */
+  --gold-foreground: 220 99% 27%;
   --navy: 222 47% 11%;
   --navy-foreground: 0 0% 95%;
-  --purple-dark: 0 63% 20%;
-  --purple-deep: 0 63% 14%;
+  /* One step up in lightness from --primary, for accents that have to carry on the brand navy
+     itself: the home hero's typing cursor and the lit blob behind its headline. */
+  --primary-bright: 220 88% 45%;
+  --purple-dark: 220 99% 18%;
+  --purple-deep: 220 99% 12%;
+
+  /* The heading face. A plain custom property rather than a @theme token, so it
+     survives to runtime: layout.tsx and applyThemeSettings reassign this when a
+     tenant has picked a font, and clear it to fall back to Fraunces. */
+  --heading-font: var(--font-fraunces);
 }
 
 .dark {
@@ -105,7 +122,7 @@
   --card-foreground: hsl(240 5% 95%);
   --popover: hsl(222 47% 11%);
   --popover-foreground: hsl(240 5% 95%);
-  --primary: hsl(0 70% 50%);
+  --primary: hsl(220 90% 50%);
   --primary-foreground: hsl(0 0% 100%);
   --secondary: hsl(222 30% 18%);
   --secondary-foreground: hsl(240 5% 90%);
@@ -117,7 +134,7 @@
   --destructive-foreground: hsl(0 0% 100%);
   --border: hsl(222 30% 22%);
   --input: hsl(222 30% 22%);
-  --ring: hsl(0 70% 50%);
+  --ring: hsl(220 90% 50%);
   --chart-1: oklch(0.87 0 0);
   --chart-2: oklch(0.556 0 0);
   --chart-3: oklch(0.439 0 0);
@@ -125,19 +142,25 @@
   --chart-5: oklch(0.269 0 0);
   --sidebar: hsl(222 47% 8%);
   --sidebar-foreground: hsl(240 5% 85%);
-  --sidebar-primary: hsl(0 70% 50%);
+  --sidebar-primary: hsl(220 90% 50%);
   --sidebar-primary-foreground: hsl(0 0% 100%);
   --sidebar-accent: hsl(222 30% 14%);
   --sidebar-accent-foreground: hsl(0 0% 95%);
   --sidebar-border: hsl(222 30% 14%);
-  --sidebar-ring: hsl(0 70% 50%);
+  --sidebar-ring: hsl(220 90% 50%);
 
-  --gold: 38 92% 50%;
-  --gold-foreground: 0 0% 100%;
+  /* The bright accent against the navy brand. Still named --gold for the ported
+     V2 markup that reads it; the value is now the aqua that replaced the gold. */
+  --gold: 187 92% 55%;
+  /* Navy, not white: white on a 55%-lightness aqua is ~1.6:1 and unreadable. */
+  --gold-foreground: 220 99% 27%;
   --navy: 222 47% 8%;
   --navy-foreground: 0 0% 95%;
-  --purple-dark: 0 63% 20%;
-  --purple-deep: 0 63% 14%;
+  /* One step up in lightness from --primary, for accents that have to carry on the brand navy
+     itself: the home hero's typing cursor and the lit blob behind its headline. */
+  --primary-bright: 220 88% 45%;
+  --purple-dark: 220 99% 18%;
+  --purple-deep: 220 99% 12%;
 }
 
 @layer base {
@@ -151,8 +174,15 @@
     @apply font-sans;
     scroll-behavior: smooth;
   }
-  h1, h2, h3, h4 {
-    @apply font-sans tracking-[-0.01em];
+  /* Headings in Fraunces, body copy in Inter — the pairing GlobalyOS uses. Both faces are
+     already loaded in layout.tsx; --font-sans and this rule are what actually apply them.
+
+     A font-family here beats the one headings would inherit from <html>, so this rule
+     also decides whether /theme-setup's font reaches headings. layout.tsx reassigns
+     --font-heading when a tenant has picked a font, which is what lets the override
+     through while leaving the default pairing intact. */
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading tracking-[-0.01em];
   }
 }
 
@@ -180,16 +210,48 @@
 /* ── Ported from GlobalyApp-V2 for the (web) landing page ── */
 @layer components {
   .btn-gold {
-    @apply bg-[hsl(var(--gold))] text-white font-semibold hover:bg-[hsl(38,92%,44%)] transition-colors;
+    @apply bg-[hsl(var(--gold))] text-[hsl(var(--gold-foreground))] font-semibold hover:bg-[hsl(187,88%,47%)] transition-colors;
   }
   .gradient-text {
     /* --primary already stores a complete hsl(...) value (unlike --gold, a
        raw triplet) — wrapping it in hsl() again is invalid and silently
-       drops the whole background shorthand, making the gradient text invisible. */
-    background: linear-gradient(135deg, var(--primary), hsl(var(--gold)));
+       drops the whole background shorthand, making the gradient text invisible.
+
+       The warm end is a mid cyan rather than --gold itself: this runs on the
+       light landing sections, where the full-bright accent lands at ~2:1 and
+       the tail of the heading washes out. */
+    background: linear-gradient(135deg, var(--primary), hsl(190 95% 38%));
     -webkit-background-clip: text;
     -webkit-text-fill-color: transparent;
     background-clip: text;
+  }
+  /* The four landing heroes lay white type over bright stock footage. They each used
+     a flat navy scrim, which protected the type but flattened the footage into one
+     heavy slab. This wash spends the same light budget differently: the tone travels
+     navy -> cerulean instead of sitting on one value, and two soft blooms imply a
+     light source, so the footage reads as lit rather than dimmed.
+
+     Pair it with .hero-radiant on the section. White-on-video here was already only
+     ~3.4:1 before the wash lightened, and the text-shadow that class adds is what
+     holds the copy legible over the bright frames the video passes through. */
+  .hero-wash {
+    background:
+      radial-gradient(ellipse 85% 55% at 50% 4%, hsl(188 95% 72% / 0.3), transparent 62%),
+      radial-gradient(ellipse 65% 55% at 92% 102%, hsl(203 92% 55% / 0.38), transparent 60%),
+      linear-gradient(
+        152deg,
+        hsl(226 92% 15% / 0.86) 0%,
+        hsl(219 90% 24% / 0.7) 34%,
+        hsl(206 86% 34% / 0.56) 68%,
+        hsl(192 84% 44% / 0.46) 100%
+      );
+  }
+  /* Scoped to h1/p rather than every descendant: UnifiedSearchBar sits inside the
+     same copy wrapper and its light-background controls must not inherit this. */
+  .hero-radiant :is(h1, h2, p) {
+    text-shadow:
+      0 1px 2px hsl(224 92% 6% / 0.45),
+      0 2px 22px hsl(224 92% 6% / 0.55);
   }
   .highlight-text {
     position: relative;
@@ -280,6 +342,35 @@
     border-radius: 9999px;
   }
 
+  /* A list that scrolls inside its own card, with the bar only visible on hover — so a long
+     catalog needs no pagination without a scrollbar sitting there permanently. scrollbar-gutter
+     reserves the track width up front, so revealing the thumb cannot reflow the grid underneath.
+     :focus-within keeps it reachable for a keyboard, which never hovers. */
+  .scroll-on-hover {
+    overflow-y: auto;
+    scrollbar-gutter: stable;
+    scrollbar-width: thin;
+    scrollbar-color: transparent transparent;
+  }
+  .scroll-on-hover:hover,
+  .scroll-on-hover:focus-within {
+    scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+  }
+  .scroll-on-hover::-webkit-scrollbar {
+    width: 8px;
+  }
+  .scroll-on-hover::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .scroll-on-hover::-webkit-scrollbar-thumb {
+    background: transparent;
+    border-radius: 9999px;
+  }
+  .scroll-on-hover:hover::-webkit-scrollbar-thumb,
+  .scroll-on-hover:focus-within::-webkit-scrollbar-thumb {
+    background: hsl(var(--muted-foreground) / 0.35);
+  }
+
   /* Staggered entrance/exit for the public-page "mockup" illustrations — ported from V2's
      public mockups, which reference these class names but never actually define them there. */
   @keyframes fade-in {
@@ -296,6 +387,193 @@
   .animate-fade-out {
     animation: fade-out 0.4s ease-out;
   }
+
+  /* Entrance for the home hero: the badge fades in place while the headline, subtitle and
+     search bar rise into it. */
+  @keyframes fade-up {
+    from { opacity: 0; transform: translateY(16px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .animate-fade-up {
+    animation: fade-up 0.7s cubic-bezier(0.16, 1, 0.3, 1) both;
+  }
+
+  /* The breathing dot in the home hero's "World #1 AI…" badge. */
+  @keyframes ai-pulse {
+    0%, 100% { opacity: 0.45; transform: scale(1); }
+    50% { opacity: 1; transform: scale(1.15); }
+  }
+  .animate-ai-pulse {
+    animation: ai-pulse 2.4s ease-in-out infinite;
+  }
+
+  /* Takes 2px off the footage behind the home hero's copy, and nothing else: no tint, and no
+     text-shadow on the type. A backdrop-filter blurs only what is painted under this one
+     element, so the rest of the frame stays sharp.
+
+     The radial mask confines it to the copy column and fades it out well before the edges, so
+     there is no frosted rectangle over the footage.
+
+     Standard property last: with the -webkit- alias second, the CSS minifier collapses the pair
+     to the prefixed one alone and Firefox gets no blur. */
+  .hero-copy-blur {
+    /* -webkit-backdrop-filter: blur(0.5px);
+    backdrop-filter: blur(0.5px); */
+    -webkit-mask-image: radial-gradient(
+      ellipse 76% 58% at 50% 44%,
+      #000 0%,
+      #000 34%,
+      transparent 80%
+    );
+    mask-image: radial-gradient(
+      ellipse 76% 58% at 50% 44%,
+      #000 0%,
+      #000 34%,
+      transparent 80%
+    );
+  }
+
+  @keyframes float {
+    0%, 100% { transform: translate(0, 0) rotate(var(--float-rotate, 0deg)); }
+    50% { transform: translate(6px, -32px) rotate(var(--float-rotate, 0deg)); }
+  }
+  .animate-float {
+    animation: float 5s ease-in-out infinite;
+  }
+
+  /* Continuous horizontal drift for a duplicated track (see the country page's city row).
+     -50% lands exactly on the start of the second copy, so the loop is seamless *only* if the
+     track is perfectly periodic: space the items with a trailing margin, never `gap`, which
+     omits the seam between the two copies and leaves a half-gap jump each cycle. */
+  @keyframes marquee-x {
+    to { transform: translateX(-50%); }
+  }
+  .animate-marquee-x {
+    animation: marquee-x var(--marquee-duration, 60s) linear infinite;
+    will-change: transform;
+  }
+  .animate-marquee-x:hover,
+  .animate-marquee-x:focus-within {
+    animation-play-state: paused;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .animate-marquee-x {
+      animation: none;
+    }
+    /* A stopped track inside an overflow-hidden viewport would clip every item past the fold
+       with no way to reach it, so the viewport becomes a real scroller — and the duplicate
+       copy, which only exists to make the loop seamless, is dropped from it. */
+    .marquee-viewport {
+      overflow-x: auto;
+    }
+    .animate-marquee-x > [aria-hidden="true"] {
+      display: none;
+    }
+  }
+
+  /* Animated ring for the home hero's search box — the one place the AI counsellor is the
+     headline feature, so it gets a border that looks like it is thinking.
+
+     The sweep is a conic gradient rotated through a registered custom property (a plain
+     custom property cannot be animated). Where @property is unsupported the gradient simply
+     sits still, which still reads as a brand-coloured ring rather than breaking. */
+  @property --ai-ring-angle {
+    syntax: "<angle>";
+    initial-value: 0deg;
+    inherits: false;
+  }
+
+  @keyframes ai-ring-spin {
+    to { --ai-ring-angle: 360deg; }
+  }
+
+
+  .ai-ring {
+    position: relative;
+  }
+  /*
+   * Both layers carry the same sweep. A dozen hue stops rather than three: the halo reads as a
+   * continuous run of colour, and with a couple of stops a conic gradient spends most of its
+   * circumference on one hue. The run is cyan → blue → purple and nothing else, kept in the
+   * 58-67% lightness range, since neither a 27% navy nor a 55% ember can glow.
+   *
+   * The back half mirrors the front back to cyan, which buys two things: the loop closes on the
+   * opening hue so there is no seam, and the wrap never has to interpolate the far end of the
+   * run straight into cyan across the grey dead zone in between.
+   */
+  .ai-ring::before,
+  .ai-ring::after {
+    content: "";
+    position: absolute;
+    border-radius: inherit;
+    background: conic-gradient(
+      from var(--ai-ring-angle),
+      hsl(188 92% 58%) 0deg,
+      hsl(200 94% 60%) 40deg,
+      hsl(214 94% 63%) 80deg,
+      hsl(230 90% 65%) 120deg,
+      hsl(250 88% 66%) 160deg,
+      /* the glint: 12deg of pale periwinkle, the brightest point of the sweep */
+      hsl(266 100% 84%) 190deg,
+      hsl(266 100% 84%) 202deg,
+      hsl(284 80% 64%) 232deg,
+      hsl(252 88% 66%) 268deg,
+      hsl(228 92% 65%) 302deg,
+      hsl(204 94% 61%) 332deg,
+      hsl(188 92% 58%) 360deg
+    );
+    animation: ai-ring-spin 6s linear infinite;
+    pointer-events: none;
+  }
+  /*
+   * The border itself, and nothing else: the gradient is masked to the 2px padding ring, so
+   * the middle is punched out rather than relying on the card's own background to cover it.
+   * That is what keeps the box white instead of tinting it.
+   */
+  .ai-ring::before {
+    inset: 0;
+    padding: 2px;
+    -webkit-mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    -webkit-mask-composite: xor;
+    mask:
+      linear-gradient(#000 0 0) content-box,
+      linear-gradient(#000 0 0);
+    mask-composite: exclude;
+  }
+  /*
+   * A tight halo just outside the edge — the reference's border bleeds a little light. It sits
+   * behind the card (z-index -1) and only reaches 3px out, so it never washes over the surface.
+   */
+  .ai-ring::after {
+    inset: -3px;
+    z-index: -1;
+    filter: blur(7px);
+    opacity: 0.4;
+  }
+
+  /* The "Ask AI" label, painted with the same hue run as the ring around the card it sits in.
+     Text is the one place the ring's own 58-67% lightness cannot be reused: at 14px on white
+     those stops land near 2.5:1. This ramp is the same cyan → blue → purple path taken 30-40%
+     darker, so every stop clears 4.5:1 and the sweep still reads as colour rather than as a
+     muddy near-black.
+
+     background-clip: text needs a transparent foreground to show through, so anything that
+     must stay solid — the Sparkles glyph, whose stroke follows currentColor — sets its own
+     colour rather than inheriting from here. */
+  .ai-gradient-text {
+    background-image: linear-gradient(
+      100deg,
+      hsl(192 88% 34%) 0%,
+      hsl(220 88% 46%) 34%,
+      hsl(254 80% 50%) 70%,
+      hsl(282 78% 45%) 100%
+    );
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -308,5 +586,22 @@
     opacity: 1 !important;
     transform: none !important;
     transition: none !important;
+  }
+  .animate-float {
+    animation: none !important;
+  }
+  .ai-ring::before,
+  .ai-ring::after {
+    animation: none !important;
+  }
+  /* The landing heroes: the badge and its pulsing dot, and the rise the headline, subtitle and
+     search bar come in on. animation:none alone is enough here — unlike .reveal, whose hidden
+     state lives on the class itself, these carry nothing outside their keyframes, so the copy
+     renders in its final state rather than stranded at the from-frame. The dot's infinite pulse
+     is the one that matters most: it never stops on its own. */
+  .animate-fade-in,
+  .animate-fade-up,
+  .animate-ai-pulse {
+    animation: none !important;
   }
 }

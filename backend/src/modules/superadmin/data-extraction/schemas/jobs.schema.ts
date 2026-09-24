@@ -1,6 +1,7 @@
 // Zod schemas for extraction jobs endpoints.
 
 import { z } from "zod";
+import { STEP_MODES } from "./step.schema.js";
 import { PaginationSchema } from "../../../../shared/pagination.js";
 
 export const JOB_STATUSES = [
@@ -19,8 +20,16 @@ export const CreateJobSchema = z.object({
   guided_urls: z.record(z.unknown()).optional(),
   guidance_notes: z.string().optional(),
   sample_course_url: z.string().url().optional(),
-  supporting_documents: z.array(z.unknown()).optional(),
+  /** degree_levels slugs; omitted means every level. */
+  degree_level_codes: z.array(z.string()).optional(),
   pipeline_progress: z.record(z.unknown()).optional(),
+  /**
+   * Removed 2026-09-22: PDFs are site URLs with a category now. Rejected rather than silently stripped
+   * (this schema is not strict) so a client still sending evidence learns it was not stored.
+   */
+  supporting_documents: z.undefined({
+    invalid_type_error: "supporting_documents is no longer accepted; create the job, then add each PDF with POST /jobs/:id/site-urls { url, category }",
+  }),
 });
 
 export const FailJobSchema = z.object({
@@ -31,6 +40,8 @@ export const FailJobSchema = z.object({
 export const PatchJobContextSchema = z.object({
   guided_urls: z.record(z.unknown()).nullable().optional(),
   guidance_notes: z.string().nullable().optional(),
+  /** auto: steps chain themselves. manual: the pipeline stops after every step until the admin presses Run. */
+  step_mode: z.enum(STEP_MODES).optional(),
 });
 
 export const UuidParamSchema = z.object({

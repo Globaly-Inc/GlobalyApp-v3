@@ -1,23 +1,28 @@
 // Extraction jobs repository — all queries against superadmin.extraction_jobs + related reads.
 
+import type { Knex } from "knex";
 import { masterKnex } from "../../../../core/db/master-pool.js";
+
+import { jobUsageTotalsSubquery } from "../lib/llm-store.js";
 
 const T = "superadmin.extraction_jobs";
 const T_OVERVIEW = "superadmin.extraction_institution_overview";
 const T_EVENTS = "superadmin.extraction_job_events";
 const T_CAMPUSES = "superadmin.extraction_campuses";
 const T_AGENTS = "superadmin.extraction_agents";
+const T_COURSES = "superadmin.extraction_courses";
 
-// extraction_jobs.institution_name stays null until the pipeline names the job, but the
-// extractor writes the name to the overview row well before that — so the list has a
-// title to show. Subquery, not a join: job_id has no unique index on the overview table.
-const OVERVIEW_NAME = `(select o.name from ${T_OVERVIEW} o where o.job_id = ${T}.id limit 1)`;
+const OVERVIEW_NAME = `(select o.name from ${T_OVERVIEW} o where o.job_id = ${T}.id order by o.created_at desc limit 1)`;
+
+/** LLM spend per job, as list columns: usage_calls, usage_cache_hits, usage_prompt_tokens, usage_output_tokens. */
+const USAGE_COLUMNS = ["u.usage_calls", "u.usage_cache_hits", "u.usage_prompt_tokens", "u.usage_output_tokens"];
 
 export async function listJobs(opts: { status?: string; q?: string; limit: number }) {
   const query = masterKnex(T)
-    .select(`${T}.*`)
+    .leftJoin(jobUsageTotalsSubquery(), "u.job_id", `${T}.id`)
+    .select(`${T}.*`, ...USAGE_COLUMNS)
     .select(masterKnex.raw(`${OVERVIEW_NAME} as overview_name`))
-    .orderBy("created_at", "desc")
+    .orderBy(`${T}.created_at`, "desc")
     .limit(opts.limit);
   if (opts.status) query.where("status", opts.status);
   if (opts.q) query.whereRaw(`coalesce(${T}.institution_name, ${OVERVIEW_NAME}) ilike ?`, [`%${opts.q}%`]);
@@ -89,7 +94,7 @@ export type JobFilterOpts = {
   statuses?: string[];
   excludeStatuses?: string[];
   sourceType?: string;
-  excludeSourceType?: string;
+  excludeSourceTypes?: string[];
   businessCategoryId?: number;
   q?: string;
 };
@@ -101,7 +106,12 @@ function filteredJobsQuery(opts: JobFilterOpts) {
   if (opts.statuses?.length) query.whereIn("status", opts.statuses);
   if (opts.excludeStatuses?.length) query.whereNotIn("status", opts.excludeStatuses);
   if (opts.sourceType) query.where("source_type", opts.sourceType);
-  if (opts.excludeSourceType) query.whereNot("source_type", opts.excludeSourceType);
+  // whereNotIn drops NULL source_type rows, and 'institution' is the column default that
+  // predates it being set explicitly — coalesce so an exclusion can't hide real jobs.
+  if (opts.excludeSourceTypes?.length) {
+    query.whereRaw(`coalesce(${T}.source_type, 'institution') not in (${opts.excludeSourceTypes.map(() => "?").join(",")})`,
+      opts.excludeSourceTypes);
+  }
   if (opts.businessCategoryId) query.where("business_category_id", opts.businessCategoryId);
   if (opts.q) query.whereRaw(`(${RESOLVED_NAME} ilike ? or ${T}.institution_url ilike ?)`, [`%${opts.q}%`, `%${opts.q}%`]);
   return query;
@@ -114,14 +124,15 @@ export async function countJobsFiltered(opts: JobFilterOpts) {
 
 export async function listJobsFiltered(opts: JobFilterOpts & { limit: number; offset: number; sort?: JobSort }) {
   const query = filteredJobsQuery(opts)
-    .select(`${T}.*`)
+    .leftJoin(jobUsageTotalsSubquery(), "u.job_id", `${T}.id`)
+    .select(`${T}.*`, ...USAGE_COLUMNS)
     .select(masterKnex.raw(`${OVERVIEW_NAME} as overview_name`))
     .limit(opts.limit)
     .offset(opts.offset);
 
   switch (opts.sort) {
     case "oldest":
-      query.orderBy("created_at", "asc");
+      query.orderBy(`${T}.created_at`, "asc");
       break;
     case "name_asc":
       query.orderByRaw(`${RESOLVED_NAME} asc nulls last`);
@@ -131,7 +142,7 @@ export async function listJobsFiltered(opts: JobFilterOpts & { limit: number; of
       break;
     case "newest":
     default:
-      query.orderBy("created_at", "desc");
+      query.orderBy(`${T}.created_at`, "desc");
   }
 
   const jobs = await query;
@@ -140,7 +151,7 @@ export async function listJobsFiltered(opts: JobFilterOpts & { limit: number; of
   if (jobs.length) {
     const jobIds = jobs.map((j: { id: string }) => j.id);
 
-    const [campusCounts, agentCounts] = await Promise.all([
+    const [campusCounts, agentCounts, courseCounts] = await Promise.all([
       masterKnex(T_CAMPUSES)
         .select("job_id")
         .count("id as count")
@@ -151,14 +162,20 @@ export async function listJobsFiltered(opts: JobFilterOpts & { limit: number; of
         .count("id as count")
         .whereIn("job_id", jobIds)
         .groupBy("job_id"),
+      masterKnex(T_COURSES)
+        .select("job_id")
+        .count("id as count")
+        .whereIn("job_id", jobIds)
+        .groupBy("job_id"),
     ]);
 
     const campusMap = Object.fromEntries(campusCounts.map((r: any) => [r.job_id, Number(r.count)]));
     const agentMap = Object.fromEntries(agentCounts.map((r: any) => [r.job_id, Number(r.count)]));
-
+    const courseMap = Object.fromEntries(courseCounts.map((r: any) => [r.job_id, Number(r.count)]));
     for (const job of jobs as any[]) {
       job.campus_count = campusMap[job.id] ?? 0;
       job.agent_count = agentMap[job.id] ?? 0;
+      job.courses_extracted = courseMap[job.id] ?? 0;
     }
   }
 
@@ -179,20 +196,69 @@ export async function findJobWithOverview(id: string) {
       .leftJoin("public.service_categories as sc", "sc.id", `${T}.service_category_id`)
       .where(`${T}.id`, id)
       .first(),
-    masterKnex(T_OVERVIEW).where({ job_id: id }).first(),
+    masterKnex(T_OVERVIEW).where({ job_id: id }).orderBy("created_at", "desc").first(),
   ]);
   return { job, overview: overview ?? null };
 }
 
-export async function insertJob(data: Record<string, unknown>) {
-  const [row] = await masterKnex(T).insert(data).returning("id");
+export function normaliseHost(url: string): string | null {
+  try {
+    return new URL(url).hostname.toLowerCase().replace(/^www\./, "");
+  } catch {
+    return null;
+  }
+}
+
+export async function findJobByInstitutionHost(institutionUrl: string, db: Knex = masterKnex) {
+  const host = normaliseHost(institutionUrl);
+  if (!host) return null;
+
+  const rows = await db(`${T} as j`)
+    .leftJoin(`${T_OVERVIEW} as o`, "o.job_id", "j.id")
+    .select("j.id", "j.institution_url", "o.website", "o.email", "o.phone")
+    .select(db.raw("coalesce(j.institution_name, o.name) as institution_name"))
+    .whereNot("j.status", "declined");
+
+  return rows.find((r) => normaliseHost(r.institution_url) === host || (r.website && normaliseHost(r.website) === host)) ?? null;
+}
+
+export async function lockInstitutionHost(host: string, trx: Knex.Transaction) {
+  await trx.raw("select pg_advisory_xact_lock(hashtext(?)::bigint)", [host]);
+}
+
+export async function insertJob(data: Record<string, unknown>, db: Knex = masterKnex) {
+  const [row] = await db(T).insert(data).returning("id");
   return row;
 }
 
-export async function updateJob(id: string, data: Record<string, unknown>) {
+/**
+ * Point a non-crawl job (a manual or self-registered listing's own job) at its real website.
+ * That URL is what the AI embed widget matches courses on, so a website supplied after
+ * signup has to reach the job or the widget silently scopes to nothing.
+ *
+ * Guarded on source_type: a crawled or AgentCIS job's institution_url is its provenance — the
+ * address the pipeline actually fetched — and must never be rewritten from a display field.
+ */
+export async function findJobSourceType(id: string): Promise<string | null> {
+  const row = await masterKnex(T).where({ id }).first("source_type");
+  return row?.source_type ?? null;
+}
+
+export async function syncOwnedJobUrl(jobId: string, website: string) {
+  const url = website.includes("://") ? website : `https://${website}`;
+  return masterKnex(T)
+    .where({ id: jobId })
+    .whereIn("source_type", ["manual", "self_service"])
+    .update({ institution_url: url, updated_at: masterKnex.fn.now() });
+}
+
+// adminId is required for the same reason as the staged repos: every admin action on a job
+// records who took it. The workers don't call this — they write status/heartbeat/counters
+// through their own queries — so updated_by stays an admin trail, not worker noise.
+export async function updateJob(id: string, data: Record<string, unknown>, adminId: number) {
   const count = await masterKnex(T)
     .where({ id })
-    .update({ ...data, updated_at: masterKnex.fn.now() });
+    .update({ ...data, updated_at: masterKnex.fn.now(), updated_by_platform_user_id: adminId });
   return count > 0;
 }
 

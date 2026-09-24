@@ -1,15 +1,19 @@
 import type {
   ActivityListParams, ActivityListResult, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchListResult,
   BranchPatch, Business, BusinessCreateInput, BusinessDetail, BusinessListParams, BusinessListResult, BusinessPatch, BusinessRelation,
-  BusinessService, EnquirySettingsPatch, InstitutionBranch, InstitutionBranchListParams, InstitutionBranchListResult, InstitutionCourse, InstitutionCourseListParams, InstitutionCourseListResult, InstitutionDetail,
+  BusinessService, Contact, ContactInput, ContactListParams, ContactListResult, ContactPatch,
+  EnquirySettingsPatch, InstitutionBranch, InstitutionBranchListParams, InstitutionBranchListResult, InstitutionCourse, InstitutionCourseListParams, InstitutionCourseListResult, InstitutionDetail,
   ListingKind,
   InstitutionInvitation, InstitutionInvitationListParams, InstitutionInvitationListResult, InstitutionInviteInput,
   InstitutionPartner, InstitutionPartnerInput, InstitutionPartnerListParams, InstitutionPartnerListResult, InstitutionPartnerPatch, InstitutionPartnerRow, InstitutionPatch,
   InstitutionPermission, InstitutionRole, InstitutionRoleCreateInput, InstitutionRolePatch,
   LinkExistingBranchInput, LinkExistingBranchResult, Member, MemberInviteInput,
   MemberListParams, MemberListResult, MemberPatch, MemberRole,
-  RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, ServiceInput, ServicePatch,
-  ServiceSearchParams, ServiceSearchResult, ListingRef,} from "./types";
+  RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, ServiceAccreditation, ServiceAccreditationInput,
+  ServiceAiAssistInput, ServiceAiAssistResult, ServiceEligibility, ServiceEligibilityInput, ServiceEligibilityPatch,
+  ServiceFee, ServiceFeeInput, ServiceFeePatch, ServiceInput, ServiceIntake, ServiceIntakeInput, ServiceIntakePatch, ServiceMediaFile, ServicePatch,
+  ServiceSearchParams, ServiceSearchResult, ServiceStudyOption, ServiceStudyOptionInput, ServiceStudyOptionPatch,
+  ServiceStudyUnit, ServiceStudyUnitInput, ServiceStudyUnitPatch, ListingRef,} from "./types";
 import { toSlug } from "../utils";
 
 function delay(ms: number) {
@@ -41,6 +45,129 @@ const mockBranches: Record<number, Branch[]> = {
     },
   ],
 };
+
+// Separate from mockServices: institution ids collide with business ids, so a shared map would
+// leak one kind's mock services into the other.
+const mockInstitutionServices: Record<number, BusinessService[]> = {};
+
+// Same collision reasoning as mockInstitutionServices — separate maps per kind.
+const mockContacts: Record<number, Contact[]> = {};
+const mockInstitutionContacts: Record<number, Contact[]> = {};
+
+async function contactListMock(store: Record<number, Contact[]>, id: number, params: ContactListParams): Promise<ContactListResult> {
+  await delay(150);
+  let items = store[id] ?? [];
+  if (params.search) items = items.filter((c) => c.full_name.toLowerCase().includes(params.search!.toLowerCase()));
+  const limit = params.limit ?? 20;
+  const page = params.page ?? 1;
+  const start = (page - 1) * limit;
+  return { data: items.slice(start, start + limit), total: items.length };
+}
+
+async function createContactMock(store: Record<number, Contact[]>, id: number, input: ContactInput): Promise<Contact> {
+  await delay(200);
+  const now = new Date().toISOString();
+  const contact: Contact = {
+    id: uuid(),
+    full_name: input.full_name,
+    job_title: input.job_title ?? null,
+    department: input.department ?? null,
+    email: input.email ?? null,
+    phone: input.phone ?? null,
+    phone_country_code: input.phone_country_code ?? null,
+    linkedin_url: input.linkedin_url ?? null,
+    other_url: input.other_url ?? null,
+    tags: input.tags ?? [],
+    preferred_channel: input.preferred_channel ?? null,
+    is_primary: input.is_primary ?? false,
+    notes: input.notes ?? null,
+    created_at: now,
+    updated_at: now,
+  };
+  if (contact.is_primary) for (const c of store[id] ?? []) c.is_primary = false;
+  store[id] = [...(store[id] ?? []), contact];
+  return contact;
+}
+
+async function updateContactMock(store: Record<number, Contact[]>, id: number, contactId: string, patch: ContactPatch): Promise<Contact> {
+  await delay(200);
+  const c = (store[id] ?? []).find((x) => x.id === contactId);
+  if (!c) throw new Error("Contact not found");
+  if (patch.is_primary) for (const other of store[id] ?? []) if (other.id !== contactId) other.is_primary = false;
+  Object.assign(c, patch, { updated_at: new Date().toISOString() });
+  return c;
+}
+
+async function deleteContactMock(store: Record<number, Contact[]>, id: number, contactId: string): Promise<void> {
+  await delay(150);
+  store[id] = (store[id] ?? []).filter((c) => c.id !== contactId);
+}
+
+let mockFeeId = 1;
+const mockServiceFees: Record<string, ServiceFee[]> = {};
+function mockFeeRecord(serviceId: string, input: ServiceFeeInput): ServiceFee {
+  return {
+    id: mockFeeId++, service_id: serviceId, name: input.name ?? null,
+    student_type: input.student_type ?? "both", period_type: input.period_type ?? "Per Year",
+    currency: input.currency ?? "AUD", total_amount: String(input.total_amount),
+    installments: input.installments ?? [], created_at: new Date().toISOString(),
+  };
+}
+
+let mockIntakeId = 1;
+const mockServiceIntakes: Record<string, ServiceIntake[]> = {};
+function mockIntakeRecord(serviceId: string, input: ServiceIntakeInput): ServiceIntake {
+  return {
+    id: mockIntakeId++, service_id: serviceId, intake_name: input.intake_name ?? null,
+    start_date: input.start_date ?? null, end_date: input.end_date ?? null,
+    orientation_date: input.orientation_date ?? null, admission_deadline: input.admission_deadline ?? null,
+    intake_month: input.intake_month ?? null, intake_year: input.intake_year ?? null,
+    created_at: new Date().toISOString(),
+  };
+}
+
+let mockEligibilityId = 1;
+const mockServiceEligibility: Record<string, ServiceEligibility[]> = {};
+function mockEligibilityRecord(serviceId: string, input: ServiceEligibilityInput): ServiceEligibility {
+  return {
+    id: mockEligibilityId++, service_id: serviceId, name: input.name ?? null,
+    applicable_to: input.applicable_to ?? "both", degree_level_id: input.degree_level_id ?? null,
+    score_type: input.score_type ?? null, min_score: input.min_score != null ? String(input.min_score) : null,
+    description: input.description ?? null, academic_tests: input.academic_tests ?? [], language_tests: input.language_tests ?? [],
+    created_at: new Date().toISOString(),
+  };
+}
+
+let mockStudyOptionId = 1;
+const mockServiceStudyOptions: Record<string, ServiceStudyOption[]> = {};
+function mockStudyOptionRecord(serviceId: string, input: ServiceStudyOptionInput): ServiceStudyOption {
+  return {
+    id: mockStudyOptionId++, service_id: serviceId, name: input.name ?? null,
+    study_mode: input.study_mode ?? "on_campus", study_load: input.study_load ?? "full_time",
+    duration_value: input.duration_value ?? null, duration_unit: input.duration_unit ?? "months",
+    applicable_to: input.applicable_to ?? "both", created_at: new Date().toISOString(),
+  };
+}
+
+let mockStudyUnitId = 1;
+const mockServiceStudyUnits: Record<string, ServiceStudyUnit[]> = {};
+function mockStudyUnitRecord(serviceId: string, input: ServiceStudyUnitInput): ServiceStudyUnit {
+  return {
+    id: mockStudyUnitId++, service_id: serviceId, unit_code: input.unit_code ?? null,
+    unit_name: input.unit_name, credit_points: input.credit_points ?? null,
+    description: input.description ?? null, unit_type: input.unit_type ?? "compulsory",
+    created_at: new Date().toISOString(),
+  };
+}
+
+let mockAccreditationRowId = 1;
+const mockServiceAccreditations: Record<string, ServiceAccreditation[]> = {};
+function mockAccreditationRecord(serviceId: string, input: ServiceAccreditationInput): ServiceAccreditation {
+  return { id: mockAccreditationRowId++, service_id: serviceId, accreditation_id: input.accreditation_id, created_at: new Date().toISOString() };
+}
+
+let mockMediaFileId = 1;
+const mockServiceMedia: Record<string, ServiceMediaFile[]> = {};
 
 const mockServices: Record<number, BusinessService[]> = {
   1: [
@@ -95,7 +222,7 @@ const mockBusinesses: BusinessDetail[] = [
     status: "verified", claim_status: "claimed", is_published: true, country_id: 1, country_name: "Australia", city: "Sydney",
     logo_url: null, account_status: 1, created_at: "2026-06-01T09:00:00Z",
     owner_first_name: "Alicia", owner_last_name: "Tan", owner_email: "alicia@primeedu.com",
-    is_unclaimed: false, profile_views: 128, branch_count: 2, service_count: 5,
+    is_unclaimed: false, profile_views: 128, source_job_id: null, branch_count: 2, service_count: 5,
     description: "Prime Education Group helps students find the right university across Australia.",
     website: "https://primeedu.com", state: "NSW", address: "1 George St", postcode: "2000",
     cover_url: null, linkedin_url: null, facebook_url: null, instagram_url: null, twitter_url: null,
@@ -109,7 +236,7 @@ const mockBusinesses: BusinessDetail[] = [
     status: "unverified", claim_status: "claimed", is_published: false, country_id: 2, country_name: "New Zealand", city: "Auckland",
     logo_url: null, account_status: 1, created_at: "2026-07-15T09:00:00Z",
     owner_first_name: "Ravi", owner_last_name: "Shah", owner_email: "ravi@everestmigration.com",
-    is_unclaimed: false, profile_views: 12, branch_count: 0, service_count: 0,
+    is_unclaimed: false, profile_views: 12, source_job_id: null, branch_count: 0, service_count: 0,
     description: null, website: null, state: null, address: null, postcode: null,
     cover_url: null, linkedin_url: null, facebook_url: null, instagram_url: null, twitter_url: null,
     youtube_url: null, whatsapp_url: null, gallery_images: [], video_urls: [],
@@ -122,7 +249,7 @@ const mockBusinesses: BusinessDetail[] = [
     status: "unverified", claim_status: "unclaimed", is_published: false, country_id: 3, country_name: "Canada", city: "Vancouver",
     logo_url: null, account_status: 1, created_at: "2026-05-20T09:00:00Z",
     owner_first_name: null, owner_last_name: null, owner_email: null,
-    is_unclaimed: true, profile_views: 0, branch_count: 0, service_count: 0,
+    is_unclaimed: true, profile_views: 0, source_job_id: null, branch_count: 0, service_count: 0,
     description: null, website: null, state: null, address: null, postcode: null,
     cover_url: null, linkedin_url: null, facebook_url: null, instagram_url: null, twitter_url: null,
     youtube_url: null, whatsapp_url: null, gallery_images: [], video_urls: [],
@@ -212,6 +339,7 @@ function applyFilters(rows: Business[], params: BusinessListParams): Business[] 
   if (params.status) out = out.filter((b) => b.status === params.status);
   if (params.category) out = out.filter((b) => b.business_category_id === params.category);
   if (params.kind) out = out.filter((b) => b.kind === params.kind);
+  if (params.business_type) out = out.filter((b) => b.business_type === params.business_type);
   out = [...out].sort((a, b) => {
     switch (params.sort) {
       case "name_desc": return b.business_name.localeCompare(a.business_name);
@@ -285,7 +413,7 @@ export const businessesMockApi = {
       country_id: input.country_id ?? null, country_name: null, city: input.city ?? null,
       logo_url: input.logo_url ?? null, account_status: 1, created_at: now,
       owner_first_name: input.first_name ?? input.business_name, owner_last_name: input.last_name ?? null, owner_email: input.email ?? null,
-      is_unclaimed: true, profile_views: 0, branch_count: 0, service_count: 0,
+      is_unclaimed: true, profile_views: 0, source_job_id: null, branch_count: 0, service_count: 0,
       description: input.description ?? null, website: input.website ?? null, state: input.state ?? null,
       address: input.address ?? null, postcode: input.postcode ?? null, cover_url: input.cover_url ?? null,
       linkedin_url: input.linkedin_url ?? null, facebook_url: input.facebook_url ?? null,
@@ -551,6 +679,351 @@ export const businessesMockApi = {
   updateServiceFieldValues: async (_id: number, _serviceId: string, values: SchemaFieldValue[]): Promise<SchemaFieldValue[]> => {
     await delay(150);
     return values;
+  },
+  getServiceFees: async (_id: number, serviceId: string): Promise<ServiceFee[]> => {
+    await delay(100);
+    return mockServiceFees[serviceId] ?? [];
+  },
+  createServiceFee: async (_id: number, serviceId: string, input: ServiceFeeInput): Promise<ServiceFee> => {
+    await delay(150);
+    const fee = mockFeeRecord(serviceId, input);
+    mockServiceFees[serviceId] = [...(mockServiceFees[serviceId] ?? []), fee];
+    return fee;
+  },
+  updateServiceFee: async (_id: number, serviceId: string, feeId: number, patch: ServiceFeePatch): Promise<ServiceFee> => {
+    await delay(150);
+    const fee = (mockServiceFees[serviceId] ?? []).find((f) => f.id === feeId);
+    if (!fee) throw new Error("Fee not found");
+    Object.assign(fee, patch, { total_amount: patch.total_amount != null ? String(patch.total_amount) : fee.total_amount });
+    return fee;
+  },
+  deleteServiceFee: async (_id: number, serviceId: string, feeId: number): Promise<void> => {
+    await delay(150);
+    mockServiceFees[serviceId] = (mockServiceFees[serviceId] ?? []).filter((f) => f.id !== feeId);
+  },
+
+  getServiceIntakes: async (_id: number, serviceId: string): Promise<ServiceIntake[]> => {
+    await delay(100);
+    return mockServiceIntakes[serviceId] ?? [];
+  },
+  createServiceIntake: async (_id: number, serviceId: string, input: ServiceIntakeInput): Promise<ServiceIntake> => {
+    await delay(150);
+    const intake = mockIntakeRecord(serviceId, input);
+    mockServiceIntakes[serviceId] = [...(mockServiceIntakes[serviceId] ?? []), intake];
+    return intake;
+  },
+  updateServiceIntake: async (_id: number, serviceId: string, intakeId: number, patch: ServiceIntakePatch): Promise<ServiceIntake> => {
+    await delay(150);
+    const intake = (mockServiceIntakes[serviceId] ?? []).find((i) => i.id === intakeId);
+    if (!intake) throw new Error("Intake not found");
+    Object.assign(intake, patch);
+    return intake;
+  },
+  deleteServiceIntake: async (_id: number, serviceId: string, intakeId: number): Promise<void> => {
+    await delay(150);
+    mockServiceIntakes[serviceId] = (mockServiceIntakes[serviceId] ?? []).filter((i) => i.id !== intakeId);
+  },
+
+  getServiceEligibility: async (_id: number, serviceId: string): Promise<ServiceEligibility[]> => {
+    await delay(100);
+    return mockServiceEligibility[serviceId] ?? [];
+  },
+  createServiceEligibility: async (_id: number, serviceId: string, input: ServiceEligibilityInput): Promise<ServiceEligibility> => {
+    await delay(150);
+    const row = mockEligibilityRecord(serviceId, input);
+    mockServiceEligibility[serviceId] = [...(mockServiceEligibility[serviceId] ?? []), row];
+    return row;
+  },
+  updateServiceEligibility: async (_id: number, serviceId: string, eligibilityId: number, patch: ServiceEligibilityPatch): Promise<ServiceEligibility> => {
+    await delay(150);
+    const row = (mockServiceEligibility[serviceId] ?? []).find((r) => r.id === eligibilityId);
+    if (!row) throw new Error("Eligibility requirement not found");
+    Object.assign(row, patch, { min_score: patch.min_score != null ? String(patch.min_score) : row.min_score });
+    return row;
+  },
+  deleteServiceEligibility: async (_id: number, serviceId: string, eligibilityId: number): Promise<void> => {
+    await delay(150);
+    mockServiceEligibility[serviceId] = (mockServiceEligibility[serviceId] ?? []).filter((r) => r.id !== eligibilityId);
+  },
+
+  getServiceStudyOptions: async (_id: number, serviceId: string): Promise<ServiceStudyOption[]> => {
+    await delay(100);
+    return mockServiceStudyOptions[serviceId] ?? [];
+  },
+  createServiceStudyOption: async (_id: number, serviceId: string, input: ServiceStudyOptionInput): Promise<ServiceStudyOption> => {
+    await delay(150);
+    const row = mockStudyOptionRecord(serviceId, input);
+    mockServiceStudyOptions[serviceId] = [...(mockServiceStudyOptions[serviceId] ?? []), row];
+    return row;
+  },
+  updateServiceStudyOption: async (_id: number, serviceId: string, optionId: number, patch: ServiceStudyOptionPatch): Promise<ServiceStudyOption> => {
+    await delay(150);
+    const row = (mockServiceStudyOptions[serviceId] ?? []).find((r) => r.id === optionId);
+    if (!row) throw new Error("Study option not found");
+    Object.assign(row, patch);
+    return row;
+  },
+  deleteServiceStudyOption: async (_id: number, serviceId: string, optionId: number): Promise<void> => {
+    await delay(150);
+    mockServiceStudyOptions[serviceId] = (mockServiceStudyOptions[serviceId] ?? []).filter((r) => r.id !== optionId);
+  },
+
+  getServiceStudyUnits: async (_id: number, serviceId: string): Promise<ServiceStudyUnit[]> => {
+    await delay(100);
+    return mockServiceStudyUnits[serviceId] ?? [];
+  },
+  createServiceStudyUnit: async (_id: number, serviceId: string, input: ServiceStudyUnitInput): Promise<ServiceStudyUnit> => {
+    await delay(150);
+    const row = mockStudyUnitRecord(serviceId, input);
+    mockServiceStudyUnits[serviceId] = [...(mockServiceStudyUnits[serviceId] ?? []), row];
+    return row;
+  },
+  updateServiceStudyUnit: async (_id: number, serviceId: string, unitId: number, patch: ServiceStudyUnitPatch): Promise<ServiceStudyUnit> => {
+    await delay(150);
+    const row = (mockServiceStudyUnits[serviceId] ?? []).find((r) => r.id === unitId);
+    if (!row) throw new Error("Study unit not found");
+    Object.assign(row, patch);
+    return row;
+  },
+  deleteServiceStudyUnit: async (_id: number, serviceId: string, unitId: number): Promise<void> => {
+    await delay(150);
+    mockServiceStudyUnits[serviceId] = (mockServiceStudyUnits[serviceId] ?? []).filter((r) => r.id !== unitId);
+  },
+
+  getServiceAccreditations: async (_id: number, serviceId: string): Promise<ServiceAccreditation[]> => {
+    await delay(100);
+    return mockServiceAccreditations[serviceId] ?? [];
+  },
+  createServiceAccreditation: async (_id: number, serviceId: string, input: ServiceAccreditationInput): Promise<ServiceAccreditation> => {
+    await delay(150);
+    const row = mockAccreditationRecord(serviceId, input);
+    mockServiceAccreditations[serviceId] = [...(mockServiceAccreditations[serviceId] ?? []), row];
+    return row;
+  },
+  deleteServiceAccreditation: async (_id: number, serviceId: string, rowId: number): Promise<void> => {
+    await delay(150);
+    mockServiceAccreditations[serviceId] = (mockServiceAccreditations[serviceId] ?? []).filter((r) => r.id !== rowId);
+  },
+
+  getServiceMedia: async (_id: number, serviceId: string): Promise<{ files: ServiceMediaFile[] }> => {
+    await delay(100);
+    return { files: mockServiceMedia[serviceId] ?? [] };
+  },
+  uploadServiceMedia: async (_id: number, serviceId: string, file: File): Promise<ServiceMediaFile> => {
+    await delay(300);
+    const row: ServiceMediaFile = { id: mockMediaFileId++, original_name: file.name, mime_type: file.type, size_bytes: file.size, url: URL.createObjectURL(file) };
+    mockServiceMedia[serviceId] = [...(mockServiceMedia[serviceId] ?? []), row];
+    return row;
+  },
+  deleteServiceMedia: async (_id: number, serviceId: string, fileId: number): Promise<void> => {
+    await delay(150);
+    mockServiceMedia[serviceId] = (mockServiceMedia[serviceId] ?? []).filter((f) => f.id !== fileId);
+  },
+
+  generateServiceDescription: async (input: ServiceAiAssistInput): Promise<ServiceAiAssistResult> => {
+    await delay(600);
+    return {
+      text: `${input.name} is a ${input.category_name?.toLowerCase() ?? "program"} designed to give students practical, industry-relevant skills and a clear pathway toward their career goals.`,
+    };
+  },
+
+  getContacts: async (id: number, params: ContactListParams = {}): Promise<ContactListResult> => contactListMock(mockContacts, id, params),
+  createContact: async (id: number, input: ContactInput): Promise<Contact> => createContactMock(mockContacts, id, input),
+  updateContact: async (id: number, contactId: string, patch: ContactPatch): Promise<Contact> => updateContactMock(mockContacts, id, contactId, patch),
+  deleteContact: async (id: number, contactId: string): Promise<void> => deleteContactMock(mockContacts, id, contactId),
+
+  getInstitutionContacts: async (id: number, params: ContactListParams = {}): Promise<ContactListResult> => contactListMock(mockInstitutionContacts, id, params),
+  createInstitutionContact: async (id: number, input: ContactInput): Promise<Contact> => createContactMock(mockInstitutionContacts, id, input),
+  updateInstitutionContact: async (id: number, contactId: string, patch: ContactPatch): Promise<Contact> =>
+    updateContactMock(mockInstitutionContacts, id, contactId, patch),
+  deleteInstitutionContact: async (id: number, contactId: string): Promise<void> => deleteContactMock(mockInstitutionContacts, id, contactId),
+
+  getInstitutionServices: async (id: number): Promise<BusinessService[]> => {
+    await delay(150);
+    return mockInstitutionServices[id] ?? [];
+  },
+  searchInstitutionServices: async (id: number, params: ServiceSearchParams = {}): Promise<ServiceSearchResult> => {
+    await delay(150);
+    let items = mockInstitutionServices[id] ?? [];
+    if (params.search) items = items.filter((s) => s.name.toLowerCase().includes(params.search!.toLowerCase()));
+    const limit = params.limit ?? 20;
+    const page = params.page ?? 1;
+    const start = (page - 1) * limit;
+    return { data: items.slice(start, start + limit), total: items.length };
+  },
+  createInstitutionService: async (id: number, input: ServiceInput): Promise<BusinessService> => {
+    await delay(200);
+    const service: BusinessService = {
+      id: uuid(), category_name: null, is_published: false, created_at: new Date().toISOString(),
+      name: input.name, service_category_id: input.service_category_id,
+      description: input.description ?? null, price: input.price != null ? String(input.price) : null,
+    };
+    mockInstitutionServices[id] = [...(mockInstitutionServices[id] ?? []), service];
+    return service;
+  },
+  updateInstitutionService: async (id: number, serviceId: string, patch: ServicePatch): Promise<BusinessService> => {
+    await delay(200);
+    const s = (mockInstitutionServices[id] ?? []).find((x) => x.id === serviceId);
+    if (!s) throw new Error("Service not found");
+    Object.assign(s, patch, { price: patch.price != null ? String(patch.price) : s.price });
+    return s;
+  },
+  setInstitutionServicePublished: async (id: number, serviceId: string, is_published: boolean): Promise<BusinessService> => {
+    await delay(150);
+    const s = (mockInstitutionServices[id] ?? []).find((x) => x.id === serviceId);
+    if (!s) throw new Error("Service not found");
+    s.is_published = is_published;
+    return s;
+  },
+  deleteInstitutionService: async (id: number, serviceId: string): Promise<void> => {
+    await delay(150);
+    mockInstitutionServices[id] = (mockInstitutionServices[id] ?? []).filter((s) => s.id !== serviceId);
+  },
+  getInstitutionServiceFieldValues: async (): Promise<SchemaFieldValue[]> => {
+    await delay(100);
+    return [];
+  },
+  updateInstitutionServiceFieldValues: async (_id: number, _serviceId: string, values: SchemaFieldValue[]): Promise<SchemaFieldValue[]> => {
+    await delay(150);
+    return values;
+  },
+  getInstitutionServiceFees: async (_id: number, serviceId: string): Promise<ServiceFee[]> => {
+    await delay(100);
+    return mockServiceFees[serviceId] ?? [];
+  },
+  createInstitutionServiceFee: async (_id: number, serviceId: string, input: ServiceFeeInput): Promise<ServiceFee> => {
+    await delay(150);
+    const fee = mockFeeRecord(serviceId, input);
+    mockServiceFees[serviceId] = [...(mockServiceFees[serviceId] ?? []), fee];
+    return fee;
+  },
+  updateInstitutionServiceFee: async (_id: number, serviceId: string, feeId: number, patch: ServiceFeePatch): Promise<ServiceFee> => {
+    await delay(150);
+    const fee = (mockServiceFees[serviceId] ?? []).find((f) => f.id === feeId);
+    if (!fee) throw new Error("Fee not found");
+    Object.assign(fee, patch, { total_amount: patch.total_amount != null ? String(patch.total_amount) : fee.total_amount });
+    return fee;
+  },
+  deleteInstitutionServiceFee: async (_id: number, serviceId: string, feeId: number): Promise<void> => {
+    await delay(150);
+    mockServiceFees[serviceId] = (mockServiceFees[serviceId] ?? []).filter((f) => f.id !== feeId);
+  },
+  getInstitutionServiceIntakes: async (_id: number, serviceId: string): Promise<ServiceIntake[]> => {
+    await delay(100);
+    return mockServiceIntakes[serviceId] ?? [];
+  },
+  createInstitutionServiceIntake: async (_id: number, serviceId: string, input: ServiceIntakeInput): Promise<ServiceIntake> => {
+    await delay(150);
+    const intake = mockIntakeRecord(serviceId, input);
+    mockServiceIntakes[serviceId] = [...(mockServiceIntakes[serviceId] ?? []), intake];
+    return intake;
+  },
+  updateInstitutionServiceIntake: async (_id: number, serviceId: string, intakeId: number, patch: ServiceIntakePatch): Promise<ServiceIntake> => {
+    await delay(150);
+    const intake = (mockServiceIntakes[serviceId] ?? []).find((i) => i.id === intakeId);
+    if (!intake) throw new Error("Intake not found");
+    Object.assign(intake, patch);
+    return intake;
+  },
+  deleteInstitutionServiceIntake: async (_id: number, serviceId: string, intakeId: number): Promise<void> => {
+    await delay(150);
+    mockServiceIntakes[serviceId] = (mockServiceIntakes[serviceId] ?? []).filter((i) => i.id !== intakeId);
+  },
+
+  getInstitutionServiceEligibility: async (_id: number, serviceId: string): Promise<ServiceEligibility[]> => {
+    await delay(100);
+    return mockServiceEligibility[serviceId] ?? [];
+  },
+  createInstitutionServiceEligibility: async (_id: number, serviceId: string, input: ServiceEligibilityInput): Promise<ServiceEligibility> => {
+    await delay(150);
+    const row = mockEligibilityRecord(serviceId, input);
+    mockServiceEligibility[serviceId] = [...(mockServiceEligibility[serviceId] ?? []), row];
+    return row;
+  },
+  updateInstitutionServiceEligibility: async (_id: number, serviceId: string, eligibilityId: number, patch: ServiceEligibilityPatch): Promise<ServiceEligibility> => {
+    await delay(150);
+    const row = (mockServiceEligibility[serviceId] ?? []).find((r) => r.id === eligibilityId);
+    if (!row) throw new Error("Eligibility requirement not found");
+    Object.assign(row, patch, { min_score: patch.min_score != null ? String(patch.min_score) : row.min_score });
+    return row;
+  },
+  deleteInstitutionServiceEligibility: async (_id: number, serviceId: string, eligibilityId: number): Promise<void> => {
+    await delay(150);
+    mockServiceEligibility[serviceId] = (mockServiceEligibility[serviceId] ?? []).filter((r) => r.id !== eligibilityId);
+  },
+
+  getInstitutionServiceStudyOptions: async (_id: number, serviceId: string): Promise<ServiceStudyOption[]> => {
+    await delay(100);
+    return mockServiceStudyOptions[serviceId] ?? [];
+  },
+  createInstitutionServiceStudyOption: async (_id: number, serviceId: string, input: ServiceStudyOptionInput): Promise<ServiceStudyOption> => {
+    await delay(150);
+    const row = mockStudyOptionRecord(serviceId, input);
+    mockServiceStudyOptions[serviceId] = [...(mockServiceStudyOptions[serviceId] ?? []), row];
+    return row;
+  },
+  updateInstitutionServiceStudyOption: async (_id: number, serviceId: string, optionId: number, patch: ServiceStudyOptionPatch): Promise<ServiceStudyOption> => {
+    await delay(150);
+    const row = (mockServiceStudyOptions[serviceId] ?? []).find((r) => r.id === optionId);
+    if (!row) throw new Error("Study option not found");
+    Object.assign(row, patch);
+    return row;
+  },
+  deleteInstitutionServiceStudyOption: async (_id: number, serviceId: string, optionId: number): Promise<void> => {
+    await delay(150);
+    mockServiceStudyOptions[serviceId] = (mockServiceStudyOptions[serviceId] ?? []).filter((r) => r.id !== optionId);
+  },
+
+  getInstitutionServiceStudyUnits: async (_id: number, serviceId: string): Promise<ServiceStudyUnit[]> => {
+    await delay(100);
+    return mockServiceStudyUnits[serviceId] ?? [];
+  },
+  createInstitutionServiceStudyUnit: async (_id: number, serviceId: string, input: ServiceStudyUnitInput): Promise<ServiceStudyUnit> => {
+    await delay(150);
+    const row = mockStudyUnitRecord(serviceId, input);
+    mockServiceStudyUnits[serviceId] = [...(mockServiceStudyUnits[serviceId] ?? []), row];
+    return row;
+  },
+  updateInstitutionServiceStudyUnit: async (_id: number, serviceId: string, unitId: number, patch: ServiceStudyUnitPatch): Promise<ServiceStudyUnit> => {
+    await delay(150);
+    const row = (mockServiceStudyUnits[serviceId] ?? []).find((r) => r.id === unitId);
+    if (!row) throw new Error("Study unit not found");
+    Object.assign(row, patch);
+    return row;
+  },
+  deleteInstitutionServiceStudyUnit: async (_id: number, serviceId: string, unitId: number): Promise<void> => {
+    await delay(150);
+    mockServiceStudyUnits[serviceId] = (mockServiceStudyUnits[serviceId] ?? []).filter((r) => r.id !== unitId);
+  },
+
+  getInstitutionServiceAccreditations: async (_id: number, serviceId: string): Promise<ServiceAccreditation[]> => {
+    await delay(100);
+    return mockServiceAccreditations[serviceId] ?? [];
+  },
+  createInstitutionServiceAccreditation: async (_id: number, serviceId: string, input: ServiceAccreditationInput): Promise<ServiceAccreditation> => {
+    await delay(150);
+    const row = mockAccreditationRecord(serviceId, input);
+    mockServiceAccreditations[serviceId] = [...(mockServiceAccreditations[serviceId] ?? []), row];
+    return row;
+  },
+  deleteInstitutionServiceAccreditation: async (_id: number, serviceId: string, rowId: number): Promise<void> => {
+    await delay(150);
+    mockServiceAccreditations[serviceId] = (mockServiceAccreditations[serviceId] ?? []).filter((r) => r.id !== rowId);
+  },
+
+  getInstitutionServiceMedia: async (_id: number, serviceId: string): Promise<{ files: ServiceMediaFile[] }> => {
+    await delay(100);
+    return { files: mockServiceMedia[serviceId] ?? [] };
+  },
+  uploadInstitutionServiceMedia: async (_id: number, serviceId: string, file: File): Promise<ServiceMediaFile> => {
+    await delay(300);
+    const row: ServiceMediaFile = { id: mockMediaFileId++, original_name: file.name, mime_type: file.type, size_bytes: file.size, url: URL.createObjectURL(file) };
+    mockServiceMedia[serviceId] = [...(mockServiceMedia[serviceId] ?? []), row];
+    return row;
+  },
+  deleteInstitutionServiceMedia: async (_id: number, serviceId: string, fileId: number): Promise<void> => {
+    await delay(150);
+    mockServiceMedia[serviceId] = (mockServiceMedia[serviceId] ?? []).filter((f) => f.id !== fileId);
   },
 
   getMembers: async (id: number, params: MemberListParams = {}): Promise<MemberListResult> => {

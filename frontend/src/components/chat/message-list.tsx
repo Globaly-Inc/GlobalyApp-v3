@@ -1,13 +1,26 @@
 "use client";
 
 import { useCallback, useLayoutEffect, useRef, useState } from "react";
-import { Loader2, MessageSquare } from "lucide-react";
+import {
+  Camera,
+  Crown,
+  Info,
+  Loader2,
+  LogOut,
+  MessageSquare,
+  Pencil,
+  ShieldOff,
+  UserRoundMinus,
+  UserRoundPlus,
+  type LucideIcon,
+} from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { dateSeparatorLabel, initials, isGroupedWith } from "./utils";
+import { cn } from "@/lib/utils";
+import { dateSeparatorLabel, initials, isGroupedWith, isThreadEvent, messageTime } from "./utils";
 import { MessageRow } from "./message-row";
 import { ScrollToBottom } from "./scroll-to-bottom";
-import type { ChatThread, EnquiryMessage } from "./types";
+import type { ChatThread, EnquiryMessage, MessageKind } from "./types";
 import { useChatCopy } from "./chat-copy";
 
 /** V2's `DateSeparator`: a centred label between two hairlines. */
@@ -17,6 +30,49 @@ function DateSeparator({ label }: Readonly<{ label: string }>) {
       <div className="h-px flex-1 bg-border" />
       <span className="text-xs font-medium text-muted-foreground">{label}</span>
       <div className="h-px flex-1 bg-border" />
+    </div>
+  );
+}
+
+/**
+ * One icon per verb, keyed off the stored `kind` rather than read out of the sentence — that is the
+ * whole reason the verb is a column (see the 20260901_002 migration). A kind with no entry falls
+ * back to the neutral one rather than rendering nothing.
+ *
+ * The crown pair is GlobalyOS's: gold going up, grey going down, so a promotion and a demotion are
+ * distinguishable at a glance without reading either line.
+ */
+const EVENT_ICON: Record<MessageKind, { icon: LucideIcon; className?: string }> = {
+  message: { icon: Info },
+  member_added: { icon: UserRoundPlus, className: "text-emerald-600 dark:text-emerald-500" },
+  member_removed: { icon: UserRoundMinus, className: "text-destructive" },
+  member_left: { icon: LogOut },
+  admin_granted: { icon: Crown, className: "text-amber-500" },
+  admin_revoked: { icon: ShieldOff },
+  renamed: { icon: Pencil },
+  photo_changed: { icon: Camera },
+};
+
+/**
+ * A thread event — invited, removed, promoted, renamed — drawn the way GlobalyOS draws them: a
+ * quiet pill in the timeline, no avatar, no bubble, no hover actions. They are attributed to a real
+ * person in the database (enquiry_messages.sender_id is NOT NULL), so rendering them as a message
+ * made it look like that person had typed the sentence out.
+ *
+ * Left-aligned rather than centred, and inline-flex rather than full width, so a run of them reads
+ * as a list of small facts instead of a stack of banners.
+ */
+function ThreadEventRow({ message }: Readonly<{ message: EnquiryMessage }>) {
+  const { icon: Icon, className } = EVENT_ICON[message.kind] ?? EVENT_ICON.message;
+  return (
+    <div id={`message-${message.id}`} className="px-4 py-1">
+      <div className="inline-flex max-w-full items-center gap-2 rounded-full bg-muted/60 px-3 py-1">
+        <Icon className={cn("size-3.5 shrink-0", className ?? "text-muted-foreground")} aria-hidden />
+        <span className="min-w-0 break-words text-xs font-medium text-muted-foreground">{message.body}</span>
+        <time dateTime={message.created_at} className="shrink-0 text-[11px] tabular-nums text-muted-foreground/70">
+          {messageTime(message.created_at)}
+        </time>
+      </div>
     </div>
   );
 }
@@ -172,24 +228,28 @@ export function MessageList({
           return (
             <div key={message.id}>
               {showDate && <DateSeparator label={dateSeparatorLabel(message.created_at)} />}
-              <MessageRow
-                message={message}
-                // A date separator always starts a fresh group, so the first message
-                // under it keeps its avatar and header.
-                isGrouped={!showDate && isGroupedWith(message, previous)}
-                canPin={canPin}
-                canReact={canReact}
-                canModify={canModify}
-                distributionId={distributionId}
-                onToggleStar={() => onToggleStar(message.id)}
-                onTogglePin={() => onTogglePin(message.id)}
-                onToggleReaction={(emoji) => onToggleReaction(message.id, emoji)}
-                onOpenThread={() => onOpenThread(message)}
-                onEdit={(body) => onEdit(message.id, body)}
-                onDelete={() => onDelete(message.id)}
-                forwardThreads={forwardThreads}
-                onForward={onForward}
-              />
+              {isThreadEvent(message.kind) ? (
+                <ThreadEventRow message={message} />
+              ) : (
+                <MessageRow
+                  message={message}
+                  // A date separator always starts a fresh group, so the first message
+                  // under it keeps its avatar and header.
+                  isGrouped={!showDate && isGroupedWith(message, previous)}
+                  canPin={canPin}
+                  canReact={canReact}
+                  canModify={canModify}
+                  distributionId={distributionId}
+                  onToggleStar={() => onToggleStar(message.id)}
+                  onTogglePin={() => onTogglePin(message.id)}
+                  onToggleReaction={(emoji) => onToggleReaction(message.id, emoji)}
+                  onOpenThread={() => onOpenThread(message)}
+                  onEdit={(body) => onEdit(message.id, body)}
+                  onDelete={() => onDelete(message.id)}
+                  forwardThreads={forwardThreads}
+                  onForward={onForward}
+                />
+              )}
             </div>
           );
         })}

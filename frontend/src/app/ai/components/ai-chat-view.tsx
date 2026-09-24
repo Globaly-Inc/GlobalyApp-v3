@@ -22,6 +22,7 @@ import { ChatInput } from "./chat-input";
 import { SuggestedStarters } from "./suggested-starters";
 import { CreditBanner } from "./credit-banner";
 import { ProfileCompletionBanner } from "./profile-completion-banner";
+import { TestingPhaseBanner } from "./testing-phase-banner";
 import { CompareTray } from "@/app/(web)/search/components/compare-tray";
 import { useAuthState } from "@/app/auth/store/auth-slice";
 import { LoginPromptModal } from "./login-prompt-modal";
@@ -38,14 +39,25 @@ export function AiChatView({ initialQuery, redirectIfAuthenticated = false, fp }
   const { user, initializing } = useAuthState();
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [loginPromptDismissed, setLoginPromptDismissed] = useState(false);
+
+  // Re-show the login prompt every 30 s after dismissal while the guest is still blocked.
+  useEffect(() => {
+    if (!loginPromptDismissed) return;
+    const t = setTimeout(() => setLoginPromptDismissed(false), 30_000);
+    return () => clearTimeout(t);
+  }, [loginPromptDismissed]);
   const [draft, setDraft] = useState(initialQuery ?? "");
 
   const guestFingerprint = useRef<string | null>(null);
+  const autoSentRef = useRef(false);
 
-  // Logged-in users on the public /ai page belong in the personal portal.
+  // Logged-in users on the public /ai page belong in the personal portal — carry the query.
   useEffect(() => {
-    if (redirectIfAuthenticated && !initializing && user) router.replace("/personal/ai");
-  }, [redirectIfAuthenticated, initializing, user, router]);
+    if (redirectIfAuthenticated && !initializing && user) {
+      const target = initialQuery ? `/personal/ai?q=${encodeURIComponent(initialQuery)}` : "/personal/ai";
+      router.replace(target);
+    }
+  }, [redirectIfAuthenticated, initializing, user, router, initialQuery]);
 
   // Guard against double-fetch in React Strict Mode; skip for guests (no auth → 401).
   const fetchedRef = useRef(false);
@@ -59,38 +71,50 @@ export function AiChatView({ initialQuery, redirectIfAuthenticated = false, fp }
     if (fp) {
       dispatch(migrateGuestSession(fp)).then((action) => {
         const sessionId = (action.payload as number | null);
-        if (sessionId) dispatch(setActiveSession(sessionId));
+        if (sessionId) {
+          dispatch(setActiveSession(sessionId));
+          dispatch(fetchSessions()); // refresh sidebar to include the migrated session
+        }
       });
     }
   }, [dispatch, user, initializing, fp]);
 
   const handleSend = useCallback(
     (content: string, files?: File[]) => {
+      const trimmed = content.trim();
+      if (!trimmed || sendStatus === "loading") return;
       if (!user) {
         guestFingerprint.current ??= crypto.randomUUID();
-        dispatch(sendGuestMessage({ content, fingerprint: guestFingerprint.current }));
+        dispatch(sendGuestMessage({ content: trimmed, fingerprint: guestFingerprint.current }));
         setDraft("");
         return;
       }
       if (activeSessionId && activeSessionId !== GUEST_SESSION_ID) {
         dispatch(addOptimisticUserMessage({
           sessionId: activeSessionId,
-          content,
+          content: trimmed,
           attachments: files?.map((f) => f.name),
         }));
       }
-      dispatch(sendMessage({ sessionId: activeSessionId, content, files }));
+      dispatch(sendMessage({ sessionId: activeSessionId, content: trimmed, files }));
       setDraft("");
     },
-    [dispatch, activeSessionId, user],
+    [dispatch, activeSessionId, user, sendStatus],
   );
+
+  // Auto-submit the query from the landing page search bar — fires once auth state is known.
+  // Skip if this page is about to redirect the user elsewhere (logged-in on public /ai).
+  useEffect(() => {
+    if (!initialQuery || initializing || autoSentRef.current) return;
+    if (redirectIfAuthenticated && user) return;
+    autoSentRef.current = true;
+    handleSend(initialQuery);
+  }, [initialQuery, initializing, user, redirectIfAuthenticated, handleSend]);
 
   const handleNewChat = useCallback(() => {
     dispatch(setActiveSession(null));
     setSidebarOpen(false);
   }, [dispatch]);
-
-  const handleSuggestion = useCallback((text: string) => setDraft(text), []);
 
   const isChatting = messages.length > 0 || sendStatus === "loading";
 
@@ -103,14 +127,17 @@ export function AiChatView({ initialQuery, redirectIfAuthenticated = false, fp }
   const sidebar = <ChatSidebar onNewChat={handleNewChat} />;
 
   const composer = (bare: boolean) => (
-    <ChatInput
-      value={draft}
-      onChange={setDraft}
-      onSend={handleSend}
-      disabled={sendStatus === "loading" || guestBlocked}
-      allowAttachments
-      bare={bare}
-    />
+    <>
+      <ChatInput
+        value={draft}
+        onChange={setDraft}
+        onSend={handleSend}
+        disabled={sendStatus === "loading" || guestBlocked}
+        allowAttachments
+        bare={bare}
+      />
+      <TestingPhaseBanner />
+    </>
   );
 
   return (
@@ -142,10 +169,10 @@ export function AiChatView({ initialQuery, redirectIfAuthenticated = false, fp }
         <ProfileCompletionBanner />
 
         {isChatting ? (
-          <ChatMessages onChipClick={handleSuggestion} />
+          <ChatMessages onChipClick={handleSend} onSend={handleSend} />
         ) : (
           <div className="flex-1 overflow-y-auto">
-            <SuggestedStarters onSelect={handleSuggestion} name={profile?.first_name}>
+            <SuggestedStarters onSelect={handleSend} name={profile?.first_name}>
               {composer(true)}
             </SuggestedStarters>
           </div>

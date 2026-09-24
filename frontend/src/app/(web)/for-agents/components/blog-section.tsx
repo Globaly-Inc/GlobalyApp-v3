@@ -37,7 +37,7 @@ export function BlogSection() {
           <h2 className="text-2xl md:text-3xl font-bold mb-3">
             Latest from our <span className="highlight-text active">Blog</span>
           </h2>
-          <p className="text-muted-foreground">Expert insights on international education and agent success.</p>
+          <p className="text-muted-foreground">Expert insights on international education and education counselor success.</p>
         </Reveal>
         <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {BLOG_POSTS.map((post, i) => (

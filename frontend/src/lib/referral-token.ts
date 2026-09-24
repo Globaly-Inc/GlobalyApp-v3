@@ -40,9 +40,9 @@ export function clearRefToken() {
 }
 
 /**
- * The absolute referral link. ONE builder, so the host cannot drift between surfaces — V2 duplicated
- * `globaly.app/join?ref=` across two files and prepended "https://" only at copy time, which is how it
- * ended up pointing at a domain the app was never served from.
+ * The absolute referral link. ONE builder, so the host cannot drift between surfaces — V2 hardcoded
+ * its own `/join?ref=` host in two separate files and prepended "https://" only at copy time, which
+ * is how it ended up minting links for a domain the app was never served from.
  *
  * NEXT_PUBLIC_APP_URL must be set PER ENVIRONMENT. A referral link is a durable artefact — someone
  * copies it once and shares it for months — so a staging deploy that falls back to the production host

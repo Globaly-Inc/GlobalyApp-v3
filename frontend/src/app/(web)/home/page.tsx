@@ -14,9 +14,13 @@ import { UnifiedSearchBar } from "../components/unified-search-bar";
 import { useTypingEffect } from "../hooks/use-typing-effect";
 import { useParallax } from "../hooks/use-scroll-animation";
 import { useIsMobile } from "../hooks/use-is-mobile";
+import { usePlatformStats } from "../hooks/use-platform-stats";
+import { formatStatValue } from "../types";
 import type { Destination } from "../data/destinations";
 import { getFeaturedCountries } from "../data/countries-api";
-import { BLOG_POSTS } from "../data/blog-posts";
+import { orderDestinationsForVisitor } from "../data/destination-order";
+import { getPosts } from "../blog/api";
+import type { PublicBlogPost } from "../blog/types";
 import {
   TYPING_PHRASES,
   STUDENT_FEATURES,
@@ -33,50 +37,74 @@ export default function HomePage() {
   const isMobile = useIsMobile();
   const [destinations, setDestinations] = useState<Destination[]>([]);
   const [destinationsLoading, setDestinationsLoading] = useState(true);
+  const [posts, setPosts] = useState<PublicBlogPost[]>([]);
+  const [postsLoading, setPostsLoading] = useState(true);
+
+  const { stats, loading: statsLoading } = usePlatformStats();
 
   const fetchedRef = useRef(false);
   useEffect(() => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
     getFeaturedCountries()
-      .then((data) => setDestinations(data.slice(0, 8)))
+      .then((data) => setDestinations(orderDestinationsForVisitor(data).slice(0, 8)))
       .catch(() => {})
       .finally(() => setDestinationsLoading(false));
+    getPosts({})
+      .then((res) => setPosts(res.data.slice(0, 4)))
+      .catch(() => {})
+      .finally(() => setPostsLoading(false));
   }, []);
 
   return (
     <>
-      <section className="relative min-h-[calc(100svh-64px)] md:min-h-[620px] flex items-center overflow-hidden bg-[hsl(var(--purple-dark))]">
+      {/* Light copy over darkened footage. The for-students, for-institutions and for-agents
+          heroes are built the same way — keep the two backdrop layers, the badge pill and the
+          headline sizes in step across all four. */}
+      <section className="relative flex items-center overflow-hidden pt-8 pb-4 md:pt-11 md:pb-8">
         <AutoplayVideo
           src="https://videos.pexels.com/video-files/7945680/7945680-hd_1920_1080_25fps.mp4"
           poster="https://images.pexels.com/photos/1205651/pexels-photo-1205651.jpeg?auto=compress&cs=tinysrgb&w=1920"
-          className="absolute inset-0 w-full h-full object-cover scale-105"
-          style={{ transformOrigin: "center" }}
+          className="absolute inset-0 h-full w-full object-cover"
+          aria-hidden="true"
+          tabIndex={-1}
         />
-        <div className="absolute inset-0 bg-[hsl(var(--purple-dark))]/60" />
-        <div className="container mx-auto px-4 py-16 sm:py-20 md:py-20 relative z-10">
-          <div className="max-w-4xl mx-auto text-center py-8 md:py-[50px] pb-[20px] pt-[60px]">
-            <p className="text-white/70 text-sm font-medium mb-2 tracking-wide">
+        {/* Two layers: a dark scrim that carries the white type, and a 2px frost behind the copy
+            alone. */}
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 bg-gradient-to-b from-stone-950/62 via-stone-950/48 to-stone-950/68"
+        />
+        <div aria-hidden="true" className="hero-copy-blur pointer-events-none absolute inset-0" />
+        <div className="container mx-auto px-4 py-8 sm:py-12 relative z-10">
+          <div className="max-w-4xl mx-auto text-center">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/25 bg-white/10 px-4 py-1.5 text-xs font-semibold text-white shadow-xs backdrop-blur animate-fade-in">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full rounded-full bg-white animate-ai-pulse" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-white" />
+              </span>
               World #1 AI Integrated Education Ecosystem
-            </p>
-            <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold text-white mb-4 leading-tight">
+            </div>
+            <h1 className="mt-6 text-4xl sm:text-5xl md:text-6xl font-extrabold text-white leading-[1.05] animate-fade-up">
               Making Global Education
               <br />
-              <span className="text-[hsl(var(--gold))]">
+              <span className="text-amber-300">
                 {displayText}
                 <span
-                  className="text-[hsl(var(--gold))]"
+                  className="text-amber-200"
                   style={{ opacity: showCursor ? 1 : 0, transition: "opacity 0.1s" }}
                 >
                   |
                 </span>
               </span>
             </h1>
-            <p className="text-white/80 mb-8 text-base sm:text-xl font-medium px-2">
+            <p className="mt-5 mb-8 mx-auto max-w-2xl text-base sm:text-lg font-medium text-white/85 animate-fade-up">
               Connecting Students with Domestic and International Education Providers, Education
-              Agents and Service Providers
+              Counselors and Service Providers
             </p>
-            <UnifiedSearchBar />
+            <div className="animate-fade-up">
+              <UnifiedSearchBar />
+            </div>
           </div>
         </div>
       </section>
@@ -129,7 +157,7 @@ export default function HomePage() {
       </section>
 
       {/* ── FOR STUDENTS ── */}
-      <section className="py-16 bg-muted/30">
+      <section className="py-16 bg-primary/5">
         <div className="container mx-auto px-4">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <Reveal direction="left">
@@ -187,6 +215,7 @@ export default function HomePage() {
       </section>
 
       {/* ── BLOG ARTICLES ── */}
+      {(postsLoading || posts.length > 0) && (
       <section className="py-16 bg-background">
         <div className="container mx-auto px-4">
           <Reveal className="flex items-center justify-between mb-2">
@@ -206,32 +235,48 @@ export default function HomePage() {
             </div>
           </Reveal>
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4 mt-6">
-            {BLOG_POSTS.map((post, i) => (
-              <Reveal key={post.title} delay={i * 0.1}>
-                <Link href={post.href} className="group block h-full">
-                  <Card className="overflow-hidden h-full hover:shadow-md transition-all duration-300 hover:-translate-y-1 flex flex-row sm:flex-col">
-                    <div className="w-32 shrink-0 sm:w-full aspect-square sm:aspect-[4/3] overflow-hidden bg-muted">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={post.image}
-                        alt={post.title}
-                        className="w-full h-full object-cover md:transition-transform md:duration-700 md:group-hover:scale-110"
-                        loading="lazy"
-                      />
-                    </div>
-                    <CardContent className="p-3 sm:p-4 flex-1 min-w-0 flex flex-col justify-center sm:block">
-                      <p className="text-xs text-muted-foreground mb-1.5">{post.date}</p>
-                      <h3 className="font-semibold text-sm line-clamp-2 sm:line-clamp-3 mb-2 group-hover:text-primary transition-colors">
-                        {post.title}
-                      </h3>
-                      <Badge variant="secondary" className="text-xs w-fit">
-                        {post.category}
-                      </Badge>
-                    </CardContent>
-                  </Card>
-                </Link>
-              </Reveal>
-            ))}
+            {postsLoading
+              ? Array.from({ length: 4 }).map((_, i) => (
+                  <Skeleton key={i} className="rounded-xl h-32 sm:h-64" />
+                ))
+              : posts.map((post, i) => (
+                  <Reveal key={post.id} delay={i * 0.1}>
+                    <Link href={`/blog/${post.id}`} className="group block h-full">
+                      <Card className="overflow-hidden p-0 gap-0 h-full hover:shadow-md transition-all duration-300 hover:-translate-y-1 flex flex-row sm:flex-col">
+                        <div className="w-32 shrink-0 sm:w-full aspect-square sm:aspect-[4/3] overflow-hidden bg-muted">
+                          {post.cover_image_url && (
+                            // eslint-disable-next-line @next/next/no-img-element
+                            <img
+                              src={post.cover_image_url}
+                              alt={post.title}
+                              className="w-full h-full object-cover md:transition-transform md:duration-700 md:group-hover:scale-110"
+                              loading="lazy"
+                            />
+                          )}
+                        </div>
+                        <CardContent className="p-3 sm:p-4 flex-1 min-w-0 flex flex-col justify-center sm:block">
+                          {post.published_at && (
+                            <p className="text-xs text-muted-foreground mb-1.5">
+                              {new Date(post.published_at).toLocaleDateString("en-AU", {
+                                day: "numeric",
+                                month: "short",
+                                year: "numeric",
+                              })}
+                            </p>
+                          )}
+                          <h3 className="font-semibold text-sm line-clamp-2 sm:line-clamp-3 mb-2 group-hover:text-primary transition-colors">
+                            {post.title}
+                          </h3>
+                          {(post.country_focus ?? post.category) && (
+                            <Badge variant="secondary" className="text-xs w-fit">
+                              {post.country_focus ?? post.category}
+                            </Badge>
+                          )}
+                        </CardContent>
+                      </Card>
+                    </Link>
+                  </Reveal>
+                ))}
           </div>
           <Reveal className="text-center mt-8">
             <Button
@@ -245,9 +290,10 @@ export default function HomePage() {
           </Reveal>
         </div>
       </section>
+      )}
 
       {/* ── FOR EDUCATION PROVIDERS ── */}
-      <section className="py-16 bg-muted/30">
+      <section className="py-16 bg-primary/5">
         <div className="container mx-auto px-4">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <Reveal direction="left" className="relative">
@@ -268,7 +314,7 @@ export default function HomePage() {
                 <p className="text-muted-foreground mb-6 leading-relaxed">
                   Showcase your course offerings to the global market without any limitation and
                   connect with the qualified students locally and internationally through reputed
-                  and highly rated education agents
+                  and highly rated education counselors
                 </p>
                 <div className="space-y-2.5 mb-8">
                   {PROVIDER_FEATURES.map((feat) => (
@@ -310,7 +356,7 @@ export default function HomePage() {
               One Platform. <span className="highlight-text active">Global Reach.</span>
             </h2>
             <p className="text-muted-foreground max-w-xl mx-auto">
-              Whether you&apos;re a student, an institution, or an agent — Globaly.app connects you
+              Whether you&apos;re a student, an institution, or an education counselor — Globalyapp connects you
               with the right people, at the right time.
             </p>
           </Reveal>
@@ -322,7 +368,11 @@ export default function HomePage() {
                     <div className="w-12 h-12 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
                       <s.icon className="h-6 w-6 text-primary" />
                     </div>
-                    <p className="text-2xl font-bold mb-1">{s.value}</p>
+                    {statsLoading ? (
+                      <Skeleton className="h-8 w-16 mx-auto mb-1" />
+                    ) : (
+                      <p className="text-2xl font-bold mb-1">{formatStatValue(stats?.[s.key])}</p>
+                    )}
                     <p className="text-xs text-muted-foreground uppercase tracking-wider">{s.label}</p>
                   </CardContent>
                 </Card>
@@ -333,13 +383,13 @@ export default function HomePage() {
       </section>
 
       {/* ── FOR AGENTS ── */}
-      <section className="py-16 bg-muted/30">
+      <section className="py-16 bg-primary/5">
         <div className="container mx-auto px-4">
           <div className="grid lg:grid-cols-2 gap-12 items-center">
             <Reveal direction="left">
               <div>
                 <h2 className="text-3xl font-bold mb-4">
-                  For <span className="gradient-text">Education Agents</span>
+                  For <span className="gradient-text">Education Counselors</span>
                 </h2>
                 <p className="text-muted-foreground mb-6 leading-relaxed">
                   Bridge the gap between students and institutions worldwide. Access verified
@@ -392,9 +442,9 @@ export default function HomePage() {
       <section className="py-20 bg-[hsl(var(--purple-dark))] text-white">
         <div className="container mx-auto px-4">
           <Reveal className="text-center max-w-2xl mx-auto">
-            <h2 className="text-3xl md:text-4xl font-bold mb-6">Ready to start your global journey?</h2>
+            <h2 className="text-3xl md:text-4xl font-bold mb-6">Ready to start your education journey?</h2>
             <p className="text-white/70 mb-10 text-lg">
-              Join thousands of students, institutions, and agents already using Globaly.app to
+              Join thousands of students, institutions, and education counselors already using Globalyapp to
               connect and grow.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
@@ -413,7 +463,7 @@ export default function HomePage() {
                 nativeButton={false}
                 render={<Link href="/search" />}
               >
-                Explore Marketplace
+                Search Courses
               </Button>
             </div>
           </Reveal>

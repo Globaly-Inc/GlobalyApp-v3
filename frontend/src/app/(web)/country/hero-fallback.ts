@@ -5,12 +5,13 @@ import type { CountryDetail } from "./types";
 // back to a generic study-abroad photo (V2's own single fallback) rather than nothing at all.
 // Shared by the hero banner and, as a last resort, city cards that have no photo of their own.
 const GENERIC_FALLBACK_HERO = "https://images.unsplash.com/photo-1506905925346-21bda4d32df4?w=1400";
+const PEXELS_PARAMS = "?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940";
 const COUNTRY_HERO_FALLBACKS: Record<string, string> = {
-  Australia: "https://images.pexels.com/photos/33378301/pexels-photo-33378301.jpeg",
-  Canada: "https://images.pexels.com/photos/25696388/pexels-photo-25696388.jpeg",
-  "United States": "https://images.pexels.com/photos/1461370/pexels-photo-1461370.jpeg",
-  "United Kingdom": "https://images.pexels.com/photos/575410/pexels-photo-575410.jpeg",
-  Singapore: "https://images.pexels.com/photos/18280158/pexels-photo-18280158.jpeg",
+  Australia: `https://images.pexels.com/photos/33378301/pexels-photo-33378301.jpeg${PEXELS_PARAMS}`,
+  Canada: `https://images.pexels.com/photos/25696388/pexels-photo-25696388.jpeg${PEXELS_PARAMS}`,
+  "United States": `https://images.pexels.com/photos/1461370/pexels-photo-1461370.jpeg${PEXELS_PARAMS}`,
+  "United Kingdom": `https://images.pexels.com/photos/575410/pexels-photo-575410.jpeg${PEXELS_PARAMS}`,
+  Singapore: `https://images.pexels.com/photos/18280158/pexels-photo-18280158.jpeg${PEXELS_PARAMS}`,
 };
 
 export function getCountryHeroImage(country: Pick<CountryDetail, "name" | "hero_image_url">): string {
@@ -33,7 +34,7 @@ const CITY_FALLBACK_POOL = [
   "https://images.pexels.com/photos/22873529/pexels-photo-22873529.jpeg",
   "https://images.pexels.com/photos/19972118/pexels-photo-19972118.jpeg",
   "https://images.pexels.com/photos/35134274/pexels-photo-35134274.jpeg",
-];
+].map((url) => `${url}${PEXELS_PARAMS}`);
 
 export function getCityFallbackImage(cityId: number): string {
   return CITY_FALLBACK_POOL[cityId % CITY_FALLBACK_POOL.length]!;

@@ -4,6 +4,7 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import * as service from "./auth.service.js";
 import { RATE_LIMITS } from "./consts.js";
+import { requireInstitutionContext } from "../../core/plugins/auth.plugin.js";
 
 const RegisterSchema = z.object({
   first_name: z.string().min(1).max(100),
@@ -93,5 +94,12 @@ export async function authRoutes(app: FastifyInstance) {
   app.get("/me", async (req, reply) => {
     const result = await service.getMe(req.auth);
     return reply.send(result);
+  });
+
+  // Authenticated, institution context — mints the self-service "Preview" button's short-lived
+  // preview_token (see auth.service.ts's issuePreviewToken), never the caller's own session token.
+  app.post("/preview-token", { preHandler: requireInstitutionContext }, async (req, reply) => {
+    const preview_token = service.issuePreviewToken(req.auth);
+    return reply.send({ preview_token });
   });
 }

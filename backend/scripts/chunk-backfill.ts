@@ -18,7 +18,7 @@
 
 import "dotenv/config";
 import { masterKnex } from "../src/core/db/master-pool.js";
-import { isConfigured } from "../src/modules/superadmin/data-extraction/lib/llm-client.js";
+import { isEmbedConfigured as isConfigured } from "../src/modules/superadmin/data-extraction/lib/llm-client.js";
 import { ingestDocumentChunks } from "../src/modules/superadmin/ai-knowledge/lib/ingest.js";
 
 const DOCUMENTS = "superadmin.ai_knowledge_documents";
@@ -35,7 +35,7 @@ const argValue = (flag: string): string | undefined => {
 };
 
 if (!isConfigured()) {
-  console.error("GEMINI_API_KEY not configured — chunks would be written without vectors. Aborting.");
+  console.error("No embedding provider configured — chunks would be written without vectors. Aborting.");
   process.exit(1);
 }
 

@@ -3,37 +3,37 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import {
-  FileText, GraduationCap, Hash, Languages, Link2, Loader2, Pencil, Percent, Plus, Search, Trash2, Type, Users, X,
+  FileText, GraduationCap, Hash, Link2, Loader2, Pencil, Percent, Plus, Search, Trash2, Type, Users, X,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Combobox } from "@/components/combobox";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
 import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
+import { CourseLinkPicker } from "./course-link-picker";
 import { EditableField, saveFormAndLearn, useFieldSaver } from "./editable-field";
 import { latestTimestamp } from "../utils";
 import { EligibilityForm } from "./eligibility-form";
+import { EligibilityTestSummary } from "./eligibility-test-summary";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
+import { RowActors } from "./row-actors";
 import type {
-  CourseLinks, CourseRow, EligibilityParams, EligibilityRequirement, ExtractionJob,
+  CourseLinks, EligibilityParams, EligibilityRequirement, ExtractionJob,
 } from "../apis/types";
+
+type LinkedCourse = { id: string; name: string | null };
 
 const CHIP_LIMIT = 6;
 const DEFAULT_PAGE_SIZE = 10;
 
-// Derived from EditableField's own props so we don't have to touch editable-field.tsx
-// to get at its prop type.
 type EditableFieldProps = Parameters<typeof EditableField>[0];
 
-// EditableField keeps its own click-to-edit affordance — this just gives each
-// field a visual anchor (icon tile), matching the Institution/Branches tabs' treatment.
 function Field({ icon: Icon, className, ...field }: Readonly<EditableFieldProps & { icon: LucideIcon }>) {
   return (
     <div className={cn("flex items-start gap-2.5 rounded-lg border border-border bg-muted/20 p-2", className)}>
@@ -46,9 +46,9 @@ function Field({ icon: Icon, className, ...field }: Readonly<EditableFieldProps 
 }
 
 function RequirementCard({
+  jobId,
   requirement,
-  courses,
-  linkedCourseIds,
+  linked,
   selected,
   busy,
   onToggleSelect,
@@ -58,9 +58,9 @@ function RequirementCard({
   onLinkCourse,
   onUnlinkCourse,
 }: Readonly<{
+  jobId: string;
   requirement: EligibilityRequirement;
-  courses: CourseRow[];
-  linkedCourseIds: string[];
+  linked: LinkedCourse[];
   selected: boolean;
   busy: boolean;
   onToggleSelect: () => void;
@@ -73,10 +73,7 @@ function RequirementCard({
   const [editingLinks, setEditingLinks] = useState(false);
   const [showAll, setShowAll] = useState(false);
 
-  const linked = courses.filter((c) => linkedCourseIds.includes(c.id));
-  const unlinked = courses.filter((c) => !linkedCourseIds.includes(c.id));
   const visible = showAll ? linked : linked.slice(0, CHIP_LIMIT);
-  const languageCount = requirement.language_tests?.length ?? 0;
 
   const numberField = (v: string | null) => (v === null ? null : (Number(v) as unknown as string));
 
@@ -146,13 +143,14 @@ function RequirementCard({
           />
         </div>
 
+        {/* The tests themselves, not just a count — a reviewer had to open the edit form on
+            every row to see whether GRE/IELTS had actually been captured. */}
+        <EligibilityTestSummary
+          languageTests={requirement.language_tests}
+          academicTests={requirement.academic_tests}
+        />
+
         <div className="flex flex-wrap items-center gap-2">
-          {languageCount > 0 && (
-            <Badge variant="outline" className="gap-1 text-xs">
-              <Languages className="h-3 w-3" />
-              {languageCount}
-            </Badge>
-          )}
           <Badge className="text-xs">
             Shared by {linked.length} course{linked.length === 1 ? "" : "s"}
           </Badge>
@@ -162,7 +160,7 @@ function RequirementCard({
           <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
           {visible.map((course) => (
             <Badge key={course.id} className="gap-1 bg-primary/10 text-xs text-primary">
-              {course.name}
+              {course.name ?? "Unnamed course"}
               {editingLinks && (
                 <button type="button" className="cursor-pointer" title="Unlink course" onClick={() => onUnlinkCourse(course.id)}>
                   <X className="h-3 w-3" />
@@ -186,15 +184,14 @@ function RequirementCard({
         </div>
 
         {editingLinks && (
-          <Combobox
-            options={unlinked.map((c) => ({ value: c.id, label: c.name }))}
-            value=""
-            onChange={onLinkCourse}
-            placeholder={unlinked.length ? "Link a course…" : "All courses linked"}
-            disabled={unlinked.length === 0}
+          <CourseLinkPicker
+            jobId={jobId}
+            excludeIds={linked.map((c) => c.id)}
+            onSelect={onLinkCourse}
             className="h-8 text-xs"
           />
         )}
+        <RowActors row={requirement} className="border-t border-border pt-2" />
       </CardContent>
     </Card>
   );
@@ -203,15 +200,11 @@ function RequirementCard({
 export function EligibilityTab({
   jobId,
   job,
-  courses,
   onReload,
-  onJumpToContext,
 }: Readonly<{
   jobId: string;
   job: ExtractionJob;
-  courses: CourseRow[];
   onReload: () => void;
-  onJumpToContext: () => void;
 }>) {
   const [links, setLinks] = useState<CourseLinks | null>(null);
   const [requirements, setRequirements] = useState<EligibilityRequirement[]>([]);
@@ -260,10 +253,6 @@ export function EligibilityTab({
     return () => clearTimeout(t);
   }, [load]);
 
-  // A search change invalidates the current page.
-  useEffect(() => {
-    setPage(1);
-  }, [search]);
 
   const allSelected = requirements.length > 0 && selectedIds.length === requirements.length;
 
@@ -283,8 +272,10 @@ export function EligibilityTab({
     }
   };
 
-  const coursesForRequirement = (id: string) =>
-    (links?.eligibility_assignments ?? []).filter((a) => a.eligibility_requirement_id === id).map((a) => a.course_id);
+  const coursesForRequirement = (id: string): LinkedCourse[] =>
+    (links?.eligibility_assignments ?? [])
+      .filter((a) => a.eligibility_requirement_id === id)
+      .map((a) => ({ id: a.course_id, name: a.course_name }));
 
   return (
     <div>
@@ -297,11 +288,7 @@ export function EligibilityTab({
         progress={(job.pipeline_progress as Record<string, unknown> | null)?.courses}
         lastUpdated={latestTimestamp(requirements)}
         hasData={total > 0}
-        guidedUrls={job.guided_urls}
-        contextKey="extract_fields"
-        contextLabel="extract fields"
         onChanged={onReload}
-        onAddContext={onJumpToContext}
       />
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -309,7 +296,12 @@ export function EligibilityTab({
           <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              // A search change invalidates the current page. Done here rather than in an
+              // effect on [search]: same result, and the repo lints against set-state-in-effect.
+              setPage(1);
+            }}
             placeholder="Search eligibility requirements…"
             className="h-8 pl-7 text-sm"
           />
@@ -332,7 +324,9 @@ export function EligibilityTab({
               variant="destructive" size="sm" className="h-8 gap-1.5 cursor-pointer"
               disabled={saving}
               onClick={async () => {
-                if (!(await confirm(`Delete ${selectedIds.length} requirements?`))) return;
+                if (!(await confirm(`Delete ${selectedIds.length} requirements?`))) {
+                  return;
+                }
                 await run(async () => {
                   await Promise.all(selectedIds.map((id) => allExtractionsApi.deleteEligibilityRequirement(id)));
                   setSelectedIds([]);
@@ -401,9 +395,9 @@ export function EligibilityTab({
           ) : (
             <RequirementCard
               key={requirement.id}
+              jobId={jobId}
               requirement={requirement}
-              courses={courses}
-              linkedCourseIds={coursesForRequirement(requirement.id)}
+              linked={coursesForRequirement(requirement.id)}
               selected={selectedIds.includes(requirement.id)}
               busy={saving}
               onToggleSelect={() =>
@@ -412,7 +406,12 @@ export function EligibilityTab({
                 )
               }
               onEdit={() => { setEditingId(requirement.id); setAdding(false); }}
-              onDelete={async () => { if (!(await confirm("Delete requirement?"))) return; await run(() => allExtractionsApi.deleteEligibilityRequirement(requirement.id), "Requirement deleted"); }}
+              onDelete={async () => {
+                if (!(await confirm("Delete requirement?"))) {
+                  return;
+                }
+                await run(() => allExtractionsApi.deleteEligibilityRequirement(requirement.id), "Requirement deleted");
+              }}
               onSaveField={(column, next) => saveField("extraction_eligibility_requirements", requirement.id, column, next)}
               onLinkCourse={(courseId) =>
                 run(() => allExtractionsApi.assignJunction("eligibility-requirements", { job_id: jobId, course_id: courseId, entity_id: requirement.id }), "Linked to course")

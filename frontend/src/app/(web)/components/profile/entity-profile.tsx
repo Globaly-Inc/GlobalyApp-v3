@@ -3,11 +3,12 @@ import { ProfileHero } from "./profile-hero";
 import { ProfileSection } from "./profile-section";
 import { ProfileContactCard } from "./profile-contact-card";
 import { ProfileLocationsCard } from "./profile-locations-card";
+import { ProfileGallery } from "./profile-gallery";
 import type { ProfileData } from "./profile-data";
 
 /**
- * The public profile shell shared by institutions, education agents, visa services and migration
- * agents — V1's BusinessPublicPreview layout: hero card, then a two-column body with About,
+ * The public profile shell shared by institutions, education counselors, visa services and migration
+ * education counselors — V1's BusinessPublicPreview layout: hero card, then a two-column body with About,
  * caller-supplied sections and Locations on the left, contact/registration and caller-supplied
  * cards on the right.
  */
@@ -39,6 +40,8 @@ export function EntityProfile({
           {children}
 
           <ProfileLocationsCard locations={data.locations} />
+
+          <ProfileGallery items={data.gallery} />
         </div>
 
         <div className="space-y-4 md:space-y-6">

@@ -1,4 +1,4 @@
-FROM pyd4vinci/scrapling:latest
+FROM pyd4vinci/scrapling:0.4.14
 
 RUN addgroup --system globalyapp; exit 0
 # This image's adduser (Debian trixie) rejects the short flags (-G/-s/-D) as

@@ -1,4 +1,13 @@
-import type { Course, CreateEnquiryInput, Enquiry, EnquiryListItem, PaginatedResponse } from "./types";
+import { ENQUIRIES_PAGE_SIZE } from "../const";
+import type {
+  Course,
+  CreateEnquiryInput,
+  EligibilityVerdict,
+  Enquiry,
+  EnquiryListItem,
+  EnquiryListParams,
+  PaginatedResponse,
+} from "./types";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -8,6 +17,8 @@ const mockEnquiries = new Map<string, Enquiry>();
 
 mockEnquiries.set("enq-2", {
   id: "enq-2",
+  eligibility_snapshot: null,
+  share_contact_number: true,
   unlocked_businesses: [
     {
       distribution_id: "dist-mock-1",
@@ -172,6 +183,55 @@ const mockCourses: Course[] = [
   },
 ];
 
+/**
+ * One fixture per verdict, cycled by course id, so all three UI states — the pass panel, the
+ * "couldn't verify" panel, and the acknowledgement gate — are reachable in mock mode without
+ * editing this file.
+ */
+const mockVerdicts: EligibilityVerdict[] = [
+  {
+    status: "eligible",
+    percentage: 100,
+    requirement_id: "req-mock-1",
+    student_type: "international",
+    evaluated_at: new Date().toISOString(),
+    criteria: [
+      { key: "min_degree", label: "Minimum degree", required: "Bachelor's", actual: "master", status: "pass" },
+      { key: "min_score", label: "Minimum score", required: "60%", actual: "3.4 (gpa_4)", status: "pass", converted: true },
+      { key: "language_test", label: "IELTS Academic", required: "≥ 6", actual: "7", status: "pass" },
+    ],
+  },
+  {
+    status: "not_eligible",
+    percentage: 33,
+    requirement_id: "req-mock-2",
+    student_type: "international",
+    evaluated_at: new Date().toISOString(),
+    criteria: [
+      { key: "min_degree", label: "Minimum degree", required: "Master's", actual: "bachelor", status: "fail" },
+      { key: "language_test", label: "IELTS Academic — Writing", required: "≥ 6", actual: "5.5", status: "fail" },
+      { key: "min_score", label: "Minimum score", required: "60%", actual: "72%", status: "pass" },
+    ],
+  },
+  {
+    status: "unknown",
+    percentage: null,
+    requirement_id: null,
+    student_type: "international",
+    evaluated_at: new Date().toISOString(),
+    criteria: [
+      {
+        key: "language_test",
+        label: "IELTS Academic",
+        required: "≥ 6.5",
+        actual: null,
+        status: "unknown",
+        hint: "Add your IELTS Academic score to check this.",
+      },
+    ],
+  },
+];
+
 export const enquiriesMockApi = {
   listCourses: async (page = 1, limit = 20) => {
     console.log("[mock] GET /courses", { page, limit });
@@ -183,12 +243,21 @@ export const enquiriesMockApi = {
     };
   },
 
+  getEligibility: async (courseId: string): Promise<EligibilityVerdict> => {
+    console.log("[mock] GET /enquiries/eligibility/", courseId);
+    await delay(250);
+    // Deterministic per course so a given card keeps the same verdict across renders.
+    const pick = [...courseId].reduce((sum, ch) => sum + ch.charCodeAt(0), 0) % mockVerdicts.length;
+    return mockVerdicts[pick]!;
+  },
+
   createEnquiry: async (input: CreateEnquiryInput): Promise<Enquiry> => {
     console.log("[mock] POST /enquiries", input);
     await delay(300);
     const enquiry: Enquiry = {
       // Nothing has unlocked a brand-new enquiry yet.
       unlocked_businesses: [],
+      share_contact_number: input.share_contact_number === true,
       id: `enq-${mockEnquiries.size + 1}`,
       student_id: 1,
       course_id: input.course_id,
@@ -200,7 +269,7 @@ export const enquiriesMockApi = {
       institution_name: "Mock Institution",
       institution_logo_url: null,
       business_id: input.business_id ?? null,
-      message: input.message,
+      message: input.message ?? null,
       preferred_intake: input.preferred_intake ?? null,
       preferred_year: input.preferred_year ?? null,
       status: "pending",
@@ -210,6 +279,7 @@ export const enquiriesMockApi = {
       last_distributed_at: null,
       closed_at: null,
       close_reason: null,
+      eligibility_snapshot: null,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString(),
     };
@@ -223,8 +293,8 @@ export const enquiriesMockApi = {
     if (!found) throw new Error("Enquiry not found");
     return found;
   },
-  listEnquiries: async (): Promise<PaginatedResponse<EnquiryListItem>> => {
-    console.log("[mock] GET /enquiries");
+  listEnquiries: async (params: EnquiryListParams = {}): Promise<PaginatedResponse<EnquiryListItem>> => {
+    console.log("[mock] GET /enquiries", params);
     await delay(200);
     const data: EnquiryListItem[] = [...mockEnquiries.values()]
       .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
@@ -239,6 +309,22 @@ export const enquiriesMockApi = {
         institution_name: "Mock Institution",
         institution_logo_url: null,
       }));
-    return { data, meta: { page: 1, limit: 100, total: data.length, totalPages: 1 } };
+    // Filtered and paged exactly like the server, so mock mode is not a different product:
+    // search over course + institution, and a total that reflects the filter.
+    const term = params.search?.trim().toLowerCase();
+    const filtered = term
+      ? data.filter((e) =>
+          [e.course_name, e.course_short_name, e.institution_name].some(
+            (v) => typeof v === "string" && v.toLowerCase().includes(term),
+          ),
+        )
+      : data;
+    const page = params.page ?? 1;
+    const limit = params.limit ?? ENQUIRIES_PAGE_SIZE;
+    const start = (page - 1) * limit;
+    return {
+      data: filtered.slice(start, start + limit),
+      meta: { page, limit, total: filtered.length, totalPages: Math.max(1, Math.ceil(filtered.length / limit)) },
+    };
   },
 };

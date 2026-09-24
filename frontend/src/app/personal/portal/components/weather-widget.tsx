@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Cloud, CloudFog, CloudRain, CloudSnow, Droplets, MapPinOff, Sun, Wind, Zap } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ScrollRow } from "@/components/scroll-row";
 import { weatherCondition } from "../utils";
 import type { WeatherSnapshot } from "../types";
 
@@ -135,7 +136,7 @@ export function WeatherWidget() {
         </div>
       </div>
 
-      <div className="flex gap-1.5 overflow-x-auto">
+      <ScrollRow rowClassName="flex gap-1.5">
         {weather.forecast.map((day) => (
           <div key={day.date} className="min-w-13 rounded-lg bg-white/10 px-2 py-1.5 text-center">
             <p className="text-[10px] text-white/70">
@@ -147,7 +148,7 @@ export function WeatherWidget() {
             </p>
           </div>
         ))}
-      </div>
+      </ScrollRow>
     </div>
   );
 }

@@ -5,7 +5,7 @@ import { Bot, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { createEmbedConfig, deactivateEmbedConfig, fetchEmbedConfigs } from "../store/ai-widget-slice";
+import { createEmbedConfig, deactivateEmbedConfig, fetchEmbedConfigs, reactivateEmbedConfig } from "../store/ai-widget-slice";
 import type { CreateEmbedConfigInput } from "../apis/types";
 import { CreateWidgetDialog } from "./create-widget-dialog";
 import { WidgetCard } from "./widget-card";
@@ -57,7 +57,7 @@ export function AiWidgetView() {
       ) : (
         <div className="flex flex-col gap-3">
           {configs.map((c) => (
-            <WidgetCard key={c.id} config={c} onDeactivate={(id) => dispatch(deactivateEmbedConfig(id))} />
+            <WidgetCard key={c.id} config={c} onDeactivate={(id) => dispatch(deactivateEmbedConfig(id))} onReactivate={(id) => dispatch(reactivateEmbedConfig(id))} />
           ))}
         </div>
       )}

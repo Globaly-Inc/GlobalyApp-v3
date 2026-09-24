@@ -4,12 +4,13 @@ import { notFound } from "next/navigation";
 import { getBusinessBySubdomain } from "../../search/api";
 import { EntityProfile } from "../../components/profile/entity-profile";
 import {
-  joinParts, toNumber, toProfileRegistration, toProfileSocials, type ProfileData,
+  joinParts, toGalleryItems, toNumber, toProfileRegistration, toProfileSocials, type ProfileData,
 } from "../../components/profile/profile-data";
 import type { BusinessDetail } from "../../search/types";
 import { BusinessServicesSection } from "./components/business-services-section";
 import { BusinessTeamSection } from "./components/business-team-section";
 import { BusinessRepresentationsSection } from "./components/business-representations-section";
+import { PageViews } from "../../components/page-views";
 
 type BusinessPageProps = Readonly<{ params: Promise<{ subdomain: string }> }>;
 
@@ -24,7 +25,9 @@ export async function generateMetadata({ params }: BusinessPageProps): Promise<M
 }
 
 function toProfileData(business: BusinessDetail): ProfileData {
-  const headOffice = business.address || business.city
+  // `show_locations` false means the owner made the Locations card private; the server already
+  // sent `branches: []`, and the head office is assembled here, so it has to be dropped here too.
+  const headOffice = business.show_locations !== false && (business.address || business.city)
     ? [{
       id: `business-${business.id}`,
       name: business.business_name,
@@ -69,6 +72,7 @@ function toProfileData(business: BusinessDetail): ProfileData {
       })),
     ],
     registration: toProfileRegistration(business.business_registration_number, business.registration_licenses),
+    gallery: toGalleryItems(business.gallery_image_urls, business.video_urls),
   };
 }
 
@@ -81,10 +85,13 @@ export default async function BusinessPage({ params }: BusinessPageProps) {
     <EntityProfile
       data={toProfileData(business)}
       breadcrumb={
-        <p className="text-xs text-muted-foreground">
-          <Link href="/" className="hover:text-primary">Home</Link> /{" "}
-          <Link href="/search" className="hover:text-primary">Search</Link> / {business.business_name}
-        </p>
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-xs text-muted-foreground">
+            <Link href="/" className="hover:text-primary">Home</Link> /{" "}
+            <Link href="/search" className="hover:text-primary">Search</Link> / {business.business_name}
+          </p>
+          <PageViews type="business" id={business.id} className="shrink-0" />
+        </div>
       }
       sidebar={
         <>

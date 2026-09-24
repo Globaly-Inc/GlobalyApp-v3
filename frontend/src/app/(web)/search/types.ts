@@ -33,6 +33,9 @@ export type SearchCourse = {
   /** First installment amount, present only when the fee actually splits into several payments. */
   domestic_fee_installment: string | null;
   international_fee_installment: string | null;
+  /** What the fee covers ("Per Year", "Total"…) — the linked fee row's own period. */
+  domestic_fee_period?: string | null;
+  international_fee_period?: string | null;
 };
 
 /** Facets for the institutions filter panel — only values the catalog actually contains. */
@@ -40,25 +43,61 @@ export type InstitutionFilterOptions = {
   institution_types: string[];
   /** "YYYY-MM", earliest first. */
   intake_months: string[];
+  /** Catalog facets: what the published institutions actually teach. */
+  subject_areas: string[];
+  degree_levels: string[];
+  study_modes: string[];
+};
+
+/** One row of the admin-managed business category catalog, as the public switcher reads it. */
+export type BusinessCategory = {
+  slug: string;
+  name: string;
+  icon: string | null;
+};
+
+export type VisaServiceFilterOptions = {
+  /** What kind of work the provider does: visa_application, appeal, … */
+  service_types: string[];
 };
 
 export type CourseFilterOptions = {
   years: number[];
   currencies: string[];
   degree_levels: string[];
+  /** Awarding institutions with at least one visible course. */
+  institutions: string[];
 };
+
+/**
+ * Duration buckets for the courses filter, as the "min-max" weeks the API expects. Buckets rather
+ * than a free number: durations cluster on a handful of values, so a slider would mostly land on
+ * gaps.
+ */
+export const DURATION_OPTIONS: { value: string; label: string }[] = [
+  { value: "0-26", label: "Up to 6 months" },
+  { value: "27-52", label: "6 months – 1 year" },
+  { value: "53-104", label: "1 – 2 years" },
+  { value: "105-156", label: "2 – 3 years" },
+  { value: "157-", label: "3 years +" },
+];
 
 export type CompareCourseItem = {
   id: string;
   slug: string;
   name: string;
   institutionName?: string;
+  institutionLogoUrl?: string | null;
   countryName?: string;
   durationLabel?: string | null;
   subjectArea?: string | null;
   nextIntakeLabel?: string;
   annualTuition?: number | null;
   feeCurrency?: string;
+  /** Campus cities offering this course, for the compare page's "Branch" row. */
+  branches?: string[];
+  /** Raw degree_level key (see DEGREE_LABEL) for the compare page's "Level" row. */
+  level?: string | null;
 };
 
 /** Extraction writes the row's caption as `label`; older imports used `name`. */
@@ -68,21 +107,26 @@ export type CourseIntake = {
   id: string;
   intake_name: string | null;
   start_date: string | null;
+  end_date: string | null;
   admission_deadline: string | null;
   intake_month: number | null;
   intake_year: number | null;
 };
 
 /** Rows of an eligibility requirement's `academic_tests` / `language_tests` jsonb. */
-export type EligibilityAcademicTest = { test_name: string; score?: string };
+export type EligibilityAcademicTest = { test_name: string; score?: string; typical_score?: string | null; is_optional?: boolean };
 export type EligibilityLanguageTest = { test_type_name: string; overall_score?: string };
 
 export type CourseEligibility = {
   id: string;
+  name: string | null;
   applicable_to: string;
   min_degree_level: string | null;
   min_score_percent: string | null;
   min_score_grade: string | null;
+  /** A non-percentage minimum: `min_score` on the `score_type` scale (GPA, CGPA…). */
+  min_score: string | null;
+  score_type: string | null;
   description: string | null;
   academic_tests: EligibilityAcademicTest[] | null;
   language_tests: EligibilityLanguageTest[] | null;
@@ -96,6 +140,27 @@ export type CourseEnglishRequirement = {
   reading_score: string | null;
   writing_score: string | null;
   speaking_score: string | null;
+};
+
+/** A unit of the course's curriculum — `extraction_study_units`, linked per course. */
+export type CourseStudyUnit = {
+  id: string;
+  unit_code: string | null;
+  unit_name: string;
+  credit_points: number | null;
+  unit_type: string | null;
+  description: string | null;
+};
+
+/** One way to take the course: mode + load + how long it runs that way. */
+export type CourseStudyOption = {
+  id: string;
+  name: string | null;
+  study_mode: string | null;
+  study_load: string | null;
+  duration_value: number | null;
+  duration_unit: string | null;
+  applicable_to: string | null;
 };
 
 /** The awarding institution, enough of it to render the course hero and link to its profile. */
@@ -130,11 +195,16 @@ export type CourseDetail = SearchCourse & {
   intakes: CourseIntake[];
   eligibility: CourseEligibility[];
   englishRequirements: CourseEnglishRequirement[];
+  study_units: CourseStudyUnit[];
+  study_options: CourseStudyOption[];
+  /** Photos an admin uploaded through the service editor's Media tab — separate from the single
+   * scraped `image_url`. */
+  media: { id: number; url: string; mime_type: string }[];
   institution: CourseInstitution | null;
   campuses: InstitutionCampus[];
   weather: CourseWeather | null;
   /** Full payment schedule, when the fee splits — `[{ name?, amount }]`. */
-  domestic_fee_installments: FeeInstallment[] | null;
+domestic_fee_installments: FeeInstallment[] | null;
   international_fee_installments: FeeInstallment[] | null;
   /** The platform's city page for the campus city, when one is published. */
   city_link: { name: string; href: string } | null;
@@ -150,6 +220,12 @@ export type SearchBusiness = {
   city: string | null;
   country_name: string | null;
   status?: string;
+  /** "claimed" once the owner has taken the listing over — earns the same tick as verified. */
+  claim_status?: string | null;
+  /** Institutions: extraction job behind the listing, which keys the enquiry dialog's filter. */
+  job_id?: string | null;
+  /** Businesses: whether POST /enquiries would accept this business as a target. */
+  enquiry_enabled?: boolean;
   category_name?: string | null;
   website: string | null;
   email: string | null;
@@ -174,6 +250,20 @@ export type InstitutionCampus = {
   country: string | null;
   phone: string | null;
   email: string | null;
+};
+
+/** A scraped education agent representing the institution — the "Representatives" card. */
+export type InstitutionRepresentative = {
+  id: string;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  website: string | null;
+  address: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  logo_url: string | null;
 };
 
 export type InstitutionMember = {
@@ -216,7 +306,10 @@ export type InstitutionDetail = SearchBusiness & {
   video_urls: string[] | null;
   /** Signed preview URLs for `gallery_images`, resolved server-side. */
   gallery_image_urls?: (string | null)[];
+  /** False when the owner set the Locations card to Private — `campuses` also arrives empty. */
+  show_locations?: boolean;
   campuses: InstitutionCampus[];
+  representatives: InstitutionRepresentative[];
   members: InstitutionMember[];
   subject_areas: SubjectAreaSummary[];
   degree_levels: CourseFacet[];
@@ -232,6 +325,11 @@ export type VisaServiceProviderDetail = {
   business_name: string;
   logo_url: string | null;
   description: string | null;
+  facebook_url: string | null;
+  instagram_url: string | null;
+  twitter_url: string | null;
+  linkedin_url: string | null;
+  youtube_url: string | null;
   address: string | null;
   city: string | null;
   state: string | null;
@@ -248,6 +346,8 @@ export type VisaServiceItem = {
   name: string;
   type: string | null;
   description: string | null;
+  /** What the provider says the service covers — `services_offered` jsonb. */
+  services_offered: string[] | null;
   registration_number: string | null;
   registration_body: string | null;
   registration_status: string | null;
@@ -262,8 +362,14 @@ export type VisaServiceItem = {
   fee_to: string | null;
   consultation_fee: string | null;
   consultation_free: boolean | null;
+  /** Track record, the same figures the admin's service card shows. */
   years_experience: number | null;
+  team_size: number | null;
+  success_rate: string | null;
+  average_rating: string | null;
+  review_count: number | null;
   countries_serviced: string[] | null;
+  nationalities_serviced: string[] | null;
 };
 
 export type BusinessBranch = {
@@ -305,6 +411,9 @@ export type BusinessRepresentation = {
 
 export type BusinessDetail = SearchBusiness & {
   cover_url: string | null;
+  /** Signed preview URLs for the owner's uploaded media, resolved server-side. */
+  gallery_image_urls: (string | null)[] | null;
+  video_urls: (string | null)[] | null;
   phone: string | null;
   address: string | null;
   state: string | null;
@@ -319,6 +428,8 @@ export type BusinessDetail = SearchBusiness & {
   twitter_url: string | null;
   linkedin_url: string | null;
   youtube_url: string | null;
+  /** False when the owner set the Locations card to Private — `branches` also arrives empty. */
+  show_locations?: boolean;
   branches: BusinessBranch[];
   members: BusinessMember[];
   services: BusinessService[];
@@ -382,6 +493,14 @@ export type SearchTabKey =
   | "scholarships"
   | "services";
 
+/** How an eligibility requirement's `min_score` is scaled (see the admin's SCORE_TYPE_OPTIONS). */
+export const SCORE_TYPE_LABEL: Record<string, string> = {
+  percentage: "Percentage",
+  gpa_4: "GPA (out of 4.0)",
+  gpa_10: "GPA (out of 10.0)",
+  cgpa: "CGPA",
+};
+
 export const DEGREE_LABEL: Record<string, string> = {
   certificate: "Certificate",
   diploma: "Diploma",
@@ -394,17 +513,43 @@ export const DEGREE_LABEL: Record<string, string> = {
   other: "Other",
 };
 
+export const COVERAGE_LABEL: Record<string, string> = {
+  full_tuition: "Full Tuition",
+  partial_tuition: "Partial Tuition",
+  living_allowance: "Living Allowance",
+  stipend: "Stipend",
+  travel: "Travel",
+  various: "Various",
+  other: "Other",
+};
+
+/** Scraped visa-service work types. */
+export const VISA_SERVICE_TYPE_LABEL: Record<string, string> = {
+  visa_application: "Visa Application",
+  appeal: "Appeals & Reviews",
+  migration_advice: "Migration Advice",
+  sponsorship: "Sponsorship",
+  other: "Other",
+};
+
 export const BASIS_LABEL: Record<string, string> = {
   merit: "Merit", need: "Need", sports: "Sports", diversity: "Diversity",
   government: "Government", research: "Research", other: "Other",
 };
 
+// The three modes superadmin offers (STUDY_MODE_OPTIONS in the extractions const). full_time and
+// part_time are study *loads* — they used to sit here and rendered as modes whenever a scrape put
+// one in the mode column; STUDY_LOAD_LABEL is where they belong.
 export const STUDY_MODE_LABEL: Record<string, string> = {
+  on_campus: "On Campus",
+  online: "Online",
+  hybrid: "Hybrid",
+  blended: "Hybrid", // legacy rows from before the importer normalised blended -> hybrid
+};
+
+export const STUDY_LOAD_LABEL: Record<string, string> = {
   full_time: "Full-Time",
   part_time: "Part-Time",
-  online: "Online",
-  on_campus: "On Campus",
-  blended: "Blended",
 };
 
 export const JOB_TYPE_LABEL: Record<string, string> = {
@@ -436,6 +581,15 @@ export const SORT_OPTIONS: { value: string; label: string }[] = [
   { value: "fee_asc", label: "Fee: Low to High" },
   { value: "fee_desc", label: "Fee: High to Low" },
   { value: "duration_asc", label: "Duration: Shortest" },
+];
+
+// Every non-course tab: fee and duration don't exist on institutions, counsellors or scholarships.
+// ponytail: only "best_match" is honoured server-side today — the name_* values ride along until
+// the businesses/institutions/scholarships repositories accept a sort (see listPublicInstitutions).
+export const GENERIC_SORT_OPTIONS: { value: string; label: string }[] = [
+  { value: "best_match", label: "Relevance" },
+  { value: "name_asc", label: "Name: A to Z" },
+  { value: "name_desc", label: "Name: Z to A" },
 ];
 
 export const CURRENCY_OPTIONS = ["AUD", "USD", "GBP", "CAD", "INR", "NPR"];

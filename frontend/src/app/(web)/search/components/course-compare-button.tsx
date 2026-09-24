@@ -6,6 +6,7 @@ import type { CompareCourseItem } from "../types";
 
 export function CourseCompareButton({ course }: Readonly<{ course: CompareCourseItem }>) {
   const { add, remove, has, isFull } = useCompareTray();
+
   const isComparing = has(course.id);
   const disabled = !isComparing && isFull;
 

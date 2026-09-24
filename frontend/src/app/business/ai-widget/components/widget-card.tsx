@@ -1,22 +1,26 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, Power } from "lucide-react";
+import { Check, Copy, Power, PowerOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import type { EmbedConfig } from "../apis/types";
 
+// One script tag, not a raw iframe: public/embed.js renders the floating orb and only
+// loads the chat panel once a visitor opens it, so the host page doesn't have to find room
+// for a 420x640 block — or pay for a session nobody asked for.
 function embedSnippet(embedKey: string): string {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
-  return `<iframe src="${origin}/embed/${embedKey}" style="width:100%;max-width:420px;height:640px;border:0;border-radius:12px" title="AI Counsellor"></iframe>`;
+  return `<script src="${origin}/embed.js" data-key="${embedKey}" async></script>`;
 }
 
 export function WidgetCard({
   config,
   onDeactivate,
-}: Readonly<{ config: EmbedConfig; onDeactivate: (id: number) => void }>) {
+  onReactivate,
+}: Readonly<{ config: EmbedConfig; onDeactivate: (id: number) => void; onReactivate: (id: number) => void }>) {
   const [copied, setCopied] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
@@ -38,11 +42,11 @@ export function WidgetCard({
           {config.display_name ?? "Untitled widget"}
           {!config.is_active && <Badge variant="secondary">Inactive</Badge>}
         </CardTitle>
-        {config.is_active && (
+        {config.is_active ? (
           confirming ? (
             <div className="flex items-center gap-2">
               <span className="text-xs text-muted-foreground">Deactivate?</span>
-              <Button size="sm" variant="destructive" onClick={() => onDeactivate(config.id)}>Yes</Button>
+              <Button size="sm" variant="destructive" onClick={() => { onDeactivate(config.id); setConfirming(false); }}>Yes</Button>
               <Button size="sm" variant="outline" onClick={() => setConfirming(false)}>No</Button>
             </div>
           ) : (
@@ -50,6 +54,10 @@ export function WidgetCard({
               <Power className="size-4" />
             </Button>
           )
+        ) : (
+          <Button size="sm" variant="ghost" onClick={() => onReactivate(config.id)} title="Reactivate">
+            <PowerOff className="size-4" />
+          </Button>
         )}
       </CardHeader>
       <CardContent className="flex flex-col gap-3">

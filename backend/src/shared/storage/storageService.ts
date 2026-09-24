@@ -15,6 +15,8 @@ const logger = createChildLogger("storage-service");
 const ALLOWED_MIME_TYPES = new Set([
   // Images
   "image/jpeg", "image/png", "image/webp", "image/gif", "image/svg+xml",
+  // Videos (gallery uploads)
+  "video/mp4", "video/webm", "video/quicktime",
   // Documents
   "application/pdf",
   "application/msword",
@@ -110,6 +112,17 @@ export async function uploadFile(
 
   logger.info("File uploaded", { storagePath, sizeBytes: buffer.length, mimeType });
   return { storagePath, sizeBytes: buffer.length, mimeType };
+}
+
+/** Read an object back. Null when it does not exist — the caller decides what a miss means. */
+export async function downloadFile(storagePath: string): Promise<Buffer | null> {
+  try {
+    const [buf] = await bucket().file(storagePath).download();
+    return buf;
+  } catch (err: any) {
+    if (err?.code === 404) return null;
+    throw err;
+  }
 }
 
 /**

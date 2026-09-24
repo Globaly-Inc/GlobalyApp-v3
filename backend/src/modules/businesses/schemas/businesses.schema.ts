@@ -3,6 +3,12 @@
 import { z } from "zod";
 import { BUSINESS_TYPES } from "../consts.js";
 
+export {
+  StartExtractionSchema, SiteUrlsQuerySchema, SiteUrlSnapshotQuerySchema, SiteUrlSnapshotUpdateSchema, SiteUrlRefreshSchema,
+  type StartExtractionInput, type SiteUrlsQueryInput, type SiteUrlSnapshotQueryInput, type SiteUrlSnapshotUpdateInput,
+  type SiteUrlRefreshInput,
+} from "../../superadmin/data-extraction/schemas/self-service.schema.js";
+
 export const BusinessRegisterSchema = z.object({
   business_name: z.string().min(1).max(200),
   business_type: z.enum(BUSINESS_TYPES).optional(),
@@ -21,6 +27,10 @@ export const BusinessRegisterSchema = z.object({
 const REQUIRED = "This field is required";
 
 export const BusinessProfilePatchSchema = z.object({
+  // Editable from the profile's General Information card. Not nullable like most fields here:
+  // the schema is `.strict()`, so an absent key is how you leave the name alone — a null one
+  // would be a request to blank the listing's only human-readable identifier.
+  business_name: z.string().trim().min(1, REQUIRED).max(200),
   business_type: z.enum(BUSINESS_TYPES).nullable(),
   business_category_id: z.number().int().positive().nullable(),
   description: z.string().min(1, REQUIRED).max(5000).nullable(),
@@ -63,6 +73,20 @@ export const BusinessProfilePatchSchema = z.object({
 export const BusinessSearchQuerySchema = z.object({
   search: z.string().optional(),
   limit: z.coerce.number().int().positive().max(50).default(10),
+  // Not z.coerce.boolean(): that coerces the STRING "false" to true, and this flag decides
+  // whether rows with a colliding id space enter a picker, so silently defaulting to on is the
+  // one failure mode it must not have.
+  include_institutions: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => v === "true"),
+  // Same reason, and it bites harder here: "false" arriving as true swaps an ordinary search for
+  // the restricted partner one, which answers a non-agent business with [] and an institution
+  // with agents only — a caller that spelled the negative out gets the opposite of what it asked.
+  for_partner_link: z
+    .enum(["true", "false"])
+    .optional()
+    .transform((v) => v === "true"),
 });
 
 // first/last name are collected HERE rather than at promote time: extraction never captures a

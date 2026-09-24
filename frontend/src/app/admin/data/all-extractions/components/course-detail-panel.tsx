@@ -10,14 +10,18 @@ import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { RowActors } from "./row-actors";
 import { Combobox } from "@/components/combobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { LookupCombobox } from "@/components/lookup-combobox";
 import { Textarea } from "@/components/ui/textarea";
-import { categoriesApi } from "@/app/admin/platform/categories/apis";
 import { allExtractionsApi } from "../apis";
 import { saveFormAndLearn } from "./editable-field";
+import { FeeForm } from "./fee-form";
 import { StudyOptionForm } from "./study-option-form";
+import { useConfirmDelete } from "./use-confirm-delete";
+import { SharedCoursesBadge, otherCourseNames } from "./shared-courses-badge";
 import { feeAmount } from "../utils";
 import type {
   CampusFull, CourseAssignment, CourseFull, CourseLinks, JunctionSlug, StudyOption,
@@ -166,12 +170,13 @@ export function CourseDetailPanel({
   onChanged: () => void;
 }>) {
   const [busy, setBusy] = useState(false);
-  const [degreeLevels, setDegreeLevels] = useState<{ value: string; label: string }[]>([]);
-  const [subjectAreas, setSubjectAreas] = useState<{ value: string; label: string }[]>([]);
   const [editingDescription, setEditingDescription] = useState(false);
   const [description, setDescription] = useState(course.description ?? "");
   const [addingOption, setAddingOption] = useState(false);
+  const [addingFee, setAddingFee] = useState(false);
+  const [editingFeeId, setEditingFeeId] = useState<string | null>(null);
   const [editingOptionId, setEditingOptionId] = useState<string | null>(null);
+  const { confirm, dialog: confirmDialog } = useConfirmDelete();
 
   // Re-seed when a different course is selected, or after a save round-trips.
   useEffect(() => {
@@ -179,15 +184,6 @@ export function CourseDetailPanel({
     setEditingDescription(false);
   }, [course]);
 
-  useEffect(() => {
-    const toOptions = (rows: { name: string }[]) => rows.map((r) => ({ value: r.name, label: r.name }));
-    categoriesApi.getLookups("degree-levels", { limit: 100 })
-      .then((res) => setDegreeLevels(toOptions(res.data)))
-      .catch(() => setDegreeLevels([]));
-    categoriesApi.getLookups("areas-of-study", { limit: 100 })
-      .then((res) => setSubjectAreas(toOptions(res.data)))
-      .catch(() => setSubjectAreas([]));
-  }, []);
 
   const run = async (action: () => Promise<unknown>, success: string) => {
     setBusy(true);
@@ -229,6 +225,10 @@ export function CourseDetailPanel({
 
   const pick = <T extends { id: string }>(all: T[], ids: Set<string>) => all.filter((e) => ids.has(e.id));
 
+  // Study units/options are shared rows across courses — surfaced so unlinking/editing one
+  // doesn't read as exclusive to this course.
+  const sharedWith = (rows: CourseAssignment[], column: string, entityId: string) => otherCourseNames(rows, column, entityId, course.id);
+
   const fees = pick(links.course_fees, idsFor(links.fee_assignments, "course_fee_id"));
   const intakes = pick(links.intakes, idsFor(links.intake_assignments, "intake_id"));
   const units = pick(links.study_units, idsFor(links.study_unit_assignments, "study_unit_id"));
@@ -256,6 +256,7 @@ export function CourseDetailPanel({
                 Source
               </a>
             )}
+            <RowActors row={course} className="mt-1" />
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             {course.verification_status && course.verification_status !== "unverified" && (
@@ -291,25 +292,31 @@ export function CourseDetailPanel({
         <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs uppercase tracking-wide text-muted-foreground">Degree level</Label>
-            <Combobox
-              options={degreeLevels}
+            {/* Closed platform lists (2026-09-08): a course may only be linked to a level/area that
+                already exists, so neither picker can create one. The server re-derives the link
+                codes from what's picked. */}
+            <LookupCombobox
+              kind="degree-levels"
               value={course.degree_level ?? ""}
               onChange={(v) => patchCourse({ degree_level: v || null })}
               placeholder="Select degree level"
-              loading={degreeLevels.length === 0}
-              creatable
             />
           </div>
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs uppercase tracking-wide text-muted-foreground">Subject area</Label>
-            <Combobox
-              options={subjectAreas}
-              value={course.subject_area ?? ""}
-              onChange={(v) => patchCourse({ subject_area: v || null })}
+            {/* Bound to the LINK, not to `subject_area` — that column holds the page's own wording
+                ("Civil Engineering"), which is never one of the 14 options, so the picker rendered
+                blank on a correctly linked course. */}
+            <LookupCombobox
+              kind="areas-of-study"
+              by="slug"
+              value={course.subject_area_code ?? ""}
+              onChange={(v) => patchCourse({ subject_area_code: v || null })}
               placeholder="Select subject area"
-              loading={subjectAreas.length === 0}
-              creatable
             />
+            {course.subject_area && (
+              <p className="text-xs text-muted-foreground">Extracted as “{course.subject_area}”</p>
+            )}
           </div>
         </div>
 
@@ -343,39 +350,88 @@ export function CourseDetailPanel({
 
         <LinkSection
           icon={DollarSign} title="Course Fee" junction="course-fees"
-          linked={fees} available={links.course_fees}
-          labelOf={feeAmount}
+          // Only fees an admin marked "Save for reuse" are offered for linking; extracted and
+          // one-off fees stay on their own course.
+          linked={fees} available={links.course_fees.filter((f) => f.save_for_reuse)}
+          labelOf={(f) => (f.name ? `${f.name} — ${feeAmount(f)}` : feeAmount(f))}
           descriptionOf={(f) => `${feeAmount(f)} · ${f.student_type ?? "both"}`}
           emptyText="No fees assigned" linkLabel="Link fee"
-          searchPlaceholder="Search or type new fee name…" optionsHeading="Existing"
           busy={busy} onLink={link} onUnlink={unlink}
-          onCreate={(name) =>
-            run(async () => {
-              const created = await allExtractionsApi.createCourseFee({ job_id: jobId, name });
-              await allExtractionsApi.assignJunction("course-fees", { job_id: jobId, course_id: course.id, entity_id: created.id });
-            }, "Fee created and linked")
+          headerExtra={
+            <Button
+              variant="outline" size="sm" className="h-7 gap-1.5 text-xs cursor-pointer"
+              disabled={busy} onClick={() => setAddingFee((v) => !v)}
+            >
+              <Plus className="h-3 w-3" />
+              Add fee
+            </Button>
           }
           // Domestic and international sit side by side.
           renderRows={(rows, unlinkRow) =>
-            rows.length === 0 ? (
+            rows.length === 0 && !addingFee ? (
               <p className="rounded-md bg-muted/50 py-2 text-center text-xs text-muted-foreground">No fees assigned</p>
             ) : (
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {rows.map((fee) => (
+                {rows.map((fee) => editingFeeId === fee.id ? (
+                  <div key={fee.id} className="sm:col-span-2">
+                    <FeeForm
+                      jobId={jobId}
+                      fee={fee}
+                      saving={busy}
+                      onCancel={() => setEditingFeeId(null)}
+                      onSave={(values) => {
+                        setEditingFeeId(null);
+                        run(() => saveFormAndLearn("extraction_course_fees", fee, values[0]!, jobId), "Fee updated");
+                      }}
+                    />
+                  </div>
+                ) : (
                   <div key={fee.id} className="flex items-start justify-between gap-2 rounded-lg border border-border px-3 py-2">
                     <span className="min-w-0">
                       <span className="block text-xs capitalize text-muted-foreground">{humanize(fee.student_type) || "Fee"}</span>
-                      <span className="block truncate text-sm font-medium">{feeAmount(fee)}</span>
+                      {fee.name && <span className="block truncate text-sm font-medium">{fee.name}</span>}
+                      <span className="mt-0.5 inline-flex items-baseline gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-primary">
+                        {fee.currency && <span className="text-[10px] font-semibold uppercase tracking-wide">{fee.currency}</span>}
+                        <span className="text-sm font-semibold tabular-nums">{fee.total_amount ?? feeAmount(fee)}</span>
+                      </span>
+                      {fee.description && (
+                        <span className="mt-1 block text-xs text-muted-foreground line-clamp-2" title={fee.description}>{fee.description}</span>
+                      )}
+                      <RowActors row={fee} className="mt-1" />
                     </span>
-                    <Button variant="ghost" size="icon-xs" className="cursor-pointer" title="Unlink" disabled={busy} onClick={() => unlinkRow(fee.id)}>
-                      <X className="h-3 w-3" />
-                    </Button>
+                    <span className="flex shrink-0 items-center gap-1">
+                      <Button variant="ghost" size="icon-xs" className="cursor-pointer" title="Edit" disabled={busy} onClick={() => setEditingFeeId(fee.id)}>
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                      <Button variant="ghost" size="icon-xs" className="cursor-pointer" title="Unlink" disabled={busy} onClick={() => unlinkRow(fee.id)}>
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </span>
                   </div>
                 ))}
               </div>
             )
           }
-        />
+        >
+          {addingFee && (
+            <FeeForm
+              jobId={jobId}
+              saving={busy}
+              onCancel={() => setAddingFee(false)}
+              onSave={(values) => {
+                setAddingFee(false);
+                run(async () => {
+                  // This course is always linked; the form's own course picker adds more.
+                  for (const v of values) {
+                    await allExtractionsApi.createCourseFee({
+                      job_id: jobId, ...v, course_ids: [...new Set([course.id, ...(v.course_ids ?? [])])],
+                    });
+                  }
+                }, values.length > 1 ? `${values.length} fees added` : "Fee added");
+              }}
+            />
+          )}
+        </LinkSection>
 
         <LinkSection
           icon={CalendarDays} title="Intakes" junction="intakes"
@@ -398,22 +454,26 @@ export function CourseDetailPanel({
             rows.length === 0 ? (
               <p className="rounded-md bg-muted/50 py-2 text-center text-xs text-muted-foreground">No study units</p>
             ) : (
-              rows.map((unit) => (
-                <div key={unit.id} className="flex items-center justify-between gap-2 rounded-md bg-muted/40 px-2 py-1.5">
-                  <span className="flex min-w-0 items-center gap-2">
-                    {unit.unit_code && <Badge variant="outline" className="shrink-0 text-[10px]">{unit.unit_code}</Badge>}
-                    <span className="truncate text-sm">{unit.unit_name}</span>
-                  </span>
-                  <span className="flex shrink-0 items-center gap-2">
-                    {unit.credit_points != null && (
-                      <Badge className="bg-primary/10 text-[10px] text-primary">{unit.credit_points} CP</Badge>
-                    )}
-                    <Button variant="ghost" size="icon-xs" className="cursor-pointer" title="Unlink" disabled={busy} onClick={() => unlinkRow(unit.id)}>
-                      <X className="h-3 w-3" />
-                    </Button>
-                  </span>
-                </div>
-              ))
+              rows.map((unit) => {
+                const otherNames = sharedWith(links.study_unit_assignments, "study_unit_id", unit.id);
+                return (
+                  <div key={unit.id} className="flex items-center justify-between gap-2 rounded-md bg-muted/40 px-2 py-1.5">
+                    <span className="flex min-w-0 items-center gap-2">
+                      {unit.unit_code && <Badge variant="outline" className="shrink-0 text-[10px]">{unit.unit_code}</Badge>}
+                      <span className="truncate text-sm">{unit.unit_name}</span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2">
+                      <SharedCoursesBadge names={otherNames} />
+                      {unit.credit_points != null && (
+                        <Badge className="bg-primary/10 text-[10px] text-primary">{unit.credit_points} CP</Badge>
+                      )}
+                      <Button variant="ghost" size="icon-xs" className="cursor-pointer" title="Unlink" disabled={busy} onClick={() => unlinkRow(unit.id)}>
+                        <X className="h-3 w-3" />
+                      </Button>
+                    </span>
+                  </div>
+                );
+              })
             )
           }
         />
@@ -436,7 +496,8 @@ export function CourseDetailPanel({
           busy={busy} onLink={link} onUnlink={unlink}
         />
 
-        {/* Study options are created per course rather than picked from a shared pool. */}
+        {/* Unlike Intakes/Eligibility/Accreditations above, this always creates a new row rather
+            than offering to link an existing one. */}
         <section className="flex flex-col gap-2">
           <div className="flex items-center justify-between gap-2">
             <h4 className="flex items-center gap-1.5 text-sm font-semibold">
@@ -468,8 +529,10 @@ export function CourseDetailPanel({
             />
           )}
 
-          {studyOptions.map((option) =>
-            editingOptionId === option.id ? (
+          {studyOptions.map((option) => {
+            const otherNames = sharedWith(links.study_option_assignments, "study_option_id", option.id);
+            const otherCourses = otherNames.length;
+            return editingOptionId === option.id ? (
               <StudyOptionForm
                 key={option.id}
                 option={option}
@@ -502,6 +565,7 @@ export function CourseDetailPanel({
                     {option.duration_value != null && (
                       <p className="mt-1 text-xs text-muted-foreground">{option.duration_value} {option.duration_unit}</p>
                     )}
+                    <SharedCoursesBadge names={otherNames} prefix="Shared with " className="mt-1 block text-left" />
                   </div>
                 </div>
                 <div className="flex shrink-0 items-center gap-1">
@@ -514,14 +578,24 @@ export function CourseDetailPanel({
                   <Button
                     variant="ghost" size="icon-xs" className="cursor-pointer text-destructive hover:text-destructive"
                     title="Delete" disabled={busy}
-                    onClick={() => run(() => allExtractionsApi.deleteStudyOption(option.id), "Study option deleted")}
+                    onClick={async () => {
+                      const ok = await confirm(
+                        "Delete study option?",
+                        otherCourses > 0
+                          ? `Shared with ${otherCourses} other course${otherCourses === 1 ? "" : "s"} — deleting it removes it from those too, not just this course.`
+                          : "This can't be undone.",
+                        { confirmLabel: "Delete", variant: "destructive" },
+                      );
+                      if (!ok) return;
+                      run(() => allExtractionsApi.deleteStudyOption(option.id), "Study option deleted");
+                    }}
                   >
                     <Trash2 className="h-3 w-3" />
                   </Button>
                 </div>
               </div>
-            ),
-          )}
+            );
+          })}
         </section>
 
         <LinkSection
@@ -533,6 +607,7 @@ export function CourseDetailPanel({
           busy={busy} onLink={link} onUnlink={unlink}
         />
       </CardContent>
+      {confirmDialog}
     </Card>
   );
 }

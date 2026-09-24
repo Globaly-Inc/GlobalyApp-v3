@@ -1,63 +1,50 @@
 "use client";
 
 import Link from "next/link";
-import { ArrowRight, CalendarDays, Check, Clock, ExternalLink, MapPin, Plus, Presentation } from "lucide-react";
-import type { LucideIcon } from "lucide-react";
-import { Card } from "@/components/ui/card";
+import { CalendarDays, Check, Clock, GraduationCap, MapPin, Monitor, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useCompareTray } from "@/app/(web)/search/use-compare-tray";
 import type { CompareCourseItem } from "@/app/(web)/search/types";
 import type { CourseCard as CourseCardType } from "../apis/types";
-import { InstitutionLogo } from "./institution-logo";
+import { InstitutionLogo } from "@/components/institution-logo";
 
-type CourseCardProps = {
-  card: CourseCardType;
+type CourseCardProps = { card: CourseCardType };
+
+function prettify(value: string): string {
+  return value.replace(/_/g, " ").trim().replace(/^\w/, (c) => c.toUpperCase());
+}
+
+// Currency is nullable in the extraction data — an unlabelled figure beats "null 35,970",
+// and the period comes from the card rather than being assumed annual: the same 1,090 is a
+// per-credit rate at one institution and a semester's tuition at another.
+const FEE_PERIOD_SUFFIX: Record<string, string> = {
+  "per year": "/yr",
+  "per semester": "/sem",
+  "per trimester": "/tri",
+  "per credit": "/credit",
+  total: " total",
 };
 
-/** "on_campus" → "On campus", "full_time" → "Full time" — wire enums are not for humans. */
-function prettify(value: string): string {
-  const spaced = value.replace(/_/g, " ").trim();
-  return spaced.charAt(0).toUpperCase() + spaced.slice(1);
-}
-
 function formatFee(amount: number | null, currency: string): string | null {
-  // Number() guard: cards persisted before the wire-mapper fix still carry the fee
-  // as a Postgres-numeric string, and String#toLocaleString would skip the separators.
   const n = Number(amount);
   if (!Number.isFinite(n) || n <= 0) return null;
-  return `${currency} ${n.toLocaleString("en-US")}`;
+  return [currency, n.toLocaleString("en-US")].filter(Boolean).join(" ");
 }
 
-/** Extraction data often lacks degree_level, but the course name usually carries it. */
 function degreeLevelOf(card: CourseCardType): string {
   if (card.degree_level) return prettify(card.degree_level);
-  // Anywhere in the name, not just the start — "CHC52021- Diploma of ..." style titles
-  // from older messages carry a code before the level word.
-  const m = /\b(Graduate Certificate|Graduate Diploma|Bachelor|Master|Doctor|PhD|Diploma|Certificate|Associate)\b/i
-    .exec(card.course_name);
+  const m = /\b(Graduate Certificate|Graduate Diploma|Bachelor|Master|Doctor|PhD|Diploma|Certificate|Associate)\b/i.exec(card.course_name);
   return m?.[0] ?? "";
 }
 
-function DetailRow({ icon: Icon, label, value }: { icon: LucideIcon; label: string; value: string }) {
-  return (
-    <div className="flex items-start gap-2">
-      <Icon className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
-      <div className="min-w-0">
-        <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">{label}</p>
-        <p className="truncate text-xs font-medium text-foreground" title={value}>{value}</p>
-      </div>
-    </div>
-  );
-}
-
-/** AI card → the shared compare store's item shape (same store as the search page). */
 function toCompareItem(card: CourseCardType): CompareCourseItem {
   return {
     id: card.id ?? `${card.institution_name}-${card.course_name}`,
     slug: card.slug ?? "",
     name: card.course_name,
     institutionName: card.institution_name,
+    institutionLogoUrl: card.institution_logo_url,
     countryName: card.country,
     durationLabel: card.duration || null,
     nextIntakeLabel: card.intakes[0],
@@ -72,111 +59,131 @@ export function CourseCard({ card }: CourseCardProps) {
   const added = compare.has(compareItem.id);
 
   const fee = formatFee(card.annual_tuition_fee, card.currency);
-  const modes = card.study_modes.map(prettify).join(" · ");
+  const feeSuffix = card.fee_period ? FEE_PERIOD_SUFFIX[card.fee_period] ?? ` ${card.fee_period}` : null;
   const place = [card.city, card.country].filter(Boolean).join(", ");
-  const hasDetails = Boolean(card.duration || card.intakes.length > 0 || modes);
+  const nextIntake = card.intakes[0] ?? null;
+  const studyMode = card.study_modes?.[0] ? prettify(card.study_modes[0]) : null;
+  const degreeLabel = degreeLevelOf(card);
+
+  const href = card.slug ? `/course/${card.slug}` : (card.source_url ?? null);
+  const isExternal = !card.slug && !!card.source_url;
 
   return (
-    <Card
-      size="sm"
-      className="relative flex h-full w-full flex-col gap-0 overflow-hidden py-0 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-lg"
-    >
-      {/* Decorative brand wash behind the header — the logo sits on top of it. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-x-0 top-0 h-20 bg-gradient-to-br from-primary/12 via-primary/5 to-transparent"
-      />
-
-      {/* Header */}
-      <div className="relative flex items-start gap-3 px-4 pt-4">
-        <InstitutionLogo name={card.institution_name} logoUrl={card.institution_logo_url} />
-        <div className="min-w-0 flex-1 pt-0.5">
-          <p className="truncate text-xs font-semibold text-foreground" title={card.institution_name}>
-            {card.institution_name}
-          </p>
-          {place && (
-            <p className="mt-0.5 flex items-center gap-1 text-[11px] text-muted-foreground">
-              <MapPin className="size-3 shrink-0" />
-              <span className="truncate">{place}</span>
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* Course title + level */}
-      <div className="relative px-4 pt-3">
-        <p
-          className="line-clamp-2 text-[0.9375rem] font-semibold leading-snug tracking-tight text-foreground"
-          title={card.course_name}
-        >
-          {card.course_name}
-        </p>
-        {degreeLevelOf(card) && (
-          <Badge variant="secondary" className="mt-2 border-0 bg-primary/10 text-primary">
-            {degreeLevelOf(card)}
-          </Badge>
-        )}
-      </div>
-
-      {/* Tuition gets its own strip — it's the number students scan for first. */}
-      {fee && (
-        <div className="mx-4 mt-3 flex items-baseline justify-between rounded-lg border border-primary/15 bg-primary/[0.06] px-3 py-2">
-          <span className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
-            Tuition
-          </span>
-          <span className="text-sm font-semibold tabular-nums text-foreground">
-            {fee}
-            <span className="ml-1 text-[10px] font-normal text-muted-foreground">/ year</span>
-          </span>
-        </div>
+    <div className="group relative flex h-72 w-full flex-col overflow-hidden rounded-2xl shadow-md ring-1 ring-white/10 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl">
+      {/* Card-wide link */}
+      {href && (
+        isExternal
+          ? <a href={href} target="_blank" rel="noopener noreferrer" className="absolute inset-0 z-10" aria-label={card.course_name} />
+          : <Link href={href} target="_blank" rel="noopener noreferrer" className="absolute inset-0 z-10" aria-label={card.course_name} />
       )}
 
-      {/* Details — the section disappears entirely when the card has none of the
-          fields, so there's no empty padded band. */}
-      {hasDetails && (
-        <div className="grid grid-cols-2 gap-x-3 gap-y-2.5 px-4 py-3">
-          {card.duration && <DetailRow icon={Clock} label="Duration" value={card.duration} />}
-          {card.intakes.length > 0 && (
-            <DetailRow icon={CalendarDays} label="Intakes" value={card.intakes.join(", ")} />
-          )}
-          {modes && <DetailRow icon={Presentation} label="Study mode" value={modes} />}
-        </div>
+      {/* Full-bleed background */}
+      {card.institution_cover_url ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={card.institution_cover_url}
+          alt={card.institution_name}
+          className="absolute inset-0 h-full w-full object-cover scale-100 transition-all duration-500 group-hover:scale-105 group-hover:blur-[2px]"
+        />
+      ) : (
+        <div className="absolute inset-0 bg-gradient-to-br from-primary via-primary/70 to-primary/40" />
       )}
 
-      {/* Actions — mt-auto pins this row to the card bottom so cards without
-          details stay the same height as their row-mates, buttons aligned. */}
-      <div className="mt-auto flex items-center justify-between gap-2 border-t bg-muted/20 px-4 py-2">
-        {card.slug ? (
-          <Button
-            variant="link"
-            size="sm"
-            className="h-auto p-0 text-xs"
-            render={<Link href={`/course/${card.slug}`} target="_blank" rel="noopener noreferrer" />}
-          >
-            View details <ArrowRight />
-          </Button>
-        ) : card.source_url ? (
-          <Button
-            variant="link"
-            size="sm"
-            className="h-auto p-0 text-xs"
-            render={<a href={card.source_url} target="_blank" rel="noopener noreferrer" />}
-          >
-            View details <ExternalLink />
-          </Button>
-        ) : (
-          <span />
-        )}
+      {/* Base scrim */}
+      <div aria-hidden className="absolute inset-0 bg-gradient-to-t from-black/90 via-black/50 to-black/20" />
+      {/* Hover scrim */}
+      <div aria-hidden className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/40 to-black/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
+
+      {/* Logo — top-left */}
+      <div className="relative z-20 p-3 pointer-events-none">
+        <InstitutionLogo
+          name={card.institution_name}
+          logoUrl={card.institution_logo_url}
+          className="size-10 rounded-xl ring-2 ring-white/30 shadow-md"
+        />
+      </div>
+
+      {/* Compare button — top-right, above the link overlay */}
+      <div className="absolute right-3 top-3 z-20">
         <Button
-          variant={added ? "secondary" : "outline"}
+          variant="ghost"
           size="sm"
-          className="h-7 text-xs"
+          className={`h-7 gap-1 rounded-full px-2.5 text-[11px] backdrop-blur-sm ${
+            added
+              ? "bg-white/30 text-white"
+              : "bg-black/30 text-white/80 hover:bg-white/20 hover:text-white"
+          }`}
           disabled={added || compare.isFull}
           onClick={() => compare.add(compareItem)}
         >
-          {added ? <><Check /> Added</> : <><Plus /> Compare</>}
+          {added ? <><Check className="size-3" /> Added</> : <><Plus className="size-3" /> Compare</>}
         </Button>
       </div>
-    </Card>
+
+      {/* Content overlay — anchored to bottom, pointer-events-none so link overlay handles clicks */}
+      <div className="relative z-20 mt-auto flex flex-col gap-1 p-4 pointer-events-none">
+        {/* Institution + location */}
+        <div className="flex items-center gap-1 text-[11px] text-white/80">
+          <span className="font-semibold text-white">{card.institution_name}</span>
+          {place && (
+            <>
+              <span>·</span>
+              <MapPin className="size-3 shrink-0" />
+              <span className="truncate">{place}</span>
+            </>
+          )}
+        </div>
+
+        {/* Course name */}
+        <p className="line-clamp-2 text-base font-bold leading-snug text-white drop-shadow" title={card.course_name}>
+          {card.course_name}
+        </p>
+
+        {/* Badges */}
+        {(degreeLabel || studyMode) && (
+          <div className="flex flex-wrap gap-1 pt-0.5">
+            {degreeLabel && (
+              <Badge className="gap-0.5 border-0 bg-white/20 px-1.5 py-0 text-[10px] font-medium text-white backdrop-blur-sm">
+                <GraduationCap className="size-2.5" />{degreeLabel}
+              </Badge>
+            )}
+            {studyMode && (
+              <Badge className="gap-0.5 border-0 bg-white/20 px-1.5 py-0 text-[10px] font-medium text-white backdrop-blur-sm">
+                <Monitor className="size-2.5" />{studyMode}
+              </Badge>
+            )}
+          </div>
+        )}
+
+        {/* Divider */}
+        {(fee || card.duration || nextIntake) && (
+          <div className="mt-1.5 border-t border-white/20" />
+        )}
+
+        {/* Fee + meta */}
+        <div className="flex items-center justify-between gap-2 pt-1">
+          <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+            {card.duration && (
+              <span className="flex items-center gap-1 text-[11px] text-white/85">
+                <Clock className="size-3 shrink-0" />{card.duration}
+              </span>
+            )}
+            {nextIntake && (
+              <span className="flex items-center gap-1 text-[11px] text-white/85">
+                <CalendarDays className="size-3 shrink-0" />Intake: {nextIntake}
+              </span>
+            )}
+          </div>
+          {fee && (
+            <span className="shrink-0 text-sm font-bold tabular-nums text-white">
+              {fee}
+              {feeSuffix && (
+                <span className="ml-0.5 text-[10px] font-normal text-white/70">{feeSuffix}</span>
+              )}
+            </span>
+          )}
+        </div>
+      </div>
+    </div>
   );
 }

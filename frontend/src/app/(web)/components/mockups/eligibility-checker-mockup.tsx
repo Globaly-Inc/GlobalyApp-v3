@@ -11,7 +11,7 @@ const checks = [
 
 export function EligibilityCheckerMockup() {
   return (
-    <MockupFrame label="globaly.app / eligibility">
+    <MockupFrame label="globalyapp.com / eligibility">
       <div className="space-y-4">
         <MockupCard
           className="p-3 flex items-center gap-3 animate-fade-in"

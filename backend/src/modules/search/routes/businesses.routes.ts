@@ -2,12 +2,13 @@ import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { NotFoundError } from "../../../shared/errors.js";
 import { buildPaginatedResponse, paginationToOffset } from "../../../shared/pagination.js";
+import { resolvePreviewSchemaName } from "../utils/preview-auth.js";
 import * as storage from "../../../shared/storage/storageService.js";
 import { withImagePreviews } from "../../businesses/services/businesses.service.js";
 import * as repo from "../repositories/businesses.repository.js";
 import * as coursesRepo from "../repositories/courses.repository.js";
 import {
-  CourseListQuery, InstitutionListQuery, SearchListQuery, ServiceListQuery, VisaServiceListQuery,
+  BusinessTabListQuery, CourseListQuery, InstitutionListQuery, ServiceListQuery, VisaServiceListQuery,
 } from "../schemas/search.schema.js";
 
 async function withRepresentationPreviews(reps: Awaited<ReturnType<typeof repo.listPublicRepresentations>>) {
@@ -31,17 +32,23 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
   // Facet options for the institutions filter panel — the types and intake months that are
   // actually represented, so the panel can't offer a filter that returns nothing.
   app.get("/search/institutions/filters", async (_req, reply) => {
-    const [institution_types, intake_months] = await Promise.all([
+    const [institution_types, intake_months, catalog] = await Promise.all([
       repo.listInstitutionTypes(),
       repo.listInstitutionIntakeMonths(),
+      repo.listInstitutionCatalogFacets(),
     ]);
-    return reply.send({ institution_types, intake_months });
+    return reply.send({ institution_types, intake_months, ...catalog });
   });
 
   app.get("/search/institutions", async (req, reply) => {
-    const { country, city, search, institution_type, intake_from, ...pagination } = InstitutionListQuery.parse(req.query);
+    const {
+      country, city, search, institution_type, intake_from, subject_area, degree_level, study_mode, ...pagination
+    } = InstitutionListQuery.parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
-    const filters = { country, city, search, institutionType: institution_type, intakeFrom: intake_from };
+    const filters = {
+      country, city, search, institutionType: institution_type, intakeFrom: intake_from,
+      subjectArea: subject_area, degreeLevel: degree_level, studyMode: study_mode,
+    };
     const [rawRows, total] = await Promise.all([
       repo.listPublicInstitutions(filters, limit, offset),
       repo.countPublicInstitutions(filters),
@@ -52,19 +59,29 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
   });
 
   // The detail response carries everything the public profile renders in one round trip:
-  // campuses (Locations), the course facets (subject-area grid + level tabs) and the team.
+  // campuses (Locations), the appointed agents (Representatives), the course facets (subject-area
+  // grid + level tabs) and the team.
   // The catalog pieces hang off the extraction job, so a hand-registered institution — which
   // has no source_job_id — simply gets empty arrays and the page drops those sections.
   app.get("/search/institutions/:slug", async (req, reply) => {
     const { slug } = SlugParam.parse(req.params);
-    const institution = await repo.findPublicInstitutionBySlug(slug);
+    const institution = await repo.findPublicInstitutionBySlug(slug, resolvePreviewSchemaName(req));
     if (!institution) throw new NotFoundError("Institution not found");
 
     const jobId = institution.job_id;
-    const [row, campuses, rawMembers, facets, courseCount] = await Promise.all([
+    // Same owner-controlled section toggles as a business profile — the two render through the
+    // same page, so they have to honour the same map. Default public when the key is absent.
+    const visibility = institution.public_visibility as Record<string, boolean> | null;
+    const showTeam = visibility?.team !== false;
+    const showRegistration = visibility?.registration !== false;
+    const showContact = visibility?.contact !== false;
+    const showLocations = visibility?.locations !== false;
+
+    const [row, campuses, representatives, rawMembers, facets, courseCount] = await Promise.all([
       withImagePreviews(institution),
-      jobId ? repo.listInstitutionCampuses(jobId) : [],
-      repo.listInstitutionMembers(Number(institution.id)),
+      jobId && showLocations ? repo.listInstitutionCampuses(jobId) : [],
+      jobId ? repo.listInstitutionRepresentatives(jobId) : [],
+      showTeam ? repo.listInstitutionMembers(Number(institution.id)) : [],
       jobId ? coursesRepo.listCourseFacets(jobId) : { subject_areas: [], degree_levels: [] },
       jobId ? coursesRepo.countPublicCourses({ jobId }) : 0,
     ]);
@@ -72,12 +89,20 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
       ...m, photo_url: await storage.resolvePreviewUrl(m.photo_url),
     })));
 
-    return reply.send({ ...row, campuses, members, ...facets, course_count: courseCount });
+    // The map itself is an owner setting, not page data — it never goes over the wire.
+    const { public_visibility, ...publicInstitution } = row;
+    return reply.send({
+      ...publicInstitution,
+      ...(showRegistration ? {} : { registration_number: null, registration_licenses: null }),
+      ...(showContact ? {} : { email: null, phone: null, website: null, address: null, postcode: null }),
+      show_locations: showLocations,
+      campuses, representatives, members, ...facets, course_count: courseCount,
+    });
   });
 
   app.get("/search/institutions/:slug/courses", async (req, reply) => {
     const { slug } = SlugParam.parse(req.params);
-    const institution = await repo.findPublicInstitutionBySlug(slug);
+    const institution = await repo.findPublicInstitutionBySlug(slug, resolvePreviewSchemaName(req));
     if (!institution) throw new NotFoundError("Institution not found");
 
     const { search, degree_level, ...pagination } = CourseListQuery.omit({ country: true, city: true }).parse(req.query);
@@ -95,10 +120,25 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
     return reply.send(buildPaginatedResponse(rows, total, pagination));
   });
 
+  // The category catalog behind the public search switcher — admins manage these rows, so the
+  // switcher should follow them rather than a hardcoded list.
+  app.get("/search/business-categories", async (_req, reply) =>
+    reply.send({ categories: await repo.listPublicBusinessCategories() }),
+  );
+
+  // Facet options for the visa-services filter panel.
+  app.get("/search/visa-services/filters", async (_req, reply) =>
+    reply.send(await repo.listVisaServiceFacets()),
+  );
+
   app.get("/search/visa-services", async (req, reply) => {
-    const { country, city, search, licensed_only, ...pagination } = VisaServiceListQuery.parse(req.query);
+    const {
+      country, city, search, licensed_only, service_type, ...pagination
+    } = VisaServiceListQuery.parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
-    const filters = { country, city, search, licensedOnly: licensed_only };
+    const filters = {
+      country, city, search, licensedOnly: licensed_only, serviceType: service_type,
+    };
     const [rows, total] = await Promise.all([
       repo.listPublicVisaServiceProviders(filters, limit, offset),
       repo.countPublicVisaServiceProviders(filters),
@@ -123,9 +163,9 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
 
   for (const { path, businessType } of TABS) {
     app.get(path, async (req, reply) => {
-      const { country, city, search, ...pagination } = SearchListQuery.parse(req.query);
+      const { country, city, search, verified_only, ...pagination } = BusinessTabListQuery.parse(req.query);
       const { limit, offset } = paginationToOffset(pagination);
-      const filters = { businessType, country, city, search };
+      const filters = { businessType, country, city, search, verifiedOnly: verified_only };
       const [rawRows, total] = await Promise.all([
         repo.listPublicBusinesses(filters, limit, offset),
         repo.countPublicBusinesses(filters),
@@ -149,19 +189,28 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
     const business = await repo.findPublicBusinessBySubdomain(subdomain);
     if (!business) throw new NotFoundError("Business not found");
 
-    const { schema_name, schema_provisioned_at, ...publicBusiness } = business;
+    // gallery_images/video_urls are raw storage paths — only their resolved forms go out.
+    const { schema_name, schema_provisioned_at, gallery_images, video_urls, source_agent_id, ...publicBusiness } = business;
     // Team Members has its own owner-controlled visibility toggle (public_visibility.team) —
     // hidden by default only when explicitly turned off, same convention the other section
     // toggles use.
     const showTeam = publicBusiness.public_visibility?.team !== false;
     // Same convention for the Registration & Licenses card.
     const showRegistration = publicBusiness.public_visibility?.registration !== false;
+    // …and for Contact Details and Locations, the other two the owner can switch to Private on
+    // their profile. Hidden means the values never leave the server, not that the page skips
+    // rendering them — a payload the card doesn't show is still a payload anyone can read.
+    const showContact = publicBusiness.public_visibility?.contact !== false;
+    const showLocations = publicBusiness.public_visibility?.locations !== false;
     // Promoted-but-unclaimed listings have no tenant schema yet (see promote.service) —
     // their branches/team/services sections are simply empty.
     const hasSchema = Boolean(schema_provisioned_at);
-    const [{ logo_url, cover_url }, branches, members, services, representations] = await Promise.all([
-      withImagePreviews(publicBusiness),
-      hasSchema ? repo.listPublicBranches(business.id, schema_name) : Promise.resolve([]),
+    const [media, branches, members, services, representations] = await Promise.all([
+      withImagePreviews({ ...publicBusiness, gallery_images, video_urls }),
+      // No tenant schema yet → the listing's offices are the scraped ones (see listScrapedBranches).
+      hasSchema
+        ? repo.listPublicBranches(business.id, schema_name)
+        : source_agent_id ? repo.listScrapedBranches(source_agent_id) : Promise.resolve([]),
       hasSchema && showTeam ? repo.listPublicMembers(business.id, schema_name) : Promise.resolve([]),
       hasSchema ? repo.listPublicServices(business.id, schema_name) : Promise.resolve([]),
       repo.listPublicRepresentations(business.id).then(withRepresentationPreviews),
@@ -170,7 +219,20 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
     return reply.send({
       ...publicBusiness,
       ...(showRegistration ? {} : { business_registration_number: null, registration_licenses: null }),
-      logo_url, cover_url, branches, members, services, representations,
+      // City/state/country stay: they carry the hero's location line and the search facets, and a
+      // listing that can't say which city it is in is not a listing. What goes is the means of
+      // contact and the street address.
+      ...(showContact ? {} : { email: null, phone: null, website: null, address: null, postcode: null }),
+      logo_url: media.logo_url,
+      cover_url: media.cover_url,
+      gallery_image_urls: media.gallery_image_urls ?? [],
+      video_urls: media.video_urls ?? [],
+      // The head office row is built client-side from the fields above, so the page needs to be
+      // told to drop it as well — emptying `branches` alone would leave half the card standing.
+      show_locations: showLocations,
+      branches: showLocations ? branches : [],
+      members, services, representations,
     });
   });
 }
+

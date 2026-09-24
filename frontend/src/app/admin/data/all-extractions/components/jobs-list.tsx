@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Building2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -29,20 +30,23 @@ const DEFAULT_PAGE_SIZE = 10;
 
 export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
   const dispatch = useAppDispatch();
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
   const { jobs, meta, status } = useAppSelector((state) => state.dataAllExtractions);
   const businessCategories = useAppSelector((state) => state.platformCategories.businessCategoryOptions);
 
-  const [searchQuery, setSearchQuery] = useState("");
-  const [debouncedQuery, setDebouncedQuery] = useState("");
-  const [sortOrder, setSortOrder] = useState<SortOrder>("newest");
-  const [sourceFilter, setSourceFilter] = useState("all");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [businessCategoryFilter, setBusinessCategoryFilter] = useState("all");
-  const [showDeclined, setShowDeclined] = useState(false);
+  const [searchQuery, setSearchQueryState] = useState(() => searchParams.get("q") ?? "");
+  const [debouncedQuery, setDebouncedQuery] = useState(() => searchParams.get("q") ?? "");
+  const [sortOrder, setSortOrderState] = useState<SortOrder>(() => (searchParams.get("sort") as SortOrder) || "newest");
+  const [sourceFilter, setSourceFilterState] = useState(() => searchParams.get("source") ?? "all");
+  const [statusFilter, setStatusFilterState] = useState(() => searchParams.get("status") ?? "all");
+  const [businessCategoryFilter, setBusinessCategoryFilterState] = useState(() => searchParams.get("category") ?? "all");
+  const [showDeclined, setShowDeclinedState] = useState(() => searchParams.get("declined") === "1");
   const [showNewForm, setShowNewForm] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(DEFAULT_PAGE_SIZE);
+  const [page, setPageState] = useState(() => Number(searchParams.get("page")) || 1);
+  const [pageSize, setPageSizeState] = useState(() => Number(searchParams.get("per_page")) || DEFAULT_PAGE_SIZE);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [publishingId, setPublishingId] = useState<string | null>(null);
@@ -50,6 +54,74 @@ export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
   const isCompleted = mode === "completed";
   const showNewExtractionButton = mode === "all" || mode === "ai-ongoing";
   const canPublish = mode === "all" || isCompleted;
+
+  // Mutable snapshot of the query string, updated synchronously on every call so that
+  // several updateParam calls firing in the same tick (e.g. a filter change plus the
+  // page-reset effect below) all build on each other's changes instead of the stale
+  // `searchParams` from this render — otherwise the later call clobbers the earlier one.
+  const paramsRef = useRef(new URLSearchParams(searchParams.toString()));
+  useEffect(() => {
+    paramsRef.current = new URLSearchParams(searchParams.toString());
+  }, [searchParams]);
+
+  const updateParam = (key: string, value: string | null) => {
+    const params = paramsRef.current;
+    if (value === null || value === "") params.delete(key);
+    else params.set(key, value);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  };
+
+  const setPage = (next: number) => {
+    setPageState(next);
+    updateParam("page", String(next));
+  };
+
+  const setPageSize = (next: number) => {
+    setPageSizeState(next);
+    updateParam("per_page", String(next));
+  };
+
+  const setSearchQuery = (next: string) => {
+    setSearchQueryState(next);
+    updateParam("q", next || null);
+  };
+
+  const setSortOrder = (next: SortOrder) => {
+    setSortOrderState(next);
+    updateParam("sort", next === "newest" ? null : next);
+  };
+
+  const setSourceFilter = (next: string) => {
+    setSourceFilterState(next);
+    updateParam("source", next === "all" ? null : next);
+  };
+
+  const setStatusFilter = (next: string) => {
+    setStatusFilterState(next);
+    updateParam("status", next === "all" ? null : next);
+  };
+
+  const setBusinessCategoryFilter = (next: string) => {
+    setBusinessCategoryFilterState(next);
+    updateParam("category", next === "all" ? null : next);
+  };
+
+  const setShowDeclined = (next: boolean) => {
+    setShowDeclinedState(next);
+    updateParam("declined", next ? "1" : null);
+  };
+
+  const hasActiveFilters =
+    searchQuery !== "" || sortOrder !== "newest" || sourceFilter !== "all" || statusFilter !== "all" || businessCategoryFilter !== "all" || showDeclined;
+
+  const clearFilters = () => {
+    setSearchQuery("");
+    setSortOrder("newest");
+    setSourceFilter("all");
+    setStatusFilter("all");
+    setBusinessCategoryFilter("all");
+    setShowDeclined(false);
+  };
 
   const categoriesFetchedRef = useRef(false);
   useEffect(() => {
@@ -62,8 +134,14 @@ export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
     return () => clearTimeout(t);
   }, [searchQuery]);
 
-  // Any filter/sort/mode/page-size change invalidates the current page.
+  // Any filter/sort/mode/page-size change invalidates the current page — but not the initial
+  // mount, where page may have been restored from the URL (?page=N&per_page=N on reload).
+  const didMountRef = useRef(false);
   useEffect(() => {
+    if (!didMountRef.current) {
+      didMountRef.current = true;
+      return;
+    }
     setPage(1);
   }, [mode, showDeclined, debouncedQuery, sortOrder, sourceFilter, statusFilter, businessCategoryFilter, pageSize]);
 
@@ -127,6 +205,7 @@ export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
       return;
     }
     toast.success(successMessage);
+    dispatch(fetchAllExtractions(fetchParams));
   };
 
   const handlePublish = async (id: string) => {
@@ -175,7 +254,7 @@ export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
 
   return (
     <div className="pb-20">
-      {showNewForm && <NewExtractionDialog open={showNewForm} onOpenChange={setShowNewForm} />}
+      <NewExtractionDialog open={showNewForm} onOpenChange={setShowNewForm} />
 
       <JobsListToolbar
         mode={mode}
@@ -197,7 +276,9 @@ export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
         onToggleSelectAll={toggleSelectAllOnPage}
         showDeclinedToggle={mode !== "ai-ongoing"}
         showDeclined={showDeclined}
-        onToggleShowDeclined={() => setShowDeclined((s) => !s)}
+        onToggleShowDeclined={() => setShowDeclined(!showDeclined)}
+        hasActiveFilters={hasActiveFilters}
+        onClearFilters={clearFilters}
         showNewExtractionButton={showNewExtractionButton}
         onNewExtraction={() => setShowNewForm(true)}
       />

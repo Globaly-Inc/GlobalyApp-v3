@@ -1,17 +1,18 @@
 "use client";
 
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Clock, Contact } from "lucide-react";
+import { Clock } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs";
+import { useAppSelector } from "@/lib/hooks";
 import { EmptyTabPlaceholder } from "./shared/empty-tab-placeholder";
 import { ActivityTab } from "./tabs/activity-tab";
 import { BranchesTab } from "./tabs/branches-tab";
 import { ContactsTab } from "./tabs/contacts-tab";
 import { InstitutionBranchesTab } from "./tabs/institution-branches-tab";
-import { InstitutionCoursesTab } from "./tabs/institution-courses-tab";
 import { InstitutionMembersTab } from "./tabs/institution-members-tab";
 import { InstitutionPartnersTab } from "./tabs/institution-partners-tab";
+import { InstitutionServicesTab } from "./tabs/institution-services-tab";
 import { MembersTab } from "./tabs/members-tab";
 import { PartnersTab } from "./tabs/partners-tab";
 import { ServicesTab } from "./tabs/services-tab";
@@ -19,7 +20,7 @@ import { ServicesTab } from "./tabs/services-tab";
 const TABS = [
   { value: "branches", label: "Branches" },
   { value: "partners", label: "Partners" },
-  { value: "members", label: "Members" },
+  { value: "members", label: "Users" },
   { value: "contacts", label: "Contacts" },
   { value: "services", label: "Services" },
   { value: "activity", label: "Activity" },
@@ -39,11 +40,21 @@ export function DetailTabs({
   kind,
   id,
   businessName,
+  businessType,
   readOnly = false,
-}: Readonly<{ kind: "business" | "institution"; id: number; businessName?: string; readOnly?: boolean }>) {
+  isPreSeeded = false,
+}: Readonly<{
+  kind: "business" | "institution";
+  id: number;
+  businessName?: string;
+  businessType?: string | null;
+  readOnly?: boolean;
+  isPreSeeded?: boolean;
+}>) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const countries = useAppSelector((state) => state.platformCategories.countries);
   const tab = parseTab(searchParams.get("tab"));
   const setTab = (next: Tab) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -57,12 +68,12 @@ export function DetailTabs({
       <Card>
         <CardContent>
           {tab === "branches" && (kind === "business" ? (
-            <BranchesTab businessId={id} readOnly={readOnly} />
+            <BranchesTab businessId={id} readOnly={readOnly || isPreSeeded} />
           ) : (
             <InstitutionBranchesTab institutionId={id} />
           ))}
           {tab === "partners" && (kind === "business" ? (
-            <PartnersTab businessId={id} businessName={businessName} readOnly={readOnly} />
+            <PartnersTab businessId={id} businessName={businessName} businessType={businessType} readOnly={readOnly} />
           ) : (
             <InstitutionPartnersTab institutionId={id} />
           ))}
@@ -71,12 +82,12 @@ export function DetailTabs({
           ) : (
             <InstitutionMembersTab institutionId={id} readOnly={readOnly} />
           ))}
-          {tab === "contacts" && (kind === "business" ? (
-            <ContactsTab businessId={id} readOnly={readOnly} />
+          {tab === "contacts" && <ContactsTab kind={kind} id={id} countries={countries} readOnly={readOnly} />}
+          {tab === "services" && (kind === "business" ? (
+            <ServicesTab businessId={id} readOnly={readOnly || isPreSeeded} />
           ) : (
-            <EmptyTabPlaceholder icon={Contact} title="No contacts yet" subtitle={NOT_AVAILABLE} />
+            <InstitutionServicesTab institutionId={id} readOnly={readOnly} />
           ))}
-          {tab === "services" && (kind === "business" ? <ServicesTab businessId={id} readOnly={readOnly} /> : <InstitutionCoursesTab institutionId={id} />)}
           {tab === "activity" && (kind === "business" ? (
             <ActivityTab businessId={id} />
           ) : (

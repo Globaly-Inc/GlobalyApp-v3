@@ -11,7 +11,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Combobox } from "@/components/combobox";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { FieldError } from "@/components/field-error";
 import { Input } from "@/components/ui/input";
@@ -20,12 +19,16 @@ import { Pagination } from "@/components/ui/pagination";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
+import { CourseLinkPicker } from "./course-link-picker";
 import { EditableField, saveFormAndLearn, useFieldSaver } from "./editable-field";
 import { UNIT_TYPE_OPTIONS } from "../const";
 import { latestTimestamp } from "../utils";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
-import type { CourseLinks, CourseRow, ExtractionJob, StudyUnit, StudyUnitParams } from "../apis/types";
+import { RowActors } from "./row-actors";
+import type { CourseLinks, ExtractionJob, StudyUnit, StudyUnitParams } from "../apis/types";
+
+type LinkedCourse = { id: string; name: string | null };
 
 const CHIP_LIMIT = 6;
 const DEFAULT_PAGE_SIZE = 10;
@@ -192,9 +195,9 @@ function StudyUnitForm({
 }
 
 function StudyUnitCard({
+  jobId,
   unit,
-  courses,
-  linkedCourseIds,
+  linked,
   selected,
   busy,
   onToggleSelect,
@@ -205,9 +208,9 @@ function StudyUnitCard({
   onLinkCourse,
   onUnlinkCourse,
 }: Readonly<{
+  jobId: string;
   unit: StudyUnit;
-  courses: CourseRow[];
-  linkedCourseIds: string[];
+  linked: LinkedCourse[];
   selected: boolean;
   busy: boolean;
   onToggleSelect: () => void;
@@ -221,8 +224,6 @@ function StudyUnitCard({
   const [editingLinks, setEditingLinks] = useState(false);
   const [showAll, setShowAll] = useState(false);
 
-  const linked = courses.filter((c) => linkedCourseIds.includes(c.id));
-  const unlinked = courses.filter((c) => !linkedCourseIds.includes(c.id));
   const visible = showAll ? linked : linked.slice(0, CHIP_LIMIT);
   const isElective = unit.unit_type === "elective";
 
@@ -302,7 +303,7 @@ function StudyUnitCard({
           <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
           {visible.map((course) => (
             <Badge key={course.id} className="gap-1 bg-primary/10 text-xs text-primary">
-              {course.name}
+              {course.name ?? "Unnamed course"}
               {editingLinks && (
                 <button type="button" className="cursor-pointer" title="Unlink course" onClick={() => onUnlinkCourse(course.id)}>
                   <X className="h-3 w-3" />
@@ -326,15 +327,14 @@ function StudyUnitCard({
         </div>
 
         {editingLinks && (
-          <Combobox
-            options={unlinked.map((c) => ({ value: c.id, label: c.name }))}
-            value=""
-            onChange={onLinkCourse}
-            placeholder={unlinked.length ? "Link a course…" : "All courses linked"}
-            disabled={unlinked.length === 0}
+          <CourseLinkPicker
+            jobId={jobId}
+            excludeIds={linked.map((c) => c.id)}
+            onSelect={onLinkCourse}
             className="h-8 text-xs"
           />
         )}
+        <RowActors row={unit} className="border-t border-border pt-2" />
       </CardContent>
     </Card>
   );
@@ -343,15 +343,11 @@ function StudyUnitCard({
 export function StudyUnitsTab({
   jobId,
   job,
-  courses,
   onReload,
-  onJumpToContext,
 }: Readonly<{
   jobId: string;
   job: ExtractionJob;
-  courses: CourseRow[];
   onReload: () => void;
-  onJumpToContext: () => void;
 }>) {
   const [links, setLinks] = useState<CourseLinks | null>(null);
   const [units, setUnits] = useState<StudyUnit[]>([]);
@@ -423,8 +419,10 @@ export function StudyUnitsTab({
     }
   };
 
-  const coursesForUnit = (id: string) =>
-    (links?.study_unit_assignments ?? []).filter((a) => a.study_unit_id === id).map((a) => a.course_id);
+  const coursesForUnit = (id: string): LinkedCourse[] =>
+    (links?.study_unit_assignments ?? [])
+      .filter((a) => a.study_unit_id === id)
+      .map((a) => ({ id: a.course_id, name: a.course_name }));
 
   return (
     <div>
@@ -437,11 +435,7 @@ export function StudyUnitsTab({
         progress={(job.pipeline_progress as Record<string, unknown> | null)?.courses}
         lastUpdated={latestTimestamp(units)}
         hasData={total > 0}
-        guidedUrls={job.guided_urls}
-        contextKey="extract_fields"
-        contextLabel="extract fields"
         onChanged={onReload}
-        onAddContext={onJumpToContext}
       />
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -472,7 +466,9 @@ export function StudyUnitsTab({
               variant="destructive" size="sm" className="h-8 gap-1.5 cursor-pointer"
               disabled={saving}
               onClick={async () => {
-                if (!(await confirm(`Delete ${selectedIds.length} study units?`))) return;
+                if (!(await confirm(`Delete ${selectedIds.length} study units?`))) {
+                  return;
+                }
                 await run(async () => {
                   await Promise.all(selectedIds.map((id) => allExtractionsApi.deleteStudyUnit(id)));
                   setSelectedIds([]);
@@ -541,16 +537,21 @@ export function StudyUnitsTab({
           ) : (
             <StudyUnitCard
               key={unit.id}
+              jobId={jobId}
               unit={unit}
-              courses={courses}
-              linkedCourseIds={coursesForUnit(unit.id)}
+              linked={coursesForUnit(unit.id)}
               selected={selectedIds.includes(unit.id)}
               busy={saving}
               onToggleSelect={() =>
                 setSelectedIds((prev) => (prev.includes(unit.id) ? prev.filter((x) => x !== unit.id) : [...prev, unit.id]))
               }
               onEdit={() => { setEditingId(unit.id); setAdding(false); }}
-              onDelete={async () => { if (!(await confirm("Delete study unit?"))) return; await run(() => allExtractionsApi.deleteStudyUnit(unit.id), "Study unit deleted"); }}
+              onDelete={async () => {
+                if (!(await confirm("Delete study unit?"))) {
+                  return;
+                }
+                await run(() => allExtractionsApi.deleteStudyUnit(unit.id), "Study unit deleted");
+              }}
               onSaveField={(column, next) => saveField("extraction_study_units", unit.id, column, next)}
               onToggleType={() =>
                 run(

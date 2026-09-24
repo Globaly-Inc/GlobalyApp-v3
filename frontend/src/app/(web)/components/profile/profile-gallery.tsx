@@ -41,7 +41,9 @@ export function ProfileGallery({ items }: Readonly<{ items: GalleryItem[] }>) {
 
   if (items.length === 0) return null;
 
-  const naturalLayout = items.length <= 2;
+  // Only a single item stacks naturally now — two or more always go into the grid, which is what
+  // was actually wanted (the "natural stack" for 2 items rendered oversized full-width photos).
+  const naturalLayout = items.length <= 1;
   const visible = items.slice(0, naturalLayout ? 2 : 4);
   const extra = items.length - 4;
   const current = items[openAt ?? 0] ?? items[0]!;
@@ -68,7 +70,11 @@ export function ProfileGallery({ items }: Readonly<{ items: GalleryItem[] }>) {
               item={item}
               className={cn(
                 "w-full transition-transform duration-300 group-hover:scale-105",
-                naturalLayout ? "object-contain" : "h-full object-cover",
+                // naturalLayout (≤2 items) had no height cap at all — a portrait or large source
+                // image rendered at its full natural height, towering over the rest of the page.
+                // Capping it like the grid tiles keeps it a thumbnail; the lightbox still shows
+                // the image at full size on click.
+                naturalLayout ? "h-64 object-cover" : "h-full object-cover",
               )}
             />
             {!naturalLayout && i === 3 && extra > 0 && (

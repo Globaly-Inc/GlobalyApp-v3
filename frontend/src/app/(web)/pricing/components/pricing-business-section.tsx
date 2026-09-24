@@ -66,7 +66,7 @@ export function PricingBusinessSection({
                   <Button
                     className={`w-full ${isPopular ? "btn-gold" : ""}`}
                     variant={isPopular ? "default" : "outline"}
-                    render={i === 4 ? <a href="mailto:sales@globaly.app" /> : <Link href="/auth/sign-up" />}
+                    render={i === 4 ? <a href="mailto:sales@globalyapp.com" /> : <Link href="/auth/sign-up" />}
                   >
                     {cta}
                   </Button>

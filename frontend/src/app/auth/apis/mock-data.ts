@@ -28,7 +28,7 @@ export const authMockApi = {
     if (otp !== MOCK_OTP) {
       throw new Error(`Invalid or expired code. (mock mode: use ${MOCK_OTP})`);
     }
-    mockUser = { email, type: "platform_user", role: null, is_admin: false, user_category: null, is_personal_account: false, businesses: [], institutions: [], orgId: null };
+    mockUser = { email, first_name: "Mock", last_name: "User", photo_url: null, type: "platform_user", role: null, is_admin: false, user_category: null, is_personal_account: false, businesses: [], institutions: [], orgId: null };
     return mockUser;
   },
 
@@ -74,5 +74,11 @@ export const authMockApi = {
     await delay(300);
     if (mockUser) mockUser = { ...mockUser, orgId: org_id };
     return { access_token: "mock-access-token" };
+  },
+
+  mintPreviewToken: async (): Promise<{ preview_token: string }> => {
+    console.log("[mock] POST /auth/preview-token");
+    await delay(200);
+    return { preview_token: "mock-preview-token" };
   },
 };

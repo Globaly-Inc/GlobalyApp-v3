@@ -3,11 +3,11 @@ import { z } from "zod";
 import { NotFoundError } from "../../../shared/errors.js";
 import { buildPaginatedResponse, paginationToOffset } from "../../../shared/pagination.js";
 import * as storage from "../../../shared/storage/storageService.js";
-import * as businessesRepo from "../repositories/businesses.repository.js";
 import * as repo from "../repositories/courses.repository.js";
 import { CourseListQuery } from "../schemas/search.schema.js";
 import { courseSlug } from "../utils/slug.js";
 import { withCardFields } from "../utils/course-card-fields.js";
+import { resolvePreviewSchemaName } from "../utils/preview-auth.js";
 
 const SlugParam = z.object({ slug: z.string().min(1) });
 
@@ -22,7 +22,7 @@ export async function searchCoursesRoutes(app: FastifyInstance) {
   // destination country's seasonal weather.
   app.get("/search/courses/:slug", async (req, reply) => {
     const { slug } = SlugParam.parse(req.params);
-    const course = await repo.findPublicCourseBySlug(slug);
+    const course = await repo.findPublicCourseBySlug(slug, resolvePreviewSchemaName(req));
     if (!course) throw new NotFoundError("Course not found");
 
     const {
@@ -35,7 +35,7 @@ export async function searchCoursesRoutes(app: FastifyInstance) {
 
     const [card, campuses, coverUrl, galleryUrls, cityLink] = await Promise.all([
       withCardFields(rest),
-      job_id ? businessesRepo.listInstitutionCampuses(job_id) : [],
+      job_id ? repo.listCourseCampuses(course.id, job_id) : [],
       storage.resolvePreviewUrl(institution_cover_url ?? null),
       Promise.all(((institution_gallery_images ?? []) as string[]).map((key) => storage.resolvePreviewUrl(key))),
       repo.findCityLink(institution_city ?? null, course.country_code ?? null),
@@ -67,6 +67,8 @@ export async function searchCoursesRoutes(app: FastifyInstance) {
       ...card,
       institution,
       campuses,
+      study_units: course.study_units,
+      study_options: course.study_options,
       city_link: cityLink,
       weather: hasWeather
         ? { summer: weather_summer, autumn: weather_autumn, winter: weather_winter, spring: weather_spring }
@@ -76,12 +78,14 @@ export async function searchCoursesRoutes(app: FastifyInstance) {
 
   app.get("/search/courses", async (req, reply) => {
     const {
-      country, degree_level, subject_area, search, fee_min, fee_max, currency, intake_year, sort, ...pagination
+      country, city, degree_level, subject_area, search, fee_min, fee_max, currency, intake_year, sort,
+      institution, duration, ...pagination
     } = CourseListQuery.parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
     const filters = {
-      country, degreeLevel: degree_level, subjectArea: subject_area, search,
+      country, city, degreeLevel: degree_level, subjectArea: subject_area, search,
       feeMin: fee_min, feeMax: fee_max, currency, intakeYear: intake_year,
+      institution, duration,
     };
     const [rows, total] = await Promise.all([
       repo.listPublicCourses(filters, sort, limit, offset),

@@ -1,4 +1,5 @@
 import type { EnquiryMessage, MessageAttachment, ChatThread, StarredMessage } from "./types";
+import type { ThreadMembersResult } from "@/components/chat/types";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -8,6 +9,8 @@ const mockThreadList: ChatThread[] = [
   {
     distribution_id: "dist-mock-1",
     enquiry_id: "enq-2",
+    title: null,
+    thread_photo: null,
     counterpart_name: "Sydney Study Agents",
     counterpart_avatar: null,
     course_name: "Mock Bachelor of Computer Science",
@@ -22,6 +25,8 @@ const mockThreadList: ChatThread[] = [
   {
     distribution_id: "dist-mock-2",
     enquiry_id: "enq-2",
+    title: null,
+    thread_photo: null,
     counterpart_name: "Parramatta Education",
     counterpart_avatar: null,
     course_name: "Mock Bachelor of Computer Science",
@@ -55,6 +60,7 @@ const mockThreads = new Map<string, EnquiryMessage[]>([
         reply_count: 0,
         reactions: [],
         edited_at: null,
+        kind: "message",
       },
     ],
   ],
@@ -119,6 +125,7 @@ export const messagesMockApi = {
       reply_count: 0,
       reactions: [],
       edited_at: null,
+      kind: "message",
     };
     mockThreads.set(distributionId, [...thread, message]);
     return message;
@@ -238,6 +245,7 @@ export const messagesMockApi = {
       reply_count: 0,
       reactions: [],
       edited_at: null,
+      kind: "message",
     };
     mockReplies.set(messageId, [...(mockReplies.get(messageId) ?? []), reply]);
     return reply;
@@ -249,5 +257,47 @@ export const messagesMockApi = {
     if (pinnedIds.delete(messageId)) return { is_pinned: false };
     pinnedIds.add(messageId);
     return { is_pinned: true };
+  },
+
+  leaveThread: async (distributionId: string): Promise<void> => {
+    console.log("[mock] POST /enquiry-messages/:id/leave", { distributionId });
+    await delay(200);
+  },
+
+  // Shaped like the student's payload, not the agency's: no staff emails, everyone a plain
+  // 'member', and can_manage false — there is nothing for a student to manage.
+  listMembers: async (distributionId: string): Promise<ThreadMembersResult> => {
+    console.log("[mock] GET /enquiry-messages/:id/members", { distributionId });
+    await delay(250);
+    return {
+      my_role: "member",
+      my_user_id: 1,
+      can_manage: false,
+      can_leave: false,
+      leave_blocked_reason:
+        "You can leave this conversation once the business has closed your enquiry.",
+      members: [
+        {
+          platform_user_id: 1,
+          role: "member",
+          source: "student",
+          first_name: "Rojan",
+          last_name: "Byanjankar",
+          email: "rojan.byanjankar@example.com",
+          photo_url: null,
+          created_at: new Date().toISOString(),
+        },
+        {
+          platform_user_id: 42,
+          role: "member",
+          source: "auto",
+          first_name: "Patricia",
+          last_name: "Hurley",
+          email: null,
+          photo_url: null,
+          created_at: new Date().toISOString(),
+        },
+      ],
+    };
   },
 };

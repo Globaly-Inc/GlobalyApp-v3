@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import type { LucideIcon } from "lucide-react";
+import type { ComponentType } from "react";
 import { cn } from "@/lib/utils";
 
 /**
@@ -18,11 +18,14 @@ import { cn } from "@/lib/utils";
  * how GlobalyOS pins its rail under its own 4rem bar. Colours are this app's tokens (`bg-primary/10`);
  * `bg-primary-light` is GlobalyOS-only.
  */
-export type PortalNavItem = { label: string; icon: LucideIcon; href: string };
+/** A `lucide` icon, or anything else that renders from a `className` — see `AlyOrbIcon`. */
+export type PortalNavIcon = ComponentType<{ className?: string }>;
+
+export type PortalNavItem = { label: string; icon: PortalNavIcon; href: string };
 
 export type PortalNavGroup = {
   label: string;
-  icon: LucideIcon;
+  icon: PortalNavIcon;
   /** Where the rail tile points. Defaults to the first item's href. */
   href?: string;
   items?: PortalNavItem[];

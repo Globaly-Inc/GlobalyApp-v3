@@ -5,11 +5,13 @@ import { Combobox, type ComboboxOption } from "@/components/combobox";
 
 export function ComboFilterField({
   name, value, options, anyLabel = "Any",
-}: Readonly<{ name: string; value?: string; options: string[]; anyLabel?: string }>) {
+  // Plain strings where value and label are the same (facet lists), {value,label} where they differ
+  // (duration buckets send "53-104" but read "1 – 2 years").
+}: Readonly<{ name: string; value?: string; options: readonly (string | ComboboxOption)[]; anyLabel?: string }>) {
   const [selected, setSelected] = useState(value ?? "");
   const comboOptions: ComboboxOption[] = [
     { value: "", label: anyLabel },
-    ...options.map((o) => ({ value: o, label: o })),
+    ...options.map((o) => (typeof o === "string" ? { value: o, label: o } : o)),
   ];
 
   return (

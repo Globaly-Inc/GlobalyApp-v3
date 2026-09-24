@@ -3,6 +3,10 @@
 // listForStudent (globalyapp and superadmin are schemas in one database).
 
 import { masterKnex } from "../../../core/db/master-pool.js";
+// Duration is read the same way as on the public search page — off the course row, falling back
+// to the durations curated on its linked study options — so the picker can't quote a different
+// length than the card the student came from.
+import { courseDurationWeeks } from "../../search/repositories/courses.repository.js";
 
 const T = "superadmin.extraction_courses";
 
@@ -30,13 +34,13 @@ export interface CourseListRow {
 // never offer what neither list shows: the job was promoted (search/courses:
 // PUBLICLY_VISIBLE) AND its institution row is published (search/institutions).
 //
-// ponytail: no verification_status filter — search/courses doesn't gate on it either
-// (every extracted course is 'unverified' today, so it would return an empty list).
+// Only 'flagged' — an admin's rejection — is excluded, exactly as search/courses does;
+// requiring 'confirmed' would empty the list, since extracted courses start 'unverified'.
 export const PUBLICLY_VISIBLE = `exists (
   select 1 from superadmin.extraction_jobs ej
   join institutions i on i.source_job_id = ej.id and i.is_published and i.deleted_at is null
   where ej.id = c.job_id and ej.status = 'exported'
-)`;
+) and coalesce(c.verification_status, 'unverified') <> 'flagged'`;
 
 export async function listCourses(opts: { limit: number; offset: number }): Promise<CourseListRow[]> {
   return masterKnex(`${T} as c`)
@@ -53,7 +57,7 @@ export async function listCourses(opts: { limit: number; offset: number }): Prom
       "c.short_name",
       "c.degree_level",
       "c.subject_area",
-      "c.duration_weeks",
+      masterKnex.raw(`${courseDurationWeeks("c")} as duration_weeks`),
       "c.study_mode",
       "c.country_code",
       "c.domestic_fee_total",

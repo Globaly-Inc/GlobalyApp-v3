@@ -8,6 +8,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/combobox";
 import { cn } from "@/lib/utils";
 import { EditableField } from "./editable-field";
+import { RowActors } from "./row-actors";
 import type { Accreditation, AccreditationAssignment, LibraryAccreditation } from "../apis/types";
 
 const CLEAR = "__clear__";
@@ -94,6 +95,8 @@ export function ScrapedAccreditationCard({
                 ))}
               </div>
             )}
+
+            <RowActors row={scraped} className="border-t border-border pt-2" />
           </div>
         </div>
       </CardContent>

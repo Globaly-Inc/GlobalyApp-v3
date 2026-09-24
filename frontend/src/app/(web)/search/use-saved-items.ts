@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from "react";
 import { httpGet, httpPost } from "@/lib/api/http";
 import { getAccessToken } from "@/lib/session";
+import { useAuthState } from "@/app/auth/store/auth-slice";
 
 // Saved ("hearted") courses and institutions — module-level singleton in the same shape as
 // use-compare-tray, so every card on the page shares one set instead of each fetching its own
@@ -68,10 +69,11 @@ async function toggle(type: SavedItemType, id: string): Promise<void> {
 
 export function useSavedItems() {
   const snapshot = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
+  const { user } = useAuthState();
   return {
     has: (type: SavedItemType, id: string) => snapshot.has(key(type, id)),
     count: snapshot.size,
     toggle,
-    isSignedIn: Boolean(getAccessToken()),
+    isSignedIn: Boolean(user),
   };
 }

@@ -7,7 +7,7 @@ import type {
   Member, MemberInviteInput, MemberListParams, MemberListResult, MemberPatch, MemberRole,
   PartnerInstitutionCourse, PartnerInstitutionCourseListParams, PartnerInstitutionCourseListResult, PartnerInstitutionDetail, Permission,
   Role, RoleCreateInput, RolePatch,
-  RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, Scholarship, ScholarshipInput,
+  RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, Scholarship, ScholarshipInput, ServiceAiAssistInput, ServiceAiAssistResult,
   ScholarshipListParams, ScholarshipListResult, ScholarshipPatch, ServiceAccreditationLink, ServiceEligibility,
   ServiceEligibilityInput, ServiceEligibilityPatch, ServiceFee, ServiceFeeInput, ServiceFeePatch, ServiceInput,
   ServiceIntake, ServiceIntakeInput, ServiceIntakePatch, ServicePatch, ServiceSearchParams, ServiceSearchResult,
@@ -93,8 +93,14 @@ let mockInvitations: InvitedMember[] = [
 ];
 let mockRelations: BusinessRelation[] = [];
 const mockSearchableBusinesses: BusinessSearchResult[] = [
-  { id: 101, business_name: "Acme Education Consultants", logo_url: null },
-  { id: 102, business_name: "Global Study Advisors", logo_url: null },
+  { kind: "business", id: 101, business_name: "Acme Education Consultants", logo_url: null },
+  { kind: "business", id: 102, business_name: "Global Study Advisors", logo_url: null },
+];
+// Deliberately reuses id 101 — the two id spaces really do collide, and the picker has to stay
+// correct when they do.
+const mockSearchableInstitutions: BusinessSearchResult[] = [
+  { kind: "institution", id: 101, business_name: "Riverbend University", logo_url: null },
+  { kind: "institution", id: 205, business_name: "Northgate Institute of Technology", logo_url: null },
 ];
 const mockActivity: { id: string; action: string; details: Record<string, unknown>; created_at: string; admin_first_name: string | null; admin_last_name: string | null }[] = [];
 let mockScholarships: Scholarship[] = [];
@@ -105,15 +111,20 @@ export const businessProfileDetailMockApi = {
     console.log("[mock] GET /businesses/search", params);
     await delay(300);
     const q = params.search?.toLowerCase() ?? "";
-    return mockSearchableBusinesses.filter((b) => b.business_name.toLowerCase().includes(q));
+    const pool = params.include_institutions
+      ? [...mockSearchableBusinesses, ...mockSearchableInstitutions]
+      : mockSearchableBusinesses;
+    return pool
+      .filter((b) => b.business_name.toLowerCase().includes(q))
+      .sort((a, b) => a.business_name.localeCompare(b.business_name));
   },
 
-  getBranches: async (params: BranchListParams = {}): Promise<BranchListResult> => {
+  getBranches: async (params: BranchListParams = {}, _orgBase?: string): Promise<BranchListResult> => {
     console.log("[mock] GET /businesses/branches", params);
     await delay(300);
     return { data: mockBranches, total: mockBranches.length };
   },
-  createBranch: async (input: BranchInput): Promise<Branch> => {
+  createBranch: async (input: BranchInput, _orgBase?: string): Promise<Branch> => {
     await delay(300);
     const branch: Branch = {
       id: uuid(), name: input.name, country: input.country ?? null, state: input.state ?? null,
@@ -125,7 +136,7 @@ export const businessProfileDetailMockApi = {
     mockBranches = [...mockBranches, branch];
     return branch;
   },
-  updateBranch: async (branchId: string, patch: BranchPatch): Promise<Branch> => {
+  updateBranch: async (branchId: string, patch: BranchPatch, _orgBase?: string): Promise<Branch> => {
     await delay(300);
     mockBranches = mockBranches.map((b) => (b.id === branchId ? { ...b, ...patch } : b));
     return mockBranches.find((b) => b.id === branchId)!;
@@ -140,7 +151,7 @@ export const businessProfileDetailMockApi = {
     mockBranches = [...mockBranches, branch];
     return { branch };
   },
-  deleteBranch: async (branchId: string): Promise<void> => {
+  deleteBranch: async (branchId: string, _orgBase?: string): Promise<void> => {
     await delay(300);
     mockBranches = mockBranches.filter((b) => b.id !== branchId);
   },
@@ -177,6 +188,12 @@ export const businessProfileDetailMockApi = {
   updateServiceFieldValues: async (_serviceId: string, values: SchemaFieldValue[]): Promise<SchemaFieldValue[]> => {
     await delay(150);
     return values;
+  },
+  generateServiceDescription: async (input: ServiceAiAssistInput): Promise<ServiceAiAssistResult> => {
+    await delay(600);
+    return {
+      text: `${input.name} is a ${input.category_name?.toLowerCase() ?? "program"} designed to give students practical, industry-relevant skills and a clear pathway toward their career goals.`,
+    };
   },
 
   getMembers: async (params: MemberListParams = {}): Promise<MemberListResult> => {
@@ -379,4 +396,12 @@ export const businessProfileDetailMockApi = {
   getServiceCategories: categoriesMockApi.getServiceCategories,
   getLookups: categoriesMockApi.getLookups,
   getAccreditations: categoriesMockApi.getAccreditations,
+  getRegistrationTypes: async (countryId?: number | null) => {
+    console.log("[mock] getRegistrationTypes", countryId);
+    const { data } = await categoriesMockApi.getRegistrationTypes({ limit: 100 });
+    const active = data.filter((r) => r.is_active);
+    // Mirrors the server's rule: a country's own rows, else the generic (null-country) set.
+    const forCountry = countryId ? active.filter((r) => r.country_id === countryId) : [];
+    return { data: forCountry.length > 0 ? forCountry : active.filter((r) => r.country_id === null) };
+  },
 };

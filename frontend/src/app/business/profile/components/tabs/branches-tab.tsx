@@ -23,9 +23,16 @@ const FILTER_OPTIONS: { value: BranchFilter; label: string }[] = [
   { value: "linked_branches", label: "Linked branches" },
 ];
 
-export function BranchesTab({ businessId }: Readonly<{ businessId: number }>) {
+export function BranchesTab({
+  businessId,
+  isInstitution,
+}: Readonly<{ businessId: number; isInstitution: boolean }>) {
   const dispatch = useAppDispatch();
-  const { items: branches, status, total: branchesTotal } = useAppSelector((state) => state.businessProfileDetail.branches);
+  const { items: branches, status, total: branchesTotal, ownerId } = useAppSelector((state) => state.businessProfileDetail.branches);
+  // The list is shared with the Locations card and outlives a switch to another business, and the
+  // first fetch is debounced — so until it holds THIS business's rows the tab shows its spinner
+  // rather than whichever rows happen to be in the store.
+  const loadingBranches = status === "loading" || ownerId !== businessId;
   const [createOpen, setCreateOpen] = useState(false);
   const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
   const [editingLinkedBranch, setEditingLinkedBranch] = useState<Branch | null>(null);
@@ -67,7 +74,7 @@ export function BranchesTab({ businessId }: Readonly<{ businessId: number }>) {
   };
 
   let list: React.ReactNode;
-  if (status === "loading") {
+  if (loadingBranches) {
     list = (
       <div className="flex justify-center py-8">
         <Loader2 className="h-5 w-5 animate-spin text-primary" />
@@ -78,7 +85,9 @@ export function BranchesTab({ businessId }: Readonly<{ businessId: number }>) {
       <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-12 text-center">
         <Building2 className="h-10 w-10 text-muted-foreground/40" />
         <p className="text-sm font-medium">No branches yet</p>
-        <p className="text-xs text-muted-foreground">Link an existing business or create a branch to get started.</p>
+        <p className="text-xs text-muted-foreground">
+          {isInstitution ? "Create a branch to get started." : "Link an existing business or create a branch to get started."}
+        </p>
       </div>
     );
   } else {
@@ -139,9 +148,14 @@ export function BranchesTab({ businessId }: Readonly<{ businessId: number }>) {
           <Badge variant="secondary">{branchesTotal}</Badge>
         </div>
         <div className="flex gap-2">
-          <Button className="h-10" variant="outline" onClick={() => { setEditingLinkedBranch(null); setLinkOpen(true); }}>
-            <Link2 className="mr-1.5 h-3.5 w-3.5" /> Link existing
-          </Button>
+          {/* Linking another registered business as a branch has no institution twin (see
+             business-branches.service.ts's "Institution twins" section) — an institution's
+             campuses aren't other registered orgs. */}
+          {!isInstitution && (
+            <Button className="h-10" variant="outline" onClick={() => { setEditingLinkedBranch(null); setLinkOpen(true); }}>
+              <Link2 className="mr-1.5 h-3.5 w-3.5" /> Link existing
+            </Button>
+          )}
           <Button className="h-10" onClick={() => { setEditingBranch(null); setCreateOpen(true); }}>
             <Plus className="mr-1.5 h-3.5 w-3.5" /> Create branch
           </Button>

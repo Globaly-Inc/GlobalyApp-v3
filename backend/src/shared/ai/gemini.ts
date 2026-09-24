@@ -8,6 +8,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 import { config } from "../../config.js";
 import { BadRequestError } from "../errors.js";
 import { createChildLogger } from "../logger.js";
+import { isORConfigured, orGenerateText } from "./openrouter.js";
 
 const logger = createChildLogger("gemini-text");
 
@@ -38,29 +39,34 @@ export async function generateText(opts: {
   maxTokens?: number;
   temperature?: number;
 }): Promise<string> {
-  const model = getClient().getGenerativeModel({
-    model: config.GEMINI_MODEL,
-    systemInstruction: opts.system,
-    generationConfig: {
-      maxOutputTokens: opts.maxTokens ?? 700,
-      temperature: opts.temperature ?? 0.8,
-    },
-  });
+  try {
+    const model = getClient().getGenerativeModel({
+      model: config.GEMINI_MODEL,
+      systemInstruction: opts.system,
+      generationConfig: {
+        maxOutputTokens: opts.maxTokens ?? 700,
+        temperature: opts.temperature ?? 0.8,
+      },
+    });
 
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const result = await model.generateContent(opts.prompt);
-      const text = result.response.text().trim();
-      if (!text) throw new Error("empty response");
-      return text;
-    } catch (err) {
-      if (attempt < 2 && isTransient(err)) {
-        await new Promise((resolve) => setTimeout(resolve, 800 * (attempt + 1)));
-        continue;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const result = await model.generateContent(opts.prompt);
+        const text = result.response.text().trim();
+        if (!text) throw new Error("empty response");
+        return text;
+      } catch (err) {
+        if (attempt < 2 && isTransient(err)) {
+          await new Promise((resolve) => setTimeout(resolve, 800 * (attempt + 1)));
+          continue;
+        }
+        throw err;
       }
-      logger.warn("AI text generation failed", { err: err instanceof Error ? err.message : String(err) });
-      throw err;
     }
+    throw new Error("unreachable");
+  } catch (err) {
+    logger.warn("Gemini generateText failed — trying OpenRouter fallback", { err: err instanceof Error ? err.message : String(err) });
+    if (isORConfigured()) return orGenerateText(opts);
+    throw err;
   }
-  throw new Error("unreachable");
 }

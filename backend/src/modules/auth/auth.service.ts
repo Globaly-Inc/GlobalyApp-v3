@@ -265,9 +265,44 @@ export async function registerUser(
   return { message: "Check your email for next steps." };
 }
 
+/** Blocks login only when the user is suspended everywhere they'd otherwise have access — an
+ * explicit, still-current suspension (a member/agent row that exists and is flagged suspended)
+ * on EVERY org they belong to, with no active org left to fall back on. A user suspended from
+ * one org but still an active member of another (or with personal-account access unrelated to
+ * either) must still be able to log in — the earlier version of this check blocked on any
+ * suspended row at all, locking such a user out everywhere over a single org's suspension.
+ * Likewise this is NOT "zero accessible orgs" in general, which also happens when someone was
+ * cleanly removed from their last org, the org itself was disabled/deleted, or an institution
+ * hasn't been provisioned yet — none of those are suspension, and the is_business_account/
+ * is_institution_account flags never get reset after such a removal. Suspending a member only
+ * ever updated members/agents in the tenant schema; login itself never checked it before this,
+ * so a fully suspended user could still request and use an OTP. */
+async function requireLoginNotSuspended(user: {
+  id: number; is_business_account: boolean; is_institution_account: boolean; is_personal_account: boolean;
+}) {
+  if (!user.is_business_account && !user.is_institution_account) return;
+  // A personal account is valid access in its own right, independent of any org membership — a
+  // user suspended out of their sole org but who also has personal-account access must still be
+  // able to log in and use it. The comment above once claimed this was already handled; it
+  // wasn't — this was the actual missing check.
+  if (user.is_personal_account) return;
+  const [suspendedBusiness, suspendedInstitution, activeBusinesses, activeInstitutions] = await Promise.all([
+    user.is_business_account ? platformUserRepo.hasSuspendedBusinessMembership(user.id) : false,
+    user.is_institution_account ? platformUserRepo.hasSuspendedInstitutionMembership(user.id) : false,
+    user.is_business_account ? platformUserRepo.listUserBusinesses(user.id) : [],
+    user.is_institution_account ? platformUserRepo.listUserInstitutions(user.id) : [],
+  ]);
+  const isSuspendedSomewhere = suspendedBusiness || suspendedInstitution;
+  const hasActiveOrgLeft = activeBusinesses.length > 0 || activeInstitutions.length > 0;
+  if (isSuspendedSomewhere && !hasActiveOrgLeft) {
+    throw new ForbiddenError("Your account has been suspended. Contact your administrator.");
+  }
+}
+
 export async function sendOtp(email: string) {
   const user = await platformUserRepo.findByEmail(email);
   if (!user) throw new NotFoundError("Account not found");
+  await requireLoginNotSuspended(user);
 
   // Check lockout from existing challenge
   const existing = await authRepo.findOtpChallenge(email);
@@ -279,17 +314,22 @@ export async function sendOtp(email: string) {
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
   await authRepo.createOtpChallenge(email, hashOtp(otp), expiresAt);
 
-  queueEmail({ to: user.email, ...otpEmail(otp) }).catch((err) =>
-    logger.warn("OTP email failed", { email, err: err.message }),
-  );
+  await queueEmail({ to: user.email, ...otpEmail(otp) });
 
-  logger.info("OTP sent", { userId: user.id, otp: otp });
+  // The plaintext OTP is a bearer credential — never let it reach production logs.
+  logger.info("OTP sent", {
+    userId: user.id,
+    ...(config.NODE_ENV === "production" ? {} : { otp }),
+  });
   return { message: "OTP sent" };
 }
 
 export async function verifyOtp(email: string, otp: string, meta?: { ip?: string; userAgent?: string }) {
   const user = await platformUserRepo.findByEmail(email);
   if (!user) throw new NotFoundError("Account not found");
+  // Re-checked here too (not just sendOtp) — a suspension landing between "code sent" and
+  // "code entered" must still block completing the login, not just requesting a fresh code.
+  await requireLoginNotSuspended(user);
 
   const challenge = await authRepo.findOtpChallenge(email);
   if (!challenge) throw new UnauthorizedError("No OTP requested");
@@ -477,6 +517,23 @@ export async function refreshAccessToken(refreshToken: string, meta?: { ip?: str
  * /refresh keeps honoring it instead of resetting to their default org on the next silent
  * refresh. Applies to both kinds.
  */
+/**
+ * Mints a short-lived, single-purpose token for the self-service "Preview" button (see
+ * search/utils/preview-auth.ts's resolvePreviewSchemaName) — NOT the caller's real session
+ * token. Putting the actual bearer access token in a URL query string would leave a fully
+ * reusable credential sitting in browser history, server logs and referrer headers; this token
+ * carries no `sub`/`orgRole`/role claims, expires in 10 minutes, and `purpose: "preview"` makes
+ * the main auth plugin refuse it outright as a session token (see auth.plugin.ts), so a leaked
+ * preview link can only ever bypass is_published on the two public preview routes it was
+ * minted for.
+ */
+export function issuePreviewToken(auth: AuthClaims) {
+  if (auth.orgType !== "institution" || !auth.orgId) {
+    throw new ForbiddenError("Switch to an institution context first");
+  }
+  return jwt.sign({ purpose: "preview", orgType: "institution", orgId: auth.orgId }, config.JWT_SECRET, { expiresIn: "10m" });
+}
+
 export async function switchAccount(userId: number, orgId: string, refreshToken?: string) {
   const user = await platformUserRepo.findByIdFull(userId);
   if (!user) throw new NotFoundError("User not found");
@@ -499,9 +556,19 @@ export async function switchAccount(userId: number, orgId: string, refreshToken?
     // passes every route guarded only by requireBusinessContext, and the tenant db handle
     // is attached either way. It also produced a confusing failure — switching "worked",
     // then every business page reported "Not a member of this business".
+    // account_status: 1 is required too (mirroring the institution branch below) — a suspended
+    // agent is already excluded from the initial org scope (resolveOrgScope), but without this
+    // check they could still call switch-account directly with the business's own id and get an
+    // org-scoped token for the very membership they're suspended from.
+    // is_contact_only excluded too — a contact who was never through invite-accept has an
+    // active, non-deleted agents row (createContact) but has never proven they own this
+    // account; without this a dormant contact could call switch-account directly and mint
+    // themselves a real org-scoped token for a business they were never invited to.
     const agent = await db("agents")
       .join("roles", "agents.role_id", "roles.id")
       .where("agents.platform_user_id", userId)
+      .where("agents.account_status", 1)
+      .where("agents.is_contact_only", false)
       .whereNull("agents.deleted_at")
       .select("roles.name as role")
       .first();
@@ -521,8 +588,11 @@ export async function switchAccount(userId: number, orgId: string, refreshToken?
 
   // Pool key is the schema uuid — institution ids would collide with business ids.
   const db = await getKnex(institution.schema_name, schemaName(institution.schema_name));
+  // is_contact_only excluded too — same reasoning as the business branch above: a contact
+  // never through invite-accept must not be able to switch-account their way into a real
+  // institution-scoped token.
   const member = await db("members")
-    .where({ platform_user_id: userId, account_status: 1 })
+    .where({ platform_user_id: userId, account_status: 1, is_contact_only: false })
     .whereNull("deleted_at")
     .first("role");
 

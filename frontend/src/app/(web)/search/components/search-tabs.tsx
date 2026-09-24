@@ -1,18 +1,21 @@
 import Link from "next/link";
-import { GraduationCap, Building2, Users, FileCheck, Award, Wrench } from "lucide-react";
+import { GraduationCap, Building2, Users, FileCheck, Award } from "lucide-react";
+import { ScrollRow } from "@/components/scroll-row";
 import { SavedTabButton } from "./saved-tab-button";
 import type { SearchTabKey } from "../types";
 
 export const SEARCH_TABS: { key: SearchTabKey; label: string; icon: typeof GraduationCap }[] = [
   { key: "courses", label: "Courses", icon: GraduationCap },
   { key: "institutions", label: "Institutions", icon: Building2 },
-  { key: "education-agencies", label: "Education Agents", icon: Users },
+  { key: "education-agencies", label: "Education Counselors", icon: Users },
   { key: "visa-services", label: "Visa Services", icon: FileCheck },
-  // Parked until their catalogs are populated — re-import Globe / Briefcase when restoring these.
+  // Parked until their catalogs are populated — re-import Globe / Briefcase / Wrench when restoring these.
   // { key: "migration-agents", label: "Migration Agents", icon: Globe },
   // { key: "jobs", label: "Student Jobs", icon: Briefcase },
   { key: "scholarships", label: "Scholarships", icon: Award },
-  { key: "services", label: "Services", icon: Wrench },
+  // Services is parked too: these are business services, which have no detail page — the card can
+  // only offer "View business". Restore once they are reachable on their own.
+  // { key: "services", label: "Services", icon: Wrench },
 ];
 
 export function tabHref(
@@ -42,7 +45,7 @@ export function SearchTabs({
 }>) {
   return (
     <div className="flex items-center gap-2 py-3">
-      <div className="-mx-4 flex flex-1 items-center gap-2 overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:px-0 [&::-webkit-scrollbar]:hidden">
+      <ScrollRow className="-mx-4 min-w-0 flex-1 sm:mx-0" rowClassName="flex items-center gap-2 px-4 sm:px-0">
         {SEARCH_TABS.map(({ key, label, icon: Icon }) => {
           const active = !savedActive && activeTab === key;
           return (
@@ -61,7 +64,7 @@ export function SearchTabs({
             </Link>
           );
         })}
-      </div>
+      </ScrollRow>
 
       <SavedTabButton active={savedActive} basePath={basePath} />
     </div>

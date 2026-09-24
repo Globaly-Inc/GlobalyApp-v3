@@ -7,11 +7,9 @@ import { Reveal } from "../../components/reveal";
 import { AutoScrollRow } from "../../components/auto-scroll-row";
 import type { SearchBusiness } from "../../search/types";
 
-// V2 links each card to /agent/:slug; v3 has no agent detail route yet, so cards point at the
-// education-agencies tab of /search instead (the real tab key — not "agents", see search/types.ts).
 export function AgentsCarousel({ agents, loading }: Readonly<{ agents: SearchBusiness[]; loading: boolean }>) {
   return (
-    <section className="py-16 bg-muted/30">
+    <section className="py-16 bg-primary/5">
       <div className="container mx-auto px-4">
         <Reveal className="text-center mb-12">
           <h2 className="text-2xl md:text-3xl font-bold text-foreground mb-3">
@@ -27,11 +25,15 @@ export function AgentsCarousel({ agents, loading }: Readonly<{ agents: SearchBus
             ? Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="flex-shrink-0 w-64 h-48 rounded-xl" />)
             : agents.map((agent, idx) => {
                 const location = [agent.city, agent.country_name].filter(Boolean).join(", ");
+                // Same rule as the search results: a counselor is a real business, so its profile
+                // lives at /business/:subdomain. Only a row missing one falls back to the search tab
+                // ("education-agencies" is the real tab key — not "agents", see search/types.ts).
+                const href = agent.subdomain ? `/business/${agent.subdomain}` : "/search?tab=education-agencies";
                 return (
                   <Reveal key={agent.id} delay={idx * 0.07} className="flex-shrink-0">
                     <Link
-                      href="/search?tab=education-agencies"
-                      className="group block w-60 md:w-64 bg-background border border-border rounded-xl p-5 hover:shadow-md transition-shadow h-full flex flex-col"
+                      href={href}
+                      className="group flex flex-col h-full w-60 md:w-64 bg-background border border-border rounded-xl p-5 hover:shadow-md transition-shadow"
                     >
                       <div className="flex items-start justify-between mb-4">
                         <div className="w-12 h-12 rounded-lg overflow-hidden bg-muted flex items-center justify-center p-1.5 border border-border/50">
@@ -80,7 +82,7 @@ export function AgentsCarousel({ agents, loading }: Readonly<{ agents: SearchBus
 
         <Reveal className="text-center mt-10">
           <Button variant="outline" className="rounded-full px-8" render={<Link href="/search?tab=education-agencies" />}>
-            Explore all Agents
+            Explore all Education Counselors
           </Button>
         </Reveal>
       </div>

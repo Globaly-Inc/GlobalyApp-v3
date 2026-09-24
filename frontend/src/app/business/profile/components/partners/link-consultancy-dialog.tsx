@@ -12,7 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { useAppDispatch } from "@/lib/hooks";
 import { geoApi, type Country } from "@/app/geo/apis";
 // import { CountryMultiSelect } from "@/app/admin/platform/businesses/components/shared/country-multi-select";
-import type { BusinessRelation, BusinessSearchResult } from "../../apis/types";
+import type { BusinessRelation, BusinessSearchResult, PartnerKind } from "../../apis/types";
 import { businessProfileDetailApi } from "../../apis";
 import { createRelation, updateRelation } from "../../store/business-profile-detail-slice";
 
@@ -21,21 +21,26 @@ export function LinkConsultancyDialog({
   onOpenChange,
   businessId,
   businessName,
+  isInstitution,
   editRelation,
 }: Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
   businessId: number;
   businessName?: string;
+  isInstitution: boolean;
   editRelation?: BusinessRelation | null;
 }>) {
+  const partnerLabel = isInstitution ? "counsellor" : "institution";
   const dispatch = useAppDispatch();
   const isEdit = !!editRelation;
 
   const [countries, setCountries] = useState<Country[]>([]);
   const [results, setResults] = useState<BusinessSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
-  const [partnerBusinessId, setPartnerBusinessId] = useState("");
+  // "<kind>:<id>", e.g. "institution:42". The two id spaces collide, so the id alone is not a
+  // usable key for the picker or for what gets submitted.
+  const [partnerRef, setPartnerRef] = useState("");
   const [countryIds, setCountryIds] = useState<number[]>([]);
   const [validFrom, setValidFrom] = useState("");
   const [validUntil, setValidUntil] = useState("");
@@ -45,7 +50,13 @@ export function LinkConsultancyDialog({
   const handleQueryChange = async (query: string) => {
     setLoading(true);
     try {
-      const rows = await businessProfileDetailApi.searchBusinesses({ search: query || undefined });
+      // Mirrors V1: an institution may only link a verified education agency, an education agency
+      // may only link a verified institution — the server enforces the same pairing on the create
+      // endpoint regardless of what this picker shows (business-representations.service.ts).
+      const rows = await businessProfileDetailApi.searchBusinesses({
+        search: query || undefined,
+        for_partner_link: true,
+      });
       setResults(rows);
     } finally {
       setLoading(false);
@@ -58,13 +69,13 @@ export function LinkConsultancyDialog({
   useEffect(() => {
     if (!open) return;
     if (editRelation) {
-      setPartnerBusinessId(String(editRelation.partner_id));
+      setPartnerRef(`${editRelation.partner_kind}:${editRelation.partner_id}`);
       setCountryIds(editRelation.country_ids ?? []);
       setValidFrom(editRelation.valid_from ?? "");
       setValidUntil(editRelation.valid_until ?? "");
       setNotes(editRelation.notes ?? "");
     } else {
-      setPartnerBusinessId("");
+      setPartnerRef("");
       setCountryIds([]);
       setValidFrom("");
       setValidUntil("");
@@ -76,7 +87,8 @@ export function LinkConsultancyDialog({
   }, [open, editRelation]);
 
   const handleSubmit = async () => {
-    if (!partnerBusinessId) return;
+    if (!partnerRef) return;
+    const [partnerKind, partnerId] = partnerRef.split(":");
     setSaving(true);
     try {
       if (isEdit && editRelation) {
@@ -98,7 +110,8 @@ export function LinkConsultancyDialog({
           createRelation({
             id: businessId,
             input: {
-              partner_business_id: Number(partnerBusinessId),
+              partner_business_id: Number(partnerId),
+              partner_kind: partnerKind as PartnerKind,
               country_ids: countryIds,
               valid_from: validFrom || null,
               valid_until: validUntil || null,
@@ -107,11 +120,11 @@ export function LinkConsultancyDialog({
             },
           }),
         ).unwrap();
-        toast.success("Consultancy linked");
+        toast.success(`${isInstitution ? "Counsellor" : "Institution"} linked`);
       }
       onOpenChange(false);
     } catch (e) {
-      toast.error(isEdit ? "Couldn't update partnership" : "Couldn't link consultancy", { description: (e as Error).message });
+      toast.error(isEdit ? "Couldn't update partnership" : `Couldn't link ${partnerLabel}`, { description: (e as Error).message });
     } finally {
       setSaving(false);
     }
@@ -122,7 +135,7 @@ export function LinkConsultancyDialog({
       <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-xl">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
-            <ShieldCheck className="h-4 w-4" /> {isEdit ? "Edit partnership" : "Link consultancy"}
+            <ShieldCheck className="h-4 w-4" /> {isEdit ? "Edit partnership" : `Link ${partnerLabel}`}
           </SheetTitle>
           <SheetDescription>
             {isEdit ? (
@@ -131,7 +144,7 @@ export function LinkConsultancyDialog({
               </>
             ) : (
               <>
-                Connect a verified consultancy to <strong>{businessName ?? "this institution"}</strong>.
+                Connect a verified {partnerLabel} to <strong>{businessName ?? "this profile"}</strong>.
               </>
             )}
           </SheetDescription>
@@ -139,8 +152,8 @@ export function LinkConsultancyDialog({
 
         <div className="flex flex-col gap-5 px-4">
           <div className="flex flex-col gap-2">
-            <Label>
-              Consultancy <span className="text-destructive">*</span>
+            <Label className="capitalize">
+              {partnerLabel} <span className="text-destructive">*</span>
             </Label>
             {isEdit ? (
               <div className="flex h-10 items-center gap-2 rounded-md border bg-muted/40 px-3 text-sm">
@@ -156,11 +169,11 @@ export function LinkConsultancyDialog({
               </div>
             ) : (
               <Combobox
-                value={partnerBusinessId}
-                onChange={setPartnerBusinessId}
-                options={results.map((b) => ({ value: String(b.id), label: b.business_name }))}
-                placeholder="Select a consultancy..."
-                searchPlaceholder="Search consultancies..."
+                value={partnerRef}
+                onChange={setPartnerRef}
+                options={results.map((b) => ({ value: `${b.kind}:${b.id}`, label: b.business_name }))}
+                placeholder={`Select a verified ${partnerLabel}...`}
+                searchPlaceholder={`Search verified ${partnerLabel === "counsellor" ? "counsellors" : "institutions"}...`}
                 loading={loading}
                 onQueryChange={handleQueryChange}
               />
@@ -202,9 +215,9 @@ export function LinkConsultancyDialog({
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>
             Cancel
           </Button>
-          <Button onClick={handleSubmit} disabled={!partnerBusinessId || saving}>
+          <Button onClick={handleSubmit} disabled={!partnerRef || saving}>
             {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-            {isEdit ? "Save changes" : "Link consultancy"}
+            {isEdit ? "Save changes" : `Link ${partnerLabel}`}
           </Button>
         </SheetFooter>
       </SheetContent>

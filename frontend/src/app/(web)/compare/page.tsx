@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import type { Metadata } from "next";
 import { ComparePageView } from "./compare-page-view";
 
@@ -6,5 +7,9 @@ export const metadata: Metadata = {
 };
 
 export default function ComparePage() {
-  return <ComparePageView />;
+  return (
+    <Suspense>
+      <ComparePageView />
+    </Suspense>
+  );
 }

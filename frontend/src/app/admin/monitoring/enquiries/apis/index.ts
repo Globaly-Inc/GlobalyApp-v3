@@ -1,6 +1,13 @@
 import { createApi } from "@/lib/api/create-api";
-import { enquiriesMockApi } from "./mock-data";
-import { enquiriesRealApi } from "./real-api";
+import { adminEnquiriesMockApi } from "./mock-data";
+import { adminEnquiriesRealApi } from "./real-api";
 
-export const enquiriesApi = createApi({ mock: enquiriesMockApi, real: enquiriesRealApi });
-export type { Enquiry } from "./types";
+export const adminEnquiriesApi = createApi({ mock: adminEnquiriesMockApi, real: adminEnquiriesRealApi });
+export type {
+  AdminEnquiry,
+  AdminEnquiryDetail,
+  AdminEnquiryDistribution,
+  AdminEnquiryStats,
+  EnquiryListParams,
+  Paginated,
+} from "./types";

@@ -83,6 +83,11 @@ export const ListQuerySchema = PaginationSchema.extend({
   // specific business category (e.g. a consultancy picker that wants ALL businesses, no
   // category restriction, and never institutions).
   kind: z.enum(["business", "institution"]).optional(),
+  // Filters on the businesses.business_type column directly — distinct from `category`, which
+  // filters the curated business_categories taxonomy. An institution-side "link consultancy"
+  // picker needs this applied server-side (before pagination), not client-filtered over one
+  // page of results, or a page full of non-agent businesses hides real agencies on later pages.
+  business_type: z.string().optional(),
   sort: z.enum(BusinessSortOptions).default("name_asc"),
 });
 
@@ -98,6 +103,7 @@ export const PublishedPatchSchema = z.object({ is_published: z.boolean() });
 
 export const InstitutionPatchSchema = z.object({
   business_name: z.string().min(1),
+  business_category_id: z.number().int().positive().nullable(),
   description: z.string().nullable(),
   email: z.string().email().nullable(),
   phone: z.string().nullable(),
@@ -107,6 +113,14 @@ export const InstitutionPatchSchema = z.object({
   city: z.string().nullable(),
   address: z.string().nullable(),
   postcode: z.string().nullable(),
+  logo_url: z.string().nullable(),
+  cover_url: z.string().nullable(),
+  linkedin_url: z.string().nullable(),
+  facebook_url: z.string().nullable(),
+  instagram_url: z.string().nullable(),
+  twitter_url: z.string().nullable(),
+  youtube_url: z.string().nullable(),
+  whatsapp_url: z.string().nullable(),
 }).partial().strict();
 
 export const EnquirySettingsPatchSchema = z.object({

@@ -145,7 +145,9 @@ export function AccreditationsTab({ jobId }: Readonly<{ jobId: string }>) {
   }
 
   async function deleteScraped(id: string, name: string) {
-    if (!(await confirm(`Delete scraped accreditation "${name}"?`))) return;
+    if (!(await confirm(`Delete scraped accreditation "${name}"?`))) {
+      return;
+    }
     try {
       await allExtractionsApi.deleteAccreditation(id);
       toast.success("Deleted");

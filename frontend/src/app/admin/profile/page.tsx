@@ -1,5 +1,4 @@
-import { MyProfileView } from "./components/my-profile-view";
-
+import { ProfileView } from "@/app/personal/profile/profile-view";
 export default function AdminMyProfilePage() {
-  return <MyProfileView />;
+  return <ProfileView />;
 }

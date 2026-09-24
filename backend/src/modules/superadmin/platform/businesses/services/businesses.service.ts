@@ -1,9 +1,10 @@
 // Businesses service — admin-managed listing CRUD, owner provisioning, members, activity.
 
 import { randomBytes } from "node:crypto";
+import type { Knex } from "knex";
 import { NotFoundError, ConflictError } from "../../../../../shared/errors.js";
 import * as storage from "../../../../../shared/storage/storageService.js";
-import { provisionBusinessSchema } from "../../../../../core/business/provisioner.js";
+import { provisionBusinessSchema, provisionInstitutionSchema } from "../../../../../core/business/provisioner.js";
 import { getKnex } from "../../../../../core/db/pool-manager.js";
 import { masterKnex } from "../../../../../core/db/master-pool.js";
 import { schemaName } from "../../../../../core/db/knex.js";
@@ -20,6 +21,7 @@ import { generateSubdomain } from "../../../../../shared/subdomain.js";
 import * as agentsRepo from "../../../../agents/repositories/agents.repository.js";
 import * as agentsService from "../../../../agents/services/agents.service.js";
 import * as coursesRepo from "../../../data-extraction/repositories/courses.repository.js";
+import * as jobsRepo from "../../../data-extraction/repositories/jobs.repository.js";
 import * as reviewRepo from "../../../data-extraction/repositories/review.repository.js";
 import { courseSlug } from "../../../../search/utils/slug.js";
 import * as institutionMembersService from "../../../../platform-users/services/institution-members.service.js";
@@ -30,6 +32,7 @@ import type {
   BusinessCreateInput, BusinessPatchInput, BusinessStatus, EnquirySettingsPatchInput, InstitutionPartnerInput, InstitutionPartnerPatch,
   InstitutionPatchInput, MemberInviteInput, MemberPatchInput, RoleCreateInput, RolePatchInput,
 } from "../schemas/businesses.schema.js";
+import type { ContactInput, ContactPatch } from "../../../../agents/schemas/agents.schema.js";
 
 const logger = createChildLogger("superadmin-businesses-service");
 
@@ -63,10 +66,78 @@ async function subdomainTaken(subdomain: string): Promise<boolean> {
   return Boolean(biz || inst);
 }
 
+/**
+ * RFC 2606 reserved TLD, same trick as promote's PLACEHOLDER_EMAIL_DOMAIN: guaranteed
+ * unroutable, and `.invalid` can never collide with a real institution's host.
+ */
+const MANUAL_JOB_URL_DOMAIN = "manual.globalyhub.invalid";
+
+/** normaliseHost() runs `new URL()`, which throws on the scheme-less values the DB holds
+ *  (e.g. "www.globalyhub.com"). Same coercion embed.service's extractDomain does. */
+function withScheme(url: string): string {
+  return url.includes("://") ? url : `https://${url}`;
+}
+
+/**
+ * Every extraction_* child is `job_id NOT NULL REFERENCES extraction_jobs ON DELETE CASCADE`,
+ * and an institution's catalog is read through `source_job_id` rather than copied
+ * (see promote.service's header). So an institution created by hand needs a job row of its
+ * own before it has anywhere to put a course — same shape as an AI or AgentCIS job, minus
+ * the crawl.
+ *
+ * `status: "done"` is what keeps the crawl off it: the pipeline workers claim through the
+ * partial index on status IN ('pending','processing','stalled'), so a job created as pending
+ * would go and scrape the institution's website. The source is named by `source_type`
+ * instead — never by a new status string, which would render as undefined against the
+ * frontend's fixed STATUS_CONFIG record.
+ */
+async function mintManualInstitutionJob(
+  input: BusinessCreateInput,
+  subdomain: string,
+  trx: Knex.Transaction,
+): Promise<string> {
+  // institution_url is the job's only NOT NULL column, and it is load-bearing beyond display:
+  // the AI embed widget scopes a business's courses by ILIKE-matching its website against it.
+  const url = input.website?.trim()
+    ? withScheme(input.website.trim())
+    : `https://${MANUAL_JOB_URL_DOMAIN}/${subdomain}`;
+  const host = jobsRepo.normaliseHost(url);
+
+  // Two catalogs for one university is the failure mode here — a manual institution today and
+  // an AI extraction of the same site tomorrow. Same advisory lock + duplicate check
+  // createJob uses. Skipped for the placeholder host, where every institution shares a domain.
+  if (host && !host.endsWith(".invalid")) {
+    await jobsRepo.lockInstitutionHost(host, trx);
+    const existing = await jobsRepo.findJobByInstitutionHost(url, trx);
+    if (existing) {
+      throw new ConflictError(
+        `${existing.institution_name ?? "An institution"} already has an extraction for ${host}. ` +
+        "Promote that job instead of creating a duplicate listing.",
+      );
+    }
+  }
+
+  const row = await jobsRepo.insertJob({
+    institution_name: input.business_name,
+    institution_url: url,
+    source_type: "manual",
+    status: "done",
+    // Promote routes by category, and refuses an uncategorised job from a non-agentcis source.
+    business_category_id: input.business_category_id,
+  }, trx);
+  return row.id as string;
+}
+
 export async function createBusiness(input: BusinessCreateInput) {
+  const isInstitution = (await repo.findCategorySlugById(input.business_category_id)) === "institutions";
+  // Institutions have their own table — admin-created "Institutions" used to be shoehorned into
+  // `businesses` with a category tag, which made it invisible to every institutions-scoped admin
+  // list/filter (those read `institutions` directly, never `businesses` by category). Mirrors the
+  // self-service split: registerBusiness/onboardInstitution are two different tables too.
+  if (isInstitution) return createInstitution(input);
+
   const existingOwner = await userRepo.findByEmail(input.email);
   if (existingOwner) throw new ConflictError("This email is already in use");
-
 
   const { first_name, last_name, ...businessInput } = input;
 
@@ -86,7 +157,10 @@ export async function createBusiness(input: BusinessCreateInput) {
           phone: input.phone ?? undefined,
           account_status: 1,
         }, trx);
-        const trxBusiness = await repo.insertBusiness({ ...businessInput, subdomain, owner_id: trxOwner.id }, trx);
+        const trxBusiness = await repo.insertBusiness(
+          { ...businessInput, subdomain, owner_id: trxOwner.id, source_job_id: null },
+          trx,
+        );
         return { owner: trxOwner, business: trxBusiness };
       }));
     } catch (err: any) {
@@ -120,7 +194,7 @@ export async function createBusiness(input: BusinessCreateInput) {
     // Mark the owner as a business account holder — same as the self-service registration flow.
     // Without this, /auth/me reports is_business_account: false for an owner who clearly has one.
     await userRepo.updateUser(owner.id, { is_business_account: true });
-    
+
     await userRepo.addAccountCategory(owner.id, { type: "business", role: business.business_type ?? "business" });
     // Only now is the business fully provisioned — findBusinessByDbName (used by the
     // invite/accept flow) requires account_status: 1, same as the self-service registration flow.
@@ -131,6 +205,96 @@ export async function createBusiness(input: BusinessCreateInput) {
   }
 
   return repo.findBusinessDetail(business.id);
+}
+
+/**
+ * Admin-created institution — mirrors platform-users.service's onboardInstitution (the
+ * self-service path), but synthesizes the owner platform_user from the admin form's
+ * first_name/last_name/email instead of using an already-authenticated caller.
+ */
+async function createInstitution(input: BusinessCreateInput) {
+  const existingOwner = await userRepo.findByEmail(input.email);
+  if (existingOwner) throw new ConflictError("This email is already in use");
+
+  const { first_name, last_name } = input;
+
+  let owner: Awaited<ReturnType<typeof userRepo.insert>> | undefined;
+  let institution: Awaited<ReturnType<typeof userRepo.insertInstitution>> | undefined;
+  for (let attempt = 0; !institution && attempt < 5; attempt++) {
+    const subdomain = await generateSubdomain(input.business_name, subdomainTaken);
+    try {
+      ({ owner, institution } = await masterKnex.transaction(async (trx) => {
+        const trxOwner = await userRepo.insert({
+          first_name: first_name || input.business_name,
+          last_name: last_name ?? "",
+          email: input.email,
+          phone: input.phone ?? undefined,
+          account_status: 1,
+        }, trx);
+        const sourceJobId = await mintManualInstitutionJob(input, subdomain, trx);
+        const trxInstitution = await userRepo.insertInstitution({
+          platform_user_id: trxOwner.id,
+          source_job_id: sourceJobId,
+          first_name: trxOwner.first_name,
+          last_name: trxOwner.last_name,
+          email: input.email,
+          phone: input.phone ?? null,
+          subdomain,
+          institution_name: input.business_name,
+          description: input.description ?? null,
+          website: input.website ?? null,
+          country_id: input.country_id ?? null,
+          state: input.state ?? null,
+          city: input.city ?? null,
+          address: input.address ?? null,
+          postcode: input.postcode ?? null,
+          logo_url: input.logo_url ?? null,
+          cover_url: input.cover_url ?? null,
+          linkedin_url: input.linkedin_url ?? null,
+          facebook_url: input.facebook_url ?? null,
+          instagram_url: input.instagram_url ?? null,
+          twitter_url: input.twitter_url ?? null,
+          // Left at its default ("unclaimed") — same as admin-created businesses. The owner
+          // account is synthesized from the form, not logged in, so `is_unclaimed` should stay
+          // true until they actually verify/log in, matching createBusiness's behavior.
+        }, trx);
+        return { owner: trxOwner, institution: trxInstitution };
+      }));
+    } catch (err: any) {
+      if (err.code !== "23505" || attempt === 4) throw err;
+    }
+  }
+  if (!owner || !institution) throw new Error("Could not create institution after retrying subdomain collisions");
+
+  try {
+    await provisionInstitutionSchema(institution.schema_name);
+    const tenantDb = await getKnex(institution.id, schemaName(institution.schema_name));
+    await institutionMembersService.addMember(tenantDb, Number(institution.id), {
+      platform_user_id: owner.id,
+      role: "owner",
+      is_owner: true,
+      first_name: owner.first_name,
+      last_name: owner.last_name,
+      email: owner.email,
+      phone: owner.phone,
+    });
+    await userRepo.updateUser(owner.id, { is_institution_account: true });
+    await userRepo.addAccountCategory(owner.id, { type: "institution", role: "institution" });
+    await userRepo.updateInstitution(institution.id, { account_status: 1 });
+  } catch (err) {
+    // Everything the transaction created has to go, not just the institution — otherwise the
+    // owner's platform_users row survives and blocks a retry with the same email ("already in
+    // use"), and the minted job survives with no institution left to reference it. Mirrors
+    // onboardInstitution's rollback, plus the owner cleanup that's unique here since the admin
+    // path creates that user itself (self-service reuses an already-existing, already-logged-in
+    // caller, so it has no owner row of its own to roll back).
+    await userRepo.deleteInstitution(institution.id);
+    await userRepo.deleteUser(owner.id);
+    await jobsRepo.deleteJob(institution.source_job_id);
+    throw err;
+  }
+
+  return repo.findInstitutionDetail(institution.id);
 }
 
 /**
@@ -169,6 +333,7 @@ export async function listBusinesses(
   limit: number, offset: number, search?: string, status?: string, category?: number, categorySlug?: string,
   kind?: "business" | "institution",
   sort: BusinessSort = "name_asc",
+  businessType?: string,
 ) {
   const scope = kind ? (kind === "institution" ? "institutions" : "businesses") : await resolveListScope(category, categorySlug);
 
@@ -182,8 +347,8 @@ export async function listBusinesses(
 
   if (scope === "businesses") {
     const [rawRows, total] = await Promise.all([
-      repo.listBusinesses(limit, offset, search, status, category, categorySlug, sort),
-      repo.countBusinesses(search, status, category, categorySlug),
+      repo.listBusinesses(limit, offset, search, status, category, categorySlug, sort, businessType),
+      repo.countBusinesses(search, status, category, categorySlug, businessType),
     ]);
     return { rows: await Promise.all(rawRows.map(withImagePreviews)), total };
   }
@@ -228,6 +393,9 @@ export async function getBusinessDetail(id: number) {
 export async function updateBusiness(id: number, data: BusinessPatchInput) {
   await requireBusiness(id);
   const updated = await repo.updateBusiness(id, data);
+  if (updated?.source_job_id && data.website?.trim()) {
+    await jobsRepo.syncOwnedJobUrl(updated.source_job_id, data.website.trim());
+  }
   return withImagePreviews(updated);
 }
 
@@ -520,8 +688,17 @@ export async function updateEnquirySettings(id: number, data: EnquirySettingsPat
 
 export async function inviteInstitutionMember(id: number, input: InstitutionInviteInput) {
   const inst = await requireProvisionedInstitution(id);
+  // Institutions created directly by admin/scraping (never self-onboarded or claimed) can have
+  // schema_provisioned_at set without account_status ever being flipped to 1 — createInstitution's
+  // own admin-create path sets both together (see its own account_status: 1 call above), but an
+  // institution promoted straight from extraction data skips that. findInstitutionBySchemaName,
+  // which the invite-accept page relies on, filters on account_status: 1, so an invite sent before
+  // this is set would generate an accept link that always 404s ("Organization not found") even
+  // though the invitation itself was created successfully. Sending an invite is exactly the
+  // "this institution's workspace is now real" moment, so activate it here if it isn't already.
+  if (inst.account_status !== 1) await userRepo.updateInstitution(inst.id, { account_status: 1 });
   const tenantDb = await getKnex(inst.id, inst.schema_name);
-  return institutionMembersService.inviteMemberAsAdmin(tenantDb, inst.id, inst.schema_name, input);
+  return institutionMembersService.inviteMemberAsSuperadmin(tenantDb, inst.id, inst.schema_name, input);
 }
 
 export async function listInstitutionInvitations(id: number, pagination: PaginationInput) {
@@ -545,7 +722,7 @@ export async function resendInstitutionInvitation(id: number, invitationId: stri
 export async function setInstitutionMemberStatus(id: number, platformUserId: number, accountStatus: number) {
   const inst = await requireProvisionedInstitution(id);
   const tenantDb = await getKnex(inst.id, inst.schema_name);
-  await institutionMembersService.setMemberStatus(tenantDb, platformUserId, accountStatus);
+  await institutionMembersService.setMemberStatus(tenantDb, inst.id, platformUserId, accountStatus);
 }
 
 export async function listMembers(
@@ -578,6 +755,57 @@ export async function removeMember(id: number, memberId: number) {
   const biz = await requireBusiness(id);
   const tenantDb = await getKnex(biz.id, schemaName(biz.schema_name));
   await agentsService.removeAgent(tenantDb, Number(biz.id), memberId);
+}
+
+// ── Contacts ("Add Contact" — a dormant agent/member row, not a separate table) ──
+
+export async function listContacts(id: number, limit: number, offset: number, search?: string) {
+  const biz = await requireBusiness(id);
+  const tenantDb = await getKnex(biz.id, schemaName(biz.schema_name));
+  return agentsService.listContacts(tenantDb, limit, offset, search);
+}
+
+export async function createContact(id: number, input: ContactInput) {
+  const biz = await requireBusiness(id);
+  const tenantDb = await getKnex(biz.id, schemaName(biz.schema_name));
+  return agentsService.createContact(tenantDb, Number(biz.id), input);
+}
+
+export async function updateContact(id: number, contactId: number, patch: ContactPatch) {
+  const biz = await requireBusiness(id);
+  const tenantDb = await getKnex(biz.id, schemaName(biz.schema_name));
+  return agentsService.updateContact(tenantDb, contactId, patch);
+}
+
+export async function deleteContact(id: number, contactId: number) {
+  const biz = await requireBusiness(id);
+  const tenantDb = await getKnex(biz.id, schemaName(biz.schema_name));
+  await agentsService.removeAgent(tenantDb, Number(biz.id), contactId);
+}
+
+export async function listInstitutionContacts(id: number, limit: number, offset: number, search?: string) {
+  const inst = await requireProvisionedInstitution(id);
+  const tenantDb = await getKnex(inst.id, inst.schema_name);
+  return institutionMembersService.listContacts(tenantDb, limit, offset, search);
+}
+
+export async function createInstitutionContact(id: number, input: ContactInput) {
+  const inst = await requireProvisionedInstitution(id);
+  const tenantDb = await getKnex(inst.id, inst.schema_name);
+  return institutionMembersService.createContact(tenantDb, Number(inst.id), input);
+}
+
+export async function updateInstitutionContact(id: number, contactId: number, patch: ContactPatch) {
+  const inst = await requireProvisionedInstitution(id);
+  const tenantDb = await getKnex(inst.id, inst.schema_name);
+  return institutionMembersService.updateContact(tenantDb, contactId, patch);
+}
+
+export async function deleteInstitutionContact(id: number, contactId: number) {
+  const inst = await requireProvisionedInstitution(id);
+  const tenantDb = await getKnex(inst.id, inst.schema_name);
+  const contact = await institutionMembersService.getMember(tenantDb, contactId);
+  await institutionMembersService.removeMember(tenantDb, Number(inst.id), contact.platform_user_id);
 }
 
 export async function listActivity(id: number, limit: number, offset: number) {

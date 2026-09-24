@@ -48,7 +48,7 @@ export async function jobsRoutes(app: FastifyInstance) {
           statuses,
           excludeStatuses,
           sourceType: query.source_type,
-          excludeSourceType: query.exclude_source_type,
+          excludeSourceTypes: query.exclude_source_type?.split(",").filter(Boolean),
           businessCategoryId: query.business_category_id,
           q: query.q,
           sort: query.sort,
@@ -62,6 +62,12 @@ export async function jobsRoutes(app: FastifyInstance) {
   app.get("/jobs/:id", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
     return reply.send(await service.getJob(id));
+  });
+
+  // GET /jobs/:id/tab-counts — count(*) per entity type, for the tab-bar count tags.
+  app.get("/jobs/:id/tab-counts", async (req, reply) => {
+    const { id } = UuidParamSchema.parse(req.params);
+    return reply.send(await service.getTabCounts(id));
   });
 
   // RJ3: GET /jobs/:id/events

@@ -6,11 +6,15 @@ import { ArrowLeft, Landmark, RotateCcw, Square, Upload, XCircle, Loader2 } from
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
+import { RowActors } from "./row-actors";
 import { useAppDispatch } from "@/lib/hooks";
 import { ACTIVE_STATUSES, PUBLISHABLE_STATUSES, STATUS_CONFIG } from "../const";
 import { declineJob, promoteJob, resetPipeline, stopAllExtraction } from "../store/all-extractions-slice";
 import { useConfirmDelete } from "./use-confirm-delete";
 import { RerunExtractionButton } from "./rerun-extraction-button";
+import { DeepScrapeButton } from "./deep-scrape-button";
+import { EnrichFromWebButton } from "./enrich-from-web-button";
+import { StepModeToggle } from "./step-mode-toggle";
 import type { ExtractionJob } from "../apis/types";
 
 const RESETTABLE_STATUSES = ["pending", "failed", "mapping", "scraping", "extracting", "verifying", "paused"];
@@ -48,7 +52,7 @@ export function JobHeader({ job, onReload }: Readonly<{ job: ExtractionJob; onRe
         <Button
           variant="ghost"
           className="gap-1.5 shrink-0 cursor-pointer"
-          onClick={() => router.push("/admin/data/all-extractions")}
+          onClick={() => router.back()}
         >
           <ArrowLeft className="h-3.5 w-3.5" />
           Back
@@ -59,11 +63,19 @@ export function JobHeader({ job, onReload }: Readonly<{ job: ExtractionJob; onRe
         <div className="min-w-0">
           <h1 className="text-lg font-bold text-foreground truncate">{job.institution_name || "Extraction Review"}</h1>
           <p className="text-xs text-muted-foreground truncate">{job.institution_url}</p>
+          <RowActors row={job} className="mt-0.5" />
         </div>
       </div>
 
       <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
+        {job.source_type !== "agentcis" && <StepModeToggle job={job} onReload={onReload} />}
         <RerunExtractionButton jobId={job.id} status={job.status} onReload={onReload} />
+        {job.source_type !== "agentcis" && job.status !== "exported" && (
+          <DeepScrapeButton jobId={job.id} onReload={onReload} />
+        )}
+        {job.source_type === "agentcis" && job.status === "done" && (
+          <EnrichFromWebButton jobId={job.id} onReload={onReload} />
+        )}
 
         {ACTIVE_STATUSES.includes(job.status) && (
           <Button

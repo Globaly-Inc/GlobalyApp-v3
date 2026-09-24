@@ -8,7 +8,6 @@ import { cn } from "@/lib/utils";
 import {
   Coins,
   Bell,
-  Sparkles,
   ChevronDown,
   User as UserIcon,
   Building2,
@@ -22,13 +21,14 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { AiLauncher } from "@/components/ai-widget/ai-launcher";
+// import { AiLauncher } from "@/components/ai-widget/ai-launcher";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { logout, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchFullProfile } from "./store/profile-slice";
 import { PortalSidebar } from "@/components/portal-sidebar";
-import { NAV_ITEMS } from "./const";
+import { NAV_ITEMS, PERSONAL_PORTAL_HOME } from "./const";
 import { PersonalMobileNav } from "./components/personal-mobile-nav";
+import { ICON } from "@/lib/public-assets";
 
 const SHELL_WIDTH = "mx-auto w-full max-w-7xl px-3 sm:px-4 md:px-6";
 
@@ -94,10 +94,10 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
           <div className="flex h-16 shrink-0 items-center px-3 sm:px-4 md:w-20 md:justify-center md:px-0">
             <Link href="/" className="flex shrink-0 items-center">
               <Image
-                src="/globaly-red-icon.png"
-                alt="Globaly"
-                width={283}
-                height={283}
+                src={ICON.src}
+                alt="Globalyapp"
+                width={ICON.width}
+                height={ICON.height}
                 className="size-9 rounded-[10px]"
                 priority
               />
@@ -118,13 +118,6 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
               <Bell className="h-4.5 w-4.5" />
             </Link>
             <Link
-              href="/personal/ai"
-              className="hidden md:inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 h-8 text-xs font-semibold bg-primary/10 text-primary hover:bg-primary/15 transition-colors"
-            >
-              <Sparkles className="h-3.5 w-3.5" />
-              AI Counsellor
-            </Link>
-            <Link
               href="/personal/credits"
               className="hidden md:inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 h-8 text-xs font-medium text-muted-foreground hover:bg-muted"
             >
@@ -136,7 +129,7 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
               <DropdownMenuTrigger
                 render={
                   <button
-                    className="flex items-center gap-1.5 rounded-full border border-border py-1 pl-1 pr-2 hover:bg-muted cursor-pointer"
+                    className="flex items-center gap-1.5 rounded-md border border-border py-1 pl-1 pr-2 hover:bg-muted cursor-pointer"
                     type="button"
                     aria-label="Account menu"
                   />
@@ -148,17 +141,23 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
                 </Avatar>
                 <ChevronDown className="h-4 w-4 text-muted-foreground" />
               </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56 p-1.5">
-                <div className="px-1.5 py-1.5">
-                  <p className="text-sm font-medium truncate">
-                    {[profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || "User"}
-                  </p>
-                  <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
-                </div>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push(myProfileHref)}>
-                  My Profile
+              <DropdownMenuContent align="end" className="w-56 p-1.5 rounded-md">
+                <DropdownMenuItem
+                  className="cursor-pointer px-1.5 py-1.5 flex items-center gap-2"
+                  onClick={() => router.push("/personal/profile")}
+                >
+                  <Avatar className="size-8 shrink-0">
+                    {avatarPhotoUrl && <AvatarImage src={avatarPhotoUrl} alt={profile?.first_name} />}
+                    <AvatarFallback className="text-primary-foreground!">{initial}</AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium truncate">
+                      {[profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || "User"}
+                    </p>
+                    <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
+                  </div>
                 </DropdownMenuItem>
+                <DropdownMenuSeparator />
                 {/* {portalTarget && (
                   <>
                     <DropdownMenuSeparator />
@@ -167,7 +166,7 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
                     </DropdownMenuItem>
                   </>
                 )} */}
-                <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/personal/portal")}>
+                <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push(PERSONAL_PORTAL_HOME)}>
                   Personal Portal
                 </DropdownMenuItem>
                 <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/business/portal")}>
@@ -204,7 +203,8 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
       </div>
 
       <PersonalMobileNav portalTarget={portalTarget} myProfileHref={myProfileHref} onSignOut={handleSignOut} />
-      <AiLauncher />
+      {/* Ask Aly floating orb — parked for now. */}
+      {/* <AiLauncher /> */}
     </div>
   );
 }

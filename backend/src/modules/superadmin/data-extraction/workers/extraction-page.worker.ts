@@ -7,29 +7,57 @@
 // Run with: npm run job:extraction-pages
 
 import "dotenv/config";
+import { randomUUID } from "node:crypto";
 import { queueService } from "../../../../shared/queue/queueService.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
-import { scrapeMarkdown } from "../lib/scraper.js";
-import { truncateMarkdown } from "../lib/html-utils.js";
-import { extractJson } from "../lib/llm-client.js";
+import { scrapeRenderedHtml } from "../lib/scraper.js";
+import { getPage, getDocument, isPdfUrl } from "../lib/page-store.js";
+import { truncateMarkdown, domainOf, MIN_EXTRACTABLE_CHARS, compileBlocklist } from "../lib/html-utils.js";
+import { courseLinksByName, looksLikeCourseList, parseCourseList } from "../lib/courselist-parser.js";
+import { extractJson, setLlmContext, withLlmKind } from "../lib/llm-client.js";
 import {
   courseExtractionPrompt, COURSE_EXTRACTION_SYSTEM, studyUnitsFromPagePrompt, STUDY_UNITS_SYSTEM,
+  courseDataPrompt, COURSE_DATA_SYSTEM,
+  feesFromPagePrompt, FEES_FROM_PAGE_SYSTEM, curriculumAndFeesPrompt, CURRICULUM_AND_FEES_SYSTEM,
   visaServiceExtractionPrompt, VISA_SERVICE_EXTRACTION_SYSTEM,
 } from "../lib/extraction-prompts.js";
 import {
   writeCourse, upsertCampus, normaliseCampusName, writeVisaService, insertQueueItem, writeJobEvent,
-  type ExtractedCourse, type ExtractedCampus, type ExtractedStudyUnit, type ExtractedVisaService,
+  upsertIntake, type ExtractedIntake, resolveDurationWeeks, durationFromProse, courseOwnPage, bareCourseKey,
+  normaliseCourseName,
+  type ExtractedCourse, type ExtractedCampus, type ExtractedStudyUnit, type ExtractedFee, type ExtractedVisaService,
 } from "../lib/staging-writer.js";
+import { loadLookupLists, resolveCountryCode } from "../lib/lookup-catalog.js";
+import { checkAllPagesDone } from "../lib/queue-completion.js";
 import { recallMemory, rememberMemory, buildSystemAddendum } from "../lib/memory-client.js";
-import { domainOf } from "../lib/html-utils.js";
+import { classifyFailure, isScraperInfraFailure, type FailureClass } from "../lib/classify-failure.js";
 
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
 const logger = createChildLogger("extraction-page-worker");
 
 /** Detect paginated sibling pages from links (DataTables, ?page=N, /page/N). */
+/**
+ * URLs the operator filed under Context -> Intakes, as a set.
+ *
+ * The courses step already queues these (COURSES_STEP_GUIDED_CATEGORIES in
+ * extraction-step.worker.ts), but nothing ever told this worker they were anything other than a
+ * course page — so they were extracted with the course prompt and produced nothing.
+ */
+function intakeGuidedUrls(job: Record<string, unknown>): Set<string> {
+  if (!job.guided_urls) return new Set();
+  try {
+    const guided = typeof job.guided_urls === "string"
+      ? JSON.parse(job.guided_urls as string)
+      : job.guided_urls as Record<string, unknown>;
+    return new Set((guided?.intakes_urls as string[] | undefined) ?? []);
+  } catch {
+    return new Set();
+  }
+}
+
 function detectPaginationUrls(baseUrl: string, links: string[], markdown: string): string[] {
   let baseObj: URL | null = null;
   try { baseObj = new URL(baseUrl); } catch { return []; }
@@ -54,18 +82,6 @@ function detectPaginationUrls(baseUrl: string, links: string[], markdown: string
     .map(n => { const u = new URL(baseObj!.toString()); u.searchParams.set("page", String(n)); return u.toString(); });
 }
 
-// ponytail: ported from V2's classifyFailure + routeFailure
-type FailureClass = "anti_bot" | "not_a_course" | "ai_5xx" | "parse_error" | "other";
-
-function classifyFailure(error: string): FailureClass {
-  const e = error.toLowerCase();
-  if (e.includes("blocked") || e.includes("minimal_content") || e.includes("empty") || e.includes("anti-bot")) return "anti_bot";
-  if (e.includes("not a course") || e.includes("blog") || e.includes("news") || e.includes("staff")) return "not_a_course";
-  if (e.includes("429") || e.includes("503") || /5\d{2}/.test(e) || e.includes("5xx")) return "ai_5xx";
-  if (e.includes("parse") || e.includes("no structured data")) return "parse_error";
-  return "other";
-}
-
 interface ExtractionResult {
   courses: ExtractedCourse[];
   campuses_found: ExtractedCampus[];
@@ -75,124 +91,149 @@ interface VisaServiceExtractionResult {
   visa_services: ExtractedVisaService[];
 }
 
-// ponytail: merge duplicate campuses created by parallel workers (race condition)
-async function deduplicateCampuses(jobId: string) {
-  const campuses = await masterKnex(`${S}.extraction_campuses`).where({ job_id: jobId });
-  const groups = new Map<string, typeof campuses>();
-  for (const c of campuses) {
-    const key = normaliseCampusName(c.name);
-    const arr = groups.get(key) || [];
-    arr.push(c);
-    groups.set(key, arr);
-  }
-  for (const [, dupes] of groups) {
-    if (dupes.length <= 1) continue;
-    const keep = dupes[0];
-    const removeIds = dupes.slice(1).map(d => d.id);
-    // Re-point junction rows to the kept campus
-    await masterKnex(`${S}.extraction_course_campuses`)
-      .whereIn("campus_id", removeIds)
-      .update({ campus_id: keep.id });
-    await masterKnex(`${S}.extraction_campuses`)
-      .whereIn("id", removeIds)
-      .delete();
-    logger.info("Merged duplicate campuses", { kept: keep.name, removed: removeIds.length });
-  }
-}
-
 // ponytail: bound worst-case secondary-fetch cost per page scrape (a listing page can
 // yield many courses); see docs/data-extraction/2026-08-21-study-units-discovery-design.md
 const SECONDARY_FETCH_CAP = 20;
 
 /**
- * Narrow follow-up fetch for a course's own curriculum page, when the primary page's
- * extraction came back with no study_units but flagged a link to one. Every failure
- * mode here logs and returns empty — it must never fail the course write.
+ * A secondary page (curriculum, fees, PDF) through the snapshot store. The curriculum and
+ * fees paths commonly resolve to the SAME catalog page, and forty qualification variants
+ * across forty queue messages commonly share one handbook — the store serves all of them
+ * from one scrape (and, for a PDF, one Gemini Vision read). Failures are never STORED — a
+ * WAF block frozen for 30 days would be worse than a retry — but they ARE memoised in
+ * `cache` for this one message, so forty variants sharing one dead link cost one attempt
+ * and one fetch-cap slot rather than forty paid Vision calls.
  */
-async function fetchCurriculumUnits(curriculumUrl: string, primaryUrl: string, jobId: string): Promise<ExtractedStudyUnit[]> {
-  let resolved: URL;
-  try {
-    resolved = new URL(curriculumUrl, primaryUrl);
-  } catch {
-    logger.warn("Invalid curriculum_page_url, skipping secondary fetch", { jobId, primaryUrl, curriculumUrl });
-    return [];
-  }
+async function scrapeSecondaryPage(
+  resolvedUrl: string, cache: Map<string, string | null>, jobId: string,
+): Promise<string | null> {
+  if (cache.has(resolvedUrl)) return cache.get(resolvedUrl)!;
+  const md = await fetchSecondaryPage(resolvedUrl, jobId);
+  cache.set(resolvedUrl, md);
+  return md;
+}
 
+async function fetchSecondaryPage(resolvedUrl: string, jobId: string): Promise<string | null> {
   try {
-    const page = await scrapeMarkdown(resolved.toString(), { onlyMainContent: true });
+    const page = isPdfUrl(resolvedUrl)
+      ? await getDocument(resolvedUrl)
+      : await getPage(resolvedUrl, { onlyMainContent: true });
     if (page.blocked || page.markdown.length < 50) {
-      logger.warn("Curriculum page blocked or empty, skipping secondary fetch", { jobId, curriculumUrl: resolved.toString() });
-      return [];
+      logger.warn("Secondary page blocked or empty, skipping fetch", { jobId, url: resolvedUrl, error: page.error });
+      return null;
     }
-    const result = await extractJson<{ study_units: ExtractedStudyUnit[] }>({
-      system: STUDY_UNITS_SYSTEM,
-      prompt: studyUnitsFromPagePrompt(resolved.toString(), truncateMarkdown(page.markdown)),
-    });
-    return result.study_units ?? [];
+    return truncateMarkdown(page.markdown);
   } catch (err) {
-    logger.warn("Curriculum page extraction failed, skipping", {
-      jobId, curriculumUrl: resolved.toString(), error: err instanceof Error ? err.message : String(err),
+    logger.warn("Secondary page scrape failed, skipping fetch", {
+      jobId, url: resolvedUrl, error: err instanceof Error ? err.message : String(err),
     });
-    return [];
+    return null;
   }
 }
 
 /**
- * Check if all queue items are done and trigger verification if so.
- * "Done" = no items in a state that could still produce work (pending, processing).
- * Items in paused/ignored/stopped are treated as terminal — admin chose to skip them.
+ * A curriculum read straight out of a secondary page's markup, or null when that page does not
+ * publish one. Cached per URL like the markdown path, because several qualification variants of
+ * one subject share a curriculum link.
+ *
+ * Tried BEFORE the model on every curriculum page: where the site is a CourseLeaf catalogue the
+ * table is exact — code, title, credit hours, requirement block — and it costs no Gemini call
+ * at all. Where it is not, this returns null in one fetch and the markdown path runs as before.
  */
-async function checkAllPagesDone(jobId: string) {
-  const remaining = await masterKnex(`${S}.extraction_queue`)
-    .where({ job_id: jobId })
-    .whereIn("status", ["pending", "processing"])
-    .count("id as count")
-    .first();
-
-  if (Number(remaining?.count) === 0) {
-    // Guard: only transition once — avoid duplicate verification dispatches from parallel workers
-    const updated = await masterKnex(`${S}.extraction_jobs`)
-      .where({ id: jobId, status: "processing" })
-      .update({
-        status: "extracting",
-        pipeline_progress: JSON.stringify({ site_mapping: "done", course_discovery: "done", data_extraction: "done", verification: "processing" }),
-        updated_at: masterKnex.fn.now(),
-      });
-
-    if (updated === 0) {
-      // Another worker already transitioned this job — skip
-      return;
+async function unitsFromMarkup(
+  resolvedUrl: string, cache: Map<string, ExtractedStudyUnit[] | null>, jobId: string,
+): Promise<ExtractedStudyUnit[] | null> {
+  if (cache.has(resolvedUrl)) return cache.get(resolvedUrl)!;
+  let units: ExtractedStudyUnit[] | null = null;
+  try {
+    const { html } = await scrapeRenderedHtml(resolvedUrl);
+    if (html && looksLikeCourseList(html)) {
+      const parsed = parseCourseList(html);
+      if (parsed.units.length) units = parsed.units;
     }
-
-    logger.info("All pages processed, dispatching verification", { jobId });
-    await deduplicateCampuses(jobId);
-    await writeJobEvent(jobId, "extraction_complete", {
-      phase: "data_extraction", message: "All pages extracted, starting verification",
+  } catch (err) {
+    logger.warn("Curriculum markup fetch failed, falling back to the model", {
+      jobId, url: resolvedUrl, error: err instanceof Error ? err.message : String(err),
     });
-    await queueService.publish(EXTRACTION_QUEUES.VERIFY, { jobId });
+  }
+  cache.set(resolvedUrl, units);
+  return units;
+}
+
+/**
+ * One Gemini call per secondary-page need — units, fees, or BOTH in a single combined
+ * call when the same page serves both (the catalog case that motivated fees discovery);
+ * two calls over identical page content was pure duplicate input-token billing.
+ * A null field means that extraction FAILED (possibly transiently — the caller must not
+ * cache it; a later variant sharing the URL may retry); an array (even empty) is a real
+ * extraction result. Never throws — a secondary fetch must never fail the course write.
+ */
+async function extractSecondaryPage(opts: {
+  jobId: string; url: string; markdown: string; courseName: string;
+  wantUnits: boolean; wantFees: boolean;
+}): Promise<{ study_units: ExtractedStudyUnit[] | null; fees: ExtractedFee[] | null }> {
+  // Metered apart from the page's own extraction: this is the per-COURSE spend, and the one
+  // the result cache should collapse across variants that share a handbook page.
+  return withLlmKind("secondary", () => extractSecondaryPageInner(opts));
+}
+
+async function extractSecondaryPageInner(opts: {
+  jobId: string; url: string; markdown: string; courseName: string;
+  wantUnits: boolean; wantFees: boolean;
+}): Promise<{ study_units: ExtractedStudyUnit[] | null; fees: ExtractedFee[] | null }> {
+  try {
+    if (opts.wantUnits && opts.wantFees) {
+      const result = await extractJson<{ study_units: ExtractedStudyUnit[]; fees: ExtractedFee[] }>({
+        system: CURRICULUM_AND_FEES_SYSTEM,
+        prompt: curriculumAndFeesPrompt(opts.courseName, opts.url, opts.markdown),
+        tier: "lite",
+      });
+      return { study_units: result.study_units ?? [], fees: result.fees ?? [] };
+    }
+    if (opts.wantUnits) {
+      const result = await extractJson<{ study_units: ExtractedStudyUnit[] }>({
+        system: STUDY_UNITS_SYSTEM,
+        prompt: studyUnitsFromPagePrompt(opts.url, opts.markdown),
+        tier: "lite",
+      });
+      return { study_units: result.study_units ?? [], fees: null };
+    }
+    const result = await extractJson<{ fees: ExtractedFee[] }>({
+      system: FEES_FROM_PAGE_SYSTEM,
+      prompt: feesFromPagePrompt(opts.courseName, opts.url, opts.markdown),
+      tier: "lite",
+    });
+    return { study_units: null, fees: result.fees ?? [] };
+  } catch (err) {
+    logger.warn("Secondary page extraction failed, skipping", {
+      jobId: opts.jobId, url: opts.url, error: err instanceof Error ? err.message : String(err),
+    });
+    return { study_units: null, fees: null };
   }
 }
 
 await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
   let jobId: string, queueItemId: string, url: string, forceFirecrawl: boolean | undefined, mobile: boolean | undefined,
-    proxy: "stealth" | "auto" | undefined, expandCollapsed: boolean | undefined;
+    proxy: "stealth" | "auto" | undefined, expandCollapsed: boolean | undefined, adminRetry: boolean | undefined;
   try {
-    ({ jobId, queueItemId, url, forceFirecrawl, mobile, proxy, expandCollapsed } = JSON.parse(msg!.content.toString()));
+    ({ jobId, queueItemId, url, forceFirecrawl, mobile, proxy, expandCollapsed, adminRetry } = JSON.parse(msg!.content.toString()));
   } catch {
     logger.error("Malformed queue message, discarding", { raw: msg?.content.toString().slice(0, 200) });
     return;
   }
   logger.info("Processing page", { jobId, queueItemId, url, forceFirecrawl: !!forceFirecrawl });
+  setLlmContext({ jobId, kind: "course_extraction" });
 
   // Check job is still active + load site intelligence hints
   const [job, siteIntel] = await Promise.all([
     masterKnex(`${S}.extraction_jobs`)
-      .select("status", "stop_requested", "guidance_notes", "source_type")
+      .select("status", "stop_requested", "guidance_notes", "source_type", "degree_level_codes")
       .where({ id: jobId })
       .first(),
     masterKnex(`${S}.extraction_site_intelligence`)
-      .select("fee_structure", "extraction_hints")
+      .select("fee_structure", "extraction_hints", "country")
       .where({ job_id: jobId })
+      .orderBy("created_at", "desc")
       .first(),
   ]);
 
@@ -208,8 +249,11 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
     .first();
   if (blocklistRow?.value) {
     try {
-      const patterns: string[] = JSON.parse(blocklistRow.value);
-      if (patterns.some((p) => new RegExp(p, "i").test(url))) {
+      const raw: unknown = JSON.parse(blocklistRow.value);
+      // compileBlocklist drops an invalid entry on its own, so one bad pattern no longer disables
+      // the valid ones for this page (the catch below is now only for malformed JSON).
+      const { patterns } = compileBlocklist(Array.isArray(raw) ? raw.filter((p): p is string => typeof p === "string") : []);
+      if (patterns.some((rx) => rx.test(url))) {
         logger.info("URL blocklisted, skipping", { jobId, url });
         await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).update({
           status: "completed",
@@ -222,20 +266,78 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
     } catch { /* ignore malformed blocklist */ }
   }
 
-  // Mark queue item processing
-  await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).update({
-    status: "processing", updated_at: masterKnex.fn.now(),
-  });
+  // Atomically claim the item. Every producer (job worker, courses/discovery steps, retries,
+  // overlapping reruns) publishes after flipping the row to "pending", so duplicate messages
+  // for the same item — e.g. two admins hitting Rerun at once, each re-dispatching the same
+  // pending/failed pages — die here instead of double-scraping and double-billing Gemini.
+  // Also honours a pause/stop that landed between publish and consume.
+  //
+  // attemptToken fences this specific claim: extraction-queue-reclaim.worker.ts clears
+  // processing_meta.attempt_token to null the instant it reclaims a "processing" row, and any
+  // fresh claim (including by a reclaimed republish) always sets a brand new one. Every write this
+  // attempt makes below is conditioned on the token still matching (writeIfOwned), so a worker that
+  // was merely slow — not dead — and eventually resumes after being reclaimed and re-processed by
+  // someone else finds its own writes silently rejected instead of overwriting a newer, possibly
+  // already-terminal, state with stale results.
+  // Every claim strips awaiting_publish/retry_after_ms unconditionally, atomically, in the same
+  // statement that sets the new token — not just the deferred-retry path's own cleanup. A message
+  // being claimed at all means it's no longer "awaiting publish" by definition, no matter how it
+  // got here; deriving that from the claim itself (which every consumption already goes through)
+  // means there's no separate cleanup step left to race a fast consumer for. A prior design cleared
+  // the marker in a follow-up write after publish resolved, which a fast claim could beat — leaving
+  // the new attempt's row still tagged, for the reclaim sweep to misread using stale leftover data.
+  const attemptToken = randomUUID();
+  const claimed = await masterKnex(`${S}.extraction_queue`)
+    .where({ id: queueItemId })
+    .whereIn("status", ["pending", "failed"])
+    .update({
+      status: "processing",
+      updated_at: masterKnex.fn.now(),
+      processing_meta: masterKnex.raw(
+        `(coalesce(processing_meta, '{}'::jsonb) - 'awaiting_publish' - 'retry_after_ms') || ?::jsonb`,
+        [JSON.stringify({ attempt_token: attemptToken })],
+      ),
+    });
+  if (claimed === 0) {
+    logger.info("Queue item already claimed or in a terminal state, skipping duplicate message", { jobId, queueItemId, url });
+    return;
+  }
   await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
     processing_heartbeat_at: masterKnex.fn.now(),
   });
 
+  // Every extraction_queue write for THIS item, for the rest of this function, must go through
+  // this instead of a bare .where({ id: queueItemId }).update(...) — see attemptToken above.
+  // Returns false if we've been fenced out; callers must stop rather than act further on the row.
+  async function writeIfOwned(update: Record<string, unknown>): Promise<boolean> {
+    const n = await masterKnex(`${S}.extraction_queue`)
+      .where({ id: queueItemId })
+      .whereRaw(`processing_meta->>'attempt_token' = ?`, [attemptToken])
+      .update(update);
+    return n > 0;
+  }
+
+  // Re-checked right after the AI call, before writing any course/campus/intake/visa-service data
+  // below — a reclaim can land at any point (it isn't a lock), and this is the cheapest place to
+  // catch it: after the one AI call this attempt is ever going to make, but before any of that
+  // call's results get committed. Doesn't stop a slow-but-alive attempt from redundantly re-
+  // scraping/re-billing a model call once reclaimed (nothing short of a hard lock around the whole
+  // attempt could), but does stop it from writing duplicate rows once it's already been superseded.
+  async function stillOwned(): Promise<boolean> {
+    const row = await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).select("processing_meta").first();
+    return row?.processing_meta?.attempt_token === attemptToken;
+  }
+
   try {
-    // ── Scrape page to markdown ──
-    const page = await scrapeMarkdown(url, {
+    // ── Read the page: the site_snapshot step's .md file on a hit; a live Scrapling scrape when the
+    // file is missing (never snapshotted, or gone from the bucket), which getPage then stores. ──
+    // The retry ladder (forceFirecrawl) exists because the stored attempt failed or was thin,
+    // so it always fetches fresh; a first attempt takes a snapshot within the window.
+    const page = await getPage(url, {
       onlyMainContent: true,
       withLinks: true,
       forceFirecrawl: !!forceFirecrawl,
+      fresh: !!forceFirecrawl,
       mobile: !!mobile,
       expandCollapsed: !!expandCollapsed,
       // Retries exist because the first pass came back empty — give the renderer
@@ -245,8 +347,40 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
     });
 
     if (page.blocked || page.markdown.length < 50) {
-      const reason = page.blocked ? "blocked" : "minimal_content";
-      logger.warn("Page blocked or empty", { url, scraper: page.scraper, error: page.error });
+      const reason = page.notFound ? "not_found" : page.blocked ? "blocked" : "minimal_content";
+      // "Empty page" has two completely different causes that used to share one label. A target
+      // defending itself is `anti_bot` — escalate proxies, slow down. OUR stack failing is
+      // `scraper_down` — go look at the container. Hardcoding `anti_bot` here is what made a
+      // Chromium-leaked Scrapling container read as a Yale WAF block for hours.
+      const infraFailure = isScraperInfraFailure(page.error);
+      const failureClass: FailureClass = page.notFound
+        ? "not_found"
+        : infraFailure ? "scraper_down" : "anti_bot";
+      logger.warn("Page blocked, not found, or empty", { url, scraper: page.scraper, error: page.error, failureClass });
+
+      // Say it once per job, loudly: a scraper outage is an operational problem and every page
+      // after this one will fail the same way until someone looks. Deduped on the job's own
+      // events so 500 failing pages don't write 500 identical warnings.
+      if (infraFailure) {
+        // An outage fails every in-flight page at once, so a plain read-then-insert lets every
+        // concurrent consumer see "no event yet" and write its own — one warning per worker, on
+        // the timeline of a job that already has 500 red rows. There is no unique constraint on
+        // (job_id, kind) to conflict against, and adding one would also forbid ever recording a
+        // SECOND, genuinely separate outage later in the same job. A transaction-scoped advisory
+        // lock keyed on the job makes check-and-write atomic with no schema change and no such
+        // side effect; it is released automatically when the transaction ends, including on error.
+        await masterKnex.transaction(async (trx) => {
+          await trx.raw("SELECT pg_advisory_xact_lock(hashtext(?))", [`scraper_unavailable:${jobId}`]);
+          const alreadyWarned = await trx(`${S}.extraction_job_events`)
+            .where({ job_id: jobId, kind: "scraper_unavailable" }).first();
+          if (alreadyWarned) return;
+          await trx(`${S}.extraction_job_events`).insert({
+            job_id: jobId, kind: "scraper_unavailable", level: "error", phase: "data_extraction",
+            message: `Scraper stack unavailable — this is OUR infrastructure, not the target site. Check the Scrapling container (docker stats scrapling-mcp). First seen on ${url}: ${page.error ?? "no detail"}`,
+            data: JSON.stringify({ url, scraper: page.scraper, error: page.error ?? null }),
+          });
+        });
+      }
 
       // Route through retry logic instead of silently completing
       const item = await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).select("retry_count", "processing_meta").first();
@@ -255,10 +389,10 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       // when the call succeeded and content was just thin) — real bug: every one of these
       // was previously bucketed as a generic "blocked", indistinguishable in the DB from an
       // actual anti-bot 403 even when Firecrawl reported success and the page was simply a
-      // client-side accordion shell (see expandCollapsed above).
+      // client-side accordion shell (see expandCollapsed above) or the source URL is just dead.
       const meta = {
         ...(item?.processing_meta ?? {}), last_error: reason,
-        last_error_detail: page.error ?? null, last_failure_class: "anti_bot" as const,
+        last_error_detail: page.error ?? null, last_failure_class: failureClass,
       };
 
       // Retry 1: Firecrawl with JS rendering + auto proxy escalation (Firecrawl only
@@ -271,30 +405,46 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       // Both retries also click open collapsed accordions/tabs (expandCollapsed) — most
       // of this job's "blocked" pages were never actually blocked, they were JS-accordion
       // shells that no proxy tier could ever fix.
-      if (retries < 2) {
-        meta.retry_strategy = retries === 0 ? "browser_render" : "mobile";
+      // A not_found page skips retries entirely — every proxy/mobile tier hits the exact
+      // same 404 on the source site, so retrying only delays the (unchanged) failure.
+      if (!page.notFound && retries < 2) {
+        // Escalating to a paid proxy tier answers "the site is defending itself". It is the wrong
+        // answer to "our own scraper is down", and actively harmful: forceFirecrawl SKIPS Scrapling
+        // entirely, so a container that has merely leaked its Chromium processes is never retried
+        // against, and every retry burns Firecrawl quota that may not exist. Seen live: 308 pages
+        // failed as "blocked after 2 retries (firecrawl): Insufficient credits" while the real
+        // fault was ours. An infra failure retries through the NORMAL cascade instead, which tries
+        // Scrapling first (it may have recovered) and still reaches Firecrawl on its own if not.
+        const infraRetry = failureClass === "scraper_down";
+        meta.retry_strategy = infraRetry ? "cascade" : retries === 0 ? "browser_render" : "mobile";
         const retryProxy = retries === 0 ? "auto" : "stealth";
-        await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).update({
-          status: "pending", failure_class: "anti_bot", retry_count: retries + 1,
+        const owned = await writeIfOwned({
+          status: "pending", failure_class: failureClass, retry_count: retries + 1,
           processing_meta: JSON.stringify(meta), updated_at: masterKnex.fn.now(),
         });
+        if (!owned) { logger.info("Fenced out — a newer attempt owns this item, dropping stale retry", { jobId, queueItemId, url }); return; }
         await queueService.publish(EXTRACTION_QUEUES.PAGES, {
-          jobId, queueItemId, url, forceFirecrawl: true, mobile: meta.retry_strategy === "mobile", proxy: retryProxy,
+          jobId, queueItemId, url, forceFirecrawl: !infraRetry, mobile: meta.retry_strategy === "mobile", proxy: retryProxy,
           expandCollapsed: true,
         });
-        logger.info("Blocked page re-queued for Firecrawl retry", { url, retries: retries + 1, proxy: retryProxy });
+        logger.info(infraRetry ? "Scraper-down page re-queued through the normal cascade" : "Blocked page re-queued for Firecrawl retry",
+          { url, retries: retries + 1, proxy: retryProxy, failureClass });
       } else {
-        // Exhausted retries — mark failed so it's visible in the admin queue panel
-        await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).update({
+        // Exhausted retries (or a dead URL that can't benefit from any) — mark failed so
+        // it's visible in the admin queue panel with the real reason, not a generic one.
+        const owned = await writeIfOwned({
           status: "failed",
-          error: `Page ${reason} after ${retries} retries (${page.scraper})${page.error ? `: ${page.error}` : ""}`,
-          failure_class: "anti_bot", retry_count: retries,
+          error: page.notFound
+            ? `Page does not exist on the source site (404)${page.error ? `: ${page.error}` : ""}`
+            : `Page ${reason} after ${retries} retries (${page.scraper})${page.error ? `: ${page.error}` : ""}`,
+          failure_class: failureClass, retry_count: retries,
           processing_meta: JSON.stringify(meta), updated_at: masterKnex.fn.now(),
         });
+        if (!owned) { logger.info("Fenced out — a newer attempt owns this item, dropping stale failure", { jobId, queueItemId, url }); return; }
         await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).increment("pages_failed", 1);
         await writeJobEvent(jobId, "page_error", {
           level: "warn", phase: "data_extraction",
-          message: `Page unreachable after retries: ${url}`,
+          message: page.notFound ? `Page does not exist on source site: ${url}` : `Page unreachable after retries: ${url}`,
           data: { url, reason, retries, scraper: page.scraper },
         });
       }
@@ -316,6 +466,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       for (const pUrl of paginationUrls) {
         if (!existingSet.has(pUrl)) {
           const newId = await insertQueueItem(jobId, pUrl);
+          if (!newId) continue; // a parallel page worker already queued this sibling
           await queueService.publish(EXTRACTION_QUEUES.PAGES, { jobId, queueItemId: newId, url: pUrl });
           queued++;
         }
@@ -335,15 +486,88 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
     // extraction" in extraction-prompts.ts.
     const domain = domainOf(url);
     const isVisaService = job.source_type === "visa_service";
-    const memoryStep = isVisaService ? "visa_service_extraction" : "course_extraction";
+    // A page the operator filed under Context -> Intakes. An academic calendar is the case this
+    // exists for: it states term dates for the whole institution and lists no courses at all, so
+    // the course prompt (whose `intakes` live INSIDE each course object) returned an empty courses
+    // array and dropped every date on the page. Stanford's calendar is exactly this shape.
+    const isIntakeSource = !isVisaService && intakeGuidedUrls(job).has(url);
+    const memoryStep = isVisaService
+      ? "visa_service_extraction"
+      : isIntakeSource ? "intakes" : "course_extraction";
+    // ── Too thin to be worth a course-extraction call ──
+    // Measured on a live Yale run: 65% of course_extraction calls returned zero courses, and the
+    // predictor was page SIZE, not URL shape (the same /ycps/courses/* family both yields and
+    // doesn't, so no pattern blocklist separates them). Under this threshold the page is
+    // navigation chrome — "/ycps/courses/litr" is 2,074 chars of menu, and its live HTML carries
+    // zero course codes, so nothing is being thrown away. That run: 74 wasted calls skipped, 2
+    // productive pages lost; 5,000 would save 19 more but cost 6.
+    //
+    // COURSE pages only. The threshold was tuned on course pages at one institution, and the other
+    // two shapes are exactly where "short" is normal rather than empty: an academic calendar under
+    // Context -> Intakes is a handful of term dates (and silently dropping those is a failure this
+    // module already shipped once — see CLAUDE.md (l)), and a consultancy's visa-service page can
+    // legitimately be a short description. Generalising one institution's course-page measurement
+    // to them would be guessing.
+    //
+    // Pagination above has already run, so a thin LISTING still queued its siblings; this only
+    // declines to ask the model about the page itself.
+    if (!isVisaService && !isIntakeSource && page.markdown.length < MIN_EXTRACTABLE_CHARS) {
+      logger.info("Page too thin for course extraction, skipping model call", { jobId, url, chars: page.markdown.length });
+      // Fenced like every other terminal write on this row (see writeIfOwned): this point is
+      // AFTER the claim and after a slow scrape, so a reclaim can have landed meanwhile. The
+      // blocklist skip this was first modelled on is allowed a bare update only because it runs
+      // BEFORE the item is ever claimed.
+      const owned = await writeIfOwned({
+        status: "completed",
+        extracted_data: JSON.stringify({ skipped: true, reason: "too_thin", chars: page.markdown.length }),
+        page_id: page.pageId,
+        page_content_hash: page.contentHash,
+        updated_at: masterKnex.fn.now(),
+      });
+      if (!owned) {
+        logger.info("Fenced out — a newer attempt owns this item, dropping stale thin-page skip", { jobId, queueItemId, url });
+        return;
+      }
+      await writeJobEvent(jobId, "page_skipped_thin", {
+        phase: "data_extraction",
+        message: `Skipped model call: ${url} has ${page.markdown.length} chars (under ${MIN_EXTRACTABLE_CHARS})`,
+        data: { url, chars: page.markdown.length, threshold: MIN_EXTRACTABLE_CHARS },
+      });
+      await checkAllPagesDone(jobId);
+      return;
+    }
+
     const recalled = await recallMemory(domain, memoryStep, markdown.slice(0, 500));
     const addendum = buildSystemAddendum(recalled);
 
     let entitiesWritten = 0;
     let campusCount = 0;
+    let overflowQueued = 0;
     let extractedForMemory: unknown;
 
-    if (isVisaService) {
+    if (isIntakeSource) {
+      // The FLAT intakes schema, job-scoped — no course wrapper to come up empty.
+      const system = addendum ? `${COURSE_DATA_SYSTEM}\n\n${addendum}` : COURSE_DATA_SYSTEM;
+      const extracted = await extractJson<{ intakes?: ExtractedIntake[] }>({
+        system,
+        prompt: courseDataPrompt(url, markdown, "intakes", job.guidance_notes),
+        maxTokens: 65536,
+      });
+      extractedForMemory = extracted;
+      if (!(await stillOwned())) { logger.info("Fenced out — a newer attempt owns this item, dropping AI result", { jobId, queueItemId, url }); return; }
+
+      // Deliberately assigned to NO course. upsertIntake is keyed on job + name + month + year, so
+      // a calendar's "Autumn 2026-2027" lands on the row 38 courses are already linked to and
+      // fills its empty dates — which is the point, and why this needs no name-matching of its
+      // own. A term the catalogue never mentioned becomes an unlinked intake: visible in the admin
+      // tab for someone to link, and excluded from public reads until they do (those read through
+      // the assignment junction).
+      for (const intake of extracted.intakes ?? []) {
+        if (!intake.intake_name && !intake.start_date) continue;
+        await upsertIntake(jobId, intake, url);
+        entitiesWritten++;
+      }
+    } else if (isVisaService) {
       const system = addendum ? `${VISA_SERVICE_EXTRACTION_SYSTEM}\n\n${addendum}` : VISA_SERVICE_EXTRACTION_SYSTEM;
       const extracted = await extractJson<VisaServiceExtractionResult>({
         system,
@@ -351,6 +575,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
         maxTokens: 65536,
       });
       extractedForMemory = extracted;
+      if (!(await stillOwned())) { logger.info("Fenced out — a newer attempt owns this item, dropping AI result", { jobId, queueItemId, url }); return; }
 
       // Flat table, no child/junction tables — writeVisaService dedups by name per job.
       if (extracted.visa_services?.length) {
@@ -365,10 +590,19 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       // ponytail: 65536 tokens — listing pages with 50+ courses need room
       const extracted = await extractJson<ExtractionResult>({
         system,
-        prompt: courseExtractionPrompt(url, markdown, job.guidance_notes, siteIntel),
+        // The model picks the degree level and area of study from the platform's live lists
+        // (seeded, read once per process) — see lib/lookup-catalog.ts.
+        prompt: courseExtractionPrompt(
+          url, markdown, job.guidance_notes, siteIntel, await loadLookupLists(),
+          job.degree_level_codes ?? undefined,
+          // The page's own title — the parent programme for a curriculum page, the course for a
+          // detail page. Names the context the model otherwise has to infer from 100k chars.
+          markdown.match(/^#\s+(.+)$/m)?.[1]?.trim().slice(0, 200) ?? null,
+        ),
         maxTokens: 65536,
       });
       extractedForMemory = extracted;
+      if (!(await stillOwned())) { logger.info("Fenced out — a newer attempt owns this item, dropping AI result", { jobId, queueItemId, url }); return; }
 
       // ── Write campuses first (courses reference them) ──
       const campusIdMap = new Map<string, string>();
@@ -383,10 +617,76 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
 
       // ── Write each course with child entities ──
       let secondaryFetches = 0;
+      // A page listing one subject as several qualification variants (BEng/MEng/BSc —
+      // see extraction-prompts.ts's "extract one course object per variant" rule) commonly
+      // points every variant at the same shared curriculum link. Without this cache each
+      // variant re-scraped and re-billed Gemini for the identical URL, up to SECONDARY_FETCH_CAP
+      // times per page for what was really one page's worth of content.
+      const curriculumCache = new Map<string, ExtractedStudyUnit[]>();
+      // Secondary pages already attempted in THIS message, failures included (null). The
+      // snapshot store underneath outlives the message but never stores a failure; this map
+      // is what stops a shared dead link from being retried — and charged to the cap — once
+      // per qualification variant.
+      const secondaryPageCache = new Map<string, string | null>();
+      // A URL already in the memo costs no fetch, so the cap must not turn it away: past
+      // the cap a cached curriculum/fees page is still reused rather than overflowed.
+      const fetchable = (u: string | null | undefined): u is string =>
+        !!u && (secondaryPageCache.has(u) || secondaryFetches < SECONDARY_FETCH_CAP);
+      // Units parsed from a secondary page's markup (null = that page publishes no table).
+      const markupCache = new Map<string, ExtractedStudyUnit[] | null>();
+
+      // ── Curriculum straight from the markup, when the site publishes one ──
+      // CourseLeaf catalogues (Johns Hopkins, Georgia Tech and much of the US sector) render a
+      // programme's curriculum as `table.sc_courselist` — code, title, credit hours, under a
+      // named requirement block. The model never sees it: JHU renders its whole catalogue
+      // navigation tree inline, so one programme page comes out as ~155,000 characters of
+      // links with the curriculum past the truncation point and the tables not converted at
+      // all, and every JHU course was staged with zero study units while 42 rows of real
+      // curriculum sat in the page.
+      //
+      // So the HTML is fetched ONCE per page, and only when the model actually left a course
+      // without units — a page that already yielded a curriculum costs nothing extra. Two
+      // things come out of it: the units for a course whose own page this is, and the
+      // per-programme links for an index page, which is how a course reaches its own
+      // curriculum when the model flagged no curriculum_page_url.
+      let pageUnits: ExtractedStudyUnit[] = [];
+      let pageCourseLinks: Map<string, string> = new Map();
+      if (extracted.courses?.some((c) => c.name && !c.study_units?.length)) {
+        const { html: pageHtml } = await scrapeRenderedHtml(url);
+        if (pageHtml && looksLikeCourseList(pageHtml)) {
+          pageUnits = parseCourseList(pageHtml).units;
+        }
+        if (pageHtml) pageCourseLinks = courseLinksByName(pageHtml, url);
+        if (pageUnits.length || pageCourseLinks.size) {
+          logger.info("Parsed curriculum markup", {
+            jobId, url, units: pageUnits.length, links: pageCourseLinks.size,
+          });
+        }
+      }
+
+      // Which bare names more than one course on this page would claim. "CS (Bachelor)" and
+      // "CS (Master)" both reduce to "cs", and the index's single "CS" anchor belongs to at most
+      // one of them — so the fallback refuses it for both rather than staging one's curriculum
+      // and duration onto the other.
+      const bareClaims = new Map<string, number>();
+      for (const c of extracted.courses ?? []) {
+        const key = c.name ? (bareCourseKey(c.name) ?? normaliseCourseName(c.name)) : null;
+        if (key) bareClaims.set(key, (bareClaims.get(key) ?? 0) + 1);
+      }
+      const contestedBareNames = new Set(
+        [...bareClaims].filter(([, n]) => n > 1).map(([key]) => key),
+      );
 
       if (extracted.courses?.length) {
         for (const course of extracted.courses) {
           if (!course.name) continue;
+
+          // This page's own curriculum table belongs to the course this page is ABOUT. A page
+          // describing several courses (a listing) gets its units from each course's own page
+          // below instead, so the same table is never handed to every course on an index.
+          if (!course.study_units?.length && pageUnits.length && extracted.courses.length === 1) {
+            course.study_units = pageUnits;
+          }
 
           // Upsert campuses mentioned in this course
           if (course.campus_names?.length) {
@@ -405,41 +705,177 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
           // of a ~15-course program). Merge rather than replace — writeCourse's
           // upsertStudyUnit already dedups by name, so overlap between the two lists
           // collapses instead of duplicating. Bounded per page scrape, logged when hit.
+          let currUrl: string | null = null;
           if (course.curriculum_page_url) {
-            if (secondaryFetches >= SECONDARY_FETCH_CAP) {
-              logger.warn("Secondary curriculum-page fetch cap reached, skipping remaining courses", {
-                jobId, url, cap: SECONDARY_FETCH_CAP,
-              });
-            } else {
+            try { currUrl = new URL(course.curriculum_page_url, url).toString(); }
+            catch { logger.warn("Invalid curriculum_page_url, skipping secondary fetch", { jobId, url, curriculumUrl: course.curriculum_page_url }); }
+          }
+          // The model flagged nothing, but the page links this very programme by name — the
+          // ordinary case on a catalogue index, and the reason 18 of 19 JHU courses had no
+          // curriculum. Only when the course still has no units, so a page that already
+          // produced one is never re-fetched.
+          if (!currUrl && !course.study_units?.length) {
+            const own = courseOwnPage(pageCourseLinks, course.name, contestedBareNames);
+            if (own && own !== url) currUrl = own;
+          }
+
+          // Fees usually live on the primary page; when they don't, the LLM flags a link
+          // to the course's own fees/tuition/catalog page instead of fabricating a figure.
+          // A university catalog entry (e.g. Acalog) commonly bundles curriculum AND fees
+          // on the SAME page — its anchor text often reads "degree requirements", so the
+          // LLM flags it as curriculum_page_url only, never a separate fees_page_url. Fall
+          // back to that page too, not just an explicit fees_page_url. Only worth trying
+          // when fees are still empty — unlike curriculum, a correct fee already found on
+          // the primary page shouldn't be risked for a duplicate.
+          let feesUrl: string | null = null;
+          const feesRaw = course.fees?.length ? null : (course.fees_page_url || course.curriculum_page_url);
+          if (feesRaw) {
+            try { feesUrl = new URL(feesRaw, url).toString(); }
+            catch { logger.warn("Invalid fees_page_url, skipping secondary fetch", { jobId, url, feesUrl: feesRaw }); }
+          }
+
+          // Units an earlier variant already extracted from this URL — reuse, don't re-bill.
+          if (currUrl && curriculumCache.has(currUrl)) {
+            const cached = curriculumCache.get(currUrl)!;
+            if (cached.length) course.study_units = [...(course.study_units ?? []), ...cached];
+            currUrl = null;
+          }
+
+          // Markup before the model. When the curriculum page is a CourseLeaf catalogue this
+          // settles the units exactly and spends no Gemini call; `currUrl` is then cleared so
+          // the branches below only run for a fees need.
+          if (currUrl && secondaryFetches < SECONDARY_FETCH_CAP) {
+            const parsed = await unitsFromMarkup(currUrl, markupCache, jobId);
+            if (parsed?.length) {
               secondaryFetches++;
-              const units = await fetchCurriculumUnits(course.curriculum_page_url, url, jobId);
-              if (units.length) course.study_units = [...(course.study_units ?? []), ...units];
+              curriculumCache.set(currUrl, parsed);
+              course.study_units = [...(course.study_units ?? []), ...parsed];
+              logger.info("Units from curriculum markup", {
+                jobId, course: course.name, url: currUrl, units: parsed.length,
+              });
+              currUrl = null;
             }
           }
 
-          await writeCourse(jobId, { ...course, source_url: course.source_url ?? url }, campusIdMap);
-          entitiesWritten++;
+          if (currUrl || feesUrl) {
+            if (!fetchable(currUrl ?? feesUrl)) {
+              // Past the cap the course's own page becomes a queue item rather than being
+              // dropped, so each gets a full secondary budget. page_cap still bounds the total.
+              const own = currUrl ?? feesUrl;
+              if (own) {
+                const queued = await insertQueueItem(jobId, own);
+                if (queued) {
+                  await queueService.publish(EXTRACTION_QUEUES.PAGES, { jobId, queueItemId: queued, url: own });
+                  overflowQueued++;
+                }
+              }
+            } else if (currUrl && currUrl === feesUrl) {
+              // Both point at the same page — one scrape, ONE combined Gemini call.
+              if (!secondaryPageCache.has(currUrl)) secondaryFetches++;
+              const md = await scrapeSecondaryPage(currUrl, secondaryPageCache, jobId);
+              if (md) {
+                const r = await extractSecondaryPage({
+                  jobId, url: currUrl, markdown: md, courseName: course.name, wantUnits: true, wantFees: true,
+                });
+                // null = failed extraction — leave it uncached so a later variant
+                // sharing this URL gets its own retry instead of inheriting the failure.
+                if (r.study_units !== null) {
+                  curriculumCache.set(currUrl, r.study_units);
+                  if (r.study_units.length) course.study_units = [...(course.study_units ?? []), ...r.study_units];
+                }
+                if (r.fees?.length) course.fees = r.fees;
+              }
+            } else {
+              if (currUrl) {
+                if (!secondaryPageCache.has(currUrl)) secondaryFetches++;
+                const md = await scrapeSecondaryPage(currUrl, secondaryPageCache, jobId);
+                if (md) {
+                  const r = await extractSecondaryPage({
+                    jobId, url: currUrl, markdown: md, courseName: course.name, wantUnits: true, wantFees: false,
+                  });
+                  if (r.study_units !== null) {
+                    curriculumCache.set(currUrl, r.study_units);
+                    if (r.study_units.length) course.study_units = [...(course.study_units ?? []), ...r.study_units];
+                  }
+                }
+              }
+              if (fetchable(feesUrl)) {
+                if (!secondaryPageCache.has(feesUrl)) secondaryFetches++;
+                const md = await scrapeSecondaryPage(feesUrl, secondaryPageCache, jobId);
+                if (md) {
+                  const r = await extractSecondaryPage({
+                    jobId, url: feesUrl, markdown: md, courseName: course.name, wantUnits: false, wantFees: true,
+                  });
+                  if (r.fees?.length) course.fees = r.fees;
+                }
+              }
+            }
+          }
+
+          if (resolveDurationWeeks(course) == null) {
+            const ownUrl = courseOwnPage(pageCourseLinks, course.name, contestedBareNames);
+            if (ownUrl && ownUrl !== url && fetchable(ownUrl)) {
+              if (!secondaryPageCache.has(ownUrl)) secondaryFetches++;
+              const md = await scrapeSecondaryPage(ownUrl, secondaryPageCache, jobId);
+              const stated = md ? durationFromProse(md) : null;
+              if (stated) {
+                course.duration_text = `${stated.value} ${stated.unit}`;
+                logger.info("Duration from course page", {
+                  jobId, course: course.name, url: ownUrl, duration: course.duration_text,
+                });
+              }
+            }
+          }
+
+          const written = await writeCourse(jobId, {
+            ...course,
+            source_url: course.source_url ?? url,
+            // From site intelligence, never the model — one country per job, resolved to the ISO2
+            // the public search joins on. See lookup-catalog.resolveCountryCode.
+            country_code: await resolveCountryCode(siteIntel?.country),
+          }, campusIdMap, { pageUrl: url, coursesOnPage: extracted.courses.length });
+          if (written) entitiesWritten++;
         }
       }
       campusCount = campusIdMap.size;
     }
 
     // ── Mark complete + update counters ──
-    await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).update({
+    // Fenced: if a reclaim has since republished and a newer attempt already finished (or is
+    // still running) this same item, writeIfOwned is a no-op here and everything below — the
+    // counters, job event, and checkAllPagesDone — is skipped rather than double-counted or run
+    // against a state a newer attempt already owns.
+    const owned = await writeIfOwned({
       status: "completed",
-      extracted_data: JSON.stringify({ courses_found: entitiesWritten, campuses_found: campusCount, scraper: page.scraper }),
+      extracted_data: JSON.stringify({ courses_found: entitiesWritten, campuses_found: campusCount, scraper: page.scraper, from_snapshot: page.fromCache }),
+      page_id: page.pageId,
+      page_content_hash: page.contentHash,
       updated_at: masterKnex.fn.now(),
     });
+    if (!owned) {
+      logger.info("Fenced out — a newer attempt owns this item, dropping stale completion", { jobId, queueItemId, url });
+      return;
+    }
 
     if (entitiesWritten > 0) {
       await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).increment("courses_extracted", entitiesWritten);
     }
     await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).increment("pages_scraped", 1);
 
+    if (overflowQueued > 0) {
+      await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
+        total_pages_found: masterKnex.raw("total_pages_found + ?", [overflowQueued]),
+        pages_total: masterKnex.raw("pages_total + ?", [overflowQueued]),
+      });
+    }
+
     await writeJobEvent(jobId, "page_extracted", {
       phase: "data_extraction",
       message: `Extracted ${entitiesWritten} ${isVisaService ? "visa services" : "courses"} from ${url}`,
-      data: { url, courses: entitiesWritten, campuses: campusCount, scraper: page.scraper },
+      data: {
+        url, courses: entitiesWritten, campuses: campusCount, scraper: page.scraper,
+        ...(overflowQueued ? { queued_for_curriculum: overflowQueued } : {}),
+      },
     });
 
     // ponytail: feed the learning loop — non-blocking, best-effort
@@ -452,7 +888,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       }).catch(() => {}); // fire-and-forget
     }
 
-    logger.info("Page processed", { jobId, url, entitiesWritten, scraper: page.scraper });
+    logger.info("Page processed", { jobId, url, entitiesWritten, overflowQueued, scraper: page.scraper });
 
     await checkAllPagesDone(jobId);
 
@@ -464,9 +900,13 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
     const failureClass = classifyFailure(errMsg);
     const item = await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).select("retry_count", "processing_meta").first();
     const retries = item?.retry_count ?? 0;
-    const meta = { ...(item?.processing_meta ?? {}), last_error: errMsg, last_failure_class: failureClass };
+    const meta: Record<string, unknown> = { ...(item?.processing_meta ?? {}), last_error: errMsg, last_failure_class: failureClass };
 
     let nextStatus = "failed";
+    // llm-client's withRetry tags a provider-mandated wait too long to safely block a worker slot
+    // on (see INLINE_RETRY_CEILING_MS there) with the real, never-truncated delay it asked for.
+    const deferredMatch = errMsg.match(/retry_after_ms=(\d+)/);
+    const deferredMs = deferredMatch ? Number(deferredMatch[1]) : null;
 
     if (failureClass === "anti_bot" && retries < 2) {
       nextStatus = "pending";
@@ -474,10 +914,17 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
     } else if (failureClass === "ai_5xx" && retries < 3) {
       nextStatus = "pending";
       meta.retry_strategy = "default";
-      meta.retry_after_ms = Math.min(60_000, 1000 * 2 ** retries);
+      if (deferredMs != null) {
+        // Released, not held: status goes to "pending" now instead of misrepresenting this as
+        // "processing" for however long the provider's throttle lasts. awaiting_publish marks it
+        // recoverable by extraction-queue-reclaim.worker.ts's pending-sweep if this process dies
+        // before the deferred republish below actually fires.
+        meta.awaiting_publish = true;
+        meta.retry_after_ms = deferredMs;
+      }
     }
 
-    await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).update({
+    const owned = await writeIfOwned({
       status: nextStatus,
       error: nextStatus === "failed" ? errMsg : null,
       failure_class: failureClass,
@@ -485,16 +932,60 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       processing_meta: JSON.stringify(meta),
       updated_at: masterKnex.fn.now(),
     });
+    if (!owned) {
+      logger.info("Fenced out — a newer attempt owns this item, dropping stale failure/retry", { jobId, queueItemId, url });
+      return;
+    }
 
     if (nextStatus === "pending") {
-      // Re-publish for retry with strategy hint
-      await queueService.publish(EXTRACTION_QUEUES.PAGES, {
+      const publishOpts = {
         jobId, queueItemId, url,
         forceFirecrawl: meta.retry_strategy !== "default",
         mobile: meta.retry_strategy === "mobile",
         expandCollapsed: failureClass === "anti_bot",
-      });
-      logger.info("Re-queued for retry", { jobId, queueItemId, failureClass, retries: retries + 1, strategy: meta.retry_strategy });
+      };
+      if (meta.awaiting_publish) {
+        // In-process deferred retry, not an immediate republish — .unref() so this timer never
+        // blocks a graceful shutdown; if the process exits before it fires, the row is left
+        // "pending" + awaiting_publish for the reclaim sweep to pick up instead.
+        logger.info("Deferred retry scheduled (provider rate limit)", { jobId, queueItemId, retryAfterMs: deferredMs, retries: retries + 1 });
+        setTimeout(() => {
+          // Detached and unawaited: nothing consumes this chain's result, so EVERY failure inside
+          // it — including the recovery write in the catch block below — must be caught here.
+          // Letting any of it reject unhandled would crash the whole page-worker process under
+          // Node's default unhandled-rejection behaviour, taking down every other in-flight page
+          // over what should at worst be one item staying stuck a bit longer.
+          (async () => {
+            try {
+              await queueService.publish(EXTRACTION_QUEUES.PAGES, publishOpts);
+              // NOT responsible for clearing awaiting_publish/retry_after_ms — the claim itself
+              // does that atomically the moment anyone actually claims this message (see the claim
+              // query above), so there's no separate cleanup step here for a fast consumer to race.
+              // This is just a best-effort updated_at refresh for the case where the message is
+              // still sitting unclaimed in a busy queue: if writeIfOwned finds 0 rows, a consumer
+              // already claimed it (and thus already cleared the marker as part of claiming) —
+              // nothing to do, not an error.
+              await writeIfOwned({ updated_at: masterKnex.fn.now() });
+            } catch (e) {
+              logger.error("Deferred retry publish failed", { queueItemId, error: e instanceof Error ? e.message : String(e) });
+              try {
+                await writeIfOwned({
+                  processing_meta: masterKnex.raw(`coalesce(processing_meta, '{}'::jsonb) || '{"awaiting_publish":true,"retry_after_ms":0}'::jsonb`),
+                  updated_at: masterKnex.fn.now(),
+                });
+              } catch (e2) {
+                logger.error("Deferred retry recovery write also failed — leaving row for the reclaim sweep", {
+                  queueItemId, error: e2 instanceof Error ? e2.message : String(e2),
+                });
+              }
+            }
+          })();
+        }, deferredMs!).unref();
+      } else {
+        // Re-publish for retry with strategy hint
+        await queueService.publish(EXTRACTION_QUEUES.PAGES, publishOpts);
+        logger.info("Re-queued for retry", { jobId, queueItemId, failureClass, retries: retries + 1, strategy: meta.retry_strategy });
+      }
     } else {
       await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).increment("pages_failed", 1);
     }

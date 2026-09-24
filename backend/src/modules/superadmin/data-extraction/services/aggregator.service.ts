@@ -8,7 +8,7 @@ import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { logAudit } from "../shared/audit.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { detectAggregator } from "../lib/aggregator/index.js";
-import { scrapeMarkdown } from "../lib/scraper.js";
+import { getPage } from "../lib/page-store.js";
 import { writeInstitutionOverview, insertQueueItem, writeJobEvent } from "../lib/staging-writer.js";
 
 const logger = createChildLogger("aggregator-service");
@@ -33,6 +33,7 @@ export async function extractFromAggregator(
       source_type: "aggregator",
       aggregator_name: provider.name,
       status: "extracting",
+      created_by_platform_user_id: adminId,
     })
     .returning("id");
 
@@ -52,7 +53,7 @@ export async function extractFromAggregator(
 
   // 2. Run provider extraction — uses scrapeMarkdown under the hood
   const result = await provider.extractListing(url, async (scrapeUrl) => {
-    const r = await scrapeMarkdown(scrapeUrl, { onlyMainContent: false, withLinks: true });
+    const r = await getPage(scrapeUrl, { onlyMainContent: false, withLinks: true });
     return { markdown: r.markdown, links: r.links };
   });
 
@@ -79,6 +80,7 @@ export async function extractFromAggregator(
   let queued = 0;
   for (const courseUrl of result.courseUrls) {
     const queueItemId = await insertQueueItem(jobId, courseUrl);
+    if (!queueItemId) continue; // already queued by another producer
     try {
       await queueService.publish(EXTRACTION_QUEUES.PAGES, {
         jobId,

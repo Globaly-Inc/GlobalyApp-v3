@@ -3,23 +3,29 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCourseBySlug, getTests } from "../../search/api";
 import { ProfileLocationsCard } from "../../components/profile/profile-locations-card";
-import { ProfileGallery, type GalleryItem } from "../../components/profile/profile-gallery";
-import type { ProfileLocation } from "../../components/profile/profile-data";
+import { ProfileGallery } from "../../components/profile/profile-gallery";
+import { toGalleryItems, type ProfileLocation } from "../../components/profile/profile-data";
 import type { CourseDetail } from "../../search/types";
 import { CourseHero } from "./components/course-hero";
 import { CourseStats } from "./components/course-stats";
 import { CourseDescription } from "./components/course-description";
 import { CourseFeeCard } from "./components/course-fee-card";
 import { CourseIntakesCard } from "./components/course-intakes-card";
+import { CourseStudyOptionsCard, CourseStudyUnitsCard } from "./components/course-curriculum-card";
 import { CourseWeatherCard } from "./components/course-weather-card";
 import { CourseAwardedByCard, CourseConnectCard } from "./components/course-sidebar";
 import { CourseEntryRequirementsCard } from "./components/course-entry-requirements-card";
+import { PageViews } from "../../components/page-views";
 
-type CoursePageProps = Readonly<{ params: Promise<{ slug: string }> }>;
+type CoursePageProps = Readonly<{
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ preview_token?: string }>;
+}>;
 
-export async function generateMetadata({ params }: CoursePageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: CoursePageProps): Promise<Metadata> {
   const { slug } = await params;
-  const course = await getCourseBySlug(slug);
+  const { preview_token } = await searchParams;
+  const course = await getCourseBySlug(slug, preview_token);
   if (!course) return { title: "Course — Globaly" };
   return {
     title: `${course.name} — Globaly`,
@@ -27,7 +33,7 @@ export async function generateMetadata({ params }: CoursePageProps): Promise<Met
   };
 }
 
-/** Where the course is taught — the awarding institution's campuses, same card the profile uses. */
+/** Where the course is taught — the campuses linked to it, same card the profile uses. */
 function toLocations(course: CourseDetail): ProfileLocation[] {
   return course.campuses.map((campus) => ({
     id: campus.id,
@@ -43,23 +49,32 @@ function toLocations(course: CourseDetail): ProfileLocation[] {
   }));
 }
 
-function toGalleryItems(course: CourseDetail): GalleryItem[] {
-  return (course.institution?.gallery_image_urls ?? [])
-    .filter(Boolean)
-    .map((url) => ({ type: "image" as const, url }));
+/** The course's own scraped image first, then photos an admin uploaded through the service
+ * editor's Media tab, then the awarding institution's photos. */
+function courseGallery(course: CourseDetail) {
+  const uploadedImages = course.media.filter((m) => m.mime_type.startsWith("image/")).map((m) => m.url);
+  const uploadedVideos = course.media.filter((m) => m.mime_type.startsWith("video/")).map((m) => m.url);
+  return toGalleryItems(
+    [course.image_url, ...uploadedImages, ...(course.institution?.gallery_image_urls ?? [])],
+    uploadedVideos,
+  );
 }
 
-export default async function CoursePage({ params }: CoursePageProps) {
+export default async function CoursePage({ params, searchParams }: CoursePageProps) {
   const { slug } = await params;
-  const [course, tests] = await Promise.all([getCourseBySlug(slug), getTests()]);
+  const { preview_token } = await searchParams;
+  const [course, tests] = await Promise.all([getCourseBySlug(slug, preview_token), getTests()]);
   if (!course) notFound();
 
   return (
     <div className="container mx-auto max-w-6xl space-y-4 px-4 py-6 md:space-y-6">
-      <p className="text-xs text-muted-foreground">
-        <Link href="/" className="hover:text-primary">Home</Link> /{" "}
-        <Link href="/search?tab=courses" className="hover:text-primary">Courses</Link> / {course.name}
-      </p>
+      <div className="flex items-center justify-between gap-3">
+        <p className="text-xs text-muted-foreground">
+          <Link href="/" className="hover:text-primary">Home</Link> /{" "}
+          <Link href="/search?tab=courses" className="hover:text-primary">Courses</Link> / {course.name}
+        </p>
+        <PageViews type="course" id={course.id} className="shrink-0" />
+      </div>
 
       <CourseHero course={course} />
       <CourseStats course={course} />
@@ -69,9 +84,11 @@ export default async function CoursePage({ params }: CoursePageProps) {
           <CourseDescription description={course.description} />
           <CourseFeeCard course={course} />
           <CourseIntakesCard intakes={course.intakes} />
+          <CourseStudyOptionsCard options={course.study_options} />
+          <CourseStudyUnitsCard units={course.study_units} />
           <ProfileLocationsCard locations={toLocations(course)} cityLink={course.city_link} />
           <CourseWeatherCard weather={course.weather} countryName={course.country_name} />
-          <ProfileGallery items={toGalleryItems(course)} />
+          <ProfileGallery items={courseGallery(course)} />
         </div>
 
         <div className="space-y-4 md:space-y-6">

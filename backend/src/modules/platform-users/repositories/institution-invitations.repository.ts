@@ -8,7 +8,7 @@ export interface InstitutionInvitationRow {
   email: string;
   user_details: Record<string, unknown> | null;
   invite_token: string;
-  invited_by: number;
+  invited_by: number | null;
   status: string;
   created_at: Date;
   expired_at: Date;
@@ -26,7 +26,7 @@ export async function insertInvitation(db: Knex, data: {
   email: string;
   user_details: Record<string, unknown>;
   invite_token: string;
-  invited_by: number;
+  invited_by: number | null;
   status: string;
   expired_at: Date;
 }) {

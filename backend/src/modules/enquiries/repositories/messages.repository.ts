@@ -9,8 +9,25 @@
 
 import type { Knex } from "knex";
 import { masterKnex } from "../../../core/db/master-pool.js";
+import { recipientFilter, type Recipient } from "../shared/recipient.js";
 
 const T = "enquiry_messages";
+
+/**
+ * What a row IS. Everything but 'message' is a thread event the system recorded rather than
+ * something a person typed — the client renders those as a one-line pill, and picks the icon from
+ * this value rather than by reading the sentence. See the 20260901_002 migration.
+ */
+export type MessageKind =
+  | "message"
+  | "member_added"
+  | "member_removed"
+  | "member_left"
+  | "admin_granted"
+  | "admin_revoked"
+  | "renamed"
+  | "photo_changed";
+
 
 export interface EnquiryMessageRow {
   id: number;
@@ -29,6 +46,8 @@ export interface EnquiryMessageRow {
   sender_name: string;
   /** Raw storage path on platform_users — the service signs it. */
   sender_photo_url: string | null;
+  /** `sender_id` is still the person who caused the event — that is who the sentence names. */
+  kind: MessageKind;
 }
 
 // last_name is nullable on platform_users, so concat has to tolerate it — matches
@@ -48,6 +67,7 @@ const messageQuery = () =>
       "m.attachments",
       "m.reply_to_id",
       "m.edited_at",
+      "m.kind",
       "u.photo_url as sender_photo_url",
       masterKnex.raw(`${fullName("u")} as sender_name`),
     );
@@ -98,6 +118,8 @@ export async function insert(data: {
   body: string;
   attachments?: unknown[] | null;
   reply_to_id?: number | null;
+  /** Omitted for anything a person typed — the column defaults to 'message'. */
+  kind?: MessageKind;
 }): Promise<EnquiryMessageRow> {
   const [inserted] = await masterKnex(T)
     // knex needs jsonb handed over as a JSON string, not a JS array.
@@ -159,11 +181,31 @@ export async function findThreadContext(distributionId: string) {
     .first(
       "d.id as distribution_id",
       "d.business_id",
+      "d.institution_id",
       "d.status",
       "d.unlocked_at",
+      "d.student_left_at",
       "e.id as enquiry_id",
       "e.student_id",
     );
+}
+
+/** Sets the thread's shared picture. Null clears it back to each side's default avatar. */
+export async function setPhoto(distributionId: string, photoPath: string | null): Promise<void> {
+  await masterKnex("enquiry_distributions").where({ id: distributionId }).update({ photo_url: photoPath });
+}
+
+/** Renames the thread for everyone on it. Null clears it back to each side's default label. */
+export async function setTitle(distributionId: string, title: string | null): Promise<void> {
+  await masterKnex("enquiry_distributions").where({ id: distributionId }).update({ title });
+}
+
+/** The student's own exit from one thread. Idempotent — leaving twice keeps the first timestamp. */
+export async function markStudentLeft(distributionId: string): Promise<void> {
+  await masterKnex("enquiry_distributions")
+    .where({ id: distributionId })
+    .whereNull("student_left_at")
+    .update({ student_left_at: masterKnex.fn.now() });
 }
 
 export interface ThreadSummaryRow {
@@ -182,6 +224,10 @@ export interface ThreadSummaryRow {
   /** Messages from the other side since this viewer's read cursor. */
   unread_count: number;
   favorited_at: Date | null;
+  /** The admin-given name for this thread, or null when nobody has named it. Shared by both sides. */
+  title: string | null;
+  /** Raw storage path for the admin-given thread picture — the service signs it. Shared too. */
+  photo_url: string | null;
 }
 
 /**
@@ -207,7 +253,10 @@ export async function listThreadsForStudent(studentId: number): Promise<ThreadSu
 
   return masterKnex("enquiry_distributions as d")
     .join("enquiries as e", "e.id", "d.enquiry_id")
-    .join("businesses as b", "b.id", "d.business_id")
+    // LEFT, and to both recipient tables: a fallback distribution belongs to an institution
+    // and has no business row, which an inner join would drop from the student's inbox.
+    .leftJoin("businesses as b", "b.id", "d.business_id")
+    .leftJoin("institutions as i", "i.id", "d.institution_id")
     .join("superadmin.extraction_courses as c", "c.id", "e.course_id")
     .joinRaw(
       `left join lateral (
@@ -224,6 +273,9 @@ export async function listThreadsForStudent(studentId: number): Promise<ThreadSu
     )
     .where("e.student_id", studentId)
     .whereNotNull("d.unlocked_at")
+    // Left threads are gone from the student's inbox but untouched for the business — they keep
+    // the lead they paid for either way.
+    .whereNull("d.student_left_at")
     .whereNull("d.deleted_at")
     .whereNull("e.deleted_at")
     .orderByRaw("coalesce(lastmsg.created_at, d.unlocked_at) desc")
@@ -232,8 +284,10 @@ export async function listThreadsForStudent(studentId: number): Promise<ThreadSu
       "e.id as enquiry_id",
       "d.status",
       "d.unlocked_at",
-      "b.business_name",
-      "b.logo_url",
+      "d.title",
+      "d.photo_url",
+      masterKnex.raw("coalesce(b.business_name, i.institution_name) as business_name"),
+      masterKnex.raw("coalesce(b.logo_url, i.logo_url) as logo_url"),
       "c.name as course_name",
       "ts.favorited_at",
       masterKnex.raw("lastmsg.created_at as last_message_at"),
@@ -249,6 +303,8 @@ export interface BusinessThreadSummaryRow
   student_name: string;
   /** Raw storage path on platform_users — the service signs it. */
   student_photo_url: string | null;
+  /** This viewer's role on the thread. Only an admin may rename it. */
+  my_role: "admin" | "member";
 }
 
 /**
@@ -265,7 +321,7 @@ export interface BusinessThreadSummaryRow
  * agents each have their own cursor over the same thread.
  */
 export async function listThreadsForBusiness(
-  businessId: number,
+  recipient: Recipient,
   viewerUserId: number,
 ): Promise<BusinessThreadSummaryRow[]> {
   const unread = masterKnex.raw(
@@ -293,7 +349,17 @@ export async function listThreadsForBusiness(
     .leftJoin("enquiry_thread_states as ts", (join) =>
       join.on("ts.distribution_id", "d.id").andOn("ts.user_id", masterKnex.raw("?", [viewerUserId])),
     )
-    .where("d.business_id", businessId)
+    .where(recipientFilter(recipient, "d"))
+    // Threads this viewer is actually ON, not every thread their org unlocked. Since threads
+    // became Spaces, the inbox is personal: the org filter above says whose threads these are,
+    // this says which of them are mine.
+    //
+    // An INNER JOIN rather than the whereExists it replaces, so the row can also carry `tm.role` —
+    // the sidebar needs to know whether this viewer may rename the thread. Cannot fan out: the
+    // (distribution_id, platform_user_id) unique index allows at most one matching row.
+    .join("enquiry_thread_members as tm", (join) =>
+      join.on("tm.distribution_id", "d.id").andOn("tm.platform_user_id", masterKnex.raw("?", [viewerUserId])),
+    )
     .whereNotNull("d.unlocked_at")
     .whereNull("d.deleted_at")
     .whereNull("e.deleted_at")
@@ -303,6 +369,9 @@ export async function listThreadsForBusiness(
       "e.id as enquiry_id",
       "d.status",
       "d.unlocked_at",
+      "d.title",
+      "d.photo_url",
+      "tm.role as my_role",
       "s.photo_url as student_photo_url",
       "c.name as course_name",
       "ts.favorited_at",
@@ -468,7 +537,7 @@ export interface BusinessStarredMessageRow extends Omit<StarredMessageRow, "busi
  * threads leak into this one's view.
  */
 export async function listStarredForBusiness(
-  businessId: number,
+  recipient: Recipient,
   userId: number,
 ): Promise<BusinessStarredMessageRow[]> {
   return messageQuery()
@@ -478,7 +547,15 @@ export async function listStarredForBusiness(
     .join("platform_users as s", "s.id", "e.student_id")
     .join("superadmin.extraction_courses as c", "c.id", "e.course_id")
     .where("st.user_id", userId)
-    .where("d.business_id", businessId)
+    .where(recipientFilter(recipient, "d"))
+    // A star outlives the thread it was made in. Without this, an agent removed from a thread
+    // would keep seeing its messages in Starred — content they can no longer open.
+    .whereExists(function () {
+      this.select(1)
+        .from("enquiry_thread_members as tm")
+        .whereRaw("tm.distribution_id = d.id")
+        .andWhere("tm.platform_user_id", userId);
+    })
     .whereNull("m.deleted_at")
     .orderBy("st.created_at", "desc")
     .select(

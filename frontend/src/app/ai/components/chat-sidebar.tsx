@@ -1,7 +1,6 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
 import {
   Plus,
   MoreHorizontal,
@@ -14,7 +13,6 @@ import {
   Trash2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -66,7 +64,6 @@ export function ChatSidebar({ onNewChat }: ChatSidebarProps) {
   const dispatch = useAppDispatch();
   const sessions = useAppSelector((s) => s.aiChat.sessions);
   const activeSessionId = useAppSelector((s) => s.aiChat.activeSessionId);
-  const profile = useAppSelector((s) => s.profile.profile);
   const [editingId, setEditingId] = useState<number | null>(null);
   const [editTitle, setEditTitle] = useState("");
   const [view, setView] = useState<"chats" | "archived">("chats");
@@ -154,7 +151,12 @@ export function ChatSidebar({ onNewChat }: ChatSidebarProps) {
       <div className="flex-1 overflow-y-auto">
         {groups.map((group) => (
           <div key={group.label} className="px-2 py-2">
-            <p className="mb-1 px-2 text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
+            <p className={cn(
+              "mb-1 px-2 text-[10px] font-semibold uppercase tracking-wider",
+              group.label === "Today" || group.label === "Yesterday"
+                ? "text-primary"
+                : "text-muted-foreground",
+            )}>
               {group.label}
             </p>
             {group.sessions.map((session) => (
@@ -233,21 +235,6 @@ export function ChatSidebar({ onNewChat }: ChatSidebarProps) {
         )}
       </div>
 
-      {/* Identity pinned to the bottom of the rail, matching the rest of the portal's chrome. */}
-      <div className="border-t p-2">
-        <Link
-          href="/personal/profile"
-          className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-accent/60"
-        >
-          <Avatar className="size-7">
-            <AvatarImage src={profile?.photo_url ?? undefined} alt="" />
-            <AvatarFallback>{profile?.first_name?.[0]?.toUpperCase() ?? "U"}</AvatarFallback>
-          </Avatar>
-          <span className="min-w-0 flex-1 truncate text-sm">
-            {profile?.first_name ?? "Your account"}
-          </span>
-        </Link>
-      </div>
       {confirmDialog}
     </div>
   );

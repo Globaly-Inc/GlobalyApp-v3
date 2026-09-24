@@ -18,7 +18,7 @@ import {
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { AdminSegmentedTabs } from "../../../components/admin-segmented-tabs";
 import { BLOG_TABS, COUNTRY_FILTER_OPTIONS, TOPIC_FILTER_TABS } from "../const";
-import { fetchKeywords, fetchPosts, removePost } from "../store/blog-slice";
+import { clearGenerationJobs, fetchKeywords, fetchPosts, removePost } from "../store/blog-slice";
 import type { BlogTab } from "../types";
 import type { BlogPost, BlogTopic } from "../apis/types";
 import { BlogKeywordsManager } from "./blog-keywords-manager";
@@ -103,6 +103,10 @@ export function BlogView() {
     dispatch(fetchPosts());
     dispatch(fetchKeywords());
   }, [dispatch]);
+
+  // Clear stale generation jobs when leaving the blog section so they don't
+  // restart polling on the next mount.
+  useEffect(() => () => { dispatch(clearGenerationJobs()); }, [dispatch]);
 
   const filtered = useMemo(() => {
     const needle = search.trim().toLowerCase();

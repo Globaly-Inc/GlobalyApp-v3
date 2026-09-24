@@ -1,6 +1,7 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
+import { ApiError } from "@/lib/api/http";
 import { allExtractionsApi } from "../apis";
-import type { CreateJobParams, ExtractionJob, GetJobsParams, JobFull, JobsPageMeta } from "../apis/types";
+import type { CreateJobParams, ExistingJobConflict, ExtractionJob, GetJobsParams, JobFull, JobsPageMeta } from "../apis/types";
 
 export const fetchAllExtractions = createAsyncThunk("dataAllExtractions/fetch", (params: GetJobsParams) =>
   allExtractionsApi.getJobs(params),
@@ -20,8 +21,34 @@ export const resetPipeline = createAsyncThunk("dataAllExtractions/resetPipeline"
   return id;
 });
 
-export const createJob = createAsyncThunk("dataAllExtractions/create", (params: CreateJobParams) =>
-  allExtractionsApi.createJob(params),
+type CreateJobRejectPayload = { message: string; existingJob?: ExistingJobConflict };
+
+export const createJob = createAsyncThunk<ExtractionJob, CreateJobParams, { rejectValue: CreateJobRejectPayload }>(
+  "dataAllExtractions/create",
+  async (params, { rejectWithValue }) => {
+    try {
+      return await allExtractionsApi.createJob(params);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "Please try again.";
+      const details = err instanceof ApiError ? err.details : undefined;
+      const existingJob =
+        details && typeof details === "object" && "existing_job_id" in details
+          ? (details as { existing_job_id: string; institution_name: string | null; website: string | null; email: string | null; phone: string | null })
+          : undefined;
+      return rejectWithValue({
+        message,
+        existingJob: existingJob
+          ? {
+              id: existingJob.existing_job_id,
+              institutionName: existingJob.institution_name,
+              website: existingJob.website,
+              email: existingJob.email,
+              phone: existingJob.phone,
+            }
+          : undefined,
+      });
+    }
+  },
 );
 
 export const declineJob = createAsyncThunk("dataAllExtractions/decline", async (id: string) => {

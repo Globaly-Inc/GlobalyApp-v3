@@ -15,10 +15,13 @@ import {
   fileExtension,
   formatFileSize,
   isGroupedWith,
+  isThreadEvent,
   isImageFile,
   isPdfFile,
   isVideoFile,
   previewText,
+  threadAvatar,
+  threadTitle,
 } from "./utils.ts";
 import { getRecentEmojis, searchEmojis } from "./emojis.ts";
 import type { ChatThread, EnquiryMessage } from "./types";
@@ -38,6 +41,7 @@ const msg = (over: Partial<EnquiryMessage> & { id: number }): EnquiryMessage => 
   reply_count: 0,
   reactions: [],
   edited_at: null,
+  kind: "message",
   ...over,
 });
 
@@ -93,13 +97,33 @@ assert.deepEqual(parseMessageBody("run `a **b**` now"), [
 
 // A bare URL becomes a link, with the trailing sentence punctuation left outside it.
 {
-  const parsed = parseMessageBody("see https://globaly.app/courses, thanks");
-  assert.deepEqual(parsed[1], { kind: "link", href: "https://globaly.app/courses", label: "globaly.app/courses" });
+  const parsed = parseMessageBody("see https://globalyapp.com/courses, thanks");
+  assert.deepEqual(parsed[1], { kind: "link", href: "https://globalyapp.com/courses", label: "globalyapp.com/courses" });
   assert.deepEqual(parsed[2], { kind: "text", value: ", thanks" });
 }
 
 // `www.` links get a protocol so the href is navigable.
-assert.equal((parseMessageBody("www.globaly.app")[0] as { href: string }).href, "https://www.globaly.app");
+assert.equal((parseMessageBody("www.globalyapp.com")[0] as { href: string }).href, "https://www.globalyapp.com");
+
+// The toolbar's Link button writes `[label](href)`, so the renderer must read it back —
+// showing the label, not the raw markdown, and never the bare URL inside the parens.
+assert.deepEqual(parseMessageBody("[hello](staging.globalyapp.com/personal/messages)"), [
+  { kind: "link", href: "https://staging.globalyapp.com/personal/messages", label: "hello" },
+]);
+assert.deepEqual(parseMessageBody("see [docs](https://globalyapp.com/a/b) now"), [
+  { kind: "text", value: "see " },
+  { kind: "link", href: "https://globalyapp.com/a/b", label: "docs" },
+  { kind: "text", value: " now" },
+]);
+// An in-app path stays relative; a scheme we do not vouch for is defused into a https host.
+assert.equal((parseMessageBody("[inbox](/personal/messages)")[0] as { href: string }).href, "/personal/messages");
+assert.equal((parseMessageBody("[mail](mailto:a@b.com)")[0] as { href: string }).href, "mailto:a@b.com");
+assert.ok(
+  (parseMessageBody("[x](javascript:alert)")[0] as { href: string }).href.startsWith("https://"),
+  "a javascript: target must never reach the href as-is",
+);
+// The composer's untouched placeholder must not render as a live link to nowhere.
+assert.equal((parseMessageBody("[text](url)")[0] as { href: string }).href, "https://url");
 
 // Nothing is ever emitted as HTML — the renderer only ever sees known segment kinds.
 for (const segment of parseMessageBody("<script>alert(1)</script> **x**")) {
@@ -107,7 +131,7 @@ for (const segment of parseMessageBody("<script>alert(1)</script> **x**")) {
 }
 assert.deepEqual(parseMessageBody("<b>x</b>"), [{ kind: "text", value: "<b>x</b>" }]);
 
-assert.equal(truncateUrl("https://globaly.app/a/very/long/path/that/keeps/going/and/going/on", 20), "globaly.app/a/ver...");
+assert.equal(truncateUrl("https://globalyapp.com/a/very/long/path/that/keeps/going/and/going/on", 20), "globalyapp.com/a/...");
 
 // ── grouping ──
 
@@ -120,6 +144,34 @@ assert.equal(
   false,
   "different sender never groups",
 );
+// A thread event carries the acting admin's sender_id, so without the kind guard the message they
+// send straight afterwards would group onto the event and lose its avatar and header.
+{
+  const event = msg({ id: 1, kind: "member_added", body: "Bo was invited by Ada" });
+  const after = msg({ id: 2, created_at: "2026-08-23T10:01:00.000Z" });
+  assert.equal(isGroupedWith(after, event), false, "a message never groups onto a thread event");
+  assert.equal(isGroupedWith(event, msg({ id: 0 })), false, "a thread event never groups onto a message");
+  // Every verb is an event; only a typed message is not.
+  assert.equal(isThreadEvent("message"), false);
+  for (const k of ["member_added", "member_removed", "member_left", "admin_granted", "admin_revoked", "renamed", "photo_changed"] as const) {
+    assert.equal(isThreadEvent(k), true, `${k} renders as a pill`);
+  }
+}
+
+// ── thread name ──
+//
+// One admin-given name shown to everyone on the thread, falling back to each side's own counterpart
+// when nobody has named it. Whitespace counts as unnamed — an all-spaces title would otherwise
+// render as a blank heading.
+assert.equal(threadTitle({ title: "Sharma — Feb intake", counterpart_name: "Aarav" }), "Sharma — Feb intake");
+assert.equal(threadTitle({ title: null, counterpart_name: "Aarav" }), "Aarav", "unnamed falls back");
+assert.equal(threadTitle({ title: "   ", counterpart_name: "Aarav" }), "Aarav", "whitespace is not a name");
+
+// Same rule for the picture: the admin's wins, the counterpart's is the fallback, and a thread with
+// neither renders initials rather than a broken <img>.
+assert.equal(threadAvatar({ thread_photo: "/t.png", counterpart_avatar: "/c.png" }), "/t.png");
+assert.equal(threadAvatar({ thread_photo: null, counterpart_avatar: "/c.png" }), "/c.png", "falls back");
+assert.equal(threadAvatar({ thread_photo: null, counterpart_avatar: null }), null, "neither is null, not ''");
 
 // ── previews ──
 
@@ -129,7 +181,7 @@ assert.equal(previewText("**Hi**  there\n\n• one"), "Hi there one");
 
 {
   const text = conversationToText(
-    { counterpart_name: "Sydney Study Agents", course_name: "BSc Computer Science" },
+    { title: null, counterpart_name: "Sydney Study Agents", course_name: "BSc Computer Science" },
     [
       msg({ id: 1, body: "Hello!", sender_name: "Agent", created_at: "2026-08-21T02:30:00.000Z" }),
       msg({ id: 2, body: "Hi back", sender_name: "Student", created_at: "2026-08-21T02:31:00.000Z" }),

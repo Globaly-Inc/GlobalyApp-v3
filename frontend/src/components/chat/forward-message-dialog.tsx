@@ -5,7 +5,7 @@ import { Forward, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
-import { initials, previewText } from "./utils";
+import { initials, previewText, threadTitle, threadAvatar } from "./utils";
 
 import type { ChatThread } from "./types";
 
@@ -75,17 +75,17 @@ export function ForwardMessageDialog({
                 key={thread.distribution_id}
                 type="button"
                 disabled={sendingTo !== null}
-                onClick={() => forward(thread.distribution_id, thread.counterpart_name)}
+                onClick={() => forward(thread.distribution_id, threadTitle(thread))}
                 className="flex w-full cursor-pointer items-center gap-2.5 rounded-md px-2 py-2 text-left transition-colors hover:bg-muted disabled:opacity-60"
               >
                 <Avatar className="size-8 shrink-0">
-                  {thread.counterpart_avatar && <AvatarImage src={thread.counterpart_avatar} alt={thread.counterpart_name} />}
+                  {threadAvatar(thread) && <AvatarImage src={threadAvatar(thread)!} alt={threadTitle(thread)} />}
                   <AvatarFallback className="bg-muted text-xs text-muted-foreground">
-                    {initials(thread.counterpart_name)}
+                    {initials(threadTitle(thread))}
                   </AvatarFallback>
                 </Avatar>
                 <span className="min-w-0 flex-1">
-                  <span className="block truncate text-sm font-medium">{thread.counterpart_name}</span>
+                  <span className="block truncate text-sm font-medium">{threadTitle(thread)}</span>
                   <span className="block truncate text-xs text-muted-foreground">{thread.course_name}</span>
                 </span>
                 {sendingTo === thread.distribution_id ? (

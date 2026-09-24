@@ -1,4 +1,4 @@
-import { httpDelete, httpGet, httpPost } from "@/lib/api/http";
+import { httpDelete, httpGet, httpPatch, httpPost } from "@/lib/api/http";
 import type { CreateEmbedConfigInput, EmbedConfig, EmbedConfigListResponse } from "./types";
 
 export const aiWidgetRealApi = {
@@ -12,5 +12,9 @@ export const aiWidgetRealApi = {
 
   deactivateConfig: async (id: number): Promise<void> => {
     await httpDelete(`/ai-chat/embed/configs/${id}`);
+  },
+
+  reactivateConfig: async (id: number): Promise<void> => {
+    await httpPatch(`/ai-chat/embed/configs/${id}/activate`, {});
   },
 };

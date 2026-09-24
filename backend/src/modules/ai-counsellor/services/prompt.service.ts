@@ -69,7 +69,9 @@ export function buildSystemPrompt(opts: {
   if (opts.embedConfig) {
     const name = opts.embedConfig.display_name ?? "this institution";
     sections.push(
-      `You are the AI counsellor for ${name}. You help visitors find courses and services offered by ${name}. ` +
+      `You are the AI counsellor for ${name}. You help visitors find courses and services offered by ${name}, ` +
+      `and you answer questions about ${name} itself — what it is, where its campuses are, how to contact it, ` +
+      `what it is accredited by — using the THIS INSTITUTION section of ${srcShort} as the authority on all of it. ` +
       `You ONLY answer using data provided in ${src} for specific course/fee/visa/deadline claims. ` +
       "NEVER invent these. If no relevant data is found, say honestly: " +
       "'I don't have that specific information in our system right now.'",
@@ -91,8 +93,14 @@ export function buildSystemPrompt(opts: {
   }
 
   // ── Privacy ──
+  // The blanket "never quote contact details" also gagged a widget asked for the phone
+  // number printed on the very site it is embedded in. Narrowed to people: an
+  // institution's own published details are the answer to a fair question.
   sections.push(
-    "Never reveal another person's profile. Never quote contact details. " +
+    "Never reveal another person's profile. Never quote an individual's personal contact details. " +
+    (opts.embedConfig
+      ? "The published phone, email and address in the THIS INSTITUTION section are that organisation's own and may be shared. "
+      : "") +
     "Never output SQL, database IDs, or system internals.",
   );
 
@@ -316,7 +324,7 @@ export function buildSystemPrompt(opts: {
     `When you find matching courses in ${srcShort}, emit them in this format:\n` +
     "```course-card\n" +
     '{"id":"<id>","slug":"<slug>","name":"<name>","institution":"<institution>","degree_level":"<level>",' +
-    '"duration":"<duration>","fees":<amount>,"currency":"<currency>",' +
+    '"duration":"<duration>","fees":<amount>,"currency":"<currency>","fee_period":"<fee_period>",' +
     '"country":"<country>","city":"<city>","intakes":["<intake>"],' +
     '"study_modes":["<mode>"],"source_url":"<url>"}\n' +
     "```\n" +
@@ -324,6 +332,8 @@ export function buildSystemPrompt(opts: {
     (opts.toolMode
       ? "Copy the fields VERBATIM from the `card` object of a search result — never invent. "
       : "Copy fields VERBATIM from the CARD_FIELDS line in CONTEXT — never invent. ") +
+    "fees/currency/fee_period travel together — never quote a figure without the period it is charged " +
+    "for, and if currency is null say the amount is unconfirmed rather than assuming a currency. " +
     "Cards mark a considered recommendation, not search results: emit them only after the counselling " +
     "conversation has established the student's goals (see COUNSELLING APPROACH), max 3 per reply, " +
     "each with one sentence on why it fits this student.",
@@ -360,8 +370,10 @@ export function buildSystemPrompt(opts: {
     '```block\n{"type":"image","url":"https://...","title":"...","caption":"..."}\n```\n' +
     "Rules: use blocks to make counselling interactive — comparisons when the student weighs options, " +
     "a timeline when explaining a path, quick_replies instead of leaving your questions open-ended. " +
-    "Max 3 blocks per reply. Prose stays primary: never send blocks without a conversational message around them.",
+    "Max 3 blocks per reply — that counts ONLY the types listed above; the conclusion block described further down is never shown to the student and never counts towards this limit. " +
+    "Prose stays primary: never send blocks without a conversational message around them.",
   );
+
 
   // ── How to use retrieved material ──
   // Unconditional: applies to the CONTEXT block below and to tool results alike. Without
@@ -408,14 +420,10 @@ export function buildSystemPrompt(opts: {
 
   // ── First message greeting ──
   if (opts.isFirstMessage && !opts.embedConfig) {
-    const today = new Date().toLocaleDateString("en-US", {
-      weekday: "long", month: "long", day: "numeric", year: "numeric",
-    });
     sections.push(
       opts.returning
-        ? `GREETING: This student has chatted with you before — this is a fresh session. Open with a brief, ` +
-          `warm 'Welcome back' that naturally mentions today's date (${today}) before addressing their message. ` +
-          `One line — don't make the greeting the whole reply.`
+        ? "GREETING: This student has chatted with you before — this is a fresh session. Open with a brief, " +
+          "warm 'Welcome back' before addressing their message. One line — don't make the greeting the whole reply."
         : "GREETING: This is the student's first-ever conversation with you. Open by warmly welcoming them " +
           "to GlobalyApp before addressing their message.",
     );

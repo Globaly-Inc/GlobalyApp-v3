@@ -1,27 +1,6 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { usersApi } from "../apis";
-import type {
-  AdminInvitation, AdminUser, InviteAdminParams, ListParams, PlatformUser, UpdateAdminParams,
-  UpdatePlatformUserParams,
-} from "../apis/types";
-
-export const fetchUsers = createAsyncThunk("adminUsers/fetchUsers", (params: ListParams = {}) =>
-  usersApi.listUsers(params),
-);
-
-export const fetchPlatformUsers = createAsyncThunk("adminUsers/fetchPlatformUsers", (params: ListParams = {}) =>
-  usersApi.listPlatformUsers(params),
-);
-
-export const updatePlatformUser = createAsyncThunk(
-  "adminUsers/updatePlatformUser",
-  ({ id, patch }: { id: number; patch: UpdatePlatformUserParams }) => usersApi.updatePlatformUser(id, patch),
-);
-
-export const updateAdmin = createAsyncThunk(
-  "adminUsers/updateAdmin",
-  ({ id, patch }: { id: number; patch: UpdateAdminParams }) => usersApi.updateAdmin(id, patch),
-);
+import type { AdminInvitation, InviteAdminParams, ListParams } from "../apis/types";
 
 export const fetchInvitations = createAsyncThunk("adminUsers/fetchInvitations", (params: ListParams = {}) =>
   usersApi.listInvitations(params),
@@ -40,14 +19,6 @@ type PaginatedList<T> = { data: T[]; page: number; limit: number; total: number;
 type ListStatus = "idle" | "loading" | "failed";
 
 type UsersState = {
-  users: PaginatedList<AdminUser>;
-  usersStatus: ListStatus;
-  usersError: string | null;
-
-  platformUsers: PaginatedList<PlatformUser>;
-  platformUsersStatus: ListStatus;
-  platformUsersError: string | null;
-
   invitations: PaginatedList<AdminInvitation>;
   invitationsStatus: ListStatus | "inviting";
   invitationsError: string | null;
@@ -56,14 +27,6 @@ type UsersState = {
 const emptyList = { data: [], page: 1, limit: 10, total: 0, totalPages: 1 };
 
 const initialState: UsersState = {
-  users: { ...emptyList },
-  usersStatus: "idle",
-  usersError: null,
-
-  platformUsers: { ...emptyList },
-  platformUsersStatus: "idle",
-  platformUsersError: null,
-
   invitations: { ...emptyList },
   invitationsStatus: "idle",
   invitationsError: null,
@@ -75,30 +38,6 @@ const usersSlice = createSlice({
   reducers: {},
   extraReducers: (builder) => {
     builder
-      .addCase(fetchUsers.pending, (state) => {
-        state.usersStatus = "loading";
-        state.usersError = null;
-      })
-      .addCase(fetchUsers.fulfilled, (state, action) => {
-        state.usersStatus = "idle";
-        state.users = { ...action.payload.meta, data: action.payload.data };
-      })
-      .addCase(fetchUsers.rejected, (state, action) => {
-        state.usersStatus = "failed";
-        state.usersError = action.error.message ?? "Failed to load users.";
-      })
-      .addCase(fetchPlatformUsers.pending, (state) => {
-        state.platformUsersStatus = "loading";
-        state.platformUsersError = null;
-      })
-      .addCase(fetchPlatformUsers.fulfilled, (state, action) => {
-        state.platformUsersStatus = "idle";
-        state.platformUsers = { ...action.payload.meta, data: action.payload.data };
-      })
-      .addCase(fetchPlatformUsers.rejected, (state, action) => {
-        state.platformUsersStatus = "failed";
-        state.platformUsersError = action.error.message ?? "Failed to load platform users.";
-      })
       .addCase(fetchInvitations.pending, (state) => {
         state.invitationsStatus = "loading";
         state.invitationsError = null;

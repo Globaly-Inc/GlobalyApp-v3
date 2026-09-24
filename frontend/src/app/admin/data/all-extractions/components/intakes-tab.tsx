@@ -9,7 +9,6 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Combobox } from "@/components/combobox";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { FieldError } from "@/components/field-error";
 import { Input } from "@/components/ui/input";
@@ -18,14 +17,18 @@ import { Pagination } from "@/components/ui/pagination";
 import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
 import { latestTimestamp } from "../utils";
+import { CourseLinkPicker } from "./course-link-picker";
 import { EditableField, useFieldSaver, type EditableFieldProps } from "./editable-field";
+import { PartialDateInput, monthYearOf } from "./partial-date-input";
+import { IntakeCustomDates } from "./intake-custom-dates";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
-import type { CourseLinks, CourseRow, ExtractionJob, Intake, IntakeParams } from "../apis/types";
+import { RowActors } from "./row-actors";
+import type { CourseLinks, ExtractionJob, Intake, IntakeParams } from "../apis/types";
+
+type LinkedCourse = { id: string; name: string | null };
 
 /** Native date inputs need YYYY-MM-DD; the API hands back full timestamps. */
-const toDateInput = (iso: string | null) => (iso ? iso.slice(0, 10) : "");
-
 const CHIP_LIMIT = 6;
 const DEFAULT_PAGE_SIZE = 10;
 
@@ -37,8 +40,6 @@ const intakeSchema = z.object({
   deadline: z.string(),
 });
 
-// EditableField keeps its own click-to-edit affordance — this just gives each
-// field a visual anchor (icon tile), matching the Institution/Branches tabs' treatment.
 function Field({ icon: Icon, className, ...field }: Readonly<EditableFieldProps & { icon: LucideIcon }>) {
   return (
     <div className={cn("flex items-start gap-2.5 rounded-lg border border-border bg-muted/20 p-2", className)}>
@@ -93,19 +94,19 @@ function IntakeForm({
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="intake-start">Start Date</Label>
-              <Input id="intake-start" type="date" value={startDate} onChange={(e) => setStartDate(e.target.value)} />
+              <PartialDateInput id="intake-start" value={startDate} onChange={setStartDate} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="intake-end">End Date</Label>
-              <Input id="intake-end" type="date" value={endDate} onChange={(e) => setEndDate(e.target.value)} />
+              <PartialDateInput id="intake-end" value={endDate} onChange={setEndDate} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="intake-orientation">Orientation</Label>
-              <Input id="intake-orientation" type="date" value={orientation} onChange={(e) => setOrientation(e.target.value)} />
+              <PartialDateInput id="intake-orientation" value={orientation} onChange={setOrientation} />
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="intake-deadline">Admission Deadline</Label>
-              <Input id="intake-deadline" type="date" value={deadline} onChange={(e) => setDeadline(e.target.value)} />
+              <PartialDateInput id="intake-deadline" value={deadline} onChange={setDeadline} />
             </div>
           </div>
         </div>
@@ -130,7 +131,9 @@ function IntakeForm({
               }
               setErrors({});
               const d = result.data;
-              const start = d.startDate ? new Date(d.startDate) : null;
+              // Read off the string. new Date("2026-09") is UTC midnight on the 1st, so
+              // getMonth() in a timezone behind UTC files the intake under the previous month.
+              const start = d.startDate ? monthYearOf(d.startDate) : null;
               onSave({
                 intake_name: d.name,
                 ...(d.startDate ? { start_date: d.startDate } : {}),
@@ -138,7 +141,7 @@ function IntakeForm({
                 ...(d.orientation ? { orientation_date: d.orientation } : {}),
                 ...(d.deadline ? { admission_deadline: d.deadline } : {}),
                 // Month/year mirror the start date so the list can group by intake year.
-                ...(start ? { intake_month: start.getMonth() + 1, intake_year: start.getFullYear() } : {}),
+                ...(start ?? {}),
               });
             }}
           >
@@ -152,9 +155,9 @@ function IntakeForm({
 }
 
 function IntakeCard({
+  jobId,
   intake,
-  courses,
-  linkedCourseIds,
+  linked,
   selected,
   busy,
   onToggleSelect,
@@ -163,24 +166,24 @@ function IntakeCard({
   onUnlinkCourse,
   onSaveField,
 }: Readonly<{
+  jobId: string;
   intake: Intake;
-  courses: CourseRow[];
-  linkedCourseIds: string[];
+  linked: LinkedCourse[];
   selected: boolean;
   busy: boolean;
   onToggleSelect: () => void;
   onDelete: () => void;
   onLinkCourse: (courseId: string) => void;
   onUnlinkCourse: (courseId: string) => void;
-  onSaveField: (column: string, next: string | null) => Promise<unknown>;
+  onSaveField: (column: string, next: string | null | unknown[]) => Promise<unknown>;
 }>) {
   const [editingLinks, setEditingLinks] = useState(false);
   const [showAll, setShowAll] = useState(false);
 
-  const linked = courses.filter((c) => linkedCourseIds.includes(c.id));
-  const unlinked = courses.filter((c) => !linkedCourseIds.includes(c.id));
   const visible = showAll ? linked : linked.slice(0, CHIP_LIMIT);
-  const year = intake.intake_year ?? (intake.start_date ? new Date(intake.start_date).getFullYear() : null);
+  // Read off the string, not through Date(): "2026-09" parses as UTC midnight on the 1st, which is
+  // the fabrication this feature removes — and in a timezone behind UTC it lands in 2026-08.
+  const year = intake.intake_year ?? (intake.start_date?.slice(0, 4) ? Number(intake.start_date.slice(0, 4)) : null);
 
   return (
     <Card className="group overflow-hidden">
@@ -207,17 +210,22 @@ function IntakeCard({
       <CardContent className="flex flex-col gap-3 p-4">
         <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
           <Field icon={Type} label="Intake Name" value={intake.intake_name} onSave={(v) => onSaveField("intake_name", v)} />
-          <Field icon={Calendar} label="Start Date" value={toDateInput(intake.start_date)} onSave={(v) => onSaveField("start_date", v)} />
-          <Field icon={Calendar} label="End Date" value={toDateInput(intake.end_date)} onSave={(v) => onSaveField("end_date", v)} />
-          <Field icon={CalendarClock} label="Admission Deadline" value={toDateInput(intake.admission_deadline)} onSave={(v) => onSaveField("admission_deadline", v)} />
-          <Field icon={CalendarDays} label="Orientation" value={toDateInput(intake.orientation_date)} onSave={(v) => onSaveField("orientation_date", v)} />
+          <Field icon={Calendar} label="Start Date" datePrecision value={intake.start_date} onSave={(v) => onSaveField("start_date", v)} />
+          <Field icon={Calendar} label="End Date" datePrecision value={intake.end_date} onSave={(v) => onSaveField("end_date", v)} />
+          <Field icon={CalendarClock} label="Admission Deadline" datePrecision value={intake.admission_deadline} onSave={(v) => onSaveField("admission_deadline", v)} />
+          <Field icon={CalendarDays} label="Orientation" datePrecision value={intake.orientation_date} onSave={(v) => onSaveField("orientation_date", v)} />
         </div>
+
+        <IntakeCustomDates
+          dates={intake.custom_dates ?? []}
+          onSave={(next) => onSaveField("custom_dates", next)}
+        />
 
         <div className="flex flex-wrap items-center gap-2">
           <Link2 className="h-3.5 w-3.5 text-muted-foreground" />
           {visible.map((course) => (
             <Badge key={course.id} className="gap-1 bg-primary/10 text-xs text-primary">
-              {course.name}
+              {course.name ?? "Unnamed course"}
               {editingLinks && (
                 <button type="button" className="cursor-pointer" title="Unlink course" onClick={() => onUnlinkCourse(course.id)}>
                   <X className="h-3 w-3" />
@@ -241,15 +249,14 @@ function IntakeCard({
         </div>
 
         {editingLinks && (
-          <Combobox
-            options={unlinked.map((c) => ({ value: c.id, label: c.name }))}
-            value=""
-            onChange={onLinkCourse}
-            placeholder={unlinked.length ? "Link a course…" : "All courses linked"}
-            disabled={unlinked.length === 0}
+          <CourseLinkPicker
+            jobId={jobId}
+            excludeIds={linked.map((c) => c.id)}
+            onSelect={onLinkCourse}
             className="h-8 text-xs"
           />
         )}
+        <RowActors row={intake} className="border-t border-border pt-2" />
       </CardContent>
     </Card>
   );
@@ -258,15 +265,11 @@ function IntakeCard({
 export function IntakesTab({
   jobId,
   job,
-  courses,
   onReload,
-  onJumpToContext,
 }: Readonly<{
   jobId: string;
   job: ExtractionJob;
-  courses: CourseRow[];
   onReload: () => void;
-  onJumpToContext: () => void;
 }>) {
   const [links, setLinks] = useState<CourseLinks | null>(null);
   const [intakes, setIntakes] = useState<Intake[]>([]);
@@ -314,11 +317,6 @@ export function IntakesTab({
     return () => clearTimeout(t);
   }, [load]);
 
-  // A search change invalidates the current page.
-  useEffect(() => {
-    setPage(1);
-  }, [search]);
-
   const saveField = useFieldSaver(jobId, load);
   const { confirm, dialog } = useConfirmDelete();
   const allSelected = intakes.length > 0 && selectedIds.length === intakes.length;
@@ -336,8 +334,10 @@ export function IntakesTab({
     }
   };
 
-  const coursesForIntake = (intakeId: string) =>
-    (links?.intake_assignments ?? []).filter((a) => a.intake_id === intakeId).map((a) => a.course_id);
+  const coursesForIntake = (intakeId: string): LinkedCourse[] =>
+    (links?.intake_assignments ?? [])
+      .filter((a) => a.intake_id === intakeId)
+      .map((a) => ({ id: a.course_id, name: a.course_name }));
 
   return (
     <div>
@@ -350,11 +350,7 @@ export function IntakesTab({
         progress={(job.pipeline_progress as Record<string, unknown> | null)?.courses}
         lastUpdated={latestTimestamp(intakes)}
         hasData={total > 0}
-        guidedUrls={job.guided_urls}
-        contextKey="extract_fields"
-        contextLabel="extract fields"
         onChanged={onReload}
-        onAddContext={onJumpToContext}
       />
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
@@ -362,7 +358,12 @@ export function IntakesTab({
           <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             value={search}
-            onChange={(e) => setSearch(e.target.value)}
+            onChange={(e) => {
+              setSearch(e.target.value);
+              // A search change invalidates the current page. Done here rather than in an
+              // effect on [search]: same result, and the repo lints against set-state-in-effect.
+              setPage(1);
+            }}
             placeholder="Search intakes…"
             className="h-8 pl-7 text-sm"
           />
@@ -385,7 +386,9 @@ export function IntakesTab({
               variant="destructive" size="sm" className="h-8 gap-1.5 cursor-pointer"
               disabled={saving}
               onClick={async () => {
-                if (!(await confirm(`Delete ${selectedIds.length} intakes?`))) return;
+                if (!(await confirm(`Delete ${selectedIds.length} intakes?`))) {
+                  return;
+                }
                 await run(async () => {
                   await Promise.all(selectedIds.map((id) => allExtractionsApi.deleteIntake(id)));
                   setSelectedIds([]);
@@ -440,16 +443,21 @@ export function IntakesTab({
         {intakes.map((intake) => (
           <IntakeCard
             key={intake.id}
+            jobId={jobId}
             intake={intake}
-            courses={courses}
-            linkedCourseIds={coursesForIntake(intake.id)}
+            linked={coursesForIntake(intake.id)}
             selected={selectedIds.includes(intake.id)}
             busy={saving}
             onToggleSelect={() =>
               setSelectedIds((prev) => (prev.includes(intake.id) ? prev.filter((x) => x !== intake.id) : [...prev, intake.id]))
             }
             onSaveField={(column, next) => saveField("extraction_intakes", intake.id, column, next)}
-            onDelete={async () => { if (!(await confirm("Delete intake?"))) return; await run(() => allExtractionsApi.deleteIntake(intake.id), "Intake deleted"); }}
+            onDelete={async () => {
+              if (!(await confirm("Delete intake?"))) {
+                return;
+              }
+              await run(() => allExtractionsApi.deleteIntake(intake.id), "Intake deleted");
+            }}
             onLinkCourse={(courseId) =>
               run(() => allExtractionsApi.assignJunction("intakes", { job_id: jobId, course_id: courseId, entity_id: intake.id }), "Linked to course")
             }

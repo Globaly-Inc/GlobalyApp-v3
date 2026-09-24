@@ -1,0 +1,309 @@
+[
+  {
+    "iso2": "AU",
+    "about": "Australia runs 41 universities — including the research-intensive Group of Eight — and welcomed over 846,000 international students in 2024. Several institutions rank in the world's top 100, backed by strong graduate employment outcomes and a post-study work visa pathway.",
+    "why_study_here": "Australia offers globally recognised qualifications, a post-study work visa pathway, generous part-time work rights, and diverse, safe cities. Its research-intensive Group of Eight universities and strong industry links make it attractive for both undergraduate and postgraduate international students.",
+    "visa_type": "Subclass 500",
+    "visa_description": "Allows international students to stay in Australia for the duration of a registered course, work up to 48 hours per fortnight during term (unlimited during official breaks), and bring eligible family members.",
+    "visa_processing_time": "~1 month",
+    "visa_fee": "AUD 2,500",
+    "avg_tuition_min": 20000.0,
+    "avg_tuition_max": 50000.0,
+    "avg_tuition_currency": "AUD",
+    "student_count_label": "846,000+",
+    "universities_count_label": "41 universities",
+    "cost_of_living_label": "AUD 1,500–3,500 per month",
+    "work_rights_label": "Up to 48 hrs/fortnight during term, unlimited on breaks",
+    "weather_summer": {
+      "icon": "Sun",
+      "label": "Summer (Dec–Feb)",
+      "temp_range": "18°C – 30°C",
+      "description": "Hot and dry inland, warm and humid on the coast. Peak beach season across most of the country."
+    },
+    "weather_autumn": {
+      "icon": "CloudSun",
+      "label": "Autumn (Mar–May)",
+      "temp_range": "12°C – 23°C",
+      "description": "Mild temperatures and lower humidity, a comfortable time to explore most cities."
+    },
+    "weather_winter": {
+      "icon": "CloudRain",
+      "label": "Winter (Jun–Aug)",
+      "temp_range": "6°C – 17°C",
+      "description": "Cool and wet in the south, warm and dry in the tropical north – snow only in the alpine regions."
+    },
+    "weather_spring": {
+      "icon": "Flower2",
+      "label": "Spring (Sep–Nov)",
+      "temp_range": "13°C – 24°C",
+      "description": "Rising temperatures and blooming landscapes, a popular time for outdoor events."
+    },
+    "population": 27801023,
+    "timezone": "UTC+8 to UTC+11 (AWST, ACST/ACDT, AEST/AEDT)",
+    "meta_title": "Study in Australia | Universities, Visas & Student Life",
+    "meta_description": "Explore Australia as a study destination: top universities, the subclass 500 student visa, tuition costs, work rights, and student life across its major cities."
+  },
+  {
+    "iso2": "US",
+    "about": "The US has more than 5,760 higher-education institutions and hosts over 1.18 million international students — more than any other country. Its programs span small liberal arts colleges to top-ranked research universities, with OPT work authorization letting graduates work in their field after study.",
+    "why_study_here": "The US offers unmatched program variety, flexible major/minor systems, strong research funding, and Optional Practical Training (OPT) that lets graduates work in their field after study. Its universities dominate global rankings, and its alumni networks and startup ecosystem open doors worldwide.",
+    "visa_type": "F-1 Visa",
+    "visa_description": "Allows international students to study full-time at a SEVP-certified school, work up to 20 hours/week on campus during term, and apply for CPT/OPT work authorization in their field of study.",
+    "visa_processing_time": "~3-5 weeks",
+    "visa_fee": "$535 (SEVIS + DS-160)",
+    "avg_tuition_min": 20000.0,
+    "avg_tuition_max": 60000.0,
+    "avg_tuition_currency": "USD",
+    "student_count_label": "1.18M+",
+    "universities_count_label": "5,760+ institutions",
+    "cost_of_living_label": "$1,200-2,500 per month",
+    "work_rights_label": "Up to 20 hrs/week on campus; full-time on OPT after graduation",
+    "weather_summer": {
+      "icon": "Sun",
+      "label": "Summer (Jun-Aug)",
+      "temp_range": "21°C – 32°C",
+      "description": "Hot across most of the country, humid in the east and dry in the west, with highs varying widely by region."
+    },
+    "weather_autumn": {
+      "icon": "CloudSun",
+      "label": "Autumn (Sep-Nov)",
+      "temp_range": "10°C – 21°C",
+      "description": "Mild and crisp with fall foliage in the north and east — the season most academic years begin in."
+    },
+    "weather_winter": {
+      "icon": "CloudSnow",
+      "label": "Winter (Dec-Feb)",
+      "temp_range": "-5°C – 10°C",
+      "description": "Cold and snowy in the north and Midwest, much milder in the south — the coldest stretch of the school year."
+    },
+    "weather_spring": {
+      "icon": "Flower2",
+      "label": "Spring (Mar-May)",
+      "temp_range": "10°C – 21°C",
+      "description": "Gradually warming with blooming trees and a mix of rain and sun across most regions."
+    },
+    "population": 341784857,
+    "timezone": "UTC-10 to UTC-4 (HST, AKST, PST, MST, CST, EST)",
+    "meta_title": "Study in the United States | Universities, Visas & Student Life",
+    "meta_description": "Explore the USA as a study destination: top universities, the F-1 student visa, tuition costs, OPT work rights, and student life across its major cities."
+  },
+  {
+    "iso2": "CA",
+    "about": "Canada has 100+ universities and hosted around 720,000 international students in recent years, drawn by affordable tuition and a straightforward Post-Graduation Work Permit pathway. Generous off-campus work rights and immigration-friendly policies make it popular for long-term settlement.",
+    "why_study_here": "Canada offers globally recognised degrees, a straightforward post-graduation work permit pathway, safe and diverse cities, and some of the most affordable tuition among major English-speaking destinations. Generous off-campus work rights and immigration-friendly policies make it a popular choice for long-term settlement.",
+    "visa_type": "Study Permit",
+    "visa_description": "Allows international students to study at a Designated Learning Institution, work up to 24 hours per week off-campus during term (unlimited during scheduled breaks), and apply for a Post-Graduation Work Permit after completing an eligible program.",
+    "visa_processing_time": "3 weeks – 4 months",
+    "visa_fee": "CAD 235",
+    "avg_tuition_min": 18000.0,
+    "avg_tuition_max": 50000.0,
+    "avg_tuition_currency": "CAD",
+    "student_count_label": "720,000+",
+    "universities_count_label": "100+ universities",
+    "cost_of_living_label": "CAD 1,000–2,000 per month",
+    "work_rights_label": "Up to 24 hrs/week during term, unlimited on breaks",
+    "weather_summer": {
+      "icon": "Sun",
+      "label": "Summer (Jun–Aug)",
+      "temp_range": "15°C – 28°C",
+      "description": "Warm across most of the country with long daylight hours — a popular season for outdoor life in cities like Toronto and Vancouver."
+    },
+    "weather_autumn": {
+      "icon": "CloudSun",
+      "label": "Autumn (Sep–Nov)",
+      "temp_range": "5°C – 18°C",
+      "description": "Crisp air and colourful foliage; temperatures drop quickly toward November as winter approaches."
+    },
+    "weather_winter": {
+      "icon": "CloudSnow",
+      "label": "Winter (Dec–Feb)",
+      "temp_range": "-15°C – 0°C",
+      "description": "Cold and snowy across most of the country, harshest on the Prairies — much milder on the Pacific coast in Vancouver."
+    },
+    "weather_spring": {
+      "icon": "Flower2",
+      "label": "Spring (Mar–May)",
+      "temp_range": "0°C – 15°C",
+      "description": "Snow melts and temperatures rise gradually, a transitional season with variable, often rainy conditions."
+    },
+    "population": 41528680,
+    "timezone": "UTC-8 to UTC-3:30 (PST/PDT to NST/NDT)",
+    "meta_title": "Study in Canada | Universities, Visas & Student Life",
+    "meta_description": "Explore Canada as a study destination: top universities, the study permit process, tuition costs, work rights, and student life across its major cities."
+  },
+  {
+    "iso2": "CN",
+    "about": "China runs the world's largest higher-education system — over 3,100 universities teaching more than 40 million domestic students — but draws only around 380,000 international students, mostly from other Asian and African countries. Low public-university tuition and government scholarships are its main pull for foreign enrolment.",
+    "why_study_here": "Public university tuition is low by global standards, and Chinese-government scholarships cover a meaningful share of international enrolments. Programs in Mandarin, engineering, medicine, and business are the main draws, backed by fast-growing research output and modern campuses in major cities.",
+    "visa_type": "X1/X2 student visa",
+    "visa_description": "X1 covers programs of 6 months to 5 years; X2 covers short courses under 6 months. Both require an admission letter and a JW201/JW202 form from the host institution.",
+    "visa_processing_time": "4-10 business days",
+    "visa_fee": "USD 25-140",
+    "avg_tuition_min": 2500.0,
+    "avg_tuition_max": 16000.0,
+    "avg_tuition_currency": "USD",
+    "student_count_label": "380,000+",
+    "universities_count_label": "3,167",
+    "cost_of_living_label": "USD 350-900 per month",
+    "work_rights_label": "Off-campus work restricted; on-campus work needs written school approval",
+    "weather_summer": {
+      "icon": "Sun",
+      "label": "Summer (Jun-Aug)",
+      "temp_range": "24°C - 33°C",
+      "description": "Hot and humid in most eastern cities, with a monsoon season bringing heavy rain to the south."
+    },
+    "weather_autumn": {
+      "icon": "CloudSun",
+      "label": "Autumn (Sep-Nov)",
+      "temp_range": "12°C - 24°C",
+      "description": "Generally the most comfortable season — mild, drier air and clear skies across most of the country."
+    },
+    "weather_winter": {
+      "icon": "CloudSnow",
+      "label": "Winter (Dec-Feb)",
+      "temp_range": "-8°C - 8°C",
+      "description": "Cold and dry in the north with occasional snow; milder but damp in the south."
+    },
+    "weather_spring": {
+      "icon": "Flower2",
+      "label": "Spring (Mar-May)",
+      "temp_range": "10°C - 22°C",
+      "description": "Mild temperatures with occasional dust winds in the north and blooming scenery in the south."
+    },
+    "population": 1410000000,
+    "timezone": "UTC+8 (China Standard Time, nationwide)",
+    "meta_title": "Study in China | Tuition, Visas & Universities",
+    "meta_description": "China as a study destination: tuition costs, the X1/X2 student visa, cost of living, and where its international programs are concentrated."
+  },
+  {
+    "iso2": "IN",
+    "about": "India runs one of the world's largest higher-education systems, anchored by globally known institutes like the IITs and IIMs, yet enrolls only around 58,000 international students. It remains primarily a source of outbound students rather than a mainstream inbound destination.",
+    "why_study_here": "For the students it does attract, India offers English-medium instruction, low living costs, and access to internationally respected technical and medical programmes at a fraction of Western tuition, with strong regional draw from South Asia and Africa.",
+    "visa_type": "Student Visa (S)",
+    "visa_description": "Issued for the duration of an enrolled programme at a recognised Indian institution via the Study in India portal; holders must register with the local FRRO/FRO within 14 days of arrival.",
+    "visa_processing_time": "2-4 weeks",
+    "visa_fee": "USD 80-235 (by nationality)",
+    "avg_tuition_min": 200000,
+    "avg_tuition_max": 1500000,
+    "avg_tuition_currency": "INR",
+    "student_count_label": "58,000+",
+    "universities_count_label": "1,338 universities",
+    "cost_of_living_label": "INR 15,000-40,000 per month",
+    "work_rights_label": "No off-campus work permitted (curriculum internships only)",
+    "weather_summer": {
+      "icon": "Sun",
+      "label": "Summer (Mar–Jun)",
+      "temp_range": "25°C – 45°C",
+      "description": "Hot and dry across most of the country, with pre-monsoon humidity building along the coasts."
+    },
+    "weather_autumn": {
+      "icon": "CloudRain",
+      "label": "Monsoon & Autumn (Jul–Oct)",
+      "temp_range": "24°C – 35°C",
+      "description": "The southwest monsoon brings heavy rainfall from June to September, tapering into a mild, humid autumn."
+    },
+    "weather_winter": {
+      "icon": "CloudSun",
+      "label": "Winter (Nov–Feb)",
+      "temp_range": "8°C – 25°C",
+      "description": "Cool and dry in the north, with occasional Delhi fog, and mild in the south."
+    },
+    "weather_spring": {
+      "icon": "Flower2",
+      "label": "Spring (Feb–Mar)",
+      "temp_range": "18°C – 30°C",
+      "description": "A brief, pleasant transition before the summer heat sets in."
+    },
+    "population": 1476625576,
+    "timezone": "UTC+5:30 (IST)",
+    "meta_title": "Study in India | Universities, Visas & Student Life",
+    "meta_description": "Explore India's higher education system: top institutes like the IITs and IIMs, the student visa process, tuition costs, and student life across its major cities."
+  },
+  {
+    "iso2": "NP",
+    "about": "Nepal's higher-education system is anchored by Tribhuvan University, the country's oldest and largest, alongside a growing number of private colleges. It is almost entirely a source market for international education, with minimal inbound enrollment at Nepali institutions.",
+    "why_study_here": "Nepal is overwhelmingly a source market for international education — most Nepali students who study abroad go elsewhere, and inbound international enrollment at Nepali universities is minimal. Domestically, Tribhuvan University (the country's oldest and largest) and a handful of other public universities offer low-cost programs in medicine, engineering, and the humanities to Nepali students.",
+    "visa_type": "Student Visa",
+    "visa_description": "A renewable visa issued by Nepal's Department of Immigration to foreign nationals enrolled full-time at a recognised Nepali institution.",
+    "visa_processing_time": "1-2 weeks",
+    "visa_fee": "Varies by duration",
+    "avg_tuition_min": 20000,
+    "avg_tuition_max": 150000,
+    "avg_tuition_currency": "NPR",
+    "universities_count_label": "12 universities",
+    "cost_of_living_label": "NPR 15,000-35,000 per month",
+    "work_rights_label": "No formal work-rights framework for int'l students",
+    "weather_summer": {
+      "icon": "CloudRain",
+      "label": "Summer (Jun–Aug)",
+      "temp_range": "20°C – 30°C",
+      "description": "Monsoon season with warm temperatures and frequent heavy rainfall across the country."
+    },
+    "weather_autumn": {
+      "icon": "Sun",
+      "label": "Autumn (Sep–Nov)",
+      "temp_range": "15°C – 25°C",
+      "description": "Clear skies and mild temperatures after the monsoon — the most popular season for trekking and travel."
+    },
+    "weather_winter": {
+      "icon": "CloudSun",
+      "label": "Winter (Dec–Feb)",
+      "temp_range": "2°C – 18°C",
+      "description": "Cool and dry, with chilly mornings and nights; snowfall is common in the high mountains."
+    },
+    "weather_spring": {
+      "icon": "Flower2",
+      "label": "Spring (Mar–May)",
+      "temp_range": "12°C – 25°C",
+      "description": "Warming temperatures and blooming rhododendrons, Nepal's national flower, with occasional pre-monsoon showers."
+    },
+    "population": 29618118,
+    "timezone": "UTC+5:45 (NPT)",
+    "meta_title": "Nepal — Education Landscape & Student Life | Globaly",
+    "meta_description": "An overview of Nepal's higher-education system, climate, and cost of living — Tribhuvan University, domestic tuition, and life across its major cities."
+  },
+  {
+    "iso2": "BD",
+    "about": "Bangladesh has a fast-growing higher-education sector of 160+ public and private universities, led by institutions like Dhaka University and BUET. It is overwhelmingly a source country for outbound students, with inbound enrollment limited mostly to regional students in MBBS and madrasah programs.",
+    "why_study_here": "Bangladesh's own universities, led by public institutions like Dhaka University and Bangladesh University of Engineering and Technology, serve a large domestic student body. Inbound international enrollment is minimal and mostly limited to a small number of regional students in medicine and religious studies programs.",
+    "visa_type": "Student Visa",
+    "visa_description": "Issued to the small number of foreign nationals (mainly regional students in MBBS and madrasah programs) admitted to a Bangladeshi institution; requires an admission letter from the institution and NOC clearance.",
+    "visa_processing_time": "2-4 weeks",
+    "visa_fee": "Varies by nationality",
+    "avg_tuition_min": 200000.0,
+    "avg_tuition_max": 800000.0,
+    "avg_tuition_currency": "BDT",
+    "student_count_label": "~4.6M",
+    "universities_count_label": "160 universities",
+    "cost_of_living_label": "BDT 15,000-30,000 per month",
+    "work_rights_label": "No formal student work-visa scheme",
+    "weather_summer": {
+      "icon": "Sun",
+      "label": "Summer (Mar-May)",
+      "temp_range": "25°C - 36°C",
+      "description": "Hot and humid pre-monsoon season with occasional severe thunderstorms."
+    },
+    "weather_autumn": {
+      "icon": "CloudRain",
+      "label": "Monsoon (Jun-Sep)",
+      "temp_range": "26°C - 31°C",
+      "description": "Heavy monsoon rains and high humidity; frequent flooding in low-lying areas."
+    },
+    "weather_winter": {
+      "icon": "CloudFog",
+      "label": "Winter (Dec-Feb)",
+      "temp_range": "12°C - 25°C",
+      "description": "Cool, dry, and the most comfortable season, with morning fog in the north."
+    },
+    "weather_spring": {
+      "icon": "CloudSun",
+      "label": "Autumn (Oct-Nov)",
+      "temp_range": "20°C - 30°C",
+      "description": "Transitional post-monsoon period with clearing skies and moderate humidity."
+    },
+    "population": 175686899,
+    "timezone": "UTC+6 (Bangladesh Standard Time, no DST)",
+    "meta_title": "Bangladesh | Higher Education & Country Overview",
+    "meta_description": "An overview of Bangladesh's higher-education landscape: domestic universities, tuition costs, and cost of living, for a country that is primarily a source of international students."
+  }
+]

@@ -1,9 +1,16 @@
+"use client";
+
+import { useState } from "react";
 import {
   BarChart3, BookOpen, Briefcase, Cpu, FlaskConical, GraduationCap, Heart, Landmark, Languages,
   Leaf, Music, Palette, PenTool, Plane, Scale, Stethoscope, Wrench, type LucideIcon,
 } from "lucide-react";
+import { Pagination } from "@/components/ui/pagination";
 import { ProfileSection } from "../../../components/profile/profile-section";
 import { DEGREE_LABEL, type SubjectAreaSummary } from "../../../search/types";
+import { amountLabel } from "@/lib/utils";
+
+const PAGE_SIZE = 6;
 
 /* ── Subject-area icon mapper (ported from V1's BusinessPublicPreview) ── */
 const AREA_ICONS: Record<string, LucideIcon> = {
@@ -31,16 +38,6 @@ function areaIcon(areaName: string): LucideIcon {
   return BookOpen;
 }
 
-/** Intl rejects anything that isn't a 3-letter code, and scraped rows carry things like "AUD$". */
-function formatCost(value: number, currency: string | null) {
-  const code = (/[A-Za-z]{3}/.exec(currency ?? "")?.[0] ?? "USD").toUpperCase();
-  try {
-    return new Intl.NumberFormat("en", { style: "currency", currency: code, maximumFractionDigits: 0 }).format(value);
-  } catch {
-    return `${code} ${Math.round(value).toLocaleString()}`;
-  }
-}
-
 /**
  * V1's subject-area grid: one tile per area with its icon, course count, degree-level spread and
  * the fee range across the courses it holds.
@@ -48,12 +45,15 @@ function formatCost(value: number, currency: string | null) {
 export function InstitutionSubjectAreas({
   areas, courseCount,
 }: Readonly<{ areas: SubjectAreaSummary[]; courseCount: number }>) {
+  const [page, setPage] = useState(1);
   if (areas.length === 0) return null;
+
+  const visible = areas.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   return (
     <ProfileSection icon={BookOpen} title={`Courses (${courseCount})`}>
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
-        {areas.map((area) => {
+        {visible.map((area) => {
           const AreaIcon = areaIcon(area.name);
           return (
             <div key={area.name} className="space-y-2 rounded-xl border border-border bg-card p-4">
@@ -76,15 +76,16 @@ export function InstitutionSubjectAreas({
 
               {area.cost_min != null && area.cost_max != null && (
                 <p className="text-base font-semibold text-muted-foreground">
-                  {area.cost_min === area.cost_max
-                    ? formatCost(area.cost_min, area.currency)
-                    : `${formatCost(area.cost_min, area.currency)} – ${formatCost(area.cost_max, area.currency)}`}
+                  {amountLabel(area.cost_min, area.currency, area.cost_min === area.cost_max ? null : area.cost_max)}
                 </p>
               )}
             </div>
           );
         })}
       </div>
+      {areas.length > PAGE_SIZE && (
+        <Pagination page={page} total={areas.length} limit={PAGE_SIZE} onPageChange={setPage} align="end" />
+      )}
     </ProfileSection>
   );
 }

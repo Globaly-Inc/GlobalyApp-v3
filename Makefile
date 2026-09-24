@@ -86,6 +86,9 @@ down-scholarship-bulk-delete:
 restart:
 	docker compose restart
 
+migrator:
+	docker compose --profile migrator run --rm migrator
+
 migrate-globalyapp:
 	docker compose exec backend npm run migrate:globalyapp
 
@@ -172,6 +175,7 @@ help:
 	@echo "  down-scholarship-import     Stop only the scholarship-import-worker"
 	@echo "  down-scholarship-bulk-delete Stop only the scholarship-bulk-delete-worker"
 	@echo "  restart                     Restart running services"
+	@echo "  migrator                    Run one-off DB bootstrap (schema/extension) + migrations, with optional seeding"
 	@echo "  migrate-globalyapp          Run globalyapp DB migrations"
 	@echo "  migrate-superadmin          Run superadmin DB migrations"
 	@echo "  migrate-tenants             Run tenant DB migrations"
@@ -196,7 +200,7 @@ help:
 	up-extraction up-extraction-pages up-extraction-verify up-extraction-step up-extraction-schedule up-extraction-agentcis up-ai-knowledge-crawl up-ai-knowledge-recrawl up-scholarship-import up-scholarship-bulk-delete \
 	down down-workers \
 	down-extraction down-extraction-pages down-extraction-verify down-extraction-step down-extraction-schedule down-extraction-agentcis down-ai-knowledge-crawl down-ai-knowledge-recrawl down-scholarship-import down-scholarship-bulk-delete \
-	restart migrate-globalyapp migrate-superadmin migrate-tenants seed-globalyapp seed-superadmin \
+	restart migrator migrate-globalyapp migrate-superadmin migrate-tenants seed-globalyapp seed-superadmin \
 	logs-frontend logs-backend logs-workers \
 	logs-extraction logs-extraction-pages logs-extraction-verify logs-extraction-step logs-extraction-schedule logs-extraction-agentcis logs-ai-knowledge-crawl logs-ai-knowledge-recrawl logs-scholarship-import logs-scholarship-bulk-delete \
 	ps help

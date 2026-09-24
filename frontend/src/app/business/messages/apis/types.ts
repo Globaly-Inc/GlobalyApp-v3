@@ -7,7 +7,7 @@
 // the neutral `counterpart_name`/`counterpart_avatar`, and the two mappers below are that
 // translation, applied once at the api boundary.
 
-import type { ChatThread, EnquiryMessage, StarredMessage } from "@/components/chat/types";
+import type { ChatThread, EnquiryMessage, StarredMessage, ThreadRole } from "@/components/chat/types";
 
 export type {
   ChatThread,
@@ -21,6 +21,12 @@ export type {
 export interface BusinessThreadWire {
   distribution_id: string;
   enquiry_id: string;
+  /** The thread's shared name, or null when nobody has named it. */
+  title: string | null;
+  /** Signed URL for the thread's shared picture, or null when nobody has set one. */
+  thread_photo: string | null;
+  /** This agent's role on the thread — admins may rename it. */
+  my_role: ThreadRole;
   student_name: string;
   student_avatar: string | null;
   course_name: string;
@@ -45,6 +51,9 @@ export interface BusinessStarredWire extends EnquiryMessage {
 export const toChatThread = (t: BusinessThreadWire): ChatThread => ({
   distribution_id: t.distribution_id,
   enquiry_id: t.enquiry_id,
+  title: t.title,
+  thread_photo: t.thread_photo,
+  my_role: t.my_role,
   counterpart_name: t.student_name,
   counterpart_avatar: t.student_avatar,
   course_name: t.course_name,
@@ -61,3 +70,23 @@ export const toStarredMessage = (m: BusinessStarredWire): StarredMessage => ({
   ...m,
   counterpart_name: m.student_name,
 });
+
+// ── Thread membership (the Space roster) ──
+
+// The roster types live in @/components/chat/types — ThreadMembersSection is shared with the
+// personal portal, so a type owned by one feature's apis/ folder would make the other import
+// across features. Re-exported so this module's own consumers still find them here.
+export type {
+  ThreadRole,
+  ThreadMember,
+  ThreadMembersResult,
+  ThreadMembersApi,
+} from "@/components/chat/types";
+
+export type MemberCandidate = {
+  platform_user_id: number;
+  first_name: string | null;
+  last_name: string | null;
+  email: string | null;
+  photo_url: string | null;
+};

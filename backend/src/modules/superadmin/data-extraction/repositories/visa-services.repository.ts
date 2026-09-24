@@ -10,6 +10,11 @@ export async function listVisaServicesByJob(jobId: string, status?: string) {
   return q;
 }
 
+export async function countVisaServicesByJob(jobId: string) {
+  const [row] = await masterKnex(T).where({ job_id: jobId }).count("id as count");
+  return Number(row.count);
+}
+
 // Powers a status filter dropdown, same pattern as courses.repository's countCoursesByStatus.
 export async function countVisaServicesByStatus(jobId: string) {
   const rows = await masterKnex(T)
@@ -20,10 +25,10 @@ export async function countVisaServicesByStatus(jobId: string) {
   return rows.map((r) => ({ status: (r.status as string | null) ?? "pending", count: Number(r.count) }));
 }
 
-export async function updateVisaService(id: string, data: Record<string, unknown>) {
+export async function updateVisaService(id: string, data: Record<string, unknown>, adminId: number) {
   const count = await masterKnex(T)
     .where({ id })
-    .update({ ...data, updated_at: masterKnex.fn.now() });
+    .update({ ...data, updated_at: masterKnex.fn.now(), updated_by_platform_user_id: adminId });
   return count > 0;
 }
 

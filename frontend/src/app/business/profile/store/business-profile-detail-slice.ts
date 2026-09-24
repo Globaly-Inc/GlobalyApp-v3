@@ -12,26 +12,32 @@ import type {
 } from "../apis/types";
 
 // ─── Branches ────────────────────────────────────────────────────────────────
+// getOrgBase routes an institution session to /institutions/branches (institution-branches.routes.ts
+// backend) instead of /businesses/branches — same table, different owning entity.
 export const fetchBranches = createAsyncThunk(
   "businessProfileDetail/fetchBranches",
-  ({ params }: { id: number; params?: BranchListParams }) => businessProfileDetailApi.getBranches(params),
+  ({ id, params }: { id: number; params?: BranchListParams }, { getState }) =>
+    businessProfileDetailApi.getBranches(params, getOrgBase(getState)),
 );
 export const createBranch = createAsyncThunk(
   "businessProfileDetail/createBranch",
-  ({ input }: { id: number; input: BranchInput }) => businessProfileDetailApi.createBranch(input),
+  ({ id, input }: { id: number; input: BranchInput }, { getState }) =>
+    businessProfileDetailApi.createBranch(input, getOrgBase(getState)),
 );
 export const updateBranch = createAsyncThunk(
   "businessProfileDetail/updateBranch",
-  ({ branchId, patch }: { id: number; branchId: string; patch: BranchPatch }) => businessProfileDetailApi.updateBranch(branchId, patch),
+  ({ id, branchId, patch }: { id: number; branchId: string; patch: BranchPatch }, { getState }) =>
+    businessProfileDetailApi.updateBranch(branchId, patch, getOrgBase(getState)),
 );
+// No orgBase — linking another registered business as a branch has no institution twin.
 export const linkExistingBranch = createAsyncThunk(
   "businessProfileDetail/linkExistingBranch",
   ({ input }: { id: number; input: LinkExistingBranchInput }) => businessProfileDetailApi.linkExistingBranch(input),
 );
 export const deleteBranch = createAsyncThunk(
   "businessProfileDetail/deleteBranch",
-  async ({ branchId }: { id: number; branchId: string }) => {
-    await businessProfileDetailApi.deleteBranch(branchId);
+  async ({ id, branchId }: { id: number; branchId: string }, { getState }) => {
+    await businessProfileDetailApi.deleteBranch(branchId, getOrgBase(getState));
     return branchId;
   },
 );
@@ -109,25 +115,43 @@ export const resendInvitation = createAsyncThunk(
 );
 
 // ─── Roles (Members → Roles sub-tab) ─────────────────────────────────────────
-// ponytail: orgBase switches the API prefix for institution tokens (/institutions/roles vs /businesses/roles)
+// orgBase switches the API prefix for institution tokens (/institutions/roles vs /businesses/roles).
+// Keyed on the SESSION'S ACTIVE ORG (`auth.user.orgId`, the schema_name UUID the JWT is currently
+// switched into), matched against `institutions[].org_id` — never `user_category` (only names a
+// dual-role account's highest-priority role, wrong for a session actively switched into the
+// other org) and never a numeric business/institution `id` (business and institution ids are
+// separate sequences that can collide — a dual-role user can own a business AND an institution
+// that share the same numeric id, and matching on that picks whichever table happens to have a
+// row at that id first, regardless of which org is actually active). schema_name is a UUID, so
+// it can't collide across tables the way the numeric ids can.
 function getOrgBase(getState: () => unknown): string {
-  const state = getState() as { auth?: { user?: { user_category?: string | null } } };
-  return state.auth?.user?.user_category === "institution" ? "/institutions" : "/businesses";
+  const state = getState() as {
+    auth?: { user?: { orgId?: string | null; institutions?: { org_id: string }[] } };
+  };
+  const orgId = state.auth?.user?.orgId;
+  const isInstitution = !!orgId && !!state.auth?.user?.institutions?.some((i) => i.org_id === orgId);
+  return isInstitution ? "/institutions" : "/businesses";
 }
 
-export const fetchRoles = createAsyncThunk("businessProfileDetail/fetchRoles", (_: void, { getState }) => businessProfileDetailApi.getRoles(getOrgBase(getState)));
-export const fetchPermissions = createAsyncThunk("businessProfileDetail/fetchPermissions", (_: void, { getState }) => businessProfileDetailApi.getPermissions(getOrgBase(getState)));
+export const fetchRoles = createAsyncThunk(
+  "businessProfileDetail/fetchRoles",
+  ({ id }: { id: number }, { getState }) => businessProfileDetailApi.getRoles(getOrgBase(getState)),
+);
+export const fetchPermissions = createAsyncThunk(
+  "businessProfileDetail/fetchPermissions",
+  ({ id }: { id: number }, { getState }) => businessProfileDetailApi.getPermissions(getOrgBase(getState)),
+);
 export const createRole = createAsyncThunk(
   "businessProfileDetail/createRole",
-  ({ input }: { input: RoleCreateInput }, { getState }) => businessProfileDetailApi.createRole(input, getOrgBase(getState)),
+  ({ id, input }: { id: number; input: RoleCreateInput }, { getState }) => businessProfileDetailApi.createRole(input, getOrgBase(getState)),
 );
 export const updateRole = createAsyncThunk(
   "businessProfileDetail/updateRole",
-  ({ roleId, patch }: { roleId: number; patch: RolePatch }, { getState }) => businessProfileDetailApi.updateRole(roleId, patch, getOrgBase(getState)),
+  ({ id, roleId, patch }: { id: number; roleId: number; patch: RolePatch }, { getState }) => businessProfileDetailApi.updateRole(roleId, patch, getOrgBase(getState)),
 );
 export const deleteRole = createAsyncThunk(
   "businessProfileDetail/deleteRole",
-  async ({ roleId }: { roleId: number }, { getState }) => {
+  async ({ id, roleId }: { id: number; roleId: number }, { getState }) => {
     await businessProfileDetailApi.deleteRole(roleId, getOrgBase(getState));
     return roleId;
   },
@@ -136,22 +160,22 @@ export const deleteRole = createAsyncThunk(
 // ─── Relations (Partners tab) ─────────────────────────────────────────────────
 export const fetchRelations = createAsyncThunk(
   "businessProfileDetail/fetchRelations",
-  ({ params }: { id: number; params?: RelationListParams }, { getState }) =>
+  ({ id, params }: { id: number; params?: RelationListParams }, { getState }) =>
     businessProfileDetailApi.getRelations(params, getOrgBase(getState)),
 );
 export const createRelation = createAsyncThunk(
   "businessProfileDetail/createRelation",
-  ({ input }: { id: number; input: RelationInput }, { getState }) =>
+  ({ id, input }: { id: number; input: RelationInput }, { getState }) =>
     businessProfileDetailApi.createRelation(input, getOrgBase(getState)),
 );
 export const updateRelation = createAsyncThunk(
   "businessProfileDetail/updateRelation",
-  ({ relationId, patch }: { id: number; relationId: string; patch: RelationPatch }, { getState }) =>
+  ({ id, relationId, patch }: { id: number; relationId: string; patch: RelationPatch }, { getState }) =>
     businessProfileDetailApi.updateRelation(relationId, patch, getOrgBase(getState)),
 );
 export const deleteRelation = createAsyncThunk(
   "businessProfileDetail/deleteRelation",
-  async ({ relationId }: { id: number; relationId: string }, { getState }) => {
+  async ({ id, relationId }: { id: number; relationId: string }, { getState }) => {
     await businessProfileDetailApi.deleteRelation(relationId, getOrgBase(getState));
     return relationId;
   },
@@ -199,8 +223,21 @@ type ListState<T> = { items: T[]; status: "idle" | "loading" | "failed"; error: 
 
 const emptyList = <T,>(): ListState<T> => ({ items: [], status: "idle", error: null, total: 0 });
 
+/**
+ * The one list read from two places — the Locations card (first page, unfiltered) and the Branches
+ * tab (its own search/page) — and the session can switch business under both, so the rows carry
+ * who they belong to and which request produced them:
+ *
+ * - `ownerId` keys the rows to a business. Consumers render them only while it matches the
+ *   business on screen, so a switch can't leave another company's addresses (and edit controls)
+ *   on the page in the window before the new request is dispatched, or after one fails.
+ * - `requestId` keeps the newest request authoritative, so a slower earlier one resolving after
+ *   it can't overwrite the current result.
+ */
+type BranchListState = ListState<Branch> & { ownerId: number | null; requestId: string | null };
+
 type BusinessProfileDetailState = {
-  branches: ListState<Branch>;
+  branches: BranchListState;
   services: ListState<BusinessService>;
   members: ListState<Member>;
   invitations: ListState<InvitedMember>;
@@ -213,7 +250,7 @@ type BusinessProfileDetailState = {
 };
 
 const initialState: BusinessProfileDetailState = {
-  branches: emptyList(), services: emptyList(), members: emptyList(), invitations: emptyList(),
+  branches: { ...emptyList<Branch>(), ownerId: null, requestId: null }, services: emptyList(), members: emptyList(), invitations: emptyList(),
   memberRoles: [], roles: emptyList(), permissions: [], relations: emptyList(), scholarships: emptyList(), activity: emptyList(),
 };
 
@@ -223,17 +260,38 @@ const businessProfileDetailSlice = createSlice({
   reducers: {},
   extraReducers: (builder) => {
     builder
-      .addCase(fetchBranches.pending, (state) => { state.branches.status = "loading"; })
-      .addCase(fetchBranches.fulfilled, (state, action) => {
-        state.branches = { items: action.payload.data, status: "idle", error: null, total: action.payload.total };
+      // A request for another business drops the rows on the spot rather than leaving them
+      // readable until its response lands.
+      .addCase(fetchBranches.pending, (state, action) => {
+        if (state.branches.ownerId !== action.meta.arg.id) state.branches = { ...emptyList<Branch>(), ownerId: action.meta.arg.id, requestId: null };
+        state.branches.status = "loading";
+        state.branches.requestId = action.meta.requestId;
       })
-      .addCase(fetchBranches.rejected, (state, action) => { state.branches.status = "failed"; state.branches.error = action.error.message ?? "Failed to load branches."; })
-      .addCase(createBranch.fulfilled, (state, action) => { state.branches.items.push(action.payload); state.branches.total += 1; })
+      .addCase(fetchBranches.fulfilled, (state, action) => {
+        if (state.branches.requestId !== action.meta.requestId) return;
+        state.branches = { items: action.payload.data, status: "idle", error: null, total: action.payload.total, ownerId: action.meta.arg.id, requestId: action.meta.requestId };
+      })
+      .addCase(fetchBranches.rejected, (state, action) => {
+        if (state.branches.requestId !== action.meta.requestId) return;
+        state.branches.status = "failed";
+        state.branches.error = action.error.message ?? "Failed to load branches.";
+      })
+      // Guarded like the fetches: a response that arrives after the session moved on belongs to
+      // the business it was created under, not the one now on screen.
+      .addCase(createBranch.fulfilled, (state, action) => {
+        if (state.branches.ownerId !== action.meta.arg.id) return;
+        state.branches.items.push(action.payload);
+        state.branches.total += 1;
+      })
       .addCase(updateBranch.fulfilled, (state, action) => {
         const i = state.branches.items.findIndex((b) => b.id === action.payload.id);
         if (i !== -1) state.branches.items[i] = action.payload;
       })
-      .addCase(linkExistingBranch.fulfilled, (state, action) => { state.branches.items.push(action.payload.branch); state.branches.total += 1; })
+      .addCase(linkExistingBranch.fulfilled, (state, action) => {
+        if (state.branches.ownerId !== action.meta.arg.id) return;
+        state.branches.items.push(action.payload.branch);
+        state.branches.total += 1;
+      })
       .addCase(deleteBranch.fulfilled, (state, action) => {
         const wasPresent = state.branches.items.some((b) => b.id === action.payload);
         state.branches.items = state.branches.items.filter((b) => b.id !== action.payload);

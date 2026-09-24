@@ -1,7 +1,7 @@
 services:
   postgres:
     container_name: globalyapp-postgres
-    image: postgres:17
+    image: pgvector/pgvector:pg17
     ports:
       - "5432:5432"
     environment:
@@ -86,10 +86,101 @@ services:
     networks:
       - globalyapp
 
+  migrator:
+    container_name: globalyapp-migrator
+    image: globalyapp-backend:local
+    profiles: ["migrator"]
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+    tty: true
+    stdin_open: true
+    command: >
+      /bin/bash -c "
+        echo '🔁 Bootstrapping schema/extension and running Knex migrations...' &&
+        PGPASSWORD=\"\$${DB_PASSWORD}\" psql -h \"\$${DB_HOST}\" -p \"\$${DB_PORT}\" -U \"\$${DB_USERNAME}\" -d \"\$${DB_NAME}\" -v ON_ERROR_STOP=1 -c \"CREATE SCHEMA IF NOT EXISTS superadmin AUTHORIZATION globalyapp;\" -c \"CREATE EXTENSION IF NOT EXISTS vector;\" &&
+        npm run migrate:globalyapp &&
+        npm run migrate:superadmin &&
+        read -p '❓ Do you want to seed the database? (y/N): ' seed_choice &&
+        if [ \"\$${seed_choice}\" = \"y\" ] || [ \"\$${seed_choice}\" = \"Y\" ]; then
+          npm run seed:globalyapp &&
+          npm run seed:superadmin &&
+          echo '✅ Database seeded successfully.';
+        fi &&
+        echo '✅ Database setup completed successfully.'
+      "
+
   auth-worker:
     container_name: globalyapp-auth-worker
     image: globalyapp-backend:local
     command: npm run job:auth
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dragonfly:
+        condition: service_started
+      lavinmq:
+        condition: service_started
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
+  # No profile, like auth-worker: both enquiry workers must always run. Without the
+  # match worker nothing consumes `enquiry_created`, so no enquiry is ever distributed;
+  # without the email worker every queued notification sits pending forever.
+  enquiry-match-worker:
+    container_name: globalyapp-enquiry-match-worker
+    image: globalyapp-backend:local
+    command: npm run job:enquiry-match
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dragonfly:
+        condition: service_started
+      lavinmq:
+        condition: service_started
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
+  enquiry-email-worker:
+    container_name: globalyapp-enquiry-email-worker
+    image: globalyapp-backend:local
+    command: npm run job:enquiry-email
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dragonfly:
+        condition: service_started
+      lavinmq:
+        condition: service_started
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
+  site-refresh-worker:
+    container_name: globalyapp-site-refresh-worker
+    image: globalyapp-backend:local
+    command: npm run job:site-refresh
     env_file:
       - ./backend/.env
     depends_on:
@@ -224,6 +315,26 @@ services:
     networks:
       - globalyapp
 
+  extraction-queue-reclaim-worker:
+    container_name: globalyapp-extraction-queue-reclaim-worker
+    image: globalyapp-backend:local
+    profiles: ["globalyapp-extraction-queue-reclaim"]
+    command: npm run job:extraction-queue-reclaim
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dragonfly:
+        condition: service_started
+      lavinmq:
+        condition: service_started
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
   ai-knowledge-crawl-worker:
     container_name: globalyapp-ai-knowledge-crawl-worker
     image: globalyapp-backend:local
@@ -284,6 +395,24 @@ services:
     networks:
       - globalyapp
 
+  extraction-course-bulk-delete-worker:
+    container_name: globalyapp-extraction-course-bulk-delete-worker
+    image: globalyapp-backend:local
+    profiles: ["globalyapp-extraction-course-bulk-delete"]
+    command: npm run job:extraction-course-bulk-delete
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      lavinmq:
+        condition: service_started
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
   import-v2-worker:
     container_name: globalyapp-import-v2-worker
     image: globalyapp-backend:local
@@ -325,6 +454,24 @@ services:
     image: globalyapp-backend:local
     profiles: ["globalyapp-scholarship-bulk-delete"]
     command: npm run job:scholarship-bulk-delete
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      lavinmq:
+        condition: service_started
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
+  blog-generate-worker:
+    container_name: globalyapp-blog-generate-worker
+    image: globalyapp-backend:local
+    profiles: ["globalyapp-blog-generate"]
+    command: npm run job:blog-generate
     env_file:
       - ./backend/.env
     depends_on:
@@ -388,6 +535,9 @@ services:
     container_name: scrapling-mcp
     restart: unless-stopped
     command:
+      - uv
+      - run
+      - scrapling
       - mcp
       - --http
       - --host

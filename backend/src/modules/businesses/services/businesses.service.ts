@@ -1,8 +1,9 @@
 // Business service — registration (provisions schema + creates owner agent), profile management.
 
 import { randomBytes } from "node:crypto";
-import { NotFoundError, ConflictError } from "../../../shared/errors.js";
+import { NotFoundError, ConflictError, BadRequestError } from "../../../shared/errors.js";
 import { generateText } from "../../../shared/ai/gemini.js";
+import { masterKnex } from "../../../core/db/master-pool.js";
 import { getKnex } from "../../../core/db/pool-manager.js";
 import { schemaName } from "../../../core/db/knex.js";
 import { provisionBusinessSchema, provisionOnClaim } from "../../../core/business/provisioner.js";
@@ -16,9 +17,16 @@ import { issueScopedAccessToken, queueEmail } from "../../auth/auth.service.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import { issueCode } from "../../referrals/services/codes.service.js";
 import { createSystemPost } from "../../feed/services/feed.service.js";
-import { guessImageMimeType } from "../../feed/services/feed-media.service.js";
-import type { BusinessRegisterInput, BusinessProfilePatchInput, AiAssistInput } from "../schemas/businesses.schema.js";
+import type {
+  BusinessRegisterInput, BusinessProfilePatchInput, AiAssistInput, StartExtractionInput, SiteUrlsQueryInput,
+  SiteUrlSnapshotQueryInput, SiteUrlSnapshotUpdateInput, SiteUrlRefreshInput,
+} from "../schemas/businesses.schema.js";
 import { generateSubdomain } from "../../../shared/subdomain.js";
+import { createJob, getSelfServiceStatus } from "../../superadmin/data-extraction/services/jobs.service.js";
+import { isInstitutionCategory } from "../../superadmin/data-extraction/repositories/promote.repository.js";
+import { listSiteUrls, getSnapshotMarkdownByUrl, updateSnapshotMarkdown, refreshSiteUrls } from "../../superadmin/data-extraction/services/site-urls.service.js";
+import { getBusinessOnboardingProgress, markCoursesReviewedForBusiness } from "./onboarding-progress.service.js";
+import { getWidgetAnalytics } from "../../ai-counsellor/services/widget-analytics.service.js";
 
 const logger = createChildLogger("businesses-service");
 const CLAIM_TOKEN_TTL_MS = 72 * 60 * 60 * 1000; // 72 hours, matching admin claim-request convention
@@ -65,6 +73,7 @@ export async function registerBusiness(userId: number, input: BusinessRegisterIn
         address: input.address,
         postcode: input.postcode,
         registration_licenses: input.registration_licenses,
+        claim_status: "claimed",
       });
     } catch (err: any) {
       if (err.code !== "23505" || attempt === 4) throw err;
@@ -105,11 +114,13 @@ export async function registerBusiness(userId: number, input: BusinessRegisterIn
     authorId: userId,
     businessId: Number(business.id),
     content: `**@all** 🎉 We've just joined **GlobalyApp**! Excited to be part of the community.`,
+    // Always the landscape banner, never the business's own logo: a square logo forced into
+    // the feed's wide image box gets center-cropped into an unrecognisable zoom.
     media: [
       {
-        storage_path: business.logo_url ?? WELCOME_POST_IMAGE,
+        storage_path: WELCOME_POST_IMAGE,
         type: "image",
-        mime_type: business.logo_url ? guessImageMimeType(business.logo_url) : "image/png",
+        mime_type: "image/png",
       },
     ],
   }).catch((err) => logger.warn("Welcome post creation error", { businessId: business.id, err: err.message }));
@@ -129,29 +140,81 @@ export async function registerBusiness(userId: number, input: BusinessRegisterIn
   };
 }
 
-export async function searchBusinesses(auth: { orgId?: string; orgType?: string }, search: string | undefined, limit: number) {
-  if (auth.orgType === "institution") return repo.searchBusinesses(search, undefined, limit);
+export async function searchBusinesses(
+  auth: { orgId?: string; orgType?: string },
+  search: string | undefined,
+  limit: number,
+  includeInstitutions = false,
+  forPartnerLink = false,
+) {
+  // An institution caller has no business row to exclude — and its own id would exclude an
+  // unrelated business, since the two id spaces collide.
+  if (auth.orgType === "institution") {
+    // Representations picker: an institution may only link a verified consultancy — see
+    // business-representations.service.ts requireVerifiedAgent for the matching server-side
+    // enforcement on the actual link endpoint. The client can't widen this by omitting the flag.
+    const partnerKind = forPartnerLink ? "agent" : undefined;
+    return repo.searchBusinesses(search, undefined, limit, includeInstitutions, partnerKind);
+  }
   const caller = await repo.findBusinessByDbName(auth.orgId!);
   if (!caller) throw new NotFoundError("Business not found");
-  return repo.searchBusinesses(search, caller.id, limit);
+  // Representations picker: only a consultancy (business_type "agent") may link a partner here,
+  // and only a verified institution. A non-agent business gets an empty result — V1 never had
+  // this pairing either.
+  if (forPartnerLink) {
+    const partnerKind = caller.business_type === "agent" ? "institution" : undefined;
+    if (!partnerKind) return [];
+    return repo.searchBusinesses(search, caller.id, limit, includeInstitutions, partnerKind);
+  }
+  return repo.searchBusinesses(search, caller.id, limit, includeInstitutions);
 }
 
 export async function withImagePreviews<
-  T extends { logo_url?: string | null; cover_url?: string | null; gallery_images?: string[] | null },
+  T extends {
+    logo_url?: string | null;
+    cover_url?: string | null;
+    gallery_images?: string[] | null;
+    video_urls?: string[] | null;
+  },
 >(biz: T): Promise<T & { gallery_image_urls?: (string | null)[] }> {
-  const [logo_url, cover_url, gallery_image_urls] = await Promise.all([
+  const [logo_url, cover_url, gallery_image_urls, video_urls] = await Promise.all([
     storage.resolvePreviewUrl(biz.logo_url),
     storage.resolvePreviewUrl(biz.cover_url),
     biz.gallery_images ? Promise.all(biz.gallery_images.map((p) => storage.resolvePreviewUrl(p))) : undefined,
+    biz.video_urls ? Promise.all(biz.video_urls.map((p) => storage.resolvePreviewUrl(p))) : undefined,
   ]);
-  return { ...biz, logo_url, cover_url, ...(gallery_image_urls ? { gallery_image_urls } : {}) };
+  return {
+    ...biz,
+    logo_url,
+    cover_url,
+    // Overwrite in place so the business's own /me profile (which reads `gallery_images`/`video_urls`
+    // directly) gets viewable URLs, while `gallery_image_urls` stays for the public search consumers
+    // that already read that separate field name.
+    ...(gallery_image_urls ? { gallery_images: gallery_image_urls, gallery_image_urls } : {}),
+    ...(video_urls ? { video_urls } : {}),
+  };
+}
+
+/**
+ * Resolves `business_category_id` to the label and icon the profile header renders. Two explicit
+ * fields rather than a nested object, so the /me response stays flat like the rest of the record.
+ */
+async function withCategory<T extends { business_category_id?: number | null }>(
+  biz: T,
+): Promise<T & { business_category_name: string | null; business_category_icon: string | null }> {
+  const category = biz.business_category_id ? await repo.findBusinessCategoryById(biz.business_category_id) : undefined;
+  return {
+    ...biz,
+    business_category_name: category?.name ?? null,
+    business_category_icon: category?.icon ?? null,
+  };
 }
 
 /** Get full business record by schema_name (orgId from JWT). */
 export async function getProfile(orgId: string) {
   const business = await repo.findBusinessByDbName(orgId);
   if (!business) throw new NotFoundError("Business not found");
-  return withImagePreviews(business);
+  return withCategory(await withImagePreviews(business));
 }
 
 /** Update business profile fields by schema_name (orgId from JWT). */
@@ -159,7 +222,137 @@ export async function updateProfile(orgId: string, data: BusinessProfilePatchInp
   const existing = await repo.findBusinessByDbName(orgId);
   if (!existing) throw new NotFoundError("Business not found");
   const updated = await repo.updateBusinessProfile(existing.id, data);
-  return withImagePreviews(updated);
+  return withCategory(await withImagePreviews(updated));
+}
+
+export async function startExtraction(orgId: string, platformUserId: number, input: StartExtractionInput) {
+  const business = await repo.findBusinessByDbName(orgId);
+  if (!business) throw new NotFoundError("Business not found");
+  if (!business.business_category_id || !(await isInstitutionCategory(business.business_category_id))) {
+    throw new BadRequestError("Extraction is only available for institutions");
+  }
+
+  return masterKnex.transaction(async (trx) => {
+    const locked: BusinessRecord | undefined = await trx("businesses").where({ id: business.id }).forUpdate().first();
+    if (!locked) throw new NotFoundError("Business not found");
+    if (locked.source_job_id) throw new ConflictError("Extraction has already been started for this business");
+
+    const website = input.website ?? locked.website;
+    if (!website) throw new BadRequestError("A website is required to start extraction");
+
+    let job: { id: string };
+    try {
+      job = await createJob(
+        {
+          institution_url: website,
+          institution_name: locked.business_name,
+          source_type: "business_self_service",
+          business_category_id: locked.business_category_id ?? undefined,
+        },
+        platformUserId,
+      );
+    } catch (err) {
+      if (err instanceof ConflictError) {
+        throw new ConflictError("An extraction for this website already exists. Contact support.");
+      }
+      throw err;
+    }
+
+    const [updated] = await trx("businesses")
+      .where({ id: business.id })
+      .update({ website, source_job_id: job.id, updated_at: trx.fn.now() })
+      .returning("*");
+    return withCategory(await withImagePreviews(updated));
+  });
+}
+
+/** Progress + counts for the business's own linked extraction job, or null if none started yet. */
+export async function getExtractionStatus(orgId: string) {
+  const business = await repo.findBusinessByDbName(orgId);
+  if (!business) throw new NotFoundError("Business not found");
+  if (!business.source_job_id) return null;
+  return getSelfServiceStatus(business.source_job_id);
+}
+
+/**
+ * The self-service twin of the admin's Site tab (site-urls.service.ts's listSiteUrls, reused
+ * as-is) — scoped to the business's OWN job only, never a client-supplied job id, and forced to
+ * excluded: false since curating what to exclude is an admin job, not something to expose here.
+ */
+export async function getExtractionSiteUrls(orgId: string, query: SiteUrlsQueryInput) {
+  const business = await repo.findBusinessByDbName(orgId);
+  if (!business) throw new NotFoundError("Business not found");
+  if (!business.source_job_id) {
+    return { data: [], meta: { page: query.page, limit: query.limit, total: 0, totalPages: 0 }, counts: null };
+  }
+  return listSiteUrls(business.source_job_id, { ...query, excluded: false });
+}
+
+/** The "View" action's content — same stored snapshot markdown the admin's Snapshots tab shows. */
+export async function getExtractionSiteUrlSnapshot(orgId: string, query: SiteUrlSnapshotQueryInput) {
+  const business = await repo.findBusinessByDbName(orgId);
+  if (!business) throw new NotFoundError("Business not found");
+  if (!business.source_job_id) throw new NotFoundError("No extraction started for this business");
+  return getSnapshotMarkdownByUrl(business.source_job_id, query.url);
+}
+
+/** Write half of the above — the owner correcting what was scraped from their own page. */
+export async function updateExtractionSiteUrlSnapshot(orgId: string, input: SiteUrlSnapshotUpdateInput, editorId: number) {
+  const business = await repo.findBusinessByDbName(orgId);
+  if (!business) throw new NotFoundError("Business not found");
+  if (!business.source_job_id) throw new NotFoundError("No extraction started for this business");
+  return updateSnapshotMarkdown(business.source_job_id, input.url, input.markdown, editorId);
+}
+
+/** Re-pull one or more of the business's own pages from the live site. */
+export async function refreshExtractionSiteUrls(orgId: string, input: SiteUrlRefreshInput, editorId: number) {
+  const business = await repo.findBusinessByDbName(orgId);
+  if (!business) throw new NotFoundError("Business not found");
+  if (!business.source_job_id) throw new NotFoundError("No extraction started for this business");
+  return refreshSiteUrls(business.source_job_id, input.urls, editorId);
+}
+
+export async function getOnboardingProgress(orgId: string) {
+  const business = await repo.findBusinessByDbName(orgId);
+  if (!business) throw new NotFoundError("Business not found");
+  return getBusinessOnboardingProgress(
+    Number(business.id), business.source_job_id, business.schema_name, business.business_category_id ?? null,
+  );
+}
+
+export async function markOnboardingCoursesReviewed(orgId: string) {
+  const business = await repo.findBusinessByDbName(orgId);
+  if (!business) throw new NotFoundError("Business not found");
+  await markCoursesReviewedForBusiness(Number(business.id));
+  return { reviewed: true };
+}
+
+export async function getMyWidgetAnalytics(orgId: string) {
+  const business = await repo.findBusinessByDbName(orgId);
+  if (!business) throw new NotFoundError("Business not found");
+  return getWidgetAnalytics({ kind: "business", id: Number(business.id) }, Number(business.id), business.schema_name);
+}
+
+/**
+ * The claim link for a business nobody owns yet — the twin of `mintInstitutionClaimUrl`, and
+ * exported for the same reason: an enquiry matching an unclaimed business has to put a way in
+ * inside its notification, or the mail asks someone to sign into an account that cannot be
+ * signed into.
+ *
+ * Reuses a live token rather than replacing it. There is only one `claim_token` column, so
+ * minting per enquiry invalidated every acquisition mail already in the inbox — see
+ * `ensureClaimToken`.
+ *
+ * Returns null when the listing has already been claimed, so the caller can stop asking for a
+ * claim it no longer needs.
+ */
+export async function mintBusinessClaimUrl(businessId: string | number): Promise<string | null> {
+  const token = await repo.ensureClaimToken(
+    businessId,
+    randomBytes(32).toString("hex"),
+    new Date(Date.now() + CLAIM_TOKEN_TTL_MS),
+  );
+  return token ? `${config.WEB_APP_URL}/invite/business/accept?token=${token}` : null;
 }
 
 /**
@@ -173,10 +366,9 @@ export async function requestClaimByEmail(email: string): Promise<void> {
   const business = await repo.findUnclaimedBusinessByContactEmail(email);
   if (!business) return;
 
-  const token = randomBytes(32).toString("hex");
-  await repo.setClaimPending(business.id, token, new Date(Date.now() + CLAIM_TOKEN_TTL_MS));
-
-  const claimUrl = `${config.WEB_APP_URL}/invite/business/accept?token=${token}`;
+  const claimUrl = await mintBusinessClaimUrl(business.id);
+  // Null means it was claimed between the lookup above and the write — nothing left to send.
+  if (!claimUrl) return;
   // Personalise only if someone already registered on this address; otherwise stay generic,
   // since the listing itself has no name for a person.
   const existingUser = await userRepo.findByEmail(email);

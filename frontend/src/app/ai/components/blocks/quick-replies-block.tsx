@@ -1,53 +1,76 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type KeyboardEvent } from "react";
+import { ArrowUp } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { ResponseBlock } from "../../apis/types";
 
 type QuickRepliesBlockProps = {
   block: Extract<ResponseBlock, { type: "quick_replies" }>;
-  /** Tapping an option or submitting the custom field sends its value as the user's next message. */
   onAction?: (value: string) => void;
+  onSend?: (value: string) => void;
 };
 
-/** Tappable answer options for a question the counsellor asked, plus a free-text fallback. */
-export function QuickRepliesBlock({ block, onAction }: QuickRepliesBlockProps) {
-  const [custom, setCustom] = useState("");
+/** Tappable answer options for a question the counsellor asked. Multi-select populates the input below. */
+export function QuickRepliesBlock({ block, onAction, onSend }: QuickRepliesBlockProps) {
+  const [selected, setSelected] = useState<string[]>([]);
+  const [text, setText] = useState("");
 
-  const submitCustom = () => {
-    const val = custom.trim();
-    if (!val) return;
-    onAction?.(val);
-    setCustom("");
+  const toggle = (value: string) => {
+    const next = selected.includes(value)
+      ? selected.filter((v) => v !== value)
+      : [...selected, value];
+    setSelected(next);
+    const composed =
+      next.length === 0 ? "" : next.length === 1 ? next[0]! : next.map((v) => `• ${v}`).join("\n");
+    setText(composed);
+    onAction?.(composed);
+  };
+
+  const handleTextChange = (value: string) => {
+    setText(value);
+    setSelected([]);
+    onAction?.(value);
+  };
+
+  const submit = () => {
+    if (!text.trim()) return;
+    onSend?.(text.trim());
+    setText("");
+    setSelected([]);
+  };
+
+  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") { e.preventDefault(); submit(); }
   };
 
   return (
-    <div className="w-full max-w-[85%]">
-      {block.question && <p className="mb-1.5 text-xs font-medium text-muted-foreground">{block.question}</p>}
+    <div className="w-full max-w-[85%] space-y-2">
+      {block.question && <p className="text-xs font-medium text-muted-foreground">{block.question}</p>}
       <div className="flex flex-wrap gap-1.5">
         {block.options.map((option) => (
           <Button
             key={option.label}
-            variant="secondary"
+            variant={selected.includes(option.value) ? "default" : "secondary"}
             size="sm"
             className="rounded-full"
-            onClick={() => onAction?.(option.value)}
+            onClick={() => toggle(option.value)}
           >
             {option.label}
           </Button>
         ))}
       </div>
-      <div className="mt-2 flex gap-2">
+      <div className="flex gap-2">
         <Input
-          placeholder="Or type your own answer…"
-          value={custom}
-          onChange={(e) => setCustom(e.target.value)}
-          onKeyDown={(e) => e.key === "Enter" && submitCustom()}
-          className="h-8 text-xs"
+          value={text}
+          onChange={(e) => handleTextChange(e.target.value)}
+          onKeyDown={handleKeyDown}
+          placeholder="Type your answer or select from above…"
+          className="text-sm"
         />
-        <Button size="sm" variant="outline" disabled={!custom.trim()} onClick={submitCustom}>
-          Send
+        <Button size="icon" onClick={submit} disabled={!text.trim()} aria-label="Send" className="shrink-0 rounded-full">
+          <ArrowUp className="size-4" />
         </Button>
       </div>
     </div>

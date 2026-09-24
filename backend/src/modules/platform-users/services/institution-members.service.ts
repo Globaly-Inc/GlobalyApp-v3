@@ -24,6 +24,7 @@ import { createChildLogger } from "../../../shared/logger.js";
 import { NotFoundError, ConflictError, UnauthorizedError, BadRequestError } from "../../../shared/errors.js";
 import { paginationToOffset, buildPaginatedResponse } from "../../../shared/pagination.js";
 import type { PaginationInput } from "../../../shared/pagination.js";
+import type { ContactInput, ContactPatch } from "../../agents/schemas/agents.schema.js";
 import { getKnex } from "../../../core/db/pool-manager.js";
 import { masterKnex } from "../../../core/db/master-pool.js";
 import { queueInvitationEmail } from "../../auth/auth.service.js";
@@ -59,13 +60,27 @@ export async function addMember(tenantDb: Knex, institutionId: number, input: In
       role: input.role,
       is_owner: isOwner,
       account_status: 1,
+      // Accepting an invite makes this a real member — clears is_contact_only so it lands in
+      // Users. Deliberately NOT touching admin_point_of_contact: a pre-existing "Add Contact"
+      // row may already have that flag, and accepting an invite shouldn't remove them from the
+      // Contacts tab too — they can be both a real user and a point of contact at once.
+      is_contact_only: false,
       first_name: input.first_name,
       last_name: input.last_name,
       email: input.email,
       phone: input.phone,
     })
     .onConflict("platform_user_id")
-    .merge({ role: input.role, is_owner: isOwner, account_status: 1, deleted_at: null });
+    .merge({
+      role: input.role, is_owner: isOwner, account_status: 1, is_contact_only: false, deleted_at: null,
+      // Explicit resets, not omissions — a soft-deleted former member or a dormant "Add Contact"
+      // row being resurrected here must not keep its stale CRM data. An old is_primary: true is
+      // reset too, so accepting a real invite can't collide with another member's primary flag
+      // (addMember never calls a resetPrimaryMembers-equivalent since a fresh accept is never
+      // itself flagged primary through the invite).
+      job_title: null, department: null, linkedin_url: null, other_url: null,
+      tags: [], preferred_channel: null, is_primary: false, notes: null,
+    });
 
   await repo.insertUserInstitutionIndex({
     platform_user_id: input.platform_user_id,
@@ -116,7 +131,9 @@ export async function removeMember(tenantDb: Knex, institutionId: number, platfo
 
 const MEMBER_COLUMNS = [
   "id", "platform_user_id", "role", "is_owner", "account_status",
-  "first_name", "last_name", "email", "phone", "created_at",
+  "first_name", "last_name", "email", "phone", "created_at", "updated_at",
+  "admin_point_of_contact", "job_title", "department", "linkedin_url", "other_url",
+  "tags", "preferred_channel", "is_primary", "notes",
 ] as const;
 
 interface MemberRow {
@@ -130,6 +147,17 @@ interface MemberRow {
   email: string | null;
   phone: string | null;
   created_at: Date;
+  updated_at: Date;
+  admin_point_of_contact: boolean;
+  is_contact_only: boolean;
+  job_title: string | null;
+  department: string | null;
+  linkedin_url: string | null;
+  other_url: string | null;
+  tags: string[];
+  preferred_channel: string | null;
+  is_primary: boolean;
+  notes: string | null;
 }
 
 /** Shapes a `members` row to the same field names as businesses' agent list (role_id/role_display/
@@ -153,15 +181,24 @@ async function enrichMembers(members: MemberRow[]) {
       role_display: member.role,
       is_owner: member.is_owner,
       account_status: member.account_status,
-      admin_point_of_contact: false,
+      admin_point_of_contact: member.admin_point_of_contact,
       position: null,
       is_public: true,
       created_at: member.created_at,
+      updated_at: member.updated_at,
       first_name: user?.first_name ?? member.first_name,
       last_name: user?.last_name ?? member.last_name,
       email: user?.email ?? member.email,
       phone: user?.phone ?? member.phone,
       photo_url: user?.photo_url ?? null,
+      job_title: member.job_title,
+      department: member.department,
+      linkedin_url: member.linkedin_url,
+      other_url: member.other_url,
+      tags: member.tags ?? [],
+      preferred_channel: member.preferred_channel,
+      is_primary: member.is_primary,
+      notes: member.notes,
     };
   });
 }
@@ -178,13 +215,17 @@ function applyMemberSearch(query: Knex.QueryBuilder, search?: string): Knex.Quer
 /** Self-service member list — the institution twin of agents.service.ts's listAgents. */
 export async function listMembers(tenantDb: Knex, pagination: PaginationInput, search?: string) {
   const { limit, offset } = paginationToOffset(pagination);
+  // Excludes rows that have never been through a real invite-accept (is_contact_only) — a
+  // dormant "Add Contact" row. A row that HAS accepted an invite shows here even if it's also
+  // flagged admin_point_of_contact — Contacts and Users aren't mutually exclusive.
+  const excludeContacts = { is_contact_only: false };
   const [rows, [{ count }]] = await Promise.all([
-    applyMemberSearch(tenantDb<MemberRow>("members").whereNull("deleted_at"), search)
+    applyMemberSearch(tenantDb<MemberRow>("members").whereNull("deleted_at").where(excludeContacts), search)
       .select(MEMBER_COLUMNS as unknown as (keyof MemberRow)[])
       .orderBy("id", "asc")
       .limit(limit)
       .offset(offset),
-    applyMemberSearch(tenantDb("members").whereNull("deleted_at"), search).count("id as count"),
+    applyMemberSearch(tenantDb("members").whereNull("deleted_at").where(excludeContacts), search).count("id as count"),
   ]);
   const enriched = await enrichMembers(rows);
   return buildPaginatedResponse(enriched, Number(count), pagination);
@@ -202,8 +243,11 @@ export async function getMember(tenantDb: Knex, id: number) {
   return enriched;
 }
 
-/** Suspend/reinstate a member — account_status only, same 0/1 convention as agents. */
-export async function setMemberStatus(tenantDb: Knex, platformUserId: number, accountStatus: number) {
+/** Suspend/reinstate a member — account_status only, same 0/1 convention as agents. Mirrored onto
+ * user_institution_index too: that's what resolveOrgScope/listUserInstitutions actually reads on
+ * login, so without this a suspended member could still log in and still had this institution in
+ * their session scope. */
+export async function setMemberStatus(tenantDb: Knex, institutionId: number, platformUserId: number, accountStatus: number) {
   const member = await tenantDb("members")
     .where({ platform_user_id: platformUserId })
     .whereNull("deleted_at")
@@ -211,6 +255,156 @@ export async function setMemberStatus(tenantDb: Knex, platformUserId: number, ac
   if (!member) throw new NotFoundError("Member not found");
   if (member.is_owner && accountStatus !== 1) throw new ConflictError("Cannot suspend the institution owner");
   await tenantDb("members").where({ id: member.id }).update({ account_status: accountStatus, updated_at: tenantDb.fn.now() });
+  await repo.setUserInstitutionIndexStatus(platformUserId, institutionId, accountStatus);
+}
+
+/** Patches the contact/CRM fields on a member row (job_title, department, etc — everything
+ * PATCH /:id needs beyond role/account_status, which updateMemberRole/setMemberStatus already
+ * cover). Keyed by members.id, mirroring agents.service.ts's updateAgent. */
+export async function updateMemberDetails(tenantDb: Knex, id: number, patch: {
+  admin_point_of_contact?: boolean;
+  job_title?: string | null;
+  department?: string | null;
+  linkedin_url?: string | null;
+  other_url?: string | null;
+  tags?: string[];
+  preferred_channel?: string | null;
+  is_primary?: boolean;
+  notes?: string | null;
+}) {
+  if (Object.keys(patch).length === 0) return;
+  await tenantDb("members").where({ id }).whereNull("deleted_at").update({ ...patch, updated_at: tenantDb.fn.now() });
+}
+
+// ── Contacts ("Add Contact" — a dormant member row, not a separate table) ──
+// Institution twin of agents.service.ts's contact functions — same `members` table the Users
+// tab already reads, just viewed/created through a CRM-shaped form. No invite email is sent.
+
+function splitFullName(fullName: string): { first_name: string; last_name: string | null } {
+  const [first, ...rest] = fullName.trim().split(/\s+/);
+  return { first_name: first ?? fullName, last_name: rest.length > 0 ? rest.join(" ") : null };
+}
+
+function toContact(member: any) {
+  return {
+    id: String(member.id),
+    full_name: [member.first_name, member.last_name].filter(Boolean).join(" ") || member.email || "",
+    job_title: member.job_title ?? null,
+    department: member.department ?? null,
+    email: member.email ?? null,
+    phone: member.phone ?? null,
+    phone_country_code: null, // ponytail: not tracked separately on members — phone is stored combined
+    linkedin_url: member.linkedin_url ?? null,
+    other_url: member.other_url ?? null,
+    tags: member.tags ?? [],
+    preferred_channel: member.preferred_channel ?? null,
+    is_primary: member.is_primary ?? false,
+    notes: member.notes ?? null,
+    created_at: member.created_at,
+    updated_at: member.updated_at,
+  };
+}
+
+async function resetPrimaryMembers(tenantDb: Knex, excludeId?: number) {
+  const query = tenantDb("members").where({ is_primary: true }).whereNull("deleted_at");
+  if (excludeId !== undefined) query.whereNot("id", excludeId);
+  await query.update({ is_primary: false });
+}
+
+/** Contacts view of the same members list — all members, primary first. */
+export async function listContacts(tenantDb: Knex, limit: number, offset: number, search?: string) {
+  const [rows, [{ count }]] = await Promise.all([
+    applyMemberSearch(tenantDb<MemberRow>("members").whereNull("deleted_at").where({ admin_point_of_contact: true }), search)
+      .select(MEMBER_COLUMNS as unknown as (keyof MemberRow)[])
+      .orderBy("is_primary", "desc")
+      .orderBy("first_name", "asc")
+      .limit(limit)
+      .offset(offset),
+    applyMemberSearch(tenantDb("members").whereNull("deleted_at").where({ admin_point_of_contact: true }), search).count("id as count"),
+  ]);
+  const enriched = await enrichMembers(rows);
+  return { rows: enriched.map(toContact), total: Number(count) };
+}
+
+/** "Add Contact" — finds or silently creates a dormant platform_user (account_status 0, no
+ * OTP/invite email), then a real member row for them with role "member", is_owner false. */
+export async function createContact(tenantDb: Knex, institutionId: number, input: ContactInput) {
+  let platformUser = await repo.findByEmail(input.email);
+  if (!platformUser) {
+    const { first_name, last_name } = splitFullName(input.full_name);
+    platformUser = await repo.insert({
+      first_name,
+      last_name: last_name ?? "",
+      email: input.email,
+      account_status: 0, // dormant — no OTP/invite email sent
+    });
+  } else {
+    const existing = await invitesRepo.findMemberByPlatformUserId(tenantDb, platformUser.id);
+    if (existing) throw new ConflictError("A member/contact with this email already exists");
+  }
+
+  if (input.is_primary) await resetPrimaryMembers(tenantDb);
+
+  const { first_name, last_name } = splitFullName(input.full_name);
+  const [row] = await tenantDb("members")
+    .insert({
+      platform_user_id: platformUser.id,
+      role: "member",
+      is_owner: false,
+      account_status: 1,
+      // Contacts default to being a point of contact — see listContacts (only shows POC rows).
+      admin_point_of_contact: true,
+      // Not yet a real member — excluded from Users (listMembers) until they accept a real
+      // invite (addMember clears this), independent of the POC flag above.
+      is_contact_only: true,
+      first_name,
+      last_name,
+      email: platformUser.email,
+      phone: input.phone ?? null,
+      job_title: input.job_title ?? null,
+      department: input.department ?? null,
+      linkedin_url: input.linkedin_url ?? null,
+      other_url: input.other_url ?? null,
+      tags: input.tags ?? [],
+      preferred_channel: input.preferred_channel ?? null,
+      is_primary: input.is_primary ?? false,
+      notes: input.notes ?? null,
+      created_at: tenantDb.fn.now(),
+      updated_at: tenantDb.fn.now(),
+    })
+    .returning("*");
+
+  // Deliberately NOT writing user_institution_index here — same reasoning as agents.service.ts's
+  // createContact: that index is what login reads to grant org access, and a dormant contact-only
+  // row (especially for an already-existing, active platformUser found by email above) must not
+  // get it without ever being invited/accepting. Written only on real invite acceptance.
+
+  return toContact(row);
+}
+
+export async function updateContact(tenantDb: Knex, id: number, patch: ContactPatch) {
+  const existing = await tenantDb<MemberRow>("members").where({ id }).whereNull("deleted_at").first();
+  if (!existing) throw new NotFoundError("Contact not found");
+
+  if (patch.is_primary) await resetPrimaryMembers(tenantDb, id);
+
+  const nameFields = patch.full_name !== undefined ? splitFullName(patch.full_name) : {};
+  await tenantDb("members").where({ id }).update({
+    ...nameFields,
+    ...(patch.job_title !== undefined ? { job_title: patch.job_title } : {}),
+    ...(patch.department !== undefined ? { department: patch.department } : {}),
+    ...(patch.linkedin_url !== undefined ? { linkedin_url: patch.linkedin_url } : {}),
+    ...(patch.other_url !== undefined ? { other_url: patch.other_url } : {}),
+    ...(patch.tags !== undefined ? { tags: patch.tags } : {}),
+    ...(patch.preferred_channel !== undefined ? { preferred_channel: patch.preferred_channel } : {}),
+    ...(patch.is_primary !== undefined ? { is_primary: patch.is_primary } : {}),
+    ...(patch.notes !== undefined ? { notes: patch.notes } : {}),
+    ...(patch.phone !== undefined ? { phone: patch.phone } : {}),
+    updated_at: tenantDb.fn.now(),
+  });
+  const [row] = await tenantDb<MemberRow>("members").where({ id }).select(MEMBER_COLUMNS as unknown as (keyof MemberRow)[]);
+  const [enriched] = await enrichMembers([row]);
+  return toContact(enriched);
 }
 
 // ── Invitations ("invited but not yet accepted" members) — mirrors agents.service.ts ──
@@ -277,12 +471,18 @@ async function createInvitation(
   institutionId: number,
   institutionSchemaName: string,
   input: InstitutionInviteInput,
-  invitedByMemberId: number,
+  invitedByMemberId: number | null,
 ) {
   const existingUser = await repo.findByEmail(input.email);
   if (existingUser) {
     const existingMember = await invitesRepo.findMemberByPlatformUserId(tenantDb, existingUser.id);
-    if (existingMember) throw new ConflictError("User is already a member of this institution");
+    // A dormant "Add Contact" row (is_contact_only, never accepted an invite) isn't a real
+    // member yet — inviting them is how they become one. addMember upserts on platform_user_id,
+    // so it safely promotes this same row rather than erroring on a duplicate. Only a genuine
+    // already-accepted member blocks a re-invite.
+    if (existingMember && !existingMember.is_contact_only) {
+      throw new ConflictError("User is already a member of this institution");
+    }
   }
 
   const pending = await invitesRepo.findPendingInvitationByEmail(tenantDb, input.email);
@@ -312,6 +512,8 @@ async function createInvitation(
   return invitation;
 }
 
+/** An institution's own owner inviting a teammate (agents.routes.ts self-service path) —
+ * attributed to that owner's member row, which must already exist since they're the one calling. */
 export async function inviteMemberAsAdmin(
   tenantDb: Knex,
   institutionId: number,
@@ -321,6 +523,21 @@ export async function inviteMemberAsAdmin(
   const owner = await invitesRepo.findOwnerMember(tenantDb);
   if (!owner) throw new NotFoundError("Institution owner member not found");
   return createInvitation(tenantDb, institutionId, institutionSchemaName, input, owner.id);
+}
+
+/** A platform Super Admin inviting a member on the institution's behalf (superadmin platform
+ * businesses.service.ts) — unlike the self-service path above, the institution may not have an
+ * owner member yet at all (e.g. it was created directly by staff and never claimed/onboarded), so
+ * this doesn't require one: invited_by is attributed to the existing owner when there is one, and
+ * left null otherwise rather than blocking the very first invite an institution ever gets. */
+export async function inviteMemberAsSuperadmin(
+  tenantDb: Knex,
+  institutionId: number,
+  institutionSchemaName: string,
+  input: InstitutionInviteInput,
+) {
+  const owner = await invitesRepo.findOwnerMember(tenantDb);
+  return createInvitation(tenantDb, institutionId, institutionSchemaName, input, owner?.id ?? null);
 }
 
 export async function acceptMemberInvitation(institutionSchemaName: string, token: string) {

@@ -106,3 +106,13 @@ export function mapDegreeLevel(level: unknown): string | null {
   }
   return DEGREE_MAP[coerceLabel(name).toLowerCase().trim()] || null;
 }
+
+const DEGREE_LEVEL_NAME: Record<string, string> = {
+  certificate: "Certificate", diploma: "Diploma", associate: "Associate Degree",
+  bachelor: "Bachelor", graduate_certificate: "Graduate Certificate",
+  graduate_diploma: "Graduate Diploma", master: "Master", doctoral: "PHD",
+};
+
+export function degreeLevelName(slug: string | null): string | null {
+  return slug ? (DEGREE_LEVEL_NAME[slug] ?? null) : null;
+}

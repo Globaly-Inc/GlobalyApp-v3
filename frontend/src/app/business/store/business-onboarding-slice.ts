@@ -1,6 +1,9 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { businessApi } from "../apis";
-import type { BusinessProfile, BusinessProfilePatch, BusinessRegisterInput, InstitutionRegisterInput } from "../apis/types";
+import type {
+  BusinessProfile, BusinessProfilePatch, BusinessRegisterInput, InstitutionRegisterInput, StartExtractionInput,
+  OnboardingProgress,
+} from "../apis/types";
 
 // Result isn't stored in this slice's state — a successful registration hard-navigates
 // to /business (same reload rationale the business switcher already uses), so there's
@@ -24,13 +27,26 @@ export const updateMyProfile = createAsyncThunk(
   (patch: BusinessProfilePatch) => businessApi.updateMyProfile(patch),
 );
 
+// Not routed through the shared "saving" status: the empty-state card tracks its own
+// submitting/error state locally, since a start-extraction failure (e.g. already started,
+// missing website) is specific to that card, not the profile-wide save banner.
+export const startExtraction = createAsyncThunk(
+  "businessOnboarding/startExtraction",
+  (input: StartExtractionInput) => businessApi.startExtraction(input),
+);
+
+export const fetchOnboardingProgress = createAsyncThunk("businessOnboarding/fetchOnboardingProgress", () =>
+  businessApi.getOnboardingProgress(),
+);
+
 type BusinessOnboardingState = {
   profile: BusinessProfile | null;
+  onboardingProgress: OnboardingProgress | null;
   status: "idle" | "loading" | "saving" | "failed";
   error: string | null;
 };
 
-const initialState: BusinessOnboardingState = { profile: null, status: "idle", error: null };
+const initialState: BusinessOnboardingState = { profile: null, onboardingProgress: null, status: "idle", error: null };
 
 const businessOnboardingSlice = createSlice({
   name: "businessOnboarding",
@@ -65,6 +81,12 @@ const businessOnboardingSlice = createSlice({
       .addCase(updateMyProfile.rejected, (state, action) => {
         state.status = "failed";
         state.error = action.error.message ?? "Failed to save.";
+      })
+      .addCase(startExtraction.fulfilled, (state, action) => {
+        state.profile = action.payload;
+      })
+      .addCase(fetchOnboardingProgress.fulfilled, (state, action) => {
+        state.onboardingProgress = action.payload;
       })
       .addCase(registerBusiness.pending, (state) => {
         state.status = "saving";

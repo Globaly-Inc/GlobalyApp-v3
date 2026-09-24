@@ -5,8 +5,8 @@ import { NotFoundError } from "../../../../../shared/errors.js";
 import * as repo from "../repositories/categories.repository.js";
 import type { LookupTable } from "../repositories/categories.repository.js";
 import type {
-  AccreditationInput, CategoryInput, FeeTypeInput, IssuingOrgInput, LookupInput, SchemaFieldInput,
-  SchemaFieldEntityType, TestInput,
+  AccreditationInput, CategoryInput, FeeTypeInput, IssuingOrgInput, LookupInput, RegistrationTypeInput,
+  SchemaFieldInput, SchemaFieldEntityType, TestInput,
 } from "../schemas/categories.schema.js";
 
 export function listSchemaFields(entityType: SchemaFieldEntityType, entityId: number) {
@@ -56,8 +56,23 @@ export const replaceDefaultServices = repo.replaceDefaultServices;
 export const listServiceCategories = repo.listServiceCategories;
 export const countServiceCategories = repo.countServiceCategories;
 
-export function createServiceCategory(data: CategoryInput) {
-  return repo.insertServiceCategory(data);
+// Standard "Course details" fields every service category gets on creation — the service form
+// writes/reads values keyed by a real schema_fields id, and silently drops the selection when
+// none exists for the category. Also reused (not duplicated) by
+// service_category_course_fields_seeder.ts to backfill this onto every category that existed
+// before this field set did.
+export const STANDARD_COURSE_FIELDS: SchemaFieldInput[] = [
+  { key: "degree_level", label: "Degree level", type: "text" },
+  { key: "area_of_study", label: "Area of study", type: "text" },
+  { key: "awarded_by", label: "Awarded by", type: "text" },
+];
+
+export async function createServiceCategory(data: CategoryInput) {
+  const category = await repo.insertServiceCategory(data);
+  await Promise.all(
+    STANDARD_COURSE_FIELDS.map((f) => repo.insertSchemaField("service_categories", category.id, { ...f, is_default: true })),
+  );
+  return category;
 }
 
 export function updateServiceCategory(id: number, data: Partial<CategoryInput>) {
@@ -195,4 +210,30 @@ export async function reviewAccreditation(id: number, decision: "approved" | "re
 export async function deleteAccreditation(id: number) {
   await requireAccreditation(id);
   await repo.deleteAccreditation(id);
+}
+
+// ── Registration Types ──
+
+export const listRegistrationTypes = repo.listRegistrationTypes;
+export const countRegistrationTypes = repo.countRegistrationTypes;
+export const listActiveRegistrationTypes = repo.listActiveRegistrationTypes;
+
+export function createRegistrationType(data: RegistrationTypeInput) {
+  return repo.insertRegistrationType({ ...data, country_id: data.country_id ?? null });
+}
+
+async function requireRegistrationType(id: number) {
+  const row = await repo.findRegistrationTypeById(id);
+  if (!row) throw new NotFoundError("Registration type not found");
+  return row;
+}
+
+export async function updateRegistrationType(id: number, data: Partial<RegistrationTypeInput>) {
+  await requireRegistrationType(id);
+  return repo.updateRegistrationType(id, data);
+}
+
+export async function deleteRegistrationType(id: number) {
+  await requireRegistrationType(id);
+  await repo.deleteRegistrationType(id);
 }

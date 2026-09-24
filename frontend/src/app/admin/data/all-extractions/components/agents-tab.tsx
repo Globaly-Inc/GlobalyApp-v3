@@ -25,6 +25,7 @@ import { latestTimestamp } from "../utils";
 import { EditableField, useFieldSaver, type EditableFieldProps } from "./editable-field";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
+import { RowActors } from "./row-actors";
 import type { AgentFull, AgentRun, ExtractionJob } from "../apis/types";
 
 const DEFAULT_PAGE_SIZE = 10;
@@ -347,6 +348,7 @@ function AgentCard({
           {field(Hash, "Postcode", "postcode", "col-span-2 md:col-span-2")}
           {field(MapPin, "Address", "address", "col-span-2 md:col-span-6", true)}
         </div>
+        <RowActors row={agent} className="border-t border-border pt-2" />
       </CardContent>
     </Card>
   );
@@ -356,12 +358,10 @@ export function AgentsTab({
   jobId,
   job,
   onReload,
-  onJumpToContext,
 }: Readonly<{
   jobId: string;
   job: ExtractionJob;
   onReload: () => void;
-  onJumpToContext: () => void;
 }>) {
   const [agents, setAgents] = useState<AgentFull[]>([]);
   const [total, setTotal] = useState(0);
@@ -460,7 +460,9 @@ export function AgentsTab({
 
   const handleDelete = async (ids: string[]) => {
     const many = ids.length > 1;
-    if (!(await confirm(many ? `Delete ${ids.length} agents?` : "Delete agent?"))) return;
+    if (!(await confirm(many ? `Delete ${ids.length} agents?` : "Delete agent?"))) {
+      return;
+    }
     try {
       await Promise.all(ids.map((id) => allExtractionsApi.deleteAgent(id)));
       setSelectedIds((prev) => prev.filter((id) => !ids.includes(id)));
@@ -484,11 +486,7 @@ export function AgentsTab({
         progress={(job.pipeline_progress as Record<string, unknown> | null)?.agents}
         lastUpdated={latestTimestamp(agents)}
         hasData={total > 0}
-        guidedUrls={job.guided_urls}
-        contextKey="agents_urls"
-        contextLabel="agents URLs"
         onChanged={onReload}
-        onAddContext={onJumpToContext}
       />
 
       <div className="space-y-3">
@@ -552,7 +550,7 @@ export function AgentsTab({
               <Users className="mx-auto mb-3 h-8 w-8 opacity-40" />
               <p className="text-sm">{search.trim() ? "No agents match your search" : "No agents yet"}</p>
               {!search.trim() && (
-                <p className="mt-1 text-xs">Add agent directory URLs in the Context tab, then run the extraction.</p>
+                <p className="mt-1 text-xs">Run the extraction to find agents.</p>
               )}
               {search.trim() && (
                 <Button variant="ghost" size="sm" className="mt-2 gap-1.5 cursor-pointer" onClick={() => setSearch("")}>

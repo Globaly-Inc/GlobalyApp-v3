@@ -8,9 +8,10 @@ import { ThinkingIndicator } from "./thinking-indicator";
 
 type ChatMessagesProps = {
   onChipClick: (chip: string) => void;
+  onSend: (value: string) => void;
 };
 
-export function ChatMessages({ onChipClick }: ChatMessagesProps) {
+export function ChatMessages({ onChipClick, onSend }: ChatMessagesProps) {
   const activeSessionId = useAppSelector((s) => s.aiChat.activeSessionId);
   const messages = useAppSelector((s) => (activeSessionId ? s.aiChat.messages[activeSessionId] ?? [] : []));
   const sendStatus = useAppSelector((s) => s.aiChat.sendStatus);
@@ -36,7 +37,7 @@ export function ChatMessages({ onChipClick }: ChatMessagesProps) {
           bubble used to provide. */}
       <div className="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-6 sm:px-6">
         {messages.map((msg) => (
-          <ChatMessage key={msg.id} message={msg} onChipClick={onChipClick} />
+          <ChatMessage key={msg.id} message={msg} onChipClick={onChipClick} onSend={onSend} />
         ))}
 
         {showThinking && <ThinkingIndicator steps={traceSteps} />}
@@ -48,6 +49,7 @@ export function ChatMessages({ onChipClick }: ChatMessagesProps) {
             chips={streamingChips}
             blocks={streamingBlocks}
             onChipClick={onChipClick}
+            onSend={onSend}
           />
         )}
 

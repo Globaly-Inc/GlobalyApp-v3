@@ -2,6 +2,7 @@ import { GoogleGenerativeAI, type Content, type FunctionCall, type Part, type To
 import { config } from "../../../config.js";
 import { BadRequestError } from "../../../shared/errors.js";
 import { createChildLogger } from "../../../shared/logger.js";
+import { isORConfigured, orStreamChat, orStreamChatWithTools, orGenerateTitle } from "../../../shared/ai/openrouter.js";
 
 const logger = createChildLogger("gemini-stream");
 
@@ -52,51 +53,56 @@ async function withRetry<T>(call: () => Promise<T>): Promise<T> {
 
 /** Stream a multi-turn chat with Gemini. Retries transient errors up to 3 times. */
 export async function streamChat(opts: StreamChatOpts): Promise<StreamChatResult> {
-  const model = getClient().getGenerativeModel({
-    model: config.GEMINI_MODEL,
-    systemInstruction: opts.system,
-  });
+  try {
+    const model = getClient().getGenerativeModel({
+      model: config.GEMINI_MODEL,
+      systemInstruction: opts.system,
+    });
 
-  for (let attempt = 0; attempt < 3; attempt++) {
-    try {
-      const result = await model.generateContentStream({
-        contents: [
-          ...opts.history,
-          { role: "user", parts: [{ text: opts.userMessage }] },
-        ],
-      });
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const result = await model.generateContentStream({
+          contents: [
+            ...opts.history,
+            { role: "user", parts: [{ text: opts.userMessage }] },
+          ],
+        });
 
-      let fullText = "";
-      for await (const chunk of result.stream) {
-        if (opts.signal?.aborted) break;
-        const text = chunk.text();
-        if (text) {
-          fullText += text;
-          opts.onChunk(text);
+        let fullText = "";
+        for await (const chunk of result.stream) {
+          if (opts.signal?.aborted) break;
+          const text = chunk.text();
+          if (text) {
+            fullText += text;
+            opts.onChunk(text);
+          }
         }
-      }
 
-      const response = await result.response;
-      const meta = response.usageMetadata;
+        const response = await result.response;
+        const meta = response.usageMetadata;
 
-      return {
-        fullText,
-        usage: {
-          promptTokens: meta?.promptTokenCount ?? 0,
-          completionTokens: meta?.candidatesTokenCount ?? 0,
-          totalTokens: meta?.totalTokenCount ?? 0,
-        },
-      };
-    } catch (err) {
-      if (attempt < 2 && isTransient(err)) {
-        await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
-        continue;
+        return {
+          fullText,
+          usage: {
+            promptTokens: meta?.promptTokenCount ?? 0,
+            completionTokens: meta?.candidatesTokenCount ?? 0,
+            totalTokens: meta?.totalTokenCount ?? 0,
+          },
+        };
+      } catch (err) {
+        if (attempt < 2 && isTransient(err)) {
+          await new Promise((r) => setTimeout(r, 800 * (attempt + 1)));
+          continue;
+        }
+        throw err;
       }
-      logger.warn("Gemini stream failed", { err: err instanceof Error ? err.message : String(err) });
-      throw err;
     }
+    throw new Error("unreachable");
+  } catch (err) {
+    logger.warn("Gemini stream failed — trying OpenRouter fallback", { err: err instanceof Error ? err.message : String(err) });
+    if (isORConfigured()) return orStreamChat(opts);
+    throw err;
   }
-  throw new Error("unreachable");
 }
 
 // ── Tool calling (Phase 7) ──
@@ -153,7 +159,32 @@ function dedupeCalls(calls: FunctionCall[]): FunctionCall[] {
  * history — so every round after the tool call was sent WITHOUT the student's
  * current question, and the model answered the PREVIOUS one, a turn behind.
  */
+function toORTools(tools: Tool[]) {
+  return tools.flatMap((t) => {
+    if (!("functionDeclarations" in t) || !t.functionDeclarations) return [];
+    return t.functionDeclarations.map((fd) => ({
+      name: fd.name,
+      description: fd.description,
+      parameters: fd.parameters as object | undefined,
+    }));
+  });
+}
+
 export async function streamChatWithTools(
+  opts: StreamChatWithToolsOpts,
+): Promise<StreamChatWithToolsResult> {
+  try {
+    return await streamChatWithToolsGemini(opts);
+  } catch (err) {
+    logger.warn("Gemini streamChatWithTools failed — trying OpenRouter fallback", {
+      err: err instanceof Error ? err.message : String(err),
+    });
+    if (!isORConfigured()) throw err;
+    return orStreamChatWithTools({ ...opts, tools: toORTools(opts.tools) });
+  }
+}
+
+async function streamChatWithToolsGemini(
   opts: StreamChatWithToolsOpts,
 ): Promise<StreamChatWithToolsResult> {
   const maxRounds = opts.maxRounds ?? DEFAULT_MAX_ROUNDS;
@@ -259,18 +290,26 @@ export function cleanTitle(raw: string): string {
 
 /** Quick one-shot generation for auto-titling (non-streaming). */
 export async function generateTitle(content: string): Promise<string> {
-  const model = getClient().getGenerativeModel({
-    model: config.GEMINI_MODEL,
-    systemInstruction:
-      "Generate a 5-9 word title summarising what this chat is about. " +
-      "Capture the specifics: study destination, program/subject, degree level, or topic (visa, scholarships, fees) when mentioned. " +
-      "Examples: 'Data Science Masters options in Canada', 'Student visa requirements for Australia', 'Comparing MBA fees at Georgia Tech'. " +
-      "Return ONLY the title — no quotes, no trailing punctuation.",
-    // Generous budget on purpose: GEMINI_MODEL is a reasoning model and thinking tokens
-    // are drawn from this same allowance, so 40 could be spent before the title starts.
-    // A title is ~15 tokens; the rest is headroom, not output length.
-    generationConfig: { maxOutputTokens: 512, temperature: 0.3 },
-  });
-  const result = await model.generateContent(content.slice(0, 500));
-  return cleanTitle(result.response.text());
+  try {
+    const model = getClient().getGenerativeModel({
+      model: config.GEMINI_MODEL,
+      systemInstruction:
+        "Generate a 5-9 word title summarising what this chat is about. " +
+        "Capture the specifics: study destination, program/subject, degree level, or topic (visa, scholarships, fees) when mentioned. " +
+        "Examples: 'Data Science Masters options in Canada', 'Student visa requirements for Australia', 'Comparing MBA fees at Georgia Tech'. " +
+        "Return ONLY the title — no quotes, no trailing punctuation.",
+      // Generous budget on purpose: GEMINI_MODEL is a reasoning model and thinking tokens
+      // are drawn from this same allowance, so 40 could be spent before the title starts.
+      // A title is ~15 tokens; the rest is headroom, not output length.
+      generationConfig: { maxOutputTokens: 512, temperature: 0.3 },
+    });
+    const result = await model.generateContent(content.slice(0, 500));
+    return cleanTitle(result.response.text());
+  } catch (err) {
+    logger.warn("Gemini generateTitle failed — trying OpenRouter fallback", {
+      err: err instanceof Error ? err.message : String(err),
+    });
+    if (!isORConfigured()) throw err;
+    return cleanTitle(await orGenerateTitle(content));
+  }
 }

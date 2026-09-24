@@ -146,7 +146,7 @@ export function BusinessDetailView({ id }: Readonly<{ id: number }>) {
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">
-        <Button variant="ghost" className="gap-1.5" onClick={() => router.push("/admin/platform/businesses")}>
+        <Button variant="ghost" className="gap-1.5" onClick={() => router.back()}>
           <ArrowLeft className="h-4 w-4" /> Back
         </Button>
         <div className="flex flex-wrap items-center gap-2">
@@ -265,7 +265,7 @@ export function BusinessDetailView({ id }: Readonly<{ id: number }>) {
                 <PartnersTab businessId={business.id} businessName={business.business_name} readOnly={readOnly} />
               )}
               {tab === "members" && <MembersTab businessId={business.id} readOnly={readOnly} />}
-              {tab === "contacts" && <ContactsTab businessId={business.id} readOnly={readOnly} />}
+              {tab === "contacts" && <ContactsTab kind="business" id={business.id} countries={countries} readOnly={readOnly} />}
               {tab === "services" && <ServicesTab businessId={business.id} readOnly={readOnly} />}
               {tab === "activity" && <ActivityTab businessId={business.id} />}
             </CardContent>

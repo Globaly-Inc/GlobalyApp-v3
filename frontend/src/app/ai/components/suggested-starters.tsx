@@ -2,7 +2,7 @@
 
 import { useEffect, useState, type ReactNode } from "react";
 import { ArrowUpRight, Sparkles } from "lucide-react";
-import { GREETINGS, STARTER_CATEGORIES } from "../const";
+import { GREETINGS, STARTER_CATEGORIES, type StarterCategory } from "../const";
 import { cn } from "@/lib/utils";
 
 type SuggestedStartersProps = {
@@ -11,19 +11,35 @@ type SuggestedStartersProps = {
   name?: string | null;
   /** Rendered between the greeting and the chips — the composer, on the full-page surface. */
   children?: ReactNode;
+  /** Override the marketplace starters — the embed panel asks about its own owner instead. */
+  categories?: StarterCategory[];
 };
 
-export function SuggestedStarters({ onSelect, name, children }: Readonly<SuggestedStartersProps>) {
-  // Categories collapse to one chip each; "Course Search" opens by default so the hero shows
+export function SuggestedStarters({ onSelect, name, children, categories = STARTER_CATEGORIES }: Readonly<SuggestedStartersProps>) {
+  // Categories collapse to one chip each; the first one opens by default so the hero shows
   // recommended questions immediately instead of an empty row of chips.
-  const [openLabel, setOpenLabel] = useState<string | null>(STARTER_CATEGORIES[0]?.label ?? null);
+  //
+  // Three states, not two: `undefined` is "the visitor hasn't touched a chip", which is what the
+  // default below resolves. `null` is "the visitor closed the open chip" and must survive. The
+  // embed renders once with NO categories while its config loads, so seeding this from
+  // categories[0] would have locked in null — the collapse state — before there was anything to
+  // open, and the panel would have shown a row of chips with no questions under it.
+  const [openLabel, setOpenLabel] = useState<string | null | undefined>(undefined);
   // Picked once per mount (useState initializer), not per render — and only on the client,
   // so SSR/hydration can't disagree about which greeting was drawn.
   const [greeting, setGreeting] = useState<string | null>(null);
   useEffect(() => {
     setGreeting(GREETINGS[Math.floor(Math.random() * GREETINGS.length)] ?? null);
   }, []);
-  const openQuestions = STARTER_CATEGORIES.find((c) => c.label === openLabel)?.questions ?? [];
+  // The embed panel swaps its categories once the owner kind resolves, so a label picked from the
+  // previous set can go stale — fall back to the first chip rather than show a row of chips with
+  // no questions under it. Untouched (undefined) resolves to that same default; an explicit null
+  // does not, or closing the open chip would immediately reopen the first one.
+  const activeLabel =
+    openLabel === null || (openLabel !== undefined && categories.some((c) => c.label === openLabel))
+      ? openLabel
+      : categories[0]?.label ?? null;
+  const openQuestions = categories.find((c) => c.label === activeLabel)?.questions ?? [];
 
   return (
     <div className="relative isolate flex min-h-full flex-col justify-center px-4 py-10">
@@ -44,37 +60,46 @@ export function SuggestedStarters({ onSelect, name, children }: Readonly<Suggest
 
         {children}
 
-        <div className="flex flex-wrap justify-center gap-2">
-          {STARTER_CATEGORIES.map(({ label, Icon }) => (
+        <div className="flex flex-wrap justify-center gap-2.5">
+          {categories.map(({ label, Icon }) => (
             <button
               key={label}
               type="button"
-              onClick={() => setOpenLabel((cur) => (cur === label ? null : label))}
-              aria-pressed={openLabel === label}
+              // Compared against activeLabel, not the raw state: the chip the visitor sees open
+              // while openLabel is still undefined has to close on the first click, not open.
+              onClick={() => setOpenLabel(activeLabel === label ? null : label)}
+              aria-pressed={activeLabel === label}
               className={cn(
-                "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
-                openLabel === label
-                  ? "border-primary/30 bg-primary/10 text-primary"
-                  : "bg-card text-muted-foreground hover:bg-accent/50 hover:text-foreground",
+                "flex items-center gap-2 rounded-full border px-4 py-2 text-sm font-medium shadow-sm backdrop-blur-sm transition-all",
+                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                "active:scale-95",
+                activeLabel === label
+                  ? "border-primary bg-primary text-primary-foreground shadow-md shadow-primary/20"
+                  : "border-border/70 bg-card/85 text-foreground hover:border-primary/50 hover:bg-accent hover:shadow-md",
               )}
             >
-              <Icon className="size-3.5" />
+              <Icon className="size-4 shrink-0" />
               {label}
             </button>
           ))}
         </div>
 
         {openQuestions.length > 0 && (
-          <div className="mx-auto flex w-full max-w-xl flex-col gap-0.5">
+          <div className="mx-auto flex w-full max-w-xl flex-col gap-1.5">
             {openQuestions.map((q) => (
               <button
                 key={q}
                 type="button"
                 onClick={() => onSelect(q)}
-                className="group flex items-start gap-2 rounded-xl border border-transparent px-2.5 py-2 text-left text-sm text-muted-foreground transition-all hover:border-border hover:bg-card hover:text-foreground hover:shadow-xs"
+                className={cn(
+                  "group flex items-center gap-3 rounded-xl border border-border/60 bg-card/85 px-4 py-3 text-left text-sm text-foreground shadow-sm backdrop-blur-sm",
+                  "transition-all hover:border-primary/40 hover:bg-card hover:shadow-md",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+                  "active:scale-[0.99]",
+                )}
               >
                 <span className="flex-1 leading-snug">{q}</span>
-                <ArrowUpRight className="mt-0.5 size-3.5 shrink-0 opacity-0 transition-opacity group-hover:opacity-100" />
+                <ArrowUpRight className="size-4 shrink-0 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
               </button>
             ))}
           </div>

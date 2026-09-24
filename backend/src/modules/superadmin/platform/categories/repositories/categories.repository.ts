@@ -295,3 +295,70 @@ export async function updateAccreditation(id: number, data: Record<string, unkno
 export async function deleteAccreditation(id: number) {
   return masterKnex("accreditations").where({ id }).update({ deleted_at: now() });
 }
+
+// ─── Registration Types ────────────────────────────────────────────────────
+// The identifier a business quotes where it is registered (ABN, UEN, EIN…). A NULL country_id is
+// the generic fallback row rather than a missing value, so ordering puts real countries first.
+
+const REGISTRATION_TYPE_COLUMNS = [
+  "r.id", "r.country_id", "r.code", "r.label", "r.sort_order", "r.is_active",
+] as const;
+
+function registrationTypeQuery() {
+  return masterKnex("business_registration_types as r")
+    .leftJoin("countries as c", "c.id", "r.country_id")
+    .whereNull("r.deleted_at");
+}
+
+export async function listRegistrationTypes(limit: number, offset: number, countryId?: number, search?: string) {
+  const q = registrationTypeQuery()
+    .orderByRaw("c.name NULLS FIRST")
+    .orderBy("r.sort_order").orderBy("r.code")
+    .limit(limit).offset(offset)
+    .select(...REGISTRATION_TYPE_COLUMNS, "c.name as country_name");
+  if (countryId) q.where("r.country_id", countryId);
+  if (search) q.where((b) => b.whereILike("r.code", `%${search}%`).orWhereILike("r.label", `%${search}%`));
+  return q;
+}
+
+export async function countRegistrationTypes(countryId?: number, search?: string) {
+  const q = registrationTypeQuery().count("* as count");
+  if (countryId) q.where("r.country_id", countryId);
+  if (search) q.where((b) => b.whereILike("r.code", `%${search}%`).orWhereILike("r.label", `%${search}%`));
+  const [row] = await q;
+  return Number(row.count);
+}
+
+/**
+ * What the business profile's picker offers. Falls back to the generic (NULL country) rows when
+ * the country has none of its own — one round trip, and the rule lives in one place instead of
+ * being re-derived by every client.
+ */
+export async function listActiveRegistrationTypes(countryId?: number) {
+  const forCountry = countryId
+    ? await registrationTypeQuery().where("r.is_active", true).where("r.country_id", countryId)
+      .orderBy("r.sort_order").orderBy("r.code").select(...REGISTRATION_TYPE_COLUMNS)
+    : [];
+  if (forCountry.length > 0) return forCountry;
+  return registrationTypeQuery().where("r.is_active", true).whereNull("r.country_id")
+    .orderBy("r.sort_order").orderBy("r.code").select(...REGISTRATION_TYPE_COLUMNS);
+}
+
+export async function findRegistrationTypeById(id: number) {
+  return masterKnex("business_registration_types").where({ id }).whereNull("deleted_at").first();
+}
+
+export async function insertRegistrationType(data: Record<string, unknown>) {
+  const [row] = await masterKnex("business_registration_types").insert(data).returning("*");
+  return row;
+}
+
+export async function updateRegistrationType(id: number, data: Record<string, unknown>) {
+  const [row] = await masterKnex("business_registration_types").where({ id }).whereNull("deleted_at")
+    .update({ ...data, updated_at: now() }).returning("*");
+  return row;
+}
+
+export async function deleteRegistrationType(id: number) {
+  return masterKnex("business_registration_types").where({ id }).update({ deleted_at: now() });
+}

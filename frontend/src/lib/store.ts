@@ -1,6 +1,5 @@
 import { combineReducers, configureStore } from "@reduxjs/toolkit"
 import { signupReducer } from "@/app/signup/store/signup-slice"
-import { comingSoonReducer } from "@/app/coming-soon/store/coming-soon-slice"
 import { authReducer } from "@/app/auth/store/auth-slice"
 import { profileReducer } from "@/app/personal/store/profile-slice"
 import { feedReducer } from "@/components/feed/store/feed-slice"
@@ -16,6 +15,7 @@ import { businessEnquiriesReducer } from "@/app/business/enquiries/store/busines
 import { adminReducer } from "@/app/admin/store/admin-slice"
 import { overviewReducer } from "@/app/admin/overview/store/overview-slice"
 import { usersReducer } from "@/app/admin/platform/users/store/users-slice"
+import { platformUsersReducer } from "@/app/admin/platform/platform-users/store/platform-users-slice"
 import { businessesReducer } from "@/app/admin/platform/businesses/store/businesses-slice"
 import { institutionDetailReducer } from "@/app/admin/platform/businesses/store/institution-detail-slice"
 import { categoriesReducer } from "@/app/admin/platform/categories/store/categories-slice"
@@ -42,10 +42,11 @@ import { adminOtherServicesReducer } from "@/app/admin/monitoring/other-services
 import { aiChatReducer } from "@/app/ai/store/ai-chat-slice"
 import { aiWidgetReducer } from "@/app/business/ai-widget/store/ai-widget-slice"
 import { enquiriesReducer as monitoringEnquiriesReducer } from "@/app/admin/monitoring/enquiries/store/enquiries-slice"
+import { creditsLedgerReducer } from "@/app/admin/revenue/subscriptions/credits/store/credits-ledger-slice"
+import { comingSoonReducer } from "@/app/coming-soon/store/coming-soon-slice"
 
 const appReducer = combineReducers({
     signup: signupReducer,
-    comingSoon: comingSoonReducer,
     auth: authReducer,
     profile: profileReducer,
     feed: feedReducer,
@@ -61,6 +62,7 @@ const appReducer = combineReducers({
     admin: adminReducer,
     overview: overviewReducer,
     adminUsers: usersReducer,
+    platformUsers: platformUsersReducer,
     platformBusinesses: businessesReducer,
     platformInstitutionDetail: institutionDetailReducer,
     platformCategories: categoriesReducer,
@@ -87,6 +89,8 @@ const appReducer = combineReducers({
     aiChat: aiChatReducer,
     aiWidget: aiWidgetReducer,
     monitoringEnquiries: monitoringEnquiriesReducer,
+    creditsLedger: creditsLedgerReducer,
+    comingSoon: comingSoonReducer,
 })
 
 // Wipe every slice back to its initial state whenever the signed-in identity

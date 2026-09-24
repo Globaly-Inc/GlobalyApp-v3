@@ -13,6 +13,7 @@ type MessageBlocksProps = {
   blocks: ResponseBlock[];
   /** Block actions and quick replies send their value as the user's next message. */
   onAction?: (value: string) => void;
+  onSend?: (value: string) => void;
 };
 
 /**
@@ -20,7 +21,7 @@ type MessageBlocksProps = {
  * skipped so the backend can ship a new block type before the frontend has a
  * component for it.
  */
-export function MessageBlocks({ blocks, onAction }: MessageBlocksProps) {
+export function MessageBlocks({ blocks, onAction, onSend }: MessageBlocksProps) {
   if (!blocks.length) return null;
 
   return (
@@ -38,7 +39,7 @@ export function MessageBlocks({ blocks, onAction }: MessageBlocksProps) {
           case "image":
             return <ImageBlock key={i} block={block} />;
           case "quick_replies":
-            return <QuickRepliesBlock key={i} block={block} onAction={onAction} />;
+            return <QuickRepliesBlock key={i} block={block} onAction={onAction} onSend={onSend} />;
           case "link":
             return <LinkBlock key={i} block={block} />;
           default:

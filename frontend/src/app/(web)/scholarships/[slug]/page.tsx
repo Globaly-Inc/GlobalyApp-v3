@@ -7,7 +7,9 @@ import {
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { externalUrl } from "../../components/profile/profile-section";
 import { getScholarshipBySlug } from "../api";
+import { amountLabel } from "@/lib/utils";
 
 export async function generateMetadata({
   params,
@@ -139,7 +141,7 @@ export default async function ScholarshipDetailPage({ params }: Readonly<{ param
                     <Award className="h-3.5 w-3.5" /> Award value
                   </p>
                   <p className="mt-1.5 text-2xl font-bold tabular-nums text-foreground">
-                    {scholarship.coverage_currency} {Number(scholarship.coverage_amount).toLocaleString()}
+                    {amountLabel(scholarship.coverage_amount, scholarship.coverage_currency)}
                   </p>
                   {scholarship.coverage_description && (
                     <p className="mt-1.5 text-xs text-muted-foreground">{scholarship.coverage_description}</p>
@@ -179,10 +181,12 @@ export default async function ScholarshipDetailPage({ params }: Readonly<{ param
                   {scholarship.application_url ? (
                     <Button
                       className="h-11 w-full text-base font-semibold shadow-sm"
-                      render={<a href={scholarship.application_url} target="_blank" rel="noopener noreferrer" />}
-                    >
-                      Apply now <ExternalLink className="ml-1.5 h-4 w-4" />
-                    </Button>
+                      render={
+                        <a href={externalUrl(scholarship.application_url)} target="_blank" rel="noopener noreferrer">
+                          Apply now <ExternalLink className="ml-1.5 h-4 w-4" />
+                        </a>
+                      }
+                    />
                   ) : (
                     <p className="rounded-lg bg-muted px-3 py-2 text-center text-xs text-muted-foreground">
                       No application link provided — contact the provider directly.
@@ -192,10 +196,12 @@ export default async function ScholarshipDetailPage({ params }: Readonly<{ param
                     <Button
                       variant="outline"
                       className="h-10 w-full"
-                      render={<a href={scholarship.source_url} target="_blank" rel="noopener noreferrer" />}
-                    >
-                      View source <ExternalLink className="ml-1.5 h-4 w-4" />
-                    </Button>
+                      render={
+                        <a href={externalUrl(scholarship.source_url)} target="_blank" rel="noopener noreferrer">
+                          View source <ExternalLink className="ml-1.5 h-4 w-4" />
+                        </a>
+                      }
+                    />
                   )}
                 </div>
               </div>

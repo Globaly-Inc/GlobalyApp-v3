@@ -1,6 +1,7 @@
 // Extraction queue repository.
 
 import { masterKnex } from "../../../../core/db/master-pool.js";
+import { deleteSiteUrls } from "./site-urls.repository.js";
 
 const T = "superadmin.extraction_queue";
 const T_JOBS = "superadmin.extraction_jobs";
@@ -50,8 +51,65 @@ export async function stopAll(jobId: string) {
   return true;
 }
 
+// Deep scrape: raise the job's page budget (see insertQueueItem's cap) so discovery can
+// find and queue another round of pages past the default cap. The exported guard lives
+// in this UPDATE, not in a prior SELECT — a concurrent promotion could flip the job to
+// exported between a check and the increment, mutating a job the worker will then ignore.
+// undefined = job is exported (or gone); the caller must refuse, not report success.
+export async function raisePageCap(jobId: string, by: number, adminId: number) {
+  const [row] = await masterKnex(T_JOBS)
+    .where({ id: jobId })
+    .whereNot("status", "exported")
+    .update({ updated_by_platform_user_id: adminId })
+    .increment("page_cap", by)
+    .returning("page_cap");
+  return row?.page_cap as number | undefined;
+}
+
+// Rerun (resume path): pending/failed items are real, already-queued work worth retrying
+// without wiping the job — 0 means there's nothing to resume from.
+export async function countRetryableQueueItems(jobId: string) {
+  const row = await masterKnex(T)
+    .where({ job_id: jobId })
+    .whereIn("status", ["pending", "failed"])
+    .count("id as count")
+    .first();
+  return Number(row?.count ?? 0);
+}
+
+// The page/step workers refuse to touch a job whose status is paused/failed/declined —
+// clear that so a resumed rerun's re-dispatched queue items actually get processed
+// instead of silently skipped. Always stamps updated_at/heartbeat so a resumed rerun
+// shows as fresh activity on the job row regardless of its current status.
+export async function reactivateJob(jobId: string, adminId: number) {
+  return masterKnex(T_JOBS)
+    .where({ id: jobId })
+    .update({
+      status: masterKnex.raw("CASE WHEN status IN ('paused', 'failed', 'declined') THEN 'processing' ELSE status END"),
+      processing_heartbeat_at: masterKnex.fn.now(),
+      updated_at: masterKnex.fn.now(),
+      updated_by_platform_user_id: adminId,
+    });
+}
+
+// Enrich-from-web: the "done" guard lives in THIS update, not a prior SELECT, so two
+// concurrent requests can't both observe "done" and both dispatch a full crawl — only one
+// wins the atomic status flip to "processing"; the other affects 0 rows and its caller must
+// refuse rather than report success (same shape as raisePageCap's exported guard above).
+export async function claimDoneJob(jobId: string, adminId: number) {
+  const count = await masterKnex(T_JOBS)
+    .where({ id: jobId, status: "done" })
+    .update({
+      status: "processing",
+      processing_heartbeat_at: masterKnex.fn.now(),
+      updated_at: masterKnex.fn.now(),
+      updated_by_platform_user_id: adminId,
+    });
+  return count > 0;
+}
+
 // C9: reset-pipeline
-export async function resetPipeline(jobId: string) {
+export async function resetPipeline(jobId: string, adminId: number) {
   const jobCount = await masterKnex(T_JOBS)
     .where({ id: jobId })
     .update({
@@ -66,10 +124,15 @@ export async function resetPipeline(jobId: string) {
         course_discovery: "waiting",
         data_extraction: "waiting",
         verification: "waiting",
+        site_map: "waiting", site_snapshot: "waiting", site_analysis: "waiting", url_classify: "waiting", queue_pages: "waiting",
       }),
       updated_at: masterKnex.fn.now(),
+      updated_by_platform_user_id: adminId,
     });
   if (!jobCount) return false;
   await deleteAllQueueForJob(jobId);
+  // The site list is re-discovered by site_map. Snapshots in extraction_pages are KEPT — they are
+  // the cache, and a from-scratch redo should still be free where the site has not changed.
+  await deleteSiteUrls(jobId);
   return true;
 }

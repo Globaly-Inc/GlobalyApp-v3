@@ -1,15 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Combobox } from "@/components/combobox";
 import { DynamicIcon } from "@/components/dynamic-icon";
 import { useAppDispatch } from "@/lib/hooks";
 import { categoriesApi, type Category } from "@/app/admin/platform/categories/apis";
 import { createJob } from "../store/all-extractions-slice";
+import type { ExistingJobConflict } from "../apis/types";
 import {
   GUIDED_URL_CATEGORIES,
   SOURCE_TYPE_OPTIONS,
@@ -18,11 +20,22 @@ import {
 } from "../const";
 import { ExtractionStepIndicator } from "./extraction-step-indicator";
 import { ExtractionSourceStep } from "./extraction-source-step";
+import type { DegreeLevelOption } from "./degree-level-picker";
 import { ExtractionReviewStep } from "./extraction-review-step";
 
 const STEPS = ["Categories", "Source", "Review"];
 
 const cleanUrls = (urls: string[] | undefined) => (urls ?? []).map((u) => u.trim()).filter(Boolean);
+
+// ponytail: extraction only actually supports Institutions right now — the other business
+// categories (Education Agency, Visa Services, Accreditation Body, Migration Agents, Immigration
+// Departments) still exist in the catalog and stay selectable everywhere else, but are hidden
+// from just this picker so they can't be picked for a job type extraction doesn't handle yet.
+// Remove this filter (and the one in handleBusinessSearch below) once those are supported.
+const ONLY_BUSINESS_CATEGORY = "Institutions";
+function extractionSupportedCategories(categories: Category[]): Category[] {
+  return categories.filter((c) => c.name === ONLY_BUSINESS_CATEGORY);
+}
 
 const SEARCH_DEBOUNCE_MS = 300;
 
@@ -39,6 +52,7 @@ export function NewExtractionDialog({
 }: Readonly<{ open: boolean; onOpenChange: (open: boolean) => void }>) {
   const dispatch = useAppDispatch();
   const [step, setStep] = useState(0);
+  const [conflict, setConflict] = useState<ExistingJobConflict | null>(null);
   const [businessCategory, setBusinessCategory] = useState("");
   const [serviceCategory, setServiceCategory] = useState("");
   // Kept alongside the ids so the review step still has a name after a search
@@ -50,6 +64,7 @@ export function NewExtractionDialog({
   const [sampleCourseUrl, setSampleCourseUrl] = useState("");
   const [guidedUrls, setGuidedUrls] = useState<Record<string, string[]>>({});
   const [guidanceNotes, setGuidanceNotes] = useState("");
+  const [degreeLevels, setDegreeLevels] = useState<DegreeLevelOption[]>([]);
   const [creating, setCreating] = useState(false);
   const [businessOptions, setBusinessOptions] = useState<Category[]>([]);
   const [serviceOptions, setServiceOptions] = useState<Category[]>([]);
@@ -65,13 +80,26 @@ export function NewExtractionDialog({
     }
     if (fetchedForOpenRef.current) return;
     fetchedForOpenRef.current = true;
+
+    setStep(0);
+    setBusinessCategory("");
+    setServiceCategory("");
+    setBusinessLabel("");
+    setServiceLabel("");
+    setSourceType("institution");
+    setInstitutionUrl("");
+    setSampleCourseUrl("");
+    setGuidedUrls({});
+    setGuidanceNotes("");
+    setDegreeLevels([]);
+
     setLoadingCategories(true);
     Promise.all([
       categoriesApi.getBusinessCategories({ limit: 10, active: true }),
       categoriesApi.getServiceCategories({ limit: 10, active: true }),
     ])
       .then(([business, service]) => {
-        setBusinessOptions(business.data);
+        setBusinessOptions(extractionSupportedCategories(business.data));
         setServiceOptions(service.data);
       })
       .catch(() => toast.error("Couldn't load categories"))
@@ -82,7 +110,7 @@ export function NewExtractionDialog({
     if (businessSearchRef.current) clearTimeout(businessSearchRef.current);
     businessSearchRef.current = setTimeout(async () => {
       const { data } = await categoriesApi.getBusinessCategories({ search: query.trim() || undefined, limit: 10, active: true });
-      setBusinessOptions(data);
+      setBusinessOptions(extractionSupportedCategories(data));
     }, SEARCH_DEBOUNCE_MS);
   };
 
@@ -94,27 +122,11 @@ export function NewExtractionDialog({
     }, SEARCH_DEBOUNCE_MS);
   };
 
-  const handleOpenChange = (next: boolean) => {
-    if (next) {
-      setStep(0);
-      setBusinessCategory("");
-      setServiceCategory("");
-      setBusinessLabel("");
-      setServiceLabel("");
-      setSourceType("institution");
-      setInstitutionUrl("");
-      setSampleCourseUrl("");
-      setGuidedUrls({});
-      setGuidanceNotes("");
-    }
-    onOpenChange(next);
-  };
-
   // A stray backdrop click or Escape would wipe a half-filled three-step form, so the only
   // ways out are Cancel and the corner ×. Outside presses are blocked by disablePointerDismissal.
   const handleOpenChangeWithReason = (next: boolean, details: { reason?: string }) => {
     if (!next && details.reason === "escape-key") return;
-    handleOpenChange(next);
+    onOpenChange(next);
   };
 
   // "Visa Services" is both a business category and a service category — when an admin
@@ -159,11 +171,16 @@ export function NewExtractionDialog({
         ...(Object.keys(guided_urls).length && { guided_urls }),
         ...(guidanceNotes.trim() && { guidance_notes: guidanceNotes.trim() }),
         ...(sampleCourseUrl.trim() && { sample_course_url: sampleCourseUrl.trim() }),
+        ...(degreeLevels.length && { degree_level_codes: degreeLevels.map((l) => l.slug) }),
       })
     );
     setCreating(false);
     if (createJob.rejected.match(result)) {
-      toast.error("Couldn't start extraction", { description: result.error.message ?? "Please try again." });
+      if (result.payload?.existingJob) {
+        setConflict(result.payload.existingJob);
+        return;
+      }
+      toast.error("Couldn't start extraction", { description: result.payload?.message ?? result.error.message ?? "Please try again." });
       return;
     }
     toast.success("Extraction started");
@@ -171,6 +188,7 @@ export function NewExtractionDialog({
   };
 
   return (
+    <>
     <Dialog open={open} onOpenChange={handleOpenChangeWithReason} disablePointerDismissal>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
@@ -245,6 +263,8 @@ export function NewExtractionDialog({
             onGuidedUrlsChange={setGuidedUrls}
             guidanceNotes={guidanceNotes}
             onGuidanceNotesChange={setGuidanceNotes}
+            degreeLevels={degreeLevels}
+            onDegreeLevelsChange={setDegreeLevels}
           />
         ) : (
           <ExtractionReviewStep
@@ -257,6 +277,7 @@ export function NewExtractionDialog({
             guidedUrlCategories={guidedUrlCategories}
             guidedUrls={guidedUrls}
             guidanceNotes={guidanceNotes}
+            degreeLevels={degreeLevels.map((l) => l.name)}
           />
         )}
 
@@ -292,5 +313,35 @@ export function NewExtractionDialog({
         </DialogFooter>
       </DialogContent>
     </Dialog>
+
+    <Dialog open={!!conflict} onOpenChange={(open) => !open && setConflict(null)}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>Institution already exists</DialogTitle>
+          <DialogDescription>
+            {conflict?.institutionName || "An institution"} with a matching website is already being tracked
+            {conflict?.email || conflict?.phone ? " — " : "."}
+            {conflict?.email && ` ${conflict.email}`}
+            {conflict?.phone && ` · ${conflict.phone}`}
+          </DialogDescription>
+        </DialogHeader>
+        <DialogFooter>
+          <Button variant="outline" className="cursor-pointer" onClick={() => setConflict(null)}>
+            Close
+          </Button>
+          <Button
+            className="gap-1.5 cursor-pointer"
+            onClick={() => {
+              if (conflict) window.open(`/admin/data/all-extractions/${conflict.id}`, "_blank", "noopener,noreferrer");
+              setConflict(null);
+            }}
+          >
+            <ExternalLink className="h-3.5 w-3.5" />
+            View existing job
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+    </>
   );
 }

@@ -1,5 +1,4 @@
 import type { FastifyReply } from "fastify";
-import { config } from "../../../config.js";
 import { initSSE, writeEvent, writeData, writeDone } from "../lib/sse-writer.js";
 import { streamChat, streamChatWithTools, type StreamChatResult } from "../lib/gemini-stream.js";
 import { runTool, toolLabel, toolsFor, type ToolSource } from "../lib/tools.js";
@@ -14,6 +13,7 @@ import * as creditService from "./credit.service.js";
 import * as embedRepo from "../repositories/embed.repository.js";
 import type { EmbedContext } from "./embed.service.js";
 import { createChildLogger } from "../../../shared/logger.js";
+import * as storage from "../../../shared/storage/storageService.js";
 
 const logger = createChildLogger("chat-service");
 
@@ -22,22 +22,23 @@ const HISTORY_LIMIT = 20;
 /** Attach the institution's logo/city to each card from the DB, keyed on the course
  * id the model cited. Decorative, so a lookup failure leaves the cards untouched
  * rather than costing the student their answer. */
-async function withInstitutionMedia(cards: ParsedCard[]): Promise<ParsedCard[]> {
+export async function withInstitutionMedia(cards: ParsedCard[]): Promise<ParsedCard[]> {
   if (!cards.length) return cards;
   try {
     const media = await knowledgeRepo.institutionMediaByCourseIds(cards.map((c) => c.id));
     if (!media.length) return cards;
     const byCourseId = new Map(media.map((m) => [m.course_id, m]));
-    return cards.map((card) => {
+    return Promise.all(cards.map(async (card) => {
       const m = byCourseId.get(card.id);
       if (!m) return card;
       return {
         ...card,
         institution_logo_url: m.logo_url,
+        institution_cover_url: await storage.resolvePreviewUrl(m.cover_url),
         institution_website: m.website,
         city: card.city ?? m.city ?? undefined,
       };
-    });
+    }));
   } catch (err) {
     logger.warn("Card logo enrichment failed", { err: String(err) });
     return cards;
@@ -144,7 +145,7 @@ export async function handleMessage(opts: {
     // Embed mode stays on searchAll: its business scoping (jobIds, skipped
     // institution/agent sources) lives inside that function, and a tool the model
     // could call with its own arguments would route around the scope.
-    const useTools = !opts.embed && config.AI_COUNSELLOR_TOOLS;
+    const useTools = !opts.embed;
     let sources: ToolSource[] = [];
     let result: StreamChatResult | null = null;
     // Newest course search that found anything, remembered across tool rounds — it
@@ -226,6 +227,7 @@ export async function handleMessage(opts: {
         query: opts.content,
         userId: opts.userId,
         jobIds: opts.embed?.jobIds,
+        rackInstitutionId: opts.embed?.rackInstitutionId,
         skipCourses: discoveryTurn,
         onTrace: trace,
       });
@@ -336,9 +338,7 @@ export async function handleMessage(opts: {
       writeData(opts.reply, {
         choices: [{ delta: { content: "I'm sorry, something went wrong on my end. Please try again in a moment." } }],
       });
-      // …and the real error as a named event so the main app can surface it
-      // instead of flashing-and-dropping the apology (which read as "nothing happened").
-      writeEvent(opts.reply, "error", { error: message });
+      writeEvent(opts.reply, "error", { error: "AI Counsellor is temporarily unavailable due to high traffic. Please try again shortly." });
       writeDone(opts.reply);
     }
   }
