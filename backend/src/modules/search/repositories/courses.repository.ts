@@ -235,7 +235,13 @@ function courseQuery(previewSchemaName?: string) {
     })
     .joinRaw(topFee("domestic", "dfee"))
     .joinRaw(topFee("international", "ifee"))
-    .whereRaw(PUBLICLY_VISIBLE);
+    .where((b) => {
+      b.whereRaw(PUBLICLY_VISIBLE);
+      // A manually-created institution's job is created with status "done", never "exported"
+      // (see businesses.service.ts) — its own owner previewing a course would otherwise always
+      // 404 even with a valid preview token, since that token only bypassed inst.is_published.
+      if (previewSchemaName) b.orWhereRaw(`${NOT_REJECTED} and inst.schema_name = ?`, [previewSchemaName]);
+    });
 }
 
 function baseQuery({

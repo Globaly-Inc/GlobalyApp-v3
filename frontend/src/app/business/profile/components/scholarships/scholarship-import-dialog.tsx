@@ -25,6 +25,9 @@ type RowResult = { key: string; title: string; status: "ok" | "skipped" | "error
 type ParsedRow = { sheet: string; row: number; data: Record<string, unknown> };
 
 const POLL_INTERVAL_MS = 1000;
+// Mirrors BusinessImportRowsSchema's rows.max(2000) (scholarships.schema.ts) — submitting more
+// than this rejects the whole request after the user already finished mapping every column.
+const MAX_IMPORT_ROWS = 2000;
 
 export function ScholarshipImportDialog({
   open,
@@ -98,6 +101,13 @@ export function ScholarshipImportDialog({
 
     if (inputs.length === 0) {
       setStep("done");
+      return;
+    }
+    if (inputs.length > MAX_IMPORT_ROWS) {
+      toast.error(`Too many rows to import at once`, {
+        description: `${inputs.length} rows are mapped, but only ${MAX_IMPORT_ROWS} can be imported in one file. Split the spreadsheet and import it in batches.`,
+      });
+      setStep("map");
       return;
     }
 
