@@ -12,6 +12,7 @@ import { config } from "../src/config.js";
 import { masterKnex } from "../src/core/db/master-pool.js";
 import { buildArticlePrompt, parseArticleResponse } from "../src/modules/superadmin/marketing/blog/services/article-prompt.js";
 import * as jobsRepo from "../src/modules/superadmin/marketing/blog/repositories/generation-jobs.repository.js";
+import { createGeneration } from "../src/modules/superadmin/marketing/blog/services/generation.service.js";
 
 let passed = 0;
 let failed = 0;
@@ -139,6 +140,26 @@ async function testJobRepository() {
   }
 }
 
+// (d) Queue-down resilience: createGeneration must SUCCEED when LavinMQ is unreachable —
+// jobs stay `pending` in the DB and the sweep worker picks them up later. A publish
+// failure failing the POST is the bug this guards against. Assumes no local LavinMQ when
+// run in CI/dev without one; when a broker IS reachable, publish succeeds and the
+// assertion still holds (success either way — what must never happen is a throw).
+async function testCreateGenerationQueueDown() {
+  let ids: number[] = [];
+  try {
+    const result = await createGeneration({ keywords: ["queue-down-test"], count: 2 } as never);
+    ids = result.jobIds;
+    assert(ids.length === 2, "createGeneration succeeds even if queue publish fails");
+    const rows = await jobsRepo.findJobsByIds(ids);
+    assert(rows.every((r) => r.status === "pending"), "jobs are pending in the DB, awaiting a worker");
+  } catch (err) {
+    assert(false, "createGeneration must not throw when the queue is down", err instanceof Error ? err.message : err);
+  } finally {
+    if (ids.length) await masterKnex("superadmin.blog_generation_jobs").whereIn("id", ids).delete();
+  }
+}
+
 // ── Run ──────────────────────────────────────────────────────────────────────────
 
 async function main() {
@@ -147,6 +168,7 @@ async function main() {
   testBuildArticlePrompt();
   testParseArticleResponse();
   await testJobRepository();
+  await testCreateGenerationQueueDown();
 
   console.log(`\n${passed} passed, ${failed} failed`);
   await masterKnex.destroy();
