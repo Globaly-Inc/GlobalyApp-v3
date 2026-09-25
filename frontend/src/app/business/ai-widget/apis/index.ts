@@ -6,5 +6,5 @@ export const aiWidgetApi = createApi({ mock: aiWidgetMockApi, real: aiWidgetReal
 export type {
   CreateEmbedConfigInput, EmbedConfig,
   VisitorCounts, VisitorListParams, VisitorListResult, VisitorProfileEntry,
-  VisitorStatus, VisitorStatusFilter, WidgetVisitor,
+  VisitorMessage, VisitorStatus, VisitorStatusFilter, WidgetVisitor,
 } from "./types";

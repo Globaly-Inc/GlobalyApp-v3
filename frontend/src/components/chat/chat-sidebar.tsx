@@ -19,6 +19,8 @@ import type { ActiveView, ShortcutType } from "./ui-types";
  * an enquiry.
  */
 export function ChatSidebar({
+  header,
+  searchPlaceholder,
   threads,
   loading,
   messagesByThread,
@@ -28,6 +30,9 @@ export function ChatSidebar({
   onSelectShortcut,
   onToggleFavorite,
 }: Readonly<{
+  /** Rendered below the search field — the business Inbox's All / Enquiries / AI Embed switch. */
+  header?: React.ReactNode;
+  searchPlaceholder?: string;
   threads: ChatThread[];
   loading: boolean;
   messagesByThread: Record<string, EnquiryMessage[]>;
@@ -55,7 +60,8 @@ export function ChatSidebar({
   return (
     <div className="flex h-full flex-col border-border bg-card md:border-r">
       <div className="shrink-0 p-3">
-        <ChatSearch threads={threads} messagesByThread={messagesByThread} onOpenThread={onOpenThread} />
+        <ChatSearch threads={threads} messagesByThread={messagesByThread} onOpenThread={onOpenThread} placeholder={searchPlaceholder} />
+        {header}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto">

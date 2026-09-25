@@ -127,3 +127,11 @@ export type VisitorPatch = {
 
 /** The four editable record sections, by the key each is stored under. */
 export type VisitorRecordSection = "qualifications" | "work_experiences" | "language_tests" | "academic_tests";
+
+/** One turn of a visitor's chat with the assistant — the Inbox's read-only AI Embed transcript. */
+export type VisitorMessage = {
+  id: number;
+  role: "user" | "assistant";
+  content: string;
+  created_at: string;
+};
