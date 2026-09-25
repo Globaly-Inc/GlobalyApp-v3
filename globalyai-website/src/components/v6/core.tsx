@@ -28,11 +28,7 @@ export function LearningCore({
   pulse?: number;
 }>) {
   return (
-    // No size of its own beyond the square: cn() concatenates rather than
-    // merging, so a default max-w here would sit alongside the caller's and
-    // the stylesheet, not the call site, would pick the winner. The size
-    // comes from whatever wraps it.
-    <div className={cn("relative aspect-square w-full", className)} aria-hidden="true">
+    <div className={cn("relative aspect-square w-full max-w-[17rem]", className)} aria-hidden="true">
       <span
         className={cn(
           "v6-core-glow absolute inset-[-18%] rounded-full transition-opacity duration-500",

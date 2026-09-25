@@ -167,7 +167,7 @@ function TranscriptScene() {
         <article className="mx-auto flex min-h-0 w-full max-w-[860px] flex-1 flex-col overflow-hidden rounded-[20px] border border-[var(--border)] bg-[var(--surface-soft)] shadow-[0_22px_50px_-28px_rgb(2_14_40/0.4)]">
           <header className="flex shrink-0 items-center gap-2 border-b border-[var(--border)] bg-[var(--card)] px-4 py-2.5">
             <ChevronLeft className="h-4 w-4 shrink-0 text-[var(--muted-foreground)]" aria-hidden="true" />
-            <p className="min-w-0 truncate text-[13px] font-bold text-[var(--foreground)]">
+            <p className="truncate text-[13px] font-bold text-[var(--foreground)]">
               Sarah M. <span className="font-medium text-[var(--muted-foreground)]">· full conversation</span>
             </p>
             <span className="ml-auto hidden shrink-0 items-center gap-3 text-[11.5px] text-[var(--muted-foreground)] sm:flex">
@@ -283,7 +283,7 @@ function FilmField({ label, value, caret = false }: Readonly<{ label: string; va
       <span className="w-10 shrink-0 text-[10px] font-semibold uppercase tracking-wide text-[var(--muted-foreground)]">
         {label}
       </span>
-      <span className="min-w-0 truncate text-[11.5px] text-[var(--foreground)]">
+      <span className="truncate text-[11.5px] text-[var(--foreground)]">
         {value}
         {caret && <span className="ml-px inline-block animate-caret text-[var(--primary)]">|</span>}
       </span>

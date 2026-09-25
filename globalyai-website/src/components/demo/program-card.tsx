@@ -109,7 +109,7 @@ export function ProgramCard({
               aria-hidden="true"
             />
           </span>
-          <p className={cn("min-w-0 truncate font-semibold text-white/80", md ? "text-[11.5px]" : "text-[10px]")}>
+          <p className={cn("truncate font-semibold text-white/80", md ? "text-[11.5px]" : "text-[10px]")}>
             Your University
           </p>
           <span
@@ -123,7 +123,7 @@ export function ProgramCard({
           </span>
         </div>
 
-        <p className={cn("min-w-0 truncate font-bold leading-tight text-white", md ? "text-[15.5px]" : "text-[13px]")}>
+        <p className={cn("truncate font-bold leading-tight text-white", md ? "text-[15.5px]" : "text-[13px]")}>
           {name}
         </p>
 
@@ -135,7 +135,7 @@ export function ProgramCard({
         <div className={cn("flex items-center gap-2 border-t border-white/15", md ? "mt-1 pt-2.5" : "mt-0.5 pt-2")}>
           <span className={cn("flex min-w-0 items-center gap-1 text-white/70", md ? "text-[11.5px]" : "text-[9.5px]")}>
             <CalendarDays className={cn("shrink-0", md ? "h-3 w-3" : "h-2.5 w-2.5")} aria-hidden="true" />
-            <span className="min-w-0 truncate">Intake: {intake}</span>
+            <span className="truncate">Intake: {intake}</span>
           </span>
           <span className={cn("ml-auto shrink-0 font-bold text-white", md ? "text-[13.5px]" : "text-[11px]")}>
             {fee}

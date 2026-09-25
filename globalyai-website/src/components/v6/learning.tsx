@@ -236,7 +236,7 @@ export function Learning() {
                 {/* The label hangs below the brain rather than stacking under
                     it, so the brain itself is the thing centred on the trails. */}
                 <div className="absolute left-1/2 top-1/2 w-[12rem] -translate-x-1/2 -translate-y-1/2">
-                  <LearningCore className="max-w-[17rem]" lit={active !== null} pulse={arrivals} />
+                  <LearningCore lit={active !== null} pulse={arrivals} />
                   <div className="absolute inset-x-0 top-full flex justify-center">
                     <StatusLabel word={STATUS[status] ?? STATUS[0]} paused={!thinking} />
                   </div>

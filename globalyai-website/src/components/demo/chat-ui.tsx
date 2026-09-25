@@ -29,7 +29,7 @@ export function BrowserFrame({
         </div>
         <div className="ml-2 flex min-w-0 flex-1 items-center gap-1.5 rounded-full bg-[var(--card)] px-3 py-1.5 text-[var(--muted-foreground)]">
           <Lock className="h-2.5 w-2.5 shrink-0" aria-hidden="true" />
-          <span className="min-w-0 truncate text-[11px]">{url}</span>
+          <span className="truncate text-[11px]">{url}</span>
         </div>
       </div>
       {children}
@@ -87,8 +87,8 @@ export function PanelHeader({ subtitle = "Your AI counselor" }: Readonly<{ subti
           the panel shows it rather than a generic glyph. */}
       <AlyOrb className="h-9 w-9 shrink-0" />
       <div className="min-w-0 flex-1">
-        <p className="min-w-0 truncate text-[14px] font-bold leading-tight text-[var(--foreground)]">GlobalyAI</p>
-        <p className="flex items-center gap-1.5 min-w-0 truncate text-[11px] leading-tight text-[var(--muted-foreground)]">
+        <p className="truncate text-[14px] font-bold leading-tight text-[var(--foreground)]">GlobalyAI</p>
+        <p className="flex items-center gap-1.5 truncate text-[11px] leading-tight text-[var(--muted-foreground)]">
           <span className="relative flex h-1.5 w-1.5" aria-hidden="true">
             <span className="absolute inline-flex h-full w-full rounded-full bg-[#53c578] animate-pulse-ring" />
             <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-[#53c578]" />
@@ -176,7 +176,7 @@ export function Composer({
 }: Readonly<{ placeholder?: string }>) {
   return (
     <div className="flex items-center gap-2 border-t border-[var(--border)] bg-[var(--card)] px-3 py-3" aria-hidden="true">
-      <div className="flex-1 min-w-0 truncate rounded-full bg-[var(--surface-soft)] px-4 py-2.5 text-[11.5px] text-[var(--muted-foreground)]">
+      <div className="flex-1 truncate rounded-full bg-[var(--surface-soft)] px-4 py-2.5 text-[11.5px] text-[var(--muted-foreground)]">
         {placeholder}
       </div>
       <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(120deg,var(--primary),var(--primary-bright))]">
