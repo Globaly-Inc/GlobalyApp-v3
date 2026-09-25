@@ -82,9 +82,10 @@ import { parseInstallments } from "../lib/installment-parser.js";
 import type { PipelineStep, CourseDataType } from "../schemas/step.schema.js";
 import {
   advance, gate, dispatchSnapshotBatches, setProgress,
-  runSiteMap, runSiteAnalysis, runUrlClassify, runQueuePages,
+  runSiteMap, runSiteAnalysis, runUrlClassify, runQueuePages, republishRetryableQueueItems,
 } from "../lib/pipeline-steps.js";
 import { listActiveSiteUrls, upsertSiteUrls, setSiteUrlCategories, listSiteUrlsByCategory } from "../repositories/site-urls.repository.js";
+import { checkAllPagesDone } from "../lib/queue-completion.js";
 
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
@@ -1034,37 +1035,21 @@ async function handleCoursesStep(jobId: string) {
   const job = await loadJob(jobId);
   if (!job) return;
 
-  // Re-dispatch all pending/failed queue items to PAGES queue
-  const items = await masterKnex(`${S}.extraction_queue`)
-    .where({ job_id: jobId })
-    .whereIn("status", ["pending", "failed"])
-    .select("id", "url");
-
-  await writeJobEvent(jobId, "step_start", { phase: "courses", message: `Re-dispatching ${items.length} pending/failed pages` });
+  await writeJobEvent(jobId, "step_start", { phase: "courses", message: "Re-dispatching pending/failed/paused pages" });
 
   // Push queue: an item whose message never published is stranded — nothing polls these
   // rows. If LavinMQ dies mid-loop, stop, record exactly how far dispatch got, and rethrow
   // so the step shows failed. The stranded remainder stays pending/failed (and any guided
   // URL inserted-but-unpublished stays pending), so the next Re-run picks all of it up.
+  let candidates = 0;
   let dispatched = 0;
   let queuedNew = 0;
   let dispatchErr: unknown = null;
   try {
-    for (const item of items) {
-      // Claim-style guard: only re-flip items still retryable. An unconditional update
-      // here can yank an item that completed after the SELECT above (an in-flight backlog
-      // message, or an overlapping courses-step run) back to "pending", making it
-      // claimable again — a full duplicate scrape + Gemini extraction.
-      const flipped = await masterKnex(`${S}.extraction_queue`)
-        .where({ id: item.id })
-        .whereIn("status", ["pending", "failed"])
-        .update({ status: "pending", updated_at: masterKnex.fn.now() });
-      if (flipped === 0) continue;
-      await queueService.publish(EXTRACTION_QUEUES.PAGES, {
-        jobId, queueItemId: item.id, url: item.url,
-      });
-      dispatched++;
-    }
+    const republish = await republishRetryableQueueItems(jobId);
+    candidates = republish.candidates;
+    dispatched = republish.dispatched;
+    if (republish.error) throw republish.error;
 
     // Real bug: this step never looked at guided_urls at all, so adding a new URL under
     // Intakes/Eligibility/Study Units/Accreditations in the Context tab and hitting
@@ -1103,8 +1088,8 @@ async function handleCoursesStep(jobId: string) {
   if (dispatchErr) {
     await writeJobEvent(jobId, "step_error", {
       level: "warn", phase: "courses",
-      message: `Dispatch interrupted after ${dispatched}/${items.length} pages and ${queuedNew} guided URLs — re-run to dispatch the rest`,
-      data: { dispatched, total: items.length, new_guided_urls: queuedNew, error: dispatchErr instanceof Error ? dispatchErr.message : String(dispatchErr) },
+      message: `Dispatch interrupted after ${dispatched}/${candidates} pages and ${queuedNew} guided URLs — re-run to dispatch the rest`,
+      data: { dispatched, total: candidates, new_guided_urls: queuedNew, error: dispatchErr instanceof Error ? dispatchErr.message : String(dispatchErr) },
     });
     throw dispatchErr;
   }
@@ -1906,6 +1891,14 @@ await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
     if (outcome !== "pending") await markStepProgress(jobId, step, outcome);
     // The snapshot run is complete only when its LAST batch says so; that batch hands off.
     if (step === "site_snapshot" && outcome === "done" && batch) await advanceSnapshotRunOnce(jobId, batch);
+    // queue_pages is the only discovery step that can run CONCURRENTLY with pages a Resume already
+    // republished (see republishRetryableQueueItems) — checkAllPagesDone defers completion while
+    // this step shows "processing" in pipeline_progress specifically so that race can't start
+    // verification early, but nothing else ever re-checks once this step actually finishes if it
+    // happened to find nothing new to queue (no fresh page completion would ever come to retrigger
+    // it). Called AFTER markStepProgress above, so pipeline_progress.queue_pages already reads
+    // "done" by the time this runs (Greptile).
+    if (step === "queue_pages" && outcome === "done") await checkAllPagesDone(jobId);
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     logger.error("Step failed", { jobId, step, error: errMsg });

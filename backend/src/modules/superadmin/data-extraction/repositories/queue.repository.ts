@@ -66,12 +66,14 @@ export async function raisePageCap(jobId: string, by: number, adminId: number) {
   return row?.page_cap as number | undefined;
 }
 
-// Rerun (resume path): pending/failed items are real, already-queued work worth retrying
-// without wiping the job — 0 means there's nothing to resume from.
+// Resume: pending/failed/paused items are real, already-queued work worth retrying without
+// wiping the job — 0 means there's nothing to resume from. "paused" is included because
+// stopAll/pauseAllPendingQueue flips in-flight items to that status, not pending/failed — a
+// job stopped mid-crawl and then resumed must pick those back up too, not just failures.
 export async function countRetryableQueueItems(jobId: string) {
   const row = await masterKnex(T)
     .where({ job_id: jobId })
-    .whereIn("status", ["pending", "failed"])
+    .whereIn("status", ["pending", "failed", "paused"])
     .count("id as count")
     .first();
   return Number(row?.count ?? 0);
@@ -85,7 +87,12 @@ export async function reactivateJob(jobId: string, adminId: number) {
   return masterKnex(T_JOBS)
     .where({ id: jobId })
     .update({
-      status: masterKnex.raw("CASE WHEN status IN ('paused', 'failed', 'declined') THEN 'processing' ELSE status END"),
+      // "stalled" belongs here too — the frontend's RESUMABLE_STATUSES (job-header.tsx) shows
+      // Resume for a stalled job same as a paused one, but leaving it out here meant Resume never
+      // actually reactivated it: checkAllPagesDone's own transition only matches status
+      // "processing", so a stalled job's pages could finish and it would STILL never reach
+      // verification (Greptile).
+      status: masterKnex.raw("CASE WHEN status IN ('paused', 'stalled', 'failed', 'declined') THEN 'processing' ELSE status END"),
       processing_heartbeat_at: masterKnex.fn.now(),
       updated_at: masterKnex.fn.now(),
       updated_by_platform_user_id: adminId,

@@ -123,6 +123,78 @@
       "expected": "identical"
     },
     {
+      "id": "abbr-6",
+      "group": "abbreviation",
+      "a": { "name": "Master of Biology" },
+      "b": { "name": "Anatomy and Human Biology MBiol (Hons)" },
+      "expected": "possible_duplicate",
+      "note": "MBiol's award is 'biology' (subject), 'Anatomy and Human Biology' becomes specialisation — same shape as var-4's MBA/specialisation case, correctly flagged rather than merged or left separate"
+    },
+    {
+      "id": "abbr-7",
+      "group": "abbreviation",
+      "a": { "name": "Master of Chemistry" },
+      "b": { "name": "MChem" },
+      "expected": "identical",
+      "note": "MChem is a UK integrated master's abbreviation, not previously in ABBR"
+    },
+    {
+      "id": "abbr-8",
+      "group": "abbreviation",
+      "a": { "name": "Master of Mathematics" },
+      "b": { "name": "MMath" },
+      "expected": "identical",
+      "note": "UK integrated master's abbreviation, not previously in ABBR"
+    },
+    {
+      "id": "abbr-9",
+      "group": "abbreviation",
+      "a": { "name": "Master of Physics" },
+      "b": { "name": "MPhys" },
+      "expected": "identical",
+      "note": "UK integrated master's abbreviation, not previously in ABBR"
+    },
+    {
+      "id": "abbr-10",
+      "group": "abbreviation",
+      "a": { "name": "Master of Pharmacy" },
+      "b": { "name": "MPharm" },
+      "expected": "identical",
+      "note": "UK integrated master's abbreviation, not previously in ABBR"
+    },
+    {
+      "id": "abbr-11",
+      "group": "abbreviation",
+      "a": { "name": "Anatomy and Human Biology MBiol (Hons)" },
+      "b": { "name": "Anatomy and Human Biology M.Biol. (Hons)" },
+      "expected": "identical",
+      "note": "before the ABBR fix, MBiol parsed as qualifier=null on both sides — still identical here, but for the wrong reason (both bare) rather than both correctly recognised as master's"
+    },
+    {
+      "id": "abbr-12",
+      "group": "abbreviation",
+      "a": { "name": "MSci Physics" },
+      "b": { "name": "Integrated Master of Science in Physics" },
+      "expected": "identical",
+      "note": "the spelled-out form of an integrated master's must parse to the same 'integrated master' qualifier as the msci abbreviation, not fall through to plain 'master' and read as a different qualification"
+    },
+    {
+      "id": "abbr-13",
+      "group": "abbreviation",
+      "a": { "name": "MChem Chemistry" },
+      "b": { "name": "Master of Chemistry" },
+      "expected": "identical",
+      "note": "the rest of the UK integrated-master's family (MChem/MPhys/MMath/MBiol/MGeol/MEarthSci), not just MSci — the bare spelled-out form must match its own abbreviation"
+    },
+    {
+      "id": "level-7",
+      "group": "different_level",
+      "a": { "name": "MChem Chemistry" },
+      "b": { "name": "MSc Chemistry" },
+      "expected": "separate",
+      "note": "an integrated MChem and a postgraduate taught MSc in the same subject are different qualifications, not variants"
+    },
+    {
       "id": "order-1",
       "group": "true_duplicate",
       "a": {
@@ -337,6 +409,18 @@
       },
       "expected": "variant",
       "note": "same award and subject; honours is a variant flag, link not merge"
+    },
+    {
+      "id": "level-6",
+      "group": "different_level",
+      "a": {
+        "name": "MSci Physics"
+      },
+      "b": {
+        "name": "MSc Physics"
+      },
+      "expected": "separate",
+      "note": "MSci is an integrated undergraduate-entry master's, MSc a postgraduate taught one — distinct qualifications commonly offered side by side, not variants of one course"
     },
     {
       "id": "var-1",
@@ -609,6 +693,84 @@
       },
       "expected": "variant",
       "note": "a carries a stray (Hons) from a governance page; same award, subject and specialisation so it links as a variant rather than merging. Reviewer may merge."
+    },
+    {
+      "id": "bare-1",
+      "group": "bare_subject_hub",
+      "a": { "name": "Data Science", "source_url": "https://www.harvard.edu/programs/data-science" },
+      "b": { "name": "Data Science Graduate Certificate", "source_url": "https://extension.harvard.edu/academics/graduate-certificates" },
+      "expected": "possible_duplicate",
+      "note": "live Harvard shape: a subject-hub page names the programme with no award at all; must be flagged for review, not silently separate nor auto-merged"
+    },
+    {
+      "id": "bare-2",
+      "group": "bare_subject_hub",
+      "a": { "name": "Aeronautics and Astronautics", "source_url": "https://oge.mit.edu/graduate-admissions/programs" },
+      "b": { "name": "Aeronautics and Astronautics (Graduate)", "source_url": "https://student.mit.edu/catalog/m16a.html" },
+      "expected": "possible_duplicate",
+      "note": "live MIT shape: parenthetical (Graduate)/(Undergraduate) qualifier vs a bare hub mention"
+    },
+    {
+      "id": "bare-3",
+      "group": "bare_subject_hub",
+      "a": { "name": "Aeronautics and Astronautics (Undergraduate)" },
+      "b": { "name": "Aeronautics and Astronautics (Graduate)" },
+      "expected": "separate",
+      "note": "negative control: BOTH sides state a qualifier (undergraduate vs graduate) — two real, different programmes, tier 2c must not fire when neither side is bare"
+    },
+    {
+      "id": "bare-4",
+      "group": "bare_subject_hub",
+      "a": { "name": "Biology" },
+      "b": { "name": "Master of Chemistry" },
+      "expected": "separate",
+      "note": "negative control: one side bare, but a different subject entirely — tier 2c requires the subject to match too"
+    },
+    {
+      "id": "bare-5",
+      "group": "bare_subject_hub",
+      "a": { "name": "Online Courses" },
+      "b": { "name": "Doctoral Program" },
+      "expected": "separate",
+      "note": "negative control: both names parse to an empty subject (their only content words, courses/program, are stopwords) — must never match on subject=\"\""
+    },
+    {
+      "id": "hub-1",
+      "group": "hub_page_classifier",
+      "a": {
+        "name": "Robotics",
+        "source_url": "https://www.princeton.edu/academics/area-of-study/robotics",
+        "page_context": { "entity_type": "course", "evidence": ["own_detail_page"] }
+      },
+      "b": { "name": "Robotics (Undergraduate Minor)" },
+      "expected": "possible_duplicate",
+      "expected_class_a": "unsupported_standalone",
+      "note": "the hub-page URL override must fire even though the model itself labelled it entity_type=course with own_detail_page evidence — that evidence is exactly what every area-of-study hub page trivially has"
+    },
+    {
+      "id": "hub-2",
+      "group": "hub_page_classifier",
+      "a": {
+        "name": "Robotics",
+        "source_url": "https://www.princeton.edu/academics/area-of-study/robotics",
+        "page_context": { "entity_type": "course", "evidence": ["own_detail_page", "fees_stated"] }
+      },
+      "b": { "name": "Robotics (Undergraduate Minor)" },
+      "expected": "possible_duplicate",
+      "expected_class_a": "course",
+      "note": "negative control: a hub-shaped URL with GENUINE programme evidence beyond own_detail_page (fees_stated) must NOT be downgraded — the override only discounts own_detail_page specifically"
+    },
+    {
+      "id": "hub-3",
+      "group": "hub_page_classifier",
+      "a": {
+        "name": "Robotics (Graduate Certificate)",
+        "source_url": "https://www.princeton.edu/academics/area-of-study/robotics"
+      },
+      "b": { "name": "Robotics (Undergraduate Minor)" },
+      "expected": "separate",
+      "expected_class_a": "course",
+      "note": "negative control: a hub-shaped URL is irrelevant once the name itself states an award — the override only ever applies inside the no-award branch"
     }
   ]
 }

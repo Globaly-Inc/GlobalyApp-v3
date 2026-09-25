@@ -8,6 +8,7 @@ import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { writeJobEvent, normaliseCampusName } from "./staging-writer.js";
+import { DISCOVERY_STEP_ORDER } from "../schemas/step.schema.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
 const logger = createChildLogger("queue-completion");
@@ -57,6 +58,43 @@ export async function checkAllPagesDone(jobId: string) {
   if (Number(counts?.total ?? 0) === 0) return;
 
   if (Number(counts?.remaining) === 0) {
+    // A queue with nothing left doesn't mean discovery actually finished finding everything — if
+    // resumeExtraction dispatched an incomplete discovery step and its publish failed, it marks
+    // that step "failed" (not left stuck "processing", which a still-in-flight run could
+    // legitimately hold) precisely so this check can catch it: without this, the pages that WERE
+    // already queued finish, the queue reads empty, and verification starts even though the course
+    // URLs that step was meant to find were never discovered (Greptile). Left "processing" —
+    // exactly like a failed dispatchStep elsewhere in this module — until an admin notices and
+    // resumes again.
+    const jobRow = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).select("pipeline_progress").first();
+    const progress = typeof jobRow?.pipeline_progress === "string"
+      ? JSON.parse(jobRow.pipeline_progress) : (jobRow?.pipeline_progress || {});
+    const failedStep = DISCOVERY_STEP_ORDER.find((s) => progress[s] === "failed");
+    if (failedStep) {
+      await writeJobEvent(jobId, "discovery_step_failed_blocks_completion", {
+        level: "warn", phase: failedStep,
+        message: `Queue is empty but discovery step "${failedStep}" failed to run — resume the job to find the rest before verification starts`,
+        data: { failedStep },
+      });
+      return;
+    }
+
+    // A discovery step still legitimately IN FLIGHT is a different case from "failed" above: a
+    // Resume can republish a handful of already-queued pages while dispatching queue_pages to find
+    // the rest, and if those few pages happen to finish scraping before queue_pages gets through
+    // its own (network-free but not instant) enumeration loop, the queue reads momentarily empty
+    // even though discovery hasn't queued everything yet — starting verification here would do so
+    // before every course URL was even found (Greptile). Not stuck: handleQueuePagesStep calls
+    // this function itself the moment queue_pages actually finishes (below in
+    // extraction-step.worker.ts), which is what re-checks and completes this the instant discovery
+    // is genuinely done, even in the one case no page completion ever would — queue_pages finding
+    // nothing new left to queue.
+    const inFlightStep = DISCOVERY_STEP_ORDER.find((s) => progress[s] === "processing");
+    if (inFlightStep) {
+      logger.info("Queue empty but a discovery step is still running, deferring completion", { jobId, inFlightStep });
+      return;
+    }
+
     // Guard: only transition once — avoid duplicate verification dispatches from parallel workers
     const updated = await masterKnex(`${S}.extraction_jobs`)
       .where({ id: jobId, status: "processing" })

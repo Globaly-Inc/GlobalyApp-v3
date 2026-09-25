@@ -16,6 +16,7 @@ import * as coursesRepo from "../repositories/courses.repository.js";
 import * as reviewRepo from "../repositories/review.repository.js";
 import * as stagedRepo from "../repositories/staged.repository.js";
 import * as visaRepo from "../repositories/visa-services.repository.js";
+import { resumeExtraction } from "./queue.service.js";
 import type { CreateJobInput, FailJobInput, PatchJobContextInput } from "../schemas/jobs.schema.js";
 
 const logger = createChildLogger("extraction-jobs-service");
@@ -275,20 +276,13 @@ export function pauseJob(id: string, adminId: number) {
   return setJobStatus(id, "paused", adminId, "JOB_PAUSE");
 }
 
-export async function resumeJob(id: string, adminId: number) {
-  const result = await setJobStatus(id, "extracting", adminId, "JOB_RESUME", {
-    error_message: null,
-    processing_heartbeat_at: null,
-  });
-
-  // Re-dispatch so the pipeline worker picks it back up
-  try {
-    await queueService.publish(EXTRACTION_QUEUES.JOBS, { jobId: id, resumed: true });
-  } catch {
-    logger.warn("Queue unavailable on resume, worker will poll", { jobId: id });
-  }
-
-  return result;
+// Resume picks up the pages that were found but never scraped — it must NOT behave like a
+// fresh job (that's Re-run's job now). Delegates to resumeExtraction (queue.service.ts), which
+// re-dispatches this job's pending/failed/paused queue items via the "courses" step instead of
+// republishing to the JOBS queue, which the one-step-at-a-time job worker treats as brand new
+// and restarts from site_map — that was the actual bug behind "resume re-extracts everything".
+export function resumeJob(id: string, adminId: number) {
+  return resumeExtraction(id, adminId);
 }
 
 export function declineJob(id: string, adminId: number) {

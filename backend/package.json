@@ -21,6 +21,7 @@
     "backfill:institution-branches": "node --import tsx scripts/backfill-institution-branches.ts",
     "eligibility:backfill": "node --import tsx scripts/eligibility-backfill.ts",
     "courses:merge-duplicates": "node --import tsx scripts/merge-duplicate-courses.ts",
+    "courses:flag-review": "node --import tsx scripts/backfill-course-review-flags.ts",
     "test:course-entity-resolution": "node --import tsx tests/course-entity-resolution.ts",
     "ai:evals": "node --import tsx scripts/ai-evals/run-evals.ts",
     "gcs:cors": "node --import tsx scripts/set-gcs-cors.ts",

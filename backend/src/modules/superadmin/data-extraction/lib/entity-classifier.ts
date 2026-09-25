@@ -33,6 +33,8 @@ export interface EntityContext {
   jobUnitCodes: ReadonlySet<string>;
   /** normaliseUnitName()-shaped unit names already staged for this job. */
   jobUnitNames: ReadonlySet<string>;
+  /** The page this item was read from, when known — used only for the hub-page override below. */
+  sourceUrl?: string | null;
 }
 
 export interface EntityClassification {
@@ -52,6 +54,15 @@ const UNIT_VOCAB_RE = /\b(practicum|internship|seminar|capstone|thesis|dissertat
 
 const PROGRAMME_EVIDENCE = new Set(["own_detail_page", "award_in_name", "fees_stated", "duration_stated"]);
 const UNIT_EVIDENCE = new Set(["unit_code", "credit_points", "listed_under_program_heading"]);
+
+// A URL literally structured as a subject/department hub ("/area-of-study/<slug>",
+// "/areas-of-study/<slug>") describes the DISCIPLINE, not one credentialed offering. "own_detail_page"
+// ("this page is about this item alone") is true of every such hub page by construction — the page
+// IS entirely about that one subject — so on its own it cannot tell a hub apart from a real program's
+// detail page, and the model has no other vocabulary for the distinction. Confirmed against live
+// extraction_courses data: Princeton's /academics/area-of-study/* pages alone account for most of the
+// measured "bare subject vs qualified programme" pairs (see course-resolver.ts tier 2c).
+const HUB_PAGE_URL_RE = /\/areas?-of-study\//i;
 
 function normUnit(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, " ");
@@ -83,6 +94,16 @@ export function classifyEntity(item: EntityItem, ctx: EntityContext): EntityClas
       return { verdict: "module", reason: "listed_under_curriculum_heading", parentProgram: parent, unitCode: code };
     }
     if (unitShaped && !programmeShaped) return { verdict: "module", reason: "unit_shaped_no_award", parentProgram: parent, unitCode: code };
+    // Deterministic override, checked BEFORE the model's own label: a confirmed hub-page URL with no
+    // programme evidence beyond "own_detail_page" (which the hub trivially satisfies) is flagged for
+    // review regardless of what entity_type the model gave it — unlike the label-gated check below,
+    // this does not trust the model to have correctly told a hub apart from a real detail page.
+    if (ctx.sourceUrl && HUB_PAGE_URL_RE.test(ctx.sourceUrl)) {
+      const withoutOwnPage = [...evidence].filter((e) => e !== "own_detail_page");
+      if (!withoutOwnPage.some((e) => PROGRAMME_EVIDENCE.has(e))) {
+        return { verdict: "unsupported_standalone", reason: "hub_page_url", parentProgram: parent, unitCode: null };
+      }
+    }
     // No award, nothing unit-shaped: only standalone if this page is about it or evidence says so.
     if (ctx.coursesOnPage > 1 && !programmeShaped) {
       return { verdict: "unsupported_standalone", reason: "no_award_on_list_page", parentProgram: parent, unitCode: null };

@@ -491,3 +491,86 @@ export async function runQueuePages(jobId: string, job: JobRow): Promise<{ queue
   }
   return { queued, idle };
 }
+
+// A "pending" row tagged awaiting_publish with a still-counting-down retry_after_ms is NOT stuck —
+// extraction-page.worker.ts released it to wait out a provider-mandated backoff and has its own
+// in-process timer that will republish it at the right time. Blindly republishing it here would
+// jump that backoff and risk the exact rate limit it exists to avoid (Greptile). Mirrors
+// extraction-queue-reclaim.worker.ts's applyDueCondition "pending" branch exactly (same
+// RECLAIM_GRACE_MINUTES=5), so Resume and the automatic reclaim sweep never disagree about which
+// pending rows are fair game — keep the two in sync if either changes.
+function retryableQueueItemCondition(qb: import("knex").Knex.QueryBuilder): void {
+  qb.whereIn("status", ["failed", "paused"])
+    .orWhere((sub) => {
+      sub.where({ status: "pending" }).andWhere((due) => {
+        due.whereRaw(`processing_meta->>'awaiting_publish' is distinct from 'true'`)
+          .orWhereRaw(
+            `updated_at < now() - (coalesce((processing_meta->>'retry_after_ms')::bigint, 0) * interval '1 millisecond') - interval '5 minutes'`,
+          );
+      });
+    });
+}
+
+// Reconstructs the SAME scraper-tier options extraction-page.worker.ts's own retry ladder would
+// have published (forceFirecrawl/mobile/proxy), from processing_meta.retry_strategy — identical
+// mapping to extraction-queue-reclaim.worker.ts's publishOpts, kept in sync deliberately.
+//
+// Needed because a "pending" row with a retry_strategy already recorded can have an escalated
+// retry message genuinely in flight RIGHT NOW: extraction-page.worker.ts's immediate (non-deferred)
+// anti-bot retry flips the row to "pending" and publishes its escalated retry synchronously, with
+// no awaiting_publish tag at all (that tag is deferred-retry-only) — so retryableQueueItemCondition
+// above cannot and does not try to exclude it. A bare {jobId, queueItemId, url} republish here would
+// still land as a second queue message; if IT wins the claim race the page runs a default-tier
+// scrape instead of the intended escalated one, burning a retry attempt without ever addressing the
+// block (Greptile). Publishing with the SAME reconstructed options makes a duplicate message
+// harmless either way — the claim guard already makes the loser a no-op, but now the winner is
+// always correct regardless of which message that is.
+function retryPublishOpts(meta: Record<string, unknown> | null | undefined) {
+  const strategy = meta?.retry_strategy;
+  return (
+    strategy === "mobile" ? { forceFirecrawl: true, mobile: true, proxy: "stealth" as const, expandCollapsed: true } :
+    strategy === "browser_render" ? { forceFirecrawl: true, mobile: false, proxy: "auto" as const, expandCollapsed: true } :
+    {}
+  );
+}
+
+export async function republishRetryableQueueItems(
+  jobId: string,
+): Promise<{ candidates: number; dispatched: number; error: unknown }> {
+  const items = await masterKnex(`${S}.extraction_queue`)
+    .where({ job_id: jobId })
+    .where(retryableQueueItemCondition)
+    .select("id", "url", "processing_meta");
+
+  let dispatched = 0;
+  let error: unknown = null;
+  // Caught internally, not thrown straight through: a mid-loop publish failure must not lose the
+  // count of items already dispatched before it — callers (resumeExtraction) need that count to
+  // decide whether pages are already in flight, not just that something went wrong (Greptile).
+  try {
+    for (const item of items) {
+      const flipped = await masterKnex(`${S}.extraction_queue`)
+        .where({ id: item.id })
+        .where(retryableQueueItemCondition)
+        .update({
+          status: "pending",
+          updated_at: masterKnex.fn.now(),
+          processing_meta: masterKnex.raw(
+            `coalesce(processing_meta, '{}'::jsonb) || '{"attempt_token": null, "awaiting_publish": true}'::jsonb`,
+          ),
+        });
+      if (flipped === 0) continue;
+      await _stepDeps.publish(EXTRACTION_QUEUES.PAGES, {
+        jobId, queueItemId: item.id, url: item.url, ...retryPublishOpts(item.processing_meta),
+      });
+      await masterKnex(`${S}.extraction_queue`)
+        .where({ id: item.id, status: "pending" })
+        .whereRaw(`processing_meta->>'attempt_token' is null`)
+        .update({ processing_meta: masterKnex.raw(`processing_meta - 'awaiting_publish'`) });
+      dispatched++;
+    }
+  } catch (err) {
+    error = err;
+  }
+  return { candidates: items.length, dispatched, error };
+}

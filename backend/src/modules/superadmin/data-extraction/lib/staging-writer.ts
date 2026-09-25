@@ -460,20 +460,31 @@ export async function writeInstitutionOverview(jobId: string, data: InstitutionO
   return row;
 }
 
+// Upsert on job_id, not a plain insert: the table has UNIQUE(job_id) (one row per job), and
+// site_analysis now runs on every re-run (rerunJob always restarts from a clean slate), so a
+// job analysed more than once always hit "duplicate key value violates ...
+// extraction_site_intelligence_job_uniq" and the step — and the whole chain after it — failed
+// every time. Unlike writeInstitutionOverview's fill-blanks merge (admin-editable fields), this
+// table is pipeline-internal only, so a fresh analysis wholesale-replaces the old one rather
+// than merging with it.
 export async function writeSiteIntelligence(jobId: string, data: SiteIntelligence) {
   const insert: Record<string, unknown> = {
     job_id: jobId,
-    institution_name: data.institution_name,
-    institution_type: data.institution_type,
-    country: data.country,
-    currency: data.currency,
+    institution_name: data.institution_name ?? null,
+    institution_type: data.institution_type ?? null,
+    country: data.country ?? null,
+    currency: data.currency ?? null,
+    fee_structure: JSON.stringify(data.fee_structure ?? {}),
+    extraction_hints: data.extraction_hints ?? [],
+    navigation_patterns: JSON.stringify(data.navigation_patterns ?? {}),
   };
-  if (data.fee_structure) insert.fee_structure = JSON.stringify(data.fee_structure);
-  if (data.extraction_hints) insert.extraction_hints = data.extraction_hints;
-  if (data.navigation_patterns) insert.navigation_patterns = JSON.stringify(data.navigation_patterns);
 
-  const [row] = await masterKnex(`${S}.extraction_site_intelligence`).insert(insert).returning("id");
-  logger.info("Wrote site intelligence", { jobId, id: row.id });
+  const [row] = await masterKnex(`${S}.extraction_site_intelligence`)
+    .insert(insert)
+    .onConflict("job_id")
+    .merge()
+    .returning("id");
+  logger.info("Upserted site intelligence", { jobId, id: row.id });
   return row;
 }
 
@@ -2147,7 +2158,7 @@ export async function writeCourse(
   const units = await jobUnitIndex(jobId);
   const cls = classifyEntity(
     { name: course.name, entity_type: course.entity_type, parent_program: course.parent_program, evidence: course.evidence },
-    { coursesOnPage, jobUnitCodes: units.codes, jobUnitNames: units.names },
+    { coursesOnPage, jobUnitCodes: units.codes, jobUnitNames: units.names, sourceUrl: course.source_url ?? null },
   );
   if (cls.verdict === "drop") {
     await writeJobEvent(jobId, "dropped_entity", {
@@ -2190,8 +2201,17 @@ export async function writeCourse(
   let existing: Record<string, any> | undefined = res.outcome === "identical" && res.match
     ? await masterKnex(`${S}.extraction_courses`).where({ id: res.match.id }).first()
     : undefined;
-  if (res.outcome === "possible_duplicate" || cls.verdict === "unsupported_standalone") {
-    const reason = res.outcome === "possible_duplicate" ? `possible_duplicate:${res.reason}` : `unsupported_standalone:${cls.reason}`;
+  if (res.outcome === "possible_duplicate") {
+    const matches = res.matches?.length ? res.matches : (res.match ? [res.match] : []);
+    const reason = `possible_duplicate:${res.reason}`;
+    for (const m of matches) {
+      await writeJobEvent(jobId, "course_needs_review", {
+        phase: "courses", level: "warn", message: `"${course.name}" stored but flagged (${reason})`,
+        data: { name: course.name, reason, candidate_id: m.id, url: course.source_url ?? null },
+      });
+    }
+  } else if (cls.verdict === "unsupported_standalone") {
+    const reason = `unsupported_standalone:${cls.reason}`;
     await writeJobEvent(jobId, "course_needs_review", {
       phase: "courses", level: "warn", message: `"${course.name}" stored but flagged (${reason})`,
       data: { name: course.name, reason, candidate_id: res.match?.id ?? null, url: course.source_url ?? null },
