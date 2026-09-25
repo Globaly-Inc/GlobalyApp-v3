@@ -45,8 +45,15 @@ const ABBR: Record<string, [string, string | null]> = {
   mcomm: ["master", "commerce"], mmus: ["master", "music"], march: ["master", "architecture"],
   magr: ["master", "agriculture"], mn: ["master", "nursing"], mtech: ["master", "technology"],
   mdes: ["master", "design"], mpa: ["master", "public administration"], mpp: ["master", "public policy"],
-  mbiol: ["master", "biology"], mchem: ["master", "chemistry"], mmath: ["master", "mathematics"],
-  mphys: ["master", "physics"], mgeol: ["master", "geology"], mearthsci: ["master", "earth science"],
+  // The whole UK integrated-master's family (undergrad-entry, distinct from a taught postgraduate
+  // master's in the same subject), not just MSci — MChem/MPhys/MMath/MBiol/MGeol/MEarthSci are the
+  // same kind of qualification, just named after their specific science. mpharm is deliberately
+  // left as plain "master": unlike these, MPharm is the standard, singular route into pharmacy
+  // practice, not one an institution also offers as a separate distinct postgraduate "Master of
+  // Pharmacy" — see fixture case abbr-10, which asserts MPharm == "Master of Pharmacy" (Greptile).
+  mbiol: ["integrated master", "biology"], mchem: ["integrated master", "chemistry"],
+  mmath: ["integrated master", "mathematics"], mphys: ["integrated master", "physics"],
+  mgeol: ["integrated master", "geology"], mearthsci: ["integrated master", "earth science"],
   msci: ["integrated master", "science"], mpharm: ["master", "pharmacy"],
   bsc: ["bachelor", "science"], bs: ["bachelor", "science"], ba: ["bachelor", "arts"],
   beng: ["bachelor", "engineering"], bba: ["bachelor", "business administration"],
@@ -99,7 +106,17 @@ const AWARDS = new Set([
   "commerce", "business", "nursing", "medicine", "music", "architecture", "design", "technology",
   "accounting", "economics", "research", "agriculture", "juris", "divinity", "pharmacy", "surgery",
   "dental surgery", "veterinary science", "physiotherapy", "midwifery", "letters", "theology",
+  "biology", "chemistry", "mathematics", "physics", "geology", "earth science",
 ]);
+
+// AWARDS words that, when they follow a bare "Master of" (long-form, no "integrated" stated),
+// unambiguously mean the UK integrated master's rather than a postgraduate one. Unlike "science"
+// (ambiguous — MSc is the overwhelmingly common reading of "Master of Science"), a genuine
+// postgraduate degree in these specific subjects is essentially always phrased "Master of Science
+// in X" / "MSc X", never bare "Master of X" — so the spelled-out form of MChem/MMath/MPhys/MBiol/
+// MGeol/MEarthSci must resolve to the SAME qualifier as their own abbreviation (Greptile) without
+// reopening the ambiguity a blanket "Master of X = integrated" rule would create for "science".
+const INTEGRATED_MASTER_AWARDS = new Set(["biology", "chemistry", "mathematics", "physics", "geology", "earth science"]);
 
 // Delivery / pathway markers. Each becomes a flag; the phrase is removed from the name.
 const FLAG_PATTERNS: Array<[RegExp, string]> = [
@@ -159,7 +176,7 @@ function parseSegment(seg: string): Segment {
   const plain = toks.join(" ");
   const m = plain.match(LEVEL_RE);
   if (!m || m.index == null) return { qualifier: null, award: null, rest: plain };
-  const level = LEVEL_CANON[m[1]] ?? m[1];
+  let level = LEVEL_CANON[m[1]] ?? m[1];
   let award: string | null = level === "doctor" && m[1] === "juris doctor" ? "juris" : null;
   const pre = plain.slice(0, m.index).trim();
   let post = plain.slice(m.index + m[0].length).trim();
@@ -172,6 +189,8 @@ function parseSegment(seg: string): Segment {
     if (hit) { award = hit; post = after.slice(hit.length).trim(); }
     else post = after; // "bachelor of computer science": discipline follows directly
   }
+  // "Master of Chemistry" etc. spelled out with no "integrated" — see INTEGRATED_MASTER_AWARDS.
+  if (level === "master" && award && INTEGRATED_MASTER_AWARDS.has(award)) level = "integrated master";
   const rest = [pre, stripLeading(post)].filter(Boolean).join(" ");
   return { qualifier: level, award, rest };
 }

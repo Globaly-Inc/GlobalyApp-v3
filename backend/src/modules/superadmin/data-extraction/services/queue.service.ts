@@ -131,15 +131,30 @@ export async function resumeExtraction(jobId: string, adminId: number) {
   // so the reverse order would race it into silently dropping the re-dispatched pages.
   await repo.reactivateJob(jobId, adminId);
   await logAudit(adminId, "JOB_RESUME", { entityType: "extraction_jobs", entityId: jobId, details: { retryable, step } });
+  let republished = 0;
   try {
-    if (retryable > 0 && step !== "courses") await republishRetryableQueueItems(jobId);
+    if (retryable > 0 && step !== "courses") {
+      const r = await republishRetryableQueueItems(jobId);
+      republished = r.dispatched;
+      if (r.error) throw r.error;
+    }
     await dispatchStep(jobId, { step }, adminId);
   } catch (err) {
     // Push queue: nothing consumes the reactivated job unless the step message actually
     // published. Without this rollback a failed dispatch (LavinMQ down) leaves the job
     // showing "processing" with a fresh heartbeat and no work queued — stalled until
     // someone notices. Restore the pre-resume status so the failure state stays truthful.
-    await updateJob(jobId, { status: job.status }, adminId);
+    //
+    // BUT only when nothing was actually published: extraction-page.worker.ts drops a PAGES
+    // message outright for a paused/failed/declined job ("job not active, skipping"), and a
+    // successful republish also clears awaiting_publish on those rows — so a row already
+    // republished before dispatchStep failed would go back to "pending" with its message
+    // silently dropped and no tag left for the reclaim sweep to ever pick it up again (Greptile).
+    // Leaving the job active lets the already in-flight pages still get processed even though the
+    // step dispatch itself failed; the step alone can be re-run for that.
+    if (republished === 0) {
+      await updateJob(jobId, { status: job.status }, adminId);
+    }
     throw err;
   }
   return { updated: true, retryable, step };

@@ -179,6 +179,22 @@
       "note": "the spelled-out form of an integrated master's must parse to the same 'integrated master' qualifier as the msci abbreviation, not fall through to plain 'master' and read as a different qualification"
     },
     {
+      "id": "abbr-13",
+      "group": "abbreviation",
+      "a": { "name": "MChem Chemistry" },
+      "b": { "name": "Master of Chemistry" },
+      "expected": "identical",
+      "note": "the rest of the UK integrated-master's family (MChem/MPhys/MMath/MBiol/MGeol/MEarthSci), not just MSci — the bare spelled-out form must match its own abbreviation"
+    },
+    {
+      "id": "level-7",
+      "group": "different_level",
+      "a": { "name": "MChem Chemistry" },
+      "b": { "name": "MSc Chemistry" },
+      "expected": "separate",
+      "note": "an integrated MChem and a postgraduate taught MSc in the same subject are different qualifications, not variants"
+    },
+    {
       "id": "order-1",
       "group": "true_duplicate",
       "a": {

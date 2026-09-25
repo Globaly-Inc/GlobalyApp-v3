@@ -1045,7 +1045,10 @@ async function handleCoursesStep(jobId: string) {
   let queuedNew = 0;
   let dispatchErr: unknown = null;
   try {
-    ({ candidates, dispatched } = await republishRetryableQueueItems(jobId));
+    const republish = await republishRetryableQueueItems(jobId);
+    candidates = republish.candidates;
+    dispatched = republish.dispatched;
+    if (republish.error) throw republish.error;
 
     // Real bug: this step never looked at guided_urls at all, so adding a new URL under
     // Intakes/Eligibility/Study Units/Accreditations in the Context tab and hitting
