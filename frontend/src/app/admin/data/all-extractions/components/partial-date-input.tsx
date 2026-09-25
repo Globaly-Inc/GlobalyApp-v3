@@ -82,6 +82,7 @@ export function PartialDateInput({
         />
       ) : (
         <DatePicker
+          id={id}
           value={value}
           onChange={onChange}
           disabled={disabled}

@@ -31,9 +31,10 @@ export type DatePickerProps = {
   disabled?: boolean | ((date: Date) => boolean)
   "aria-invalid"?: boolean
   className?: string
+  id?: string
 }
 
-function DatePicker({ value, onChange, placeholder = "Pick a date", fromYear, toYear, defaultMonth, disabled, className, ...props }:  Readonly<DatePickerProps>) {
+function DatePicker({ value, onChange, placeholder = "Pick a date", fromYear, toYear, defaultMonth, disabled, className, id, ...props }:  Readonly<DatePickerProps>) {
   const [open, setOpen] = React.useState(false)
   const selected = fromIsoDate(value)
   const controlDisabled = disabled === true
@@ -44,6 +45,7 @@ function DatePicker({ value, onChange, placeholder = "Pick a date", fromYear, to
       <PopoverTrigger
         render={
           <Button
+            id={id}
             type="button"
             variant="outline"
             disabled={controlDisabled}

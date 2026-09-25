@@ -239,11 +239,33 @@ export function CourseDetailPanel({
   const unlink = (junction: JunctionSlug, entityId: string) =>
     run(() => allExtractionsApi.unassignJunction(junction, { job_id: jobId, course_id: course.id, entity_id: entityId }), "Unlinked");
 
-  const createAndLink = (junction: JunctionSlug, create: () => Promise<{ id: string }>, success: string) =>
-    run(async () => {
+  const createAndLink = async (
+    junction: JunctionSlug,
+    create: () => Promise<{ id: string }>,
+    success: string,
+  ): Promise<boolean> => {
+    setBusy(true);
+    try {
       const created = await create();
-      await allExtractionsApi.assignJunction(junction, { job_id: jobId, course_id: course.id, entity_id: created.id });
-    }, success);
+      try {
+        await allExtractionsApi.assignJunction(junction, { job_id: jobId, course_id: course.id, entity_id: created.id });
+      } catch (linkErr) {
+        await onChanged();
+        toast.error("Created, but linking to this course failed", {
+          description: `${(linkErr as Error).message} — find it in "Link" and add it manually.`,
+        });
+        return false;
+      }
+      await onChanged();
+      toast.success(success);
+      return true;
+    } catch (createErr) {
+      toast.error("Action failed", { description: (createErr as Error).message });
+      return false;
+    } finally {
+      setBusy(false);
+    }
+  };
 
   const idsFor = (rows: CourseAssignment[], column: string) =>
     new Set(rows.filter((r) => r.course_id === course.id).map((r) => r[column]).filter((v): v is string => Boolean(v)));
@@ -491,33 +513,40 @@ export function CourseDetailPanel({
             rows.length === 0 && !addingIntake ? (
               <p className="rounded-md bg-muted/50 py-2 text-center text-xs text-muted-foreground">No intakes</p>
             ) : (
-              rows.map((intake) => editingIntakeId === intake.id ? (
-                <IntakeForm
-                  key={intake.id}
-                  intake={intake}
-                  saving={busy}
-                  onCancel={() => setEditingIntakeId(null)}
-                  onSave={async (values) => {
-                    const ok = await run(() => saveFormAndLearn("extraction_intakes", intake, values, jobId), "Intake updated");
-                    if (ok) setEditingIntakeId(null);
-                  }}
-                />
-              ) : (
-                <div key={intake.id} className="flex items-center justify-between gap-2 rounded-md bg-muted/40 px-2 py-1.5 text-sm">
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <CalendarDays className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    <span className="truncate">{intake.intake_name ?? "Intake"}</span>
-                  </span>
-                  <span className="flex shrink-0 items-center gap-2">
-                    {[fmtDate(intake.start_date), fmtDate(intake.end_date)].filter(Boolean).join(" → ") && (
-                      <span className="text-xs text-muted-foreground">
-                        {[fmtDate(intake.start_date), fmtDate(intake.end_date)].filter(Boolean).join(" → ")}
-                      </span>
-                    )}
-                    {rowActions(() => setEditingIntakeId(intake.id), () => unlinkRow(intake.id))}
-                  </span>
-                </div>
-              ))
+              rows.map((intake) => {
+                if (editingIntakeId === intake.id) {
+                  return (
+                    <IntakeForm
+                      key={intake.id}
+                      intake={intake}
+                      saving={busy}
+                      onCancel={() => setEditingIntakeId(null)}
+                      onSave={async (values) => {
+                        const ok = await run(() => saveFormAndLearn("extraction_intakes", intake, values, jobId), "Intake updated");
+                        if (ok) setEditingIntakeId(null);
+                      }}
+                    />
+                  );
+                }
+                const otherNames = sharedWith(links.intake_assignments, "intake_id", intake.id);
+                return (
+                  <div key={intake.id} className="flex items-center justify-between gap-2 rounded-md bg-muted/40 px-2 py-1.5 text-sm">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <CalendarDays className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <span className="truncate">{intake.intake_name ?? "Intake"}</span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2">
+                      <SharedCoursesBadge names={otherNames} />
+                      {[fmtDate(intake.start_date), fmtDate(intake.end_date)].filter(Boolean).join(" → ") && (
+                        <span className="text-xs text-muted-foreground">
+                          {[fmtDate(intake.start_date), fmtDate(intake.end_date)].filter(Boolean).join(" → ")}
+                        </span>
+                      )}
+                      {rowActions(() => setEditingIntakeId(intake.id), () => unlinkRow(intake.id))}
+                    </span>
+                  </div>
+                );
+              })
             )
           }
         >
@@ -525,9 +554,9 @@ export function CourseDetailPanel({
             <IntakeForm
               saving={busy}
               onCancel={() => setAddingIntake(false)}
-              onSave={(values) => {
-                setAddingIntake(false);
-                createAndLink("intakes", () => allExtractionsApi.createIntake({ job_id: jobId, ...values }), "Intake added");
+              onSave={async (values) => {
+                const ok = await createAndLink("intakes", () => allExtractionsApi.createIntake({ job_id: jobId, ...values }), "Intake added");
+                if (ok) setAddingIntake(false);
               }}
             />
           )}
@@ -585,9 +614,9 @@ export function CourseDetailPanel({
             <StudyUnitForm
               saving={busy}
               onCancel={() => setAddingUnit(false)}
-              onSave={(values) => {
-                setAddingUnit(false);
-                createAndLink("study-units", () => allExtractionsApi.createStudyUnit({ job_id: jobId, ...values }), "Study unit added");
+              onSave={async (values) => {
+                const ok = await createAndLink("study-units", () => allExtractionsApi.createStudyUnit({ job_id: jobId, ...values }), "Study unit added");
+                if (ok) setAddingUnit(false);
               }}
             />
           )}
@@ -604,32 +633,39 @@ export function CourseDetailPanel({
             rows.length === 0 && !addingEligibility ? (
               <p className="rounded-md bg-muted/50 py-2 text-center text-xs text-muted-foreground">No eligibility requirements</p>
             ) : (
-              rows.map((req) => editingEligibilityId === req.id ? (
-                <EligibilityForm
-                  key={req.id}
-                  requirement={req}
-                  saving={busy}
-                  onCancel={() => setEditingEligibilityId(null)}
-                  onSave={async (values) => {
-                    const ok = await run(
-                      () => saveFormAndLearn("extraction_eligibility_requirements", req, values, jobId),
-                      "Eligibility requirement updated",
-                    );
-                    if (ok) setEditingEligibilityId(null);
-                  }}
-                />
-              ) : (
-                <div key={req.id} className="flex items-center justify-between gap-2 rounded-md bg-muted/40 px-2 py-1.5 text-sm">
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    <span className="truncate">{req.name ?? "Requirement"}</span>
-                  </span>
-                  <span className="flex shrink-0 items-center gap-2">
-                    {humanize(req.applicable_to) && <span className="text-xs text-muted-foreground">{humanize(req.applicable_to)}</span>}
-                    {rowActions(() => setEditingEligibilityId(req.id), () => unlinkRow(req.id))}
-                  </span>
-                </div>
-              ))
+              rows.map((req) => {
+                if (editingEligibilityId === req.id) {
+                  return (
+                    <EligibilityForm
+                      key={req.id}
+                      requirement={req}
+                      saving={busy}
+                      onCancel={() => setEditingEligibilityId(null)}
+                      onSave={async (values) => {
+                        const ok = await run(
+                          () => saveFormAndLearn("extraction_eligibility_requirements", req, values, jobId),
+                          "Eligibility requirement updated",
+                        );
+                        if (ok) setEditingEligibilityId(null);
+                      }}
+                    />
+                  );
+                }
+                const otherNames = sharedWith(links.eligibility_assignments, "eligibility_requirement_id", req.id);
+                return (
+                  <div key={req.id} className="flex items-center justify-between gap-2 rounded-md bg-muted/40 px-2 py-1.5 text-sm">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <span className="truncate">{req.name ?? "Requirement"}</span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2">
+                      <SharedCoursesBadge names={otherNames} />
+                      {humanize(req.applicable_to) && <span className="text-xs text-muted-foreground">{humanize(req.applicable_to)}</span>}
+                      {rowActions(() => setEditingEligibilityId(req.id), () => unlinkRow(req.id))}
+                    </span>
+                  </div>
+                );
+              })
             )
           }
         >
@@ -637,13 +673,13 @@ export function CourseDetailPanel({
             <EligibilityForm
               saving={busy}
               onCancel={() => setAddingEligibility(false)}
-              onSave={(values) => {
-                setAddingEligibility(false);
-                createAndLink(
+              onSave={async (values) => {
+                const ok = await createAndLink(
                   "eligibility-requirements",
                   () => allExtractionsApi.createEligibilityRequirement({ job_id: jobId, ...values }),
                   "Eligibility requirement added",
                 );
+                if (ok) setAddingEligibility(false);
               }}
             />
           )}
@@ -660,29 +696,36 @@ export function CourseDetailPanel({
             rows.length === 0 && !addingAccreditation ? (
               <p className="rounded-md bg-muted/50 py-2 text-center text-xs text-muted-foreground">No accreditations</p>
             ) : (
-              rows.map((a) => editingAccreditationId === a.id ? (
-                <AccreditationForm
-                  key={a.id}
-                  accreditation={a}
-                  saving={busy}
-                  onCancel={() => setEditingAccreditationId(null)}
-                  onSave={async (values) => {
-                    const ok = await run(() => saveFormAndLearn("extraction_accreditations", a, values, jobId), "Accreditation updated");
-                    if (ok) setEditingAccreditationId(null);
-                  }}
-                />
-              ) : (
-                <div key={a.id} className="flex items-center justify-between gap-2 rounded-md bg-muted/40 px-2 py-1.5 text-sm">
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    <span className="truncate">{a.name}</span>
-                  </span>
-                  <span className="flex shrink-0 items-center gap-2">
-                    {a.issuing_organization && <span className="text-xs text-muted-foreground">{a.issuing_organization}</span>}
-                    {rowActions(() => setEditingAccreditationId(a.id), () => unlinkRow(a.id))}
-                  </span>
-                </div>
-              ))
+              rows.map((a) => {
+                if (editingAccreditationId === a.id) {
+                  return (
+                    <AccreditationForm
+                      key={a.id}
+                      accreditation={a}
+                      saving={busy}
+                      onCancel={() => setEditingAccreditationId(null)}
+                      onSave={async (values) => {
+                        const ok = await run(() => saveFormAndLearn("extraction_accreditations", a, values, jobId), "Accreditation updated");
+                        if (ok) setEditingAccreditationId(null);
+                      }}
+                    />
+                  );
+                }
+                const otherNames = sharedWith(links.accreditation_assignments, "extraction_accreditation_id", a.id);
+                return (
+                  <div key={a.id} className="flex items-center justify-between gap-2 rounded-md bg-muted/40 px-2 py-1.5 text-sm">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <span className="truncate">{a.name}</span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2">
+                      <SharedCoursesBadge names={otherNames} />
+                      {a.issuing_organization && <span className="text-xs text-muted-foreground">{a.issuing_organization}</span>}
+                      {rowActions(() => setEditingAccreditationId(a.id), () => unlinkRow(a.id))}
+                    </span>
+                  </div>
+                );
+              })
             )
           }
         >
@@ -690,9 +733,9 @@ export function CourseDetailPanel({
             <AccreditationForm
               saving={busy}
               onCancel={() => setAddingAccreditation(false)}
-              onSave={(values) => {
-                setAddingAccreditation(false);
-                createAndLink("accreditations", () => allExtractionsApi.createAccreditation({ job_id: jobId, ...values }), "Accreditation added");
+              onSave={async (values) => {
+                const ok = await createAndLink("accreditations", () => allExtractionsApi.createAccreditation({ job_id: jobId, ...values }), "Accreditation added");
+                if (ok) setAddingAccreditation(false);
               }}
             />
           )}
@@ -811,31 +854,38 @@ export function CourseDetailPanel({
             rows.length === 0 && !addingBranch ? (
               <p className="rounded-md bg-muted/50 py-2 text-center text-xs text-muted-foreground">No branches</p>
             ) : (
-              rows.map((c) => editingBranchId === c.id ? (
-                <BranchForm
-                  key={c.id}
-                  branch={c}
-                  saving={busy}
-                  onCancel={() => setEditingBranchId(null)}
-                  onSave={async (values) => {
-                    const ok = await run(() => saveFormAndLearn("extraction_campuses", c, toPatch(values), jobId), "Branch updated");
-                    if (ok) setEditingBranchId(null);
-                  }}
-                />
-              ) : (
-                <div key={c.id} className="flex items-center justify-between gap-2 rounded-md bg-muted/40 px-2 py-1.5 text-sm">
-                  <span className="flex min-w-0 items-center gap-1.5">
-                    <Building2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-                    <span className="truncate">{c.name ?? "Campus"}</span>
-                  </span>
-                  <span className="flex shrink-0 items-center gap-2">
-                    {[c.city, c.country].filter(Boolean).join(", ") && (
-                      <span className="text-xs text-muted-foreground">{[c.city, c.country].filter(Boolean).join(", ")}</span>
-                    )}
-                    {rowActions(() => setEditingBranchId(c.id), () => unlinkRow(c.id))}
-                  </span>
-                </div>
-              ))
+              rows.map((c) => {
+                if (editingBranchId === c.id) {
+                  return (
+                    <BranchForm
+                      key={c.id}
+                      branch={c}
+                      saving={busy}
+                      onCancel={() => setEditingBranchId(null)}
+                      onSave={async (values) => {
+                        const ok = await run(() => saveFormAndLearn("extraction_campuses", c, toPatch(values), jobId), "Branch updated");
+                        if (ok) setEditingBranchId(null);
+                      }}
+                    />
+                  );
+                }
+                const otherNames = sharedWith(links.course_campuses, "campus_id", c.id);
+                return (
+                  <div key={c.id} className="flex items-center justify-between gap-2 rounded-md bg-muted/40 px-2 py-1.5 text-sm">
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      <Building2 className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                      <span className="truncate">{c.name ?? "Campus"}</span>
+                    </span>
+                    <span className="flex shrink-0 items-center gap-2">
+                      <SharedCoursesBadge names={otherNames} />
+                      {[c.city, c.country].filter(Boolean).join(", ") && (
+                        <span className="text-xs text-muted-foreground">{[c.city, c.country].filter(Boolean).join(", ")}</span>
+                      )}
+                      {rowActions(() => setEditingBranchId(c.id), () => unlinkRow(c.id))}
+                    </span>
+                  </div>
+                );
+              })
             )
           }
         >
@@ -843,9 +893,9 @@ export function CourseDetailPanel({
             <BranchForm
               saving={busy}
               onCancel={() => setAddingBranch(false)}
-              onSave={(values) => {
-                setAddingBranch(false);
-                createAndLink("campuses", () => allExtractionsApi.createCampus({ job_id: jobId, ...toPatch(values) }), "Branch added");
+              onSave={async (values) => {
+                const ok = await createAndLink("campuses", () => allExtractionsApi.createCampus({ job_id: jobId, ...toPatch(values) }), "Branch added");
+                if (ok) setAddingBranch(false);
               }}
             />
           )}

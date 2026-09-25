@@ -48,11 +48,7 @@ export function CoursesTab({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const fetchedRef = useRef(false);
 
-  // Accepts overrides so callers that also reset page/search/statusFilter (e.g. after a
-  // delete) can force this fetch to use the new values immediately — setState is async,
-  // so reading the state variables here right after calling their setters would still
-  // see the pre-reset values from this render's closure.
-  const load = useCallback(async (overrides?: { page?: number; limit?: number; search?: string; status?: string; sort?: SortOrder }) => {
+  const load = useCallback(async (overrides?: { page?: number; limit?: number; search?: string; status?: string; sort?: SortOrder }): Promise<boolean> => {
     try {
       const [coursesRes, courseLinks, campusRows, queue] = await Promise.all([
         allExtractionsApi.getCourses(jobId, {
@@ -72,8 +68,10 @@ export function CoursesTab({
       setLinks(courseLinks);
       setCampuses(campusRows);
       setQueuedCourseUrls(queue.filter((q) => q.kind === "course").length);
+      return true;
     } catch (e) {
       toast.error("Failed to load courses", { description: (e as Error).message });
+      return false;
     } finally {
       setLoading(false);
     }
@@ -306,7 +304,11 @@ export function CoursesTab({
               campuses={campuses}
               jobId={jobId}
               onClose={() => setSelectedId(null)}
-              onChanged={async () => { await load(); onReload(); }}
+              onChanged={async () => {
+                const ok = await load();
+                onReload();
+                if (!ok) throw new Error("The list failed to refresh — reopen the panel to see the update.");
+              }}
             />
           )}
         </div>
