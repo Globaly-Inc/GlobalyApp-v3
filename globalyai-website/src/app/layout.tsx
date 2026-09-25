@@ -1,6 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Inter, JetBrains_Mono, Nunito_Sans, Plus_Jakarta_Sans } from "next/font/google";
-import { siteConfig } from "@/lib/site";
+import { SOCIAL_LINKS, siteConfig } from "@/lib/site";
 import { FAQS } from "@/lib/faqs";
 import "./globals.css";
 
@@ -111,7 +111,19 @@ const PRODUCT_JSON_LD = {
   applicationCategory: "BusinessApplication",
   description: siteConfig.description,
   url: siteConfig.url,
-  publisher: { "@type": "Organization", name: siteConfig.company },
+  publisher: {
+    "@type": "Organization",
+    name: siteConfig.company,
+    address: {
+      "@type": "PostalAddress",
+      streetAddress: siteConfig.address.street,
+      addressLocality: siteConfig.address.locality,
+      addressRegion: siteConfig.address.region,
+      postalCode: siteConfig.address.postalCode,
+      addressCountry: siteConfig.address.country,
+    },
+    sameAs: SOCIAL_LINKS.map((link) => link.href),
+  },
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
