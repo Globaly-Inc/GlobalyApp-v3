@@ -10,11 +10,15 @@ import type { Knex } from "knex";
 const S = "superadmin";
 
 export async function up(knex: Knex): Promise<void> {
+  // Matches courseCategoryForSlug's rule exactly: only the real "courses" category counts as
+  // academic, every OTHER service_category (Short Courses, Accommodation, or any other non-course
+  // category) is a short_course. The original backfill matched slug='short_courses' only, so a
+  // course filed under any other non-course category stayed mislabeled "academic" until edited.
   await knex.raw(`
     update ${S}.extraction_courses ec
     set course_category = 'short_course'
     from service_categories sc
-    where sc.id = ec.service_category_id and sc.slug = 'short_courses' and ec.course_category is distinct from 'short_course'
+    where sc.id = ec.service_category_id and sc.slug <> 'courses' and ec.course_category is distinct from 'short_course'
   `);
 }
 
