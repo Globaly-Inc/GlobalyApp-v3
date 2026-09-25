@@ -98,6 +98,10 @@ export function useV6Theme() {
  * The switch. Both icons are always mounted and cross-faded, so the control
  * never resizes and the swap reads as one object turning over rather than two
  * buttons replacing each other.
+ *
+ * The visible icon is the mode you are being offered, not the one you are in:
+ * dark shows the sun, light shows the moon. That is what aria-label has always
+ * said, and the icons used to say the opposite.
  */
 export function ThemeToggle({ className }: Readonly<{ className?: string }>) {
   const { theme, toggle } = useV6Theme();
@@ -119,7 +123,7 @@ export function ThemeToggle({ className }: Readonly<{ className?: string }>) {
       <Sun
         className={cn(
           "absolute h-[18px] w-[18px] transition-all duration-500 motion-reduce:transition-none",
-          dark ? "rotate-90 scale-50 opacity-0" : "rotate-0 scale-100 opacity-100",
+          dark ? "rotate-0 scale-100 opacity-100" : "rotate-90 scale-50 opacity-0",
         )}
         aria-hidden="true"
         strokeWidth={1.75}
@@ -127,7 +131,7 @@ export function ThemeToggle({ className }: Readonly<{ className?: string }>) {
       <Moon
         className={cn(
           "absolute h-[18px] w-[18px] transition-all duration-500 motion-reduce:transition-none",
-          dark ? "rotate-0 scale-100 opacity-100" : "-rotate-90 scale-50 opacity-0",
+          dark ? "-rotate-90 scale-50 opacity-0" : "rotate-0 scale-100 opacity-100",
         )}
         aria-hidden="true"
         strokeWidth={1.75}
