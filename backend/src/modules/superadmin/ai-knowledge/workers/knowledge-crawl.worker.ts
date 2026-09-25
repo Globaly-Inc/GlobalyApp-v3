@@ -4,6 +4,13 @@
 // changed, and chunk + embed them so match_ai_knowledge_chunks() can retrieve them.
 // Reuses the extraction module's scraper and LLM client rather than adding its own.
 //
+// Pages are read through getPage(), so a page the extraction pipeline already snapshotted
+// to GCS (extraction/www/<site>/…/<page>.md) is read from that file and never re-scraped.
+// An institution-owned source (the embed widget's site index) goes further: its URL list
+// IS the institution's extraction job's site list, so the rack index is built from exactly
+// the markdown files in the bucket — the corpus the counsellor falls back to when the
+// structured DB has nothing for a question (rag.service searchAll, embed mode).
+//
 // Run with: npm run job:ai-knowledge-crawl
 
 import "dotenv/config";
@@ -12,7 +19,9 @@ import { queueService } from "../../../../shared/queue/queueService.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { KNOWLEDGE_QUEUES } from "../shared/queues.js";
-import { discoverUrlsForCrawl, politeDelay, scrapeMarkdown } from "../../data-extraction/lib/scraper.js";
+import { discoverUrlsForCrawl, politeDelay } from "../../data-extraction/lib/scraper.js";
+import { getPage } from "../../data-extraction/lib/page-store.js";
+import { listActiveSiteUrls } from "../../data-extraction/repositories/site-urls.repository.js";
 import { contentHashOf, ingestDocumentChunks, wordsIn } from "../lib/ingest.js";
 
 const logger = createChildLogger("ai-knowledge-crawl-worker");
@@ -49,6 +58,15 @@ function titleFor(markdown: string, url: string): string | null {
   return segment ? segment.replace(/[-_]+/g, " ").slice(0, 300) : null;
 }
 
+/** The institution's extraction job's live site list — the pages snapshotted to GCS. [] when
+ *  it has no job or the job has not run discovery yet, so the caller falls back to discovery. */
+async function snapshotUrlsForInstitution(institutionId: number): Promise<string[]> {
+  const inst = await masterKnex("institutions").where({ id: institutionId }).select("source_job_id").first();
+  if (!inst?.source_job_id) return [];
+  const rows = await listActiveSiteUrls(inst.source_job_id);
+  return rows.map((r) => r.url);
+}
+
 async function crawlSource(sourceId: string, maxPagesOverride?: number): Promise<void> {
   const source = await masterKnex(SOURCES).where({ id: sourceId }).first();
   if (!source) {
@@ -70,20 +88,29 @@ async function crawlSource(sourceId: string, maxPagesOverride?: number): Promise
   };
 
   try {
-    const discovery = await discoverUrlsForCrawl(source.url, { limit: maxPages });
-    summary.discovery_method = discovery.method;
-    summary.discovery_error = discovery.error ?? null;
-
-    // Always include the seed itself, and never exceed the page budget.
-    const urls = [...new Set([source.url, ...discovery.urls])].slice(0, maxPages);
+    let urls: string[];
+    const snapshotUrls = source.institution_id != null ? await snapshotUrlsForInstitution(Number(source.institution_id)) : [];
+    if (snapshotUrls.length) {
+      // The job's site list is already bounded by its page_cap and is the set of files in
+      // the bucket, so it is taken whole rather than cut at max_pages.
+      urls = [...new Set([source.url, ...snapshotUrls])];
+      summary.discovery_method = "extraction-snapshot";
+    } else {
+      const discovery = await discoverUrlsForCrawl(source.url, { limit: maxPages });
+      summary.discovery_method = discovery.method;
+      summary.discovery_error = discovery.error ?? null;
+      // Always include the seed itself, and never exceed the page budget.
+      urls = [...new Set([source.url, ...discovery.urls])].slice(0, maxPages);
+    }
     summary.discovered = urls.length;
 
     for (const url of urls) {
-      const result = await scrapeMarkdown(url, { onlyMainContent: true });
+      // Bucket hit → no fetch, no delay to be polite about.
+      const result = await getPage(url, { onlyMainContent: true });
       if (!result.markdown || result.markdown.length < MIN_CONTENT_LEN) {
         summary.failed++;
         logger.debug("Skipped thin or blocked page", { url, scraper: result.scraper });
-        await politeDelay(DELAY_MIN_MS, DELAY_MAX_MS);
+        if (!result.fromCache) await politeDelay(DELAY_MIN_MS, DELAY_MAX_MS);
         continue;
       }
       summary.scraped++;
@@ -93,7 +120,7 @@ async function crawlSource(sourceId: string, maxPagesOverride?: number): Promise
 
       if (existing?.content_hash === contentHash) {
         summary.unchanged++;
-        await politeDelay(DELAY_MIN_MS, DELAY_MAX_MS);
+        if (!result.fromCache) await politeDelay(DELAY_MIN_MS, DELAY_MAX_MS);
         continue;
       }
 
@@ -131,7 +158,7 @@ async function crawlSource(sourceId: string, maxPagesOverride?: number): Promise
       } catch (e) {
         logger.warn("Chunking failed", { documentId, error: (e as Error).message });
       }
-      await politeDelay(DELAY_MIN_MS, DELAY_MAX_MS);
+      if (!result.fromCache) await politeDelay(DELAY_MIN_MS, DELAY_MAX_MS);
     }
 
     summary.finished_at = new Date().toISOString();

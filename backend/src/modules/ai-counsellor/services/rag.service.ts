@@ -132,7 +132,11 @@ export async function searchAll(opts: {
 
   // ── Parallel searches — each wrapped so one failure doesn't kill the rest ──
   const none = Promise.resolve([]);
-  const [courses, visas, institutions, ownerProfile, agents, maraAgents, knowledgeVisas, faqs, guides, rackHits] = await Promise.all([
+  const rackEnabled = embeddingConfigured() && !(embedScoped && !opts.rackInstitutionId);
+  const searchRack = () => embed(opts.query)
+    .then(v => matchRack(v, countryCode, trace, opts.rackInstitutionId))
+    .catch(err => { logger.warn("Knowledge rack search failed", { err: String(err) }); trace("Knowledge rack search failed"); return []; });
+  let [courses, visas, institutions, ownerProfile, agents, maraAgents, knowledgeVisas, faqs, guides, rackHits] = await Promise.all([
     opts.skipCourses ? none.then(r => { trace("Courses: skipped (discovery turn)"); return r; })
       : knowledge.searchCourses({ query: searchQuery, limit: 8, jobIds: opts.jobIds })
         .then(r => { trace(`Courses: ${r.length} found`); return r; })
@@ -174,14 +178,16 @@ export async function searchAll(opts: {
       .catch(err => { logger.warn("Country guide search failed", { err: String(err) }); return []; }),
     // Rack retrieval is semantic (vector) search on the raw query.
     //
-    // In embed mode it reads the WIDGET OWNER'S OWN crawled website and nothing else, so a
-    // visitor can ask about anything published on the site the widget is installed on —
-    // policies, scholarships, eligibility prose — that structured extraction never captured.
-    // Global rack content stays out of embed answers, and the owner's site stays out of
-    // global ones; the SQL function enforces both directions.
-    !embeddingConfigured() || (embedScoped && !opts.rackInstitutionId) ? none : embed(opts.query)
-      .then(v => matchRack(v, countryCode, trace, opts.rackInstitutionId))
-      .catch(err => { logger.warn("Knowledge rack search failed", { err: String(err) }); trace("Knowledge rack search failed"); return []; }),
+    // In embed mode it reads the WIDGET OWNER'S OWN website — the extraction snapshot .md
+    // files in GCS, indexed by the knowledge crawl worker — and nothing else, so a visitor
+    // can ask about anything published on the site the widget is installed on — policies,
+    // scholarships, eligibility prose — that structured extraction never captured. Global
+    // rack content stays out of embed answers, and the owner's site stays out of global
+    // ones; the SQL function enforces both directions.
+    //
+    // Embed mode runs it as a FALLBACK (below), only when the DB found nothing: DB first,
+    // bucket markdown second. Platform mode keeps it in the parallel batch.
+    !rackEnabled || embedScoped ? none : searchRack(),
   ]);
 
   // ── Hydrate course details for found courses ──
@@ -199,6 +205,14 @@ export async function searchAll(opts: {
     );
     hydratedCourses = details.filter((d): d is knowledge.CourseDetailResult => d != null);
     trace(`Hydrated: ${hydratedCourses.length} courses`);
+  }
+
+  // ── Embed fallback: nothing structured answered the question → the site's markdown ──
+  // The owner profile is not a hit; it is always there and says who "we" is, not an answer.
+  const dbFound = hydratedCourses.length + visas.length + knowledgeVisas.length + faqs.length + guides.length > 0;
+  if (embedScoped && rackEnabled && !dbFound) {
+    trace("Nothing in the database — searching the website snapshot");
+    rackHits = await searchRack();
   }
 
   // ── Build context text ──
