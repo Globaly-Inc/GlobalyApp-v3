@@ -82,7 +82,7 @@ import { parseInstallments } from "../lib/installment-parser.js";
 import type { PipelineStep, CourseDataType } from "../schemas/step.schema.js";
 import {
   advance, gate, dispatchSnapshotBatches, setProgress,
-  runSiteMap, runSiteAnalysis, runUrlClassify, runQueuePages,
+  runSiteMap, runSiteAnalysis, runUrlClassify, runQueuePages, republishRetryableQueueItems,
 } from "../lib/pipeline-steps.js";
 import { listActiveSiteUrls, upsertSiteUrls, setSiteUrlCategories, listSiteUrlsByCategory } from "../repositories/site-urls.repository.js";
 
@@ -1034,37 +1034,18 @@ async function handleCoursesStep(jobId: string) {
   const job = await loadJob(jobId);
   if (!job) return;
 
-  // Re-dispatch all pending/failed queue items to PAGES queue
-  const items = await masterKnex(`${S}.extraction_queue`)
-    .where({ job_id: jobId })
-    .whereIn("status", ["pending", "failed"])
-    .select("id", "url");
-
-  await writeJobEvent(jobId, "step_start", { phase: "courses", message: `Re-dispatching ${items.length} pending/failed pages` });
+  await writeJobEvent(jobId, "step_start", { phase: "courses", message: "Re-dispatching pending/failed/paused pages" });
 
   // Push queue: an item whose message never published is stranded — nothing polls these
   // rows. If LavinMQ dies mid-loop, stop, record exactly how far dispatch got, and rethrow
   // so the step shows failed. The stranded remainder stays pending/failed (and any guided
   // URL inserted-but-unpublished stays pending), so the next Re-run picks all of it up.
+  let candidates = 0;
   let dispatched = 0;
   let queuedNew = 0;
   let dispatchErr: unknown = null;
   try {
-    for (const item of items) {
-      // Claim-style guard: only re-flip items still retryable. An unconditional update
-      // here can yank an item that completed after the SELECT above (an in-flight backlog
-      // message, or an overlapping courses-step run) back to "pending", making it
-      // claimable again — a full duplicate scrape + Gemini extraction.
-      const flipped = await masterKnex(`${S}.extraction_queue`)
-        .where({ id: item.id })
-        .whereIn("status", ["pending", "failed"])
-        .update({ status: "pending", updated_at: masterKnex.fn.now() });
-      if (flipped === 0) continue;
-      await queueService.publish(EXTRACTION_QUEUES.PAGES, {
-        jobId, queueItemId: item.id, url: item.url,
-      });
-      dispatched++;
-    }
+    ({ candidates, dispatched } = await republishRetryableQueueItems(jobId));
 
     // Real bug: this step never looked at guided_urls at all, so adding a new URL under
     // Intakes/Eligibility/Study Units/Accreditations in the Context tab and hitting
@@ -1103,8 +1084,8 @@ async function handleCoursesStep(jobId: string) {
   if (dispatchErr) {
     await writeJobEvent(jobId, "step_error", {
       level: "warn", phase: "courses",
-      message: `Dispatch interrupted after ${dispatched}/${items.length} pages and ${queuedNew} guided URLs — re-run to dispatch the rest`,
-      data: { dispatched, total: items.length, new_guided_urls: queuedNew, error: dispatchErr instanceof Error ? dispatchErr.message : String(dispatchErr) },
+      message: `Dispatch interrupted after ${dispatched}/${candidates} pages and ${queuedNew} guided URLs — re-run to dispatch the rest`,
+      data: { dispatched, total: candidates, new_guided_urls: queuedNew, error: dispatchErr instanceof Error ? dispatchErr.message : String(dispatchErr) },
     });
     throw dispatchErr;
   }

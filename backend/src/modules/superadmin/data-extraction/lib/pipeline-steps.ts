@@ -491,3 +491,32 @@ export async function runQueuePages(jobId: string, job: JobRow): Promise<{ queue
   }
   return { queued, idle };
 }
+
+export async function republishRetryableQueueItems(jobId: string): Promise<{ candidates: number; dispatched: number }> {
+  const items = await masterKnex(`${S}.extraction_queue`)
+    .where({ job_id: jobId })
+    .whereIn("status", ["pending", "failed", "paused"])
+    .select("id", "url");
+
+  let dispatched = 0;
+  for (const item of items) {
+    const flipped = await masterKnex(`${S}.extraction_queue`)
+      .where({ id: item.id })
+      .whereIn("status", ["pending", "failed", "paused"])
+      .update({
+        status: "pending",
+        updated_at: masterKnex.fn.now(),
+        processing_meta: masterKnex.raw(
+          `coalesce(processing_meta, '{}'::jsonb) || '{"attempt_token": null, "awaiting_publish": true}'::jsonb`,
+        ),
+      });
+    if (flipped === 0) continue;
+    await _stepDeps.publish(EXTRACTION_QUEUES.PAGES, { jobId, queueItemId: item.id, url: item.url });
+    await masterKnex(`${S}.extraction_queue`)
+      .where({ id: item.id, status: "pending" })
+      .whereRaw(`processing_meta->>'attempt_token' is null`)
+      .update({ processing_meta: masterKnex.raw(`processing_meta - 'awaiting_publish'`) });
+    dispatched++;
+  }
+  return { candidates: items.length, dispatched };
+}

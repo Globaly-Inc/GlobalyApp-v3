@@ -45,6 +45,9 @@ const ABBR: Record<string, [string, string | null]> = {
   mcomm: ["master", "commerce"], mmus: ["master", "music"], march: ["master", "architecture"],
   magr: ["master", "agriculture"], mn: ["master", "nursing"], mtech: ["master", "technology"],
   mdes: ["master", "design"], mpa: ["master", "public administration"], mpp: ["master", "public policy"],
+  mbiol: ["master", "biology"], mchem: ["master", "chemistry"], mmath: ["master", "mathematics"],
+  mphys: ["master", "physics"], mgeol: ["master", "geology"], mearthsci: ["master", "earth science"],
+  msci: ["integrated master", "science"], mpharm: ["master", "pharmacy"],
   bsc: ["bachelor", "science"], bs: ["bachelor", "science"], ba: ["bachelor", "arts"],
   beng: ["bachelor", "engineering"], bba: ["bachelor", "business administration"],
   llb: ["bachelor", "laws"], bfa: ["bachelor", "fine arts"], bed: ["bachelor", "education"],
@@ -72,10 +75,13 @@ const LEVELS = [
   "undergraduate certificate", "undergraduate diploma", "undergraduate minor", "undergraduate major",
   "higher national diploma", "higher national certificate", "advanced diploma", "associate degree",
   "foundation degree", "foundation year", "juris doctor", "doctorate", "doctoral", "doctor",
+
+  "integrated masters", "integrated master",
   "bachelors", "bachelor", "masters", "master", "certificate", "diploma", "associate", "minor", "major",
 ];
 const LEVEL_CANON: Record<string, string> = {
   bachelors: "bachelor", masters: "master", doctorate: "doctor", doctoral: "doctor",
+  "integrated masters": "integrated master",
   "postgraduate certificate": "graduate certificate", "postgraduate diploma": "graduate diploma",
   "pg cert": "graduate certificate", "pgcert": "graduate certificate", "grad cert": "graduate certificate",
   "pg dip": "graduate diploma", "pgdip": "graduate diploma", "grad dip": "graduate diploma",
