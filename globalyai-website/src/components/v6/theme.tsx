@@ -3,6 +3,7 @@
 import { useCallback, useLayoutEffect, useSyncExternalStore } from "react";
 import { Moon, Sun } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { STORAGE_KEYS } from "@/lib/site";
 
 /**
  * Variation 6's light and dark modes.
@@ -18,7 +19,7 @@ import { cn } from "@/lib/utils";
  */
 
 export const V6_ROOT_ID = "v6-root";
-export const V6_THEME_KEY = "globalyai-v6-theme";
+export const V6_THEME_KEY = STORAGE_KEYS.theme;
 
 export type V6Theme = "light" | "dark";
 

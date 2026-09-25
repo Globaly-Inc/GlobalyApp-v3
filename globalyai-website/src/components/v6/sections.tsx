@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, type ComponentType, type CSSProperties } from "react";
-import { Clock, Filter, FolderSync, Languages, MessagesSquare, Moon, Plus, Quote, ScanText, ShieldCheck, Signpost, Target, TrendingUp } from "lucide-react";
+import { type LucideIcon, Clock, Filter, FolderSync, Languages, MessagesSquare, Moon, Plus, Quote, ScanText, ShieldCheck, Signpost, Target, TrendingUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FAQS } from "@/lib/faqs";
 import { Reveal } from "@/components/site/primitives";
@@ -43,13 +43,13 @@ export function Proof() {
           {/* Variation 1's .panel-soft, not a card: the strip under the hero
               is a tinted container holding four figures, so it sits on the
               page rather than floating above it. */}
-          <GlassPanel className="v6-soft grid grid-cols-1 gap-x-12 gap-y-10 px-8 py-10 sm:grid-cols-2 sm:px-10 sm:py-12 lg:grid-cols-4">
+          <GlassPanel className="v6-soft grid grid-cols-1 gap-x-12 gap-y-7 px-7 py-8 sm:grid-cols-2 sm:gap-y-10 sm:px-10 sm:py-12 lg:grid-cols-4">
             {STATS.map(({ figure, label }) => (
               <div key={figure}>
                 <p className="v6-gradient-text text-[clamp(1.35rem,2.2vw,1.75rem)] font-bold leading-[1.15]">
                   {figure}
                 </p>
-                <p className="mt-3.5 max-w-[16rem] text-[13.5px] leading-[1.55] text-[var(--muted-foreground)]">
+                <p className="mt-2.5 max-w-[16rem] text-[13.5px] sm:mt-3.5 leading-[1.55] text-[var(--muted-foreground)]">
                   {label}
                 </p>
               </div>
@@ -71,7 +71,7 @@ export function Proof() {
  */
 export function Gap() {
   return (
-    <section id="product" className="px-3 py-20 sm:px-5 md:py-28">
+    <section id="product" className="px-3 py-14 sm:px-5 sm:py-20 md:py-28">
       <div className="mx-auto max-w-[1300px] px-2">
         <Reveal>
           <div className="flex justify-center">
@@ -89,7 +89,7 @@ export function Gap() {
           />
         </Reveal>
 
-        <div className="mt-14 grid gap-4 lg:grid-cols-[1.35fr_1fr] lg:grid-rows-2">
+        <div className="mt-10 grid gap-4 sm:mt-14 lg:grid-cols-[1.35fr_1fr] lg:grid-rows-2">
           <Reveal className="lg:row-span-2">
             <GlassPanel className="group flex h-full flex-col overflow-hidden">
               <div className="overflow-hidden rounded-t-[calc(var(--r-card)-1px)] border-b border-[var(--border)]">
@@ -165,7 +165,7 @@ const ANSWERS = [
 
 export function Answer() {
   return (
-    <section id="answer" className="px-3 py-20 sm:px-5 md:py-28">
+    <section id="answer" className="px-3 py-14 sm:px-5 sm:py-20 md:py-28">
       <div className="mx-auto max-w-[1300px] px-2">
         <Reveal>
           <div className="flex justify-center">
@@ -183,7 +183,7 @@ export function Answer() {
           />
         </Reveal>
 
-        <div className="mt-14 grid gap-4 md:grid-cols-3">
+        <div className="mt-10 grid gap-4 sm:mt-14 md:grid-cols-3">
           {ANSWERS.map(({ index, title, body }, position) => (
             <Reveal key={index} delay={position * 80}>
               <GlassPanel className="h-full p-7 lg:p-9">
@@ -254,13 +254,32 @@ const FEATURES = [
   },
 ] as const;
 
+/**
+ * The icon cards in <Features /> and <Institutions />. On a phone the icon
+ * sits beside the title rather than on a row of its own, which is a line of
+ * height saved on each of twelve cards; the body spans both columns under
+ * them. From sm up each card overrides the grid (sm:block or sm:flex) and the
+ * icon goes back on top. The text wrapper in <Features /> is `contents` below
+ * sm so its title and body land in this grid.
+ */
+const ICON_CARD = "grid h-full grid-cols-[2.5rem_minmax(0,1fr)] items-center gap-x-4 p-6 sm:p-7";
+const ICON_CARD_BODY = "col-span-2 mt-3 text-[var(--body)] sm:mt-2.5";
+
+function IconWell({ Icon }: Readonly<{ Icon: LucideIcon }>) {
+  return (
+    <span className="v6-icon-well flex h-10 w-10 shrink-0 items-center justify-center rounded-[var(--r-chip)] sm:h-11 sm:w-11">
+      <Icon className="h-[18px] w-[18px] text-[var(--primary-bright)]" aria-hidden="true" />
+    </span>
+  );
+}
+
 export function Features() {
   return (
     /* The pale blue band. Variation 1 alternates white sections with a
        full-bleed tinted one, and the seven white cards land on the tint —
        which is most of why that page reads as coloured rather than as white
        with blue text. Light only; in dark the band is the page. */
-    <section id="features" className="v6-field px-3 py-20 sm:px-5 md:py-28">
+    <section id="features" className="v6-field px-3 py-14 sm:px-5 sm:py-20 md:py-28">
       <div className="mx-auto max-w-[1300px] px-2">
         <Reveal>
           <SectionHeading
@@ -270,32 +289,24 @@ export function Features() {
           />
         </Reveal>
 
-        <div className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {FEATURES.map(({ Icon, title, body }, index) => (
+        <div className="mt-10 grid gap-4 sm:mt-14 sm:grid-cols-2 lg:grid-cols-3">
+          {FEATURES.map(({ Icon, title, body }, index) => {
             /* The seventh card was alone on a row of three. It runs the full
                width instead, with the icon beside the text rather than above
                it, which reads as a closing note on the list. */
-            <Reveal
-              key={title}
-              delay={index * 60}
-              className={cn(index === FEATURES.length - 1 && "sm:col-span-2 lg:col-span-3")}
-            >
-              <GlassPanel
-                className={cn(
-                  "h-full p-7 lg:p-8",
-                  index === FEATURES.length - 1 && "sm:flex sm:items-center sm:gap-7",
-                )}
-              >
-                <span className="v6-icon-well flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--r-chip)]">
-                  <Icon className="h-[18px] w-[18px] text-[var(--primary-bright)]" aria-hidden="true" />
-                </span>
-                <div className={cn(index === FEATURES.length - 1 ? "mt-5 sm:mt-0" : "mt-5")}>
-                  <h3 className="text-[18px] leading-snug">{title}</h3>
-                  <p className="mt-2.5 max-w-2xl text-[15px] leading-[1.7] text-[var(--body)]">{body}</p>
-                </div>
-              </GlassPanel>
-            </Reveal>
-          ))}
+            const last = index === FEATURES.length - 1;
+            return (
+              <Reveal key={title} delay={index * 60} className={cn(last && "sm:col-span-2 lg:col-span-3")}>
+                <GlassPanel className={cn(ICON_CARD, "lg:p-8", last ? "sm:flex sm:items-center sm:gap-7" : "sm:block")}>
+                  <IconWell Icon={Icon} />
+                  <div className={cn("contents sm:block", !last && "sm:mt-5")}>
+                    <h3 className="text-[18px] leading-snug">{title}</h3>
+                    <p className={cn(ICON_CARD_BODY, "max-w-2xl text-[15px] leading-[1.7]")}>{body}</p>
+                  </div>
+                </GlassPanel>
+              </Reveal>
+            );
+          })}
         </div>
       </div>
     </section>
@@ -488,7 +499,7 @@ const SOLUTION_SPANS = ["lg:col-span-7", "lg:col-span-5", "lg:col-span-7"] as co
 
 export function ProblemSolution() {
   return (
-    <section id="product" className="px-3 py-20 sm:px-5 md:py-28">
+    <section id="product" className="px-3 py-14 sm:px-5 sm:py-20 md:py-28">
       <div className="mx-auto max-w-[1300px] px-2">
         <Reveal>
           <div className="flex justify-center">
@@ -506,7 +517,11 @@ export function ProblemSolution() {
           />
         </Reveal>
 
-        <div className="mt-14 grid gap-4 lg:grid-cols-12 lg:gap-5">
+        {/* minmax(0,1fr) below lg, not the implicit auto track: auto sizes to
+            the widest mock's min-content (the tab strip is ~600px) and pushes
+            the whole page sideways on a phone. On a tablet each problem sits
+            beside its solution; the 12-column bento takes over at lg. */}
+        <div className="mt-10 grid grid-cols-[minmax(0,1fr)] gap-4 sm:mt-14 md:grid-cols-2 lg:grid-cols-12 lg:gap-5">
           {PAIRS.map((pair, position) => {
             const problemWide = position === 1;
             return [
@@ -585,7 +600,7 @@ export function HowItWorks() {
   const move = MOVES[active] ?? MOVES[0];
 
   return (
-    <section id="how-it-works" className="px-3 py-20 sm:px-5 md:py-28">
+    <section id="how-it-works" className="px-3 py-14 sm:px-5 sm:py-20 md:py-28">
       <div className="mx-auto max-w-[1300px] px-2">
         <Reveal>
           <SectionHeading
@@ -667,7 +682,7 @@ const RECEIVES = [
     Icon: Clock,
     title: "Engages outside office hours",
     body: "Prospective students research in the evening, at weekends and across time zones. The assistant is there for the question at 9pm that would otherwise have waited until Monday, or not been asked at all.",
-    span: "sm:col-span-2",
+    span: "md:col-span-2",
   },
   {
     Icon: MessagesSquare,
@@ -685,13 +700,15 @@ const RECEIVES = [
     Icon: Signpost,
     title: "Shows where students get stuck",
     body: "The questions that keep stalling, like an unclear policy or a requirement nobody can interpret, become visible instead of invisible.",
-    span: "sm:col-span-2",
+    span: "md:col-span-2",
   },
     {
     Icon: TrendingUp,
     title: "Shows what is actually being asked",
     body: "A view of what prospective students want to know, drawn from real conversations on your own site.",
-    span: "",
+    /* Five cards on a three-column bento: 2+1, 1+2, then this one alone. It
+       runs the full row rather than leaving two empty columns beside it. */
+    span: "md:col-span-3",
   },
 ];
 
@@ -710,7 +727,7 @@ const RECEIVES_TINTS = [
 
 export function Institutions() {
   return (
-    <section id="institutions" className="px-3 py-20 sm:px-5 md:py-28">
+    <section id="institutions" className="px-3 py-14 sm:px-5 sm:py-20 md:py-28">
       <div className="mx-auto max-w-[1300px] px-2">
         <Reveal>
           <div className="flex justify-center">
@@ -723,15 +740,13 @@ export function Institutions() {
           />
         </Reveal>
 
-        <div className="mt-14 grid gap-4 sm:grid-cols-3">
+        <div className="mt-10 grid gap-4 sm:mt-14 md:grid-cols-3">
           {RECEIVES.map(({ Icon, title, body, span }, index) => (
             <Reveal key={title} delay={index * 70} className={cn(span)}>
-              <GlassPanel className={cn("h-full p-7 lg:p-8", RECEIVES_TINTS[index % RECEIVES_TINTS.length])}>
-                <span className="v6-icon-well flex h-11 w-11 items-center justify-center rounded-[var(--r-chip)]">
-                  <Icon className="h-[18px] w-[18px] text-[var(--primary-bright)]" aria-hidden="true" />
-                </span>
-                <h3 className="mt-5 text-[17px] leading-snug">{title}</h3>
-                <p className="mt-2.5 text-[14.5px] leading-[1.65] text-[var(--body)]">{body}</p>
+              <GlassPanel className={cn(ICON_CARD, "sm:block lg:p-8", RECEIVES_TINTS[index % RECEIVES_TINTS.length])}>
+                <IconWell Icon={Icon} />
+                <h3 className="text-[17px] leading-snug sm:mt-5">{title}</h3>
+                <p className={cn(ICON_CARD_BODY, "text-[14.5px] leading-[1.65]")}>{body}</p>
               </GlassPanel>
             </Reveal>
           ))}
@@ -766,7 +781,7 @@ const COMMITMENTS = [
 
 export function Control() {
   return (
-    <section id="privacy" className="px-3 py-20 sm:px-5 md:py-28">
+    <section id="privacy" className="px-3 py-14 sm:px-5 sm:py-20 md:py-28">
       <div className="mx-auto max-w-[1300px] px-2">
         <Reveal>
           <SectionHeading
@@ -803,13 +818,13 @@ export function Faq() {
   const [open, setOpen] = useState<number | null>(0);
 
   return (
-    <section className="px-3 py-20 sm:px-5 md:py-28">
+    <section className="px-3 py-14 sm:px-5 sm:py-20 md:py-28">
       <div className="mx-auto max-w-[1300px] px-2">
         <Reveal>
           <SectionHeading align="center" title="Questions institutions ask us" />
         </Reveal>
 
-        <div className="mx-auto mt-12 max-w-3xl space-y-3">
+        <div className="mx-auto mt-8 max-w-3xl space-y-3 sm:mt-12">
           {FAQS.map((faq, index) => {
             const isOpen = open === index;
             return (
@@ -867,7 +882,7 @@ export function Faq() {
 
 export function FinalCta() {
   return (
-    <section className="px-3 pb-20 sm:px-5 md:pb-28">
+    <section className="px-3 pb-14 sm:px-5 sm:pb-20 md:pb-28">
       <div className="mx-auto max-w-[1300px] px-2">
         <Reveal>
           <div className="relative overflow-hidden rounded-[var(--r-card)]">
