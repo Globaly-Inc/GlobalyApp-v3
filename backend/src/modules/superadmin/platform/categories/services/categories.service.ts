@@ -150,16 +150,25 @@ export async function deleteFeeType(id: number) {
 
 // ── Issuing Organizations ──
 
-export function listIssuingOrganizations(limit: number, offset: number, search?: string) {
-  return repo.listIssuingOrganizations(limit, offset, search);
+export function listIssuingOrganizations(limit: number, offset: number, search?: string, approvedOnly?: boolean) {
+  return repo.listIssuingOrganizations(limit, offset, search, approvedOnly);
 }
 
-export function countIssuingOrganizations(search?: string) {
-  return repo.countIssuingOrganizations(search);
+export function countIssuingOrganizations(search?: string, approvedOnly?: boolean) {
+  return repo.countIssuingOrganizations(search, approvedOnly);
 }
 
 export function createIssuingOrganization(data: IssuingOrgInput) {
-  return repo.insertIssuingOrganization(data);
+  return repo.insertIssuingOrganization({ ...data, status: "approved" });
+}
+
+/**
+ * Self-service submission (business/institution) — starts pending, same as proposeAccreditation,
+ * so another org can't select and rely on an unreviewed issuing organization before an admin
+ * vets it.
+ */
+export function proposeIssuingOrganization(data: IssuingOrgInput) {
+  return repo.insertIssuingOrganization({ ...data, status: "pending" });
 }
 
 export async function updateIssuingOrganization(id: number, data: Partial<IssuingOrgInput>) {
@@ -168,10 +177,21 @@ export async function updateIssuingOrganization(id: number, data: Partial<Issuin
   return row;
 }
 
+export async function reviewIssuingOrganization(id: number, decision: "approved" | "rejected", reviewedBy: number) {
+  const existing = await repo.findIssuingOrganizationById(id);
+  if (!existing) throw new NotFoundError("Issuing organization not found");
+  return repo.updateIssuingOrganization(id, { status: decision, reviewed_by: reviewedBy, reviewed_at: new Date() });
+}
+
 // ── Accreditations ──
 
-export const listAccreditations = repo.listAccreditations;
-export const countAccreditations = repo.countAccreditations;
+export function listAccreditations(limit: number, offset: number, approvedOnly?: boolean) {
+  return repo.listAccreditations(limit, offset, approvedOnly);
+}
+
+export function countAccreditations(approvedOnly?: boolean) {
+  return repo.countAccreditations(approvedOnly);
+}
 
 export function createAccreditation(data: AccreditationInput) {
   const { scope_country_ids = [], ...rest } = data;
@@ -182,6 +202,17 @@ export function createAccreditation(data: AccreditationInput) {
     // "no countries selected" means the accreditation applies everywhere.
     is_global: scope_country_ids.length === 0,
   }, scope_country_ids);
+}
+
+/**
+ * Same insert as createAccreditation, for a self-service submitter (business/institution)
+ * instead of an admin — starts unapproved and non-global (the `accreditations` table's own
+ * default) so it needs an admin's reviewAccreditation before it counts as a vetted, global
+ * catalog entry other organizations can be assumed to trust.
+ */
+export function proposeAccreditation(data: AccreditationInput) {
+  const { scope_country_ids: _ignored, ...rest } = data;
+  return repo.insertAccreditation({ ...rest, business_id: null, status: "pending", is_global: false }, []);
 }
 
 async function requireAccreditation(id: number) {
