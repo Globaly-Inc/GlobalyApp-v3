@@ -255,12 +255,22 @@ const scopeCountryIds = masterKnex.raw(`COALESCE((
 ), '[]'::json) as scope_country_ids`);
 
 export async function listAccreditations(limit: number, offset: number, approvedOnly?: boolean) {
+  // An accreditation can be approved while its own linked issuer is still pending (reviewed on
+  // different timelines) — when this listing must only show reviewed data, the issuer's name/logo
+  // are withheld rather than leaking a name the issuing-organizations lookup itself excludes. The
+  // accreditation row itself stays visible: it was independently approved and is usable on its own.
+  const issuerName = approvedOnly
+    ? masterKnex.raw("CASE WHEN o.status = 'approved' THEN o.name END as issuing_organization_name")
+    : "o.name as issuing_organization_name";
+  const issuerLogo = approvedOnly
+    ? masterKnex.raw("CASE WHEN o.status = 'approved' THEN o.logo_url END as issuing_organization_logo_url")
+    : "o.logo_url as issuing_organization_logo_url";
   const q = masterKnex("accreditations as a")
     .leftJoin("issuing_organizations as o", "o.id", "a.issuing_organization_id")
     .whereNull("a.deleted_at")
     .orderBy("a.sort_order").orderBy("a.name")
     .limit(limit).offset(offset)
-    .select("a.*", "o.name as issuing_organization_name", "o.logo_url as issuing_organization_logo_url", scopeCountryIds);
+    .select("a.*", issuerName, issuerLogo, scopeCountryIds);
   if (approvedOnly) q.where("a.status", "approved");
   return q;
 }

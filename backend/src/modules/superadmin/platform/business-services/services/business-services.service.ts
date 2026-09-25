@@ -205,6 +205,11 @@ export async function updateService(businessId: number, serviceId: string, data:
 
 export async function deleteService(businessId: number, serviceId: string) {
   const biz = await requireBusiness(businessId);
+  // uploaded_files is keyed globally by entity_id, not scoped to this business's own schema like
+  // repo.deleteService is — without this check, any authenticated org could submit ANOTHER
+  // tenant's service uuid and have that tenant's media deleted even though the service row itself
+  // (correctly schema-scoped) would be left untouched.
+  if (!(await repo.getService(businessId, biz.schema_name, serviceId))) throw new NotFoundError("Service not found");
   await filesRepo.deleteFilesByEntity("service", serviceId);
   return repo.deleteService(businessId, biz.schema_name, serviceId);
 }
@@ -500,6 +505,10 @@ export async function updateInstitutionService(institutionId: number, serviceId:
 export async function deleteInstitutionService(institutionId: number, serviceId: string) {
   const inst = await requireInstitution(institutionId);
   const jobId = await requireInstitutionJobId(inst);
+  // Ownership-checked first (throws if serviceId isn't this institution's own course) — the
+  // same reasoning as deleteService above: uploaded_files is global, so a wrong-ordering here
+  // would delete another institution's media even when the course row itself is left untouched.
+  if (!(await instRepo.getService(institutionId, jobId, serviceId))) throw new NotFoundError("Service not found");
   await filesRepo.deleteFilesByEntity("service", serviceId);
   return instRepo.deleteService(institutionId, jobId, serviceId);
 }
