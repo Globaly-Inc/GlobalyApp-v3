@@ -206,13 +206,19 @@ export function CourseDetailPanel({
   const run = async (action: () => Promise<unknown>, success: string): Promise<boolean> => {
     setBusy(true);
     try {
-      await action();
-      await onChanged();
-      toast.success(success);
+      try {
+        await action();
+      } catch (e) {
+        toast.error("Action failed", { description: (e as Error).message });
+        return false;
+      }
+      try {
+        await onChanged();
+        toast.success(success);
+      } catch (e) {
+        toast.warning(`${success} — but the list failed to refresh`, { description: (e as Error).message });
+      }
       return true;
-    } catch (e) {
-      toast.error("Action failed", { description: (e as Error).message });
-      return false;
     } finally {
       setBusy(false);
     }
@@ -246,22 +252,34 @@ export function CourseDetailPanel({
   ): Promise<boolean> => {
     setBusy(true);
     try {
-      const created = await create();
+      let created: { id: string };
+      try {
+        created = await create();
+      } catch (createErr) {
+        toast.error("Action failed", { description: (createErr as Error).message });
+        return false;
+      }
+
       try {
         await allExtractionsApi.assignJunction(junction, { job_id: jobId, course_id: course.id, entity_id: created.id });
       } catch (linkErr) {
-        await onChanged();
+        try {
+          await onChanged();
+        } catch {
+          // ignored
+        }
         toast.error("Created, but linking to this course failed", {
           description: `${(linkErr as Error).message} — find it in "Link" and add it manually.`,
         });
         return false;
       }
-      await onChanged();
-      toast.success(success);
+      try {
+        await onChanged();
+        toast.success(success);
+      } catch (refreshErr) {
+        toast.warning(`${success} — but the list failed to refresh`, { description: (refreshErr as Error).message });
+      }
       return true;
-    } catch (createErr) {
-      toast.error("Action failed", { description: (createErr as Error).message });
-      return false;
     } finally {
       setBusy(false);
     }
