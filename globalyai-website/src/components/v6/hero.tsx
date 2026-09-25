@@ -22,8 +22,12 @@ export function Navbar() {
   const theme = useThemeValue();
 
   return (
-    <header className="fixed inset-x-0 top-3 z-50 px-3 sm:px-5">
-      <div className="v6-glass mx-auto flex h-16 max-w-[1300px] items-center justify-between gap-5 px-4 sm:px-5">
+    <header className="fixed inset-x-0 top-3 z-50 px-2 sm:px-5">
+      {/* The bar is the one row on the page that cannot wrap or scroll, and
+          the wordmark, the toggle and a "Book a meeting" the copy will not
+          shorten add up to more than a 320px screen. Everything in it is
+          therefore tighter below sm and back to full size above. */}
+      <div className="v6-glass mx-auto flex h-16 max-w-[1300px] items-center justify-between gap-3 px-3 sm:gap-5 sm:px-5">
         <a href="#top" className="flex shrink-0 items-center" aria-label={`${siteConfig.name}, home`}>
           <Image
             src="/globalyai-logo.png"
@@ -31,7 +35,10 @@ export function Navbar() {
             width={1240}
             height={313}
             priority
-            className={cn("h-[22px] w-auto transition-[filter] duration-300", theme === "dark" && "brightness-0 invert")}
+            className={cn(
+              "h-[19px] w-auto transition-[filter] duration-300 sm:h-[22px]",
+              theme === "dark" && "brightness-0 invert",
+            )}
           />
         </a>
 

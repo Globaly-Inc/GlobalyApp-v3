@@ -93,7 +93,7 @@ export function CtaButton({
   const ref = useMagnetic<HTMLAnchorElement>(tone === "primary" ? 6 : 4);
 
   const sizes = {
-    sm: "h-10 px-4 text-[13.5px]",
+    sm: "h-10 px-3.5 text-[13.5px] sm:px-4",
     md: "h-12 px-6 text-[15px]",
     lg: "h-14 px-7 text-[15.5px]",
   } as const;

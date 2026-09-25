@@ -510,7 +510,7 @@ export function ProblemSolution() {
           {PAIRS.map((pair, position) => {
             const problemWide = position === 1;
             return [
-              <Reveal key={`${pair.index}-problem`} delay={position * 80} className={PROBLEM_SPANS[position]}>
+              <Reveal key={`${pair.index}-problem`} delay={position * 80} className={cn("min-w-0", PROBLEM_SPANS[position])}>
                 <PairCard
                   index={pair.index}
                   title={pair.problem}
@@ -522,7 +522,7 @@ export function ProblemSolution() {
                   wide={problemWide}
                 />
               </Reveal>,
-              <Reveal key={`${pair.index}-solution`} delay={position * 80 + 60} className={SOLUTION_SPANS[position]}>
+              <Reveal key={`${pair.index}-solution`} delay={position * 80 + 60} className={cn("min-w-0", SOLUTION_SPANS[position])}>
                 <PairCard
                   solution
                   index={pair.index}

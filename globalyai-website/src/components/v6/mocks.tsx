@@ -116,7 +116,7 @@ function Chrome({
       </div>
       <div className="flex min-w-0 flex-1 items-center gap-1.5 rounded-full border border-[var(--border)] bg-[var(--surface)] px-2.5 py-1">
         <Icon className="h-3 w-3 shrink-0 text-[var(--muted-foreground)]" />
-        <span className="truncate text-[11px] text-[var(--muted-foreground)]">{label}</span>
+        <span className="min-w-0 truncate text-[11px] text-[var(--muted-foreground)]">{label}</span>
       </div>
       {trailing}
     </div>
@@ -218,7 +218,7 @@ export function MultiSiteMock({ step }: MockProps) {
       <Screen className="gap-3 p-4">
         <div className="flex items-center gap-2.5 rounded-[var(--r-chip)] border border-[var(--border)] bg-[var(--surface)] px-3.5 py-2.5">
           <Search className="h-4 w-4 shrink-0 text-[var(--muted-foreground)]" />
-          <span className="truncate text-[13px] text-[var(--body)]">
+          <span className="min-w-0 truncate text-[13px] text-[var(--body)]">
             do I need work experience for the MBA
           </span>
         </div>
@@ -253,7 +253,7 @@ export function MultiSiteMock({ step }: MockProps) {
                   }}
                 >
                   <PageTile page={page} className="aspect-[5/3]" />
-                  <p className="truncate px-1.5 py-1 text-[9.5px] text-[var(--muted-foreground)]">
+                  <p className="min-w-0 truncate px-1.5 py-1 text-[9.5px] text-[var(--muted-foreground)]">
                     {page.label}
                   </p>
                 </li>
@@ -519,10 +519,10 @@ export function GuideMock({ step }: MockProps) {
                 <Icon className="h-3.5 w-3.5" style={{ color: `rgb(${hue})` }} />
               </span>
               <div className="min-w-0">
-                <p className="truncate text-[12.5px] font-semibold text-[var(--foreground)]">
+                <p className="min-w-0 truncate text-[12.5px] font-semibold text-[var(--foreground)]">
                   {name}
                 </p>
-                <p className="mt-0.5 truncate text-[11px] text-[var(--muted-foreground)]">{meta}</p>
+                <p className="mt-0.5 min-w-0 truncate text-[11px] text-[var(--muted-foreground)]">{meta}</p>
               </div>
             </div>
           ))}
@@ -582,7 +582,7 @@ export function LeadMock({ step }: MockProps) {
               <span className="v6-gradient flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white">
                 PR
               </span>
-              <p className="truncate text-[12px] font-semibold text-[var(--foreground)]">
+              <p className="min-w-0 truncate text-[12px] font-semibold text-[var(--foreground)]">
                 New inquiry
               </p>
             </div>
@@ -607,7 +607,7 @@ export function LeadMock({ step }: MockProps) {
                 className={cn("grid grid-cols-[4.5rem_minmax(0,1fr)] gap-2", beat(step >= index + 3))}
               >
                 <dt className="text-[11px] text-[var(--muted-foreground)]">{key}</dt>
-                <dd className="truncate text-[12px] font-medium text-[var(--foreground)]">
+                <dd className="min-w-0 truncate text-[12px] font-medium text-[var(--foreground)]">
                   {value}
                 </dd>
               </div>
