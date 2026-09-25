@@ -85,6 +85,7 @@ import {
   runSiteMap, runSiteAnalysis, runUrlClassify, runQueuePages, republishRetryableQueueItems,
 } from "../lib/pipeline-steps.js";
 import { listActiveSiteUrls, upsertSiteUrls, setSiteUrlCategories, listSiteUrlsByCategory } from "../repositories/site-urls.repository.js";
+import { checkAllPagesDone } from "../lib/queue-completion.js";
 
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
@@ -1890,6 +1891,14 @@ await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
     if (outcome !== "pending") await markStepProgress(jobId, step, outcome);
     // The snapshot run is complete only when its LAST batch says so; that batch hands off.
     if (step === "site_snapshot" && outcome === "done" && batch) await advanceSnapshotRunOnce(jobId, batch);
+    // queue_pages is the only discovery step that can run CONCURRENTLY with pages a Resume already
+    // republished (see republishRetryableQueueItems) — checkAllPagesDone defers completion while
+    // this step shows "processing" in pipeline_progress specifically so that race can't start
+    // verification early, but nothing else ever re-checks once this step actually finishes if it
+    // happened to find nothing new to queue (no fresh page completion would ever come to retrigger
+    // it). Called AFTER markStepProgress above, so pipeline_progress.queue_pages already reads
+    // "done" by the time this runs (Greptile).
+    if (step === "queue_pages" && outcome === "done") await checkAllPagesDone(jobId);
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     logger.error("Step failed", { jobId, step, error: errMsg });

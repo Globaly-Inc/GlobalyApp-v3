@@ -87,7 +87,12 @@ export async function reactivateJob(jobId: string, adminId: number) {
   return masterKnex(T_JOBS)
     .where({ id: jobId })
     .update({
-      status: masterKnex.raw("CASE WHEN status IN ('paused', 'failed', 'declined') THEN 'processing' ELSE status END"),
+      // "stalled" belongs here too — the frontend's RESUMABLE_STATUSES (job-header.tsx) shows
+      // Resume for a stalled job same as a paused one, but leaving it out here meant Resume never
+      // actually reactivated it: checkAllPagesDone's own transition only matches status
+      // "processing", so a stalled job's pages could finish and it would STILL never reach
+      // verification (Greptile).
+      status: masterKnex.raw("CASE WHEN status IN ('paused', 'stalled', 'failed', 'declined') THEN 'processing' ELSE status END"),
       processing_heartbeat_at: masterKnex.fn.now(),
       updated_at: masterKnex.fn.now(),
       updated_by_platform_user_id: adminId,

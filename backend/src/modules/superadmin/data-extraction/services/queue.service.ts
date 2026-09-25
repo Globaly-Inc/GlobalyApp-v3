@@ -120,9 +120,29 @@ export async function resumeExtraction(jobId: string, adminId: number) {
   const job = await findJobById(jobId);
   if (!job) throw new NotFoundError("Extraction job not found");
 
-  const retryable = await repo.countRetryableQueueItems(jobId);
   const progress = typeof job.pipeline_progress === "string"
     ? JSON.parse(job.pipeline_progress) : (job.pipeline_progress || {});
+
+  // An AgentCIS job that never went through the crawl pipeline (no "Enrich from Website" run yet
+  // — pipeline_progress carries only {phase, current, total, agentcis_id}, none of the discovery-
+  // step keys) has no queue-side work to resume: firstIncompleteDiscoveryStep below would
+  // otherwise read it as "site_map incomplete" and dispatch a crawl of institution_url —
+  // unrelated website work, not the interrupted AgentCIS import (Greptile). Mirrors rerunJob's own
+  // AgentCIS branch exactly: importAgentCIS re-dispatches the SAME institution import (it creates
+  // a fresh job row; this stalled/paused row is simply superseded, same as Re-run already does).
+  // Once enrichment HAS run, pipeline_progress carries real discovery keys and the job falls
+  // through to the normal logic below like any other crawled job.
+  if (job.source_type === "agentcis" && !DISCOVERY_STEP_ORDER.some((s) => progress[s] !== undefined)) {
+    const agentcisId = progress.agentcis_id;
+    if (!agentcisId) {
+      throw new BadRequestError("This AgentCIS job has no agentcis_id on record — cannot resume the import");
+    }
+    await importAgentCIS([agentcisId], adminId);
+    await logAudit(adminId, "JOB_RESUME", { entityType: "extraction_jobs", entityId: jobId, details: { reimport: true } });
+    return { updated: true, retryable: 0, step: null, reimport: true };
+  }
+
+  const retryable = await repo.countRetryableQueueItems(jobId);
   const incomplete = firstIncompleteDiscoveryStep(progress);
   const step: PipelineStep = incomplete ?? "courses";
 

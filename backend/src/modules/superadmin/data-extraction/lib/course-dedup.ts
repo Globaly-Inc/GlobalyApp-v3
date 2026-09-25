@@ -39,6 +39,11 @@ const ASSIGNMENTS: Array<[string, string]> = [
   ["extraction_course_study_unit_assignments", "study_unit_id"],
   ["extraction_course_eligibility_assignments", "eligibility_requirement_id"],
   ["extraction_course_accreditation_assignments", "extraction_accreditation_id"],
+  // Missing when scholarships (migration 20260924_001) shipped after this list was written — the
+  // loser's extraction_course_scholarship_assignments rows have course_id ON DELETE CASCADE, so
+  // without re-pointing them first, a scholarship linked only to the row being deleted was silently
+  // dropped rather than carried over to the survivor (Greptile).
+  ["extraction_course_scholarship_assignments", "scholarship_id"],
 ];
 const FILL_FIELDS = ["short_name", "course_category", "subject_area", "duration_weeks", "study_mode", "description",
   "awarding_institution", "country_code", "degree_level", "degree_level_code", "subject_area_code", "career_paths"];
@@ -85,6 +90,12 @@ export async function reclassifyUnits(
         message: `"${c.name}" moved from courses to study units (cleanup)`,
         data: JSON.stringify({ course_id: c.id, unit_id: unitId, name: c.name, url: c.source_url, source: "course-dedup" }),
       });
+      // page_views is a polymorphic (entity_type, entity_id) table with no FK to
+      // extraction_courses, so it does NOT cascade with the delete below — unlike mergeInto,
+      // there's no surviving course to fold this view count onto (reclassifying to a study unit
+      // isn't a merge), so the row is just cleaned up here rather than left orphaned pointing at
+      // an id that no longer exists (Greptile).
+      await trx("page_views").where({ entity_type: "course", entity_id: c.id }).delete();
       await trx(`${S}.extraction_courses`).where({ id: c.id }).delete(); // child rows cascade
     });
   }
