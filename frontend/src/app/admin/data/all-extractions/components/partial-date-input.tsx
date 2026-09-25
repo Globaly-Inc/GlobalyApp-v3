@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
+import { DatePicker } from "@/components/ui/date-picker";
 import { cn } from "@/lib/utils";
 import { datePrecisionOf, type DatePrecision } from "../utils";
 
@@ -9,9 +10,10 @@ import { datePrecisionOf, type DatePrecision } from "../utils";
  * A date the institution may have published to the day or only to the month, with the selector
  * that says which.
  *
- * The two native input types do all the work — `type="date"` emits "YYYY-MM-DD" and
- * `type="month"` emits "YYYY-MM", which is exactly what the column stores — so there is no picker
- * library here and no parsing.
+ * Full-date precision uses the shared calendar `DatePicker` (same ISO "YYYY-MM-DD" value it
+ * already speaks — matches the app's convention elsewhere, e.g. scholarship-dialog.tsx). Month
+ * precision has no shared month-picker component, so it keeps the native `type="month"` input,
+ * which emits "YYYY-MM" — exactly what the column stores — with no parsing needed.
  *
  * For the inline pencil edits on an existing intake, this same behaviour lives in EditableField's
  * `datePrecision` prop; this component is for the forms that aren't inline (Create Intake, and
@@ -69,14 +71,26 @@ export function PartialDateInput({
           </button>
         ))}
       </div>
-      <Input
-        id={id}
-        type={precision === "month" ? "month" : "date"}
-        value={value}
-        disabled={disabled}
-        aria-invalid={ariaInvalid}
-        onChange={(e) => onChange(e.target.value)}
-      />
+      {precision === "month" ? (
+        <Input
+          id={id}
+          type="month"
+          value={value}
+          disabled={disabled}
+          aria-invalid={ariaInvalid}
+          onChange={(e) => onChange(e.target.value)}
+        />
+      ) : (
+        <DatePicker
+          id={id}
+          value={value}
+          onChange={onChange}
+          disabled={disabled}
+          aria-invalid={ariaInvalid}
+          defaultMonth={new Date()}
+          toYear={new Date().getFullYear() + 10}
+        />
+      )}
     </div>
   );
 }
