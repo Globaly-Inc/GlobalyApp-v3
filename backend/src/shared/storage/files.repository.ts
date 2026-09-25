@@ -2,6 +2,9 @@
 
 import { masterKnex } from "../../core/db/master-pool.js";
 import * as storage from "./storageService.js";
+import { createChildLogger } from "../logger.js";
+
+const logger = createChildLogger("files-repository");
 
 export interface UploadedFileRow {
   id: number;
@@ -52,8 +55,19 @@ export async function deleteFileRecord(id: number) {
  */
 export async function deleteFilesByEntity(entityType: string, entityId: string) {
   const files = await listFilesByEntity(entityType, entityId);
-  await Promise.all(files.map((f) => storage.deleteFile(f.storage_path).catch(() => {})));
-  if (files.length > 0) {
-    await masterKnex("uploaded_files").whereIn("id", files.map((f) => f.id)).update({ deleted_at: masterKnex.fn.now() });
+  if (files.length === 0) return;
+  // Only rows whose storage object was actually removed are soft-deleted — deleted_at is what
+  // listFilesByEntity filters on, so marking a row deleted on a FAILED storage delete would hide
+  // the orphaned object from every listing with nothing left to ever retry cleaning it up.
+  const results = await Promise.allSettled(files.map((f) => storage.deleteFile(f.storage_path)));
+  const succeededIds: number[] = [];
+  results.forEach((r, i) => {
+    if (r.status === "fulfilled") succeededIds.push(files[i].id);
+    else logger.warn("Failed to delete storage object; leaving uploaded_files row for retry", {
+      fileId: files[i].id, storagePath: files[i].storage_path, err: r.reason,
+    });
+  });
+  if (succeededIds.length > 0) {
+    await masterKnex("uploaded_files").whereIn("id", succeededIds).update({ deleted_at: masterKnex.fn.now() });
   }
 }
