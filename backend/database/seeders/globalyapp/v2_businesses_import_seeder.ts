@@ -129,4 +129,18 @@ export async function seed(knex: Knex): Promise<void> {
       });
     }
   }
+
+  // Correction for rows imported by an OLDER copy of this seeder, before it stamped origin:
+  // "seeded" directly (see fix-v2-import-origin.ts's history for why). Those rows were backfilled
+  // to the wrong "signup" by migration 20260923_003, since they carried no source_job_id to
+  // classify them by. That correction used to live in migrations 20260923_004/005, which were
+  // converted to a standalone script — but a script only runs when someone remembers to invoke it
+  // manually, so an environment that never re-runs seeders after pulling this change stays wrong
+  // forever. `knex seed:run` is already how V2 data enters an environment (and is safe to
+  // re-run — see the idempotent-on-subdomain note above), so the correction runs here too:
+  // meta.v2_id is set unconditionally on every V2-imported row and is never overwritten, unlike
+  // meta.created_via (which collides with the V2 dump's own field of the same name).
+  for (const table of ["businesses", "institutions"] as const) {
+    await knex(table).whereRaw("jsonb_exists(meta, 'v2_id')").whereNot("origin", "seeded").update({ origin: "seeded" });
+  }
 }
