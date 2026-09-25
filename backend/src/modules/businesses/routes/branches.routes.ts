@@ -20,7 +20,7 @@ export async function businessBranchesRoutes(app: FastifyInstance) {
 
   app.post("/branches", { preHandler: requireBusinessContext }, async (req, reply) => {
     const data = BranchInputSchema.parse(req.body);
-    const branch = await service.createBranch(Number(req.business!.id), data);
+    const branch = await service.createBranch(Number(req.business!.id), Number(req.auth.sub), data);
     await activityService.logActivity(req.db, Number(req.auth.sub), "BRANCH_CREATED", "branch", branch.id, { name: branch.name });
     return reply.status(201).send(branch);
   });

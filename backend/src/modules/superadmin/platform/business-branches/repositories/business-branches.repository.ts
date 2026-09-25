@@ -4,7 +4,7 @@ import { getKnex } from "../../../../../core/db/pool-manager.js";
 
 const BRANCH_COLUMNS = [
   "uuid as id", "name", "country", "state", "city", "address", "phone", "email",
-  "is_primary", "linked_business_id", "branch_type", "share_description", "shared_services", "created_at",
+  "is_primary", "linked_business_id", "linked_institution_id", "branch_type", "share_description", "shared_services", "created_at",
 ];
 
 function serializeBranchData<T extends Record<string, unknown>>(data: T): T {
@@ -15,8 +15,8 @@ function serializeBranchData<T extends Record<string, unknown>>(data: T): T {
 export type BranchFilter = "all" | "linked_branches" | "branches_only";
 
 function applyBranchFilters<T extends Knex.QueryBuilder>(q: T, filter: BranchFilter, search?: string): T {
-  if (filter === "branches_only") q.whereNull("linked_business_id");
-  else if (filter === "linked_branches") q.whereNotNull("linked_business_id");
+  if (filter === "branches_only") q.whereNull("linked_business_id").whereNull("linked_institution_id");
+  else if (filter === "linked_branches") q.where((b) => b.whereNotNull("linked_business_id").orWhereNotNull("linked_institution_id"));
   if (search) q.whereILike("name", `%${search}%`);
   return q;
 }
@@ -104,6 +104,36 @@ export async function linkExistingBranch(
       phone: partner.phone,
       email: partner.email,
       linked_business_id: partner.id,
+      branch_type: data.branch_type,
+      shared_services: JSON.stringify(data.shared_services),
+    })
+    .returning(BRANCH_COLUMNS);
+
+  return { branch };
+}
+
+/** Same shape as linkExistingBranch, for an institution created via createInstitutionBranch —
+ * the partner is an institutions row, not a businesses row, so linked_institution_id is set
+ * instead of linked_business_id. */
+export async function linkExistingInstitution(
+  institutionId: number,
+  schemaName: string,
+  data: { institution_id: number; branch_type: string; shared_services: "all" | string[] },
+) {
+  const partner = await masterKnex("institutions").where({ id: data.institution_id }).whereNull("deleted_at").first();
+  if (!partner) return null;
+
+  const parentDb = await getKnex(institutionId, schemaName);
+  const [branch] = await parentDb("business_branches")
+    .insert({
+      name: partner.institution_name,
+      country: null,
+      state: partner.state,
+      city: partner.city,
+      address: partner.address,
+      phone: partner.phone,
+      email: partner.email,
+      linked_institution_id: partner.id,
       branch_type: data.branch_type,
       shared_services: JSON.stringify(data.shared_services),
     })

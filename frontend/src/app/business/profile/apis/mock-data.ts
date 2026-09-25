@@ -51,7 +51,7 @@ function delay(ms: number) {
 let mockBranches: Branch[] = [
   {
     id: "b1", name: "Head Office", country: "Australia", state: "NSW", city: "Sydney", address: "1 Main St",
-    phone: null, email: null, is_primary: true, linked_business_id: null, branch_type: "same_company",
+    phone: null, email: null, is_primary: true, linked_business_id: null, linked_institution_id: null, branch_type: "same_company",
     share_description: false, shared_services: "all", created_at: new Date(2026, 0, 1).toISOString(),
   },
 ];
@@ -129,7 +129,7 @@ export const businessProfileDetailMockApi = {
     const branch: Branch = {
       id: uuid(), name: input.name, country: input.country ?? null, state: input.state ?? null,
       city: input.city ?? null, address: input.address ?? null, phone: input.phone ?? null, email: input.email ?? null,
-      is_primary: false, linked_business_id: null, branch_type: input.branch_type ?? "same_company",
+      is_primary: false, linked_business_id: null, linked_institution_id: null, branch_type: input.branch_type ?? "same_company",
       share_description: input.share_description ?? false, shared_services: input.shared_services ?? "all",
       created_at: new Date().toISOString(),
     };
@@ -145,7 +145,7 @@ export const businessProfileDetailMockApi = {
     await delay(300);
     const branch: Branch = {
       id: uuid(), name: "Linked business", country: null, state: null, city: null, address: null,
-      phone: null, email: null, is_primary: false, linked_business_id: input.business_id, branch_type: input.branch_type,
+      phone: null, email: null, is_primary: false, linked_business_id: input.business_id, linked_institution_id: null, branch_type: input.branch_type,
       share_description: false, shared_services: input.shared_services, created_at: new Date().toISOString(),
     };
     mockBranches = [...mockBranches, branch];

@@ -13,6 +13,7 @@ export type Branch = {
   email: string | null;
   is_primary: boolean;
   linked_business_id: number | null;
+  linked_institution_id: number | null;
   branch_type: BranchType;
   share_description: boolean;
   shared_services: SharedServices;
