@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { ChevronDown, Mail } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { LEGAL_LINKS, LEGAL_UPDATED, siteConfig } from "@/lib/site";
+import { COMPANY_ADDRESS, LEGAL_LINKS, LEGAL_UPDATED, siteConfig } from "@/lib/site";
 import { GlassPanel } from "./primitives";
 
 /**
@@ -156,6 +156,9 @@ function LegalFooter({ current }: Readonly<{ current: string }>) {
           </a>
           . We aim to reply within five business days.
         </p>
+        <address className="mt-3 text-[14px] not-italic text-[var(--muted-foreground)]">
+          {siteConfig.company}, {COMPANY_ADDRESS}
+        </address>
       </GlassPanel>
 
       <GlassPanel spotlight={false} className="p-6 sm:p-7">

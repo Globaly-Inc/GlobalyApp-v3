@@ -2,11 +2,9 @@
  * Single source of truth for the things that change without a redesign.
  *
  * Every "Book a meeting" control on the page reads CAL_BOOKING_URL from here.
- * The overlayCalendar param is part of the booking link as supplied — it opens
- * Cal's overlay rather than a full page redirect.
+ * The GlobalyAI intro meeting, as supplied on 25 Sep 2026.
  */
-export const CAL_BOOKING_URL =
-  "https://cal.com/amit-ranjitkar/meeting-with-amit?overlayCalendar=true";
+export const CAL_BOOKING_URL = "https://cal.com/amit-ranjitkar/globaly-ai-intro-meeting";
 
 export const siteConfig = {
   name: "GlobalyAI",
@@ -22,23 +20,32 @@ export const siteConfig = {
   legalEmail: "support@globalyapp.com",
   /** Governing law for the Terms, matching the Globaly app's Terms. */
   jurisdiction: "New South Wales, Australia",
+  /** Shown under the social icons in the footer and on the legal pages. */
+  address: {
+    street: "450 Townsend Street",
+    locality: "San Francisco",
+    region: "CA",
+    postalCode: "94107",
+    country: "US",
+  },
 } as const;
 
+/** The address as one line, for the footer and the legal pages. */
+export const COMPANY_ADDRESS = `${siteConfig.address.street}, ${siteConfig.address.locality} ${siteConfig.address.region} ${siteConfig.address.postalCode}`;
+
 /**
- * The footer nav, and the only list of links on the page — the bar itself
- * carries the logo, the theme toggle and the CTA and nothing else.
- *
- * Every entry has to name a section the page actually mounts. How It Works
- * and Privacy went with their sections (24 Sep 2026); a link to a section
- * that exists in the source but is not rendered just parks the visitor at
- * the footer with nothing to show for the click.
+ * The company's social accounts. These are the Globaly accounts the Globaly
+ * app's own footer links to (frontend/src/app/(web)/const), used here on the
+ * CEO's call until GlobalyAI has accounts of its own.
  */
-export const FOOTER_LINKS = [
-  // Absolute, so they still land on the homepage section from a legal page.
-  { label: "Product", href: "/#product" },
-  { label: "For Institutions", href: "/#institutions" },
-  { label: "Contact", href: CAL_BOOKING_URL },
+export const SOCIAL_LINKS = [
+  { network: "linkedin", label: "LinkedIn", href: "https://www.linkedin.com/company/globaly-app" },
+  { network: "x", label: "X", href: "https://x.com/globaly_app" },
+  { network: "instagram", label: "Instagram", href: "https://www.instagram.com/globaly.app" },
+  { network: "facebook", label: "Facebook", href: "https://www.facebook.com/globaly.app" },
 ] as const;
+
+export type SocialNetwork = (typeof SOCIAL_LINKS)[number]["network"];
 
 /** The legal pages, linked from the footer and the cookie banner. */
 export const LEGAL_LINKS = [
