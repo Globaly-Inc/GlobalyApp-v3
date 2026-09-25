@@ -22,7 +22,7 @@ export async function institutionBranchesRoutes(app: FastifyInstance) {
 
   app.post("/branches", { preHandler: requireInstitutionContext }, async (req, reply) => {
     const data = BranchInputSchema.parse(req.body);
-    const branch = await service.createInstitutionBranch(req.institutionId, data);
+    const branch = await service.createInstitutionBranch(req.institutionId, Number(req.auth.sub), data);
     return reply.status(201).send(branch);
   });
 

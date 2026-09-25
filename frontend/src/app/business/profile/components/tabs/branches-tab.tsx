@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Building2, GitBranch, Link2, Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -11,7 +12,6 @@ import { Pagination } from "@/components/ui/pagination";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchBranches, deleteBranch } from "../../store/business-profile-detail-slice";
 import type { Branch, BranchFilter } from "../../apis/types";
-import { CreateBranchDialog } from "../branches/create-branch-dialog";
 import { LinkBranchDialog } from "../branches/link-branch-dialog";
 import { DeleteBranchDialog } from "../branches/delete-branch-dialog";
 
@@ -27,14 +27,13 @@ export function BranchesTab({
   businessId,
   isInstitution,
 }: Readonly<{ businessId: number; isInstitution: boolean }>) {
+  const router = useRouter();
   const dispatch = useAppDispatch();
   const { items: branches, status, total: branchesTotal, ownerId } = useAppSelector((state) => state.businessProfileDetail.branches);
   // The list is shared with the Locations card and outlives a switch to another business, and the
   // first fetch is debounced — so until it holds THIS business's rows the tab shows its spinner
   // rather than whichever rows happen to be in the store.
   const loadingBranches = status === "loading" || ownerId !== businessId;
-  const [createOpen, setCreateOpen] = useState(false);
-  const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
   const [editingLinkedBranch, setEditingLinkedBranch] = useState<Branch | null>(null);
   const [deletingBranch, setDeletingBranch] = useState<Branch | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -103,7 +102,7 @@ export function BranchesTab({
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium">{b.name}</span>
                   {b.is_primary && <Badge className="text-[10px]">Head Office</Badge>}
-                  {b.linked_business_id != null && (
+                  {(b.linked_business_id != null || b.linked_institution_id != null) && (
                     <Badge variant="outline" className="text-[10px] capitalize">{b.branch_type.replaceAll("_", " ")}</Badge>
                   )}
                 </div>
@@ -111,22 +110,27 @@ export function BranchesTab({
               </div>
             </div>
             <div className="flex items-center gap-1">
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                onClick={() => {
-                  if (b.linked_business_id != null) {
-                    setEditingLinkedBranch(b);
-                    setLinkOpen(true);
-                  } else {
-                    setEditingBranch(b);
-                    setCreateOpen(true);
-                  }
-                }}
-                aria-label="Edit branch"
-              >
-                <Pencil className="h-4 w-4" />
-              </Button>
+              {/* A linked_institution_id branch is a real, separately-owned institution this org
+                 created (see business-branches.service.ts's createInstitutionBranch) — there's no
+                 "edit the link" dialog for it yet (LinkBranchDialog only handles a linked business),
+                 so it's edited from its own profile once entered via the org switcher, not here. */}
+              {b.linked_institution_id == null && (
+                <Button
+                  size="icon-sm"
+                  variant="ghost"
+                  onClick={() => {
+                    if (b.linked_business_id != null) {
+                      setEditingLinkedBranch(b);
+                      setLinkOpen(true);
+                    } else {
+                      router.push(`/business/profile/${businessId}/branches/${b.id}/edit`);
+                    }
+                  }}
+                  aria-label="Edit branch"
+                >
+                  <Pencil className="h-4 w-4" />
+                </Button>
+              )}
               {!b.is_primary && (
                 <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => setDeletingBranch(b)} aria-label="Remove branch">
                   <Trash2 className="h-4 w-4" />
@@ -156,7 +160,7 @@ export function BranchesTab({
               <Link2 className="mr-1.5 h-3.5 w-3.5" /> Link existing
             </Button>
           )}
-          <Button className="h-10" onClick={() => { setEditingBranch(null); setCreateOpen(true); }}>
+          <Button className="h-10" onClick={() => router.push(`/business/profile/${businessId}/branches/add`)}>
             <Plus className="mr-1.5 h-3.5 w-3.5" /> Create branch
           </Button>
         </div>
@@ -187,7 +191,6 @@ export function BranchesTab({
         <Pagination page={page} total={branchesTotal} limit={PAGE_SIZE} onPageChange={handlePageChange} />
       )}
 
-      <CreateBranchDialog open={createOpen} onOpenChange={setCreateOpen} businessId={businessId} editBranch={editingBranch} />
       <LinkBranchDialog open={linkOpen} onOpenChange={setLinkOpen} businessId={businessId} editBranch={editingLinkedBranch} />
       <DeleteBranchDialog
         branch={deletingBranch}
