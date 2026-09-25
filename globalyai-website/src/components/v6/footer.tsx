@@ -2,7 +2,8 @@
 
 import Image from "next/image";
 import { cn } from "@/lib/utils";
-import { FOOTER_LINKS, siteConfig } from "@/lib/site";
+import { FOOTER_LINKS, LEGAL_LINKS, siteConfig } from "@/lib/site";
+import { openCookiePreferences } from "./cookie-consent";
 import { useThemeValue } from "./theme";
 
 export function Footer() {
@@ -46,10 +47,30 @@ export function Footer() {
           </nav>
         </div>
 
-        <div className="mt-10 flex flex-col gap-3 border-t border-[var(--border)] pt-6 text-[13.5px] text-[var(--muted-foreground)] sm:flex-row sm:items-center sm:justify-between">
+        <div className="mt-10 flex flex-col gap-4 border-t border-[var(--border)] pt-6 text-[13.5px] text-[var(--muted-foreground)] lg:flex-row lg:items-center lg:justify-between">
           <p>
             © {year} {siteConfig.company}
           </p>
+          {/* The legal row. Cookie preferences reopens the banner, because
+              withdrawing consent has to be as easy as giving it. */}
+          <ul aria-label="Legal" className="flex flex-wrap gap-x-5 gap-y-2">
+            {LEGAL_LINKS.map((link) => (
+              <li key={link.href}>
+                <a href={link.href} className="transition-colors hover:text-[var(--foreground)]">
+                  {link.label}
+                </a>
+              </li>
+            ))}
+            <li>
+              <button
+                type="button"
+                onClick={openCookiePreferences}
+                className="transition-colors hover:text-[var(--foreground)]"
+              >
+                Cookie preferences
+              </button>
+            </li>
+          </ul>
           <a
             href={`mailto:${siteConfig.founder.email}`}
             className="transition-colors hover:text-[var(--foreground)]"

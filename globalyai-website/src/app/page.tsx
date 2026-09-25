@@ -1,9 +1,8 @@
-import { Hero, Navbar } from "@/components/v6/hero";
-import { Footer } from "@/components/v6/footer";
+import { Hero } from "@/components/v6/hero";
 import { ProductFilm } from "@/components/v6/film";
 import { Learning } from "@/components/v6/learning";
 import { Faq, Features, FinalCta, Institutions, ProblemSolution, Proof } from "@/components/v6/sections";
-import { ThemeScript, V6_ROOT_ID } from "@/components/v6/theme";
+import { SiteShell } from "@/components/v6/shell";
 
 /**
  * Variation 6 - variation 1, upgraded, in two modes.
@@ -37,26 +36,16 @@ import { ThemeScript, V6_ROOT_ID } from "@/components/v6/theme";
  */
 export default function Variation6() {
   return (
-    // ThemeScript sets data-theme before hydration, so the server markup is
-    // meant to differ on this one attribute.
-    <div id={V6_ROOT_ID} className="v6 min-h-dvh" suppressHydrationWarning>
-      {/* Runs before hydration. Without it the first paint is light and a
-          dark-mode visitor watches the page change under them. */}
-      <ThemeScript />
-
-      <Navbar />
-      <main id="main">
-        <Hero />
-        <Proof />
-        <ProblemSolution />
-        <ProductFilm />
-        <Features />
-        <Institutions />
-        <Learning />
-        <Faq />
-        <FinalCta />
-      </main>
-      <Footer />
-    </div>
+    <SiteShell>
+      <Hero />
+      <Proof />
+      <ProblemSolution />
+      <ProductFilm />
+      <Features />
+      <Institutions />
+      <Learning />
+      <Faq />
+      <FinalCta />
+    </SiteShell>
   );
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { cn } from "@/lib/utils";
 import { siteConfig } from "@/lib/site";
 import { AlyOrb } from "@/components/site/aly-orb";
@@ -22,9 +23,9 @@ export function Navbar() {
   const theme = useThemeValue();
 
   return (
-    <header className="fixed inset-x-0 top-3 z-50 px-3 sm:px-5">
-      <div className="v6-glass mx-auto flex h-16 max-w-[1300px] items-center justify-between gap-5 px-4 sm:px-5">
-        <a href="#top" className="flex shrink-0 items-center" aria-label={`${siteConfig.name}, home`}>
+    <header className="fixed inset-x-0 top-3 z-50 px-2 min-[390px]:px-3 sm:px-5">
+      <div className="v6-glass mx-auto flex h-16 max-w-[1300px] items-center justify-between gap-3 px-3 min-[390px]:px-4 sm:gap-5 sm:px-5">
+        <Link href="/#top" className="flex shrink-0 items-center" aria-label={`${siteConfig.name}, home`}>
           <Image
             src="/globalyai-logo.png"
             alt={siteConfig.name}
@@ -33,11 +34,12 @@ export function Navbar() {
             priority
             className={cn("h-[22px] w-auto transition-[filter] duration-300", theme === "dark" && "brightness-0 invert")}
           />
-        </a>
+        </Link>
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 min-[390px]:gap-2">
           <ThemeToggle />
-          <CtaButton size="sm" />
+          {/* Under 390px (iPhone SE and older Androids) the bar is a few px short: the arrow goes, the label stays. */}
+          <CtaButton size="sm" className="max-[389px]:px-3.5 max-[389px]:[&>svg]:hidden" />
         </div>
       </div>
     </header>
@@ -67,12 +69,12 @@ const AUDIENCES = ["university", "institution", "college", "school"] as const;
  */
 export function Hero() {
   return (
-    <section id="top" className="relative overflow-hidden px-3 pb-12 pt-24 sm:px-5 md:pb-16">
+    <section id="top" className="relative overflow-hidden px-3 pb-8 pt-24 sm:px-5 sm:pb-12 md:pb-16">
       <div aria-hidden="true" className="v6-hero-field pointer-events-none absolute inset-x-0 top-0 h-[46rem]" />
       <Aurora className="v6-aurora-hero absolute inset-x-0 top-0 h-[42rem] [mask-image:linear-gradient(to_bottom,black,transparent_88%)]" />
       <div aria-hidden="true" className="v6-dots pointer-events-none absolute inset-0 [mask-image:radial-gradient(ellipse_70%_60%_at_50%_0%,black,transparent_75%)]" />
 
-      <div className="relative mx-auto flex min-h-[62vh] max-w-[1300px] items-center px-2 md:min-h-[68vh]">
+      <div className="relative mx-auto flex min-h-[52svh] max-w-[1300px] items-center px-2 sm:min-h-[62vh] md:min-h-[68vh]">
         <div className="mx-auto flex max-w-3xl flex-col items-center text-center">
           <AlyOrb className="h-16 w-16 animate-fade-up" />
 

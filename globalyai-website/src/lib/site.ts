@@ -17,6 +17,11 @@ export const siteConfig = {
   url: "https://globalyai.com",
   company: "Globaly Inc.",
   founder: { name: "Amit Ranjitkar", role: "Founder & CEO", email: "amit@globalyapp.com" },
+  /** Where the legal pages send questions and data requests. Same inbox the
+      Globaly app's own legal pages use. */
+  legalEmail: "support@globalyapp.com",
+  /** Governing law for the Terms, matching the Globaly app's Terms. */
+  jurisdiction: "New South Wales, Australia",
 } as const;
 
 /**
@@ -29,7 +34,28 @@ export const siteConfig = {
  * the footer with nothing to show for the click.
  */
 export const FOOTER_LINKS = [
-  { label: "Product", href: "#product" },
-  { label: "For Institutions", href: "#institutions" },
+  // Absolute, so they still land on the homepage section from a legal page.
+  { label: "Product", href: "/#product" },
+  { label: "For Institutions", href: "/#institutions" },
   { label: "Contact", href: CAL_BOOKING_URL },
 ] as const;
+
+/** The legal pages, linked from the footer and the cookie banner. */
+export const LEGAL_LINKS = [
+  { label: "Terms of Service", href: "/terms" },
+  { label: "Privacy Policy", href: "/privacy" },
+  { label: "Cookie Policy", href: "/cookies" },
+] as const;
+
+/** One date for all three documents while they change together. */
+export const LEGAL_UPDATED = "24 September 2026";
+
+/**
+ * Every key the site writes to the visitor's browser, in one plain module so
+ * the Cookie Policy (a server component) can print the real names. Anything
+ * added to storage gets a key here and an entry on /cookies in the same change.
+ */
+export const STORAGE_KEYS = {
+  theme: "globalyai-v6-theme",
+  cookieConsent: "globalyai-cookie-consent",
+} as const;
