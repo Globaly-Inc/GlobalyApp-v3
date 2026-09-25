@@ -39,7 +39,10 @@ const CAPABILITIES = ["Search", "Unread", "Drafts", "Starred", "Favorites"];
  * Greeted by business name rather than first name: the business shell identifies the
  * viewer by their org (business_name/logo_url), and carries no agent first name.
  */
-export function ChatEmptyState({ threadCount }: Readonly<{ threadCount: number }>) {
+export function ChatEmptyState({
+  threadCount,
+  embed = false,
+}: Readonly<{ threadCount: number; /** The AI Conversations tab — widget chats, none of the enquiry shortcuts. */ embed?: boolean }>) {
   const hydrated = useSyncExternalStore(subscribeNever, hydratedSnapshot, serverSnapshot);
   const businessName = useAppSelector((s) => s.businessOnboarding.profile?.business_name);
   // Withheld until hydrated so the first client render matches the server's HTML.
@@ -59,20 +62,26 @@ export function ChatEmptyState({ threadCount }: Readonly<{ threadCount: number }
       <h1 className="mb-2 text-center text-2xl font-bold">
         {name ? `${name} — Messages` : "Messages"}
       </h1>
-      <p className="text-center text-muted-foreground">Your conversations with students who enquired</p>
+      <p className="text-center text-muted-foreground">
+        {embed ? "Chats visitors had with your AI assistant" : "Your conversations with students who enquired"}
+      </p>
 
-      <div className="mt-8 flex flex-wrap justify-center gap-2">
-        {CAPABILITIES.map((capability) => (
-          <span key={capability} className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
-            {capability}
-          </span>
-        ))}
-      </div>
+      {!embed && (
+        <div className="mt-8 flex flex-wrap justify-center gap-2">
+          {CAPABILITIES.map((capability) => (
+            <span key={capability} className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
+              {capability}
+            </span>
+          ))}
+        </div>
+      )}
 
       <p className="mt-6 max-w-md text-center text-xs text-muted-foreground">
         {threadCount > 0
           ? "Pick a conversation from the list to get started."
-          : "A conversation opens as soon as you unlock an enquiry. Unlock one from the Enquiries inbox and it appears here."}
+          : embed
+            ? "When someone talks to the AI assistant on your website, their chat appears here."
+            : "A conversation opens as soon as you unlock an enquiry. Unlock one from the Enquiries inbox and it appears here."}
       </p>
     </div>
   );

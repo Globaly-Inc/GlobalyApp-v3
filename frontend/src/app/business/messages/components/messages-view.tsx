@@ -6,6 +6,10 @@ import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import { ChatCopyProvider } from "@/components/chat/chat-copy";
 import { fetchThreads, toggleThreadFavorite } from "../store/business-messages-slice";
+import { fetchEmbedChats } from "../store/embed-chats-slice";
+import { EmbedConversationView } from "./embed-conversation-view";
+import { InboxListSidebar } from "./inbox-list-sidebar";
+import { InboxKindTabs, type InboxKind } from "./inbox-kind-tabs";
 import { getDraftCount, getServerDraftCount, subscribeDrafts } from "@/components/chat/draft-store";
 import { ChatEmptyState } from "./chat-empty-state";
 import { ChatSidebar } from "@/components/chat/chat-sidebar";
@@ -47,6 +51,15 @@ const BUSINESS_COPY = {
 export function MessagesView() {
   const dispatch = useAppDispatch();
   const { threads, threadsStatus, byDistribution } = useAppSelector((s) => s.businessMessages);
+  const embed = useAppSelector((s) => s.embedChats);
+  /** Which list the rail shows. All merges enquiry threads and AI conversations. */
+  const [kind, setKind] = useState<InboxKind>("all");
+  /**
+   * Which side the main column shows. Separate from `kind` because the All tab can open
+   * either; each side keeps its own selection across a tab switch.
+   */
+  const [pane, setPane] = useState<"enquiry" | "embed">("enquiry");
+  const [embedActiveId, setEmbedActiveId] = useState<number | null>(null);
 
   const searchParams = useSearchParams();
   // Read once at mount: the URL isn't rewritten as the selection changes, so
@@ -69,13 +82,26 @@ export function MessagesView() {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
     dispatch(fetchThreads());
+    // At mount, not on first switch: the All tab (the default) and every tab's count need it.
+    dispatch(fetchEmbedChats());
   }, [dispatch]);
+
+  const switchKind = useCallback((next: InboxKind) => {
+    setKind(next);
+    if (next !== "all") setPane(next);
+  }, []);
+
+  const openVisitor = useCallback((id: number) => {
+    setEmbedActiveId(id);
+    setPane("embed");
+  }, []);
 
   const draftCount = useSyncExternalStore(subscribeDrafts, getDraftCount, getServerDraftCount);
 
   const openThread = useCallback((distributionId: string, messageId?: number) => {
     setActive({ type: "conversation", id: distributionId });
     setHighlightId(messageId ?? null);
+    setPane("enquiry");
   }, []);
 
   const selectShortcut = useCallback((type: ShortcutType) => {
@@ -93,7 +119,11 @@ export function MessagesView() {
   const selected = active.type === "conversation" ? threads.find((t) => t.distribution_id === active.id) : undefined;
 
   // The list is the mobile home screen, so "nothing open" must show it, not an empty pane.
-  const mainOpen = active.type !== "none" && (active.type !== "conversation" || selected !== undefined);
+  const enquiryOpen = active.type !== "none" && (active.type !== "conversation" || selected !== undefined);
+  const embedSelected = embed.visitors.find((v) => v.id === embedActiveId);
+  const mainOpen = pane === "enquiry" ? enquiryOpen : embedSelected !== undefined;
+  const counts = { all: threads.length + embed.total, enquiry: threads.length, embed: embed.total };
+  const tabs = <InboxKindTabs value={kind} onChange={switchKind} counts={counts} />;
 
   // Chat wants the whole width, not the shell's centred max-w-7xl column. That comes from
   // BusinessShell's FULL_BLEED_ROUTES, which drops both the SHELL_WIDTH wrapper and
@@ -115,21 +145,46 @@ export function MessagesView() {
           "h-[calc(100dvh-4rem)]",
         )}
       >
-        <div className={cn("w-full shrink-0 md:w-72 lg:w-80", mainOpen && "hidden md:block")}>
-          <ChatSidebar
-            threads={threads}
-            loading={threadsStatus === "loading" && threads.length === 0}
-            messagesByThread={byDistribution}
-            active={active}
-            draftCount={draftCount}
-            onOpenThread={openThread}
-            onSelectShortcut={selectShortcut}
-            onToggleFavorite={(id) => dispatch(toggleThreadFavorite(id))}
-          />
+        <div className={cn("w-full shrink-0 md:w-80 lg:w-[22rem]", mainOpen && "hidden md:block")}>
+          {kind !== "enquiry" ? (
+            <InboxListSidebar
+              header={tabs}
+              threads={kind === "all" ? threads : []}
+              visitors={embed.visitors}
+              loading={
+                (embed.status === "loading" && embed.visitors.length === 0) ||
+                (kind === "all" && threadsStatus === "loading" && threads.length === 0)
+              }
+              activeThreadId={pane === "enquiry" && active.type === "conversation" ? active.id : null}
+              activeVisitorId={pane === "embed" ? embedActiveId : null}
+              onOpenThread={openThread}
+              onOpenVisitor={openVisitor}
+              onToggleFavorite={(id) => dispatch(toggleThreadFavorite(id))}
+            />
+          ) : (
+            <ChatSidebar
+              header={tabs}
+              searchPlaceholder="Search by name, programme or message"
+              threads={threads}
+              loading={threadsStatus === "loading" && threads.length === 0}
+              messagesByThread={byDistribution}
+              active={active}
+              draftCount={draftCount}
+              onOpenThread={openThread}
+              onSelectShortcut={selectShortcut}
+              onToggleFavorite={(id) => dispatch(toggleThreadFavorite(id))}
+            />
+          )}
         </div>
 
         <div className={cn("min-w-0 flex-1", !mainOpen && "hidden md:block")}>
-          {selected ? (
+          {pane === "embed" ? (
+            embedSelected ? (
+              <EmbedConversationView visitor={embedSelected} onBack={() => setEmbedActiveId(null)} />
+            ) : (
+              <ChatEmptyState threadCount={embed.visitors.length} embed />
+            )
+          ) : selected ? (
             <ConversationView thread={selected} highlightMessageId={highlightId} onBack={backToList} />
           ) : active.type === "unread" ? (
             <UnreadView threads={threads} onBack={backToList} onOpen={openThread} />
@@ -140,7 +195,7 @@ export function MessagesView() {
           ) : (
             <ChatEmptyState threadCount={threads.length} />
           )}
-          </div>
+        </div>
       </div>
     </ChatCopyProvider>
   );

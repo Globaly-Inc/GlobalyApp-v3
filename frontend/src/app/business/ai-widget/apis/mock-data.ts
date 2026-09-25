@@ -1,7 +1,7 @@
 import { uuid } from "@/lib/utils";
 import type {
   CreateEmbedConfigInput, EmbedConfig,
-  VisitorCounts, VisitorListParams, VisitorListResult, VisitorPatch, WidgetVisitor,
+  VisitorCounts, VisitorListParams, VisitorListResult, VisitorMessage, VisitorPatch, WidgetVisitor,
 } from "./types";
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -89,6 +89,18 @@ const visitors: WidgetVisitor[] = [
 ];
 
 export const aiWidgetVisitorsMock = {
+  listVisitorMessages: async (id: number): Promise<VisitorMessage[]> => {
+    console.log("[mock] GET /ai-chat/embed/visitors/" + id + "/messages");
+    await delay(250);
+    const at = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
+    return [
+      { id: id * 10 + 1, role: "user", content: "Hi, do you offer a Masters in Data Science?", created_at: at(30) },
+      { id: id * 10 + 2, role: "assistant", content: "Yes! Our **MSc Data Science** runs for 18 months with February and July intakes.", created_at: at(29) },
+      { id: id * 10 + 3, role: "user", content: "What IELTS score do I need?", created_at: at(27) },
+      { id: id * 10 + 4, role: "assistant", content: "An overall **6.5** with no band below 6.0.", created_at: at(26) },
+    ];
+  },
+
   getVisitor: async (id: number): Promise<WidgetVisitor> => {
     console.log("[mock] GET /ai-chat/embed/visitors/" + id);
     await delay(250);
