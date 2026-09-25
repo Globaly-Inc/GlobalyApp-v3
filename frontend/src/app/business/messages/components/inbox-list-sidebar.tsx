@@ -1,21 +1,23 @@
 "use client";
 
-import { useMemo, useState } from "react";
-import { Bot, MessageSquare, Search, User } from "lucide-react";
+import { useEffect, useMemo, useState } from "react";
+import { Bot, Loader2, MessageSquare, Search, User } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { SIDEBAR_LABEL, SIDEBAR_ROW, SIDEBAR_ROW_ACTIVE } from "@/components/chat/const";
+import { MIN_SEARCH_LENGTH, SIDEBAR_LABEL, SIDEBAR_ROW, SIDEBAR_ROW_ACTIVE } from "@/components/chat/const";
 import { ConversationRow } from "@/components/chat/conversation-row";
 import { activityDate, listStamp, threadTitle } from "@/components/chat/utils";
-import type { ChatThread } from "@/components/chat/types";
+import type { ChatThread, EnquiryMessage } from "@/components/chat/types";
 import { cn } from "@/lib/utils";
 import { VISITOR_STATUS_BADGE } from "@/app/business/ai-widget/const";
 import { visitorDisplayName, visitorInitials } from "@/app/business/ai-widget/utils";
 import type { WidgetVisitor } from "@/app/business/ai-widget/apis/types";
 
 type Item =
-  | { kind: "enquiry"; at: number; thread: ChatThread }
+  /** `messageId`: the newest loaded message matching the search, revealed on open. */
+  | { kind: "enquiry"; at: number; thread: ChatThread; messageId?: number }
   | { kind: "embed"; at: number; visitor: WidgetVisitor };
 
 /**
@@ -26,45 +28,77 @@ type Item =
  * Unread enquiries float to the top (the enquiry list's rule), then everything by newest
  * activity. Search here is a client-side filter on name, programme and last message; the
  * Enquiries tab keeps `ChatSearch`, which also searches message history.
+ *
+ * Search covers what `ChatSearch` does on the enquiry side — a thread's title, course, latest
+ * message, and every message already loaded for it — and opens a message hit AT that message.
+ * AI conversations are searched on the server (name/email), since only some pages are loaded.
  */
 export function InboxListSidebar({
   header,
   threads,
   visitors,
+  messagesByThread,
   loading,
+  hasMore,
+  loadingMore,
   activeThreadId,
   activeVisitorId,
   onOpenThread,
   onOpenVisitor,
   onToggleFavorite,
+  onSearchVisitors,
+  onLoadMore,
 }: Readonly<{
   header: React.ReactNode;
   /** Empty on the AI Conversations tab. */
   threads: ChatThread[];
   visitors: WidgetVisitor[];
+  messagesByThread: Record<string, EnquiryMessage[]>;
   loading: boolean;
+  /** More visitor pages exist on the server for the current search. */
+  hasMore: boolean;
+  loadingMore: boolean;
   activeThreadId: string | null;
   activeVisitorId: number | null;
-  onOpenThread: (distributionId: string) => void;
+  onOpenThread: (distributionId: string, messageId?: number) => void;
   onOpenVisitor: (id: number) => void;
   onToggleFavorite: (distributionId: string) => void;
+  /** Debounced; the parent refetches page 1 only when the term actually changed. */
+  onSearchVisitors: (term: string) => void;
+  onLoadMore: () => void;
 }>) {
   const [query, setQuery] = useState("");
+
+  useEffect(() => {
+    const t = setTimeout(() => onSearchVisitors(query.trim()), 300);
+    return () => clearTimeout(t);
+  }, [query, onSearchVisitors]);
 
   const items = useMemo(() => {
     const term = query.trim().toLowerCase();
     const hit = (...parts: (string | null | undefined)[]) => !term || parts.join(" ").toLowerCase().includes(term);
+    // ChatSearch's rule: message bodies only count from two characters up.
+    const newestMessageHit = (t: ChatThread) =>
+      term.length < MIN_SEARCH_LENGTH
+        ? undefined
+        : (messagesByThread[t.distribution_id] ?? [])
+            .filter((m) => m.body.toLowerCase().includes(term))
+            .reduce<EnquiryMessage | undefined>((best, m) => (!best || m.created_at > best.created_at ? m : best), undefined);
+    const enquiries: Item[] = [];
+    for (const thread of threads) {
+      const message = newestMessageHit(thread);
+      if (!message && !hit(threadTitle(thread), thread.course_name, thread.last_message_body)) continue;
+      enquiries.push({ kind: "enquiry", at: activityDate(thread).getTime(), thread, messageId: message?.id });
+    }
     const all: Item[] = [
-      ...threads
-        .filter((t) => hit(threadTitle(t), t.course_name, t.last_message_body))
-        .map((thread) => ({ kind: "enquiry" as const, at: activityDate(thread).getTime(), thread })),
+      ...enquiries,
       ...visitors
-        .filter((v) => hit(v.name, v.email, v.study_preference))
+        .filter((v) => hit(v.name, v.email))
         .map((visitor) => ({ kind: "embed" as const, at: new Date(visitor.last_activity_at).getTime(), visitor })),
     ];
     const unread = (i: Item) => Number(i.kind === "enquiry" && i.thread.unread_count > 0);
     return all.sort((a, b) => unread(b) - unread(a) || b.at - a.at);
-  }, [threads, visitors, query]);
+  }, [threads, visitors, messagesByThread, query]);
 
   const embedOnly = threads.length === 0;
 
@@ -126,7 +160,7 @@ export function InboxListSidebar({
                   key={`e-${item.thread.distribution_id}`}
                   thread={item.thread}
                   isActive={item.thread.distribution_id === activeThreadId}
-                  onOpen={() => onOpenThread(item.thread.distribution_id)}
+                  onOpen={() => onOpenThread(item.thread.distribution_id, item.messageId)}
                   onToggleFavorite={() => onToggleFavorite(item.thread.distribution_id)}
                 />
               ) : (
@@ -139,6 +173,13 @@ export function InboxListSidebar({
               ),
             )}
           </div>
+        )}
+
+        {!loading && hasMore && (
+          <Button variant="ghost" size="sm" className="mt-2 w-full text-muted-foreground" disabled={loadingMore} onClick={onLoadMore}>
+            {loadingMore && <Loader2 className="size-3.5 animate-spin" aria-hidden />}
+            Load more AI conversations
+          </Button>
         )}
       </div>
     </div>

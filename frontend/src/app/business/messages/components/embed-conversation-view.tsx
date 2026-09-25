@@ -6,21 +6,27 @@ import { ArrowLeft, Bot, ExternalLink, Info, User } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { dateSeparatorLabel, messageTime } from "@/components/chat/utils";
-import { MessageMarkdown } from "@/app/ai/components/message-markdown";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import { VISITOR_STATUS_BADGE } from "@/app/business/ai-widget/const";
 import { visitorDisplayName, visitorInitials } from "@/app/business/ai-widget/utils";
-import type { VisitorMessage, WidgetVisitor } from "@/app/business/ai-widget/apis/types";
+import type { WidgetVisitor } from "@/app/business/ai-widget/apis/types";
 import { fetchEmbedTranscript } from "../store/embed-chats-slice";
+import { DateDivider, dayLabel, isGroupedWith, TranscriptBubble } from "./transcript-bubble";
 
 /**
- * An AI conversation (embed widget chat), laid out like the enquiry `ConversationView` — header bar, V2-style
- * bubble-less rows, date separators — but read-only: the visitor talked to the assistant on
+ * An AI conversation (embed widget chat): the enquiry `ConversationView` header bar over a
+ * bubble transcript (visitor left, assistant right), read-only: the visitor talked to the assistant on
  * the business's website, and there is no channel to reply to them from here. The footer says
  * so where the composer would be, and points to the visitor's record for follow-up.
  */
+/**
+ * The message column: up to 56rem wide, and NOT centred — the left gap takes 30% of the spare
+ * width and the right 70%, so the conversation leans toward the list. `100%` in a margin is the
+ * scroller's width; on a narrow pane the spare width goes negative and the max() floors it.
+ */
+const MESSAGE_COLUMN = "w-full max-w-4xl ml-[max(0rem,calc((100%-56rem)*0.3))]";
+
 export function EmbedConversationView({ visitor, onBack }: Readonly<{ visitor: WidgetVisitor; onBack: () => void }>) {
   const dispatch = useAppDispatch();
   const messages = useAppSelector((s) => s.embedChats.transcripts[visitor.id]);
@@ -71,7 +77,10 @@ export function EmbedConversationView({ visitor, onBack }: Readonly<{ visitor: W
         </Link>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto py-3">
+      {/* The scroller spans the pane (scrollbar at its edge). Messages sit in a column shifted
+          toward the list; day dividers are wider, 80% of the pane, centred. */}
+      <div className="min-h-0 flex-1 overflow-y-auto pb-4 pt-1">
+        <div className={MESSAGE_COLUMN}>
         {!messages && status !== "failed" ? (
           <div className="space-y-4 px-4">
             {[0, 1, 2].map((i) => (
@@ -88,67 +97,36 @@ export function EmbedConversationView({ visitor, onBack }: Readonly<{ visitor: W
           <p className="px-4 py-8 text-center text-sm text-muted-foreground">Couldn&apos;t load this conversation.</p>
         ) : messages!.length === 0 ? (
           <p className="px-4 py-8 text-center text-sm text-muted-foreground">No messages in this chat.</p>
-        ) : (
-          messages!.map((m, i) => {
-            const prev = messages![i - 1];
-            const label = dateSeparatorLabel(m.created_at);
-            const showDate = !prev || dateSeparatorLabel(prev.created_at) !== label;
+        ) : null}
+        </div>
+        {messages && messages.length > 0 &&
+          messages.map((m, i) => {
+            const prev = messages[i - 1];
+            const label = dayLabel(m.created_at);
+            const showDate = !prev || dayLabel(prev.created_at) !== label;
             return (
               <div key={m.id}>
                 {showDate && (
-                  <div className="my-4 flex items-center gap-3 px-4">
-                    <div className="h-px flex-1 bg-border" />
-                    <span className="text-xs font-medium text-muted-foreground">{label}</span>
-                    <div className="h-px flex-1 bg-border" />
+                  <div className="mx-auto w-4/5">
+                    <DateDivider label={label} />
                   </div>
                 )}
-                <TranscriptRow message={m} visitorName={name} grouped={!showDate && prev?.role === m.role} />
+                <div className={MESSAGE_COLUMN}>
+                  <TranscriptBubble
+                    message={m}
+                    grouped={!showDate && isGroupedWith(m, prev)}
+                    visitorName={name}
+                    visitorInitials={visitor.name ? visitorInitials(visitor) : null}
+                  />
+                </div>
               </div>
             );
-          })
-        )}
+          })}
       </div>
 
       <div className="flex shrink-0 items-center gap-2 border-t border-border bg-muted/40 px-4 py-3 text-xs text-muted-foreground">
         <Info className="size-3.5 shrink-0" aria-hidden />
         This visitor chatted with your AI assistant. The transcript is read-only.
-      </div>
-    </div>
-  );
-}
-
-/** `MessageRow`'s avatar gutter + name/time header, without its actions (nothing here is writable). */
-function TranscriptRow({
-  message,
-  visitorName,
-  grouped,
-}: Readonly<{ message: VisitorMessage; visitorName: string; grouped: boolean }>) {
-  const isBot = message.role === "assistant";
-  return (
-    <div className={cn("flex gap-1.5 px-1.5 py-0.5 hover:bg-muted/40 md:gap-3 md:px-4", !grouped && "md:py-1")}>
-      <div className="w-7 shrink-0 md:w-9">
-        {!grouped && (
-          <Avatar className="size-7 md:size-9">
-            <AvatarFallback className={cn("text-[10px] md:text-xs", isBot ? "bg-primary text-primary-foreground" : "bg-primary/10 text-primary")}>
-              {isBot ? <Bot className="size-4" aria-hidden /> : <User className="size-4" aria-hidden />}
-            </AvatarFallback>
-          </Avatar>
-        )}
-      </div>
-      <div className="min-w-0 flex-1">
-        {!grouped && (
-          <div className="mb-0.5 flex items-center gap-2">
-            <span className={cn("text-sm font-semibold", isBot ? "text-primary" : "text-foreground")}>
-              {isBot ? "AI Assistant" : visitorName}
-            </span>
-            <span className="text-xs text-muted-foreground">{messageTime(message.created_at)}</span>
-          </div>
-        )}
-        {isBot ? (
-          <MessageMarkdown text={message.content} className="text-sm leading-relaxed" />
-        ) : (
-          <p className="whitespace-pre-wrap break-words text-sm leading-relaxed text-foreground">{message.content}</p>
-        )}
       </div>
     </div>
   );

@@ -10,6 +10,7 @@ import { fetchEmbedChats } from "../store/embed-chats-slice";
 import { EmbedConversationView } from "./embed-conversation-view";
 import { InboxListSidebar } from "./inbox-list-sidebar";
 import { InboxKindTabs, type InboxKind } from "./inbox-kind-tabs";
+import type { WidgetVisitor } from "@/app/business/ai-widget/apis/types";
 import { getDraftCount, getServerDraftCount, subscribeDrafts } from "@/components/chat/draft-store";
 import { ChatEmptyState } from "./chat-empty-state";
 import { ChatSidebar } from "@/components/chat/chat-sidebar";
@@ -55,11 +56,18 @@ export function MessagesView() {
   /** Which list the rail shows. All merges enquiry threads and AI conversations. */
   const [kind, setKind] = useState<InboxKind>("all");
   /**
-   * Which side the main column shows. Separate from `kind` because the All tab can open
-   * either; each side keeps its own selection across a tab switch.
+   * Which side the main column shows on the All tab, which can open either. The other two
+   * tabs always show their own side; each side keeps its own selection across a tab switch,
+   * so returning to All brings back whatever All last had open.
    */
-  const [pane, setPane] = useState<"enquiry" | "embed">("enquiry");
-  const [embedActiveId, setEmbedActiveId] = useState<number | null>(null);
+  const [allPane, setAllPane] = useState<"enquiry" | "embed">("enquiry");
+  const pane = kind === "all" ? allPane : kind;
+  /**
+   * The open AI conversation — the row itself, not just its id. The loaded list is a search
+   * result and a set of pages, so the open visitor can drop out of it; looking it up there
+   * would blank the pane mid-read. A fresher copy from the list still wins when present.
+   */
+  const [embedOpen, setEmbedOpen] = useState<WidgetVisitor | null>(null);
 
   const searchParams = useSearchParams();
   // Read once at mount: the URL isn't rewritten as the selection changes, so
@@ -86,22 +94,21 @@ export function MessagesView() {
     dispatch(fetchEmbedChats());
   }, [dispatch]);
 
-  const switchKind = useCallback((next: InboxKind) => {
-    setKind(next);
-    if (next !== "all") setPane(next);
-  }, []);
-
-  const openVisitor = useCallback((id: number) => {
-    setEmbedActiveId(id);
-    setPane("embed");
-  }, []);
+  // Only a server round-trip when the term really changed — the sidebar's debounce fires on
+  // mount and on every remount (a tab switch), with the term the list already reflects.
+  const searchVisitors = useCallback(
+    (term: string) => {
+      if (term !== embed.search) dispatch(fetchEmbedChats({ search: term }));
+    },
+    [dispatch, embed.search],
+  );
+  const loadMoreVisitors = () => dispatch(fetchEmbedChats({ page: embed.page + 1, search: embed.search }));
 
   const draftCount = useSyncExternalStore(subscribeDrafts, getDraftCount, getServerDraftCount);
 
   const openThread = useCallback((distributionId: string, messageId?: number) => {
     setActive({ type: "conversation", id: distributionId });
     setHighlightId(messageId ?? null);
-    setPane("enquiry");
   }, []);
 
   const selectShortcut = useCallback((type: ShortcutType) => {
@@ -120,10 +127,10 @@ export function MessagesView() {
 
   // The list is the mobile home screen, so "nothing open" must show it, not an empty pane.
   const enquiryOpen = active.type !== "none" && (active.type !== "conversation" || selected !== undefined);
-  const embedSelected = embed.visitors.find((v) => v.id === embedActiveId);
+  const embedSelected = embedOpen ? (embed.visitors.find((v) => v.id === embedOpen.id) ?? embedOpen) : undefined;
   const mainOpen = pane === "enquiry" ? enquiryOpen : embedSelected !== undefined;
   const counts = { all: threads.length + embed.total, enquiry: threads.length, embed: embed.total };
-  const tabs = <InboxKindTabs value={kind} onChange={switchKind} counts={counts} />;
+  const tabs = <InboxKindTabs value={kind} onChange={setKind} counts={counts} />;
 
   // Chat wants the whole width, not the shell's centred max-w-7xl column. That comes from
   // BusinessShell's FULL_BLEED_ROUTES, which drops both the SHELL_WIDTH wrapper and
@@ -151,14 +158,25 @@ export function MessagesView() {
               header={tabs}
               threads={kind === "all" ? threads : []}
               visitors={embed.visitors}
+              messagesByThread={byDistribution}
+              hasMore={embed.visitors.length < embed.matched}
+              loadingMore={embed.status === "loading" && embed.visitors.length > 0}
+              onSearchVisitors={searchVisitors}
+              onLoadMore={loadMoreVisitors}
               loading={
                 (embed.status === "loading" && embed.visitors.length === 0) ||
                 (kind === "all" && threadsStatus === "loading" && threads.length === 0)
               }
               activeThreadId={pane === "enquiry" && active.type === "conversation" ? active.id : null}
-              activeVisitorId={pane === "embed" ? embedActiveId : null}
-              onOpenThread={openThread}
-              onOpenVisitor={openVisitor}
+              activeVisitorId={pane === "embed" ? (embedOpen?.id ?? null) : null}
+              onOpenThread={(id, messageId) => {
+                openThread(id, messageId);
+                if (kind === "all") setAllPane("enquiry");
+              }}
+              onOpenVisitor={(id) => {
+                setEmbedOpen(embed.visitors.find((v) => v.id === id) ?? null);
+                if (kind === "all") setAllPane("embed");
+              }}
               onToggleFavorite={(id) => dispatch(toggleThreadFavorite(id))}
             />
           ) : (
@@ -180,7 +198,7 @@ export function MessagesView() {
         <div className={cn("min-w-0 flex-1", !mainOpen && "hidden md:block")}>
           {pane === "embed" ? (
             embedSelected ? (
-              <EmbedConversationView visitor={embedSelected} onBack={() => setEmbedActiveId(null)} />
+              <EmbedConversationView visitor={embedSelected} onBack={() => setEmbedOpen(null)} />
             ) : (
               <ChatEmptyState threadCount={embed.visitors.length} embed />
             )
