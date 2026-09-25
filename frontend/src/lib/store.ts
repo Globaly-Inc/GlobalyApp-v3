@@ -41,6 +41,8 @@ import { logsReducer } from "@/app/admin/monitoring/monitoring-logs/store/logs-s
 import { adminOtherServicesReducer } from "@/app/admin/monitoring/other-services/store/admin-other-services-slice"
 import { aiChatReducer } from "@/app/ai/store/ai-chat-slice"
 import { aiWidgetReducer } from "@/app/business/ai-widget/store/ai-widget-slice"
+import { aiWidgetVisitorsReducer } from "@/app/business/ai-widget/store/ai-widget-visitors-slice"
+import { aiWidgetVisitorDetailReducer } from "@/app/business/ai-widget/store/ai-widget-visitor-detail-slice"
 import { enquiriesReducer as monitoringEnquiriesReducer } from "@/app/admin/monitoring/enquiries/store/enquiries-slice"
 import { creditsLedgerReducer } from "@/app/admin/revenue/subscriptions/credits/store/credits-ledger-slice"
 import { comingSoonReducer } from "@/app/coming-soon/store/coming-soon-slice"
@@ -88,6 +90,8 @@ const appReducer = combineReducers({
     monitoringOtherServices: adminOtherServicesReducer,
     aiChat: aiChatReducer,
     aiWidget: aiWidgetReducer,
+    aiWidgetVisitors: aiWidgetVisitorsReducer,
+    aiWidgetVisitorDetail: aiWidgetVisitorDetailReducer,
     monitoringEnquiries: monitoringEnquiriesReducer,
     creditsLedger: creditsLedgerReducer,
     comingSoon: comingSoonReducer,

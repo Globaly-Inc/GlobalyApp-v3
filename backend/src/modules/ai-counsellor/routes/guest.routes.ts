@@ -249,7 +249,7 @@ export async function guestRoutes(app: FastifyInstance) {
       // carrying a column a lagging tenant schema lacks fails the whole write and freezes
       // message_count, which is exactly how both cards silently died a week ago. This one is
       // allowed to fail alone.
-      const profile = visitor && tenantDb ? await extractProfile(input.content) : null;
+      const profile = visitor && tenantDb ? await extractProfile(history, input.content) : null;
       if (profile && visitor && tenantDb) {
         await visitorService.attempt("recordProfile", () =>
           visitorService.recordProfile(tenantDb, visitor.id, profile),

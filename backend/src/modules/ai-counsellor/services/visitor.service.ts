@@ -13,13 +13,15 @@ import { getKnex } from "../../../core/db/pool-manager.js";
 import { schemaName } from "../../../core/db/knex.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import type { EmbedConfigRow } from "../repositories/embed.repository.js";
-import { PROFILE_KEYS, type ProfileKey, type VisitorProfile } from "../lib/card-parser.js";
+import { PROFILE_KEYS, PROFILE_SCALAR_COLUMNS, type ProfileKey, type VisitorProfile } from "../lib/card-parser.js";
 
 const logger = createChildLogger("widget-visitor");
 
 const TABLE = "ai_widget_visitors";
 
 export type ContactStatus = "not_shown" | "shown" | "skipped" | "submitted";
+/** Derived by Postgres from whether the visitor ever left their details — see VisitorRow.status. */
+export type VisitorStatus = "visitor" | "lead";
 export type SummaryStatus = "pending" | "processing" | "sent" | "failed";
 export type ConversationState = "active" | "ending_prompt_shown" | "continue" | "end_confirmed";
 
@@ -33,6 +35,13 @@ export interface VisitorRow {
   session_id: number | null;
   name: string | null;
   email: string | null;
+  /**
+   * Read-only. A GENERATED ALWAYS column (20260923_001) that Postgres derives from `email`, so
+   * it appears in every `returning("*")` here but must never be written — an INSERT or UPDATE
+   * naming it is an error, not a silent no-op. Handing over a name and email is what promotes
+   * a visitor to a lead, and that is the only way it moves.
+   */
+  status: VisitorStatus;
   contact_status: ContactStatus;
   contact_prompt_count: number;
   contact_prompted_at_count: number | null;
@@ -56,6 +65,20 @@ export interface VisitorRow {
   language_tests: VisitorProfile["language_tests"] | null;
   academic_tests: VisitorProfile["academic_tests"] | null;
   work_experiences: VisitorProfile["work_experiences"] | null;
+  /**
+   * Scalar attributes, same provenance and the same warning as the arrays above: stated by the
+   * visitor, read out of prose by a model, never inferred from a name, a language or a location.
+   *
+   * `age` is VERBATIM ("22", "early 30s") — there is no configured age-group list on this
+   * platform to bucket into. `nationality` is resolved to a globalyapp.countries name;
+   * `nationality_raw` holds the visitor's own wording, and only when it differs or matched no
+   * country. `study_preference` is the ONE course being discussed, never a concatenation.
+   */
+  age: string | null;
+  gender: string | null;
+  nationality: string | null;
+  nationality_raw: string | null;
+  study_preference: string | null;
   summary_status: SummaryStatus | null;
   summary_attempts: number;
   summary_sent_at: Date | null;
@@ -416,6 +439,23 @@ export async function recordProfile(
     if (!existing) return;
 
     const patch: Record<string, unknown> = {};
+
+    // Scalars: written when this turn supplied one, left alone when it did not. That asymmetry is
+    // the requirement — a later message that simply does not mention nationality must not erase
+    // the nationality an earlier one gave, while a visitor CORRECTING themselves must win. Both
+    // fall out of "only keys the extraction returned reach the patch", since the extractor omits
+    // whatever the conversation did not state.
+    for (const key of PROFILE_SCALAR_COLUMNS) {
+      const value = incoming[key];
+      if (typeof value === "string" && value) patch[key] = value;
+    }
+    // Except the nationality pair, which is one statement stored in two columns: a turn that
+    // supplied either half replaces both. Otherwise "Nepali" then "actually, Kashmiri" keeps
+    // Nepal beside the new wording, and "Nepali" then "I'm from India" keeps "Nepali" as the raw.
+    if ("nationality" in patch || "nationality_raw" in patch) {
+      patch.nationality ??= null;
+      patch.nationality_raw ??= null;
+    }
 
     for (const key of PROFILE_KEYS) {
       const add = incoming[key];

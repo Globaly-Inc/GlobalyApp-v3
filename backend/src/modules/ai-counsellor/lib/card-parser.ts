@@ -115,6 +115,18 @@ export interface VisitorProfile {
   language_tests?: ProfileTest[];
   academic_tests?: ProfileTest[];
   work_experiences?: ProfileWork[];
+
+  // ── Scalars: one value at a time, unlike the arrays above ──
+  /** Verbatim, as stated. Never bucketed — there is no configured age-group list to map onto. */
+  age?: string;
+  gender?: string;
+  /** Resolved to a globalyapp.countries name. Absent when their wording matched no country. */
+  nationality?: string;
+  /** Their own words. Server-set from `nationality` before the lookup, so an unmatched answer
+   *  ("I'm Kashmiri") is kept rather than discarded or asserted as a country. */
+  nationality_raw?: string;
+  /** The SPECIFIC course or program being discussed. Never a broad interest. */
+  study_preference?: string;
 }
 
 /** The four keys, and the only fields each accepts. Anything else the model invents is dropped. */
@@ -128,6 +140,19 @@ export const PROFILE_FIELDS = {
 
 export type ProfileKey = keyof typeof PROFILE_FIELDS;
 export const PROFILE_KEYS = Object.keys(PROFILE_FIELDS) as ProfileKey[];
+
+/**
+ * The scalar attributes, and the only ones the MODEL may return.
+ *
+ * `nationality_raw` is deliberately absent: the model reports what the visitor said, and the
+ * server splits that into a resolved country name plus their original wording. Letting the model
+ * fill both would let it disagree with itself.
+ */
+export const PROFILE_SCALARS = ["age", "gender", "nationality", "study_preference"] as const;
+export type ProfileScalar = (typeof PROFILE_SCALARS)[number];
+
+/** Every scalar column the writer may set, including the one only the server produces. */
+export const PROFILE_SCALAR_COLUMNS = [...PROFILE_SCALARS, "nationality_raw"] as const;
 
 /** Bounds on model output going into a database column. Generous, but not unbounded. */
 const MAX_PROFILE_ITEMS = 10;
@@ -180,7 +205,17 @@ function cleanProfileEntry(raw: unknown, allowed: readonly string[]): Record<str
  * implementations of "what counts as a valid entry" would drift on the first change.
  */
 export function cleanProfile(raw: Record<string, unknown>): VisitorProfile | null {
-  const out: Record<string, Record<string, unknown>[]> = {};
+  const out: Record<string, unknown> = {};
+
+  // Scalars first, so the key order matches the interface. An empty or whitespace-only string is
+  // dropped rather than stored: the writer treats "present" as "the visitor said this", and ""
+  // would overwrite a real earlier answer with nothing.
+  for (const key of PROFILE_SCALAR_COLUMNS) {
+    const value = raw[key];
+    if (!isStr(value)) continue;
+    const trimmed = (value as string).trim().slice(0, MAX_PROFILE_VALUE);
+    if (trimmed) out[key] = trimmed;
+  }
 
   for (const key of PROFILE_KEYS) {
     const value = raw[key];

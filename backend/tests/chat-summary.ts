@@ -509,6 +509,27 @@ const parsed = (p: Record<string, unknown>) => JSON.parse(p as unknown as string
   ok(seen.locked, true, "the read that feeds the merge takes a row lock");
 }
 
+// Nationality is one statement in two columns: a correction replaces BOTH halves, or the stale
+// one survives beside it. "Nepali" -> "Kashmiri" (no country) must clear Nepal; "Nepali" ->
+// "India" (exact match, no raw) must clear the old "Nepali" wording.
+{
+  const { db, captured } = fakeDb({ nationality: "Nepal", nationality_raw: "Nepali" });
+  await recordProfile(db, 1, { nationality_raw: "Kashmiri" });
+  ok(captured.nationality, null, "an unmatched nationality correction clears the old country");
+  ok(captured.nationality_raw, "Kashmiri", "and records the new wording");
+}
+{
+  const { db, captured } = fakeDb({ nationality: "Nepal", nationality_raw: "Nepali" });
+  await recordProfile(db, 1, { nationality: "India" });
+  ok(captured.nationality, "India", "a matched nationality correction writes the country");
+  ok(captured.nationality_raw, null, "and clears the previous wording");
+}
+{
+  const { db, captured } = fakeDb({ nationality: "Nepal", nationality_raw: "Nepali" });
+  await recordProfile(db, 1, { age: "22" });
+  ok("nationality" in captured || "nationality_raw" in captured, false, "a turn without nationality leaves both halves alone");
+}
+
 // THE ONE THAT MATTERS: restating the same test later fills in detail instead of duplicating.
 {
   const { db, captured } = fakeDb({ language_tests: [{ test_type: "IELTS", overall_score: "7.0" }] });
@@ -561,12 +582,45 @@ for (const msg of [
 
 for (const msg of [
   "What are the tuition fees?",
-  "Tell me about application deadlines",
   "ok",
   "yes",
   "thanks!",
   "Which campus is it on?",
+  "How long does the application take?",
 ]) ok(worthExtracting(msg), false, `prefilter skips: ${msg}`);
+
+// The four scalar attributes. Age, gender and nationality are stated with ordinary words;
+// study_preference is stated with the single most common phrasing in a course widget, which is
+// why the filter had to widen a long way once these were added.
+for (const msg of [
+  "I'm 22",
+  "I am 25 years old",
+  "I'm a woman",
+  "my pronouns are he/him",
+  "I'm from Nepal",
+  "I am a Nepali citizen",
+  "Can you tell me about your MBA?",
+  "I'm interested in the Master of Computer Science",
+  "I want to study data science",
+]) ok(worthExtracting(msg), true, `prefilter accepts attribute: ${msg.slice(0, 40)}`);
+
+// A bare answer carries no keyword of its own, so it is judged by the question it answers.
+// Without this, "22" to "how old are you?" was never sent to the model at all.
+ok(worthExtracting("22", "Great choice! How old are you?"), true, "prefilter accepts a bare answer to an age question");
+ok(worthExtracting("Nepali", "Thanks. What is your nationality?"), true, "prefilter accepts a bare answer to a nationality question");
+ok(worthExtracting("yes", "Would you like to see the fees?"), false, "prefilter still skips 'yes' to a logistics question");
+// Only the LAST question counts — a course mention earlier in the turn must not qualify "ok".
+ok(worthExtracting("ok", "The MBA course is great. Shall I continue?"), false, "prefilter ignores background words outside the last question");
+for (const msg of ["I'm Nepali", "I am an Italian", "im Chinese", "I'm British"]) {
+  ok(worthExtracting(msg), true, `prefilter accepts demonym: ${msg}`);
+}
+
+// DELIBERATE over-fire, asserted so nobody "fixes" it later. "tell me about" has to match, or
+// "Can you tell me about your MBA?" — the canonical study_preference phrasing — is never looked
+// at. The cost is one cheap call returning {} on a question that revealed nothing; the
+// alternative cost is a lead's course interest lost for good.
+ok(worthExtracting("Tell me about application deadlines"), true,
+  "the prefilter over-fires on 'tell me about' by design, rather than miss a course mention");
 
 // ── Profile extraction: every sub-score survives ──
 // The reported failure was a student listing an overall band plus four components and none of it
@@ -681,6 +735,69 @@ const rawOf = (v: unknown) => (v as { __raw?: string } | undefined)?.__raw;
   await recordTurn(db, 1, { prompted: "ending", nextCount: 6, sessionId: 9 });
   ok(rawOf(captured.end_prompt_count), "end_prompt_count + 1", "the end counter increments in SQL");
   ok(rawOf(captured.end_prompt_at_count), "message_count + 1", "the end snapshot uses the same expression as message_count");
+}
+
+/* ── The scalar attributes: cleaning ── */
+// A scalar-only extraction must survive. Before these existed cleanProfile returned null unless
+// an ARRAY had entries, so "I'm 22, from Nepal" would have cleaned away to nothing.
+deep(
+  cleanProfile({ age: "22", gender: "female", nationality: "Nepal", study_preference: "MBA" }),
+  { age: "22", gender: "female", nationality: "Nepal", study_preference: "MBA" },
+  "a profile of scalars alone is kept, not treated as empty",
+);
+deep(cleanProfile({ age: "  22  " }), { age: "22" }, "scalars are trimmed");
+ok(cleanProfile({ age: "   " }), null, "a whitespace-only scalar is dropped, not stored blank");
+ok(cleanProfile({ age: 22 as unknown as string }), null, "a non-string scalar is dropped rather than coerced");
+deep(cleanProfile({ age: "22", favourite_colour: "blue" }), { age: "22" },
+  "an invented scalar key is dropped");
+// Verbatim is the whole point of `age` — there is no configured bucket list to map onto, so a
+// value that looks bucketable must still be stored exactly as the visitor said it.
+deep(cleanProfile({ age: "early 30s" }), { age: "early 30s" }, "age is stored verbatim, never bucketed");
+
+/* ── The scalar attributes: merging across turns ── */
+// THE SPEC RULE most likely to regress silently: a later message that does not mention an
+// attribute must not erase it, while a correction must win. Both come from "only keys the
+// extraction returned reach the patch".
+{
+  const { db, captured } = fakeDb({});
+  await recordProfile(db, 1, { age: "22", nationality: "Nepal" });
+  ok(captured.age, "22", "a stated age is written");
+  ok(captured.nationality, "Nepal", "a resolved nationality is written");
+  ok("gender" in captured, false, "an attribute the turn did not mention is not in the patch at all");
+  ok("study_preference" in captured, false, "nor is one never mentioned");
+}
+
+{
+  // A later turn mentioning only the course must leave the earlier age and nationality alone.
+  const { db, captured } = fakeDb({ age: "22", nationality: "Nepal" });
+  await recordProfile(db, 1, { study_preference: "MSc Data Science" });
+  ok(captured.study_preference, "MSc Data Science", "the new attribute is written");
+  ok("age" in captured, false, "an existing age is NOT overwritten with null by a later turn");
+  ok("nationality" in captured, false, "nor is an existing nationality");
+}
+
+{
+  // A correction wins — same mechanism, opposite direction.
+  const { db, captured } = fakeDb({ study_preference: "MBA" });
+  await recordProfile(db, 1, { study_preference: "MSc Data Science" });
+  ok(captured.study_preference, "MSc Data Science", "a corrected value replaces the stored one");
+}
+
+{
+  // An empty string is not an answer; it must never reach the column.
+  const { db, captured } = fakeDb({ age: "22" });
+  await recordProfile(db, 1, { age: "", gender: "male" });
+  ok("age" in captured, false, "an empty string never overwrites a stored value");
+  ok(captured.gender, "male", "a real value on the same turn still lands");
+}
+
+{
+  // The unresolved-country path: raw kept, nationality left unset, so nothing asserts a country
+  // the visitor never named.
+  const { db, captured } = fakeDb({});
+  await recordProfile(db, 1, { nationality_raw: "Kashmiri" });
+  ok(captured.nationality_raw, "Kashmiri", "an unmatched nationality keeps the visitor's wording");
+  ok(captured.nationality ?? null, null, "and files them under no country");
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

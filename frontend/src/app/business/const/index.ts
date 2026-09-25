@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Award, Bot, BookOpen, Building2, CalendarDays, CreditCard, Coins, GraduationCap, Globe, Handshake, Home, Inbox, MapPin, Megaphone, MessageSquare, PenLine, Plug, Receipt, Settings, Users } from "lucide-react";
+import { Award, Bot, BookOpen, Building2, CalendarDays, CreditCard, Coins, GraduationCap, Globe, Handshake, Home, Inbox, MapPin, Megaphone, MessageSquare, PenLine, Plug, Receipt, Settings, UserSearch, Users } from "lucide-react";
 
 export type BusinessNavItem = { icon: LucideIcon; label: string; href: string };
 export type BusinessNavGroup = { icon: LucideIcon; label: string; items: BusinessNavItem[] };
@@ -22,6 +22,7 @@ export const BUSINESS_NAV_GROUPS: BusinessNavGroup[] = [
       { icon: MapPin, label: "Branches", href: "/business/profile?tab=branches" },
       { icon: Handshake, label: "Representative", href: "/business/profile?tab=partners" },
       { icon: Users, label: "Team", href: "/business/profile?tab=team" },
+      { icon: UserSearch, label: "Visitors", href: "/business/profile?tab=visitors" },
       { icon: BookOpen, label: "Services", href: "/business/profile?tab=services" },
       { icon: Globe, label: "Site contents", href: "/business/profile?tab=site_mapping" },
     ],
