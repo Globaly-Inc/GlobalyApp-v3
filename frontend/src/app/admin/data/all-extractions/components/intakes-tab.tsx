@@ -1,44 +1,33 @@
 "use client";
 
-import { z } from "zod";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Calendar, CalendarClock, CalendarDays, Link2, Loader2, Pencil, Plus, Save, Search, Trash2, Type, X } from "lucide-react";
+import { Calendar, CalendarClock, CalendarDays, Link2, Loader2, Pencil, Plus, Search, Trash2, Type, X } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { FieldError } from "@/components/field-error";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Pagination } from "@/components/ui/pagination";
 import { cn } from "@/lib/utils";
 import { allExtractionsApi } from "../apis";
 import { latestTimestamp } from "../utils";
 import { CourseLinkPicker } from "./course-link-picker";
 import { EditableField, useFieldSaver, type EditableFieldProps } from "./editable-field";
-import { PartialDateInput, monthYearOf } from "./partial-date-input";
 import { IntakeCustomDates } from "./intake-custom-dates";
+import { IntakeForm } from "./intake-form";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
 import { RowActors } from "./row-actors";
-import type { CourseLinks, ExtractionJob, Intake, IntakeParams } from "../apis/types";
+import type { CourseLinks, ExtractionJob, Intake } from "../apis/types";
 
 type LinkedCourse = { id: string; name: string | null };
 
 /** Native date inputs need YYYY-MM-DD; the API hands back full timestamps. */
 const CHIP_LIMIT = 6;
 const DEFAULT_PAGE_SIZE = 10;
-
-const intakeSchema = z.object({
-  name: z.string().trim().min(1, "Intake name is required"),
-  startDate: z.string(),
-  endDate: z.string(),
-  orientation: z.string(),
-  deadline: z.string(),
-});
 
 function Field({ icon: Icon, className, ...field }: Readonly<EditableFieldProps & { icon: LucideIcon }>) {
   return (
@@ -48,109 +37,6 @@ function Field({ icon: Icon, className, ...field }: Readonly<EditableFieldProps 
       </div>
       <EditableField {...field} className="flex-1" />
     </div>
-  );
-}
-
-function IntakeForm({
-  saving,
-  onCancel,
-  onSave,
-}: Readonly<{ saving: boolean; onCancel: () => void; onSave: (values: IntakeParams) => void }>) {
-  const [name, setName] = useState("");
-  const [startDate, setStartDate] = useState("");
-  const [endDate, setEndDate] = useState("");
-  const [orientation, setOrientation] = useState("");
-  const [deadline, setDeadline] = useState("");
-  const [errors, setErrors] = useState<Record<string, string>>({});
-
-  return (
-    <Card className="border-primary/40">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <CalendarDays className="h-4 w-4 text-primary" />
-          Create Intake
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-4">
-        <div className="flex flex-col gap-1.5">
-          <Label htmlFor="intake-name">
-            Intake Name <span className="text-destructive">*</span>
-          </Label>
-          <Input
-            id="intake-name"
-            value={name}
-            onChange={(e) => {
-              setName(e.target.value);
-              if (errors.name) setErrors((prev) => ({ ...prev, name: "" }));
-            }}
-            placeholder="e.g. Semester 1 2025"
-            aria-invalid={Boolean(errors.name)}
-          />
-          <FieldError message={errors.name} />
-        </div>
-
-        <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
-          <Label className="text-xs uppercase tracking-wide text-muted-foreground">Intake dates</Label>
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="intake-start">Start Date</Label>
-              <PartialDateInput id="intake-start" value={startDate} onChange={setStartDate} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="intake-end">End Date</Label>
-              <PartialDateInput id="intake-end" value={endDate} onChange={setEndDate} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="intake-orientation">Orientation</Label>
-              <PartialDateInput id="intake-orientation" value={orientation} onChange={setOrientation} />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor="intake-deadline">Admission Deadline</Label>
-              <PartialDateInput id="intake-deadline" value={deadline} onChange={setDeadline} />
-            </div>
-          </div>
-        </div>
-
-        <div className="flex justify-end gap-2">
-          <Button variant="outline" className="cursor-pointer" onClick={onCancel} disabled={saving}>
-            Cancel
-          </Button>
-          <Button
-            className="gap-1.5 cursor-pointer"
-            disabled={saving}
-            onClick={() => {
-              const result = intakeSchema.safeParse({ name, startDate, endDate, orientation, deadline });
-              if (!result.success) {
-                const errs: Record<string, string> = {};
-                for (const issue of result.error.issues) {
-                  const key = String(issue.path[0]);
-                  if (!errs[key]) errs[key] = issue.message;
-                }
-                setErrors(errs);
-                return;
-              }
-              setErrors({});
-              const d = result.data;
-              // Read off the string. new Date("2026-09") is UTC midnight on the 1st, so
-              // getMonth() in a timezone behind UTC files the intake under the previous month.
-              const start = d.startDate ? monthYearOf(d.startDate) : null;
-              onSave({
-                intake_name: d.name,
-                ...(d.startDate ? { start_date: d.startDate } : {}),
-                ...(d.endDate ? { end_date: d.endDate } : {}),
-                ...(d.orientation ? { orientation_date: d.orientation } : {}),
-                ...(d.deadline ? { admission_deadline: d.deadline } : {}),
-                // Month/year mirror the start date so the list can group by intake year.
-                ...(start ?? {}),
-              });
-            }}
-          >
-            {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
-            Save
-          </Button>
-        </div>
-      </CardContent>
-    </Card>
   );
 }
 

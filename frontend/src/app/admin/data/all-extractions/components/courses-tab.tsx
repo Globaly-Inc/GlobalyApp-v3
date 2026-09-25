@@ -306,8 +306,7 @@ export function CoursesTab({
               campuses={campuses}
               jobId={jobId}
               onClose={() => setSelectedId(null)}
-              // onReload too — the header's "Courses Verified" card reads the job-level course list.
-              onChanged={() => { load(); onReload(); }}
+              onChanged={async () => { await load(); onReload(); }}
             />
           )}
         </div>

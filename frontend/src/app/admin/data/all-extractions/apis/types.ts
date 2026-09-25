@@ -496,13 +496,12 @@ export type Intake = ActorFields & {
 
 export type IntakeParams = {
   intake_name?: string;
-  /** Partial dates, as Intake above. */
-  start_date?: string;
-  end_date?: string;
-  orientation_date?: string;
-  admission_deadline?: string;
-  intake_month?: number;
-  intake_year?: number;
+  start_date?: string | null;
+  end_date?: string | null;
+  orientation_date?: string | null;
+  admission_deadline?: string | null;
+  intake_month?: number | null;
+  intake_year?: number | null;
   custom_dates?: IntakeCustomDate[];
 };
 /** One row of an eligibility requirement's language_tests / academic_tests jsonb. */
