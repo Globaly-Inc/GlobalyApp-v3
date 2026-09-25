@@ -21,6 +21,11 @@ export const NEXT_STEP: Partial<Record<PipelineStep, PipelineStep>> = {
   url_classify: "queue_pages",
 };
 
+// Shared with queue.service.ts (resumeExtraction) and lib/queue-completion.ts
+// (checkAllPagesDone's failed-discovery guard) — one list, so the two never disagree about which
+// steps make up discovery.
+export const DISCOVERY_STEP_ORDER: PipelineStep[] = ["site_map", "site_snapshot", "site_analysis", "url_classify", "queue_pages"];
+
 export const STEP_MODES = ["auto", "manual"] as const;
 export type StepMode = (typeof STEP_MODES)[number];
 

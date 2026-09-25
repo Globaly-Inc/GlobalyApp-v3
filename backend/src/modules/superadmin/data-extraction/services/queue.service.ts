@@ -10,12 +10,11 @@ import { findJobById, updateJob } from "../repositories/jobs.repository.js";
 import { importAgentCIS } from "./agentcis.service.js";
 import { dispatchStep } from "./step.service.js";
 import { reclassifyUnits, mergeDuplicateCourses, flagQualifierGapDuplicates } from "../lib/course-dedup.js";
-import { republishRetryableQueueItems } from "../lib/pipeline-steps.js";
-import type { PipelineStep } from "../schemas/step.schema.js";
+import { republishRetryableQueueItems, setProgress } from "../lib/pipeline-steps.js";
+import { writeJobEvent } from "../lib/staging-writer.js";
+import { DISCOVERY_STEP_ORDER, type PipelineStep } from "../schemas/step.schema.js";
 
 const logger = createChildLogger("extraction-queue-service");
-
-const DISCOVERY_STEP_ORDER: PipelineStep[] = ["site_map", "site_snapshot", "site_analysis", "url_classify", "queue_pages"];
 
 function firstIncompleteDiscoveryStep(progress: Record<string, unknown>): PipelineStep | null {
   for (const step of DISCOVERY_STEP_ORDER) {
@@ -154,6 +153,21 @@ export async function resumeExtraction(jobId: string, adminId: number) {
     // step dispatch itself failed; the step alone can be re-run for that.
     if (republished === 0) {
       await updateJob(jobId, { status: job.status }, adminId);
+    } else if ((DISCOVERY_STEP_ORDER as string[]).includes(step)) {
+      // dispatchStep's own setProgress({[step]: "processing"}) ran before its publish failed, so
+      // this discovery step would otherwise sit stuck showing "processing" forever with no message
+      // ever coming — and because we're deliberately NOT rolling the job back above, its already-
+      // republished pages will still finish and checkAllPagesDone would read the queue as fully
+      // resolved and start verification, even though the URLs this step was meant to find were
+      // never discovered (Greptile). Marking it "failed" (a definitive dead state, unlike
+      // "processing" which a still-in-flight run could legitimately hold) is what
+      // checkAllPagesDone's own guard checks for before it will auto-transition.
+      await setProgress(jobId, { [step]: "failed" });
+      await writeJobEvent(jobId, "step_error", {
+        level: "warn", phase: step,
+        message: `Resume dispatched ${republished} already-queued page(s), but failed to re-dispatch the "${step}" discovery step — run it again to find the rest`,
+        data: { step, republished, error: err instanceof Error ? err.message : String(err) },
+      });
     }
     throw err;
   }

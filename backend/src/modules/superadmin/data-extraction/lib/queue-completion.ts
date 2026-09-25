@@ -8,6 +8,7 @@ import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { writeJobEvent, normaliseCampusName } from "./staging-writer.js";
+import { DISCOVERY_STEP_ORDER } from "../schemas/step.schema.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
 const logger = createChildLogger("queue-completion");
@@ -57,6 +58,27 @@ export async function checkAllPagesDone(jobId: string) {
   if (Number(counts?.total ?? 0) === 0) return;
 
   if (Number(counts?.remaining) === 0) {
+    // A queue with nothing left doesn't mean discovery actually finished finding everything — if
+    // resumeExtraction dispatched an incomplete discovery step and its publish failed, it marks
+    // that step "failed" (not left stuck "processing", which a still-in-flight run could
+    // legitimately hold) precisely so this check can catch it: without this, the pages that WERE
+    // already queued finish, the queue reads empty, and verification starts even though the course
+    // URLs that step was meant to find were never discovered (Greptile). Left "processing" —
+    // exactly like a failed dispatchStep elsewhere in this module — until an admin notices and
+    // resumes again.
+    const jobRow = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).select("pipeline_progress").first();
+    const progress = typeof jobRow?.pipeline_progress === "string"
+      ? JSON.parse(jobRow.pipeline_progress) : (jobRow?.pipeline_progress || {});
+    const failedStep = DISCOVERY_STEP_ORDER.find((s) => progress[s] === "failed");
+    if (failedStep) {
+      await writeJobEvent(jobId, "discovery_step_failed_blocks_completion", {
+        level: "warn", phase: failedStep,
+        message: `Queue is empty but discovery step "${failedStep}" failed to run — resume the job to find the rest before verification starts`,
+        data: { failedStep },
+      });
+      return;
+    }
+
     // Guard: only transition once — avoid duplicate verification dispatches from parallel workers
     const updated = await masterKnex(`${S}.extraction_jobs`)
       .where({ id: jobId, status: "processing" })
