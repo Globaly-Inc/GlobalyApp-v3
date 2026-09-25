@@ -28,7 +28,7 @@ export function LearningCore({
   pulse?: number;
 }>) {
   return (
-    <div className={cn("relative aspect-square w-full max-w-[17rem]", className)} aria-hidden="true">
+    <div className={cn("relative aspect-square w-full", className)} aria-hidden="true">
       <span
         className={cn(
           "v6-core-glow absolute inset-[-18%] rounded-full transition-opacity duration-500",
