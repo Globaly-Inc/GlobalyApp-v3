@@ -26,6 +26,14 @@ type InstitutionMe = {
   city: string | null;
   address: string | null;
   postcode: string | null;
+  currency: string | null;
+  registration_licenses: Record<string, unknown> | null;
+  linkedin_url: string | null;
+  facebook_url: string | null;
+  instagram_url: string | null;
+  twitter_url: string | null;
+  youtube_url: string | null;
+  whatsapp_url: string | null;
   status: string;
   is_published: boolean;
   onboarding_completed: boolean;
@@ -40,7 +48,6 @@ type InstitutionMe = {
   institution_type: string | null;
   /** Extraction job this institution was linked to (self-triggered). Null = no extracted data yet. */
   source_job_id: string | null;
-  registration_licenses: Record<string, unknown> | null;
 };
 
 /**
@@ -107,13 +114,13 @@ function institutionToBusinessProfile(inst: InstitutionMe): BusinessProfile {
     // `?? {}` and never null: null is what tells the profile page a record cannot store section
     // visibility at all, and since 20260915_002 institutions can.
     public_visibility: inst.public_visibility ?? {},
-    currency: null,
+    currency: inst.currency,
     registration_licenses: inst.registration_licenses,
     gallery_images: signedOnly(inst.gallery_images),
     video_urls: signedOnly(inst.video_urls),
-    linkedin_url: null, facebook_url: null, instagram_url: null, twitter_url: null, youtube_url: null,
-    whatsapp_url: null, tiktok_url: null, threads_url: null, messenger_url: null, telegram_url: null,
-    line_url: null, viber_url: null,
+    linkedin_url: inst.linkedin_url, facebook_url: inst.facebook_url, instagram_url: inst.instagram_url,
+    twitter_url: inst.twitter_url, youtube_url: inst.youtube_url, whatsapp_url: inst.whatsapp_url,
+    tiktok_url: null, threads_url: null, messenger_url: null, telegram_url: null, line_url: null, viber_url: null,
   };
 }
 
@@ -122,7 +129,8 @@ function institutionToBusinessProfile(inst: InstitutionMe): BusinessProfile {
 // be dropped rather than forwarded.
 const INSTITUTION_PATCHABLE_KEYS = [
   "email", "phone", "description", "website", "country_id", "state", "city", "address",
-  "postcode", "is_published", "public_visibility", "institution_type", "registration_licenses",
+  "postcode", "currency", "registration_licenses", "is_published", "public_visibility", "institution_type",
+  "linkedin_url", "facebook_url", "instagram_url", "twitter_url", "youtube_url", "whatsapp_url",
 ] as const satisfies readonly (keyof BusinessProfilePatch)[];
 
 function toInstitutionPatch(patch: BusinessProfilePatch): Record<string, unknown> {

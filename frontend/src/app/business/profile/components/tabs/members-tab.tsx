@@ -1,8 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Users } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAppSelector } from "@/lib/hooks";
 import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs";
@@ -22,7 +21,7 @@ const SUB_TABS = [
 type SubTab = (typeof SUB_TABS)[number]["value"];
 
 export function MembersTab({ businessId }: Readonly<{ businessId: number }>) {
-  const { members, invitations } = useAppSelector((state) => state.businessProfileDetail);
+  const { invitations } = useAppSelector((state) => state.businessProfileDetail);
   const [subTab, setSubTab] = useState<SubTab>("users");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
@@ -31,11 +30,10 @@ export function MembersTab({ businessId }: Readonly<{ businessId: number }>) {
 
   return (
     <div>
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Users className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-semibold">Members</span>
-          <Badge variant="secondary">{members.total}</Badge>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">Team Management</h1>
+          <p className="text-muted-foreground">Manage your business team members and roles.</p>
         </div>
         {subTab === "roles" ? (
           <Button className="h-10" onClick={() => { setEditingRole(null); setRoleDrawerOpen(true); }}>
@@ -43,7 +41,7 @@ export function MembersTab({ businessId }: Readonly<{ businessId: number }>) {
           </Button>
         ) : (
           <Button className="h-10" onClick={() => { setEditingMember(null); setDrawerOpen(true); }}>
-            <Plus className="mr-1.5 h-3.5 w-3.5" /> Add member
+            <Plus className="mr-1.5 h-3.5 w-3.5" /> Invite Member
           </Button>
         )}
       </div>

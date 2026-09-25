@@ -23,13 +23,20 @@ export const InstitutionProfilePatchSchema = z.object({
   city: z.string().nullable(),
   address: z.string().nullable(),
   postcode: z.string().nullable(),
+  currency: z.string().nullable(),
+  registration_licenses: z.record(z.string(), z.unknown()).nullable(),
+  linkedin_url: z.string().nullable(),
+  facebook_url: z.string().nullable(),
+  instagram_url: z.string().nullable(),
+  twitter_url: z.string().nullable(),
+  youtube_url: z.string().nullable(),
+  whatsapp_url: z.string().nullable(),
   logo_url: z.string().nullable(),
   cover_url: z.string().nullable(),
   is_published: z.boolean(),
   // Per-section public/private map, e.g. { contact: true, registration: false } — same shape and
   // same default-public read rule as businesses'.
   public_visibility: z.record(z.string(), z.boolean()).nullable(),
-  registration_licenses: z.record(z.string(), z.unknown()).nullable(),
 }).partial().strict();
 
 export type InstitutionProfilePatchInput = z.infer<typeof InstitutionProfilePatchSchema>;

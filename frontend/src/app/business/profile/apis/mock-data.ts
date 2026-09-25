@@ -2,7 +2,7 @@ import { categoriesMockApi } from "@/app/admin/platform/categories/apis/mock-dat
 import { uuid } from "@/lib/utils";
 import type {
   ActivityListParams, ActivityListResult, Branch, BranchInput, BranchListParams, BranchListResult, BranchPatch,
-  BusinessRelation, BusinessSearchParams, BusinessSearchResult, BusinessService, InvitationListResult, InvitedMember,
+  BusinessRelation, BusinessSearchParams, BusinessSearchResult, BusinessService, ImportJob, InvitationListResult, InvitedMember,
   LinkExistingBranchInput, LinkExistingBranchResult,
   Member, MemberInviteInput, MemberListParams, MemberListResult, MemberPatch, MemberRole,
   PartnerInstitutionCourse, PartnerInstitutionCourseListParams, PartnerInstitutionCourseListResult, PartnerInstitutionDetail, Permission,
@@ -370,6 +370,24 @@ export const businessProfileDetailMockApi = {
   deleteScholarship: async (scholarshipId: number): Promise<void> => {
     await delay(300);
     mockScholarships = mockScholarships.filter((s) => s.id !== scholarshipId);
+  },
+  startScholarshipImport: async (rows: ScholarshipInput[]): Promise<ImportJob> => {
+    console.log("[mock] POST /businesses/scholarships/import", { rows: rows.length });
+    await delay(300);
+    let nextId = mockScholarships.length + 1;
+    const results = rows.map((r) => {
+      mockScholarships = [...mockScholarships, { ...r, id: nextId++, view_count: 0, created_at: new Date().toISOString() } as Scholarship];
+      return { title: r.title, status: "ok" as const };
+    });
+    return {
+      id: 1, status: "completed", total_rows: rows.length, processed_rows: rows.length,
+      created_count: rows.length, error_count: 0, results, failure_reason: null,
+    };
+  },
+  getScholarshipImportJob: async (id: number): Promise<ImportJob> => {
+    console.log("[mock] GET /businesses/scholarships/import/:id", id);
+    await delay(100);
+    return { id, status: "completed", total_rows: 0, processed_rows: 0, created_count: 0, error_count: 0, results: [], failure_reason: null };
   },
 
   serviceFees: makeChildMockApi<ServiceFee, ServiceFeeInput, ServiceFeePatch>("fees"),

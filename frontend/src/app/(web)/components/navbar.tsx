@@ -97,7 +97,9 @@ export function Navbar() {
                   }
                 >
                   <Avatar className="size-7">
-                    {profile?.photo_url && <AvatarImage src={profile.photo_url} alt={profile.first_name} />}
+                    {(profile?.photo_url ?? user.photo_url) && (
+                      <AvatarImage src={profile?.photo_url ?? user.photo_url ?? undefined} alt={user.first_name ?? "User"} />
+                    )}
                     <AvatarFallback>{initial}</AvatarFallback>
                   </Avatar>
                   <ChevronDown className="h-4 w-4 text-muted-foreground" />
@@ -108,7 +110,9 @@ export function Navbar() {
                     onClick={() => router.push(profileHref(user))}
                   >
                     <Avatar className="size-8 shrink-0">
-                      {profile?.photo_url && <AvatarImage src={profile.photo_url} alt={profile.first_name} />}
+                      {(profile?.photo_url ?? user.photo_url) && (
+                        <AvatarImage src={profile?.photo_url ?? user.photo_url ?? undefined} alt={user.first_name ?? "User"} />
+                      )}
                       <AvatarFallback className="text-primary-foreground!">{initial}</AvatarFallback>
                     </Avatar>
                     <div className="min-w-0">

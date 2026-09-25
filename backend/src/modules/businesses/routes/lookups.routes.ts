@@ -15,7 +15,7 @@ const RegistrationTypesQuery = z.object({
 });
 
 export async function businessLookupsRoutes(app: FastifyInstance) {
-  app.get("/service-categories", { preHandler: requireBusinessContext }, async (req, reply) => {
+  app.get("/service-categories", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
     const { search, ...pagination } = CategoryListQuery.parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
     const [rows, total] = await Promise.all([
@@ -42,7 +42,7 @@ export async function businessLookupsRoutes(app: FastifyInstance) {
     ["degree-levels", "degree_levels"],
     ["areas-of-study", "areas_of_study"],
   ] as const) {
-    app.get(`/${path}`, { preHandler: requireBusinessContext }, async (req, reply) => {
+    app.get(`/${path}`, { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
       const { search, ...pagination } = CategoryListQuery.parse(req.query);
       const { limit, offset } = paginationToOffset(pagination);
       const [rows, total] = await Promise.all([
