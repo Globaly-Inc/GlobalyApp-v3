@@ -15,7 +15,7 @@ export function useRerunJob(jobId: string, onReload: () => void) {
   async function rerun() {
     const ok = await confirm(
       "Re-run Extraction?",
-      "Retries pages that failed or never finished — already-extracted courses, campuses, and other data are left untouched. Only re-crawls from scratch if nothing is left to retry.",
+      "Restarts extraction from a clean slate — re-discovers and re-scrapes the whole site through the current pipeline. Brings existing courses in line first: duplicates are merged and misclassified study units are moved out, nothing is deleted otherwise. To pick up only the pages that were never scraped instead, use Resume.",
       { confirmLabel: "Re-run", variant: "default" },
     );
     if (!ok) return;
@@ -36,20 +36,19 @@ export function useRerunJob(jobId: string, onReload: () => void) {
 
 export type RerunExtractionButtonProps = Readonly<{
   jobId: string;
-  status: string;
   onReload: () => void;
 }>;
 
-export function RerunExtractionButton({ jobId, status, onReload }: RerunExtractionButtonProps) {
+// Re-run is unconditionally a clean-slate restart now (see queue.service.ts:rerunJob) — a
+// per-status label like "Re-run Failed Extraction" implied a targeted retry it no longer does.
+export function RerunExtractionButton({ jobId, onReload }: RerunExtractionButtonProps) {
   const { rerun, running, dialog } = useRerunJob(jobId, onReload);
-
-  const label = status === "failed" ? "Re-run Failed Extraction" : "Re-run Extraction";
 
   return (
     <>
       <Button variant="outline" className="gap-1.5 cursor-pointer" disabled={running} onClick={rerun}>
         {running ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCw className="h-3.5 w-3.5" />}
-        {running ? "Restarting…" : label}
+        {running ? "Restarting…" : "Re-run Extraction"}
       </Button>
       {dialog}
     </>

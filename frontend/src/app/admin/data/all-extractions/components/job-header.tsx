@@ -2,14 +2,14 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Landmark, RotateCcw, Square, Upload, XCircle, Loader2 } from "lucide-react";
+import { ArrowLeft, Landmark, Play, RotateCcw, Square, Upload, XCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { RowActors } from "./row-actors";
 import { useAppDispatch } from "@/lib/hooks";
 import { ACTIVE_STATUSES, PUBLISHABLE_STATUSES, STATUS_CONFIG } from "../const";
-import { declineJob, promoteJob, resetPipeline, stopAllExtraction } from "../store/all-extractions-slice";
+import { declineJob, promoteJob, resetPipeline, resumeJob, stopAllExtraction } from "../store/all-extractions-slice";
 import { useConfirmDelete } from "./use-confirm-delete";
 import { RerunExtractionButton } from "./rerun-extraction-button";
 import { DeepScrapeButton } from "./deep-scrape-button";
@@ -18,18 +18,22 @@ import { StepModeToggle } from "./step-mode-toggle";
 import type { ExtractionJob } from "../apis/types";
 
 const RESETTABLE_STATUSES = ["pending", "failed", "mapping", "scraping", "extracting", "verifying", "paused"];
+// Matches extraction-job-row.tsx's isResumable — a stopped job is "paused", a worker that died
+// mid-crawl without ever flipping the job's own status leaves it "stalled".
+const RESUMABLE_STATUSES = ["paused", "stalled"];
 
 export function JobHeader({ job, onReload }: Readonly<{ job: ExtractionJob; onReload: () => void }>) {
   const router = useRouter();
   const dispatch = useAppDispatch();
-  const [busy, setBusy] = useState<"stop" | "reset" | "decline" | "publish" | null>(null);
+  const [busy, setBusy] = useState<"stop" | "reset" | "resume" | "decline" | "publish" | null>(null);
   const { confirm, dialog: confirmDialog } = useConfirmDelete();
 
   const run = async (
-    action: "stop" | "reset" | "decline" | "publish",
+    action: "stop" | "reset" | "resume" | "decline" | "publish",
     thunk:
       | ReturnType<typeof stopAllExtraction>
       | ReturnType<typeof resetPipeline>
+      | ReturnType<typeof resumeJob>
       | ReturnType<typeof declineJob>
       | ReturnType<typeof promoteJob>,
     successMessage: string,
@@ -69,7 +73,17 @@ export function JobHeader({ job, onReload }: Readonly<{ job: ExtractionJob; onRe
 
       <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
         {job.source_type !== "agentcis" && <StepModeToggle job={job} onReload={onReload} />}
-        <RerunExtractionButton jobId={job.id} status={job.status} onReload={onReload} />
+        <RerunExtractionButton jobId={job.id} onReload={onReload} />
+        {RESUMABLE_STATUSES.includes(job.status) && (
+          <Button
+            className="gap-1.5 cursor-pointer"
+            disabled={busy !== null}
+            onClick={() => run("resume", resumeJob(job.id), "Extraction resumed")}
+          >
+            {busy === "resume" ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+            {busy === "resume" ? "Resuming…" : "Resume"}
+          </Button>
+        )}
         {job.source_type !== "agentcis" && job.status !== "exported" && (
           <DeepScrapeButton jobId={job.id} onReload={onReload} />
         )}
