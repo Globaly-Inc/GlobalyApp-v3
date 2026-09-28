@@ -11,6 +11,12 @@ export const TIMEZONE_KEY = "business-timezone";
 export const WORLD_CLOCKS_KEY = "business-world-clocks";
 
 export const EXTRACTION_POLL_INTERVAL_MS = 4000;
+// 225 * 4s = 15 min, covering a full crawl — for pollers with a real completion check
+// (business-portal-view.tsx, extraction-progress-card.tsx).
 export const EXTRACTION_MAX_POLLS = 225;
+// SiteUrlsCard has no completion signal of its own and polls blindly regardless of crawl state,
+// so it keeps the old, shorter ceiling rather than inheriting EXTRACTION_MAX_POLLS — otherwise
+// every finished/never-started extraction wastes up to 75 extra requests on an open profile tab.
+export const SITE_URLS_MAX_POLLS = 150;
 /** Including the business's own zone, which always leads the row. Keeps the hero one line on a laptop. */
 export const MAX_WORLD_CLOCKS = 5;

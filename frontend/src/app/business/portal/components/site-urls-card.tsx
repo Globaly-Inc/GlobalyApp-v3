@@ -13,7 +13,7 @@ import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "
 import { cn } from "@/lib/utils";
 import { businessApi } from "../../apis";
 import type { SiteUrlCategory, SiteUrlSnapshot, SiteUrlsPage } from "../../apis/types";
-import { EXTRACTION_POLL_INTERVAL_MS as POLL_INTERVAL_MS, EXTRACTION_MAX_POLLS as MAX_POLLS } from "../const";
+import { EXTRACTION_POLL_INTERVAL_MS as POLL_INTERVAL_MS, SITE_URLS_MAX_POLLS as MAX_POLLS } from "../const";
 
 const DEFAULT_PAGE_SIZE = 10;
 
