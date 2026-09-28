@@ -109,6 +109,7 @@ export async function onboardBusiness(userId: number, data: OnboardingBusinessIn
   return registerBusiness(userId, {
     business_name: data.business_name,
     business_type: data.business_type,
+    email: data.email,
     phone: data.phone,
     country_id: data.country_id,
     state: data.state,

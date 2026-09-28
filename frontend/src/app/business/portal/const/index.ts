@@ -11,6 +11,6 @@ export const TIMEZONE_KEY = "business-timezone";
 export const WORLD_CLOCKS_KEY = "business-world-clocks";
 
 export const EXTRACTION_POLL_INTERVAL_MS = 4000;
-export const EXTRACTION_MAX_POLLS = 150;
+export const EXTRACTION_MAX_POLLS = 225;
 /** Including the business's own zone, which always leads the row. Keeps the hero one line on a laptop. */
 export const MAX_WORLD_CLOCKS = 5;

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchCredits, fetchDistributions } from "@/app/business/enquiries/store/business-enquiries-slice";
 import { fetchOnboardingProgress } from "../../store/business-onboarding-slice";
@@ -39,15 +39,16 @@ export function BusinessPortalView() {
   // though the backend flips it done the moment the job finds its first course. Same
   // poll/backoff shape as ExtractionProgressCard's own status polling.
   const pollCountRef = useRef(0);
+  const [pollTick, setPollTick] = useState(0);
   useEffect(() => {
     if (!onboardingProgress || onboardingProgress.completed >= onboardingProgress.total) return undefined;
     if (pollCountRef.current >= EXTRACTION_MAX_POLLS) return undefined;
     const timer = setTimeout(() => {
       pollCountRef.current += 1;
-      dispatch(fetchOnboardingProgress());
+      dispatch(fetchOnboardingProgress()).finally(() => setPollTick((t) => t + 1));
     }, EXTRACTION_POLL_INTERVAL_MS);
     return () => clearTimeout(timer);
-  }, [dispatch, onboardingProgress]);
+  }, [dispatch, onboardingProgress, pollTick]);
 
   return (
     <div className="space-y-4 md:space-y-6">

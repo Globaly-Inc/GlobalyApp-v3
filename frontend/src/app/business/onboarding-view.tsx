@@ -184,13 +184,14 @@ function OnboardingForm({
     setFieldErrors({});
     const phoneCode = countries.find((c) => String(c.id) === phoneCountryId)?.phoneCode ?? "";
     const phone = [phoneCode, phoneNumber].filter(Boolean).join(" ");
+    const trimmedEmail = email.trim();
 
     if (isNew) {
       if (isInstitution) {
         const outcome = await dispatch(
           registerInstitution({
             institution_name: businessName,
-            email: email || undefined,
+            email: trimmedEmail || undefined,
             phone,
             country_id: Number(countryId),
             address,
@@ -214,7 +215,7 @@ function OnboardingForm({
         registerBusiness({
           business_name: businessName,
           business_category_id: Number(categoryId),
-          email: email || undefined,
+          email: trimmedEmail || undefined,
           phone,
           country_id: Number(countryId),
           address,

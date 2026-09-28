@@ -54,7 +54,7 @@ let query = masterKnex("superadmin.extraction_jobs as j")
     this.on("i.source_job_id", "=", "j.id").andOnNull("i.deleted_at");
   })
   .leftJoin("businesses as b", function () {
-    this.on("b.source_job_id", "=", "j.id").andOnNull("b.deleted_at");
+    this.on("b.source_job_id", "=", "j.id").andOnNull("b.deleted_at").andOnNull("b.source_agent_id");
   })
   .whereNull("j.business_category_id")
   .select(
