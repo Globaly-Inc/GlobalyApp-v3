@@ -4,6 +4,7 @@ import { masterKnex } from "../../../core/db/master-pool.js";
 import * as storage from "../../../shared/storage/storageService.js";
 import * as repo from "../repositories/platform-users.repository.js";
 import * as jobsRepo from "../../superadmin/data-extraction/repositories/jobs.repository.js";
+import * as promoteRepo from "../../superadmin/data-extraction/repositories/promote.repository.js";
 import { createJob, getSelfServiceStatus } from "../../superadmin/data-extraction/services/jobs.service.js";
 import { listSiteUrls, getSnapshotMarkdownByUrl, updateSnapshotMarkdown, refreshSiteUrls } from "../../superadmin/data-extraction/services/site-urls.service.js";
 import { getInstitutionOnboardingProgress, markCoursesReviewedForInstitution } from "../../businesses/services/onboarding-progress.service.js";
@@ -83,7 +84,12 @@ export async function startExtraction(institution: InstitutionRecord, platformUs
     let job: { id: string };
     try {
       job = await createJob(
-        { institution_url: website, institution_name: locked.institution_name, source_type: "institution_self_service" },
+        {
+          institution_url: website,
+          institution_name: locked.institution_name,
+          source_type: "institution_self_service",
+          business_category_id: (await promoteRepo.findCategoryIdBySlug("institutions")) ?? undefined,
+        },
         platformUserId,
       );
     } catch (err) {
