@@ -48,9 +48,15 @@ export function AccreditationsTab({ serviceId }: Readonly<{ serviceId: string }>
     setDialogOpen(true);
   };
 
-  const linkAccreditation = async (accreditationId: number) => {
+  // A just-proposed accreditation isn't in the approved lookup yet, so carry its name/status here.
+  const linkAccreditation = async (accreditationId: number, proposedName?: string) => {
     const created = await businessProfileDetailApi.linkServiceAccreditation(serviceId, accreditationId);
-    setRows((r) => [...r, created]);
+    const known = details[accreditationId];
+    setRows((r) => [...r, {
+      ...created,
+      accreditation_name: known?.name ?? proposedName ?? null,
+      accreditation_status: known ? "approved" : proposedName ? "pending" : null,
+    }]);
     toast.success("Accreditation linked");
     setDialogOpen(false);
   };
@@ -100,8 +106,10 @@ export function AccreditationsTab({ serviceId }: Readonly<{ serviceId: string }>
                     </div>
                     <div>
                       <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-semibold">{a?.name ?? `Accreditation #${row.accreditation_id}`}</span>
+                        <span className="text-sm font-semibold">{a?.name ?? row.accreditation_name ?? `Accreditation #${row.accreditation_id}`}</span>
                         {a?.is_global && <Badge variant="outline" className="text-primary">Global</Badge>}
+                        {!a && row.accreditation_status === "pending" && <Badge variant="outline">Pending review</Badge>}
+                        {!a && row.accreditation_status === "rejected" && <Badge variant="destructive">Rejected — remove or replace</Badge>}
                       </div>
                       {a?.issuing_organization_name && (
                         <p className="text-xs text-muted-foreground">{a.issuing_organization_name}</p>

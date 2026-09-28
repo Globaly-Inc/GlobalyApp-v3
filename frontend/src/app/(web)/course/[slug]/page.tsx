@@ -89,7 +89,7 @@ export default async function CoursePage({ params, searchParams }: CoursePagePro
           {isVisible("description") && <CourseDescription description={course.description} />}
           {isVisible("fees") && <CourseFeeCard course={course} />}
           {isVisible("intakes") && <CourseIntakesCard intakes={course.intakes} />}
-          {isVisible("study_units") && <CourseStudyOptionsCard options={course.study_options} />}
+          {isVisible("study_options") && <CourseStudyOptionsCard options={course.study_options} />}
           {isVisible("study_units") && <CourseStudyUnitsCard units={course.study_units} />}
           <ProfileLocationsCard locations={toLocations(course)} cityLink={course.city_link} />
           <CourseWeatherCard weather={course.weather} countryName={course.country_name} />

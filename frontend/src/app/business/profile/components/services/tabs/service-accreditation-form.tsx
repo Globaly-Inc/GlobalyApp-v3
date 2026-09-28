@@ -14,7 +14,7 @@ export function ServiceAccreditationForm({
   saving,
   onCancel,
   onSave,
-}: Readonly<{ saving: boolean; onCancel: () => void; onSave: (accreditationId: number) => Promise<void> }>) {
+}: Readonly<{ saving: boolean; onCancel: () => void; onSave: (accreditationId: number, proposedName?: string) => Promise<void> }>) {
   const [name, setName] = useState("");
   const [issuingOrg, setIssuingOrg] = useState("");
   const [website, setWebsite] = useState("");
@@ -44,7 +44,8 @@ export function ServiceAccreditationForm({
         sort_order: 0,
         scope_country_ids: [],
       });
-      await onSave(created.id);
+      // Starts pending (see proposeAccreditation) — the name travels with it so the list can show it.
+      await onSave(created.id, created.name);
     } catch (e) {
       toast.error("Save failed", { description: (e as Error).message });
     } finally {

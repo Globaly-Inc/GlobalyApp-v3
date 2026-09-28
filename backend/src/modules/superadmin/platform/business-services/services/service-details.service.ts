@@ -4,6 +4,7 @@
 import { NotFoundError } from "../../../../../shared/errors.js";
 import * as platformRepo from "../../platform.repository.js";
 import * as repo from "../repositories/service-details.repository.js";
+import * as categoriesRepo from "../../categories/repositories/categories.repository.js";
 
 async function requireBusiness(businessId: number) {
   const biz = await platformRepo.findBusinessById(businessId);
@@ -42,7 +43,7 @@ export const studyUnits = makeChildService(repo.studyUnitsRepo);
 
 export async function listAccreditations(businessId: number, serviceId: string) {
   const biz = await requireBusiness(businessId);
-  return repo.listAccreditations(businessId, biz.schema_name, serviceId);
+  return categoriesRepo.attachAccreditationInfo(await repo.listAccreditations(businessId, biz.schema_name, serviceId));
 }
 
 export async function linkAccreditation(businessId: number, serviceId: string, accreditationId: number) {

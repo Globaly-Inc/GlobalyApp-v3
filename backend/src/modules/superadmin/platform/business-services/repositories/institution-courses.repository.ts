@@ -431,6 +431,9 @@ export async function deleteServiceAccreditation(_institutionId: number, jobId: 
  * adding another link, and clearing it removes the flag (not the underlying accreditation link,
  * which may still belong on the course's general accreditation list). */
 export async function setAwardedBy(jobId: string, courseId: string, accreditationId: number | null) {
+  // Ownership first — otherwise another institution's course id gets an assignment row written
+  // under this caller's job before anything downstream rejects the request.
+  await requireCourse(jobId, courseId);
   await masterKnex.transaction(async (trx) => {
     // courseId is a uuid — hash it into the bigint key pg_advisory_xact_lock needs — and serialize
     // per course, not globally, so two courses' saves never block each other. A row lock alone

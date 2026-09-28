@@ -96,7 +96,15 @@ export function InstitutionServiceFormView({ businessId, serviceId }: Readonly<{
   useEffect(() => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
-    businessProfileDetailApi.getServiceCategories().then((res) => setServiceCategories(res.data));
+    // The default page is only 10 categories — also fetch "Courses" by name so the default-category
+    // effect below can always find it, however many categories sit ahead of it.
+    Promise.all([
+      businessProfileDetailApi.getServiceCategories(),
+      businessProfileDetailApi.getServiceCategories({ search: "courses" }),
+    ]).then(([page, courses]) => {
+      const byId = new Map([...page.data, ...courses.data].map((c) => [c.id, c]));
+      setServiceCategories([...byId.values()]);
+    });
     businessProfileDetailApi.getLookups("degree-levels").then((res) => setDegreeLevels(res.data));
     businessProfileDetailApi.getLookups("areas-of-study").then((res) => setAreasOfStudy(res.data));
     businessProfileDetailApi.getAccreditations().then((res) => setAccreditations(res.data));
@@ -106,7 +114,10 @@ export function InstitutionServiceFormView({ businessId, serviceId }: Readonly<{
         // that would leave this course unfound and the editor blank, so fall back to a direct
         // single-service lookup instead of assuming "not on this page" means "doesn't exist".
         businessProfileDetailApi.getService(serviceId).then((found) => {
-          setForm(toForm(found));
+          const loaded = toForm(found);
+          // Without this the ref stays "" and merely blurring the untouched name field would PATCH it.
+          savedNameRef.current = loaded.name;
+          setForm(loaded);
           setPublicVisibility(found.public_visibility ?? {});
           setIsPublished(found.is_published);
         });

@@ -77,7 +77,9 @@ export async function businessServiceMediaRoutes(app: FastifyInstance) {
     const file = await filesRepo.findFileById(fileId);
     if (!file || file.entity_type !== "service" || file.entity_id !== subId) throw new NotFoundError("File not found");
 
-    await storage.deleteFile(file.storage_path).catch(() => {});
+    // No catch: a failed storage delete must keep the record, or the object is orphaned with nothing
+    // left to retry from. deleteFile already treats an already-missing object as success.
+    await storage.deleteFile(file.storage_path);
     await filesRepo.deleteFileRecord(fileId);
 
     return reply.status(204).send();

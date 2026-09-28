@@ -24,6 +24,7 @@ import { ActivityTab } from "./components/tabs/activity-tab";
 import { ProfileTab } from "./components/tabs/profile-tab";
 import { ProfileHeaderCard } from "./components/profile-header-card";
 import { SiteUrlsCard } from "../portal/components/site-urls-card";
+import { isInstitutionOrg } from "./utils";
 // Lives in the ai-widget feature because that is whose data it is — the same reason
 // /business/settings/ai-embed renders AiWidgetView from there rather than forking it.
 import { VisitorsTab } from "@/app/business/ai-widget/components/visitors-tab";
@@ -60,12 +61,10 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
   const { user: authUser, initializing } = useAuthState();
   const isBusiness = authUser?.user_category === "business";
   const isInstitution = authUser?.user_category === "institution";
-  // Membership lists are the authoritative source for whether THIS businessId is a business or
-  // institution — user_category only gives the primary role, so a dual-role user always resolves
-  // to "business" even when they're viewing an institution profile.
-  const isViewingInstitution =
-    !authUser?.businesses.some((b) => b.id === businessId) &&
-    !!authUser?.institutions.some((i) => i.id === businessId);
+  // Membership lists + the active org decide whether THIS businessId is a business or an
+  // institution — user_category only gives the primary role, and ids can collide across the two
+  // lists (see isInstitutionOrg).
+  const isViewingInstitution = isInstitutionOrg(authUser, businessId);
   const parsedTab = parseTab(searchParams.get("tab"));
   // Partners/Scholarships/Activity have no institution-side data — the sidebar never links
   // there for an institution, but fall back to profile if the URL is edited directly. Branches
@@ -93,9 +92,12 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
     if (initializing || (!isBusiness && !isInstitution) || switchedRef.current) return;
     // Search both lists — user_category picks the primary role, so a dual-role user has
     // isBusiness=true even when navigating to an institution profile.
-    const target =
-      authUser?.businesses.find((b) => b.id === businessId) ??
-      authUser?.institutions.find((i) => i.id === businessId);
+    // Ids can collide across the two lists — keep the active org when it's one of the matches.
+    const candidates = [
+      ...(authUser?.businesses.filter((b) => b.id === businessId) ?? []),
+      ...(authUser?.institutions.filter((i) => i.id === businessId) ?? []),
+    ];
+    const target = candidates.find((c) => c.org_id === authUser?.orgId) ?? candidates[0];
     if (!target) {
       // This business/institution isn't in the session's cached membership list — most likely
       // the user was granted access after login and /auth/me hasn't been refetched since. Try

@@ -363,12 +363,26 @@ export async function listPublicCourses(
     .select(
       ...LIST_COLUMNS,
       ...CARD_COLUMNS,
+      "ec.public_visibility",
       masterKnex.raw(`${nextIntake("intake_year")} as next_intake_year`),
       masterKnex.raw(`${nextIntake("intake_month")} as next_intake_month`),
     )
     .limit(limit)
     .offset(offset);
-  return rows.map((r: PublicCourseRow) => ({ ...r, slug: courseSlug(r.name, r.id) }));
+  // Same Hidden-section redaction as findPublicCourseBySlug — the listing carries the description
+  // and fee amounts too, so it must not bypass the owner's visibility choice.
+  return rows.map(({ public_visibility, ...r }: PublicCourseRow & { public_visibility: Record<string, boolean> | null }) => {
+    const hidden = (section: string) => public_visibility?.[section] === false;
+    return {
+      ...r,
+      ...(hidden("description") ? { description: null } : {}),
+      ...(hidden("fees") ? {
+        domestic_fee_total: null, domestic_currency: null, domestic_fee_period: null, domestic_fee_installment: null,
+        international_fee_total: null, international_currency: null, international_fee_period: null, international_fee_installment: null,
+      } : {}),
+      slug: courseSlug(r.name, r.id),
+    };
+  });
 }
 
 export async function countPublicCourses(filters: CourseSearchFilters) {
@@ -605,7 +619,7 @@ export async function findPublicCourseBySlug(slug: string, previewSchemaName?: s
     eligibility: isVisible("eligibility") ? eligibility : [],
     englishRequirements: isVisible("eligibility") ? englishRequirements : [],
     study_units: isVisible("study_units") ? studyUnits : [],
-    study_options: isVisible("study_units") ? studyOptions : [],
+    study_options: isVisible("study_options") ? studyOptions : [],
     media: mediaVisible ? media.map((f, i) => ({ id: f.id, url: mediaUrls[i], mime_type: f.mime_type })).filter((m) => m.url) : [],
   };
 }

@@ -382,3 +382,21 @@ export async function updateRegistrationType(id: number, data: Record<string, un
 export async function deleteRegistrationType(id: number) {
   return masterKnex("business_registration_types").where({ id }).update({ deleted_at: now() });
 }
+
+/**
+ * A course/service can link an accreditation its own org just proposed — still pending, or later
+ * rejected — which the approved-only /accreditations lookup never returns, so the editor had no
+ * name to show for it. Attach each link's own name + review status so that state is explicit.
+ */
+export async function attachAccreditationInfo<T extends { accreditation_id: number }>(rows: T[]) {
+  if (rows.length === 0) return rows.map((r) => ({ ...r, accreditation_name: null, accreditation_status: null }));
+  const accs = await masterKnex("accreditations")
+    .whereIn("id", [...new Set(rows.map((r) => r.accreditation_id))])
+    .whereNull("deleted_at")
+    .select("id", "name", "status");
+  const byId = new Map(accs.map((a) => [a.id, a]));
+  return rows.map((r) => {
+    const a = byId.get(r.accreditation_id);
+    return { ...r, accreditation_name: (a?.name ?? null) as string | null, accreditation_status: (a?.status ?? null) as string | null };
+  });
+}

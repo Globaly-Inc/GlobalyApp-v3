@@ -2,6 +2,7 @@ import { joinParts } from "@/app/(web)/components/profile/profile-data";
 import type { BusinessProfile } from "@/app/business/apis/types";
 import type { Country } from "@/app/geo/apis";
 import { authApi } from "@/app/auth/apis";
+import type { AuthUser } from "@/app/auth/apis/types";
 import { BUSINESS_TYPE_LABELS } from "../const";
 
 /** Falls back to the raw enum value so an unmapped type still reads as something. */
@@ -41,4 +42,17 @@ export async function coursePublicHref(name: string, id: string): Promise<string
   } catch {
     return path;
   }
+}
+
+/** Whether `/business/profile/:id` means an institution. Business and institution ids come from
+ * separate sequences and can collide, so the id alone is ambiguous for a dual-role user — the
+ * active org (`orgId`) settles it when both lists hold that id. */
+export function isInstitutionOrg(
+  user: Pick<AuthUser, "businesses" | "institutions" | "orgId"> | null | undefined,
+  id: number,
+): boolean {
+  const inst = user?.institutions.find((i) => i.id === id);
+  const biz = user?.businesses.find((b) => b.id === id);
+  if (inst && biz) return inst.org_id === user?.orgId;
+  return !!inst;
 }

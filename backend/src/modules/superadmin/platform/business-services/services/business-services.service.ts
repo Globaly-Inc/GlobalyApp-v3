@@ -13,6 +13,7 @@ import { NotFoundError } from "../../../../../shared/errors.js";
 import * as platformRepo from "../../platform.repository.js";
 import * as repo from "../repositories/business-services.repository.js";
 import * as instRepo from "../repositories/institution-courses.repository.js";
+import * as categoriesRepo from "../../categories/repositories/categories.repository.js";
 import type {
   ServiceAccreditationInput, ServiceAiAssistInput, ServiceEligibilityInput, ServiceEligibilityPatchInput,
   ServiceFeeInput, ServiceFeePatchInput, ServiceFieldValuesInput, ServiceInput,
@@ -210,8 +211,11 @@ export async function deleteService(businessId: number, serviceId: string) {
   // tenant's service uuid and have that tenant's media deleted even though the service row itself
   // (correctly schema-scoped) would be left untouched.
   if (!(await repo.getService(businessId, biz.schema_name, serviceId))) throw new NotFoundError("Service not found");
+  // Parent first: storage deletes are irreversible, so they only run once the service is really
+  // gone. deleteFilesByEntity keeps the row of any object it fails to remove, so it can be retried.
+  const result = await repo.deleteService(businessId, biz.schema_name, serviceId);
   await filesRepo.deleteFilesByEntity("service", serviceId);
-  return repo.deleteService(businessId, biz.schema_name, serviceId);
+  return result;
 }
 
 export async function getServiceFieldValues(businessId: number, serviceId: string) {
@@ -509,8 +513,10 @@ export async function deleteInstitutionService(institutionId: number, serviceId:
   // same reasoning as deleteService above: uploaded_files is global, so a wrong-ordering here
   // would delete another institution's media even when the course row itself is left untouched.
   if (!(await instRepo.getService(institutionId, jobId, serviceId))) throw new NotFoundError("Service not found");
+  // Parent first, same as deleteService above.
+  const result = await instRepo.deleteService(institutionId, jobId, serviceId);
   await filesRepo.deleteFilesByEntity("service", serviceId);
-  return instRepo.deleteService(institutionId, jobId, serviceId);
+  return result;
 }
 
 /** Institutions only ever offer the "courses" service category (institution services are always
@@ -703,7 +709,7 @@ export async function deleteInstitutionServiceStudyUnit(institutionId: number, s
 export async function listInstitutionServiceAccreditations(institutionId: number, serviceId: string) {
   const inst = await requireInstitution(institutionId);
   const jobId = await requireInstitutionJobId(inst);
-  return instRepo.listServiceAccreditations(institutionId, jobId, serviceId);
+  return categoriesRepo.attachAccreditationInfo(await instRepo.listServiceAccreditations(institutionId, jobId, serviceId));
 }
 
 export async function createInstitutionServiceAccreditation(institutionId: number, serviceId: string, accreditationId: number) {

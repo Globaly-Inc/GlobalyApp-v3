@@ -5,7 +5,6 @@ import { z } from "zod";
 import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/combobox";
 import { FieldError } from "@/components/field-error";
 import { Input } from "@/components/ui/input";
@@ -50,7 +49,6 @@ export function ServiceStudyOptionForm({
   const [duration, setDuration] = useState(option?.duration_value?.toString() ?? "");
   const [unit, setUnit] = useState<ServiceStudyOptionInput["duration_unit"]>(option?.duration_unit ?? "months");
   const [applicableTo, setApplicableTo] = useState<ServiceStudyOptionInput["applicable_to"]>(option?.applicable_to ?? "both");
-  const [saveForReuse, setSaveForReuse] = useState(false);
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   const handleSave = () => {
@@ -114,11 +112,6 @@ export function ServiceStudyOptionForm({
             <Combobox options={APPLICABLE_TO_OPTIONS} value={applicableTo ?? "both"} onChange={(v) => setApplicableTo(v as ServiceStudyOptionInput["applicable_to"])} placeholder="Select" />
           </div>
         </div>
-
-        <label className="flex w-fit cursor-pointer items-center gap-2 text-sm">
-          <Checkbox checked={saveForReuse} onCheckedChange={() => setSaveForReuse((v) => !v)} />
-          Save for reuse across courses
-        </label>
 
         <div className="flex justify-end gap-2">
           <Button variant="outline" className="cursor-pointer" onClick={onCancel} disabled={saving}>

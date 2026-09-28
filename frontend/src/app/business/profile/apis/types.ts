@@ -157,7 +157,14 @@ export type ServiceStudyUnit = {
 export type ServiceStudyUnitInput = Omit<ServiceStudyUnit, "id">;
 export type ServiceStudyUnitPatch = Partial<ServiceStudyUnitInput>;
 
-export type ServiceAccreditationLink = { id: number; accreditation_id: number };
+export type ServiceAccreditationLink = {
+  id: number;
+  accreditation_id: number;
+  /** The link's own accreditation name/status — set even while it's pending or rejected, which the
+   * approved-only accreditations lookup never returns. */
+  accreditation_name?: string | null;
+  accreditation_status?: string | null;
+};
 
 export type ServiceMediaFile = { id: number; original_name: string; mime_type: string; size_bytes: number; url: string };
 
