@@ -27,6 +27,7 @@ import { isInstitutionCategory } from "../../superadmin/data-extraction/reposito
 import { listSiteUrls, getSnapshotMarkdownByUrl, updateSnapshotMarkdown, refreshSiteUrls } from "../../superadmin/data-extraction/services/site-urls.service.js";
 import { getBusinessOnboardingProgress, markCoursesReviewedForBusiness } from "./onboarding-progress.service.js";
 import { getWidgetAnalytics } from "../../ai-counsellor/services/widget-analytics.service.js";
+import * as branchesRepo from "../../superadmin/platform/business-branches/repositories/business-branches.repository.js";
 
 const logger = createChildLogger("businesses-service");
 const CLAIM_TOKEN_TTL_MS = 72 * 60 * 60 * 1000; // 72 hours, matching admin claim-request convention
@@ -223,6 +224,9 @@ export async function updateProfile(orgId: string, data: BusinessProfilePatchInp
   const existing = await repo.findBusinessByDbName(orgId);
   if (!existing) throw new NotFoundError("Business not found");
   const updated = await repo.updateBusinessProfile(existing.id, data);
+  if (data.registration_licenses !== undefined) {
+    await branchesRepo.syncSameCompanyRegistration("businesses", { id: Number(existing.id), schema_name: existing.schema_name }, updated.registration_licenses);
+  }
   return withCategory(await withImagePreviews(updated));
 }
 

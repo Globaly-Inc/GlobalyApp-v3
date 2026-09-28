@@ -12,6 +12,7 @@ import { isInstitutionCategory } from "../../superadmin/data-extraction/reposito
 import { ForbiddenError, NotFoundError } from "../../../shared/errors.js";
 import type { CourseListFilters } from "../../superadmin/data-extraction/repositories/courses.repository.js";
 import * as activityService from "../services/activity.service.js";
+import { resolveSharedCourses } from "../../superadmin/platform/business-branches/repositories/business-branches.repository.js";
 
 const SubIdSchema = z.object({ subId: z.string().uuid() });
 
@@ -118,8 +119,9 @@ export async function businessServicesRoutes(app: FastifyInstance) {
     const { search, course_category, ...pagination } = ServiceSearchQuerySchema.parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
     const sourceJobId = await servicesSourceJobId(req);
+    const shared = req.auth.orgType === "institution" ? await resolveSharedCourses(req.institutionId) : null;
     const { rows, total } = sourceJobId
-      ? await searchInstitutionCourses(sourceJobId, limit, offset, { search, courseCategory: course_category })
+      ? await searchInstitutionCourses(sourceJobId, limit, offset, { search, courseCategory: course_category, shared })
       : await service.searchServices(Number(req.business!.id), limit, offset, search);
     return reply.send(buildPaginatedResponse(rows, total, pagination));
   });

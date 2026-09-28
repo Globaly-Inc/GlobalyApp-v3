@@ -1,7 +1,6 @@
 // Superadmin routes for a single business's branches.
 
 import type { FastifyInstance } from "fastify";
-import { NotFoundError } from "../../../../../shared/errors.js";
 import { buildPaginatedResponse, paginationToOffset } from "../../../../../shared/pagination.js";
 import * as platformRepo from "../../platform.repository.js";
 import { BranchInputSchema, BranchListQuerySchema, BranchPatchSchema, IdParamSchema, LinkExistingBranchInputSchema, SubIdParamSchema } from "../schemas/business-branches.schema.js";
@@ -19,9 +18,7 @@ export async function businessBranchesRoutes(app: FastifyInstance) {
   app.post("/businesses/:id/branches", async (req, reply) => {
     const { id } = IdParamSchema.parse(req.params);
     const data = BranchInputSchema.parse(req.body);
-    const biz = await platformRepo.findBusinessById(id);
-    if (!biz?.owner_id) throw new NotFoundError("Business has no owner to assign the new branch to");
-    const branch = await service.createBranch(id, Number(biz.owner_id), data);
+    const branch = await service.createBranch(id, data);
     await platformRepo.logAdminAction(Number(req.auth.sub), "BUSINESS_BRANCH_CREATED", "business", undefined, { business_id: id });
     return reply.status(201).send(branch);
   });

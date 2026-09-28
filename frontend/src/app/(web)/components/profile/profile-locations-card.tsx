@@ -88,7 +88,7 @@ export function ProfileLocationsCard({
                 <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10">
                   <Building2 className="h-4 w-4 text-primary" />
                 </span>
-                <p className={`truncate text-sm font-semibold text-foreground ${onEditLocation ? "pr-7" : ""}`}>{loc.name}</p>
+                <p className={`truncate text-sm font-semibold text-foreground ${onEditLocation && loc.editable !== false ? "pr-7" : ""}`}>{loc.name}</p>
               </div>
               {loc.address && (
                 <div className="flex items-start gap-2 text-xs text-muted-foreground">
@@ -110,7 +110,7 @@ export function ProfileLocationsCard({
               )}
             </button>
 
-            {onEditLocation && (
+            {onEditLocation && loc.editable !== false && (
               <button
                 type="button"
                 onClick={() => onEditLocation(loc.id)}

@@ -94,6 +94,9 @@ export function ProfileLocationsSection({
       // Branch rows carry no coordinates — the map falls back to geocoding the address string.
       latitude: null,
       longitude: null,
+      // A linked branch is its own org: its name/address are edited on its own profile, and the
+      // backend rejects them here (assertLinkOnlyPatch) — so no pencil rather than a failing save.
+      editable: b.linked_business_id == null && b.linked_institution_id == null,
     })),
   ];
 

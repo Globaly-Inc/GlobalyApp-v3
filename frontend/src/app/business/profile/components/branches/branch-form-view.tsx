@@ -11,8 +11,11 @@ import { flagFromIso2 } from "@/app/admin/platform/categories/utils";
 import { geoApi, type City, type Country } from "@/app/geo/apis";
 import { CreateBranchDetailsStep, EMPTY_BRANCH_FORM } from "@/app/admin/platform/businesses/components/branches/create-branch-details-step";
 import { isValidEmail, isValidUrl } from "@/app/admin/platform/businesses/utils";
-import type { BranchType, SharedServices } from "../../apis/types";
-import { createBranch, updateBranch } from "../../store/business-profile-detail-slice";
+import type { Branch, BranchType, SharedServices } from "../../apis/types";
+import { createBranch, fetchBranch, updateBranch } from "../../store/business-profile-detail-slice";
+import { useOrgContext } from "../use-org-context";
+import { RegistrationLicensesFields, cleanRegistrationLicenses, type RegLicenses } from "../registration-licenses-fields";
+import { fetchMe } from "@/app/auth/store/auth-slice";
 import { BranchStepper } from "@/app/admin/platform/businesses/components/branches/branch-stepper";
 import { CreateBranchCopyStep } from "./create-branch-copy-step";
 import { ServiceSharingPicker } from "../services/service-sharing-picker";
@@ -26,9 +29,24 @@ export function BranchFormView({ businessId, branchId }: Readonly<{ businessId: 
   const router = useRouter();
   const dispatch = useAppDispatch();
   const parent = useAppSelector((s) => s.businessOnboarding.profile);
-  const branches = useAppSelector((s) => s.businessProfileDetail.branches.items);
-  const editBranch = branchId ? branches.find((b) => b.id === branchId) : undefined;
+  const branchList = useAppSelector((s) => s.businessProfileDetail.branches);
+  // Only trust the cached list when it belongs to THIS org — another org's list can still be in the
+  // store, and a uuid match there would edit the wrong tenant's branch.
+  const branches = branchList.ownerId === businessId ? branchList.items : [];
+  // The URL's org, not whichever one the session happens to be on, must receive these requests.
+  const contextReady = useOrgContext(businessId);
+  const [fetchedBranch, setFetchedBranch] = useState<Branch | null>(null);
+  const editBranch = branchId ? branches.find((b) => b.id === branchId) ?? fetchedBranch ?? undefined : undefined;
   const isEdit = !!branchId;
+
+  useEffect(() => {
+    if (!contextReady || !branchId || branches.some((b) => b.id === branchId)) return;
+    dispatch(fetchBranch({ id: businessId, branchId }))
+      .unwrap()
+      .then(setFetchedBranch)
+      .catch((e: Error) => toast.error("Couldn't load branch", { description: e.message }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [contextReady, branchId]);
 
   const backHref = `/business/profile/${businessId}?tab=branches`;
 
@@ -40,6 +58,7 @@ export function BranchFormView({ businessId, branchId }: Readonly<{ businessId: 
   const [branchType, setBranchType] = useState<BranchType>("same_company");
   const [copyDescription, setCopyDescription] = useState(false);
   const [sharedServices, setSharedServices] = useState<SharedServices>([]);
+  const [registration, setRegistration] = useState<RegLicenses>({});
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
 
@@ -133,7 +152,14 @@ export function BranchFormView({ businessId, branchId }: Readonly<{ businessId: 
         await dispatch(updateBranch({ id: businessId, branchId, patch: input })).unwrap();
         toast.success("Branch updated");
       } else {
-        await dispatch(createBranch({ id: businessId, input })).unwrap();
+        // Same Company → nothing sent; the backend copies the parent's registration.
+        const registration_licenses = branchType === "same_company" ? {} : cleanRegistrationLicenses(registration);
+        await dispatch(createBranch({
+          id: businessId,
+          input: { ...input, ...(Object.keys(registration_licenses).length ? { registration_licenses } : {}) },
+        })).unwrap();
+        // The branch is a new org owned by this user — refetch /auth/me so the org switcher shows it.
+        dispatch(fetchMe());
         const description = country ? `${form.name} (${country.name}).` : `${form.name}.`;
         toast.success("Branch created", { description });
       }
@@ -145,8 +171,18 @@ export function BranchFormView({ businessId, branchId }: Readonly<{ businessId: 
     }
   };
 
+  // Until the URL's org is active (and, when editing, its branch loaded) there is nothing safe to
+  // show — saving a blank form would send default branch type/sharing over the saved settings.
+  if (!contextReady || (isEdit && !editBranch)) {
+    return (
+      <div className="flex min-h-[50vh] items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      </div>
+    );
+  }
+
   return (
-    <div className="mx-auto max-w-2xl">
+    <div className="mx-auto max-w-7xl">
       <Button variant="ghost" size="sm" className="mb-3 -ml-2" onClick={() => router.push(backHref)}>
         <ArrowLeft className="mr-1.5 h-4 w-4" /> Back to branches
       </Button>
@@ -181,6 +217,21 @@ export function BranchFormView({ businessId, branchId }: Readonly<{ businessId: 
                 branchType={branchType}
                 onBranchTypeChange={setBranchType}
               />
+            )}
+
+            {/* Only a separately registered branch (subsidiary / franchise) has its own registration.
+                A Same Company branch IS the parent's legal entity — the backend copies the parent's
+                registration onto it instead of asking. Create only: the edit form is for plain
+                branch rows, which have no registration of their own. */}
+            {step === 0 && !isEdit && branchType !== "same_company" && (
+              <div className="flex flex-col gap-4 border-t pt-5">
+                <p className="text-sm font-semibold">Registration &amp; Licenses</p>
+                <RegistrationLicensesFields
+                  value={registration}
+                  onChange={setRegistration}
+                  countryId={form.countryId ? Number(form.countryId) : null}
+                />
+              </div>
             )}
 
             {step === 1 && (

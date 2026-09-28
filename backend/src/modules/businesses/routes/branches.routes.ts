@@ -20,9 +20,14 @@ export async function businessBranchesRoutes(app: FastifyInstance) {
 
   app.post("/branches", { preHandler: requireBusinessContext }, async (req, reply) => {
     const data = BranchInputSchema.parse(req.body);
-    const branch = await service.createBranch(Number(req.business!.id), Number(req.auth.sub), data);
+    const branch = await service.createBranch(Number(req.business!.id), data);
     await activityService.logActivity(req.db, Number(req.auth.sub), "BRANCH_CREATED", "branch", branch.id, { name: branch.name });
     return reply.status(201).send(branch);
+  });
+
+  app.get("/branches/:subId", { preHandler: requireBusinessContext }, async (req, reply) => {
+    const { subId } = SubIdSchema.parse(req.params);
+    return reply.send(await service.getBranch(Number(req.business!.id), subId));
   });
 
   app.post("/branches/link-existing", { preHandler: requireBusinessContext }, async (req, reply) => {

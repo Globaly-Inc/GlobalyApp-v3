@@ -14,6 +14,7 @@ import type {
   SiteUrlSnapshotUpdateInput, SiteUrlRefreshInput,
 } from "../schemas/institution-profile.schema.js";
 import type { InstitutionRecord } from "../../../core/types.js";
+import * as branchesRepo from "../../superadmin/platform/business-branches/repositories/business-branches.repository.js";
 
 async function withImagePreviews<
   T extends { logo_url?: string | null; cover_url?: string | null; gallery_images?: string[] | null; video_urls?: string[] | null },
@@ -54,6 +55,9 @@ export async function getMyInstitution(institution: InstitutionRecord) {
 
 export async function updateMyInstitution(institutionId: number, patch: InstitutionProfilePatchInput) {
   const updated = await repo.updateInstitution(institutionId, patch);
+  if (updated && patch.registration_licenses !== undefined) {
+    await branchesRepo.syncSameCompanyRegistration("institutions", { id: institutionId, schema_name: updated.schema_name }, updated.registration_licenses);
+  }
   // Onboarding captures no website, so this is usually the first time the institution's own
   // job gets a real URL — and that URL is what scopes its courses in the AI embed widget.
   if (updated?.source_job_id && patch.website?.trim()) {

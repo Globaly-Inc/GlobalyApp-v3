@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -49,6 +49,7 @@ function institutionsAsOrgs(institutions: AuthMeInstitution[]): SwitcherOrg[] {
     role: inst.role,
     is_owner: inst.is_owner,
     kind: "institution" as const,
+    parent_id: inst.parent_institution_id ?? null,
   }));
 }
 
@@ -92,22 +93,37 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
+  const loadOrgs = useCallback(async () => {
+    const [bizList, instList] = await Promise.all([
+      authApi.listMyBusinesses().catch(() => []),
+      authApi.listMyInstitutions().catch(() => []),
+    ]);
+    const bizOrgs: SwitcherOrg[] = bizList.map((b) => ({ ...b, kind: "business" as const, parent_id: b.parent_business_id ?? null }));
+    const instOrgs = institutionsAsOrgs(instList);
+    const merged = [...bizOrgs, ...instOrgs];
+    setBusinesses(merged);
+    setInstitutionOrgIds(new Set(instOrgs.map((o) => o.org_id)));
+    return merged;
+  }, []);
+
+  // Creating a branch mints a new org and refetches /auth/me — reload the switcher when the
+  // membership count changes so it shows up without a page refresh.
+  const orgCount = (user?.businesses?.length ?? 0) + (user?.institutions?.length ?? 0);
+  const prevOrgCount = useRef(orgCount);
+  useEffect(() => {
+    const changed = prevOrgCount.current !== orgCount;
+    prevOrgCount.current = orgCount;
+    if (contextReady && changed) loadOrgs();
+  }, [contextReady, orgCount, loadOrgs]);
+
   useEffect(() => {
     let active = true;
     ensureBusinessContext()
       .catch(() => false)
       .then(async () => {
         if (!active) return;
-        const [bizList, instList] = await Promise.all([
-          authApi.listMyBusinesses().catch(() => []),
-          authApi.listMyInstitutions().catch(() => []),
-        ]);
-        const bizOrgs: SwitcherOrg[] = bizList.map((b) => ({ ...b, kind: "business" as const }));
-        const instOrgs = institutionsAsOrgs(instList);
-        const merged = [...bizOrgs, ...instOrgs];
+        const merged = await loadOrgs();
         if (!active) return;
-        setBusinesses(merged);
-        setInstitutionOrgIds(new Set(instOrgs.map((o) => o.org_id)));
         setActiveOrgId(getSelectedOrgId() ?? [...merged].sort((a, b) => a.id - b.id)[0]?.org_id ?? null);
         // A zero-org user has nothing for /businesses/me or /institutions/me to return.
         // onboarding-view.tsx handles the empty case itself.
@@ -119,7 +135,7 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
     return () => {
       active = false;
     };
-  }, [dispatch]);
+  }, [dispatch, loadOrgs]);
 
   
   const handleSwitchBusiness = async (orgId: string) => {

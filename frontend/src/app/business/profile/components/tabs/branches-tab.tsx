@@ -110,27 +110,23 @@ export function BranchesTab({
               </div>
             </div>
             <div className="flex items-center gap-1">
-              {/* A linked_institution_id branch is a real, separately-owned institution this org
-                 created (see business-branches.service.ts's createInstitutionBranch) — there's no
-                 "edit the link" dialog for it yet (LinkBranchDialog only handles a linked business),
-                 so it's edited from its own profile once entered via the org switcher, not here. */}
-              {b.linked_institution_id == null && (
-                <Button
-                  size="icon-sm"
-                  variant="ghost"
-                  onClick={() => {
-                    if (b.linked_business_id != null) {
-                      setEditingLinkedBranch(b);
-                      setLinkOpen(true);
-                    } else {
-                      router.push(`/business/profile/${businessId}/branches/${b.id}/edit`);
-                    }
-                  }}
-                  aria-label="Edit branch"
-                >
-                  <Pencil className="h-4 w-4" />
-                </Button>
-              )}
+              {/* A linked row (business or institution) is its own org — its name/contact are edited
+                 from its own profile; here the parent only edits the link (type, shared services). */}
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                onClick={() => {
+                  if (b.linked_business_id != null || b.linked_institution_id != null) {
+                    setEditingLinkedBranch(b);
+                    setLinkOpen(true);
+                  } else {
+                    router.push(`/business/profile/${businessId}/branches/${b.id}/edit`);
+                  }
+                }}
+                aria-label="Edit branch"
+              >
+                <Pencil className="h-4 w-4" />
+              </Button>
               {!b.is_primary && (
                 <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => setDeletingBranch(b)} aria-label="Remove branch">
                   <Trash2 className="h-4 w-4" />

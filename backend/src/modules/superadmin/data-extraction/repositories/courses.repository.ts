@@ -1,5 +1,6 @@
 // Extraction courses repository.
 
+import type { Knex } from "knex";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 const T = `${S}.extraction_courses`;
@@ -7,11 +8,31 @@ const T = `${S}.extraction_courses`;
 export type CourseListFilters = {
   search?: string; status?: string; scope?: "in" | "out"; excluded?: string[] | null;
   courseCategory?: "academic" | "short_course";
+  /** Also include the courses a parent institution shares with a branch — see SharedCourses. */
+  shared?: SharedCourses | null;
 };
+
+/**
+ * What a parent shares with a branch: `ids` picked from (or "all" of) the parent's OWN visible
+ * catalog — its job's courses plus whatever ITS parent shares with it (`shared`, recursively). A
+ * branch of a branch can therefore be offered, and receive, courses inherited from further up.
+ */
+export type SharedCourses = { jobId: string; ids: "all" | string[]; shared?: SharedCourses | null };
+
+/** `job_id = jobId OR <in the shared scope>`. `prefix` is the table alias ("ec." or ""). */
+export function applyCourseScope(b: Knex.QueryBuilder, prefix: string, jobId: string, shared?: SharedCourses | null) {
+  b.where(`${prefix}job_id`, jobId);
+  if (shared) {
+    b.orWhere((s) => {
+      s.where((inner) => applyCourseScope(inner, prefix, shared.jobId, shared.shared));
+      if (shared.ids !== "all") s.whereIn(`${prefix}id`, shared.ids);
+    });
+  }
+}
 export type CourseSort = "newest" | "oldest" | "name_asc" | "name_desc" | "recently_updated";
 
-function filteredCoursesQuery(jobId: string, { search, status, scope, excluded, courseCategory }: CourseListFilters) {
-  const q = masterKnex(T).where({ job_id: jobId });
+function filteredCoursesQuery(jobId: string, { search, status, scope, excluded, courseCategory, shared }: CourseListFilters) {
+  const q = masterKnex(T).where((b) => applyCourseScope(b, "", jobId, shared));
   if (search) q.where((b) => b.whereILike("name", `%${search}%`).orWhereILike("description", `%${search}%`));
   if (status) q.where("verification_status", status);
   if (courseCategory) q.where("course_category", courseCategory);

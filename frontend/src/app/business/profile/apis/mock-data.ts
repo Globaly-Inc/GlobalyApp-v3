@@ -124,6 +124,12 @@ export const businessProfileDetailMockApi = {
     await delay(300);
     return { data: mockBranches, total: mockBranches.length };
   },
+  getBranch: async (branchId: string, _orgBase?: string): Promise<Branch> => {
+    await delay(300);
+    const branch = mockBranches.find((b) => b.id === branchId);
+    if (!branch) throw new Error("Branch not found");
+    return branch;
+  },
   createBranch: async (input: BranchInput, _orgBase?: string): Promise<Branch> => {
     await delay(300);
     const branch: Branch = {

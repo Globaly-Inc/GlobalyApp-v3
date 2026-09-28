@@ -129,6 +129,7 @@ export async function listUserBusinesses(platformUserId: number) {
       "businesses.business_name",
       "businesses.subdomain",
       "businesses.logo_url",
+      "businesses.parent_business_id",
       "user_business_index.role",
       "user_business_index.is_owner",
     );
@@ -364,6 +365,8 @@ export async function listUserInstitutions(platformUserId: number) {
       "institutions.institution_name",
       "institutions.subdomain",
       "institutions.logo_url",
+      // Lets the org switcher nest a branch under its parent (see createInstitutionBranch).
+      "institutions.parent_institution_id",
       "user_institution_index.role",
       "user_institution_index.is_owner",
     );
