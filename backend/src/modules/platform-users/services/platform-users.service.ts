@@ -152,6 +152,10 @@ export async function onboardInstitution(userId: number, data: OnboardingInstitu
   const user = await repo.findByIdFull(userId);
   if (!user) throw new NotFoundError("User not found");
 
+  if (!data.email && (await repo.ownsAnyOrg(userId))) {
+    throw new BadRequestError("Institution email is required when you already have a business or institution");
+  }
+
   // Auto-generate subdomain from institution name, unique across businesses + institutions.
   const subdomain = await generateSubdomain(data.institution_name, async (candidate) => {
     const [inst, biz] = await Promise.all([

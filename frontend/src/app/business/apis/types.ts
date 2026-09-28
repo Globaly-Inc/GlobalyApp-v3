@@ -86,6 +86,7 @@ export type BusinessCategoryOption = SelectOption & {
 export type BusinessRegisterInput = {
   business_name: string;
   business_category_id: number;
+  email?: string;
   phone: string;
   country_id: number;
   address: string;
@@ -102,6 +103,7 @@ export type RegisterBusinessResult = {
 
 export type InstitutionRegisterInput = {
   institution_name: string;
+  email?: string;
   phone?: string;
   country_id?: number;
   address?: string;

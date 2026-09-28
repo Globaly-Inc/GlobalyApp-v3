@@ -11,6 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { cn, splitPhone } from "@/lib/utils";
 import { saveAccessToken, saveSelectedOrgId } from "@/lib/session";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { useAuthState } from "@/app/auth/store/auth-slice";
 import { DynamicIcon } from "@/components/dynamic-icon";
 import { geoApi, type Country } from "../geo/apis";
 import { businessApi } from "./apis";
@@ -63,6 +64,8 @@ function OnboardingForm({
   const dispatch = useAppDispatch();
   const { status } = useAppSelector((state) => state.businessOnboarding);
   const saving = status === "saving";
+  const { user: authUser } = useAuthState();
+  const requireEmail = isNew && (authUser?.businesses.length ?? 0) + (authUser?.institutions.length ?? 0) > 0;
 
   const [countries, setCountries] = useState<Country[]>([]);
   const [categories, setCategories] = useState<BusinessCategoryOption[]>([]);
@@ -71,6 +74,7 @@ function OnboardingForm({
     initialProfile?.business_category_id ? String(initialProfile.business_category_id) : "",
   );
   const [businessName, setBusinessName] = useState(initialProfile?.business_name ?? "");
+  const [email, setEmail] = useState("");
   const [phoneCountryId, setPhoneCountryId] = useState("");
   const [phoneNumber, setPhoneNumber] = useState(initialProfile?.phone ?? "");
   const [countryId, setCountryId] = useState(initialProfile?.country_id ? String(initialProfile.country_id) : "");
@@ -124,6 +128,10 @@ function OnboardingForm({
     setBusinessName(value);
     clearFieldErrorIfNowValid(setFieldErrors, "businessName", validateBusinessField("businessName", value) === null);
   };
+  const handleEmailChange = (value: string) => {
+    setEmail(value);
+    clearFieldErrorIfNowValid(setFieldErrors, "email", validateBusinessField("email", value) === null);
+  };
   const handlePhoneCountryChange = (value: string) => {
     setPhoneCountryId(value);
     clearFieldErrorIfNowValid(setFieldErrors, "phoneCountryId", validateBusinessField("phoneCountryId", value) === null);
@@ -166,6 +174,8 @@ function OnboardingForm({
       countryId,
       address,
       businessName,
+      email,
+      requireEmail,
     });
     if (errors) {
       setFieldErrors(errors);
@@ -180,6 +190,7 @@ function OnboardingForm({
         const outcome = await dispatch(
           registerInstitution({
             institution_name: businessName,
+            email: email || undefined,
             phone,
             country_id: Number(countryId),
             address,
@@ -203,6 +214,7 @@ function OnboardingForm({
         registerBusiness({
           business_name: businessName,
           business_category_id: Number(categoryId),
+          email: email || undefined,
           phone,
           country_id: Number(countryId),
           address,
@@ -291,6 +303,9 @@ function OnboardingForm({
         isInstitution={isInstitution}
         businessName={businessName}
         onBusinessNameChange={handleBusinessNameChange}
+        requireEmail={requireEmail}
+        email={email}
+        onEmailChange={handleEmailChange}
         phoneCountryId={phoneCountryId}
         onPhoneCountryChange={handlePhoneCountryChange}
         phoneNumber={phoneNumber}
