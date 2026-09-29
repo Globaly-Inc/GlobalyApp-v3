@@ -18,6 +18,8 @@ export interface LearnMessage {
   review_note: string | null;
   reviewed_by: number | null;
   memory_ids: string[];
+  feedback_learned_at?: Date | null;
+  review_learned_at?: Date | null;
 }
 
 export interface LearnSession {
@@ -30,6 +32,7 @@ export interface LearnSession {
 const MESSAGE_COLUMNS = [
   "id", "session_id", "role", "content", "feedback", "feedback_actor", "review_status",
   "correction", "review_note", "reviewed_by", "memory_ids",
+  "feedback_learned_at", "review_learned_at",
 ];
 
 export async function findMessage(id: number): Promise<LearnMessage | undefined> {
@@ -167,10 +170,20 @@ export async function recordMemoryIds(messageId: number, ids: string[]): Promise
   await masterKnex("ai_counselor_messages").where({ id: messageId }).update({ memory_ids: JSON.stringify(ids) });
 }
 
-/** Stamped once a learn job for this message has actually run, so the sweep below can tell a
- *  row that was already learned from apart from one whose job never reached the broker. */
-export async function markLearned(messageId: number): Promise<void> {
-  await masterKnex("ai_counselor_messages").where({ id: messageId }).update({ learned_at: masterKnex.fn.now() });
+/** Which marker column a learn job clears. A thumb and a review are independent signals on the
+ *  same message, learned from by different jobs, so each has its own — stamping one must never
+ *  hide the other from recovery. */
+export type LearnedMarker = "feedback" | "review";
+const MARKER_COLUMN: Record<LearnedMarker, string> = {
+  feedback: "feedback_learned_at",
+  review: "review_learned_at",
+};
+
+/** Stamped once a learn job for this signal has actually run, so the sweep below can tell a
+ *  signal that was already learned from apart from one whose job never reached the broker. */
+export async function markLearned(messageId: number, marker: LearnedMarker): Promise<void> {
+  await masterKnex("ai_counselor_messages").where({ id: messageId })
+    .update({ [MARKER_COLUMN[marker]]: masterKnex.fn.now() });
 }
 
 /**
@@ -184,8 +197,11 @@ export async function markLearned(messageId: number): Promise<void> {
 export async function findUnlearnedSignals(graceMinutes: number, limit: number): Promise<LearnMessage[]> {
   return masterKnex("ai_counselor_messages")
     .select(MESSAGE_COLUMNS)
-    .whereNull("learned_at")
-    .where((qb) => qb.whereNotNull("feedback").orWhereNotNull("review_status"))
+    // Per signal, not per row: a message whose review was learned from can still be carrying a
+    // thumb whose job never reached the broker, and vice versa.
+    .where((qb) => qb
+      .where((f) => f.whereNotNull("feedback").whereNull("feedback_learned_at"))
+      .orWhere((r) => r.whereNotNull("review_status").whereNull("review_learned_at")))
     .whereRaw(`created_at < now() - interval '${graceMinutes} minutes'`)
     .orderBy("created_at", "asc")
     .limit(limit);
