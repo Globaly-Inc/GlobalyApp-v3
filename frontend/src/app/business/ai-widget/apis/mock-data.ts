@@ -126,7 +126,7 @@ export const aiWidgetVisitorsMock = {
     await delay(300);
     const term = params.search?.trim().toLowerCase();
     const searched = term
-      ? visitors.filter((v) => `${v.name ?? ""} ${v.email ?? ""}`.toLowerCase().includes(term))
+      ? visitors.filter((v) => `${v.name ?? ""} ${v.email ?? ""} ${v.study_preference ?? ""}`.toLowerCase().includes(term))
       : visitors;
     // Counts are taken BEFORE the status filter and after the search — same as the backend,
     // so the tab tallies don't collapse to the active tab's own size.

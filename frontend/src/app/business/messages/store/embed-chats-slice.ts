@@ -14,7 +14,7 @@ const PAGE_SIZE = 100;
 
 /**
  * One page of visitors. Page 1 replaces the list, later pages append. `search` goes to the
- * server (name/email), so a conversation beyond the loaded pages can still be found.
+ * server (name, email, programme), so a conversation beyond the loaded pages can still be found.
  */
 export const fetchEmbedChats = createAsyncThunk(
   "embedChats/fetch",

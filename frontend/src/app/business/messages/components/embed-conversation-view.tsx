@@ -12,7 +12,7 @@ import { VISITOR_STATUS_BADGE } from "@/app/business/ai-widget/const";
 import { visitorDisplayName, visitorInitials } from "@/app/business/ai-widget/utils";
 import type { WidgetVisitor } from "@/app/business/ai-widget/apis/types";
 import { fetchEmbedTranscript } from "../store/embed-chats-slice";
-import { DateDivider, dayLabel, isGroupedWith, TranscriptBubble } from "./transcript-bubble";
+import { DateDivider, dayLabel, TranscriptBubble } from "./transcript-bubble";
 
 /**
  * An AI conversation (embed widget chat): the enquiry `ConversationView` header bar over a
@@ -21,11 +21,11 @@ import { DateDivider, dayLabel, isGroupedWith, TranscriptBubble } from "./transc
  * so where the composer would be, and points to the visitor's record for follow-up.
  */
 /**
- * The message column: up to 56rem wide, and NOT centred — the left gap takes 30% of the spare
- * width and the right 70%, so the conversation leans toward the list. `100%` in a margin is the
- * scroller's width; on a narrow pane the spare width goes negative and the max() floors it.
+ * The message column — Ask Aly's (`@/app/ai/components/chat-messages`): centred, 48rem wide,
+ * 16/24px gutters. Turn spacing comes from each bubble's own vertical padding (2×16px = Ask
+ * Aly's gap-8), since day dividers sit between turns at a wider measure.
  */
-const MESSAGE_COLUMN = "w-full max-w-4xl ml-[max(0rem,calc((100%-56rem)*0.3))]";
+const MESSAGE_COLUMN = "mx-auto w-full max-w-3xl px-4 sm:px-6";
 
 export function EmbedConversationView({ visitor, onBack }: Readonly<{ visitor: WidgetVisitor; onBack: () => void }>) {
   const dispatch = useAppDispatch();
@@ -77,9 +77,9 @@ export function EmbedConversationView({ visitor, onBack }: Readonly<{ visitor: W
         </Link>
       </div>
 
-      {/* The scroller spans the pane (scrollbar at its edge). Messages sit in a column shifted
-          toward the list; day dividers are wider, 80% of the pane, centred. */}
-      <div className="min-h-0 flex-1 overflow-y-auto pb-4 pt-1">
+      {/* The scroller spans the pane (scrollbar at its edge). Messages sit in a centred column;
+          day dividers are wider, 80% of the pane, centred on the same axis. */}
+      <div className="min-h-0 flex-1 overflow-y-auto py-4">
         <div className={MESSAGE_COLUMN}>
         {!messages && status !== "failed" ? (
           <div className="space-y-4 px-4">
@@ -112,12 +112,7 @@ export function EmbedConversationView({ visitor, onBack }: Readonly<{ visitor: W
                   </div>
                 )}
                 <div className={MESSAGE_COLUMN}>
-                  <TranscriptBubble
-                    message={m}
-                    grouped={!showDate && isGroupedWith(m, prev)}
-                    visitorName={name}
-                    visitorInitials={visitor.name ? visitorInitials(visitor) : null}
-                  />
+                  <TranscriptBubble message={m} />
                 </div>
               </div>
             );

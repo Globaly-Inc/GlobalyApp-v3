@@ -31,7 +31,7 @@ type Item =
  *
  * Search covers what `ChatSearch` does on the enquiry side — a thread's title, course, latest
  * message, and every message already loaded for it — and opens a message hit AT that message.
- * AI conversations are searched on the server (name/email), since only some pages are loaded.
+ * AI conversations are searched on the server (name, email, programme), since only some pages are loaded.
  */
 export function InboxListSidebar({
   header,
@@ -93,7 +93,7 @@ export function InboxListSidebar({
     const all: Item[] = [
       ...enquiries,
       ...visitors
-        .filter((v) => hit(v.name, v.email))
+        .filter((v) => hit(v.name, v.email, v.study_preference))
         .map((visitor) => ({ kind: "embed" as const, at: new Date(visitor.last_activity_at).getTime(), visitor })),
     ];
     const unread = (i: Item) => Number(i.kind === "enquiry" && i.thread.unread_count > 0);

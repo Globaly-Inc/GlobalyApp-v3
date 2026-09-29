@@ -1,22 +1,10 @@
 "use client";
 
-import { User } from "lucide-react";
 import { AlyOrbIcon } from "@/components/aly-orb-icon";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { RichTextMessage } from "@/components/chat/rich-text-message";
 import { messageTime } from "@/components/chat/utils";
 import { MessageMarkdown } from "@/app/ai/components/message-markdown";
-import { cn } from "@/lib/utils";
 import type { VisitorMessage } from "@/app/business/ai-widget/apis/types";
-
-/** A new sender block starts after this long, even from the same side. */
-const GROUP_WINDOW_MS = 5 * 60_000;
-
-/** Same side, same day, within five minutes — stacked under one header, as support widgets do. */
-export function isGroupedWith(message: VisitorMessage, previous: VisitorMessage | undefined): boolean {
-  if (!previous || previous.role !== message.role) return false;
-  return new Date(message.created_at).getTime() - new Date(previous.created_at).getTime() < GROUP_WINDOW_MS;
-}
 
 /** `Sunday, September 13th`. */
 export function dayLabel(iso: string): string {
@@ -26,10 +14,6 @@ export function dayLabel(iso: string): string {
   const head = new Intl.DateTimeFormat(undefined, { weekday: "long", month: "long" }).format(date);
   return `${head} ${day}${suffix}`;
 }
-
-/** `Sep 13, 1:01 PM` — the stamp beside each sender name. */
-const headerStamp = (iso: string) =>
-  `${new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric" }).format(new Date(iso))}, ${messageTime(iso)}`;
 
 /** A full-width hairline with the day in an outlined pill across it. */
 export function DateDivider({ label }: Readonly<{ label: string }>) {
@@ -44,66 +28,41 @@ export function DateDivider({ label }: Readonly<{ label: string }>) {
 }
 
 /**
- * One transcript message, Gleap-style: the visitor on the left in grey, the business's AI
- * assistant on the right in a light blue. The first message of a block carries the avatar,
- * name and time; the rest of the block stacks as bare bubbles beneath it.
+ * One transcript turn in Ask Aly's style (`@/app/ai/components/chat-message`), MIRRORED for the
+ * business reading it: Ask Aly puts the person on the right because they are the one typing;
+ * here the business is the reader and its assistant is "our side", so the visitor's grey bubble
+ * sits left and the assistant's bubble-less prose sits right, with its mark beside it.
  *
- * Deliberately NOT the navy primary for the assistant's bubbles — a solid brand fill makes a
- * long transcript read heavy. Light tints keep dark text on both sides.
+ * The time goes where Ask Aly's copy/reply actions would — a read-only transcript has no
+ * actions, and "when did they ask" is what an owner scanning it needs.
  */
-export function TranscriptBubble({
-  message,
-  grouped,
-  visitorName,
-  visitorInitials,
-}: Readonly<{
-  message: VisitorMessage;
-  grouped: boolean;
-  visitorName: string;
-  /** Null for an anonymous visitor — a person glyph instead. */
-  visitorInitials: string | null;
-}>) {
-  const isBot = message.role === "assistant";
-  const stamp = headerStamp(message.created_at);
+export function TranscriptBubble({ message }: Readonly<{ message: VisitorMessage }>) {
+  const time = messageTime(message.created_at);
 
-  if (isBot) {
+  if (message.role === "assistant") {
     return (
-      <div className={cn("flex flex-col items-end pl-2 pr-4 md:pr-6", grouped ? "pt-1.5" : "pt-4")}>
-        {!grouped && (
-          <div className="mb-1.5 flex items-center gap-2">
-            <span className="text-xs text-muted-foreground">{stamp}</span>
-            <span className="text-sm font-semibold text-foreground">AI Assistant</span>
-            {/* Aly's orb draws past its box (scale-175), so it gets a smaller box in the avatar slot. */}
-            <span className="flex size-7 items-center justify-center">
-              <AlyOrbIcon className="size-5" />
-            </span>
+      <div className="flex w-full flex-row-reverse gap-3 py-4">
+        {/* Ask Aly's AssistantMark chip, carrying the Aly orb. The orb draws past its box
+            (scale-175), so it gets a smaller box than the chip. */}
+        <span className="mt-0.5 hidden size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 sm:flex">
+          <AlyOrbIcon className="size-4" />
+        </span>
+        <div className="flex min-w-0 max-w-[85%] flex-col items-end gap-1.5">
+          <div className="w-full">
+            <MessageMarkdown text={message.content} />
           </div>
-        )}
-        <div className="mr-9 max-w-[80%] rounded-2xl rounded-tr-md bg-blue-100/70 px-3.5 py-2.5 dark:bg-blue-500/15 md:max-w-[70%]">
-          <MessageMarkdown text={message.content} className="text-sm leading-relaxed" />
+          <span className="text-[11px] text-muted-foreground">AI Assistant · {time}</span>
         </div>
       </div>
     );
   }
 
   return (
-    <div className={cn("flex flex-col items-start pl-2 pr-4 md:pr-6", grouped ? "pt-1.5" : "pt-4")}>
-      {!grouped && (
-        <div className="mb-1.5 flex items-center gap-2">
-          <Avatar className="size-7">
-            <AvatarFallback
-              className={cn("text-[10px] font-semibold", visitorInitials ? "bg-emerald-500 text-white" : "bg-muted text-muted-foreground")}
-            >
-              {visitorInitials ?? <User className="size-3.5" aria-hidden />}
-            </AvatarFallback>
-          </Avatar>
-          <span className="text-sm font-semibold text-foreground">{visitorName}</span>
-          <span className="text-xs text-muted-foreground">{stamp}</span>
-        </div>
-      )}
-      <div className="ml-9 max-w-[80%] rounded-2xl rounded-tl-md bg-muted px-3.5 py-2.5 text-sm leading-relaxed text-foreground md:max-w-[70%]">
+    <div className="flex flex-col items-start gap-1.5 py-4">
+      <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-muted px-4 py-2.5 text-[0.9375rem] leading-relaxed text-foreground">
         <RichTextMessage body={message.content} />
       </div>
+      <span className="text-[11px] text-muted-foreground">{time}</span>
     </div>
   );
 }
