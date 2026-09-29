@@ -98,6 +98,30 @@ console.log("\n1. evaluateCandidate — the filters (pure)");
   assert((ev({ metadata: { technique: "nope", trigger: "x" } }) as { reason: string }).reason === "metadata", "bad metadata for the type rejected");
   assert((ev({ type: "TERMINOLOGY", metadata: {} }) as { reason: string }).reason === "metadata", "missing required metadata rejected");
 
+  // ── Metadata gets the privacy filters too, on its free-text keys ───────────
+  // Only `content` used to be filtered; metadata got a zod SHAPE check that inspects no text,
+  // and memory reads return metadata verbatim to the institution portal. COUNSELLOR_CORRECTION's
+  // original_excerpt was the instance Greptile named and it was deleted, but the hole was the
+  // class: the extractor writes `example`, `concern`, `approach`, `trigger`, `term`, `meaning`
+  // in its own words, lifted from the transcript.
+  const md = (m: Record<string, unknown>, type: Candidate["type"] = "RESPONSE_PATTERN") => ev({ type, metadata: m });
+  assert((md({ technique: "answer_then_ask", trigger: "refund question", example: "Priya asked how long refunds take." }) as { reason: string }).reason === "known_name",
+    "a student's name in RESPONSE_PATTERN.example is rejected");
+  assert((md({ technique: "answer_then_ask", trigger: "refund question", example: "Reply to priya@example.com within a day." }) as { reason: string }).reason === "pii",
+    "an email address in metadata is rejected");
+  assert((md({ concern: "Priya is worried about visa refusal", approach: "reassure" }, "STUDENT_CONCERN_PATTERN") as { reason: string }).reason === "known_name",
+    "a name in STUDENT_CONCERN_PATTERN.concern is rejected");
+  assert((md({ prefer: ["nursing"], avoid: ["anything Priya mentioned"] }, "COURSE_RECOMMENDATION_RULE") as { reason: string }).reason === "known_name",
+    "…and inside a string ARRAY, not just a bare string");
+  assert(md({ technique: "answer_then_ask", trigger: "refund question", example: "Say the timeframe, then point to the policy page." }).ok,
+    "clean free-text metadata still passes");
+
+  // The other direction, which is why the free-text keys are listed rather than "every string":
+  // PII_RE's phone pattern matches the digits in an ISO date, so scanning structured values
+  // would reject valid policy metadata.
+  assert(ev({ type: "INSTITUTION_POLICY", metadata: { effective_until: "2027-01-01", url: "https://uni.edu/policy/12345678" } }, { allowFacts: true }).ok,
+    "a date and a digit-bearing url in metadata are NOT treated as PII");
+
   // With a Jev judgement, Jev's answers win over the extractor's self-report.
   const J = (o: Partial<jev.CandidateJudgement>) => ({ mentions_person: 0, is_fact: 0, is_technique: 1, endorsed: 1, ...o });
   const evj = (c: Partial<Candidate>, j: Partial<jev.CandidateJudgement>, opts?: { allowFacts?: boolean }) => learn.evaluateCandidate(cand(c), names, { ...opts, judgement: J(j) });
@@ -279,6 +303,51 @@ console.log("\n4. learnFromFeedback: thumbs act on the memories that shaped the 
   reset(baseRoutes({ message: { feedback: "positive", feedback_actor: null, memory_ids: [ID], correction: null } }));
   await learn.learnFromFeedback({ kind: "feedback", institution_id: INST, message_id: 77 });
   assert(count(UPDATE_MEMORY) === 0, "no actor hash → nothing counted (a vote must be attributable)");
+
+  // ── The anonymous flag is WIRED, not just implemented ──────────────────────
+  // voteOnMemory's `anonymous` guard is unit-tested in institution-memory-lifecycle.ts, but that
+  // proves nothing about whether this path ever sets it: with `{ anonymous }` deleted from the
+  // call below, all 122 assertions across both suites still passed, leaving the widget-visitor
+  // vote-spoofing hole (Greptile P1) wide open and green. These two assertions are what fail.
+  //
+  // The attack: one person opens several widget sessions with different client-supplied
+  // fingerprints, each minting a distinct voter hash, and downvotes replies using one memory.
+  // Five negatives with no positive would otherwise deprecate the institution's own guidance.
+  const fiveVoters = [1, 2, 3, 4, 5].map((n) => HEX(n));
+  const atThreshold = (o: Record<string, unknown> = {}) => h.row({
+    id: ID, source: "extracted",
+    source_reference: { actors: [], positive_voters: [], negative_voters: fiveVoters },
+    ...o,
+  });
+
+  // Widget visitor: no platform user on the session, identity is the fingerprint they supplied.
+  reset([
+    [/negative_voters/, () => [atThreshold()]],
+    [UPDATE_MEMORY, () => [atThreshold({ flagged_at: new Date() })]],
+    ...baseRoutes({
+      message: { feedback: "negative", feedback_actor: HEX(15), memory_ids: [ID], correction: null },
+      session: { platform_user_id: null, visitor_key: "fingerprint-1" },
+    }),
+  ]);
+  await learn.learnFromFeedback({ kind: "feedback", institution_id: INST, message_id: 77 });
+  const guestWrites = all(UPDATE_MEMORY);
+  assert(!guestWrites.some((s) => s.values.includes("deprecated")),
+    "widget visitor's 5th negative never deprecates learned guidance", guestWrites.map((s) => s.values));
+  assert(guestWrites.some((s) => /"flagged_at"/.test(s.text)),
+    "…it raises a flag for review instead");
+
+  // Same votes from a signed-in student: one account, one vote, so deprecation is legitimate.
+  reset([
+    [/negative_voters/, () => [atThreshold()]],
+    [UPDATE_MEMORY, () => [atThreshold({ status: "deprecated" })]],
+    ...baseRoutes({
+      message: { feedback: "negative", feedback_actor: HEX(15), memory_ids: [ID], correction: null },
+      session: { platform_user_id: 42 },
+    }),
+  ]);
+  await learn.learnFromFeedback({ kind: "feedback", institution_id: INST, message_id: 77 });
+  assert(all(UPDATE_MEMORY).some((s) => s.values.includes("deprecated")),
+    "a signed-in student's 5th negative still deprecates — the guard is about anonymity, not votes");
 }
 
 console.log("\n5. learnFromConversation: opt-in per widget; candidates only");

@@ -97,15 +97,43 @@ export interface RagOutput {
   contextText: string;
   sources: Array<{ type: string; id: string; title: string }>;
   traceSteps: string[];
-  /** True when CONTEXT holds something a fee/refund/scholarship answer can be grounded in:
-   *  a course with fee rows, a visa fee, a cost-of-living block, or a passage/FAQ that talks
-   *  about money. When a money question meets `false`, the prompt withholds the answer. */
-  moneyData: boolean;
+  /** Which money topics the CONTEXT can actually ground an answer in. The gate compares this
+   *  with the topics the QUESTION asks about: a course fee row is evidence for "fees", never
+   *  for "refund". Empty = nothing in context an unapproximatable money claim can rest on. */
+  moneyTopics: MoneyTopic[];
 }
 
-/** Fees, refunds, funding — the claims a counsellor must never approximate. */
-export const MONEY_RE = /\b(fees?|tuition|costs?|price|pricing|refunds?|refundable|deposits?|scholarships?|bursar(?:y|ies)|funding|funds?|financial|finance|loans?|instal+ments?|payments?|pay|discounts?|waivers?|stipends?|expenses|afford(?:able)?|budget|cheap(?:er|est)?)\b/i;
-export const isMoneyQuestion = (query: string): boolean => MONEY_RE.test(query);
+// Fees, refunds, funding — the claims a counsellor must never approximate. Split by topic
+// because a single regex over every source answered the wrong question: it asked "is there
+// money anywhere in the context", when the gate needs "is there evidence for what was ASKED".
+// A retrieved course fee used to clear the guard for a refund-policy question with no refund
+// source anywhere (Greptile). There is no structured refund or scholarship field in any source
+// here, so those two topics are groundable ONLY by prose that actually discusses them — which
+// is exactly the distinction the old single boolean could not make.
+const MONEY_TOPIC_RE = {
+  fees: /\b(fees?|tuition|costs?|price|pricing|deposits?|instal+ments?|payments?|pay|expenses|afford(?:able)?|budget|cheap(?:er|est)?|financial|finance)\b/i,
+  refund: /\b(refunds?|refundable|withdraw(?:al|ing|n)?|cancel(?:lation|ling|led)?|deferr?(?:al|ing)?)\b/i,
+  scholarship: /\b(scholarships?|bursar(?:y|ies)|funding|funds?|grants?|waivers?|discounts?|stipends?|loans?|financial aid)\b/i,
+  living: /\b(cost of living|living costs?|accommodation|rent|groceries|homestay)\b/i,
+} as const;
+
+export type MoneyTopic = keyof typeof MONEY_TOPIC_RE;
+const MONEY_TOPICS = Object.keys(MONEY_TOPIC_RE) as MoneyTopic[];
+
+/** Every money topic a piece of text touches. Empty = not about money at all. */
+export function moneyTopicsOf(text: string): MoneyTopic[] {
+  return MONEY_TOPICS.filter((topic) => MONEY_TOPIC_RE[topic].test(text));
+}
+
+export const isMoneyQuestion = (query: string): boolean => moneyTopicsOf(query).length > 0;
+
+/** The gate: a money question with no context evidence on ANY topic it asks about.
+ *  Overlap, not equality — "what are the fees and is there a scholarship" is answerable
+ *  the moment either one is grounded, and the model still only says what its context holds. */
+export function shouldWithholdMoney(query: string, contextTopics: MoneyTopic[]): boolean {
+  const asked = moneyTopicsOf(query);
+  return asked.length > 0 && !asked.some((topic) => contextTopics.includes(topic));
+}
 
 export async function searchAll(opts: {
   query: string;
@@ -138,7 +166,7 @@ export async function searchAll(opts: {
 
   if (!searchQuery && !pinned.length) {
     trace("No searchable keywords extracted");
-    return { contextText: "", sources: [], traceSteps, moneyData: false };
+    return { contextText: "", sources: [], traceSteps, moneyTopics: [] };
   }
 
   if (searchQuery) trace(`Keywords: ${keywords.join(", ")}`);
@@ -423,15 +451,23 @@ export async function searchAll(opts: {
   // not a topical check; per-topic grounding needs the question classified first.
   // Every rendered money field must appear here, or the model is told to withhold what its own
   // context contains: knowledgeVisas renders "Fee: USD x" above, so it counts too.
-  const moneyData =
-    hydratedCourses.some(c => c.fees.length > 0) ||
-    visas.some(v => v.application_fee_amount != null) ||
-    knowledgeVisas.some(v => v.application_fee_usd != null) ||
-    guides.some(g => !!g.cost_of_living_monthly_usd) ||
-    faqs.some(f => MONEY_RE.test(`${f.question} ${f.answer}`)) ||
-    rackHits.some(d => MONEY_RE.test(d.content));
-  trace(`Context: ${contextText.length} chars, ${sources.length} sources${moneyData ? ", money data present" : ""}`);
-  return { contextText, sources, traceSteps, moneyData };
+  const moneyTopics = new Set<MoneyTopic>();
+  // Structured fields name their own topic — unambiguous, so no regex over the rendered text
+  // (CARD_FIELDS JSON carries a "fees" key for every course, which would make the text look
+  // money-bearing when it is not). Every rendered money field must appear here, or the model is
+  // told to withhold what its own context contains: knowledgeVisas renders "Fee: USD x" above.
+  if (hydratedCourses.some(c => c.fees.length > 0)) moneyTopics.add("fees");
+  if (visas.some(v => v.application_fee_amount != null)
+    || knowledgeVisas.some(v => v.application_fee_usd != null)) moneyTopics.add("fees");
+  if (guides.some(g => !!g.cost_of_living_monthly_usd)) moneyTopics.add("living");
+  // Prose grounds whichever topics it actually discusses — this is the only way refund and
+  // scholarship questions ever become answerable, since no source here has a field for them.
+  for (const f of faqs) for (const topic of moneyTopicsOf(`${f.question} ${f.answer}`)) moneyTopics.add(topic);
+  for (const d of rackHits) for (const topic of moneyTopicsOf(d.content)) moneyTopics.add(topic);
+
+  const topics = [...moneyTopics];
+  trace(`Context: ${contextText.length} chars, ${sources.length} sources${topics.length ? `, money evidence: ${topics.join(", ")}` : ""}`);
+  return { contextText, sources, traceSteps, moneyTopics: topics };
 }
 
 /** Rack chunks as prompt text + deduped sources — one format for every retrieval path. */

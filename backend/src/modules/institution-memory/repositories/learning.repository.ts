@@ -166,3 +166,27 @@ export async function recordFeedback(messageId: number, feedback: "positive" | "
 export async function recordMemoryIds(messageId: number, ids: string[]): Promise<void> {
   await masterKnex("ai_counselor_messages").where({ id: messageId }).update({ memory_ids: JSON.stringify(ids) });
 }
+
+/** Stamped once a learn job for this message has actually run, so the sweep below can tell a
+ *  row that was already learned from apart from one whose job never reached the broker. */
+export async function markLearned(messageId: number): Promise<void> {
+  await masterKnex("ai_counselor_messages").where({ id: messageId }).update({ learned_at: masterKnex.fn.now() });
+}
+
+/**
+ * Signals that were accepted and persisted but never learned from — the recovery set for a
+ * broker outage. Ordered oldest-first so a backlog drains in the order it happened.
+ *
+ * `graceMinutes` is what keeps this from racing the ordinary path: a job published seconds ago
+ * is still legitimately in flight, and re-enqueuing it would double-learn. Only rows older than
+ * the window are considered abandoned.
+ */
+export async function findUnlearnedSignals(graceMinutes: number, limit: number): Promise<LearnMessage[]> {
+  return masterKnex("ai_counselor_messages")
+    .select(MESSAGE_COLUMNS)
+    .whereNull("learned_at")
+    .where((qb) => qb.whereNotNull("feedback").orWhereNotNull("review_status"))
+    .whereRaw(`created_at < now() - interval '${graceMinutes} minutes'`)
+    .orderBy("created_at", "asc")
+    .limit(limit);
+}

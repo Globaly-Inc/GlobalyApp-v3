@@ -259,8 +259,13 @@ export async function handleMessage(opts: {
       if (sources.length) writeEvent(opts.reply, "sources", sources);
       // A money question with nothing to ground it is answered "we don't have that", by rule,
       // not by the model's judgement — a guessed fee or refund window is the costliest mistake.
-      const noMoneyData = rag.isMoneyQuestion(opts.content) && !ragOutput.moneyData;
-      if (noMoneyData) trace("Money question, no money data: answer withheld");
+      // Matched per topic, not one boolean over the whole context: a retrieved course fee is
+      // evidence for a fees question and NOT for a refund-policy one (Greptile).
+      const noMoneyData = rag.shouldWithholdMoney(opts.content, ragOutput.moneyTopics);
+      if (noMoneyData) {
+        trace(`Money question, no evidence for ${rag.moneyTopicsOf(opts.content).join("/")}`
+          + `${ragOutput.moneyTopics.length ? ` (context has: ${ragOutput.moneyTopics.join(", ")})` : ""}: answer withheld`);
+      }
 
       result = await streamChat({
         system: buildSystemPrompt({

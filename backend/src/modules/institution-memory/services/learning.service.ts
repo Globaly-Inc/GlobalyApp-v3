@@ -32,7 +32,7 @@ import * as memoryRepo from "../repositories/memory.repository.js";
 import { judgeCandidate, judgeContradictions, judgeFollowed, type CandidateJudgement } from "../lib/jev.js";
 import { MEMORY_QUEUES } from "../shared/queues.js";
 import {
-  CreateMemorySchema, ExtractionCandidateSchema, METADATA_BY_TYPE, MEMORY_TYPES, TECHNIQUES,
+  CreateMemorySchema, ExtractionCandidateSchema, METADATA_BY_TYPE, FREE_TEXT_METADATA_KEYS, MEMORY_TYPES, TECHNIQUES,
   type Actor, type CreateMemoryInput, type ExtractionCandidate, type LearnJob,
 } from "../schemas/memory.schema.js";
 
@@ -88,6 +88,24 @@ export type RejectReason = "schema" | "confidence" | "mentions_person" | "pii" |
  * the extractor missed is caught, and the stored confidence is the LOWER of the extractor's
  * and Jev's endorsement, so one optimistic model cannot inflate the other.
  */
+/** One alternation for every known name — built once so content and metadata use the SAME test. */
+function namePattern(knownNames: string[]): RegExp | null {
+  const escaped = knownNames.filter(Boolean).map((n) => n.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  return escaped.length ? new RegExp(`\\b(?:${escaped.join("|")})\\b`) : null;
+}
+
+/** Free-text metadata values, flattened to one string for filtering. Structured keys (ids, enums,
+ *  dates, urls, country codes) are skipped — see FREE_TEXT_METADATA_KEYS. */
+function metadataFreeText(metadata: Record<string, unknown>): string {
+  const out: string[] = [];
+  for (const [key, value] of Object.entries(metadata)) {
+    if (!FREE_TEXT_METADATA_KEYS.has(key)) continue;
+    if (typeof value === "string") out.push(value);
+    else if (Array.isArray(value)) for (const v of value) if (typeof v === "string") out.push(v);
+  }
+  return out.join(" ");
+}
+
 export function evaluateCandidate(
   c: ExtractionCandidate,
   knownNames: string[],
@@ -100,13 +118,20 @@ export function evaluateCandidate(
   const confidence = j ? Math.min(c.confidence, j.endorsed) : c.confidence;
   if (confidence < MIN_CONFIDENCE) return { ok: false, reason: "confidence" };
   if (PII_RE.some((re) => re.test(c.content))) return { ok: false, reason: "pii" };
-  const lower = c.content.toLowerCase();
-  if (knownNames.some((n) => new RegExp(`\\b${n.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}\\b`).test(lower))) {
-    return { ok: false, reason: "known_name" };
-  }
+  if (namePattern(knownNames)?.test(c.content.toLowerCase())) return { ok: false, reason: "known_name" };
   if (!opts.allowFacts && FACT_RE.some((re) => re.test(c.content))) return { ok: false, reason: "fact_like" };
   const metadata = METADATA_BY_TYPE[c.type].safeParse(c.metadata);
   if (!metadata.success) return { ok: false, reason: "metadata" };
+  const freeText = metadataFreeText(metadata.data);
+  if (freeText) {
+    if (PII_RE.some((re) => re.test(freeText))) return { ok: false, reason: "pii" };
+    if (namePattern(knownNames)?.test(freeText.toLowerCase())) return { ok: false, reason: "known_name" };
+  }
+  // Metadata gets the same privacy filters as content, on the free-text keys only. The shape
+  // check above inspects no text, and memory reads return metadata verbatim to the portal — so
+  // without this a student's name in `concern`, or the reply quoted into `example`, is stored
+  // and outlives the conversation (Greptile). Not FACT_RE: metadata legitimately holds dates,
+  // urls and codes, and "no figures" is a content-quality rule, not a privacy one.
   const parsed = CreateMemorySchema.safeParse({ type: c.type, content: c.content, metadata: metadata.data, importance: 3 });
   return parsed.success ? { ok: true, input: parsed.data, confidence } : { ok: false, reason: "schema" };
 }
@@ -339,9 +364,59 @@ export async function learnFromConversation(job: Extract<LearnJob, { kind: "conv
 export const __test = { actorOf };
 
 export async function runLearnJob(job: LearnJob): Promise<LearnResult> {
-  switch (job.kind) {
-    case "correction": return learnFromCorrection(job);
-    case "feedback": return learnFromFeedback(job);
-    case "conversation": return learnFromConversation(job);
+  const result = await (async (): Promise<LearnResult> => {
+    switch (job.kind) {
+      case "correction": return learnFromCorrection(job);
+      case "feedback": return learnFromFeedback(job);
+      case "conversation": return learnFromConversation(job);
+    }
+  })();
+  // Only after the job actually ran — a throw above skips this, leaving the row for the sweep.
+  // Best-effort: the learning already happened, and failing here would re-run it forever.
+  // "conversation" carries a session, not a message, so it has no row to stamp and stays
+  // unrecoverable — a deliberate gap, not an oversight (see sweepUnlearnedSignals).
+  if ("message_id" in job) {
+    await learnRepo.markLearned(job.message_id)
+      .catch((err) => logger.warn("Could not stamp learned_at", { messageId: job.message_id, err: String(err) }));
   }
+  return result;
+}
+
+/** How long a published job is presumed still in flight before the sweep treats it as lost. */
+const LEARN_RECOVERY_GRACE_MIN = Number(process.env.LEARN_RECOVERY_GRACE_MIN) || 15;
+/** One sweep's worth — a backlog drains over successive hourly runs rather than in one burst. */
+const LEARN_RECOVERY_BATCH = 200;
+
+/**
+ * Re-enqueue learning signals that were accepted and stored but whose job never reached the
+ * broker. enqueueLearning is fire-and-forget by design (a dead broker must never fail a user's
+ * write), and the callers persist the signal on the row before enqueuing — so an outage loses
+ * only the replay, and this is what replays it once the broker is back (Greptile P2).
+ *
+ * Mirrors the enqueue conditions in learning-signals.service.ts exactly: a review is learnable
+ * when it is "corrected" or the reply used memories; a thumb only when the reply used memories.
+ * Keep the two in step — a row this sweep enqueues but that path would not is a row the worker
+ * will find nothing to do with, and it would be picked up again on every sweep forever.
+ */
+export async function sweepUnlearnedSignals(): Promise<{ found: number; requeued: number }> {
+  const rows = await learnRepo.findUnlearnedSignals(LEARN_RECOVERY_GRACE_MIN, LEARN_RECOVERY_BATCH);
+  let requeued = 0;
+  for (const row of rows) {
+    const usedMemories = row.memory_ids.length > 0;
+    const kind = row.review_status && (row.review_status === "corrected" || usedMemories) ? "correction"
+      : row.feedback && usedMemories ? "feedback"
+      : null;
+    // Nothing to learn from (a bare thumb on a reply that used no memories). Stamp it so the
+    // sweep stops reconsidering it on every run — the signal is kept on the row either way.
+    if (!kind) {
+      await learnRepo.markLearned(row.id).catch(() => { /* retried next sweep */ });
+      continue;
+    }
+    const session = await learnRepo.findSession(row.session_id);
+    const owner = session && await learnRepo.institutionForSession(session);
+    if (!owner) continue; // not an institution-owned chat; nothing to learn into
+    if (await enqueueLearning({ kind, institution_id: owner.institutionId, message_id: row.id })) requeued++;
+  }
+  if (rows.length) logger.info("Learning recovery sweep", { found: rows.length, requeued });
+  return { found: rows.length, requeued };
 }

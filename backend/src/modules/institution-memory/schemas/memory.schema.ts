@@ -81,6 +81,29 @@ const meta = {
 
 export const METADATA_BY_TYPE: Record<MemoryType, z.ZodType<Record<string, unknown>, z.ZodTypeDef, unknown>> = meta;
 
+/**
+ * Metadata keys the EXTRACTOR writes in its own words, lifted from the transcript — as opposed to
+ * ids, enums, dates, urls and country codes, which it can only pick from a fixed shape.
+ *
+ * Only `content` is PII-filtered (evaluateCandidate); metadata otherwise gets a zod SHAPE check
+ * that inspects no text, and memory reads return metadata verbatim to the institution portal.
+ * `COUNSELLOR_CORRECTION.original_excerpt` was the instance Greptile caught and it was deleted,
+ * but the hole is the class, not that field: a model is free to put a student's name into
+ * `concern`, or quote the reply into `example`, and nothing would look.
+ *
+ * Listed explicitly rather than "every string in metadata" because the structured values are
+ * exactly the ones a text filter misreads — PII_RE's phone pattern matches the digits in an
+ * ISO date, so scanning `effective_until` would reject valid policy metadata.
+ *
+ * ADD A FREE-TEXT FIELD ABOVE → ADD ITS KEY HERE. Covered by tests/institution-memory-learning.ts.
+ */
+export const FREE_TEXT_METADATA_KEYS: ReadonlySet<string> = new Set([
+  "trigger", "example",            // RESPONSE_PATTERN
+  "prefer", "avoid",               // COURSE_RECOMMENDATION_RULE
+  "term", "meaning", "use_instead_of", // TERMINOLOGY
+  "concern", "approach",           // STUDENT_CONCERN_PATTERN
+]);
+
 /** One atomic statement. 600 chars is a paragraph, not a document. */
 const Content = z.string().trim().min(3).max(600);
 const Base = z.object({

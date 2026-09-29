@@ -115,7 +115,9 @@
     "test:browser-slot": "node --import tsx tests/browser-slot.ts",
     "test:non-course-url": "node --import tsx tests/non-course-url.ts",
     "test:llm-request-timeout": "node --import tsx tests/llm-request-timeout.ts",
-    "test:site-intelligence-overwrite": "node --import tsx tests/site-intelligence-overwrite.ts"
+    "test:site-intelligence-overwrite": "node --import tsx tests/site-intelligence-overwrite.ts",
+    "test:rag-money-topics": "node --import tsx tests/rag-money-topics.ts",
+    "test:institution-memory-recovery": "node --import tsx tests/institution-memory-recovery.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",
