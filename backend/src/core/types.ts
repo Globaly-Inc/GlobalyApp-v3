@@ -61,6 +61,8 @@ export interface InstitutionRecord {
   claim_token_expires_at: Date | null;
   /** Extraction provenance — the catalog is read through this, never copied. */
   source_job_id: string | null;
+  /** Set on a branch created from another institution's Branches tab — see createInstitutionBranch. */
+  parent_institution_id?: number | null;
   /** NULL until the tenant schema exists; promoted listings get one on claim. */
   schema_provisioned_at: Date | null;
   meta: Record<string, unknown>;

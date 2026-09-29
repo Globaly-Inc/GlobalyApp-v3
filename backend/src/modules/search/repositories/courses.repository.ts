@@ -3,6 +3,8 @@
 // catalog exists yet (see business-services promote.service.ts stub).
 
 import { masterKnex } from "../../../core/db/master-pool.js";
+import { applyCourseScope, type SharedCourses } from "../../superadmin/data-extraction/repositories/courses.repository.js";
+import { resolveSharedCourses } from "../../superadmin/platform/business-branches/repositories/business-branches.repository.js";
 import { SUPERADMIN_SCHEMA as S } from "../../superadmin/consts.js";
 import { courseSlug, parseCourseIdFragment } from "../utils/slug.js";
 import * as filesRepo from "../../../shared/storage/files.repository.js";
@@ -26,6 +28,8 @@ export type CourseSearchFilters = {
   jobId?: string;
   /** Restricts to specific courses — how the saved-courses list reuses this query. */
   courseIds?: string[];
+  /** With `jobId`: also the courses a parent institution shares with this branch. */
+  shared?: SharedCourses | null;
 };
 
 export type CourseSort = "best_match" | "fee_asc" | "fee_desc" | "duration_asc";
@@ -225,13 +229,13 @@ const CARD_COLUMNS = [CAMPUS_LOCATIONS, installmentColumn("domestic"), installme
  * for their own courses — the self-service "Preview" button. Verified by the route from the
  * caller's JWT (see utils/preview-auth.ts); never take it from an unauthenticated source.
  */
-function courseQuery(previewSchemaName?: string) {
+function courseQuery(previewSchemaNames?: string[]) {
   return masterKnex(`${S}.extraction_courses as ec`)
     .leftJoin("countries as c", (j) => j.on(masterKnex.raw("upper(c.iso2) = upper(ec.country_code)")))
     .join("institutions as inst", (j) => {
       j.on("inst.source_job_id", "ec.job_id");
-      if (previewSchemaName) {
-        j.andOn((sub) => sub.onVal("inst.is_published", true).orOnVal("inst.schema_name", previewSchemaName));
+      if (previewSchemaNames?.length) {
+        j.andOn((sub) => sub.onVal("inst.is_published", true).orOnIn("inst.schema_name", previewSchemaNames));
       } else {
         j.andOnVal("inst.is_published", true);
       }
@@ -243,23 +247,23 @@ function courseQuery(previewSchemaName?: string) {
       // A manually-created institution's job is created with status "done", never "exported"
       // (see businesses.service.ts) — its own owner previewing a course would otherwise always
       // 404 even with a valid preview token, since that token only bypassed inst.is_published.
-      if (previewSchemaName) b.orWhereRaw(`${NOT_REJECTED} and inst.schema_name = ?`, [previewSchemaName]);
+      if (previewSchemaNames?.length) b.orWhereRaw(`${NOT_REJECTED} and inst.schema_name = any(?)`, [previewSchemaNames]);
     })
     // A course's own draft/publish state (migration 20260925_003) — same preview bypass as the
     // institution's is_published above, so the owner's own "Preview" button still shows a draft.
     .where((b) => {
       b.where("ec.is_published", true);
-      if (previewSchemaName) b.orWhere("inst.schema_name", previewSchemaName);
+      if (previewSchemaNames?.length) b.orWhereIn("inst.schema_name", previewSchemaNames);
     });
 }
 
 function baseQuery({
   country, city, degreeLevel, subjectArea, search, feeMin, feeMax, currency, intakeYear,
-  institution, duration, jobId, courseIds,
+  institution, duration, jobId, courseIds, shared,
 }: CourseSearchFilters) {
   const q = courseQuery();
 
-  if (jobId) q.where("ec.job_id", jobId);
+  if (jobId) q.where((b) => applyCourseScope(b, "ec.", jobId, shared));
   if (courseIds) q.whereIn("ec.id", courseIds);
   if (country) {
     q.where((b) =>
@@ -414,10 +418,11 @@ type AreaRow = { area: string; level: string | null; count: string; fee_min: str
  * degree-level spread and fee range) plus the flat level counts the course tabs use. Both go
  * through `baseQuery`, so the numbers can't disagree with the list those tabs then load.
  */
-export async function listCourseFacets(jobId: string) {
+/** `shared` — a branch's facets cover the courses its parent shares too, same as its count/list. */
+export async function listCourseFacets(jobId: string, shared?: SharedCourses | null) {
   const [areaRows, degreeLevels] = await Promise.all([
     // Grouped by (area, level) — one pass gives both the per-area totals and their degree spread.
-    baseQuery({ jobId }).whereNotNull("ec.subject_area")
+    baseQuery({ jobId, shared }).whereNotNull("ec.subject_area")
       .select("ec.subject_area as area", "ec.degree_level as level")
       .count("ec.id as count")
       // A zero fee means "not captured", not "free" — nullif keeps it out of the range.
@@ -429,7 +434,7 @@ export async function listCourseFacets(jobId: string) {
         `min(case when nullif(${EFFECTIVE_FEE}, 0) is not null then ${EFFECTIVE_CURRENCY} end) as currency`,
       ))
       .groupBy("ec.subject_area", "ec.degree_level"),
-    baseQuery({ jobId }).whereNotNull("ec.degree_level")
+    baseQuery({ jobId, shared }).whereNotNull("ec.degree_level")
       .select("ec.degree_level as name").count("ec.id as count")
       .groupBy("ec.degree_level").orderBy([{ column: "count", order: "desc" }, { column: "name" }]),
   ]);
@@ -539,14 +544,53 @@ export async function listCourseCampuses(courseId: string, jobId: string) {
     .orderBy("cam.name");
 }
 
+/**
+ * A branch lists courses its parent shares (see resolveSharedCourses), and those belong to the
+ * PARENT's job — so a branch member's preview must also get past the publish gate for the parent
+ * chain, or previewing a shared course from an unpublished parent 404s. Only ever used together
+ * with that branch's shared scope (previewSharedCourseScope), never on its own: the chain alone
+ * would expose every unpublished course of the parent, not just the shared ones.
+ */
+async function previewSchemasWithAncestors(schemaName: string): Promise<string[]> {
+  const schemas = [schemaName];
+  let row = await masterKnex("institutions").where({ schema_name: schemaName }).first("parent_institution_id");
+  // ponytail: depth cap guards a parent cycle; real chains are 1–2 deep.
+  for (let depth = 0; row?.parent_institution_id && depth < 5; depth++) {
+    const parent = await masterKnex("institutions").where({ id: row.parent_institution_id }).first("schema_name", "parent_institution_id");
+    if (!parent) break;
+    schemas.push(parent.schema_name);
+    row = parent;
+  }
+  return schemas;
+}
+
+/** The previewing branch's own job + what its parent chain shares with it; null if nothing is shared. */
+async function previewSharedCourseScope(schemaName: string) {
+  const inst = await masterKnex("institutions").where({ schema_name: schemaName }).first("id", "source_job_id");
+  if (!inst?.source_job_id) return null;
+  const shared = await resolveSharedCourses(Number(inst.id));
+  return shared ? { jobId: String(inst.source_job_id), shared } : null;
+}
+
 export async function findPublicCourseBySlug(slug: string, previewSchemaName?: string) {
   const fragment = parseCourseIdFragment(slug);
   if (!fragment) return null;
 
-  const course = await courseQuery(previewSchemaName)
+  const lookup = (previewSchemas?: string[]) => courseQuery(previewSchemas)
     .whereRaw("left(replace(ec.id::text, '-', ''), 6) = ?", [fragment])
-    .select(...LIST_COLUMNS, ...CARD_COLUMNS, ...DETAIL_COLUMNS)
-    .first();
+    .select(...LIST_COLUMNS, ...CARD_COLUMNS, ...DETAIL_COLUMNS);
+
+  // The token's own institution first. Only if that misses does the preview widen to the parent
+  // chain — and then strictly to the courses shared with this branch.
+  let course = await lookup(previewSchemaName ? [previewSchemaName] : undefined).first();
+  if (!course && previewSchemaName) {
+    const scope = await previewSharedCourseScope(previewSchemaName);
+    if (scope) {
+      course = await lookup(await previewSchemasWithAncestors(previewSchemaName))
+        .where((b) => applyCourseScope(b, "ec.", scope.jobId, scope.shared))
+        .first();
+    }
+  }
   if (!course) {
     // ponytail: temporary diagnostic for the preview-404 report, gated to the authenticated
     // preview path only — an ordinary public miss (a stale link, someone guessing a slug) is

@@ -10,13 +10,13 @@ import { BRANCH_TYPE_OPTIONS } from "../../const";
 import type { BranchType } from "../../apis/types";
 
 export type BranchForm = {
-  name: string; countryId: string; city: string; address: string; state: string; postcode: string;
-  email: string; phone: string; website: string;
+  name: string; countryId: string; city: string; address: string; state: string;
+  email: string; phone: string;
 };
 
 export const EMPTY_BRANCH_FORM: BranchForm = {
-  name: "", countryId: "", city: "", address: "", state: "", postcode: "",
-  email: "", phone: "", website: "",
+  name: "", countryId: "", city: "", address: "", state: "",
+  email: "", phone: "",
 };
 
 export function CreateBranchDetailsStep({
@@ -77,10 +77,7 @@ export function CreateBranchDetailsStep({
           />
         </div>
         <FieldError message={errors.countryId} />
-        <div className="grid grid-cols-2 gap-3">
-          <Input className="h-10" value={form.state} onChange={(e) => onChange("state", e.target.value)} placeholder="State / Province" />
-          <Input className="h-10" value={form.postcode} onChange={(e) => onChange("postcode", e.target.value)} placeholder="Postcode" />
-        </div>
+        <Input className="h-10" value={form.state} onChange={(e) => onChange("state", e.target.value)} placeholder="State / Province" />
         <Input className="h-10" value={form.address} onChange={(e) => onChange("address", e.target.value)} placeholder="Street address" />
       </div>
 
@@ -100,12 +97,6 @@ export function CreateBranchDetailsStep({
       <div className="flex flex-col gap-2">
         <Label>Phone</Label>
         <PhoneInput value={form.phone} onChange={(v) => onChange("phone", v)} placeholder="(201) 555-0123" />
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <Label>Website</Label>
-        <Input className="h-10" aria-invalid={!!errors.website} value={form.website} onChange={(e) => onChange("website", e.target.value)} placeholder="https://branch.example.com" />
-        <FieldError message={errors.website} />
       </div>
 
       <div className="rounded-lg border border-border bg-muted/50 p-3 space-y-1">

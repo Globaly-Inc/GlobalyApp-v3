@@ -26,6 +26,11 @@ export async function institutionBranchesRoutes(app: FastifyInstance) {
     return reply.status(201).send(branch);
   });
 
+  app.get("/branches/:subId", { preHandler: requireInstitutionContext }, async (req, reply) => {
+    const { subId } = SubIdSchema.parse(req.params);
+    return reply.send(await service.getInstitutionBranch(req.institutionId, subId));
+  });
+
   app.patch("/branches/:subId", { preHandler: requireInstitutionContext }, async (req, reply) => {
     const { subId } = SubIdSchema.parse(req.params);
     const data = BranchPatchSchema.parse(req.body);

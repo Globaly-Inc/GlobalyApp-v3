@@ -13,6 +13,7 @@ export type Branch = {
   email: string | null;
   is_primary: boolean;
   linked_business_id: number | null;
+  linked_institution_id: number | null;
   branch_type: BranchType;
   share_description: boolean;
   shared_services: SharedServices;
@@ -41,9 +42,11 @@ export type BranchInput = {
   branch_type?: BranchType;
   share_description?: boolean;
   shared_services?: SharedServices;
+  /** Create-only: saved on the branch's own org (it's a real business/institution). */
+  registration_licenses?: Record<string, unknown> | null;
 };
 
-export type BranchPatch = Partial<BranchInput>;
+export type BranchPatch = Partial<Omit<BranchInput, "registration_licenses">>;
 
 export type LinkExistingBranchInput = {
   business_id: number;

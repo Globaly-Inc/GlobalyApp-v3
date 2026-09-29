@@ -19,6 +19,12 @@ export const fetchBranches = createAsyncThunk(
   ({ id, params }: { id: number; params?: BranchListParams }, { getState }) =>
     businessProfileDetailApi.getBranches(params, getOrgBase(getState)),
 );
+// A direct visit to an edit URL has no branch list loaded — fetch the one branch instead.
+export const fetchBranch = createAsyncThunk(
+  "businessProfileDetail/fetchBranch",
+  ({ branchId }: { id: number; branchId: string }, { getState }) =>
+    businessProfileDetailApi.getBranch(branchId, getOrgBase(getState)),
+);
 export const createBranch = createAsyncThunk(
   "businessProfileDetail/createBranch",
   ({ id, input }: { id: number; input: BranchInput }, { getState }) =>

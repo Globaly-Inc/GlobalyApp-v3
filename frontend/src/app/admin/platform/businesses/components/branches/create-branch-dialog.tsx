@@ -12,7 +12,7 @@ import type { CityOption } from "@/app/admin/platform/categories/apis/types";
 import { fetchCountries } from "@/app/admin/platform/categories/store/categories-slice";
 import type { Branch, BranchType, SharedServices } from "../../apis/types";
 import { createBranch, updateBranch } from "../../store/businesses-slice";
-import { isValidEmail, isValidUrl } from "../../utils";
+import { isValidEmail } from "../../utils";
 import { BranchStepper } from "./branch-stepper";
 import { CreateBranchDetailsStep, EMPTY_BRANCH_FORM } from "./create-branch-details-step";
 import { CreateBranchCopyStep } from "./create-branch-copy-step";
@@ -105,7 +105,6 @@ export function CreateBranchDialog({
     if (form.name.trim().length < 2) next.name = "Branch name is required";
     if (!form.countryId) next.countryId = "Select a country";
     if (form.email && !isValidEmail(form.email)) next.email = "Enter a valid email";
-    if (form.website && !isValidUrl(form.website)) next.website = "Enter a valid website URL";
     setErrors(next);
     return Object.keys(next).length === 0;
   };
