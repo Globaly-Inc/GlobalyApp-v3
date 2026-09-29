@@ -5,7 +5,7 @@
 import { masterKnex } from "../../../core/db/master-pool.js";
 import { applyCourseScope, type SharedCourses } from "../../superadmin/data-extraction/repositories/courses.repository.js";
 import { resolveSharedCourses } from "../../superadmin/platform/business-branches/repositories/business-branches.repository.js";
-import { SUPERADMIN_SCHEMA as S } from "../../superadmin/consts.js";
+import { SUPERADMIN_SCHEMA as S, approvedCourseSql } from "../../superadmin/consts.js";
 import { courseSlug, parseCourseIdFragment } from "../utils/slug.js";
 import * as filesRepo from "../../../shared/storage/files.repository.js";
 import * as storage from "../../../shared/storage/storageService.js";
@@ -30,6 +30,9 @@ export type CourseSearchFilters = {
   courseIds?: string[];
   /** With `jobId`: also the courses a parent institution shares with this branch. */
   shared?: SharedCourses | null;
+  /** The owner's verified preview schema (resolvePreviewSchemaName) — lets the profile's own
+   *  course list, count and facets show what its preview detail page already opens. */
+  previewSchemaNames?: string[];
 };
 
 export type CourseSort = "best_match" | "fee_asc" | "fee_desc" | "duration_asc";
@@ -93,20 +96,21 @@ const campusFilter = (course: string) => `(
 
 /**
  * Public visibility = the course's job was promoted to a business (promote.service.ts sets status
- * 'exported'), and an admin hasn't rejected the course.
+ * 'exported'), and an admin APPROVED the course (APPROVED_COURSE_STATUSES) — unapproved imports,
+ * owner-added courses and rejected ones never reach students.
  *
- * 'flagged' is what reject/bulk-reject write (courses.service.ts) — showing a rejected course to
- * students is the one verification state that must not leak. The other states stay visible:
- * requiring 'confirmed' would empty the catalog, since an extracted course starts 'unverified'
- * and most are never hand-approved.
+ * NOT_REJECTED is the looser rule kept only for the owner's own Preview (courseQuery): an owner
+ * must still be able to see a course of theirs that is awaiting approval.
  */
 export const NOT_REJECTED = "coalesce(ec.verification_status, 'unverified') <> 'flagged'";
-/** Not rejected AND not an owner's draft (is_published) — what any public reader of a course must
+/** Admin-approved (APPROVED_COURSE_STATUSES). */
+export const APPROVED = approvedCourseSql("ec");
+/** Approved AND not an owner's draft (is_published) — what any public reader of a course must
  * require. courseQuery applies is_published separately so its preview token can bypass it. */
-export const PUBLIC_COURSE = `${NOT_REJECTED} and ec.is_published`;
+export const PUBLIC_COURSE = `${APPROVED} and ec.is_published`;
 
 const PUBLICLY_VISIBLE = `exists (select 1 from ${S}.extraction_jobs ej where ej.id = ec.job_id and ej.status = 'exported')
-  and ${NOT_REJECTED}`;
+  and ${APPROVED}`;
 
 /**
  * The institution's crest. Promote copies the scraped logo into `institutions.logo_url`, but a
@@ -259,9 +263,9 @@ function courseQuery(previewSchemaNames?: string[]) {
 
 function baseQuery({
   country, city, degreeLevel, subjectArea, search, feeMin, feeMax, currency, intakeYear,
-  institution, duration, jobId, courseIds, shared,
+  institution, duration, jobId, courseIds, shared, previewSchemaNames,
 }: CourseSearchFilters) {
-  const q = courseQuery();
+  const q = courseQuery(previewSchemaNames);
 
   if (jobId) q.where((b) => applyCourseScope(b, "ec.", jobId, shared));
   if (courseIds) q.whereIn("ec.id", courseIds);
@@ -419,10 +423,10 @@ type AreaRow = { area: string; level: string | null; count: string; fee_min: str
  * through `baseQuery`, so the numbers can't disagree with the list those tabs then load.
  */
 /** `shared` — a branch's facets cover the courses its parent shares too, same as its count/list. */
-export async function listCourseFacets(jobId: string, shared?: SharedCourses | null) {
+export async function listCourseFacets(jobId: string, shared?: SharedCourses | null, previewSchemaNames?: string[]) {
   const [areaRows, degreeLevels] = await Promise.all([
     // Grouped by (area, level) — one pass gives both the per-area totals and their degree spread.
-    baseQuery({ jobId, shared }).whereNotNull("ec.subject_area")
+    baseQuery({ jobId, shared, previewSchemaNames }).whereNotNull("ec.subject_area")
       .select("ec.subject_area as area", "ec.degree_level as level")
       .count("ec.id as count")
       // A zero fee means "not captured", not "free" — nullif keeps it out of the range.
@@ -434,7 +438,7 @@ export async function listCourseFacets(jobId: string, shared?: SharedCourses | n
         `min(case when nullif(${EFFECTIVE_FEE}, 0) is not null then ${EFFECTIVE_CURRENCY} end) as currency`,
       ))
       .groupBy("ec.subject_area", "ec.degree_level"),
-    baseQuery({ jobId, shared }).whereNotNull("ec.degree_level")
+    baseQuery({ jobId, shared, previewSchemaNames }).whereNotNull("ec.degree_level")
       .select("ec.degree_level as name").count("ec.id as count")
       .groupBy("ec.degree_level").orderBy([{ column: "count", order: "desc" }, { column: "name" }]),
   ]);

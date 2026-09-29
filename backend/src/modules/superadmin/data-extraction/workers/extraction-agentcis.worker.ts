@@ -39,7 +39,9 @@ async function fetchInstitutionById(id: string): Promise<Record<string, unknown>
       const params = new URLSearchParams();
       params.set("page[number]", String(page));
       params.set("page[size]", String(PAGE_SIZE));
-      params.set("include", "branches,products");
+      // `country` too: without it the API sends a bare id, and COUNTRY_MAP's ids don't match
+      // AgentCIS's (Australia is 11 there).
+      params.set("include", "branches,products,country");
       data = await fetchAgentcisSearchPage(params);
     } catch {
       break;

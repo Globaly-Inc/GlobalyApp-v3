@@ -207,6 +207,12 @@ export async function rerunJob(jobId: string, adminId: number) {
   const job = await findJobById(jobId);
   if (!job) throw new NotFoundError("Extraction job not found");
 
+  // A spreadsheet job's rows exist only in the file it came from — and its institution_url may be a
+  // synthetic placeholder the web crawler must never be pointed at.
+  if (job.source_type === "spreadsheet") {
+    throw new BadRequestError("This extraction came from a spreadsheet — delete it and import the sheet again to refresh it");
+  }
+
   if (job.source_type === "agentcis") {
     const progress = typeof job.pipeline_progress === "string"
       ? JSON.parse(job.pipeline_progress) : (job.pipeline_progress || {});

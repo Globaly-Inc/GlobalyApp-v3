@@ -200,6 +200,11 @@ export const allExtractionsRealApi = {
     await httpPost(`/admin/data-extraction/courses/bulk-verify`, { ids, approve });
   },
 
+  /** Every not-yet-approved course of the job (flagged ones stay flagged). */
+  approveAllCourses: async (jobId: string): Promise<{ updated: number }> => {
+    return httpPost(`/admin/data-extraction/jobs/${jobId}/courses/approve-all`, {});
+  },
+
   rejectCourse: async (id: string): Promise<void> => {
     await httpPost(`/admin/data-extraction/courses/${id}/reject`, {});
   },

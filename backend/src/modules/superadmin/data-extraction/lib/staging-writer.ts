@@ -1473,6 +1473,21 @@ export function eligibilityRowsAgree(
 }
 
 /**
+ * Strict twin of eligibilityRowsAgree for a structured source (AgentCIS): each product is a
+ * complete record, so a blank means "not required", not "not stated on this page" — sharing a row
+ * on a blank showed one course's GRE/GMAT/SAT minimums on courses that demand none.
+ */
+export function eligibilityRowsIdentical(
+  existing: Record<string, unknown>,
+  fields: Record<string, unknown>,
+): boolean {
+  const blank = (v: unknown) => v == null || v === "";
+  const sameValue = (a: unknown, b: unknown) => (blank(a) && blank(b)) || (!blank(a) && !blank(b) && eligValuesAgree(a, b));
+  return ELIG_GATE_FIELDS.every((f) => sameValue(existing[f], fields[f]))
+    && testRules(existing.academic_tests).join(" | ") === testRules(fields.academic_tests).join(" | ");
+}
+
+/**
  * Rows the model returned as eligibility that are not admission criteria: a scholarship's own
  * conditions, application paperwork, visa/accommodation notes, "inherent requirements". Named in
  * ELIGIBILITY_SCOPE_RULE, and re-checked here because the model does not always obey the rule and
@@ -1591,6 +1606,8 @@ export async function upsertEligibility(
   jobId: string,
   elig: ExtractedEligibility,
   fields: Record<string, unknown>,
+  /** Structured source — only an identical row may be shared (see eligibilityRowsIdentical). */
+  opts: { exact?: boolean } = {},
 ): Promise<string> {
   const name = (elig.name ?? "").trim();
   if (name) {
@@ -1601,9 +1618,8 @@ export async function upsertEligibility(
       .where({ job_id: jobId, applicable_to: elig.applicable_to ?? "both" })
       .whereRaw("LOWER(TRIM(name)) = ?", [name.toLowerCase()])
       .orderBy("created_at", "asc");
-    const existing = candidates.find((row: Record<string, unknown>) =>
-      eligibilityRowsAgree(row, fields),
-    );
+    const matches = opts.exact ? eligibilityRowsIdentical : eligibilityRowsAgree;
+    const existing = candidates.find((row: Record<string, unknown>) => matches(row, fields));
     if (existing) {
       // academic_tests is compared unparsed: '[]' is the column default, so "existing is empty"
       // is the one case worth overwriting — an earlier page that found no tests must not keep a

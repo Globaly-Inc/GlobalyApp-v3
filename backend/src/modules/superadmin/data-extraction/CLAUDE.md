@@ -1167,3 +1167,53 @@ names, and units go to the table that already exists for them.
 - **Tests.** `npm run test:course-entity-resolution` — 47 labelled pairs in
   `tests/fixtures/course-entity-resolution.json`; any `identical` verdict on a pair not labelled
   identical fails the run. Add a case whenever a reviewer overturns a pipeline decision.
+
+## Spreadsheet institution import (2026-09-29)
+
+Not a V2 behaviour — explicitly requested. Admin uploads a workbook (one tab per institution, one
+row per course), maps columns onto system fields in the browser, and each institution becomes its
+own `source_type: "spreadsheet"` job. `POST /spreadsheet/check-names` + `POST /spreadsheet/import`
+(one institution per request, 20 MB body limit) → `EXTRACTION_QUEUES.SPREADSHEET` →
+`npm run job:extraction-spreadsheet`.
+
+- **No second writer.** `lib/spreadsheet-mappers.ts` `rowToProduct` reshapes a mapped row into the
+  AgentCIS product shape and `lib/spreadsheet-staging.ts` hands it to `stageProduct`, so fees,
+  intakes, eligibility (exact-match sharing), English requirements, duration and course identity all
+  go through the AgentCIS path. The sheet's fee amount is PER PERIOD (user decision: "per semester
+  fee"), stored as amount × instalments — the same arithmetic AgentCIS's fee_items already use.
+- **Never merges into an existing institution** (user decision): a name already used by an
+  extraction job or a live institution is refused (409); the wizard asks for a rename or a skip.
+- Imported courses land `pending` → "Awaiting approval", invisible until approved.
+- A bad row is recorded in `pipeline_progress.errors` (first 50) and skipped, not fatal.
+- **Multi-tab template** (`frontend/public/templates/institution-import-template.xlsx`): tabs named
+  Institution, Courses, Eligibility, Branches, Agents, Fees, Intakes, Scholarships, Study Units,
+  Study Options, Accreditations — ONE institution per file, named only in the Institution tab's
+  Institution Name column (never a tab name, so Excel's 31-char tab limit can't cut it; an
+  Institution tab listing several is refused). The wizard detects it (Institution + Courses tabs), skips Map, folds
+  Eligibility into the course rows, and sends the rest as `extras`; `lib/spreadsheet-extras-staging.ts`
+  stages them AFTER the courses through the shared upserts, linking by the Course Names cell (";"-
+  separated, blank = every course). An accreditation with no linked course is not written —
+  `extraction_accreditations` has no job_id, so it would be unreachable.
+- **Any tab-per-section workbook, not just ours.** The wizard's Map step maps each tab onto a section
+  and each column onto that section's fields (frontend `const/template-sections.ts`,
+  `utils/template-mapping.ts`), auto-matched by name/aliases — our template maps itself. Mapped
+  rows reach the backend in the same `rows` + `extras` shape, so nothing server-side changed.
+- **Course rows may carry several fees and branches.** `fee_amount` is international tuition;
+  `domestic_fee_amount` and `application_fee_*` become their own fee lines — each fee_item may state
+  its own `student_type` and `period`, which `stageProduct` honours (AgentCIS items state neither,
+  so that path is unchanged). `branch_names` links the course to campuses: `stageBranches` creates
+  every named campus (plus the Branches tab) BEFORE any course, so stageProduct's campusMap links
+  them by name. A heading used twice ("INSTALLMENT TYPE") is kept as "… (2)" by parseWorkbook.
+- **English score cells** (IELTS/TOEFL/PTE/Duolingo) take one number (overall) or a comma list in
+  the fixed order Overall, Listening, Reading, Writing, Speaking (`englishBands`,
+  spreadsheet-mappers.ts); the wizard validates each band.
+- **A fee line is a RATE × count**, stored as that many installments at the rate
+  (`repeatInstallments`, installment-parser.ts) — never the total re-split by `parseInstallments`,
+  which halved a one-semester fee into two payments and turned 8 semesters into 2. Applies to the
+  AgentCIS path too (`stageProduct`), whose fee_items have the same amount × instalment meaning.
+- **A failed spreadsheet import doesn't hold its name.** Such jobs can't be rerun, so
+  `findExistingNames` ignores them and `startImport` deletes the failed job (rows cascade) before
+  creating the new one. The wizard polls each job (`GET /jobs/:id`) until done/failed before
+  reporting success, so a staging failure keeps the admin's file and fixes for "Retry failed".
+- Guarded by `npm run test:spreadsheet-import` (pure, real rows). Verified over the first real
+  workbook: all 3,771 rows parse duration, every intake month, degree level and fee.

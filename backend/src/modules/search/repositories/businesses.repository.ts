@@ -269,8 +269,8 @@ export async function listInstitutionIntakeMonths() {
 
 /**
  * Courses of a promoted institution, via its source job — the same set the profile's course tab
- * lists (countPublicCourses). Not gated on `verification_status`: the public catalog isn't
- * either, so counting only 'confirmed' rows put a 0 on the card beside a profile full of courses.
+ * lists (countPublicCourses). Same APPROVED gate as that list, so the card's count can't disagree
+ * with the courses the profile actually shows.
  */
 function institutionCourseCount() {
   return masterKnex.raw(

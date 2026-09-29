@@ -142,16 +142,18 @@ async function courseToService(c: {
   };
 }
 
+// Admin's Services tab for an institution: approved courses only, the same set its public pages
+// show — unapproved ones are reviewed (and approved) from the extraction's Courses tab.
 export async function listServices(_institutionId: number, jobId: string) {
-  const rows = await coursesRepo.listCoursesByJob(jobId, 10000, 0, {}, "newest");
+  const rows = await coursesRepo.listCoursesByJob(jobId, 10000, 0, { approvedOnly: true }, "newest");
   const prices = await getFeePricesForCourses(jobId, rows.map((r) => r.id));
   return Promise.all(rows.map((r) => courseToService(r, prices.get(r.id))));
 }
 
 export async function searchServices(_institutionId: number, jobId: string, limit: number, offset: number, search?: string) {
   const [rows, total] = await Promise.all([
-    coursesRepo.listCoursesByJob(jobId, limit, offset, { search }, "recently_updated"),
-    coursesRepo.countCoursesByJob(jobId, { search }),
+    coursesRepo.listCoursesByJob(jobId, limit, offset, { search, approvedOnly: true }, "recently_updated"),
+    coursesRepo.countCoursesByJob(jobId, { search, approvedOnly: true }),
   ]);
   const prices = await getFeePricesForCourses(jobId, rows.map((r) => r.id));
   return { rows: await Promise.all(rows.map((r) => courseToService(r, prices.get(r.id)))), total };
@@ -207,6 +209,9 @@ export async function createService(_institutionId: number, jobId: string, data:
     // either. The owner publishes explicitly once the listing is actually ready.
     is_published: false,
     created_by_platform_user_id: adminId ?? null,
+    // Admin-created (this path is superadmin-only), so approved by definition — same as the
+    // extraction screen's own create (courses.service createCourse).
+    verification_status: "manual",
   });
   return getService(_institutionId, jobId, row.id);
 }

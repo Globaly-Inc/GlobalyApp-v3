@@ -415,6 +415,26 @@ services:
     networks:
       - globalyapp
 
+  extraction-spreadsheet-worker:
+    container_name: globalyapp-extraction-spreadsheet-worker
+    image: globalyapp-backend:local
+    profiles: ["globalyapp-extraction-spreadsheet"]
+    command: npm run job:extraction-spreadsheet
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dragonfly:
+        condition: service_started
+      lavinmq:
+        condition: service_started
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
   extraction-course-bulk-delete-worker:
     container_name: globalyapp-extraction-course-bulk-delete-worker
     image: globalyapp-backend:local

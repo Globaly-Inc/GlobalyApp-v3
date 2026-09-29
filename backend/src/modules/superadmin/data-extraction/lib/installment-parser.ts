@@ -42,6 +42,38 @@ export function parseInstallments(opts: {
   }));
 }
 
+const MAX_INSTALLMENTS = 120;
+
+/**
+ * A stated per-period RATE paid `count` times (a spreadsheet or AgentCIS fee line: amount ×
+ * instalments) — every installment is that rate. parseInstallments would instead re-split the
+ * total by the period's own count, so a one-semester fee became two half-payments and 8 semesters
+ * at 9,464 became two payments of 37,856.
+ */
+export function repeatInstallments(
+  rate: number,
+  count: number | null | undefined,
+  periodType?: string | null,
+): { total: number; installments: Installment[] } {
+  if (!rate || rate <= 0) return { total: 0, installments: [] };
+  // Count and total are settled HERE, once, so the stored total, the number of payments and
+  // their sum can't disagree: whole payments, the rounding remainder on the last (as
+  // parseInstallments does) — 4 × 10,522.08 is 42,088 in total and 10,522 × 4 in payments.
+  const n = Math.max(1, Math.round(count || 1));
+  const total = Math.round(rate * n);
+  // Beyond a plausible schedule (monthly for ten years) the count is a typo or garbage from a
+  // sheet — one Total line keeps the amount without building a list that size in memory.
+  if (n > MAX_INSTALLMENTS || (n === 1 && !/semester|trimester|term|year/i.test(periodType ?? ""))) {
+    return { total, installments: [{ label: "Total", amount: total }] };
+  }
+  const label = pickLabelFn(null, periodType, n);
+  const base = Math.floor(total / n);
+  return {
+    total,
+    installments: Array.from({ length: n }, (_, i) => ({ label: label(i, n), amount: i === n - 1 ? total - base * (n - 1) : base })),
+  };
+}
+
 // ── internal ────────────────────────────────────────────────────────────
 
 function resolveCount(

@@ -111,6 +111,12 @@ export async function coursesRoutes(app: FastifyInstance) {
     return reply.send(await service.bulkVerifyCourses(ids, approve, adminId(req)));
   });
 
+  // POST /jobs/:id/courses/approve-all — every course of the job, not just the loaded page
+  app.post("/jobs/:id/courses/approve-all", async (req, reply) => {
+    const { id } = UuidParamSchema.parse(req.params);
+    return reply.send(await service.approveAllCourses(id, adminId(req)));
+  });
+
   // RC4: POST /courses/:id/approve
   app.post("/courses/:id/approve", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);

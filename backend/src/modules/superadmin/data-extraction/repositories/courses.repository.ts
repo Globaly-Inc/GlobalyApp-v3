@@ -2,7 +2,7 @@
 
 import type { Knex } from "knex";
 import { masterKnex } from "../../../../core/db/master-pool.js";
-import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
+import { APPROVED_COURSE_STATUSES, SUPERADMIN_SCHEMA as S } from "../../consts.js";
 const T = `${S}.extraction_courses`;
 
 export type CourseListFilters = {
@@ -10,6 +10,9 @@ export type CourseListFilters = {
   courseCategory?: "academic" | "short_course";
   /** Also include the courses a parent institution shares with a branch — see SharedCourses. */
   shared?: SharedCourses | null;
+  /** Only admin-approved courses (APPROVED_COURSE_STATUSES) — for anything outside the extraction
+   * review screens, which must still see every course to approve it. */
+  approvedOnly?: boolean;
 };
 
 /**
@@ -31,8 +34,9 @@ export function applyCourseScope(b: Knex.QueryBuilder, prefix: string, jobId: st
 }
 export type CourseSort = "newest" | "oldest" | "name_asc" | "name_desc" | "recently_updated";
 
-function filteredCoursesQuery(jobId: string, { search, status, scope, excluded, courseCategory, shared }: CourseListFilters) {
+function filteredCoursesQuery(jobId: string, { search, status, scope, excluded, courseCategory, shared, approvedOnly }: CourseListFilters) {
   const q = masterKnex(T).where((b) => applyCourseScope(b, "", jobId, shared));
+  if (approvedOnly) q.whereIn("verification_status", [...APPROVED_COURSE_STATUSES]);
   if (search) q.where((b) => b.whereILike("name", `%${search}%`).orWhereILike("description", `%${search}%`));
   if (status) q.where("verification_status", status);
   if (courseCategory) q.where("course_category", courseCategory);
@@ -205,6 +209,20 @@ export async function updateCoursesByIds(ids: string[], data: Record<string, unk
   return masterKnex(T)
     .whereIn("id", ids)
     .update({ ...data, updated_at: masterKnex.fn.now(), updated_by_platform_user_id: adminId });
+}
+
+export async function approveAllCoursesForJob(jobId: string, adminId: number) {
+  return masterKnex(T)
+    .where({ job_id: jobId })
+    // Already approved, flagged (a rejection "approve all" must not undo) and mismatch (a detected
+    // data conflict that needs a per-course look) stay as they are.
+    .whereRaw("coalesce(verification_status, 'unverified') <> all(?)", [[...APPROVED_COURSE_STATUSES, "flagged", "mismatch"]])
+    .update({
+      verification_status: "confirmed",
+      last_verified_at: new Date().toISOString(),
+      updated_at: masterKnex.fn.now(),
+      updated_by_platform_user_id: adminId,
+    });
 }
 
 export async function deleteCourse(id: string) {
