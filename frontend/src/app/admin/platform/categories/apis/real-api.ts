@@ -86,6 +86,8 @@ export const categoriesRealApi = {
     httpPost(`${BASE}/accreditations`, input),
   updateAccreditation: (id: number, input: Partial<AccreditationInput>): Promise<Accreditation> =>
     httpPatch(`${BASE}/accreditations/${id}`, input),
+  reviewIssuingOrganization: (id: number, decision: ModerationStatus): Promise<unknown> =>
+    httpPost(`${BASE}/issuing-organizations/${id}/review`, { decision }),
   reviewAccreditation: (id: number, decision: ModerationStatus): Promise<Accreditation> =>
     httpPost(`${BASE}/accreditations/${id}/review`, { decision }),
   deleteAccreditation: (id: number): Promise<void> => httpDelete(`${BASE}/accreditations/${id}`),

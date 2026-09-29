@@ -1,7 +1,7 @@
 import { masterKnex } from "../../../core/db/master-pool.js";
 import { getKnex } from "../../../core/db/pool-manager.js";
 import { SUPERADMIN_SCHEMA as S } from "../../superadmin/consts.js";
-import { COURSE_INTAKES, NOT_REJECTED } from "./courses.repository.js";
+import { COURSE_INTAKES, PUBLIC_COURSE } from "./courses.repository.js";
 import { courseSlug, parseCourseIdFragment } from "../utils/slug.js";
 
 // The public catalog row shape the institution detail page expects — `job_id` (from
@@ -133,13 +133,13 @@ const courseStudyModes = (courseScope: string) => `
     join ${S}.extraction_course_study_option_assignments a on a.course_id = ec.id
     join ${S}.extraction_study_options so on so.id = a.study_option_id
    where ${courseScope}
-     and ${NOT_REJECTED}
+     and ${PUBLIC_COURSE}
      and so.study_mode in (${STUDY_MODES.map((m) => `'${m}'`).join(", ")})`;
 
 function catalogMatch(condition: string, bindings: unknown[]) {
   return {
     sql: `exists (select 1 from ${S}.extraction_courses ec
-                  where ec.job_id = i.source_job_id and ${NOT_REJECTED} and ${condition})`,
+                  where ec.job_id = i.source_job_id and ${PUBLIC_COURSE} and ${condition})`,
     bindings,
   };
 }
@@ -177,7 +177,7 @@ function institutionsQuery({
         select 1 from ${COURSE_INTAKES}
           join ${S}.extraction_courses ec on ec.id = ia.course_id
          where ec.job_id = i.source_job_id
-           and ${NOT_REJECTED}
+           and ${PUBLIC_COURSE}
            and ei.intake_year is not null
            and (ei.intake_year > ? or (ei.intake_year = ? and coalesce(ei.intake_month, 1) >= ?))
       )`,
@@ -234,7 +234,7 @@ export async function listInstitutionCatalogFacets() {
     masterKnex.raw(
       `select distinct ec.subject_area, ec.degree_level
          from ${S}.extraction_courses ec
-        where ${published} and ${NOT_REJECTED}`,
+        where ${published} and ${PUBLIC_COURSE}`,
     ),
     masterKnex.raw(`${courseStudyModes(published)} order by so.study_mode`),
   ]);
@@ -257,7 +257,7 @@ export async function listInstitutionIntakeMonths() {
        from ${COURSE_INTAKES}
        join ${S}.extraction_courses ec on ec.id = ia.course_id
       where ei.intake_year is not null
-        and ${NOT_REJECTED}
+        and ${PUBLIC_COURSE}
         and exists (select 1 from institutions i
                      where i.source_job_id = ei.job_id and i.is_published = true and i.deleted_at is null)
       order by 1, 2`,
@@ -275,7 +275,7 @@ export async function listInstitutionIntakeMonths() {
 function institutionCourseCount() {
   return masterKnex.raw(
     `(select count(*) from ${S}.extraction_courses ec
-      where ec.job_id = i.source_job_id and ${NOT_REJECTED}) as course_count`,
+      where ec.job_id = i.source_job_id and ${PUBLIC_COURSE}) as course_count`,
   );
 }
 
@@ -285,7 +285,7 @@ const INSTITUTION_CARD_COLUMNS = [
   masterKnex.raw(
     `(select count(distinct ec.subject_area) from ${S}.extraction_courses ec
        where ec.job_id = i.source_job_id and ec.subject_area is not null
-         and ${NOT_REJECTED}) as subject_area_count`,
+         and ${PUBLIC_COURSE}) as subject_area_count`,
   ),
   masterKnex.raw(
     `(select array_agg(study_mode order by study_mode)

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useAuthState } from "@/app/auth/store/auth-slice";
 import { toast } from "sonner";
 import { Loader2, Package, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,11 +14,13 @@ import { businessApi } from "@/app/business/apis";
 import { deleteServiceThunk, fetchServices, toggleServicePublished, updateService } from "../../store/business-profile-detail-slice";
 import type { BusinessService } from "../../apis/types";
 import { DeleteServiceDialog } from "../services/delete-service-dialog";
-import { ServiceColumnPicker } from "../services/service-column-picker";
 import { ServiceManagementTable, type ColumnKey, type SortColumn, type SortState } from "../services/service-management-table";
 
 const PAGE_SIZE = 10;
 const DEFAULT_COLUMNS: ColumnKey[] = ["category", "degree_level", "area_of_study", "price", "status"];
+// Short courses have no degree_level/area_of_study (those are academic-course fields only —
+// see courseToService) — showing them here would just be an empty "—" in every row.
+const SHORT_COURSE_COLUMNS: ColumnKey[] = ["category", "price", "status"];
 const STATUS_OPTIONS = [
   { value: "all", label: "All statuses" },
   { value: "published", label: "Published" },
@@ -31,8 +34,13 @@ const COURSE_CATEGORY_TABS = [
   { value: "short_course", label: "Short Courses" },
 ] as const;
 
-export function ServicesTab({ businessId, readOnly = false }: Readonly<{ businessId: number; readOnly?: boolean }>) {
+export function ServicesTab({
+  businessId, readOnly = false, isInstitution = false,
+}: Readonly<{ businessId: number; readOnly?: boolean; isInstitution?: boolean }>) {
   const router = useRouter();
+  // Names the exact org in the link — ids alone can collide across businesses and institutions.
+  const activeOrgId = useAuthState().user?.orgId;
+  const orgQuery = activeOrgId ? `?org=${encodeURIComponent(activeOrgId)}` : "";
   const dispatch = useAppDispatch();
   const { items: services, status, total } = useAppSelector((state) => state.businessProfileDetail.services);
   const [deletingService, setDeletingService] = useState<BusinessService | null>(null);
@@ -45,11 +53,16 @@ export function ServicesTab({ businessId, readOnly = false }: Readonly<{ busines
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [visibleColumns, setVisibleColumns] = useState<Set<ColumnKey>>(new Set(DEFAULT_COLUMNS));
 
+  useEffect(() => {
+    if (!isInstitution) return;
+    setVisibleColumns(new Set(courseCategory === "short_course" ? SHORT_COURSE_COLUMNS : DEFAULT_COLUMNS));
+  }, [isInstitution, courseCategory]);
+
   const [hasLoaded, setHasLoaded] = useState(false);
   const fetchPage = (p: number) => {
     dispatch(fetchServices({
       id: businessId,
-      params: { search: search || undefined, page: p, limit: PAGE_SIZE, course_category: readOnly ? courseCategory : undefined },
+      params: { search: search || undefined, page: p, limit: PAGE_SIZE, course_category: isInstitution ? courseCategory : undefined },
     })).finally(() => setHasLoaded(true));
   };
 
@@ -93,16 +106,26 @@ export function ServicesTab({ businessId, readOnly = false }: Readonly<{ busines
     if (statusFilter !== "all") {
       rows = rows.filter((s) => (statusFilter === "published" ? s.is_published : !s.is_published));
     }
-    if (sort.column) {
+    if (sort.column === "price") {
+      // s.price is a formatted currency string ("AUD 4,500"), not a raw number — a string
+      // compare would sort "AUD 1,200" before "AUD 450" (lexical, not numeric). An institution
+      // fee can also list more than one amount ("AUD 4,500 · International: AUD 3,250") — stripping
+      // every non-digit from the whole string would concatenate them into one meaningless number,
+      // so only the FIRST amount is parsed out and used for ordering.
+      const numericPrice = (s: BusinessService) => {
+        const match = s.price?.match(/[\d,]+(?:\.\d+)?/);
+        const value = match ? Number(match[0].replace(/,/g, "")) : NaN;
+        return Number.isFinite(value) ? value : (sort.direction === "asc" ? Infinity : -Infinity);
+      };
+      rows = [...rows].sort((a, b) => (numericPrice(a) - numericPrice(b)) * (sort.direction === "asc" ? 1 : -1));
+    } else if (sort.column) {
       const col = sort.column;
       const key = (s: BusinessService): string => {
         if (col === "name") return s.name;
         if (col === "category") return s.category_name ?? "";
         if (col === "degree_level") return s.degree_level ?? "";
         if (col === "area_of_study") return s.area_of_study ?? "";
-        if (col === "duration") return s.duration ?? "";
-        if (col === "status") return s.is_published ? "1" : "0";
-        return s.price ?? "";
+        return s.is_published ? "1" : "0";
       };
       rows = [...rows].sort((a, b) => key(a).localeCompare(key(b)) * (sort.direction === "asc" ? 1 : -1));
     }
@@ -163,13 +186,13 @@ export function ServicesTab({ businessId, readOnly = false }: Readonly<{ busines
           </p>
         </div>
         {!readOnly && (
-          <Button className="h-10" onClick={() => router.push(`/business/profile/${businessId}/services/add`)}>
+          <Button className="h-10" onClick={() => router.push(`/business/profile/${businessId}/services/add${orgQuery}`)}>
             <Plus className="mr-1.5 h-3.5 w-3.5" /> Add service
           </Button>
         )}
       </div>
 
-      {readOnly && (
+      {isInstitution && (
         <div className="mb-3 flex gap-1 rounded-lg border bg-muted/40 p-1 w-fit">
           {COURSE_CATEGORY_TABS.map((t) => (
             <button
@@ -188,9 +211,6 @@ export function ServicesTab({ businessId, readOnly = false }: Readonly<{ busines
 
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
-          {!readOnly && (
-            <Combobox className="h-10 w-40" options={STATUS_OPTIONS} value={statusFilter} onChange={setStatusFilter} placeholder="Filter" />
-          )}
           {!readOnly && selectedIds.size > 0 && (
             <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-1.5 text-sm">
               <span>{selectedIds.size} selected</span>
@@ -205,7 +225,9 @@ export function ServicesTab({ businessId, readOnly = false }: Readonly<{ busines
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input className="h-10 pl-9" placeholder={readOnly ? "Search courses..." : "Search services..."} value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          <ServiceColumnPicker visibleColumns={visibleColumns} onChange={setVisibleColumns} />
+          {!readOnly && (
+            <Combobox className="h-10 w-40" options={STATUS_OPTIONS} value={statusFilter} onChange={setStatusFilter} placeholder="Filter" />
+          )}
         </div>
       </div>
 
@@ -224,11 +246,12 @@ export function ServicesTab({ businessId, readOnly = false }: Readonly<{ busines
           onSortChange={handleSortChange}
           selectedIds={selectedIds}
           onSelectedIdsChange={setSelectedIds}
-          onEdit={(id) => router.push(`/business/profile/${businessId}/services/${id}/edit`)}
+          onEdit={(id) => router.push(`/business/profile/${businessId}/services/${id}/edit${orgQuery}`)}
           onTogglePublish={handleTogglePublish}
           onPriceSave={handlePriceSave}
           onDelete={setDeletingService}
           readOnly={readOnly}
+          isInstitution={isInstitution}
         />
       )}
 

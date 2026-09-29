@@ -40,7 +40,8 @@ export const PUBLICLY_VISIBLE = `exists (
   select 1 from superadmin.extraction_jobs ej
   join institutions i on i.source_job_id = ej.id and i.is_published and i.deleted_at is null
   where ej.id = c.job_id and ej.status = 'exported'
-) and coalesce(c.verification_status, 'unverified') <> 'flagged'`;
+) and coalesce(c.verification_status, 'unverified') <> 'flagged'
+  and c.is_published`;
 
 export async function listCourses(opts: { limit: number; offset: number }): Promise<CourseListRow[]> {
   return masterKnex(`${T} as c`)

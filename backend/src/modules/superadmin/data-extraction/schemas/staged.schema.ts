@@ -62,7 +62,7 @@ export const PatchCourseFeeSchema = CreateCourseFeeSchema.omit({ job_id: true, c
 //
 // An empty string is coerced to null: a cleared <input type="date"> sends "", and storing that
 // would violate the constraint.
-const PartialDateSchema = z
+export const PartialDateSchema = z
   .union([
     z
       .string()

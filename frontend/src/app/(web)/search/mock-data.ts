@@ -469,6 +469,7 @@ export function mockGetCourseBySlug(slug: string): CourseDetail | null {
     englishRequirements: MOCK_COURSE_ENGLISH_REQUIREMENTS[course.id] ?? [],
     institution: null, campuses: [], weather: null, study_units: [], study_options: [], media: [],
     domestic_fee_installments: null, international_fee_installments: null, city_link: null,
+    public_visibility: null,
   };
 }
 
