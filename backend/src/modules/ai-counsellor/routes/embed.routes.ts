@@ -4,6 +4,7 @@ import { recipientFromRequest } from "../../enquiries/shared/recipient.js";
 import {
   EmbedConfigCreateSchema,
   EmbedConfigIdParamSchema,
+  EmbedConfigUpdateSchema,
   EmbedKeyQuerySchema,
   VisitorListQuerySchema,
 } from "../schemas/chat.schema.js";
@@ -49,6 +50,24 @@ export async function embedRoutes(app: FastifyInstance) {
   app.get("/embed/configs", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
     const configs = await embedRepo.findByOwner(recipientFromRequest(req));
     return reply.send({ configs });
+  });
+
+  // Appearance + limits after creation. The key and the owner never change here.
+  app.patch("/embed/configs/:id", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
+    const { id } = EmbedConfigIdParamSchema.parse(req.params);
+    const patch = EmbedConfigUpdateSchema.parse(req.body ?? {});
+    const config = await embedRepo.update(id, recipientFromRequest(req), patch);
+    if (!config) throw new NotFoundError("Embed config not found");
+    return reply.send(config);
+  });
+
+  // A leaked or copied key is retired by minting a new one; the owner re-pastes the snippet.
+  // Visitor threads are keyed on the embed key too, so they start fresh — by design.
+  app.post("/embed/configs/:id/rotate-key", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
+    const { id } = EmbedConfigIdParamSchema.parse(req.params);
+    const config = await embedRepo.rotateKey(id, recipientFromRequest(req));
+    if (!config) throw new NotFoundError("Embed config not found");
+    return reply.send(config);
   });
 
   app.delete("/embed/configs/:id", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
@@ -99,6 +118,8 @@ export async function embedPublicRoutes(app: FastifyInstance) {
       display_name: config.display_name,
       logo_url: config.logo_url,
       brand_color: config.brand_color,
+      greeting: config.greeting,
+      subtitle: config.subtitle,
       // The panel's starter questions differ by owner: an institution's widget answers
       // about its own campus and catalog, a business's counsels on studying abroad.
       // Kind only — never the owner's id.

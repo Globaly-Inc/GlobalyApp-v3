@@ -1,0 +1,32 @@
+<!doctype html>
+<!-- Stand-in for AIT's own website: the widget is a script tag an institution pastes on its site.
+     Open this file in a browser with the frontend (:3001) and backend (:3000) running. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>AIT — Australian Institute of Technology (demo site)</title>
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; color: #1f2937; background: #f8fafc; }
+    header { background: #111827; color: #fff; padding: 20px 40px; font-size: 20px; font-weight: 600; }
+    main { max-width: 860px; margin: 48px auto; padding: 0 24px; line-height: 1.6; }
+    h1 { font-size: 34px; margin-bottom: 8px; }
+    .muted { color: #6b7280; }
+    .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 32px; }
+    .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 18px; }
+  </style>
+</head>
+<body>
+  <header>AIT</header>
+  <main>
+    <h1>Study at AIT</h1>
+    <p class="muted">Diplomas and bachelor degrees in IT, film, design and business. Intakes in February, June and October.</p>
+    <div class="cards">
+      <div class="card"><strong>Diploma pathways</strong><br />Start with a diploma and articulate into a bachelor.</div>
+      <div class="card"><strong>Scholarships</strong><br />Merit and regional scholarships for international students.</div>
+      <div class="card"><strong>Student support</strong><br />Orientation week, counselling and career services.</div>
+    </div>
+    <p style="margin-top:40px">Questions? Use the chat in the corner — it is the AI counsellor from the widget page, with AIT's own rules applied.</p>
+  </main>
+  <script src="http://localhost:3001/embed.js" data-key="d472fa3f-1a1f-43e5-b369-7547ab6b4688" async></script>
+</body>
+</html>

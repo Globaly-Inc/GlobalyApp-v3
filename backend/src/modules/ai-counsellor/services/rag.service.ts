@@ -60,6 +60,9 @@ async function detectCountryCode(query: string): Promise<string | null> {
 // that was scraped row-by-row from crowding the context out.
 const MAX_FEE_LINES = 4;
 
+/** Courses rendered into CONTEXT per turn: the search's own limit, plus room for the pinned ones. */
+const MAX_HYDRATED = 10;
+
 const TIER_RANK: Record<string, number> = { gov: 0, verified_institution: 1, other: 2 };
 const TIER_LABEL: Record<string, string> = {
   gov: "official government source",
@@ -94,7 +97,15 @@ export interface RagOutput {
   contextText: string;
   sources: Array<{ type: string; id: string; title: string }>;
   traceSteps: string[];
+  /** True when CONTEXT holds something a fee/refund/scholarship answer can be grounded in:
+   *  a course with fee rows, a visa fee, a cost-of-living block, or a passage/FAQ that talks
+   *  about money. When a money question meets `false`, the prompt withholds the answer. */
+  moneyData: boolean;
 }
+
+/** Fees, refunds, funding — the claims a counsellor must never approximate. */
+export const MONEY_RE = /\b(fees?|tuition|costs?|price|pricing|refunds?|refundable|deposits?|scholarships?|bursar(?:y|ies)|funding|funds?|financial|finance|loans?|instal+ments?|payments?|pay|discounts?|waivers?|stipends?|expenses|afford(?:able)?|budget|cheap(?:er|est)?)\b/i;
+export const isMoneyQuestion = (query: string): boolean => MONEY_RE.test(query);
 
 export async function searchAll(opts: {
   query: string;
@@ -109,30 +120,40 @@ export async function searchAll(opts: {
   /** Embed mode: read THIS institution's own crawled website instead of the global rack.
    *  Unset for a business widget, which keeps the rack switched off entirely. */
   rackInstitutionId?: number | null;
+  /** Courses the counsellor already showed this conversation (the last reply's cards). A follow-up
+   *  — "is online study an option for this course?" — keyword-matches nothing useful, and without
+   *  the course in CONTEXT the model disowned what it had said one message earlier. */
+  pinnedCourseIds?: string[];
   onTrace?: (step: string) => void;
 }): Promise<RagOutput> {
   const embedScoped = opts.jobIds != null;
   const keywords = extractKeywords(opts.query);
   const searchQuery = keywords.join(" ");
+  const pinned = opts.pinnedCourseIds ?? [];
   const trace = (step: string) => {
     traceSteps.push(step);
     opts.onTrace?.(step);
   };
   const traceSteps: string[] = [];
 
-  if (!searchQuery) {
+  if (!searchQuery && !pinned.length) {
     trace("No searchable keywords extracted");
-    return { contextText: "", sources: [], traceSteps };
+    return { contextText: "", sources: [], traceSteps, moneyData: false };
   }
 
-  trace(`Keywords: ${keywords.join(", ")}`);
+  if (searchQuery) trace(`Keywords: ${keywords.join(", ")}`);
+  else trace("No searchable keywords; answering from the courses already shown");
 
   const countryCode = await detectCountryCode(opts.query);
   if (countryCode) trace(`Country detected: ${countryCode}`);
 
   // ── Parallel searches — each wrapped so one failure doesn't kill the rest ──
   const none = Promise.resolve([]);
-  const [courses, visas, institutions, ownerProfile, agents, maraAgents, knowledgeVisas, faqs, guides, rackHits] = await Promise.all([
+  const noOwner = { overview: [], campuses: [], accreditations: [] };
+  const [courses, visas, institutions, ownerProfile, agents, maraAgents, knowledgeVisas, faqs, guides, rackHits] = !searchQuery
+    ? [[], [], [], noOwner, [], [], [], [], [], []] as Awaited<ReturnType<typeof runSearches>>
+    : await runSearches();
+  async function runSearches() { return Promise.all([
     opts.skipCourses ? none.then(r => { trace("Courses: skipped (discovery turn)"); return r; })
       : knowledge.searchCourses({ query: searchQuery, limit: 8, jobIds: opts.jobIds })
         .then(r => { trace(`Courses: ${r.length} found`); return r; })
@@ -182,12 +203,13 @@ export async function searchAll(opts: {
     !embeddingConfigured() || (embedScoped && !opts.rackInstitutionId) ? none : embed(opts.query)
       .then(v => matchRack(v, countryCode, trace, opts.rackInstitutionId))
       .catch(err => { logger.warn("Knowledge rack search failed", { err: String(err) }); trace("Knowledge rack search failed"); return []; }),
-  ]);
+  ]); }
 
   // ── Hydrate course details for found courses ──
+  // Pinned first: the course under discussion must survive the cap whatever else matched.
   let hydratedCourses: knowledge.CourseDetailResult[] = [];
-  if (courses.length > 0) {
-    const courseIds = courses.map(c => c.id);
+  const courseIds = [...new Set([...pinned, ...courses.map(c => c.id)])].slice(0, MAX_HYDRATED);
+  if (courseIds.length > 0) {
     trace(`Hydrating ${courseIds.length} courses`);
     const details = await Promise.all(
       courseIds.map(id =>
@@ -394,8 +416,16 @@ export async function searchAll(opts: {
   }
 
   const contextText = parts.join("\n\n");
-  trace(`Context: ${contextText.length} chars, ${sources.length} sources`);
-  return { contextText, sources, traceSteps };
+  // Decided on the structured data, not on the rendered text: CARD_FIELDS JSON carries a "fees"
+  // key for every course, which would make the text look money-bearing when it is not.
+  const moneyData =
+    hydratedCourses.some(c => c.fees.length > 0) ||
+    visas.some(v => v.application_fee_amount != null) ||
+    guides.some(g => !!g.cost_of_living_monthly_usd) ||
+    faqs.some(f => MONEY_RE.test(`${f.question} ${f.answer}`)) ||
+    rackHits.some(d => MONEY_RE.test(d.content));
+  trace(`Context: ${contextText.length} chars, ${sources.length} sources${moneyData ? ", money data present" : ""}`);
+  return { contextText, sources, traceSteps, moneyData };
 }
 
 /** Rack chunks as prompt text + deduped sources — one format for every retrieval path. */

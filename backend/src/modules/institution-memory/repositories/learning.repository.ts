@@ -1,0 +1,168 @@
+// What the learning pipeline reads from and writes to outside its own table: messages, sessions,
+// the widget config, and the names the PII filter must recognise.
+
+import { masterKnex } from "../../../core/db/master-pool.js";
+import { tenantDbFor } from "../../ai-counsellor/services/visitor.service.js";
+import type { EmbedConfigRow } from "../../ai-counsellor/repositories/embed.repository.js";
+import type { ReviewMessageInput } from "../schemas/memory.schema.js";
+
+export interface LearnMessage {
+  id: number;
+  session_id: number;
+  role: "user" | "assistant";
+  content: string;
+  feedback: "positive" | "negative" | null;
+  feedback_actor: string | null;
+  review_status: "approved" | "corrected" | "flagged" | null;
+  correction: string | null;
+  review_note: string | null;
+  reviewed_by: number | null;
+  memory_ids: string[];
+}
+
+export interface LearnSession {
+  id: number;
+  platform_user_id: number | null;
+  visitor_key: string | null;
+  embed_config_id: number | null;
+}
+
+const MESSAGE_COLUMNS = [
+  "id", "session_id", "role", "content", "feedback", "feedback_actor", "review_status",
+  "correction", "review_note", "reviewed_by", "memory_ids",
+];
+
+export async function findMessage(id: number): Promise<LearnMessage | undefined> {
+  return masterKnex("ai_counselor_messages").select(MESSAGE_COLUMNS).where({ id }).first();
+}
+
+/** Oldest-first transcript, capped — the tail is where a conversation gets specific. */
+export async function findTranscript(sessionId: number, limit = 40): Promise<LearnMessage[]> {
+  const rows: LearnMessage[] = await masterKnex("ai_counselor_messages").select(MESSAGE_COLUMNS)
+    .where({ session_id: sessionId })
+    .orderBy([{ column: "created_at", order: "desc" }, { column: "id", order: "desc" }])
+    .limit(limit);
+  return rows.reverse();
+}
+
+/** The user message the assistant message answered — the one just before it. */
+export async function findQuestionFor(message: LearnMessage): Promise<string | null> {
+  const row = await masterKnex("ai_counselor_messages").select("content")
+    .where({ session_id: message.session_id, role: "user" }).where("id", "<", message.id)
+    .orderBy("id", "desc").first();
+  return row?.content ?? null;
+}
+
+export async function findSession(id: number): Promise<LearnSession | undefined> {
+  return masterKnex("ai_counselor_sessions").select("id", "platform_user_id", "visitor_key", "embed_config_id")
+    .where({ id }).whereNull("deleted_at").first();
+}
+
+export async function findEmbedConfig(id: number): Promise<EmbedConfigRow | undefined> {
+  return masterKnex("ai_embed_configs").where({ id }).first();
+}
+
+/** The institution a session's widget belongs to, or null (platform chat, business widget). */
+export async function institutionForSession(session: LearnSession): Promise<{ institutionId: number; config: EmbedConfigRow } | null> {
+  if (!session.embed_config_id) return null;
+  const config = await findEmbedConfig(session.embed_config_id);
+  if (!config || config.institution_id == null) return null;
+  return { institutionId: Number(config.institution_id), config };
+}
+
+/** Names the PII filter must catch: the student's own and any they typed into their profile. */
+export async function knownNames(session: LearnSession, config: EmbedConfigRow | null): Promise<string[]> {
+  const names: string[] = [];
+  if (session.platform_user_id) {
+    const u = await masterKnex("platform_users").select("first_name", "last_name").where({ id: session.platform_user_id }).first();
+    if (u) names.push(u.first_name, u.last_name);
+    const quals = await masterKnex("platform_user_qualifications").select("institution_name")
+      .where({ user_id: session.platform_user_id }).whereNull("deleted_at");
+    for (const q of quals) if (q.institution_name) names.push(q.institution_name);
+  }
+  if (session.visitor_key && config) {
+    // Visitor rows live in the tenant schema; unprovisioned tenants simply have none.
+    const db = await tenantDbFor(config).catch(() => null);
+    const v = db ? await db("ai_widget_visitors").select("name").where({ session_id: session.id }).first().catch(() => null) : null;
+    if (v?.name) names.push(v.name);
+  }
+  return names.map((n) => String(n).trim()).filter((n) => n.length >= 2);
+}
+
+// ── Institution review surface ───────────────────────────────────────────────
+
+export interface ReviewSession {
+  id: number;
+  embed_config_id: number;
+  title: string | null;
+  message_count: number;
+  is_archived: boolean;
+  created_at: Date;
+  updated_at: Date;
+  /** Replies still without a review, so the queue can be sorted by what needs eyes. */
+  unreviewed: number;
+  flagged: number;
+}
+
+/** Threads on this institution's widgets, newest activity first. Visitor identity is not returned. */
+export async function findSessionsForConfigs(configIds: number[], opts: { limit: number; unreviewedOnly?: boolean }): Promise<ReviewSession[]> {
+  if (!configIds.length) return [];
+  const q = masterKnex("ai_counselor_sessions as s")
+    .select("s.id", "s.embed_config_id", "s.title", "s.message_count", "s.is_archived", "s.created_at", "s.updated_at")
+    .select(masterKnex.raw(`(SELECT count(*)::int FROM ai_counselor_messages m WHERE m.session_id = s.id AND m.role = 'assistant' AND m.review_status IS NULL) AS unreviewed`))
+    .select(masterKnex.raw(`(SELECT count(*)::int FROM ai_counselor_messages m WHERE m.session_id = s.id AND m.feedback = 'negative') AS flagged`))
+    .whereIn("s.embed_config_id", configIds)
+    .whereNull("s.deleted_at")
+    .where("s.message_count", ">", 0)
+    .orderBy("s.updated_at", "desc")
+    .limit(opts.limit);
+  if (opts.unreviewedOnly) {
+    q.whereExists(masterKnex("ai_counselor_messages as m").whereRaw("m.session_id = s.id").where({ "m.role": "assistant" }).whereNull("m.review_status"));
+  }
+  return q;
+}
+
+export interface ReviewMessage {
+  id: number;
+  role: "user" | "assistant";
+  content: string;
+  cards: unknown[];
+  feedback: "positive" | "negative" | null;
+  review_status: "approved" | "corrected" | "flagged" | null;
+  correction: string | null;
+  review_note: string | null;
+  reviewed_by: number | null;
+  reviewed_at: Date | null;
+  memory_ids: string[];
+  created_at: Date;
+}
+
+/** One thread for review, oldest first. Only when the session is on one of the given widgets. */
+export async function findMessagesForReview(sessionId: number, configIds: number[]): Promise<ReviewMessage[] | null> {
+  if (!configIds.length) return null;
+  const session = await masterKnex("ai_counselor_sessions").select("id").where({ id: sessionId }).whereIn("embed_config_id", configIds).whereNull("deleted_at").first();
+  if (!session) return null;
+  return masterKnex("ai_counselor_messages")
+    .select("id", "role", "content", "cards", "feedback", "review_status", "correction", "review_note", "reviewed_by", "reviewed_at", "memory_ids", "created_at")
+    .where({ session_id: sessionId })
+    .orderBy([{ column: "created_at", order: "asc" }, { column: "id", order: "asc" }]);
+}
+
+export async function recordReview(messageId: number, review: ReviewMessageInput, reviewerId: number): Promise<void> {
+  await masterKnex("ai_counselor_messages").where({ id: messageId }).update({
+    review_status: review.status,
+    correction: review.correction ?? null,
+    review_note: review.note ?? null,
+    reviewed_by: reviewerId,
+    reviewed_at: masterKnex.fn.now(),
+  });
+}
+
+export async function recordFeedback(messageId: number, feedback: "positive" | "negative" | null, actorHash: string): Promise<void> {
+  await masterKnex("ai_counselor_messages").where({ id: messageId }).update({ feedback, feedback_actor: actorHash });
+}
+
+/** Which memories shaped a reply — the chat tool calls this after persisting the assistant message. */
+export async function recordMemoryIds(messageId: number, ids: string[]): Promise<void> {
+  await masterKnex("ai_counselor_messages").where({ id: messageId }).update({ memory_ids: JSON.stringify(ids) });
+}

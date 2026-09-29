@@ -384,7 +384,9 @@ export function parseCards(text: string): ParsedCard[] {
   while ((match = regex.exec(text)) !== null) {
     try {
       const parsed = JSON.parse(match[1]);
-      if (parsed.id && parsed.name && parsed.institution) {
+      // The model sometimes re-emits a course it already carded in the same reply; the
+      // frontend keys cards by id, so a repeat is a React duplicate-key warning. First wins.
+      if (parsed.id && parsed.name && parsed.institution && !cards.some((c) => c.id === parsed.id)) {
         cards.push(parsed as ParsedCard);
       }
     } catch { /* skip malformed */ }

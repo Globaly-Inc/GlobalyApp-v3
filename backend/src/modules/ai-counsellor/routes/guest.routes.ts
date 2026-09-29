@@ -3,6 +3,8 @@ import type { Knex } from "knex";
 import {
   GuestContactSchema,
   GuestConversationEndSchema,
+  GuestFeedbackSchema,
+  MessageIdParamSchema,
   GuestMessageSchema,
   GuestMigrateSchema,
   GuestSessionQuerySchema,
@@ -20,6 +22,8 @@ import * as rag from "../services/rag.service.js";
 import { parseBlocks, parseCards, parseChips, stripBlocks } from "../lib/card-parser.js";
 import { judgeConclusion } from "../lib/conclusion-detect.js";
 import { extractProfile } from "../lib/profile-extract.js";
+import { retrieveMemories } from "../../institution-memory/index.js";
+import * as learningSignals from "../services/learning-signals.service.js";
 import { ForbiddenError } from "../../../shared/errors.js";
 import { createChildLogger } from "../../../shared/logger.js";
 
@@ -84,6 +88,8 @@ async function persistVisitorTurn(
     cards: unknown[];
     chips: unknown[];
     blocks: unknown[];
+    /** Institution memories that shaped the answer — feedback learns against these. */
+    memoryIds?: string[];
     /** streamChat reports camelCase; the messages table stores snake_case. */
     usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
     /** Absent when the owner has no provisioned schema — the chat still works, see tenantDbFor. */
@@ -102,6 +108,7 @@ async function persistVisitorTurn(
     prompt_tokens: turn.usage?.promptTokens,
     completion_tokens: turn.usage?.completionTokens,
     total_tokens: turn.usage?.totalTokens,
+    memory_ids: turn.memoryIds,
   });
   await sessionsRepo.incrementMessageCount(sessionId);
 
@@ -197,14 +204,26 @@ export async function guestRoutes(app: FastifyInstance) {
         session_id: session?.id ?? null,
       });
 
-      // RAG search (no profile context for guests)
-      const ragOutput = await rag.searchAll({
-        query: input.content,
-        userId: 0, // ponytail: guests have no userId, profile context will be empty
-        jobIds: embed?.jobIds,
-        rackInstitutionId: embed?.rackInstitutionId,
-        onTrace: (step) => writeEvent(reply, "trace", { step }),
-      });
+      // RAG search (no profile context for guests), beside the institution's own counselling
+      // memory — the same pairing as chat.service, and the memory call never throws.
+      const trace = (step: string) => writeEvent(reply, "trace", { step });
+      const [ragOutput, memory] = await Promise.all([
+        rag.searchAll({
+          query: input.content,
+          userId: 0, // ponytail: guests have no userId, profile context will be empty
+          jobIds: embed?.jobIds,
+          rackInstitutionId: embed?.rackInstitutionId,
+          onTrace: trace,
+        }),
+        embed?.rackInstitutionId
+          ? retrieveMemories({
+              institutionId: embed.rackInstitutionId,
+              institutionName: embed.config.display_name,
+              query: input.content,
+              onTrace: trace,
+            })
+          : null,
+      ]);
 
       if (ragOutput.sources.length) {
         writeEvent(reply, "sources", ragOutput.sources);
@@ -216,6 +235,7 @@ export async function guestRoutes(app: FastifyInstance) {
         // A returning visitor mid-thread must not get the opening greeting again.
         isFirstMessage: history.length === 0,
         embedConfig: embed?.config,
+        institutionGuidance: memory?.text,
       });
 
       const result = await streamChat({
@@ -360,6 +380,7 @@ export async function guestRoutes(app: FastifyInstance) {
           cards,
           chips,
           blocks,
+          memoryIds: memory?.ids,
           usage: result.usage,
           ...(tenantDb && visitor
             ? { visitor: { db: tenantDb, id: visitor.id, nextCount, prompted } }
@@ -452,6 +473,22 @@ export async function guestSessionRoutes(app: FastifyInstance) {
    * to put the card away, and telling it the write failed would strand the visitor in front of
    * a choice they cannot dismiss.
    */
+  // POST /guest/messages/:id/feedback — a widget visitor's thumbs, keyed on (embed_key,
+  // fingerprint) like everything else they own. The fingerprint is client-supplied, so the
+  // learning side counts one vote per actor and never lets votes retire an admin rule.
+  app.post("/guest/messages/:id/feedback", {
+    config: { rateLimit: { ...CONTACT_RATE, keyGenerator: embedRateKey } },
+  }, async (req, reply) => {
+    const { id } = MessageIdParamSchema.parse(req.params);
+    const input = GuestFeedbackSchema.parse(req.body ?? {});
+    const config = await embedService.resolveActiveConfig(input.embed_key);
+    await learningSignals.recordStudentFeedback(id, input.feedback, {
+      visitorKey: guestService.visitorKey(input.fingerprint, input.embed_key),
+      embedConfigId: config.id,
+    });
+    return reply.send({ ok: true });
+  });
+
   app.post("/guest/conversation-end", {
     config: { rateLimit: { ...CONTACT_RATE, keyGenerator: embedRateKey } },
   }, async (req, reply) => {
@@ -460,13 +497,16 @@ export async function guestSessionRoutes(app: FastifyInstance) {
     const db = await visitorService.attempt("tenantDbFor", () => visitorService.tenantDbFor(config));
     if (!db) return reply.send({ ok: true });
 
+    const visitorKey = guestService.visitorKey(input.fingerprint, input.embed_key);
     const row = await visitorService.attempt("recordConversationEnd", () =>
-      visitorService.recordConversationEnd(db, {
-        visitorKey: guestService.visitorKey(input.fingerprint, input.embed_key),
-        embedConfigId: config.id,
-        action: input.action,
-      }),
+      visitorService.recordConversationEnd(db, { visitorKey, embedConfigId: config.id, action: input.action }),
     );
+
+    // The finished chat is the third learning signal. Best-effort like everything above.
+    if (input.action === "end") {
+      learningSignals.onConversationEnd(config, visitorKey)
+        .catch((err) => logger.warn("Conversation-end learning not queued", { configId: config.id, err: String(err) }));
+    }
 
     // Tells the widget whether a summary is actually coming. A visitor who confirmed without
     // ever giving an address must not be shown "on its way to …".

@@ -1,12 +1,19 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { aiWidgetApi } from "../apis";
-import type { CreateEmbedConfigInput, EmbedConfig } from "../apis/types";
+import type { CreateEmbedConfigInput, EmbedConfig, UpdateEmbedConfigInput } from "../apis/types";
 
 export const fetchEmbedConfigs = createAsyncThunk("aiWidget/fetchConfigs", () => aiWidgetApi.listConfigs());
 
 export const createEmbedConfig = createAsyncThunk("aiWidget/createConfig", (input: CreateEmbedConfigInput) =>
   aiWidgetApi.createConfig(input),
 );
+
+export const updateEmbedConfig = createAsyncThunk(
+  "aiWidget/updateConfig",
+  ({ id, input }: { id: number; input: UpdateEmbedConfigInput }) => aiWidgetApi.updateConfig(id, input),
+);
+
+export const rotateEmbedKey = createAsyncThunk("aiWidget/rotateKey", (id: number) => aiWidgetApi.rotateKey(id));
 
 export const deactivateEmbedConfig = createAsyncThunk("aiWidget/deactivateConfig", async (id: number) => {
   await aiWidgetApi.deactivateConfig(id);
@@ -61,6 +68,14 @@ const aiWidgetSlice = createSlice({
       .addCase(createEmbedConfig.rejected, (state, action) => {
         state.createStatus = "failed";
         state.error = action.error.message ?? "Failed to create embed config.";
+      })
+      .addCase(updateEmbedConfig.fulfilled, (state, action) => {
+        const i = state.configs.findIndex((c) => c.id === action.payload.id);
+        if (i >= 0) state.configs[i] = action.payload;
+      })
+      .addCase(rotateEmbedKey.fulfilled, (state, action) => {
+        const i = state.configs.findIndex((c) => c.id === action.payload.id);
+        if (i >= 0) state.configs[i] = action.payload;
       })
       .addCase(deactivateEmbedConfig.fulfilled, (state, action) => {
         const config = state.configs.find((c) => c.id === action.payload);

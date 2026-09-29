@@ -12,6 +12,7 @@ import * as sessionsRepo from "../repositories/sessions.repository.js";
 import * as creditService from "./credit.service.js";
 import * as embedRepo from "../repositories/embed.repository.js";
 import type { EmbedContext } from "./embed.service.js";
+import { retrieveMemories } from "../../institution-memory/index.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import * as storage from "../../../shared/storage/storageService.js";
 
@@ -87,6 +88,12 @@ export async function handleMessage(opts: {
       role: (m.role === "user" ? "user" : "model") as "user" | "model",
       parts: [{ text: m.content }],
     }));
+    // The courses the counsellor last put in front of the student, so "this course" resolves.
+    const lastCards = [...prevMessages].reverse().find(m => m.role === "assistant" && m.cards.length)?.cards ?? [];
+    const pinnedCourseIds = lastCards
+      .map(c => (c as { id?: unknown }).id)
+      .filter((id): id is string => typeof id === "string")
+      .slice(0, 3);
 
     // 4. Persist user message
     await messagesRepo.create({
@@ -222,17 +229,38 @@ export async function handleMessage(opts: {
       }
     }
 
+    // What this institution has told or taught its counsellor — never throws, "" when there
+    // is nothing. Runs beside searchAll so it costs no extra wall-clock on the embed path.
+    let memoryIds: string[] = [];
     if (!result) {
-      const ragOutput = await rag.searchAll({
-        query: opts.content,
-        userId: opts.userId,
-        jobIds: opts.embed?.jobIds,
-        rackInstitutionId: opts.embed?.rackInstitutionId,
-        skipCourses: discoveryTurn,
-        onTrace: trace,
-      });
+      const institutionId = opts.embed?.rackInstitutionId;
+      const [ragOutput, memory] = await Promise.all([
+        rag.searchAll({
+          query: opts.content,
+          userId: opts.userId,
+          jobIds: opts.embed?.jobIds,
+          rackInstitutionId: institutionId,
+          skipCourses: discoveryTurn,
+          pinnedCourseIds,
+          onTrace: trace,
+        }),
+        institutionId
+          ? retrieveMemories({
+              institutionId,
+              institutionName: opts.embed?.config.display_name,
+              query: opts.content,
+              situation: rag.situationText(profileContext, session.counselling_context),
+              onTrace: trace,
+            })
+          : null,
+      ]);
+      memoryIds = memory?.ids ?? [];
       sources = ragOutput.sources;
       if (sources.length) writeEvent(opts.reply, "sources", sources);
+      // A money question with nothing to ground it is answered "we don't have that", by rule,
+      // not by the model's judgement — a guessed fee or refund window is the costliest mistake.
+      const noMoneyData = rag.isMoneyQuestion(opts.content) && !ragOutput.moneyData;
+      if (noMoneyData) trace("Money question, no money data: answer withheld");
 
       result = await streamChat({
         system: buildSystemPrompt({
@@ -245,6 +273,8 @@ export async function handleMessage(opts: {
           discoveryTurn,
           returning,
           embedConfig: opts.embed?.config,
+          institutionGuidance: memory?.text,
+          noMoneyData,
         }),
         history,
         userMessage: opts.content,
@@ -289,6 +319,7 @@ export async function handleMessage(opts: {
       completion_tokens: result.usage.completionTokens,
       total_tokens: result.usage.totalTokens,
       latency_ms: latencyMs,
+      memory_ids: memoryIds,
     });
 
     // `question` vs `historyTail` is the whole diagnosis for a suspected off-by-one:

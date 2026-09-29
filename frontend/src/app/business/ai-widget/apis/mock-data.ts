@@ -1,6 +1,6 @@
 import { uuid } from "@/lib/utils";
 import type {
-  CreateEmbedConfigInput, EmbedConfig,
+  CreateEmbedConfigInput, EmbedConfig, UpdateEmbedConfigInput,
   VisitorCounts, VisitorListParams, VisitorListResult, VisitorMessage, VisitorPatch, WidgetVisitor,
 } from "./types";
 
@@ -17,6 +17,8 @@ const configs: EmbedConfig[] = [
     logo_url: null,
     brand_color: "#4f46e5",
     custom_instructions: "Always mention our February and July intakes.",
+    greeting: "Hi! Ask me anything about studying at Acme.",
+    subtitle: "Usually replies in seconds",
     monthly_credit_limit: 1000,
     credits_used_this_month: 214,
     month_reset_at: "2026-09-01T00:00:00Z",
@@ -162,6 +164,8 @@ export const aiWidgetMockApi = {
       logo_url: input.logo_url ?? null,
       brand_color: input.brand_color ?? null,
       custom_instructions: input.custom_instructions ?? null,
+      greeting: input.greeting ?? null,
+      subtitle: input.subtitle ?? null,
       monthly_credit_limit: input.monthly_credit_limit ?? 1000,
       credits_used_this_month: 0,
       month_reset_at: "2026-09-01T00:00:00Z",
@@ -171,6 +175,24 @@ export const aiWidgetMockApi = {
     };
     configs.unshift(config);
     return config;
+  },
+
+  updateConfig: async (id: number, input: UpdateEmbedConfigInput): Promise<EmbedConfig> => {
+    console.log("[mock] PATCH /ai-chat/embed/configs/" + id, input);
+    await delay(300);
+    const config = configs.find((c) => c.id === id);
+    if (!config) throw new Error("Embed config not found");
+    Object.assign(config, input, { updated_at: new Date().toISOString() });
+    return { ...config };
+  },
+
+  rotateKey: async (id: number): Promise<EmbedConfig> => {
+    console.log("[mock] POST /ai-chat/embed/configs/" + id + "/rotate-key");
+    await delay(300);
+    const config = configs.find((c) => c.id === id);
+    if (!config) throw new Error("Embed config not found");
+    config.embed_key = uuid();
+    return { ...config };
   },
 
   deactivateConfig: async (id: number): Promise<void> => {

@@ -34,6 +34,22 @@ import { PROMOTABLE_JOB_STATUSES } from "../schemas/jobs.schema.js";
  */
 const PLACEHOLDER_EMAIL_DOMAIN = "unclaimed.globalyhub.invalid";
 
+/**
+ * What a re-publish may write over an EXISTING listing: only the columns extraction actually
+ * has data for. The overview is thinner than a claimed owner's portal profile (no email, phone,
+ * city…), and a full overwrite was nulling those. Meta is merged, not replaced, for the same reason.
+ */
+export function repatch(existing: Record<string, unknown>, fields: Record<string, unknown>): Record<string, unknown> {
+  const patch: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(fields)) {
+    if (v === null || v === undefined || v === "") continue;
+    patch[k] = k === "meta" && existing.meta && typeof existing.meta === "object"
+      ? { ...(existing.meta as Record<string, unknown>), ...(v as Record<string, unknown>) }
+      : v;
+  }
+  return patch;
+}
+
 /** uuid → 8 hex chars, for disambiguating subdomains and synthetic emails. */
 function seedFrom(id: string): string {
   return id.replace(/-/g, "").slice(0, 8);
@@ -116,7 +132,7 @@ async function promoteInstitution(job: any, overview: OverviewRow | undefined) {
   };
 
   if (existing) {
-    return { row: await repo.updateInstitution(existing.id, fields), created: false };
+    return { row: await repo.updateInstitution(existing.id, repatch(existing, fields)), created: false };
   }
 
   // Owner only when an extracted agent gives a real name; otherwise platform_user_id,
@@ -161,7 +177,7 @@ async function promoteBusiness(job: any, overview: OverviewRow | undefined) {
   };
 
   if (existing) {
-    return { row: await repo.updateBusiness(existing.id, fields), created: false };
+    return { row: await repo.updateBusiness(existing.id, repatch(existing, fields)), created: false };
   }
 
   // Same rule as promoteInstitution — the two tables publish identically.
@@ -256,7 +272,10 @@ async function promoteAgent(agent: AgentRow, jobId: string) {
  */
 async function resolveIsInstitution(job: any): Promise<boolean> {
   if (job.business_category_id) return repo.isInstitutionCategory(Number(job.business_category_id));
-  if (job.source_type === "agentcis") return true;
+  // Self-service jobs are created FROM an institutions row (institution-profile.service
+  // startExtraction), so they are institutions by construction even when the job carries no
+  // category — older ones were created without it.
+  if (job.source_type === "agentcis" || job.source_type === "institution_self_service") return true;
 
   throw new BadRequestError(
     "This job has no business category, so it cannot be routed to the institutions or businesses table. Set a category on the job first.",

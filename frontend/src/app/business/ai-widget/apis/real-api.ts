@@ -1,6 +1,7 @@
 import { httpDelete, httpGet, httpPatch, httpPost } from "@/lib/api/http";
 import type {
   CreateEmbedConfigInput, EmbedConfig, EmbedConfigListResponse,
+  UpdateEmbedConfigInput,
   VisitorCounts, VisitorListParams, VisitorListResult, VisitorMessage, VisitorPatch, WidgetVisitor,
 } from "./types";
 
@@ -23,6 +24,12 @@ export const aiWidgetRealApi = {
 
   createConfig: (input: CreateEmbedConfigInput): Promise<EmbedConfig> =>
     httpPost<EmbedConfig>("/ai-chat/embed/configs", input),
+
+  updateConfig: (id: number, input: UpdateEmbedConfigInput): Promise<EmbedConfig> =>
+    httpPatch<EmbedConfig>(`/ai-chat/embed/configs/${id}`, input),
+
+  rotateKey: (id: number): Promise<EmbedConfig> =>
+    httpPost<EmbedConfig>(`/ai-chat/embed/configs/${id}/rotate-key`, {}),
 
   deactivateConfig: async (id: number): Promise<void> => {
     await httpDelete(`/ai-chat/embed/configs/${id}`);
