@@ -105,7 +105,8 @@
     "test:step-gate": "node --import tsx tests/step-gate.ts",
     "test:browser-slot": "node --import tsx tests/browser-slot.ts",
     "test:non-course-url": "node --import tsx tests/non-course-url.ts",
-    "test:llm-request-timeout": "node --import tsx tests/llm-request-timeout.ts"
+    "test:llm-request-timeout": "node --import tsx tests/llm-request-timeout.ts",
+    "test:site-intelligence-overwrite": "node --import tsx tests/site-intelligence-overwrite.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",

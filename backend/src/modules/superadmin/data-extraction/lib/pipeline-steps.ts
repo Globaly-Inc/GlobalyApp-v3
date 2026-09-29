@@ -259,7 +259,14 @@ export async function runSiteAnalysis(jobId: string, job: JobRow): Promise<strin
   // could act on. A missing section is a thin analysis, not a broken pipeline — the homepage is
   // one input among many and the `institution` step re-reads it properly later — so default and
   // carry on, but say so, because silently writing an empty overview looks like a working step.
-  const missing = (["institution", "site_intelligence"] as const).filter((k) => !analysis[k]);
+  // Truthiness is not enough: extractJson CASTS, so a model can hand back `institution` as a
+  // string or an array and pass a `!analysis[k]` check. Spreading a string into the overview
+  // insert yields columns "0", "1", "2"… and Postgres rejects them, and a string
+  // `site_intelligence` reads every field as undefined — which is the wholesale-null overwrite
+  // again, silently (Greptile). A section has to BE an object before either write looks at it.
+  const isSection = (v: unknown): v is Record<string, unknown> =>
+    typeof v === "object" && v !== null && !Array.isArray(v);
+  const missing = (["institution", "site_intelligence"] as const).filter((k) => !isSection(analysis[k]));
   if (missing.length) {
     await _stepDeps.writeEvent(jobId, "site_analysis_incomplete", {
       level: "warn", phase: "site_analysis",
@@ -269,15 +276,23 @@ export async function runSiteAnalysis(jobId: string, job: JobRow): Promise<strin
   }
 
   // The prompt's response key is `other_social_urls`; the DB column is `other_social_links`.
-  const { other_social_urls, ...institutionRest } = (analysis.institution ?? {}) as Record<string, unknown>;
+  const { other_social_urls, ...institutionRest } = isSection(analysis.institution) ? analysis.institution : {};
   await writeInstitutionOverview(jobId, {
     ...institutionRest,
     ...(Array.isArray(other_social_urls) && other_social_urls.length ? { other_social_links: other_social_urls } : {}),
     source_url: job.institution_url,
   } as any);
-  await writeSiteIntelligence(jobId, (analysis.site_intelligence ?? {}) as any);
+  // SKIPPED, not defaulted, when the model omits it. writeSiteIntelligence upserts with a bare
+  // .merge() — a wholesale column replace — unlike writeInstitutionOverview's fill-blanks
+  // COALESCE(NULLIF(...)) above, which is why `?? {}` is harmless there and destructive here:
+  // it would overwrite a previous run's currency, country, fee_structure and navigation_patterns
+  // with nulls, and handleEnrichmentStep reads exactly those (Greptile). Leaving the row alone
+  // keeps the last good analysis; nothing requires it to exist, every reader optional-chains it.
+  if (isSection(analysis.site_intelligence)) await writeSiteIntelligence(jobId, analysis.site_intelligence as any);
 
-  const patterns = analysis.course_page_patterns ?? [];
+  // Same cast, same hazard: a string here would be returned as `string[]` and counted with
+  // .length, reporting "17 course URL patterns" for a 17-character sentence.
+  const patterns = Array.isArray(analysis.course_page_patterns) ? analysis.course_page_patterns : [];
   await _stepDeps.writeEvent(jobId, "site_analyzed", {
     phase: "site_mapping",
     message: "Site analysis complete",

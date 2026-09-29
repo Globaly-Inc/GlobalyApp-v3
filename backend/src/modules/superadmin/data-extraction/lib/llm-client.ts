@@ -110,6 +110,24 @@ export function isTransient(err: unknown): boolean {
 // ponytail: 5 min covers a 65536-token course page; env knob because it is a latency guess.
 const LLM_REQUEST_TIMEOUT_MS = Number(process.env.LLM_REQUEST_TIMEOUT_MS) || 300_000;
 
+/**
+ * Ceiling on ALL attempts for one call, deliberately under extraction-queue-reclaim.worker.ts's
+ * STALE_MINUTES (20). Per-request timeouts alone were not enough: MAX_RETRIES=3 means four
+ * attempts, and 4 × 5 min lands exactly on the reclaim threshold before backoff or a provider's
+ * own retryDelay is counted. The sweep would then reclaim a page whose attempt is still running —
+ * duplicate model spend, and the original's answer discarded by the page worker's stillOwned()
+ * fence (Greptile).
+ *
+ * Bounding rather than heartbeating on purpose: a timer that keeps the claim fresh would also
+ * keep a genuinely hung worker's claim fresh forever, which is the exact failure stale-reclaim
+ * exists to catch. Fast transient errors (429, 503) still get all four attempts; only slow ones
+ * are cut short, and they are the ones that threaten the claim.
+ *
+ * ponytail: 12 min leaves headroom for the other model calls one page message makes — see the
+ * per-message note in the page worker.
+ */
+const LLM_TOTAL_BUDGET_MS = Number(process.env.LLM_TOTAL_BUDGET_MS) || 12 * 60_000;
+
 // ponytail: throttle between LLM calls — 500ms for paid keys, raise if on free tier
 let lastLlmCall = 0;
 const MIN_LLM_GAP_MS = Number(process.env.LLM_THROTTLE_MS) || 500;
@@ -128,7 +146,8 @@ function parseRetryDelay(err: unknown): number | null {
 // and cheaper than the caller re-dispatching a whole new attempt.
 const INLINE_RETRY_CEILING_MS = 60_000;
 
-async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+export async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+  const deadline = Date.now() + LLM_TOTAL_BUDGET_MS;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       const now = Date.now();
@@ -150,6 +169,13 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
       }
       if (attempt < MAX_RETRIES) {
         const delay = (serverDelay ?? Math.min(2000 * Math.pow(2, attempt), 15_000)) + Math.random() * 1000;
+        // Never START an attempt that cannot finish inside the budget — the point is the wall
+        // clock the caller's queue claim is measured against, not the attempt count.
+        if (Date.now() + delay + LLM_REQUEST_TIMEOUT_MS > deadline) {
+          throw new Error(`AI_TRANSIENT: retry budget exhausted after ${attempt + 1} attempts: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
+        }
+        // Never START an attempt that cannot finish inside the budget — the point is the wall
+        // clock the caller's queue claim is measured against, not the attempt count.
         logger.warn(`Transient LLM error, retrying in ${Math.round(delay / 1000)}s (attempt ${attempt + 1}/${MAX_RETRIES})`);
         await new Promise((r) => setTimeout(r, delay));
         continue;
