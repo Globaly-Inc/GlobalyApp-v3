@@ -32,9 +32,12 @@ let brokerUp = true;
   published.push(job as Record<string, unknown>);
 };
 
-type Msg = { id: number; session_id: number; feedback: string | null; review_status: string | null; memory_ids: string[] };
+type Msg = {
+  id: number; session_id: number; feedback: string | null; review_status: string | null; memory_ids: string[];
+  feedback_learned_at: Date | null; review_learned_at: Date | null;
+};
 const msg = (o: Partial<Msg> & { id: number }): Msg =>
-  ({ session_id: 90, feedback: null, review_status: null, memory_ids: [], ...o });
+  ({ session_id: 90, feedback: null, review_status: null, memory_ids: [], feedback_learned_at: null, review_learned_at: null, ...o });
 
 const SELECT_MSGS = /select .* from "ai_counselor_messages"/i;
 const UPDATE_MSGS = /update "ai_counselor_messages"/i;
@@ -54,8 +57,10 @@ function wire(rows: Msg[]) {
 wire([]);
 await learn.sweepUnlearnedSignals();
 const q = find(SELECT_MSGS);
-assert(/"learned_at" is null/i.test(q?.text ?? ""), "sweep asks only for unlearned rows");
-assert(/feedback" is not null|review_status" is not null/i.test(q?.text ?? ""), "sweep asks only for rows carrying a signal");
+assert(/"feedback_learned_at" is null/i.test(q?.text ?? "") && /"review_learned_at" is null/i.test(q?.text ?? ""),
+  "sweep asks per signal, not per row");
+assert(/feedback" is not null/i.test(q?.text ?? "") && /review_status" is not null/i.test(q?.text ?? ""),
+  "…each paired with the signal that is actually carried");
 assert(/interval '15 minutes'/i.test(q?.text ?? ""), "sweep honours the in-flight grace window");
 
 // ── 2. A correction whose job never reached the broker is replayed ───────────
@@ -73,8 +78,8 @@ assert(published[0]?.kind === "feedback" && r.requeued === 1, "thumb on a memory
 wire([msg({ id: 13, feedback: "positive", memory_ids: [] })]);
 r = await learn.sweepUnlearnedSignals();
 assert(r.requeued === 0, "bare thumb on a reply that used no memories is not re-enqueued", r);
-assert(all(UPDATE_MSGS).some(s => /"learned_at"/.test(s.text) && s.values.includes(13)),
-  "…and is stamped so the sweep stops reconsidering it");
+assert(all(UPDATE_MSGS).some(s => /"feedback_learned_at"/.test(s.text) && s.values.includes(13)),
+  "…and its OWN marker is stamped so the sweep stops reconsidering it");
 
 // ── 4. An approved review that used no memories has nothing to learn ─────────
 wire([msg({ id: 14, review_status: "approved", memory_ids: [] })]);
@@ -86,8 +91,52 @@ brokerUp = false;
 wire([msg({ id: 15, review_status: "corrected" })]);
 r = await learn.sweepUnlearnedSignals();
 assert(r.found === 1 && r.requeued === 0, "broker still down: found but not requeued", r);
-assert(!all(UPDATE_MSGS).some(s => /"learned_at"/.test(s.text) && s.values.includes(15)),
+assert(!all(UPDATE_MSGS).some(s => /_learned_at"/.test(s.text) && s.values.includes(15)),
   "…and the row is NOT stamped, so the next sweep retries it");
 brokerUp = true;
+
+// ── Both signals on one message are independent ─────────────────────────────
+// A review and a thumb are separate signals learned from by different jobs. One shared marker
+// meant whichever ran first hid the other from recovery forever, and a row carrying both only
+// ever enqueued the review (Greptile).
+wire([msg({ id: 20, review_status: "corrected", feedback: "negative", memory_ids: ["m1"] })]);
+r = await learn.sweepUnlearnedSignals();
+assert(r.requeued === 2 && published.length === 2, "a message with BOTH signals pending enqueues both", r);
+assert(published.some(p => p.kind === "correction") && published.some(p => p.kind === "feedback"),
+  "…one correction job and one feedback job", published.map(p => p.kind));
+
+// The already-learned half must not be re-enqueued, and the pending half must not be skipped.
+wire([msg({ id: 21, review_status: "corrected", review_learned_at: new Date(), feedback: "negative", memory_ids: ["m1"] })]);
+r = await learn.sweepUnlearnedSignals();
+assert(r.requeued === 1 && published[0]?.kind === "feedback",
+  "a thumb still pending is recovered even though the review was already learned from", published.map(p => p.kind));
+
+wire([msg({ id: 22, review_status: "corrected", feedback: "negative", feedback_learned_at: new Date(), memory_ids: ["m1"] })]);
+r = await learn.sweepUnlearnedSignals();
+assert(r.requeued === 1 && published[0]?.kind === "correction",
+  "…and the mirror case: review pending, thumb already learned", published.map(p => p.kind));
+
+// ── runLearnJob stamps ONLY its own signal's marker ─────────────────────────
+// The sweep assertions above all pass even if both job kinds stamp the same column — that bug is
+// invisible until a second signal arrives. These two are what catch it.
+const stampRoutes = (m: Msg) => reset([
+  [SELECT_MSGS, () => [{ ...m, role: "assistant", content: "c", feedback_actor: "a1", correction: null, review_note: null, reviewed_by: 1 }]],
+  [/from "ai_counselor_sessions"/i, () => [{ id: 90, platform_user_id: null, visitor_key: "v1", embed_config_id: 7 }]],
+  [/from "ai_embed_configs"/i, () => [{ id: 7, institution_id: INST, auto_learn: true }]],
+  [UPDATE_MSGS, () => []],
+]);
+const markerCols = () => all(UPDATE_MSGS).filter(s => /_learned_at/.test(s.text)).map(s => s.text.match(/"(\w*_learned_at)"/)?.[1]);
+
+// A thumb on a reply that used no memories: learnFromFeedback returns early, the stamp still runs.
+stampRoutes(msg({ id: 30, feedback: "positive", memory_ids: [] }));
+await learn.runLearnJob({ kind: "feedback", institution_id: INST, message_id: 30 });
+assert(markerCols().includes("feedback_learned_at") && !markerCols().includes("review_learned_at"),
+  "a feedback job stamps feedback_learned_at and NOT review_learned_at", markerCols());
+
+// An approved review that used no memories: same early return, other marker.
+stampRoutes(msg({ id: 31, review_status: "approved", memory_ids: [] }));
+await learn.runLearnJob({ kind: "correction", institution_id: INST, message_id: 31 });
+assert(markerCols().includes("review_learned_at") && !markerCols().includes("feedback_learned_at"),
+  "a correction job stamps review_learned_at and NOT feedback_learned_at", markerCols());
 
 await finish();

@@ -371,13 +371,18 @@ export async function runLearnJob(job: LearnJob): Promise<LearnResult> {
       case "conversation": return learnFromConversation(job);
     }
   })();
-  // Only after the job actually ran — a throw above skips this, leaving the row for the sweep.
+  // Only after the job actually ran — a throw above skips this, leaving the signal for the sweep.
   // Best-effort: the learning already happened, and failing here would re-run it forever.
-  // "conversation" carries a session, not a message, so it has no row to stamp and stays
-  // unrecoverable — a deliberate gap, not an oversight (see sweepUnlearnedSignals).
-  if ("message_id" in job) {
-    await learnRepo.markLearned(job.message_id)
-      .catch((err) => logger.warn("Could not stamp learned_at", { messageId: job.message_id, err: String(err) }));
+  //
+  // Stamps ONLY this job's own signal. A thumb and a review are independent signals on the same
+  // message; marking the whole row would hide whichever one had not been learned from yet, and it
+  // would never be recovered (Greptile). "conversation" carries a session, not a message, so it
+  // has no marker at all and stays unrecoverable — a known gap, not an oversight.
+  const marker: learnRepo.LearnedMarker | null =
+    job.kind === "feedback" ? "feedback" : job.kind === "correction" ? "review" : null;
+  if (marker && "message_id" in job) {
+    await learnRepo.markLearned(job.message_id, marker)
+      .catch((err) => logger.warn("Could not stamp learned marker", { messageId: job.message_id, marker, err: String(err) }));
   }
   return result;
 }
@@ -403,19 +408,30 @@ export async function sweepUnlearnedSignals(): Promise<{ found: number; requeued
   let requeued = 0;
   for (const row of rows) {
     const usedMemories = row.memory_ids.length > 0;
-    const kind = row.review_status && (row.review_status === "corrected" || usedMemories) ? "correction"
-      : row.feedback && usedMemories ? "feedback"
-      : null;
-    // Nothing to learn from (a bare thumb on a reply that used no memories). Stamp it so the
-    // sweep stops reconsidering it on every run — the signal is kept on the row either way.
-    if (!kind) {
-      await learnRepo.markLearned(row.id).catch(() => { /* retried next sweep */ });
-      continue;
+    // BOTH signals are considered, independently. Picking one kind per row meant that when a
+    // message carried an unlearned review AND an unlearned thumb, only the review was ever
+    // enqueued and the thumb was dropped (Greptile).
+    const pending: Array<{ kind: "correction" | "feedback"; marker: learnRepo.LearnedMarker; learnable: boolean }> = [];
+    if (row.review_status && !row.review_learned_at) {
+      pending.push({ kind: "correction", marker: "review", learnable: row.review_status === "corrected" || usedMemories });
     }
-    const session = await learnRepo.findSession(row.session_id);
-    const owner = session && await learnRepo.institutionForSession(session);
-    if (!owner) continue; // not an institution-owned chat; nothing to learn into
-    if (await enqueueLearning({ kind, institution_id: owner.institutionId, message_id: row.id })) requeued++;
+    if (row.feedback && !row.feedback_learned_at) {
+      pending.push({ kind: "feedback", marker: "feedback", learnable: usedMemories });
+    }
+
+    for (const p of pending) {
+      // Nothing to learn from (a bare thumb on a reply that used no memories, an approved review
+      // that used none). Stamp that ONE marker so the sweep stops reconsidering it every run —
+      // the signal itself is kept on the row either way.
+      if (!p.learnable) {
+        await learnRepo.markLearned(row.id, p.marker).catch(() => { /* retried next sweep */ });
+        continue;
+      }
+      const session = await learnRepo.findSession(row.session_id);
+      const owner = session && await learnRepo.institutionForSession(session);
+      if (!owner) continue; // not an institution-owned chat; nothing to learn into
+      if (await enqueueLearning({ kind: p.kind, institution_id: owner.institutionId, message_id: row.id })) requeued++;
+    }
   }
   if (rows.length) logger.info("Learning recovery sweep", { found: rows.length, requeued });
   return { found: rows.length, requeued };
