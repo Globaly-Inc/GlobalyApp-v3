@@ -194,7 +194,11 @@ assert(/"review_learned_at" = /.test(rv?.text ?? "") && !/"feedback_learned_at"/
   ]);
   await learn.runLearnJob({ kind: "correction", institution_id: INST, message_id: 41 });
   const rstamp = all(UPDATE_MSGS).find(s => /"review_learned_at"/.test(s.text));
-  assert(/"reviewed_at"/.test(rstamp?.text ?? ""), "the review stamp is guarded on reviewed_at", rstamp?.text);
+  assert(/date_trunc\('milliseconds', reviewed_at\) = /.test(rstamp?.text ?? ""),
+    "the review stamp guards on reviewed_at truncated to ms — plain equality matches 0 rows, "
+    + "because PG stores microseconds and node-postgres returns a ms-precision JS Date", rstamp?.text);
+  assert(!/"reviewed_at" = \$/.test(rstamp?.text ?? ""),
+    "…and never uses raw equality on the timestamp", rstamp?.text);
 }
 
 await finish();

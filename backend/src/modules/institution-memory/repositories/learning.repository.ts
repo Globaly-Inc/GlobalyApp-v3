@@ -203,11 +203,25 @@ export async function markLearned(
   marker: LearnedMarker,
   observed: Pick<LearnMessage, "feedback" | "reviewed_at">,
 ): Promise<number> {
-  const guard = marker === "feedback"
-    ? { feedback: observed.feedback ?? null }
-    : { reviewed_at: observed.reviewed_at ?? null };
-  return masterKnex("ai_counselor_messages").where({ id: messageId }).where(guard)
-    .update({ [MARKER_COLUMN[marker]]: masterKnex.fn.now() });
+  const q = masterKnex("ai_counselor_messages").where({ id: messageId });
+  if (marker === "feedback") {
+    // Text, so exact equality is safe; knex renders a null binding as `is null`.
+    q.where({ feedback: observed.feedback ?? null });
+  } else if (observed.reviewed_at) {
+    // Truncated to milliseconds on BOTH sides. Postgres stores timestamptz to microseconds
+    // (…156888) but node-postgres hands it back as a JS Date, which only carries milliseconds
+    // (…156) — so a plain equality guard compares 156888 against 156000 and matches ZERO rows,
+    // every time, even when the review is untouched. review_learned_at would then never be
+    // stamped and the sweep would relearn that review on every pass, holding a slot in the
+    // capped oldest-first batch and delaying newer signals (Greptile; measured against Postgres).
+    // Two reviews inside one millisecond are indistinguishable here — a 1ms race on a human
+    // action, and the cost of losing it is one redundant relearn.
+    q.whereRaw("date_trunc('milliseconds', reviewed_at) = ?", [observed.reviewed_at]);
+  } else {
+    // Never reviewed (legacy rows): the guard is simply "still unreviewed".
+    q.whereNull("reviewed_at");
+  }
+  return q.update({ [MARKER_COLUMN[marker]]: masterKnex.fn.now() });
 }
 
 /**
