@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Combobox } from "@/components/combobox";
 import { Pagination } from "@/components/ui/pagination";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchBranches, deleteBranch } from "../../store/business-profile-detail-slice";
 import type { Branch, BranchFilter } from "../../apis/types";
 import { LinkBranchDialog } from "../branches/link-branch-dialog";
@@ -27,6 +28,9 @@ export function BranchesTab({
   businessId,
   isInstitution,
 }: Readonly<{ businessId: number; isInstitution: boolean }>) {
+  // Names the exact org in the link — ids alone can collide across businesses and institutions.
+  const activeOrgId = useAuthState().user?.orgId;
+  const orgQuery = activeOrgId ? `?org=${encodeURIComponent(activeOrgId)}` : "";
   const router = useRouter();
   const dispatch = useAppDispatch();
   const { items: branches, status, total: branchesTotal, ownerId } = useAppSelector((state) => state.businessProfileDetail.branches);
@@ -120,7 +124,7 @@ export function BranchesTab({
                     setEditingLinkedBranch(b);
                     setLinkOpen(true);
                   } else {
-                    router.push(`/business/profile/${businessId}/branches/${b.id}/edit`);
+                    router.push(`/business/profile/${businessId}/branches/${b.id}/edit${orgQuery}`);
                   }
                 }}
                 aria-label="Edit branch"
@@ -156,7 +160,7 @@ export function BranchesTab({
               <Link2 className="mr-1.5 h-3.5 w-3.5" /> Link existing
             </Button>
           )}
-          <Button className="h-10" onClick={() => router.push(`/business/profile/${businessId}/branches/add`)}>
+          <Button className="h-10" onClick={() => router.push(`/business/profile/${businessId}/branches/add${orgQuery}`)}>
             <Plus className="mr-1.5 h-3.5 w-3.5" /> Create branch
           </Button>
         </div>

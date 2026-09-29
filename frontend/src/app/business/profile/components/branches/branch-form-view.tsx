@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { ArrowLeft, Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,7 +10,7 @@ import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { flagFromIso2 } from "@/app/admin/platform/categories/utils";
 import { geoApi, type City, type Country } from "@/app/geo/apis";
 import { CreateBranchDetailsStep, EMPTY_BRANCH_FORM } from "@/app/admin/platform/businesses/components/branches/create-branch-details-step";
-import { isValidEmail, isValidUrl } from "@/app/admin/platform/businesses/utils";
+import { isValidEmail } from "@/app/admin/platform/businesses/utils";
 import type { Branch, BranchType, SharedServices } from "../../apis/types";
 import { createBranch, fetchBranch, updateBranch } from "../../store/business-profile-detail-slice";
 import { useOrgContext } from "../use-org-context";
@@ -34,7 +34,7 @@ export function BranchFormView({ businessId, branchId }: Readonly<{ businessId: 
   // store, and a uuid match there would edit the wrong tenant's branch.
   const branches = branchList.ownerId === businessId ? branchList.items : [];
   // The URL's org, not whichever one the session happens to be on, must receive these requests.
-  const contextReady = useOrgContext(businessId);
+  const contextReady = useOrgContext(businessId, useSearchParams().get("org"));
   const [fetchedBranch, setFetchedBranch] = useState<Branch | null>(null);
   const editBranch = branchId ? branches.find((b) => b.id === branchId) ?? fetchedBranch ?? undefined : undefined;
   const isEdit = !!branchId;
@@ -120,7 +120,6 @@ export function BranchFormView({ businessId, branchId }: Readonly<{ businessId: 
     if (form.name.trim().length < 2) next.name = "Branch name is required";
     if (!form.countryId) next.countryId = "Select a country";
     if (form.email && !isValidEmail(form.email)) next.email = "Enter a valid email";
-    if (form.website && !isValidUrl(form.website)) next.website = "Enter a valid website URL";
     setErrors(next);
     return Object.keys(next).length === 0;
   };

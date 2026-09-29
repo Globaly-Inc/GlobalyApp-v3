@@ -60,6 +60,23 @@ function registrationFor(data: BranchInput, parentRegistration: unknown) {
   return data.registration_licenses ?? null;
 }
 
+/**
+ * Keeps a created branch's registration matching its type when the type is edited: becoming
+ * Same Company takes the parent's; leaving it drops the parent's copy (the branch then enters its
+ * own from its profile). Only branches this parent created — see setOwnedBranchRegistration.
+ */
+async function syncRegistrationOnTypeChange(
+  table: "businesses" | "institutions", parentId: number,
+  existing: { branch_type: string; linked_business_id: number | null; linked_institution_id: number | null },
+  data: BranchPatch, parentRegistration: unknown,
+) {
+  if (!data.branch_type || data.branch_type === existing.branch_type) return;
+  const orgId = table === "businesses" ? existing.linked_business_id : existing.linked_institution_id;
+  if (orgId == null) return;
+  if (data.branch_type === "same_company") await repo.setOwnedBranchRegistration(table, parentId, [orgId], parentRegistration);
+  else if (existing.branch_type === "same_company") await repo.setOwnedBranchRegistration(table, parentId, [orgId], null);
+}
+
 async function requireBusiness(id: number) {
   const biz = await platformRepo.findBusinessById(id);
   if (!biz) throw new NotFoundError("Business not found");
@@ -162,7 +179,9 @@ export async function updateBranch(businessId: number, branchId: string, data: B
   const existing = await repo.findBranchById(businessId, biz.schema_name, branchId);
   if (!existing) throw new NotFoundError("Branch not found");
   assertLinkOnlyPatch(existing, data);
-  return repo.updateBranch(businessId, biz.schema_name, branchId, data);
+  const updated = await repo.updateBranch(businessId, biz.schema_name, branchId, data);
+  await syncRegistrationOnTypeChange("businesses", businessId, existing, data, biz.registration_licenses);
+  return updated;
 }
 
 export async function deleteBranch(businessId: number, branchId: string) {
@@ -254,7 +273,9 @@ export async function updateInstitutionBranch(institutionId: number, branchId: s
   const existing = await repo.findBranchById(institutionId, inst.schema_name, branchId);
   if (!existing) throw new NotFoundError("Branch not found");
   assertLinkOnlyPatch(existing, data);
-  return repo.updateBranch(institutionId, inst.schema_name, branchId, data);
+  const updated = await repo.updateBranch(institutionId, inst.schema_name, branchId, data);
+  await syncRegistrationOnTypeChange("institutions", institutionId, existing, data, inst.registration_licenses);
+  return updated;
 }
 
 export async function deleteInstitutionBranch(institutionId: number, branchId: string) {

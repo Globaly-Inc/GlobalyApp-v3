@@ -209,8 +209,21 @@ export async function syncSameCompanyRegistration(
   const ids = await db("business_branches")
     .where({ branch_type: "same_company" }).whereNotNull(column).whereNull("deleted_at")
     .pluck(column);
-  if (ids.length === 0) return;
-  await masterKnex(table).whereIn("id", ids).update({ registration_licenses: registration ?? null, updated_at: masterKnex.fn.now() });
+  await setOwnedBranchRegistration(table, parent.id, ids, registration);
+}
+
+/**
+ * Writes registration only onto branches this parent CREATED (parent_*_id points at it). A linked
+ * existing org is someone else's legal entity — marking it same_company must never let this
+ * parent overwrite its registration.
+ */
+export async function setOwnedBranchRegistration(
+  table: "businesses" | "institutions", parentId: number, orgIds: number[], registration: unknown,
+) {
+  if (orgIds.length === 0) return;
+  const parentColumn = table === "businesses" ? "parent_business_id" : "parent_institution_id";
+  await masterKnex(table).whereIn("id", orgIds).where(parentColumn, parentId)
+    .update({ registration_licenses: registration ?? null, updated_at: masterKnex.fn.now() });
 }
 
 export async function deleteBranch(businessId: number, schemaName: string, branchId: string) {
