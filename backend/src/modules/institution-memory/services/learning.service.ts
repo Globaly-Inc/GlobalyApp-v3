@@ -364,6 +364,11 @@ export async function learnFromConversation(job: Extract<LearnJob, { kind: "conv
 export const __test = { actorOf };
 
 export async function runLearnJob(job: LearnJob): Promise<LearnResult> {
+  // Read the signal BEFORE the job runs: the stamp below must record "this version was learned
+  // from", not "a job finished". Captured early on purpose — if the signal changes between here
+  // and the handler's own read, the guard simply misses and the sweep re-enqueues, which is the
+  // safe direction (learn twice, never skip).
+  const observed = "message_id" in job ? await learnRepo.findMessage(job.message_id) : undefined;
   const result = await (async (): Promise<LearnResult> => {
     switch (job.kind) {
       case "correction": return learnFromCorrection(job);
@@ -380,9 +385,12 @@ export async function runLearnJob(job: LearnJob): Promise<LearnResult> {
   // has no marker at all and stays unrecoverable — a known gap, not an oversight.
   const marker: learnRepo.LearnedMarker | null =
     job.kind === "feedback" ? "feedback" : job.kind === "correction" ? "review" : null;
-  if (marker && "message_id" in job) {
-    await learnRepo.markLearned(job.message_id, marker)
-      .catch((err) => logger.warn("Could not stamp learned marker", { messageId: job.message_id, marker, err: String(err) }));
+  if (marker && observed && "message_id" in job) {
+    const stamped = await learnRepo.markLearned(job.message_id, marker, observed)
+      .catch((err) => { logger.warn("Could not stamp learned marker", { messageId: job.message_id, marker, err: String(err) }); return 0; });
+    // 0 = the signal changed while this job ran, so a newer job owns it. Leaving the marker null
+    // is the point: the sweep recovers the new signal even if that newer job never reached the broker.
+    if (!stamped) logger.info("Signal changed while learning — marker left for the newer job", { messageId: job.message_id, marker });
   }
   return result;
 }
@@ -424,7 +432,7 @@ export async function sweepUnlearnedSignals(): Promise<{ found: number; requeued
       // that used none). Stamp that ONE marker so the sweep stops reconsidering it every run —
       // the signal itself is kept on the row either way.
       if (!p.learnable) {
-        await learnRepo.markLearned(row.id, p.marker).catch(() => { /* retried next sweep */ });
+        await learnRepo.markLearned(row.id, p.marker, row).catch(() => { /* retried next sweep */ });
         continue;
       }
       const session = await learnRepo.findSession(row.session_id);
@@ -432,7 +440,7 @@ export async function sweepUnlearnedSignals(): Promise<{ found: number; requeued
       // Not an institution-owned chat (or its session/widget is gone): nothing to learn into.
       // Stamped, or these rows sit at the head of the oldest-first batch forever and, once a
       // batch's worth accumulate, nothing behind them is ever recovered.
-      if (!owner) { await learnRepo.markLearned(row.id, p.marker).catch(() => { /* retried next sweep */ }); continue; }
+      if (!owner) { await learnRepo.markLearned(row.id, p.marker, row).catch(() => { /* retried next sweep */ }); continue; }
       if (await enqueueLearning({ kind: p.kind, institution_id: owner.institutionId, message_id: row.id })) requeued++;
     }
   }

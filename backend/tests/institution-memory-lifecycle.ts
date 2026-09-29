@@ -223,6 +223,16 @@ console.log("\n12. Query flags and deleted rows");
   // z.coerce.boolean() turned every non-empty string into true, so ?flagged=false filtered to flagged.
   const q = MemoryQuerySchema.parse({ flagged: "false", conflicting: "true" });
   assert(q.flagged === false && q.conflicting === true, "?flagged=false parses as false, ?conflicting=true as true", q);
+  // Two kinds of caller: HTTP hands it strings, internal code (scripts/, tests/) hands it real
+  // booleans. String-only rejected the latter with "Expected 'true' | 'false', received boolean",
+  // which broke tests/institution-memory-dry-run.ts:122.
+  const qb = MemoryQuerySchema.parse({ flagged: false, conflicting: true });
+  assert(qb.flagged === false && qb.conflicting === true, "a real boolean from an internal caller parses too", qb);
+  for (const junk of [{ flagged: "yes" }, { flagged: 1 }, { flagged: "" }]) {
+    let threw = false;
+    try { MemoryQuerySchema.parse(junk); } catch { threw = true; }
+    assert(threw, `junk is still rejected, not silently coerced: ${JSON.stringify(junk)}`);
+  }
 
   // A deleted row is not found to any action, as it is to GET — deprecating it would revive it
   // into a dedupe slot a re-created statement may already hold.

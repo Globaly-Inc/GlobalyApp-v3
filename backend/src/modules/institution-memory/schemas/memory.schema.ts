@@ -140,8 +140,18 @@ export const PatchMemorySchema = z.object({
 }).strict();
 export type PatchMemoryInput = z.infer<typeof PatchMemorySchema>;
 
-/** "false" must parse as false — z.coerce.boolean() turns every non-empty string into true. */
-export const booleanQueryParam = z.enum(["true", "false"]).transform((v) => v === "true");
+/**
+ * `"false"` must parse as false — `z.coerce.boolean()` turns every non-empty string into true,
+ * so `?flagged=false` silently meant `flagged=true`.
+ *
+ * Booleans are accepted too, because this schema has two kinds of caller: HTTP handlers, which
+ * only ever hand it strings, and internal code calling `MemoryQuerySchema.parse()` directly
+ * (scripts/, tests/), which naturally passes a real boolean. String-only rejected the latter
+ * outright — `Expected 'true' | 'false', received boolean` (Greptile).
+ */
+export const booleanQueryParam = z
+  .union([z.enum(["true", "false"]), z.boolean()])
+  .transform((v) => v === true || v === "true");
 
 export const MemoryQuerySchema = z.object({
   status: z.enum(MEMORY_STATUSES).optional(),

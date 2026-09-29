@@ -13,14 +13,14 @@ import type { Knex } from "knex";
 // learned from by different jobs. A single `learned_at` let whichever arrived first stamp the
 // whole row, so the other was excluded from recovery forever (Greptile). One marker per signal.
 //
-// ── Why this file is named "…_learning_markers" and not "…_learned_at" ──
-// An earlier revision of THIS migration, under the old filename, shipped a single `learned_at`
-// column and reached a pushed branch. Knex keys on the filename, so any database that ran it
-// records that name and will never re-run it — it would keep `learned_at`, never gain the two
-// real columns, and every learning query would fail on a missing column (Greptile). Renaming
-// makes it a migration those databases have not seen, so they run it and get repaired; the `001`
-// prefix is unchanged, so ordering is identical. Everything below is written to be correct on
-// BOTH populations, which is why it is raw SQL with IF [NOT] EXISTS rather than alterTable.
+// ── Why the same work exists under two filenames ──
+// This file began as ..._ai_messages_learned_at.ts and was renamed to force a re-run on databases
+// that had already applied the superseded single-column revision. That was WRONG: knex records the
+// filename of every applied migration and refuses to run anything when a recorded file has gone —
+// "The migration directory is corrupt, the following files are missing: …" — so the rename
+// hard-blocked migrations for exactly the databases it meant to repair (Greptile; reproduced
+// against a scratch DB). Both names have been on origin, so both stay on disk, and both are
+// idempotent: whichever runs second is a no-op. Do not delete either.
 //
 // Nullable with no backfill on purpose: every existing row reads "not yet learned", and the
 // sweep's own grace window keeps it from stampeding history the first time it runs. A backfill,

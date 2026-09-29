@@ -166,4 +166,35 @@ const rv = find(UPDATE_MSGS);
 assert(/"review_learned_at" = /.test(rv?.text ?? "") && !/"feedback_learned_at"/.test(rv?.text ?? ""),
   "recordReview clears review_learned_at and leaves the thumb's marker alone", rv);
 
+// ── A stamp must not land on a signal the job never processed ───────────────
+// The race: job A reads feedback="positive"; the student flips to "negative", which clears the
+// marker and enqueues job B; job A finishes and stamps. If that stamp lands, and B's publish was
+// lost to an outage, recovery sees "learned" and the negative is never applied (Greptile).
+{
+  // The message MOVED ON while the job ran: the row now reads "negative".
+  const moved = { ...msg({ id: 40, feedback: "negative", memory_ids: [] }), role: "assistant", content: "c",
+    feedback_actor: "a1", correction: null, review_note: null, reviewed_by: 1, reviewed_at: new Date("2026-09-29T10:00:00Z") };
+  reset([
+    [SELECT_MSGS, () => [moved]],
+    [/from "ai_counselor_sessions"/i, () => [{ id: 90, platform_user_id: null, visitor_key: "v1", embed_config_id: 7 }]],
+    [/from "ai_embed_configs"/i, () => [{ id: 7, institution_id: INST, auto_learn: true }]],
+    [UPDATE_MSGS, () => []],
+  ]);
+  await learn.runLearnJob({ kind: "feedback", institution_id: INST, message_id: 40 });
+  const stamp = all(UPDATE_MSGS).find(s => /"feedback_learned_at"/.test(s.text));
+  assert(/"feedback" = \?|"feedback" is null/.test(stamp?.text ?? "") || stamp?.values.includes("negative"),
+    "the feedback stamp is guarded on the value the job read", stamp?.text);
+
+  // And the review side is guarded on reviewed_at, which recordReview refreshes every write.
+  reset([
+    [SELECT_MSGS, () => [{ ...moved, id: 41, review_status: "approved" }]],
+    [/from "ai_counselor_sessions"/i, () => [{ id: 90, platform_user_id: null, visitor_key: "v1", embed_config_id: 7 }]],
+    [/from "ai_embed_configs"/i, () => [{ id: 7, institution_id: INST, auto_learn: true }]],
+    [UPDATE_MSGS, () => []],
+  ]);
+  await learn.runLearnJob({ kind: "correction", institution_id: INST, message_id: 41 });
+  const rstamp = all(UPDATE_MSGS).find(s => /"review_learned_at"/.test(s.text));
+  assert(/"reviewed_at"/.test(rstamp?.text ?? ""), "the review stamp is guarded on reviewed_at", rstamp?.text);
+}
+
 await finish();

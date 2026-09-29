@@ -17,6 +17,7 @@ export interface LearnMessage {
   correction: string | null;
   review_note: string | null;
   reviewed_by: number | null;
+  reviewed_at?: Date | null;
   memory_ids: string[];
   feedback_learned_at?: Date | null;
   review_learned_at?: Date | null;
@@ -31,7 +32,7 @@ export interface LearnSession {
 
 const MESSAGE_COLUMNS = [
   "id", "session_id", "role", "content", "feedback", "feedback_actor", "review_status",
-  "correction", "review_note", "reviewed_by", "memory_ids",
+  "correction", "review_note", "reviewed_by", "reviewed_at", "memory_ids",
   "feedback_learned_at", "review_learned_at",
 ];
 
@@ -183,8 +184,29 @@ const MARKER_COLUMN: Record<LearnedMarker, string> = {
 
 /** Stamped once a learn job for this signal has actually run, so the sweep below can tell a
  *  signal that was already learned from apart from one whose job never reached the broker. */
-export async function markLearned(messageId: number, marker: LearnedMarker): Promise<void> {
-  await masterKnex("ai_counselor_messages").where({ id: messageId })
+/**
+ * `observed` is the signal AS THE JOB READ IT, and the stamp only lands if it is still that.
+ *
+ * Without this the stamp says "a job for this message finished", not "this version of the signal
+ * was learned from". A job already in flight when someone changes their thumb (or re-reviews)
+ * would clear-then-restamp the marker it never processed: `recordFeedback`/`recordReview` null
+ * the marker to re-expose the new signal, the older job stamps it anyway, and if the newer job's
+ * publish was lost the sweep sees "learned" and never applies it (Greptile).
+ *
+ * Version token per signal: the thumb's own value, and `reviewed_at`, which `recordReview`
+ * refreshes on every write. Knex renders a null binding as `is null`, so a cleared thumb
+ * compares correctly. Returns the rows stamped — 0 means the signal moved on and the sweep
+ * should (and will) pick it up again.
+ */
+export async function markLearned(
+  messageId: number,
+  marker: LearnedMarker,
+  observed: Pick<LearnMessage, "feedback" | "reviewed_at">,
+): Promise<number> {
+  const guard = marker === "feedback"
+    ? { feedback: observed.feedback ?? null }
+    : { reviewed_at: observed.reviewed_at ?? null };
+  return masterKnex("ai_counselor_messages").where({ id: messageId }).where(guard)
     .update({ [MARKER_COLUMN[marker]]: masterKnex.fn.now() });
 }
 
