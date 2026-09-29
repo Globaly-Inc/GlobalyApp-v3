@@ -38,10 +38,13 @@ const logger = createChildLogger("pipeline-steps");
 
 type JobRow = Record<string, any>;
 
+// Every field is optional because extractJson CASTS the model's JSON to this shape rather than
+// validating it — declaring them required told readers a guarantee the parse never made, and the
+// unguarded destructure below was written on the strength of it.
 interface SiteAnalysisResult {
-  institution: Record<string, unknown>;
-  site_intelligence: Record<string, unknown>;
-  course_page_patterns: string[];
+  institution?: Record<string, unknown>;
+  site_intelligence?: Record<string, unknown>;
+  course_page_patterns?: string[];
 }
 
 interface UrlDiscoveryResult {
@@ -249,14 +252,30 @@ export async function runSiteAnalysis(jobId: string, job: JobRow): Promise<strin
       : siteAnalysisPrompt(job.institution_url, pageText, job.guidance_notes),
   });
 
+  // Both keys are the model's to supply, and a model that answers with valid JSON of the WRONG
+  // shape used to take the whole chain down here: destructuring an absent `institution` throws
+  // "Cannot destructure property 'other_social_urls' of 'analysis.institution' as it is
+  // undefined", which surfaces to the admin as an opaque failed Analyse step naming nothing it
+  // could act on. A missing section is a thin analysis, not a broken pipeline — the homepage is
+  // one input among many and the `institution` step re-reads it properly later — so default and
+  // carry on, but say so, because silently writing an empty overview looks like a working step.
+  const missing = (["institution", "site_intelligence"] as const).filter((k) => !analysis[k]);
+  if (missing.length) {
+    await _stepDeps.writeEvent(jobId, "site_analysis_incomplete", {
+      level: "warn", phase: "site_analysis",
+      message: `Site analysis returned no ${missing.join(" and no ")} — continuing with what came back`,
+      data: { missing, keys: Object.keys(analysis ?? {}) },
+    });
+  }
+
   // The prompt's response key is `other_social_urls`; the DB column is `other_social_links`.
-  const { other_social_urls, ...institutionRest } = analysis.institution as Record<string, unknown>;
+  const { other_social_urls, ...institutionRest } = (analysis.institution ?? {}) as Record<string, unknown>;
   await writeInstitutionOverview(jobId, {
     ...institutionRest,
     ...(Array.isArray(other_social_urls) && other_social_urls.length ? { other_social_links: other_social_urls } : {}),
     source_url: job.institution_url,
   } as any);
-  await writeSiteIntelligence(jobId, analysis.site_intelligence as any);
+  await writeSiteIntelligence(jobId, (analysis.site_intelligence ?? {}) as any);
 
   const patterns = analysis.course_page_patterns ?? [];
   await _stepDeps.writeEvent(jobId, "site_analyzed", {

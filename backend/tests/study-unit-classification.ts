@@ -26,10 +26,13 @@ async function main() {
   const { normaliseUnitName, coerceMoney } = await import("../src/modules/superadmin/data-extraction/lib/staging-writer.js");
   const { looksLikeCourseUrl, filterUrls } = await import("../src/modules/superadmin/data-extraction/lib/html-utils.js");
 
-  // 1. Prompt tells the LLM to exclude standalone unit/subject pages from courses.
+  // 1. Prompt tells the LLM a unit/subject is never a course: a lone unit page comes back as ONE
+  // entity_type "module" item for entity-classifier.ts to route, not as an empty array (eb136c7b).
+  // Match the unit rule's own sentences — "return an empty courses array" also appears in the
+  // scholarship rule, so asserting that phrase passed without the unit rule existing at all.
   const prompt = courseExtractionPrompt("https://uni.example/units/COMP101", "COMP101 — Introduction to Databases");
-  assert(/SUBJECT\/UNIT\/MODULE/i.test(prompt), "prompt warns against extracting a unit page as a course");
-  assert(/return an empty courses array/i.test(prompt), "prompt tells the LLM to return no courses for a unit page");
+  assert(/study unit, module, subject[^.]*must NOT be returned as a course/i.test(prompt), "prompt warns against extracting a unit page as a course");
+  assert(/whole page IS one such unit page, return exactly one item with entity_type "module"/i.test(prompt), "prompt routes a lone unit page to a single module item");
 
   // 2. Prompt asks for a curriculum_page_url so the worker can follow it
   // (docs/data-extraction/2026-08-21-study-units-discovery-design.md). It must be

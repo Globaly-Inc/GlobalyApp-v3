@@ -67,7 +67,7 @@ async function geminiGenerate(modelId: string, system: string, prompt: string, m
       maxOutputTokens: maxTokens,
       ...(json ? { responseMimeType: "application/json" } : {}),
     },
-  });
+  }, { timeout: LLM_REQUEST_TIMEOUT_MS });
   const result = await withRetry(() => model.generateContent(prompt));
   return {
     text: result.response.text(),
@@ -95,12 +95,20 @@ function getClient(): GoogleGenerativeAI {
 
 const MAX_RETRIES = 3;
 
-function isTransient(err: unknown): boolean {
+export function isTransient(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   // "fetch failed" et al: undici's network-level failures (DNS blip, reset socket).
   // As transient as a 503 — the SDK surfaces them with no status code at all.
-  return /429|503|overloaded|high demand|rate limit|fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket|network/i.test(msg);
+  return /429|503|overloaded|high demand|rate limit|fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket|network|request aborted|aborted when/i.test(msg);
 }
+
+// The SDK defaults to NO request timeout: a hung connection to generativelanguage.googleapis.com
+// never settles, so the worker's consume callback never returns, never acks, and the step sits at
+// "processing" forever — no throw, no log line, no job event, and pipeline_progress locks the
+// admin's Run button. checkAllPagesDone's inFlightStep guard then blocks that job's completion
+// for good. Bounded here so a hang becomes a retry and then an ordinary visible failure.
+// ponytail: 5 min covers a 65536-token course page; env knob because it is a latency guess.
+const LLM_REQUEST_TIMEOUT_MS = Number(process.env.LLM_REQUEST_TIMEOUT_MS) || 300_000;
 
 // ponytail: throttle between LLM calls — 500ms for paid keys, raise if on free tier
 let lastLlmCall = 0;

@@ -40,6 +40,18 @@ function eq(actual: unknown, expected: unknown, label = "") {
 
 const FAKE_ADMIN_ID = 999_999_999; // logAudit no-ops when this doesn't resolve to a real admin
 
+// resetPipeline stamps extraction_jobs.updated_by_platform_user_id, an FK to platform_users, so
+// the re-crawl path needs a real user. A non-admin one keeps logAudit a no-op (no audit rows left
+// behind in the dev DB).
+async function nonAdminPlatformUserId(): Promise<number> {
+  const row = await masterKnex("platform_users")
+    .whereNull("deleted_at")
+    .whereNotIn("id", masterKnex("superadmin.admin_users").select("platform_user_id").whereNotNull("platform_user_id"))
+    .first("id");
+  if (!row) throw new Error("no non-admin platform_users row in this DB — the re-crawl assert needs one");
+  return Number(row.id);
+}
+
 async function insertJob(overrides: Record<string, unknown>): Promise<string> {
   const [row] = await masterKnex("superadmin.extraction_jobs")
     .insert({
@@ -109,7 +121,7 @@ async function main() {
       jobIds.push(jobId);
       calls = [];
 
-      await rerunJob(jobId, FAKE_ADMIN_ID);
+      await rerunJob(jobId, await nonAdminPlatformUserId());
 
       eq(calls.length, 1, "publish call count");
       eq(calls[0].queue, "extraction_jobs", "queue name");
