@@ -147,6 +147,39 @@ console.log("\n7. Votes: learned memories can be voted out, human-authored ones 
 
   reset([[/negative_voters/, () => [row({ source: "extracted", source_reference: { actors: [], positive_voters: [HEX(1)], negative_voters: five } })]]]);
   assert((await svc.voteOnMemory(ID, INST, "negative", HEX(15))) === "counted" && count(UPDATE_MEMORY) === 1, "one positive vote blocks vote-driven deprecation");
+
+  // Feedback can be changed on a message. A thumb that flips direction must MOVE the actor, or
+  // they sit in both arrays and their stale positive blocks the deprecation their negative asked for.
+  reset([[/negative_voters/, () => [row({ source: "extracted" })]]]);
+  await svc.voteOnMemory(ID, INST, "negative", HEX(7));
+  assert(/source_reference->'positive_voters'[^)]*\) - \$/.test(find(/negative_voters/)?.text ?? ""), "a negative vote drops the actor from positive_voters", find(/negative_voters/)?.text);
+
+  // A widget visitor's hash comes from a fingerprint they control, so five of them is one
+  // person five times over. Their votes flag for review; they never retire the guidance.
+  reset([[/negative_voters/, () => [row({ source: "extracted", source_reference: { actors: [], positive_voters: [], negative_voters: five } })]], [UPDATE_MEMORY, () => [row({ flagged_at: new Date() })]]]);
+  out = await svc.voteOnMemory(ID, INST, "negative", HEX(15), { anonymous: true });
+  const anon = all(UPDATE_MEMORY)[1];
+  assert(out === "flagged" && /"flagged_at"/.test(anon?.text ?? "") && !anon?.values.includes("deprecated"), "5 anonymous negatives on a learned memory → flagged, never deprecated");
+}
+
+console.log("\n7b. Array caps: writers trim at the cap, reads never reject what is already stored");
+{
+  // A popular memory used to grow past the schema's caps, and then every read of it threw —
+  // including the list read, which parses every row, so one hot memory took out the whole page.
+  const over = Array.from({ length: 51 }, (_, i) => HEX(100 + i));
+  reset([[SELECT_MEMORY, () => [row({ source_reference: { actors: [], positive_voters: [], negative_voters: over } })]]]);
+  let read: unknown;
+  try { read = await repo.findById(ID, INST); } catch { read = "threw"; }
+  assert(read !== "threw" && !!read, "a row already past the voter cap still reads", read);
+
+  const full = Array.from({ length: 20 }, (_, i) => HEX(200 + i));
+  reset([[UPDATE_MEMORY, () => [row({ source_reference: { actors: full, positive_voters: [], negative_voters: [] } })]]]);
+  await repo.reinforce(ID, INST, HEX(999), { at: new Date().toISOString(), event: "reinforced", by: { kind: "student" } });
+  assert(/jsonb_array_length\(COALESCE\(source_reference->'actors'[^)]*\)[^)]*\) >= 20/.test(find(UPDATE_MEMORY)?.text ?? ""), "reinforce trims the oldest actor at the cap", find(UPDATE_MEMORY)?.text);
+
+  reset([[/negative_voters/, () => [row({ source: "admin" })]]]);
+  await svc.voteOnMemory(ID, INST, "negative", HEX(999));
+  assert(/jsonb_array_length\(COALESCE\(source_reference->'negative_voters'[^)]*\)[^)]*\) >= 50/.test(find(/negative_voters/)?.text ?? ""), "vote trims the oldest voter at the cap", find(/negative_voters/)?.text);
 }
 
 console.log("\n8. Edit re-validates metadata against the row's type and re-embeds on content change");

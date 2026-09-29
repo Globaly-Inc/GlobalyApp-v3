@@ -59,6 +59,8 @@ export const EmbedConfigCreateSchema = z.object({
   greeting: z.string().trim().min(1).max(300).optional(),
   subtitle: z.string().trim().min(1).max(120).optional(),
   monthly_credit_limit: z.coerce.number().int().min(1).max(100000).optional(),
+  /** Opt in to learning counselling patterns from whole conversations on this widget. */
+  auto_learn: z.boolean().optional(),
 });
 
 /** Appearance edit. Omitted = unchanged; null clears the optional text fields. */
@@ -70,6 +72,7 @@ export const EmbedConfigUpdateSchema = z.object({
   greeting: z.string().trim().min(1).max(300).nullish(),
   subtitle: z.string().trim().min(1).max(120).nullish(),
   monthly_credit_limit: z.coerce.number().int().min(1).max(100000).optional(),
+  auto_learn: z.boolean().optional(),
 }).strict();
 export type EmbedConfigUpdateInput = z.infer<typeof EmbedConfigUpdateSchema>;
 

@@ -14,7 +14,7 @@ process.env.JWT_SECRET = process.env.JWT_SECRET || "x";
 const h = await import("./institution-memory.harness.js");
 const { assert, finish, reset, find } = h;
 const repo = await import("../src/modules/ai-counsellor/repositories/embed.repository.js");
-const { EmbedConfigUpdateSchema } = await import("../src/modules/ai-counsellor/schemas/chat.schema.js");
+const { EmbedConfigUpdateSchema, EmbedConfigCreateSchema } = await import("../src/modules/ai-counsellor/schemas/chat.schema.js");
 const UPD = /^update "ai_embed_configs"/i;
 
 console.log("\n1. update is owner-scoped and writes only what was sent");
@@ -40,6 +40,12 @@ console.log("\n3. update schema");
   assert(EmbedConfigUpdateSchema.safeParse({ greeting: null, subtitle: "Replies fast" }).success, "nulls and strings accepted");
   assert(!EmbedConfigUpdateSchema.safeParse({ embed_key: "x" }).success, "embed_key cannot be edited (strict)");
   assert(!EmbedConfigUpdateSchema.safeParse({ brand_color: "blue" }).success, "brand colour must be #rrggbb");
+  // The conversation-learning opt-in defaults to false in the DB; without it here an owner has
+  // no way to turn it on short of editing the row by hand.
+  assert(EmbedConfigUpdateSchema.safeParse({ auto_learn: true }).success, "auto_learn is editable");
+  // safeParse alone proves nothing here: the create schema is not strict, so an unknown key
+  // parses fine and is silently dropped. Assert the value actually survives.
+  assert(EmbedConfigCreateSchema.safeParse({ display_name: "Uni", auto_learn: true }).data?.auto_learn === true, "auto_learn survives creation parse");
 }
 
 await finish();

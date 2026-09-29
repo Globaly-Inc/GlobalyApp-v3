@@ -16,7 +16,8 @@ import { getKnex } from "../../../core/db/pool-manager.js";
 import { schemaName } from "../../../core/db/knex.js";
 import { NotFoundError } from "../../../shared/errors.js";
 import {
-  MemoryRowSchema, type MemoryRow, type MemoryQuery, type MemoryType, type MemorySource,
+  MemoryRowSchema, ACTOR_CAP, VOTER_CAP,
+  type MemoryRow, type MemoryQuery, type MemoryType, type MemorySource,
   type MemoryStatus, type HistoryEntry,
 } from "../schemas/memory.schema.js";
 
@@ -78,6 +79,13 @@ const appendHistory = (k: Knex, entry: HistoryEntry) => k.raw(
   `(CASE WHEN jsonb_array_length(history) >= ${HISTORY_CAP} THEN history - 0 ELSE history END) || ?::jsonb`,
   [JSON.stringify([entry])],
 );
+
+/** The same drop-oldest trim for a source_reference array. SQL text only — the caller binds the
+ *  hash, once per `?` it inlines. Unbounded growth here is what used to outgrow the read. */
+const cappedArray = (field: string, cap: number) => {
+  const arr = `COALESCE(source_reference->'${field}', '[]'::jsonb)`;
+  return `(CASE WHEN jsonb_array_length(${arr}) >= ${cap} THEN ${arr} - 0 ELSE ${arr} END) || to_jsonb(?::text)`;
+};
 
 // ── Write ────────────────────────────────────────────────────────────────────
 
@@ -184,7 +192,7 @@ export async function reinforce(id: string, institutionId: number, actorHash: st
       ...(actorHash ? {
         source_reference: k.raw(
           `CASE WHEN COALESCE(source_reference->'actors', '[]'::jsonb) \\? ? THEN source_reference
-                ELSE jsonb_set(source_reference, '{actors}', COALESCE(source_reference->'actors', '[]'::jsonb) || to_jsonb(?::text)) END`,
+                ELSE jsonb_set(source_reference, '{actors}', ${cappedArray("actors", ACTOR_CAP)}) END`,
           [actorHash, actorHash],
         ),
       } : {}),
@@ -211,13 +219,18 @@ export async function promoteIfReady(id: string, institutionId: number, minActor
 export async function vote(id: string, institutionId: number, actorHash: string, direction: "positive" | "negative"): Promise<MemoryRow | undefined> {
   const k = await db(institutionId);
   const key = `${direction}_voters`;
+  const opposite = direction === "positive" ? "negative_voters" : "positive_voters";
   const [row] = await k(TABLE)
     .where({ id })
     .whereRaw(`NOT (COALESCE(source_reference->'${key}', '[]'::jsonb) \\? ?)`, [actorHash])
     .update({
+      // Drop them from the other direction first: feedback can be changed, and an actor left in
+      // both arrays keeps a stale positive that blocks the deprecation their negative asked for.
       source_reference: k.raw(
-        `jsonb_set(source_reference, '{${key}}', COALESCE(source_reference->'${key}', '[]'::jsonb) || to_jsonb(?::text))`,
-        [actorHash],
+        `jsonb_set(
+           jsonb_set(source_reference, '{${opposite}}', COALESCE(source_reference->'${opposite}', '[]'::jsonb) - ?),
+           '{${key}}', ${cappedArray(key, VOTER_CAP)})`,
+        [actorHash, actorHash],
       ),
       updated_at: k.fn.now(),
     })

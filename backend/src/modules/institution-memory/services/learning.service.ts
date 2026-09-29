@@ -257,7 +257,9 @@ export async function learnFromCorrection(job: Extract<LearnJob, { kind: "correc
   const j = await judgeCandidate(correctionText, "COUNSELLOR_CORRECTION");
   const verdict = evaluateCandidate({
     type: "COUNSELLOR_CORRECTION", content: correctionText, confidence: 1, mentions_person: false,
-    metadata: { message_id: message.id, original_excerpt: message.content.slice(0, 600) },
+    // message_id only. The reply being corrected can repeat the student's own name or contact
+    // details, and only `content` is PII-filtered — a copy here would outlive the conversation.
+    metadata: { message_id: message.id },
   }, knownNames, { allowFacts: true, judgement: j ? { ...j, is_technique: 1, endorsed: 1 } : null });
   if (verdict.ok) {
     const out = await createMemory({ institutionId: owner.institutionId, input: verdict.input, source: "correction", actor: reviewer, sourceReference: { message_id: message.id, session_id: session.id } });
@@ -297,14 +299,20 @@ export async function learnFromFeedback(job: Extract<LearnJob, { kind: "feedback
     if (followed) targets = message.memory_ids.filter((id) => followed.has(id));
   }
 
+  // No platform user on the session means a widget visitor, whose identity is a fingerprint they
+  // supply — so their thumbs-down flags for review rather than deprecating. See voteOnMemory.
+  const anonymous = !session.platform_user_id;
+
   for (const id of targets) {
     if (message.feedback === "positive") {
       const outcome = await voteOnMemory(id, owner.institutionId, "positive", message.feedback_actor);
       if (outcome === "duplicate") continue;
       const m = await memoryRepo.findById(id, owner.institutionId);
-      if (m && m.status !== "deleted") { await reinforceMemory(m, { kind: "student", id: message.feedback_actor }, message.feedback_actor); r.reinforced++; }
+      // Candidates and active rows accrue evidence; a deprecated one does not. A late thumb on an
+      // old reply must not read as ongoing support for guidance a human deliberately retired.
+      if (m && (m.status === "active" || m.status === "candidate")) { await reinforceMemory(m, { kind: "student", id: message.feedback_actor }, message.feedback_actor); r.reinforced++; }
     } else {
-      await voteOnMemory(id, owner.institutionId, "negative", message.feedback_actor);
+      await voteOnMemory(id, owner.institutionId, "negative", message.feedback_actor, { anonymous });
     }
   }
   return r;

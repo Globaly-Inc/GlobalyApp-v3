@@ -600,7 +600,7 @@ configured anything, so those widgets pay nothing.
 | `COURSE_RECOMMENDATION_RULE` | preferred recommendation logic | admin, correction | `{ prefer?: string[], avoid?: string[], destinations?: string[] }` |
 | `TERMINOLOGY` | institution-specific vocabulary | admin, correction | `{ term, meaning, use_instead_of?: string[] }` |
 | `STUDENT_CONCERN_PATTERN` | common concern and how counsellors address it | learned, admin | `{ concern, approach }` |
-| `COUNSELLOR_CORRECTION` | a human said the AI was wrong and how | review route | `{ message_id, original_excerpt, corrected_excerpt }` |
+| `COUNSELLOR_CORRECTION` | a human said the AI was wrong and how | review route | `{ message_id }` — no excerpts: metadata is not PII-filtered, so the message id is the pointer |
 | `AVOIDANCE_RULE` | never recommend / never state | admin, correction | `{ severity: hard/soft }` |
 | `GENERAL_CONTEXT` | anything durable with no better home | admin | `{}` |
 

@@ -38,6 +38,7 @@ export interface EmbedConfigPatch {
   greeting?: string | null;
   subtitle?: string | null;
   monthly_credit_limit?: number;
+  auto_learn?: boolean;
 }
 
 export async function create(owner: EmbedOwner, data: EmbedConfigPatch): Promise<EmbedConfigRow> {

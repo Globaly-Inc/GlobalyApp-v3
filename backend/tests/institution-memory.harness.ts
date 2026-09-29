@@ -87,6 +87,7 @@ export const INSERT_MEMORY = /^insert into "institution_ai_memories"/i;
 export const UPDATE_MEMORY = /^update "institution_ai_memories"/i;
 export const SELECT_MEMORY = /^select .* from "institution_ai_memories"/i;
 export const MATCH_FN = /match_institution_ai_memories/;
-// The history append also calls jsonb_array_length(history); the promotion predicate is the
-// one over source_reference->'actors'.
-export const PROMOTE = /jsonb_array_length\(COALESCE\(source_reference->'actors'/;
+// Three statements now call jsonb_array_length: the history append (over `history`), the
+// actors/voters trim (inlines its cap as a literal), and the promotion predicate — the only one
+// that binds its threshold. Match on the binding, or the trim counts as a promotion attempt.
+export const PROMOTE = /jsonb_array_length\(COALESCE\(source_reference->'actors'[^)]*\)\) >= \$/;

@@ -69,9 +69,11 @@ const meta = {
   }),
   TERMINOLOGY: z.object({ term: Short, meaning: Short, use_instead_of: z.array(Short).max(5).optional() }),
   STUDENT_CONCERN_PATTERN: z.object({ concern: Short, approach: Short }),
+  // No excerpt of the corrected reply: metadata is not PII-filtered the way content is, so the
+  // pointer is the message id. Old rows carrying one are stripped on read — z.object drops
+  // unknown keys.
   COUNSELLOR_CORRECTION: z.object({
     message_id: z.number().int().positive(),
-    original_excerpt: z.string().trim().max(600).optional(),
   }),
   AVOIDANCE_RULE: z.object({ severity: z.enum(["hard", "soft"]).default("hard") }),
   GENERAL_CONTEXT: z.object({}),
@@ -138,13 +140,20 @@ export const ActorSchema = z.object({
 });
 export type Actor = z.infer<typeof ActorSchema>;
 
+/** Caps the writers enforce by dropping the oldest entry, the way history does. Deliberately
+ *  NOT `.max()` on the schema below: this parses rows we have already stored, and a read that
+ *  rejects its own data turns one popular memory into a failure for every list that includes
+ *  it. The cap belongs at the append, not at the parse. */
+export const ACTOR_CAP = 20;
+export const VOTER_CAP = 50;
+
 export const SourceReferenceSchema = z.object({
   message_id: z.number().int().positive().optional(),
   session_id: z.number().int().positive().optional(),
   /** Distinct students whose conversations reinforced this memory. Promotion counts these. */
-  actors: z.array(ActorHash).max(20).default([]),
-  positive_voters: z.array(ActorHash).max(50).default([]),
-  negative_voters: z.array(ActorHash).max(50).default([]),
+  actors: z.array(ActorHash).default([]),
+  positive_voters: z.array(ActorHash).default([]),
+  negative_voters: z.array(ActorHash).default([]),
 });
 export type SourceReference = z.infer<typeof SourceReferenceSchema>;
 

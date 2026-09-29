@@ -128,6 +128,10 @@ console.log("\n2. learnFromCorrection: correction stored active; derived rules a
   assert(inserts.some((s) => s.values.some((v) => typeof v === "string" && v.includes("second good one"))), "second survivor stored");
   const corr = inserts.find((s) => s.values.includes("COUNSELLOR_CORRECTION"));
   assert(!!corr && corr.values.includes("correction") && corr.values.includes("active") && corr.values.some((v) => typeof v === "string" && v.includes("28 days")), "correction: source correction, ACTIVE, verbatim text with its figures", corr?.values);
+  // The reply being corrected is never copied into memory: only `content` is PII-filtered, and a
+  // reply can repeat the student's own name or contact details. message_id is the pointer, and
+  // reading through it respects the conversation being deleted.
+  assert(!corr?.values.some((v) => typeof v === "string" && v.includes("14 days")), "correction metadata keeps no copy of the original reply", corr?.values);
   const derived = inserts.find((s) => s.values.includes("RESPONSE_PATTERN"));
   assert(!!derived && derived.values.includes("candidate") && derived.values.includes("correction"), "derived rule: candidate, source correction", derived?.values);
   assert(r.created === 3 && r.rejected.known_name === 1 && r.rejected.fact_like === 1, "result counts: rejected candidates do not consume the derived-rule cap", r);
@@ -235,6 +239,18 @@ console.log("\n4. learnFromFeedback: thumbs act on the memories that shaped the 
     [/negative_voters/, () => [h.row({ source: "extracted", source_reference: { actors: [], positive_voters: [], negative_voters: [HEX(8)] } })]]]);
   await learn.learnFromFeedback({ kind: "feedback", institution_id: INST, message_id: 77 });
   assert(count(/negative_voters/) === 1 && count(/reinforce_count \+ 1/) === 0, "negative: one vote, no reinforcement");
+
+  // A thumbs-up on an old reply must not revive the evidence of guidance a human retired:
+  // confidence and reinforce_count on a deprecated row would read as ongoing support.
+  // Routes are matched first-wins and baseRoutes already ends with a SELECT_MEMORY returning an
+  // active row, so the deprecated override has to sit ahead of the spread to be reached at all.
+  reset([
+    [/positive_voters/, () => [h.row({ status: "deprecated", source: "extracted" })]],
+    [SELECT_MEMORY, () => [h.row({ status: "deprecated", source: "extracted" })]],
+    ...baseRoutes({ message: { feedback: "positive", feedback_actor: HEX(9), memory_ids: [ID], correction: null } }),
+  ]);
+  const dep = await learn.learnFromFeedback({ kind: "feedback", institution_id: INST, message_id: 77 });
+  assert(count(/reinforce_count \+ 1/) === 0 && dep.reinforced === 0, "positive thumb never reinforces a deprecated memory", dep);
 
   // Jev attribution: only the guidance the reply actually followed gets the thumbs-down.
   jevCalls = []; jevOverride = { f0: 0.9, f1: 0.1 };

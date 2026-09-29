@@ -418,9 +418,15 @@ export async function searchAll(opts: {
   const contextText = parts.join("\n\n");
   // Decided on the structured data, not on the rendered text: CARD_FIELDS JSON carries a "fees"
   // key for every course, which would make the text look money-bearing when it is not.
+  // ponytail: one boolean over every source, not evidence matched to what was asked — a course
+  // fee clears the guard for a refund-policy question. It is a floor against inventing figures,
+  // not a topical check; per-topic grounding needs the question classified first.
+  // Every rendered money field must appear here, or the model is told to withhold what its own
+  // context contains: knowledgeVisas renders "Fee: USD x" above, so it counts too.
   const moneyData =
     hydratedCourses.some(c => c.fees.length > 0) ||
     visas.some(v => v.application_fee_amount != null) ||
+    knowledgeVisas.some(v => v.application_fee_usd != null) ||
     guides.some(g => !!g.cost_of_living_monthly_usd) ||
     faqs.some(f => MONEY_RE.test(`${f.question} ${f.answer}`)) ||
     rackHits.some(d => MONEY_RE.test(d.content));

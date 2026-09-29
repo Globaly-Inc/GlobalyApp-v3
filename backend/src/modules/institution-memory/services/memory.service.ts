@@ -248,8 +248,13 @@ export type VoteOutcome = "counted" | "duplicate" | "deprecated" | "flagged";
  * A student's thumbs on a reply, applied to each memory that shaped it. Learned memories can
  * be voted out; human-authored ones can only be flagged — guest feedback rides on a
  * client-supplied fingerprint, so an anonymous visitor must never remove an admin's rule.
+ *
+ * `anonymous` extends that to every source. A widget visitor's voter hash is derived from a
+ * fingerprint they control, so one person mints as many distinct voters as they please and the
+ * per-hash dedup below cannot tell them apart. Their votes are recorded and raise a flag for
+ * review; only a signed-in actor — one account, one vote — can retire guidance outright.
  */
-export async function voteOnMemory(id: string, institutionId: number, direction: "positive" | "negative", actorHash: string): Promise<VoteOutcome> {
+export async function voteOnMemory(id: string, institutionId: number, direction: "positive" | "negative", actorHash: string, opts?: { anonymous?: boolean }): Promise<VoteOutcome> {
   const row = await repo.vote(id, institutionId, actorHash, direction);
   if (!row) return "duplicate";
   if (direction === "positive" || row.status !== "active") return "counted";
@@ -257,7 +262,7 @@ export async function voteOnMemory(id: string, institutionId: number, direction:
   if (negatives < NEGATIVE_VOTE_THRESHOLD || row.source_reference.positive_voters.length > 0) return "counted";
 
   const by: Actor = { kind: "student", id: actorHash };
-  if (isHumanSource(row.source)) {
+  if (opts?.anonymous || isHumanSource(row.source)) {
     if (!row.flagged_at) await repo.transition(id, institutionId, { flagged_at: new Date() }, entry("flagged", by, `${negatives} negative votes`));
     return "flagged";
   }
