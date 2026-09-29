@@ -172,7 +172,13 @@ export async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
         // Never START an attempt that cannot finish inside the budget — the point is the wall
         // clock the caller's queue claim is measured against, not the attempt count.
         if (Date.now() + delay + LLM_REQUEST_TIMEOUT_MS > deadline) {
-          throw new Error(`AI_TRANSIENT: retry budget exhausted after ${attempt + 1} attempts: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
+          // Carry the provider's own requested wait when it gave one. extraction-page.worker.ts
+          // reads `retry_after_ms=` off this message (its `deferredMatch`) to schedule a deferred
+          // retry; without the token it republishes the page immediately — straight back into the
+          // rate limit this error is reporting, burning the item's retry budget while the limit is
+          // still active (Greptile). Same token shape as the over-ceiling throw above.
+          const carry = serverDelay != null ? `retry_after_ms=${serverDelay} ` : "";
+          throw new Error(`AI_TRANSIENT: ${carry}retry budget exhausted after ${attempt + 1} attempts: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
         }
         // Never START an attempt that cannot finish inside the budget — the point is the wall
         // clock the caller's queue claim is measured against, not the attempt count.

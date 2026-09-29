@@ -74,5 +74,42 @@ for (const msg of [
   eq(fast, 4, `a fast 429 still gets every attempt (${fast})`);
 }
 
+// ── A budget cut-off must not swallow the provider's requested wait ─────────
+// extraction-page.worker.ts matches /retry_after_ms=(\d+)/ on the error message to schedule a
+// deferred retry. A 429 whose retryDelay is at or under INLINE_RETRY_CEILING_MS does NOT take the
+// over-ceiling throw, so if the budget check fires on that same error the token has to be carried
+// or the page is republished immediately, back into the live rate limit.
+{
+  const realNow = Date.now, realTimeout = global.setTimeout;
+  let clock = 0;
+  Date.now = () => clock;
+  (global as { setTimeout: unknown }).setTimeout = ((fn: () => void, ms = 0) => { clock += ms; fn(); return 0 as never; });
+
+  let thrown = "";
+  try {
+    await withRetry(async () => {
+      clock += 11.5 * 60_000; // nearly the whole 12-minute budget in one attempt
+      throw new Error('429 Too Many Requests {"retryDelay":"45s"}');
+    });
+  } catch (err) { thrown = String((err as Error).message); }
+
+  // A budget cut-off with NO provider delay must not invent one.
+  clock = 0;
+  let plain = "";
+  try {
+    await withRetry(async () => {
+      clock += 11.5 * 60_000;
+      throw new Error("503 Service Unavailable");
+    });
+  } catch (err) { plain = String((err as Error).message); }
+
+  Date.now = realNow;
+  (global as { setTimeout: unknown }).setTimeout = realTimeout;
+
+  eq(/retry budget exhausted/.test(thrown), true, "the budget cut-off fired on the 429");
+  eq(/retry_after_ms=45000/.test(thrown), true, `provider's 45s wait survives the cut-off (${thrown.slice(0, 80)})`);
+  eq(/retry_after_ms=/.test(plain), false, "no provider delay → no retry_after_ms token invented");
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
