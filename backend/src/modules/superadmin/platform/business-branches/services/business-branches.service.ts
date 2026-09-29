@@ -62,8 +62,9 @@ function registrationFor(data: BranchInput, parentRegistration: unknown) {
 
 /**
  * Keeps a created branch's registration matching its type when the type is edited: becoming
- * Same Company takes the parent's; leaving it drops the parent's copy (the branch then enters its
- * own from its profile). Only branches this parent created — see setOwnedBranchRegistration.
+ * Same Company takes the parent's. Leaving it keeps whatever is there — the branch may have edited
+ * it on its own profile, and clearing would lose that; from then on it's the branch's to change.
+ * Only branches this parent created — see setOwnedBranchRegistration.
  */
 async function syncRegistrationOnTypeChange(
   table: "businesses" | "institutions", parentId: number,
@@ -74,7 +75,6 @@ async function syncRegistrationOnTypeChange(
   const orgId = table === "businesses" ? existing.linked_business_id : existing.linked_institution_id;
   if (orgId == null) return;
   if (data.branch_type === "same_company") await repo.setOwnedBranchRegistration(table, parentId, [orgId], parentRegistration);
-  else if (existing.branch_type === "same_company") await repo.setOwnedBranchRegistration(table, parentId, [orgId], null);
 }
 
 async function requireBusiness(id: number) {
