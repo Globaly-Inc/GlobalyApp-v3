@@ -190,12 +190,11 @@ export async function guestRoutes(app: FastifyInstance) {
     try {
       // Read history BEFORE persisting this turn, so the model isn't handed the very
       // question it is being asked — the same ordering chat.service relies on.
-      const history = session
-        ? (await messagesRepo.findBySession(session.id, { limit: HISTORY_LIMIT })).map((m) => ({
-            role: m.role === "assistant" ? ("model" as const) : ("user" as const),
-            parts: [{ text: m.content }],
-          }))
-        : [];
+      const prevMessages = session ? await messagesRepo.findBySession(session.id, { limit: HISTORY_LIMIT }) : [];
+      const history = prevMessages.map((m) => ({
+        role: m.role === "assistant" ? ("model" as const) : ("user" as const),
+        parts: [{ text: m.content }],
+      }));
 
       // Guest-meta event
       writeEvent(reply, "guest-meta", {
@@ -213,6 +212,7 @@ export async function guestRoutes(app: FastifyInstance) {
           userId: 0, // ponytail: guests have no userId, profile context will be empty
           jobIds: embed?.jobIds,
           rackInstitutionId: embed?.rackInstitutionId,
+          pinnedCourseIds: rag.pinnedCourseIdsFrom(prevMessages),
           onTrace: trace,
         }),
         embed?.rackInstitutionId
@@ -229,6 +229,10 @@ export async function guestRoutes(app: FastifyInstance) {
         writeEvent(reply, "sources", ragOutput.sources);
       }
 
+      // Same money guard as chat.service: widget visitors are the audience it exists for.
+      const noMoneyData = rag.shouldWithholdMoney(input.content, ragOutput.moneyTopics);
+      if (noMoneyData) trace(`Money question, no evidence for ${rag.moneyTopicsOf(input.content).join("/")}: answer withheld`);
+
       const system = buildSystemPrompt({
         profile: null,
         ragContext: ragOutput.contextText,
@@ -236,6 +240,7 @@ export async function guestRoutes(app: FastifyInstance) {
         isFirstMessage: history.length === 0,
         embedConfig: embed?.config,
         institutionGuidance: memory?.text,
+        noMoneyData,
       });
 
       const result = await streamChat({

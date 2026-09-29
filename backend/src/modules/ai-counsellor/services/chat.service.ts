@@ -88,12 +88,7 @@ export async function handleMessage(opts: {
       role: (m.role === "user" ? "user" : "model") as "user" | "model",
       parts: [{ text: m.content }],
     }));
-    // The courses the counsellor last put in front of the student, so "this course" resolves.
-    const lastCards = [...prevMessages].reverse().find(m => m.role === "assistant" && m.cards.length)?.cards ?? [];
-    const pinnedCourseIds = lastCards
-      .map(c => (c as { id?: unknown }).id)
-      .filter((id): id is string => typeof id === "string")
-      .slice(0, 3);
+    const pinnedCourseIds = rag.pinnedCourseIdsFrom(prevMessages);
 
     // 4. Persist user message
     await messagesRepo.create({

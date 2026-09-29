@@ -85,8 +85,6 @@
   button.onmouseenter = function () { if (!open) { button.style.transform = "scale(1.06)"; button.style.boxShadow = glow(true); } };
   button.onmouseleave = function () { button.style.transform = ""; button.style.boxShadow = glow(false); };
 
-  // The azure orb only fills the middle of its frame, so it is scaled up and nudged
-  // down to sit centred in the button — same correction the in-app AlyOrbIcon applies.
   // The orb only fills the middle ~59% of its frame, so it is scaled up and nudged down to
   // sit centred in the button — same correction the in-app AlyOrbIcon applies.
   var orb = document.createElement("img");

@@ -13,14 +13,14 @@ import * as learnRepo from "../repositories/learning.repository.js";
 import * as memoryRepo from "../repositories/memory.repository.js";
 import * as memories from "../services/memory.service.js";
 import { clearRetrievalCache } from "../services/retrieval.service.js";
-import { CreateMemorySchema, MemoryQuerySchema, PatchMemorySchema, type Actor } from "../schemas/memory.schema.js";
+import { CreateMemorySchema, MemoryQuerySchema, PatchMemorySchema, booleanQueryParam, type Actor } from "../schemas/memory.schema.js";
 import { NotFoundError } from "../../../shared/errors.js";
 
 const IdParam = z.object({ id: z.string().uuid() });
 const SessionIdParam = z.object({ id: z.coerce.number().int().positive() });
 const DeprecateBody = z.object({ reason: z.string().trim().min(1).max(300).default("deprecated by the institution") });
 const ConversationsQuery = z.object({
-  unreviewed: z.coerce.boolean().optional(),
+  unreviewed: booleanQueryParam.optional(),
   limit: z.coerce.number().int().min(1).max(200).default(50),
 });
 

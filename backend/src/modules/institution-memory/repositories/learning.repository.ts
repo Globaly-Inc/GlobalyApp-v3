@@ -158,11 +158,13 @@ export async function recordReview(messageId: number, review: ReviewMessageInput
     review_note: review.note ?? null,
     reviewed_by: reviewerId,
     reviewed_at: masterKnex.fn.now(),
+    // A new review is a new signal: an earlier one's marker must not hide it from recovery.
+    review_learned_at: null,
   });
 }
 
 export async function recordFeedback(messageId: number, feedback: "positive" | "negative" | null, actorHash: string): Promise<void> {
-  await masterKnex("ai_counselor_messages").where({ id: messageId }).update({ feedback, feedback_actor: actorHash });
+  await masterKnex("ai_counselor_messages").where({ id: messageId }).update({ feedback, feedback_actor: actorHash, feedback_learned_at: null });
 }
 
 /** Which memories shaped a reply — the chat tool calls this after persisting the assistant message. */

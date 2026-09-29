@@ -217,4 +217,18 @@ console.log("\n9. touchUsed, sweep, match, pinned");
   assert(!/institution_id/.test(pinnedSql?.text ?? "") && pinnedSql?.values.includes("active") && pinnedSql.values.includes(5), "pinned query: status + importance 5, no institution column");
 }
 
+console.log("\n12. Query flags and deleted rows");
+{
+  const { MemoryQuerySchema } = await import("../src/modules/institution-memory/schemas/memory.schema.js");
+  // z.coerce.boolean() turned every non-empty string into true, so ?flagged=false filtered to flagged.
+  const q = MemoryQuerySchema.parse({ flagged: "false", conflicting: "true" });
+  assert(q.flagged === false && q.conflicting === true, "?flagged=false parses as false, ?conflicting=true as true", q);
+
+  // A deleted row is not found to any action, as it is to GET — deprecating it would revive it
+  // into a dedupe slot a re-created statement may already hold.
+  reset([[SELECT_MEMORY, () => [row({ status: "deleted" })]], [UPDATE_MEMORY, () => [row({ status: "deprecated" })]]]);
+  const err = await svc.deprecate(ID, INST, admin, "stale").then(() => null, (e: Error) => e);
+  assert(err?.name === "NotFoundError" && count(UPDATE_MEMORY) === 0, "deprecate on a deleted memory → NotFound, no write", err?.message);
+}
+
 await h.finish();

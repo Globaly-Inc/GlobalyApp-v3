@@ -139,4 +139,31 @@ await learn.runLearnJob({ kind: "correction", institution_id: INST, message_id: 
 assert(markerCols().includes("review_learned_at") && !markerCols().includes("feedback_learned_at"),
   "a correction job stamps review_learned_at and NOT feedback_learned_at", markerCols());
 
+// ── A session or widget that is gone is stamped, not skipped ────────────────
+// Skipped rows sat at the head of the oldest-first batch forever; a batch's worth of them hid
+// every newer lost signal from recovery.
+reset([
+  [SELECT_MSGS, () => [{ ...msg({ id: 50, feedback: "negative", memory_ids: ["m1"] }), role: "assistant", content: "c", feedback_actor: null, correction: null, review_note: null, reviewed_by: null }]],
+  [/from "ai_counselor_sessions"/i, () => []],
+  [UPDATE_MSGS, () => []],
+]);
+published = [];
+r = await learn.sweepUnlearnedSignals();
+assert(r.requeued === 0 && all(UPDATE_MSGS).some(s => /"feedback_learned_at"/.test(s.text) && s.values.includes(50)),
+  "an ownerless signal is stamped learned so it stops blocking the batch", all(UPDATE_MSGS).map(s => s.text));
+
+// ── A changed signal is a new signal ─────────────────────────────────────────
+// Thumbs-up learned and stamped, then flipped to thumbs-down during an outage: the old marker
+// must not hide the new vote from recovery. Same for a review re-done.
+const learnRepo = await import("../src/modules/institution-memory/repositories/learning.repository.js");
+reset([[UPDATE_MSGS, () => []]]);
+await learnRepo.recordFeedback(60, "negative", "a1");
+const fb = find(UPDATE_MSGS);
+assert(/"feedback_learned_at" = /.test(fb?.text ?? ""), "recordFeedback clears feedback_learned_at", fb);
+reset([[UPDATE_MSGS, () => []]]);
+await learnRepo.recordReview(61, { status: "corrected", correction: "Say the real fee.", note: null } as never, 1);
+const rv = find(UPDATE_MSGS);
+assert(/"review_learned_at" = /.test(rv?.text ?? "") && !/"feedback_learned_at"/.test(rv?.text ?? ""),
+  "recordReview clears review_learned_at and leaves the thumb's marker alone", rv);
+
 await finish();

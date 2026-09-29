@@ -100,29 +100,40 @@ function WidgetForm({
     (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
       setForm((f) => ({ ...f, [key]: e.target.value }));
 
+  // `creating` only tracks the create thunk; an edit needs its own guard against a double Save.
+  const [saving, setSaving] = useState(false);
+  const busy = creating || saving;
+
   const submit = async () => {
     const text = (v: string) => v.trim() || undefined;
     const limit = Number(form.monthly_credit_limit) || undefined;
-    const ok = initial
-      ? await onUpdate?.(initial.id, {
-          // Edit: an emptied field is cleared, not left as it was.
-          display_name: text(form.display_name) ?? null,
-          logo_url: text(form.logo_url) ?? null,
-          brand_color: form.brand_color || null,
-          greeting: text(form.greeting) ?? null,
-          subtitle: text(form.subtitle) ?? null,
-          custom_instructions: text(form.custom_instructions) ?? null,
-          monthly_credit_limit: limit,
-        })
-      : await onCreate?.({
-          display_name: text(form.display_name),
-          logo_url: text(form.logo_url),
-          brand_color: form.brand_color || undefined,
-          greeting: text(form.greeting),
-          subtitle: text(form.subtitle),
-          custom_instructions: text(form.custom_instructions),
-          monthly_credit_limit: limit,
-        });
+    setSaving(true);
+    let ok: boolean | undefined;
+    // finally: a rejected save must not leave the buttons stuck on "Saving…".
+    try {
+      ok = initial
+        ? await onUpdate?.(initial.id, {
+            // Edit: an emptied field is cleared, not left as it was.
+            display_name: text(form.display_name) ?? null,
+            logo_url: text(form.logo_url) ?? null,
+            brand_color: form.brand_color || null,
+            greeting: text(form.greeting) ?? null,
+            subtitle: text(form.subtitle) ?? null,
+            custom_instructions: text(form.custom_instructions) ?? null,
+            monthly_credit_limit: limit,
+          })
+        : await onCreate?.({
+            display_name: text(form.display_name),
+            logo_url: text(form.logo_url),
+            brand_color: form.brand_color || undefined,
+            greeting: text(form.greeting),
+            subtitle: text(form.subtitle),
+            custom_instructions: text(form.custom_instructions),
+            monthly_credit_limit: limit,
+          });
+    } finally {
+      setSaving(false);
+    }
     if (ok) onClose();
   };
 
@@ -214,11 +225,11 @@ function WidgetForm({
       </div>
 
       <DialogFooter>
-        <Button variant="outline" onClick={onClose} disabled={creating}>
+        <Button variant="outline" onClick={onClose} disabled={busy}>
           Cancel
         </Button>
-        <Button onClick={submit} disabled={creating}>
-          {creating ? "Saving…" : initial ? "Save" : "Create widget"}
+        <Button onClick={submit} disabled={busy}>
+          {busy ? "Saving…" : initial ? "Save" : "Create widget"}
         </Button>
       </DialogFooter>
     </>

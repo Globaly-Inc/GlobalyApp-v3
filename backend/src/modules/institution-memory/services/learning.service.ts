@@ -429,7 +429,10 @@ export async function sweepUnlearnedSignals(): Promise<{ found: number; requeued
       }
       const session = await learnRepo.findSession(row.session_id);
       const owner = session && await learnRepo.institutionForSession(session);
-      if (!owner) continue; // not an institution-owned chat; nothing to learn into
+      // Not an institution-owned chat (or its session/widget is gone): nothing to learn into.
+      // Stamped, or these rows sit at the head of the oldest-first batch forever and, once a
+      // batch's worth accumulate, nothing behind them is ever recovered.
+      if (!owner) { await learnRepo.markLearned(row.id, p.marker).catch(() => { /* retried next sweep */ }); continue; }
       if (await enqueueLearning({ kind: p.kind, institution_id: owner.institutionId, message_id: row.id })) requeued++;
     }
   }

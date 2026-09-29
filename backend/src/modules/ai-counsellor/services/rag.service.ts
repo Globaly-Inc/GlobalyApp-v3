@@ -127,6 +127,16 @@ export function moneyTopicsOf(text: string): MoneyTopic[] {
 
 export const isMoneyQuestion = (query: string): boolean => moneyTopicsOf(query).length > 0;
 
+/** The courses the counsellor last put in front of the student (oldest-first history), so a
+ *  follow-up like "this course" resolves. Shared by the signed-in and widget-visitor paths. */
+export function pinnedCourseIdsFrom(messages: Array<{ role: string; cards: unknown[] }>): string[] {
+  const lastCards = [...messages].reverse().find((m) => m.role === "assistant" && m.cards?.length)?.cards ?? [];
+  return lastCards
+    .map((c) => (c as { id?: unknown }).id)
+    .filter((id): id is string => typeof id === "string")
+    .slice(0, 3);
+}
+
 /** The gate: a money question with no context evidence on ANY topic it asks about.
  *  Overlap, not equality — "what are the fees and is there a scholarship" is answerable
  *  the moment either one is grounded, and the model still only says what its context holds. */
@@ -444,13 +454,6 @@ export async function searchAll(opts: {
   }
 
   const contextText = parts.join("\n\n");
-  // Decided on the structured data, not on the rendered text: CARD_FIELDS JSON carries a "fees"
-  // key for every course, which would make the text look money-bearing when it is not.
-  // ponytail: one boolean over every source, not evidence matched to what was asked — a course
-  // fee clears the guard for a refund-policy question. It is a floor against inventing figures,
-  // not a topical check; per-topic grounding needs the question classified first.
-  // Every rendered money field must appear here, or the model is told to withhold what its own
-  // context contains: knowledgeVisas renders "Fee: USD x" above, so it counts too.
   const moneyTopics = new Set<MoneyTopic>();
   // Structured fields name their own topic — unambiguous, so no regex over the rendered text
   // (CARD_FIELDS JSON carries a "fees" key for every course, which would make the text look

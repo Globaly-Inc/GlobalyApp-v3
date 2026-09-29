@@ -140,13 +140,16 @@ export const PatchMemorySchema = z.object({
 }).strict();
 export type PatchMemoryInput = z.infer<typeof PatchMemorySchema>;
 
+/** "false" must parse as false — z.coerce.boolean() turns every non-empty string into true. */
+export const booleanQueryParam = z.enum(["true", "false"]).transform((v) => v === "true");
+
 export const MemoryQuerySchema = z.object({
   status: z.enum(MEMORY_STATUSES).optional(),
   type: z.enum(MEMORY_TYPES).optional(),
   source: z.enum(MEMORY_SOURCES).optional(),
-  flagged: z.coerce.boolean().optional(),
+  flagged: booleanQueryParam.optional(),
   /** Only candidates that contradict an existing memory — the review queue. */
-  conflicting: z.coerce.boolean().optional(),
+  conflicting: booleanQueryParam.optional(),
   q: z.string().trim().min(1).max(200).optional(),
   limit: z.coerce.number().int().min(1).max(200).default(100),
 });

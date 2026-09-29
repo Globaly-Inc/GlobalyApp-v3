@@ -55,7 +55,9 @@ export async function embedOrNull(type: MemoryType, content: string): Promise<nu
 
 async function mustFind(id: string, institutionId: number): Promise<MemoryRow> {
   const row = await repo.findById(id, institutionId);
-  if (!row) throw new NotFoundError("Memory not found");
+  // A deleted row is gone to every action, as it is to GET: deprecating or editing it would
+  // revive it into a dedupe slot a re-created statement may already hold.
+  if (!row || row.status === "deleted") throw new NotFoundError("Memory not found");
   return row;
 }
 
