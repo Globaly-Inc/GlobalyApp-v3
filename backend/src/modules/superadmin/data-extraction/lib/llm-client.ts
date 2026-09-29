@@ -67,7 +67,7 @@ async function geminiGenerate(modelId: string, system: string, prompt: string, m
       maxOutputTokens: maxTokens,
       ...(json ? { responseMimeType: "application/json" } : {}),
     },
-  });
+  }, { timeout: LLM_REQUEST_TIMEOUT_MS });
   const result = await withRetry(() => model.generateContent(prompt));
   return {
     text: result.response.text(),
@@ -95,12 +95,38 @@ function getClient(): GoogleGenerativeAI {
 
 const MAX_RETRIES = 3;
 
-function isTransient(err: unknown): boolean {
+export function isTransient(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err);
   // "fetch failed" et al: undici's network-level failures (DNS blip, reset socket).
   // As transient as a 503 — the SDK surfaces them with no status code at all.
-  return /429|503|overloaded|high demand|rate limit|fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket|network/i.test(msg);
+  return /429|503|overloaded|high demand|rate limit|fetch failed|ECONNRESET|ETIMEDOUT|ENOTFOUND|EAI_AGAIN|socket|network|request aborted|aborted when/i.test(msg);
 }
+
+// The SDK defaults to NO request timeout: a hung connection to generativelanguage.googleapis.com
+// never settles, so the worker's consume callback never returns, never acks, and the step sits at
+// "processing" forever — no throw, no log line, no job event, and pipeline_progress locks the
+// admin's Run button. checkAllPagesDone's inFlightStep guard then blocks that job's completion
+// for good. Bounded here so a hang becomes a retry and then an ordinary visible failure.
+// ponytail: 5 min covers a 65536-token course page; env knob because it is a latency guess.
+const LLM_REQUEST_TIMEOUT_MS = Number(process.env.LLM_REQUEST_TIMEOUT_MS) || 300_000;
+
+/**
+ * Ceiling on ALL attempts for one call, deliberately under extraction-queue-reclaim.worker.ts's
+ * STALE_MINUTES (20). Per-request timeouts alone were not enough: MAX_RETRIES=3 means four
+ * attempts, and 4 × 5 min lands exactly on the reclaim threshold before backoff or a provider's
+ * own retryDelay is counted. The sweep would then reclaim a page whose attempt is still running —
+ * duplicate model spend, and the original's answer discarded by the page worker's stillOwned()
+ * fence (Greptile).
+ *
+ * Bounding rather than heartbeating on purpose: a timer that keeps the claim fresh would also
+ * keep a genuinely hung worker's claim fresh forever, which is the exact failure stale-reclaim
+ * exists to catch. Fast transient errors (429, 503) still get all four attempts; only slow ones
+ * are cut short, and they are the ones that threaten the claim.
+ *
+ * ponytail: 12 min leaves headroom for the other model calls one page message makes — see the
+ * per-message note in the page worker.
+ */
+const LLM_TOTAL_BUDGET_MS = Number(process.env.LLM_TOTAL_BUDGET_MS) || 12 * 60_000;
 
 // ponytail: throttle between LLM calls — 500ms for paid keys, raise if on free tier
 let lastLlmCall = 0;
@@ -120,7 +146,8 @@ function parseRetryDelay(err: unknown): number | null {
 // and cheaper than the caller re-dispatching a whole new attempt.
 const INLINE_RETRY_CEILING_MS = 60_000;
 
-async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+export async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
+  const deadline = Date.now() + LLM_TOTAL_BUDGET_MS;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
       const now = Date.now();
@@ -142,6 +169,19 @@ async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
       }
       if (attempt < MAX_RETRIES) {
         const delay = (serverDelay ?? Math.min(2000 * Math.pow(2, attempt), 15_000)) + Math.random() * 1000;
+        // Never START an attempt that cannot finish inside the budget — the point is the wall
+        // clock the caller's queue claim is measured against, not the attempt count.
+        if (Date.now() + delay + LLM_REQUEST_TIMEOUT_MS > deadline) {
+          // Carry the provider's own requested wait when it gave one. extraction-page.worker.ts
+          // reads `retry_after_ms=` off this message (its `deferredMatch`) to schedule a deferred
+          // retry; without the token it republishes the page immediately — straight back into the
+          // rate limit this error is reporting, burning the item's retry budget while the limit is
+          // still active (Greptile). Same token shape as the over-ceiling throw above.
+          const carry = serverDelay != null ? `retry_after_ms=${serverDelay} ` : "";
+          throw new Error(`AI_TRANSIENT: ${carry}retry budget exhausted after ${attempt + 1} attempts: ${err instanceof Error ? err.message : String(err)}`, { cause: err });
+        }
+        // Never START an attempt that cannot finish inside the budget — the point is the wall
+        // clock the caller's queue claim is measured against, not the attempt count.
         logger.warn(`Transient LLM error, retrying in ${Math.round(delay / 1000)}s (attempt ${attempt + 1}/${MAX_RETRIES})`);
         await new Promise((r) => setTimeout(r, delay));
         continue;
