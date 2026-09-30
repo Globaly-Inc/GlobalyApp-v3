@@ -384,7 +384,7 @@ export type UpdateContextParams = { guided_urls?: Record<string, unknown> | null
 export type StepMode = "auto" | "manual";
 export const SITE_URL_CATEGORIES = [
   "overview", "about_us", "contact_us", "course", "branches", "agents", "fees",
-  "study_units", "study_options", "intake", "eligibility", "accreditations", "other",
+  "study_units", "study_options", "intake", "eligibility", "accreditations", "scholarships", "other",
 ] as const;
 export type SiteUrlCategory = (typeof SITE_URL_CATEGORIES)[number];
 
@@ -393,7 +393,7 @@ export type SiteUrl = {
   url: string;
   source: string;
   category: SiteUrlCategory | null;
-  category_source: "guided" | "heuristic" | "llm" | "admin" | null;
+  category_source: "guided" | "heuristic" | "llm" | "jev" | "admin" | null;
   excluded: boolean;
   created_at: string;
   updated_at: string;
@@ -415,7 +415,7 @@ export type SnapshotRow = {
   /** extraction_site_urls.id — what the Category picker patches. */
   site_url_id: string;
   category: SiteUrlCategory | null;
-  category_source: "guided" | "heuristic" | "llm" | "admin" | null;
+  category_source: "guided" | "heuristic" | "llm" | "jev" | "admin" | null;
   excluded: boolean;
   gcs_path: string;
 };

@@ -8,7 +8,7 @@ export const PIPELINE_STEPS = [
   // Side steps and admin re-runs.
   "institution", "branches", "agents", "discovery",
   "courses", "enrichment", "verification", "course_data",
-  "visa_services", "visa_service_data",
+  "visa_services", "visa_service_data", "scholarships", "link_entities",
 ] as const;
 
 export type PipelineStep = (typeof PIPELINE_STEPS)[number];

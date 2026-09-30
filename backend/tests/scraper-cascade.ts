@@ -119,11 +119,25 @@ async function main() {
   r = await scrapeMarkdown("https://example.com");
   assertEqual(r.scraper, "firecrawl", "falls through to firecrawl when scrapling and crawl4ai are short");
 
-  // 4. forceFirecrawl skips both scrapling and crawl4ai even though they'd succeed.
-  mockScrapling(LONG);
+  {
+    const calls: { name: string; args: Record<string, unknown> }[] = [];
+    (Client.prototype as any).connect = async function () {};
+    (Client.prototype as any).callTool = async function (req: { name: string; arguments: Record<string, unknown> }) {
+      calls.push({ name: req.name, args: req.arguments });
+      return { structuredContent: { status: 200, content: [LONG], url: "https://example.com" } };
+    };
+    mockFetch({ "crawl4ai.test": LONG, "firecrawl.dev": LONG });
+    r = await scrapeMarkdown("https://example.com", { forceFirecrawl: true, mobile: true, waitFor: 8000 });
+    assertEqual(r.scraper, "scrapling", "hard retry is served by scrapling when it can");
+    assertEqual(calls[0]?.name, "stealthy_fetch", "hard retry skips the plain-HTTP get tier");
+    assertEqual(calls[0]?.args.wait, 8000, "hard retry passes the render wait");
+    assertEqual(String(calls[0]?.args.useragent).includes("iPhone"), true, "mobile retry sends a mobile user agent");
+  }
+  // 4b. ...and reaches Firecrawl only when Scrapling's browsers fail too.
+  mockScrapling(SHORT);
   mockFetch({ "crawl4ai.test": LONG, "firecrawl.dev": LONG });
   r = await scrapeMarkdown("https://example.com", { forceFirecrawl: true });
-  assertEqual(r.scraper, "firecrawl", "forceFirecrawl skips scrapling and crawl4ai");
+  assertEqual(r.scraper, "firecrawl", "hard retry falls back to firecrawl after scrapling fails");
 
   // 5. Scrapling returns a long-but-empty soft-404 shell (nav/footer boilerplate padded past
   // MIN_CONTENT_LEN) — must not be accepted as a real scrape; falls through to Crawl4AI.

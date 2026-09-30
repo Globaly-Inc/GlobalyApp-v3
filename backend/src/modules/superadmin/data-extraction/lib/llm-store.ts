@@ -22,8 +22,14 @@ export async function insertUsage(row: UsageRow): Promise<void> {
   await masterKnex(USAGE).insert(row);
 }
 
+/** Same window as page snapshots. With no expiry one bad answer replayed forever: Yale's URL
+ *  classifier dropped 88% of a correct list, and "every re-run replayed that answer for free". */
+const CACHE_MAX_AGE_DAYS = Math.max(1, Math.floor(Number(process.env.LLM_CACHE_MAX_AGE_DAYS) || 30)); // make_interval(days) is integer
+
 export async function findCached(inputHash: string): Promise<unknown | undefined> {
-  const row = await masterKnex(CACHE).where({ input_hash: inputHash }).select("result").first();
+  const row = await masterKnex(CACHE).where({ input_hash: inputHash })
+    .whereRaw("created_at > now() - make_interval(days => ?)", [CACHE_MAX_AGE_DAYS])
+    .select("result").first();
   return row?.result;
 }
 
@@ -35,12 +41,15 @@ export async function saveCached(row: {
   prompt_tokens: number;
   output_tokens: number;
 }): Promise<void> {
-  // DO NOTHING, not DO UPDATE: two workers racing on the same input both hold a valid
-  // answer, and the first one in is as good as the second.
+  // Replace only an EXPIRED row: two workers racing on the same input both hold a valid answer and
+  // the first one in is as good as the second, but an expired row must be refreshable or findCached
+  // would miss on it forever.
   await masterKnex(CACHE)
     .insert({ ...row, result: JSON.stringify(row.result) })
     .onConflict("input_hash")
-    .ignore();
+    .merge({ result: JSON.stringify(row.result), model: row.model, job_id: row.job_id, prompt_tokens: row.prompt_tokens,
+      output_tokens: row.output_tokens, hit_count: 0, created_at: masterKnex.fn.now() })
+    .whereRaw("extraction_llm_cache.created_at <= now() - make_interval(days => ?)", [CACHE_MAX_AGE_DAYS]);
 }
 
 export async function bumpCacheHit(inputHash: string): Promise<void> {

@@ -230,6 +230,29 @@ export function looksLikeNonCourseUrl(url: string): boolean {
   return NON_COURSE_PATH_MARKERS.some((m) => path.includes(m));
 }
 
+const CATALOGUE_HOST = /^(explorecourses|bulletin|catalog(?:ue)?s?|courses|programs|handbook|study|so[a-z]|school|faculty)\./i;
+
+/** Hosts that are never a course page, whatever their paths say. csuohio.edu: 345 of 500 queued
+ *  pages were researchguides.csuohio.edu LibGuides named after courses ("NUR 334 - …"), all 0 yield. */
+const NON_CONTENT_HOST = /^(researchguides|libguides|guides\.lib|library|libraries|lib|specialcollections|stories|news|newsroom|events|calendar|alumni|giving|athletics|magazine|blogs?)\./i;
+
+/** 0 = the admin or the site pointed at it, 1 = catalogue host, 2 = course-looking path, 3 = rest. */
+export function crawlRank(url: string, source?: string | null): number {
+  if (source === "admin" || source === "guided" || source === "homepage") return 0;
+  try { if (CATALOGUE_HOST.test(new URL(url).hostname) && !looksLikeNonCourseUrl(url)) return 1; } catch { /* rank below */ }
+  return looksLikeCourseUrl(url) ? 2 : 3;
+}
+
+/** Stable, so discovery order still decides within a rank. page_cap and the snapshot keep the
+ *  FIRST N of this list, which used to be discovery order: CSU's 247 capped-out course URLs were
+ *  whichever the sitemap happened to list last. */
+export function rankForCrawl<T extends { url: string; source?: string | null; category_source?: string | null }>(rows: T[]): T[] {
+  return rows
+    .map((r, i) => ({ r, i, k: crawlRank(r.url, r.category_source === "admin" ? "admin" : r.source) }))
+    .sort((a, b) => a.k - b.k || a.i - b.i)
+    .map((x) => x.r);
+}
+
 /** Heuristic: does this URL look like a course detail or listing page? */
 export function looksLikeCourseUrl(url: string): boolean {
   // Checked BEFORE everything else, including the catalogue-host short-circuit below — that
@@ -257,12 +280,10 @@ export function looksLikeCourseUrl(url: string): boolean {
   // "catalog(ue)" needs the plural too — seen live on catalogs.uky.edu, which the
   // singular-only form silently excluded even though it's exactly the kind of catalogue
   // host this exists for.
-  const catalogueHost = /^(explorecourses|bulletin|catalog(?:ue)?s?|courses|programs|handbook|study|so[a-z]|school|faculty)\./i;
-
   let path: string;
   try {
     const u = new URL(url);
-    if (catalogueHost.test(u.hostname)) return true;
+    if (CATALOGUE_HOST.test(u.hostname)) return true;
     // Path only, never the full href: matching the whole URL string let a signal
     // like "/admission" match by pure string coincidence against a HOSTNAME
     // ("https://admission.example.edu/..." contains "/admission" right after
@@ -378,7 +399,7 @@ export function filterUrls(urls: string[], base: string): string[] {
   for (const raw of urls) {
     try {
       const u = new URL(raw);
-      if (!isSameSite(u.hostname, site)) continue;
+      if (!isSameSite(u.hostname, site) || NON_CONTENT_HOST.test(u.hostname)) continue;
       // Skip assets
       const ext = u.pathname.slice(u.pathname.lastIndexOf(".")).toLowerCase();
       if (ASSET_EXTS.has(ext)) continue;
