@@ -11,6 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { cn, splitPhone } from "@/lib/utils";
 import { saveAccessToken, saveSelectedOrgId } from "@/lib/session";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { fetchMe, useAuthState } from "@/app/auth/store/auth-slice";
 import { DynamicIcon } from "@/components/dynamic-icon";
 import { geoApi, type Country } from "../geo/apis";
 import { businessApi } from "./apis";
@@ -63,6 +64,11 @@ function OnboardingForm({
   const dispatch = useAppDispatch();
   const { status } = useAppSelector((state) => state.businessOnboarding);
   const saving = status === "saving";
+  const { user: authUser } = useAuthState();
+  const ownsOrg = (u: typeof authUser) => (u?.businesses.length ?? 0) + (u?.institutions.length ?? 0) > 0;
+  const [serverRequiresEmail, setServerRequiresEmail] = useState(false);
+  const requireEmail = isNew && (ownsOrg(authUser) || serverRequiresEmail);
+  const submittingRef = useRef(false);
 
   const [countries, setCountries] = useState<Country[]>([]);
   const [categories, setCategories] = useState<BusinessCategoryOption[]>([]);
@@ -71,6 +77,7 @@ function OnboardingForm({
     initialProfile?.business_category_id ? String(initialProfile.business_category_id) : "",
   );
   const [businessName, setBusinessName] = useState(initialProfile?.business_name ?? "");
+  const [email, setEmail] = useState("");
   const [phoneCountryId, setPhoneCountryId] = useState("");
   const [phoneNumber, setPhoneNumber] = useState(initialProfile?.phone ?? "");
   const [countryId, setCountryId] = useState(initialProfile?.country_id ? String(initialProfile.country_id) : "");
@@ -124,6 +131,10 @@ function OnboardingForm({
     setBusinessName(value);
     clearFieldErrorIfNowValid(setFieldErrors, "businessName", validateBusinessField("businessName", value) === null);
   };
+  const handleEmailChange = (value: string) => {
+    setEmail(value);
+    clearFieldErrorIfNowValid(setFieldErrors, "email", validateBusinessField("email", value) === null);
+  };
   const handlePhoneCountryChange = (value: string) => {
     setPhoneCountryId(value);
     clearFieldErrorIfNowValid(setFieldErrors, "phoneCountryId", validateBusinessField("phoneCountryId", value) === null);
@@ -158,6 +169,33 @@ function OnboardingForm({
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    try {
+      await submit();
+    } finally {
+      submittingRef.current = false;
+    }
+  };
+
+  // Server checks live memberships; if it still demands an email, reveal the field.
+  const failRegister = (title: string, message?: string) => {
+    if (message && /email is required/i.test(message)) {
+      setServerRequiresEmail(true);
+      setFieldErrors({ email: "Enter a contact email for this organisation" });
+    }
+    toast.error(title, { description: message ?? "Please try again." });
+  };
+
+  const submit = async () => {
+    const trimmedEmail = email.trim();
+    // Another tab may have added an org since this one loaded; the server checks live
+    // memberships, so refresh before deciding whether an email is required.
+    let mustHaveEmail = requireEmail;
+    if (isNew && !requireEmail) {
+      const me = await dispatch(fetchMe());
+      if (fetchMe.fulfilled.match(me)) mustHaveEmail = ownsOrg(me.payload);
+    }
     const errors = validateBusinessDetails({
       isInstitution,
       phoneCountryId,
@@ -166,6 +204,8 @@ function OnboardingForm({
       countryId,
       address,
       businessName,
+      email: trimmedEmail,
+      requireEmail: mustHaveEmail,
     });
     if (errors) {
       setFieldErrors(errors);
@@ -180,6 +220,7 @@ function OnboardingForm({
         const outcome = await dispatch(
           registerInstitution({
             institution_name: businessName,
+            email: trimmedEmail || undefined,
             phone,
             country_id: Number(countryId),
             address,
@@ -189,7 +230,7 @@ function OnboardingForm({
           }),
         );
         if (registerInstitution.rejected.match(outcome)) {
-          toast.error("Couldn't create institution", { description: outcome.error.message ?? "Please try again." });
+          failRegister("Couldn't create institution", outcome.error.message);
           return;
         }
         saveAccessToken(outcome.payload.access_token);
@@ -203,6 +244,7 @@ function OnboardingForm({
         registerBusiness({
           business_name: businessName,
           business_category_id: Number(categoryId),
+          email: trimmedEmail || undefined,
           phone,
           country_id: Number(countryId),
           address,
@@ -212,7 +254,7 @@ function OnboardingForm({
         }),
       );
       if (registerBusiness.rejected.match(outcome)) {
-        toast.error("Couldn't create business", { description: outcome.error.message ?? "Please try again." });
+        failRegister("Couldn't create business", outcome.error.message);
         return;
       }
       // Full reload, matching the switcher's own re-fetch rationale — every slice
@@ -291,6 +333,9 @@ function OnboardingForm({
         isInstitution={isInstitution}
         businessName={businessName}
         onBusinessNameChange={handleBusinessNameChange}
+        requireEmail={requireEmail}
+        email={email}
+        onEmailChange={handleEmailChange}
         phoneCountryId={phoneCountryId}
         onPhoneCountryChange={handlePhoneCountryChange}
         phoneNumber={phoneNumber}

@@ -14,6 +14,7 @@ export const BusinessRegisterSchema = z.object({
   business_type: z.enum(BUSINESS_TYPES).optional(),
   business_category_id: z.number().int().positive().optional(),
   description: z.string().max(5000).optional(),
+  email: z.string().email().optional(),
   phone: z.string().max(50).optional(),
   country_id: z.number().int().positive().optional(),
   state: z.string().max(100).optional(),
