@@ -116,16 +116,38 @@ export async function checkAllPagesDone(jobId: string) {
     await writeJobEvent(jobId, "extraction_complete", {
       phase: "data_extraction", message: "All pages extracted, starting verification",
     });
-    await queueService.publish(EXTRACTION_QUEUES.VERIFY, { jobId });
     const job = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).first();
-    if (!job?.source_type || job.source_type === "institution") {
-      const hasCampuses = await masterKnex(`${S}.extraction_campuses`).where({ job_id: jobId }).first();
-      if (!hasCampuses) {
-        await queueService.publish(EXTRACTION_QUEUES.STEPS, { jobId, step: "branches" });
-      }
-      const hasScholarshipPages = await masterKnex(`${S}.extraction_site_urls`)
-        .where({ job_id: jobId, category: "scholarships", excluded: false }).whereNull("dead_reason").first("id");
-      if (hasScholarshipPages) await queueService.publish(EXTRACTION_QUEUES.STEPS, { jobId, step: "scholarships" });
-    }
+    const isInstitution = !job?.source_type || job.source_type === "institution";
+    const needsBranches = isInstitution && !(await masterKnex(`${S}.extraction_campuses`).where({ job_id: jobId }).first());
+    const hasScholarshipPages = isInstitution && !!(await masterKnex(`${S}.extraction_site_urls`)
+      .where({ job_id: jobId, category: "scholarships", excluded: false }).whereNull("dead_reason").first("id"));
+    await continueChain(jobId, postExtractionChain({ needsBranches, hasScholarshipPages }));
   }
+}
+
+export type ChainLink = "branches" | "scholarships" | "verify";
+
+/**
+ * What runs after the last page, IN ORDER. Campuses (branches) and scholarships are extracted
+ * BEFORE verification because the verify worker dispatches `link_entities` when it finishes, and the
+ * linker only links what exists: fired side by side (as they used to be), a verification that
+ * finished first linked nothing to the campuses and awards stored a moment later. Pure.
+ */
+export function postExtractionChain(o: { needsBranches: boolean; hasScholarshipPages: boolean }): ChainLink[] {
+  return [...(o.needsBranches ? ["branches" as const] : []), ...(o.hasScholarshipPages ? ["scholarships" as const] : []), "verify"];
+}
+
+/** Publish the head of the chain, carrying the rest. The step worker calls this again when that step
+ *  ends — succeeded OR failed — so verification always starts. */
+export async function continueChain(jobId: string, chain: ChainLink[]): Promise<void> {
+  const [next, ...rest] = chain;
+  if (!next) return;
+  if (next === "verify") await queueService.publish(EXTRACTION_QUEUES.VERIFY, { jobId });
+  else await queueService.publish(EXTRACTION_QUEUES.STEPS, { jobId, step: next, then: rest });
+}
+
+const CHAIN_LINKS = new Set<string>(["branches", "scholarships", "verify"]);
+/** A `then` field off a queue message, keeping only known links. Pure. */
+export function parseChain(raw: unknown): ChainLink[] {
+  return Array.isArray(raw) ? raw.filter((x): x is ChainLink => typeof x === "string" && CHAIN_LINKS.has(x)) : [];
 }

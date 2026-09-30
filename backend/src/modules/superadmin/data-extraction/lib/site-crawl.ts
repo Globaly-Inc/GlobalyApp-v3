@@ -69,8 +69,9 @@ export async function crawlSite(
   opts: { budget: number; maxDepth?: number; concurrency?: number; shouldStop?: () => Promise<boolean> },
 ): Promise<CrawlResult> {
   const { budget, maxDepth = 2, concurrency = 4, shouldStop } = opts;
-  const scope = seeds[0];
-  const found = new Set<string>(filterUrls(seeds, scope));
+  const scopeOf = new Map<string, string>();
+  for (const seed of seeds) for (const u of filterUrls([seed], seed)) if (!scopeOf.has(u)) scopeOf.set(u, seed);
+  const found = new Set<string>(scopeOf.keys());
   const visited = new Set<string>();
   let frontier = [...found];
   let fetched = 0;
@@ -88,7 +89,9 @@ export async function crawlSite(
       wave.forEach((u) => visited.add(u));
       fetched += wave.length;
       const results = await Promise.all(wave.map((u) => _crawlDeps.fetchLinks(u).catch(() => [] as string[])));
-      for (const links of results) {
+      for (let w = 0; w < results.length; w++) {
+        const links = results[w];
+        const scope = scopeOf.get(wave[w]) ?? seeds[0];
         // A host's current catalogues are the catoids on the FIRST page that links into that host,
         // at whatever depth it is reached — a second catalogue is often one hop in, not on the seed.
         const onThisPage = new Map<string, Set<string>>();
@@ -106,6 +109,7 @@ export async function crawlSite(
           const current = currentCatoids.get(hostOf(link) ?? "");
           if (current && catoid && !current.has(catoid)) continue;
           found.add(link);
+          scopeOf.set(link, scope);
           if (isHubLink(link)) next.push(link);
         }
       }

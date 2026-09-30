@@ -91,7 +91,7 @@ import {
   runSiteMap, runSiteAnalysis, runUrlClassify, runQueuePages, republishRetryableQueueItems,
 } from "../lib/pipeline-steps.js";
 import { listActiveSiteUrls, upsertSiteUrls, setSiteUrlCategories, listSiteUrlsByCategory } from "../repositories/site-urls.repository.js";
-import { checkAllPagesDone } from "../lib/queue-completion.js";
+import { checkAllPagesDone, continueChain, parseChain } from "../lib/queue-completion.js";
 
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
@@ -1926,9 +1926,9 @@ async function handleLinkEntitiesStep(jobId: string) {
 
 await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
   let jobId: string, step: string, courseId: string | undefined, dataType: string | undefined, visaServiceId: string | undefined,
-    urls: string[] | undefined, batch: SnapshotBatch | undefined, fresh: boolean | undefined;
+    urls: string[] | undefined, batch: SnapshotBatch | undefined, fresh: boolean | undefined, then: unknown;
   try {
-    ({ jobId, step, courseId, dataType, visaServiceId, urls, batch, fresh } = JSON.parse(msg!.content.toString()));
+    ({ jobId, step, courseId, dataType, visaServiceId, urls, batch, fresh, then } = JSON.parse(msg!.content.toString()));
   } catch {
     logger.error("Malformed queue message, discarding", { raw: msg?.content.toString().slice(0, 200) });
     return;
@@ -1986,6 +1986,10 @@ await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
       data: { step, courseId, dataType, visaServiceId, ...(batch ?? {}) },
     });
   }
+  // Post-extraction chain (branches → scholarships → verify, see queue-completion): hand on whether
+  // this step succeeded or failed, so a failed campus or scholarship pass never strands the job.
+  const chain = parseChain(then);
+  if (chain.length) await continueChain(jobId, chain).catch((err) => logger.error("Failed to continue post-extraction chain", { jobId, step, chain, error: String(err) }));
 });
 
 logger.info(`Extraction step worker started — consuming "${EXTRACTION_QUEUES.STEPS}" queue`);

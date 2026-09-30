@@ -79,6 +79,18 @@ function eq(actual: unknown, expected: unknown, label: string) {
   eq(found.has("https://catalog.u.edu/preview_program.php?catoid=12&poid=9"), false, "each host still drops its own archived catoids");
 }
 
+{
+  const sites: Record<string, string[]> = {
+    "https://catalog.uni.edu": ["https://catalog.uni.edu/programs/nursing"],
+    "https://courses.uni.edu.my": ["https://courses.uni.edu.my/programs/business", "https://www.uni.edu/about"],
+  };
+  _crawlDeps.fetchLinks = async (url) => sites[url] ?? [];
+  const found = new Set((await crawlSite(["https://catalog.uni.edu", "https://courses.uni.edu.my"], { budget: 20 })).urls);
+  eq(found.has("https://courses.uni.edu.my/programs/business"), true, "a second seed on another domain keeps ITS links");
+  eq(found.has("https://catalog.uni.edu/programs/nursing"), true, "…and the first seed keeps its own");
+  eq(found.has("https://www.uni.edu/about"), false, "a page's links are scoped to its own seed's site, not the other seed's");
+}
+
 eq(isHubLink("https://catalog.x.edu/content.php?catoid=50&navoid=4329"), true, "Acalog nav page is a hub");
 eq(isHubLink("https://www.x.edu/provost/faculty-support"), false, "a staff page is not a hub");
 

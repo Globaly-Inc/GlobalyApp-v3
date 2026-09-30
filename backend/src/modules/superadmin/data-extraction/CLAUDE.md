@@ -1154,7 +1154,10 @@ Same pass, also 2026-09-30:
 - **Scholarships**: new site category `scholarships` (path rule ahead of fees/branches — 46 scholarship
   URLs had been filed under branches), guided key `scholarships_urls`, and step `scholarships`
   (`scholarshipsPagePrompt`, lite tier, `upsertScholarship`, unlinked — the admin links awards to
-  courses). Dispatched by `checkAllPagesDone` when the job has scholarship pages.
+  courses). Dispatched by `checkAllPagesDone` when the job has scholarship pages — as a CHAIN
+  (`postExtractionChain`): branches (if no campuses) → scholarships (if any pages) → VERIFY, each step
+  handing on via the message's `then` whether it succeeded or failed (`continueChain`), so the linker
+  that verification dispatches sees the campuses and awards (`test:post-extraction-chain`).
   `SCHOLARSHIP_ITEM_SCHEMA` is shared with the course prompt, which still renders byte-identical.
 - **LLM cache expires** after `LLM_CACHE_MAX_AGE_DAYS` (30); an expired row is refreshed on the next
   save, a fresh one never overwritten. OpenRouter fallback calls now write an

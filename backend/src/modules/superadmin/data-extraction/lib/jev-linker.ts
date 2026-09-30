@@ -197,6 +197,7 @@ export async function linkJobEntities(jobId: string, opts: { heartbeat?: () => P
     const url = course.source_url;
     if (url && !pages.has(url)) pages.set(url, await _linkerDeps.readPage(url).catch(() => ""));
     const pageText = url ? pages.get(url) ?? "" : "";
+    if (!pageText.trim()) continue;
     const held = kindsByCourse.get(course.id) ?? new Set<LinkKind>();
     const candidates = candidatesFor(course, pageText, entities, linked, held, { agentcis, unlinkedIds, sharedPage: (perUrl.get(url ?? "") ?? 0) > 1 });
     if (!candidates.length) continue;
