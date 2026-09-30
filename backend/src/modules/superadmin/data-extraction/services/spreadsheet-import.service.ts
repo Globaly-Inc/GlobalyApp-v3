@@ -39,6 +39,10 @@ export async function startImport(input: SpreadsheetImportInput, adminId: number
   const name = input.institution.name.trim();
   const slug = key(name).replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
   const website = input.institution.website || `${SPREADSHEET_SYNTHETIC_URL_PREFIX}${slug}`;
+  // Before the transaction, never inside it: a query on the pool while holding a pooled connection
+  // needs a SECOND one, and with enough concurrent imports every connection is a transaction waiting
+  // for another — they deadlock until timeout.
+  const businessCategoryId = await findCategoryIdBySlug("institutions");
 
   // Check, clean up and insert under ONE per-name lock. The re-check alone did not close the race it
   // was written for: two tabs (or two admins) importing one name both passed it before either
@@ -61,7 +65,7 @@ export async function startImport(input: SpreadsheetImportInput, adminId: number
         source_type: "spreadsheet",
         aggregator_name: "Spreadsheet",
         // A sheet only ever holds institutions; without a category promotion refuses the job.
-        business_category_id: await findCategoryIdBySlug("institutions"),
+        business_category_id: businessCategoryId,
         created_by_platform_user_id: adminId,
         pipeline_progress: JSON.stringify({ phase: "queued", current: 0, total: input.rows.length }),
         processing_heartbeat_at: masterKnex.fn.now(),
