@@ -11,6 +11,7 @@ import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { agentcisBaseUrl, fetchAgentcisSearchPage } from "../lib/agentcis-client.js";
 import { stageAgentcisInstitution } from "../lib/agentcis-staging.js";
+import { findCategoryIdBySlug } from "../repositories/promote.repository.js";
 
 const logger = createChildLogger("extraction-agentcis-worker");
 
@@ -59,6 +60,7 @@ async function recordFailedJob(institutionId: string, message: string): Promise<
     institution_url: `https://agentcis.com/institution/${institutionId}`,
     status: "failed",
     source_type: "agentcis",
+    business_category_id: await findCategoryIdBySlug("institutions"),
     aggregator_name: "AgentCIS",
     error_message: message,
     pipeline_progress: JSON.stringify({ phase: "failed", error: message, agentcis_id: institutionId }),

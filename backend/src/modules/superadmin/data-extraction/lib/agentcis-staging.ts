@@ -9,6 +9,7 @@ import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { writeInstitutionOverview, upsertCampus, writeJobEvent } from "./staging-writer.js";
 import { coerceLabel, isDeactivated, pickActiveContact, mapCountry } from "./agentcis-mappers.js";
 import { stageProduct, newStagingCounters } from "./agentcis-product-staging.js";
+import { findCategoryIdBySlug } from "../repositories/promote.repository.js";
 
 const logger = createChildLogger("agentcis-staging");
 
@@ -47,6 +48,7 @@ export async function stageAgentcisInstitution(
       institution_url: website,
       status: "processing",
       source_type: "agentcis",
+      business_category_id: await findCategoryIdBySlug("institutions"),
       aggregator_name: "AgentCIS",
       pipeline_progress: JSON.stringify({ phase: "institution", current: 0, total: 0, agentcis_id: institutionId }),
       processing_heartbeat_at: masterKnex.fn.now(),
