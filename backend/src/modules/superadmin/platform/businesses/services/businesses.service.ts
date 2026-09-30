@@ -403,7 +403,7 @@ export async function updateBusiness(id: number, data: BusinessPatchInput) {
   if (updated?.source_job_id && data.website?.trim()) {
     await jobsRepo.syncOwnedJobUrl(updated.source_job_id, data.website.trim());
   }
-  if (updated?.source_job_id && data.business_category_id !== undefined) {
+  if (updated?.source_job_id && !updated.source_agent_id && data.business_category_id !== undefined) {
     await jobsRepo.syncOwnedJobCategory(updated.source_job_id, data.business_category_id);
   }
   return withImagePreviews(updated);

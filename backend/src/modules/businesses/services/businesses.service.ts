@@ -233,7 +233,7 @@ export async function updateProfile(orgId: string, data: BusinessProfilePatchInp
   if (data.registration_licenses !== undefined) {
     await branchesRepo.syncSameCompanyRegistration("businesses", { id: Number(existing.id), schema_name: existing.schema_name }, updated.registration_licenses);
   }
-  if (data.business_category_id !== undefined && updated.source_job_id) {
+  if (data.business_category_id !== undefined && updated.source_job_id && !updated.source_agent_id) {
     await jobsRepo.syncOwnedJobCategory(updated.source_job_id, updated.business_category_id);
   }
   return withCategory(await withImagePreviews(updated));

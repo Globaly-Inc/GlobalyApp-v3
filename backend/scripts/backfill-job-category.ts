@@ -8,8 +8,12 @@
  *   - institutions.source_job_id = job.id  → that institution's OWN business_category_id (in
  *     practice always "institutions" — see business_categories_seeder.ts — but read from the
  *     row, not assumed; an institution not yet backfilled itself is skipped, not guessed).
- *   - businesses.source_job_id = job.id    → that business's OWN business_category_id, copied
- *     as-is (education_agency / visa_services / accreditation_body / institutions / …).
+ *   - businesses.source_job_id = job.id AND source_agent_id IS NULL → the PRIMARY business's OWN
+ *     business_category_id, copied as-is (education_agency / visa_services / accreditation_body /
+ *     institutions / …). Agent-derived businesses (promoteAgent) share source_job_id with the
+ *     institution/business they were scraped alongside, so joining them unfiltered would fan out
+ *     one job into several rows and let an agent's own category ("education_agency") win the
+ *     write over the real owner's — excluded here for exactly that reason.
  *   - neither, or the owner itself has no category yet → left untouched. There is no real
  *     category to read, and resolveIsInstitution (promote.service.ts) already treats
  *     "no business_category_id, no owner" as "an admin must set one" rather than a bug to guess
@@ -45,7 +49,9 @@ type Row = {
 
 let query = masterKnex("superadmin.extraction_jobs as j")
   .leftJoin("public.institutions as i", "i.source_job_id", "j.id")
-  .leftJoin("public.businesses as b", "b.source_job_id", "j.id")
+  .leftJoin("public.businesses as b", function () {
+    this.on("b.source_job_id", "j.id").andOnNull("b.source_agent_id");
+  })
   .whereNull("j.business_category_id")
   .select(
     "j.id", "j.institution_name", "j.institution_url",
