@@ -9,6 +9,7 @@ import { creditsRoutes } from "./routes/credits.routes.js";
 import { guestRoutes, guestMigrateRoutes, guestSessionRoutes } from "./routes/guest.routes.js";
 import { embedRoutes, embedPublicRoutes } from "./routes/embed.routes.js";
 import { visitorRoutes } from "./routes/visitors.routes.js";
+import { institutionMemoryRoutes } from "../institution-memory/routes/memory.routes.js";
 
 export default async function aiChatModule(app: FastifyInstance) {
   app.register(chatRoutes, { prefix: "/api/v3/ai-chat" });
@@ -16,6 +17,7 @@ export default async function aiChatModule(app: FastifyInstance) {
   app.register(guestMigrateRoutes, { prefix: "/api/v3/ai-chat" });
   app.register(embedRoutes, { prefix: "/api/v3/ai-chat" });
   app.register(visitorRoutes, { prefix: "/api/v3/ai-chat" });
+  app.register(institutionMemoryRoutes, { prefix: "/api/v3/ai-chat" }); // institution portal: memories + review queue
 }
 
 export async function publicAiCounsellorModule(app: FastifyInstance) {

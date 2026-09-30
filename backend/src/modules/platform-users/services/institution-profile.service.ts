@@ -15,6 +15,7 @@ import type {
 } from "../schemas/institution-profile.schema.js";
 import type { InstitutionRecord } from "../../../core/types.js";
 import * as branchesRepo from "../../superadmin/platform/business-branches/repositories/business-branches.repository.js";
+import { findCategoryIdBySlug } from "../../superadmin/data-extraction/repositories/promote.repository.js";
 
 async function withImagePreviews<
   T extends { logo_url?: string | null; cover_url?: string | null; gallery_images?: string[] | null; video_urls?: string[] | null },
@@ -87,7 +88,13 @@ export async function startExtraction(institution: InstitutionRecord, platformUs
     let job: { id: string };
     try {
       job = await createJob(
-        { institution_url: website, institution_name: locked.institution_name, source_type: "institution_self_service" },
+        {
+          institution_url: website,
+          institution_name: locked.institution_name,
+          source_type: "institution_self_service",
+          // Routes promote to the institutions table and makes the admin list's category filter see it.
+          business_category_id: (await findCategoryIdBySlug("institutions")) ?? undefined,
+        },
         platformUserId,
       );
     } catch (err) {

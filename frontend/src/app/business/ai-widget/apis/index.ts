@@ -4,7 +4,7 @@ import { aiWidgetRealApi } from "./real-api";
 
 export const aiWidgetApi = createApi({ mock: aiWidgetMockApi, real: aiWidgetRealApi });
 export type {
-  CreateEmbedConfigInput, EmbedConfig,
+  CreateEmbedConfigInput, EmbedConfig, UpdateEmbedConfigInput,
   VisitorCounts, VisitorListParams, VisitorListResult, VisitorProfileEntry,
   VisitorMessage, VisitorStatus, VisitorStatusFilter, WidgetVisitor,
 } from "./types";

@@ -15,26 +15,33 @@ export interface EmbedConfigRow {
   logo_url: string | null;
   brand_color: string | null;
   custom_instructions: string | null;
+  /** Panel copy, editable after creation (20260928_001). Never reaches the model. */
+  greeting: string | null;
+  subtitle: string | null;
   monthly_credit_limit: number;
   credits_used_this_month: number;
   month_reset_at: Date;
   is_active: boolean;
+  /** Learn counselling patterns from finished conversations on this widget (institution-memory). */
+  auto_learn: boolean;
   created_at: Date;
   updated_at: Date;
 }
 
 const TABLE = "ai_embed_configs";
 
-export async function create(
-  owner: EmbedOwner,
-  data: {
-    display_name?: string;
-    logo_url?: string;
-    brand_color?: string;
-    custom_instructions?: string;
-    monthly_credit_limit?: number;
-  },
-): Promise<EmbedConfigRow> {
+export interface EmbedConfigPatch {
+  display_name?: string | null;
+  logo_url?: string | null;
+  brand_color?: string | null;
+  custom_instructions?: string | null;
+  greeting?: string | null;
+  subtitle?: string | null;
+  monthly_credit_limit?: number;
+  auto_learn?: boolean;
+}
+
+export async function create(owner: EmbedOwner, data: EmbedConfigPatch): Promise<EmbedConfigRow> {
   const [row] = await masterKnex(TABLE)
     .insert({ ...recipientFilter(owner), ...data })
     .returning("*");
@@ -47,6 +54,24 @@ export async function findByEmbedKey(embedKey: string): Promise<EmbedConfigRow |
 
 export async function findByOwner(owner: EmbedOwner): Promise<EmbedConfigRow[]> {
   return masterKnex(TABLE).where(recipientFilter(owner)).orderBy("created_at", "desc");
+}
+
+/** Owner-scoped edit. Undefined = unchanged, null = cleared. */
+export async function update(id: number, owner: EmbedOwner, patch: EmbedConfigPatch): Promise<EmbedConfigRow | undefined> {
+  const [row] = await masterKnex(TABLE)
+    .where({ id, ...recipientFilter(owner) })
+    .update({ ...patch, updated_at: masterKnex.fn.now() })
+    .returning("*");
+  return row;
+}
+
+/** New embed_key; every snippet carrying the old one stops resolving at once. */
+export async function rotateKey(id: number, owner: EmbedOwner): Promise<EmbedConfigRow | undefined> {
+  const [row] = await masterKnex(TABLE)
+    .where({ id, ...recipientFilter(owner) })
+    .update({ embed_key: masterKnex.raw("gen_random_uuid()"), updated_at: masterKnex.fn.now() })
+    .returning("*");
+  return row;
 }
 
 export async function deactivate(id: number, owner: EmbedOwner): Promise<number> {

@@ -355,6 +355,26 @@ services:
     networks:
       - globalyapp
 
+  institution-memory-worker:
+    container_name: globalyapp-institution-memory-worker
+    image: globalyapp-backend:local
+    profiles: ["globalyapp-institution-memory"]
+    command: npm run job:institution-memory
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dragonfly:
+        condition: service_started
+      lavinmq:
+        condition: service_started
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
   ai-knowledge-recrawl-worker:
     container_name: globalyapp-ai-knowledge-recrawl-worker
     image: globalyapp-backend:local

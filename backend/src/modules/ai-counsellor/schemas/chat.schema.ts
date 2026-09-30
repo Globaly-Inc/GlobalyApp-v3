@@ -49,13 +49,32 @@ export const GuestMessageSchema = z.object({
   embed_key: z.string().uuid().optional(),
 });
 
+const HexColour = z.string().regex(/^#[0-9a-fA-F]{6}$/);
+
 export const EmbedConfigCreateSchema = z.object({
   display_name: z.string().trim().min(1).max(120).optional(),
   logo_url: z.string().url().max(500).optional(),
-  brand_color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  brand_color: HexColour.optional(),
   custom_instructions: z.string().trim().max(2000).optional(),
+  greeting: z.string().trim().min(1).max(300).optional(),
+  subtitle: z.string().trim().min(1).max(120).optional(),
   monthly_credit_limit: z.coerce.number().int().min(1).max(100000).optional(),
+  /** Opt in to learning counselling patterns from whole conversations on this widget. */
+  auto_learn: z.boolean().optional(),
 });
+
+/** Appearance edit. Omitted = unchanged; null clears the optional text fields. */
+export const EmbedConfigUpdateSchema = z.object({
+  display_name: z.string().trim().min(1).max(120).nullish(),
+  logo_url: z.string().url().max(500).nullish(),
+  brand_color: HexColour.nullish(),
+  custom_instructions: z.string().trim().max(2000).nullish(),
+  greeting: z.string().trim().min(1).max(300).nullish(),
+  subtitle: z.string().trim().min(1).max(120).nullish(),
+  monthly_credit_limit: z.coerce.number().int().min(1).max(100000).optional(),
+  auto_learn: z.boolean().optional(),
+}).strict();
+export type EmbedConfigUpdateInput = z.infer<typeof EmbedConfigUpdateSchema>;
 
 export const EmbedConfigIdParamSchema = z.object({
   id: z.coerce.number().int().positive(),
@@ -115,6 +134,12 @@ export const GuestContactSchema = z
  * The only thing that makes a summary due immediately. A quiet half hour still sends one
  * eventually, but only claiming to be the conversation they had — never that it was resolved.
  */
+export const GuestFeedbackSchema = z.object({
+  embed_key: z.string().uuid(),
+  fingerprint: z.string().min(1),
+  feedback: z.enum(["positive", "negative"]).nullable(),
+});
+
 export const GuestConversationEndSchema = z.object({
   embed_key: z.string().uuid(),
   fingerprint: z.string().min(1),

@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, Power, PowerOff } from "lucide-react";
+import Link from "next/link";
+import { Check, Copy, Eye, KeyRound, Palette, Power, PowerOff } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,18 +12,37 @@ import type { EmbedConfig } from "../apis/types";
 // One script tag, not a raw iframe: public/embed.js renders the floating orb and only
 // loads the chat panel once a visitor opens it, so the host page doesn't have to find room
 // for a 420x640 block — or pay for a session nobody asked for.
-function embedSnippet(embedKey: string): string {
+export function embedSnippet(embedKey: string): string {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   return `<script src="${origin}/embed.js" data-key="${embedKey}" async></script>`;
+}
+
+/** Yes/No inline confirm, used for the two actions that break a live embed. */
+function Confirm({ label, onYes, onNo }: Readonly<{ label: string; onYes: () => void; onNo: () => void }>) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <Button size="sm" variant="destructive" onClick={onYes}>Yes</Button>
+      <Button size="sm" variant="outline" onClick={onNo}>No</Button>
+    </div>
+  );
 }
 
 export function WidgetCard({
   config,
   onDeactivate,
   onReactivate,
-}: Readonly<{ config: EmbedConfig; onDeactivate: (id: number) => void; onReactivate: (id: number) => void }>) {
+  onEdit,
+  onRotateKey,
+}: Readonly<{
+  config: EmbedConfig;
+  onDeactivate: (id: number) => void;
+  onReactivate: (id: number) => void;
+  onEdit: (config: EmbedConfig) => void;
+  onRotateKey: (id: number) => void;
+}>) {
   const [copied, setCopied] = useState(false);
-  const [confirming, setConfirming] = useState(false);
+  const [confirming, setConfirming] = useState<"deactivate" | "rotate" | null>(null);
 
   const copy = async () => {
     await navigator.clipboard.writeText(embedSnippet(config.embed_key));
@@ -40,27 +60,41 @@ export function WidgetCard({
             <span className="inline-block size-3 rounded-full" style={{ backgroundColor: config.brand_color }} />
           )}
           {config.display_name ?? "Untitled widget"}
-          {!config.is_active && <Badge variant="secondary">Inactive</Badge>}
+          {!config.is_active && <Badge variant="secondary">Paused</Badge>}
         </CardTitle>
-        {config.is_active ? (
-          confirming ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">Deactivate?</span>
-              <Button size="sm" variant="destructive" onClick={() => { onDeactivate(config.id); setConfirming(false); }}>Yes</Button>
-              <Button size="sm" variant="outline" onClick={() => setConfirming(false)}>No</Button>
-            </div>
-          ) : (
-            <Button size="sm" variant="ghost" onClick={() => setConfirming(true)} title="Deactivate">
-              <Power className="size-4" />
-            </Button>
-          )
+        {confirming === "deactivate" ? (
+          <Confirm label="Pause on your site?" onYes={() => { onDeactivate(config.id); setConfirming(null); }} onNo={() => setConfirming(null)} />
+        ) : confirming === "rotate" ? (
+          <Confirm label="Old snippet stops working. Continue?" onYes={() => { onRotateKey(config.id); setConfirming(null); }} onNo={() => setConfirming(null)} />
         ) : (
-          <Button size="sm" variant="ghost" onClick={() => onReactivate(config.id)} title="Reactivate">
-            <PowerOff className="size-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            <Button size="sm" variant="ghost" onClick={() => onEdit(config)} title="Appearance">
+              <Palette className="size-4" />
+            </Button>
+            <Button size="sm" variant="ghost" render={<Link href={`/business/ai-widget/preview/${config.embed_key}`} />} title="Preview on a sample page">
+              <Eye className="size-4" />
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setConfirming("rotate")} title="Regenerate key">
+              <KeyRound className="size-4" />
+            </Button>
+            {config.is_active ? (
+              <Button size="sm" variant="ghost" onClick={() => setConfirming("deactivate")} title="Pause">
+                <Power className="size-4" />
+              </Button>
+            ) : (
+              <Button size="sm" variant="ghost" onClick={() => onReactivate(config.id)} title="Resume">
+                <PowerOff className="size-4" />
+              </Button>
+            )}
+          </div>
         )}
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
+        {(config.subtitle || config.greeting) && (
+          <p className="text-xs text-muted-foreground">
+            {config.subtitle}{config.subtitle && config.greeting ? " · " : ""}{config.greeting && `“${config.greeting}”`}
+          </p>
+        )}
         <div>
           <div className="mb-1 flex justify-between text-xs text-muted-foreground">
             <span>Messages this month</span>

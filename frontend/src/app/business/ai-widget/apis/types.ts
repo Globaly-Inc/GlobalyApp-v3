@@ -10,6 +10,9 @@ export type EmbedConfig = {
   logo_url: string | null;
   brand_color: string | null;
   custom_instructions: string | null;
+  /** Panel copy: what the counsellor opens with, and the line under its name. */
+  greeting: string | null;
+  subtitle: string | null;
   monthly_credit_limit: number;
   credits_used_this_month: number;
   month_reset_at: string;
@@ -23,6 +26,19 @@ export type CreateEmbedConfigInput = {
   logo_url?: string;
   brand_color?: string;
   custom_instructions?: string;
+  greeting?: string;
+  subtitle?: string;
+  monthly_credit_limit?: number;
+};
+
+/** Appearance edit: omitted = unchanged, null = cleared. */
+export type UpdateEmbedConfigInput = {
+  display_name?: string | null;
+  logo_url?: string | null;
+  brand_color?: string | null;
+  custom_instructions?: string | null;
+  greeting?: string | null;
+  subtitle?: string | null;
   monthly_credit_limit?: number;
 };
 

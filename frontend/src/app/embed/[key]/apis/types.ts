@@ -8,6 +8,9 @@ export type EmbedPublicConfig = {
   display_name: string | null;
   logo_url: string | null;
   brand_color: string | null;
+  /** Owner-written panel copy; both optional. */
+  greeting: string | null;
+  subtitle: string | null;
   /** Drives the starter questions — an institution's widget is scoped to its own catalog. */
   owner_kind: EmbedOwnerKind;
 };

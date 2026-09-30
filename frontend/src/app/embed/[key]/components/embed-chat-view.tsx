@@ -19,7 +19,7 @@ import { ConversationEndCard } from "./conversation-end-card";
 // of its render points (chat-messages.tsx, and both commits in ai-chat-slice); the widget
 // renders StreamingMessage directly and kept none of them, so the block JSON showed as code.
 import { stripStructuredBlocks } from "@/app/ai/utils";
-import { toMessage } from "../utils";
+import { toMessage, widgetTheme } from "../utils";
 import { embedStarters } from "../const";
 import { uuid } from "@/lib/utils";
 
@@ -170,6 +170,7 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
 
   const name = config?.display_name ?? "AI Counsellor";
   const isChatting = messages.length > 0 || sending;
+  const theme = widgetTheme(config?.brand_color);
 
   return (
     <div className="flex h-dvh flex-col bg-background">
@@ -187,7 +188,7 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
         )}
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold">{name}</p>
-          <p className="truncate text-xs text-muted-foreground">AI counsellor · powered by Globaly</p>
+          <p className="truncate text-xs text-muted-foreground">{config?.subtitle ?? "AI counsellor · powered by Globaly"}</p>
         </div>
         {framed && (
           <Button
@@ -229,7 +230,10 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
           </div>
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto" style={{ background: theme.heroBackground }}>
+          {config?.greeting && (
+            <p className="px-6 pt-6 text-center text-sm text-muted-foreground">{config.greeting}</p>
+          )}
           <SuggestedStarters
             onSelect={send}
             // Empty until the config lands: rendering the business set first and swapping it

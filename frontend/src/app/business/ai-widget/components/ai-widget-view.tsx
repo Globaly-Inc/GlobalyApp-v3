@@ -5,8 +5,10 @@ import { Bot, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { createEmbedConfig, deactivateEmbedConfig, fetchEmbedConfigs, reactivateEmbedConfig } from "../store/ai-widget-slice";
-import type { CreateEmbedConfigInput } from "../apis/types";
+import {
+  createEmbedConfig, deactivateEmbedConfig, fetchEmbedConfigs, reactivateEmbedConfig, rotateEmbedKey, updateEmbedConfig,
+} from "../store/ai-widget-slice";
+import type { CreateEmbedConfigInput, EmbedConfig, UpdateEmbedConfigInput } from "../apis/types";
 import { CreateWidgetDialog } from "./create-widget-dialog";
 import { WidgetCard } from "./widget-card";
 
@@ -14,6 +16,7 @@ export function AiWidgetView() {
   const dispatch = useAppDispatch();
   const { configs, status, createStatus, error } = useAppSelector((s) => s.aiWidget);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [editing, setEditing] = useState<EmbedConfig | undefined>(undefined);
 
   const fetchedRef = useRef(false);
   useEffect(() => {
@@ -26,6 +29,12 @@ export function AiWidgetView() {
     const result = await dispatch(createEmbedConfig(input));
     return createEmbedConfig.fulfilled.match(result);
   };
+  const handleUpdate = async (id: number, input: UpdateEmbedConfigInput): Promise<boolean> => {
+    const result = await dispatch(updateEmbedConfig({ id, input }));
+    return updateEmbedConfig.fulfilled.match(result);
+  };
+  const openCreate = () => { setEditing(undefined); setDialogOpen(true); };
+  const openEdit = (config: EmbedConfig) => { setEditing(config); setDialogOpen(true); };
 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4">
@@ -38,7 +47,7 @@ export function AiWidgetView() {
             Embed a branded AI counsellor on your website, scoped to your courses.
           </p>
         </div>
-        <Button onClick={() => setDialogOpen(true)}>
+        <Button onClick={openCreate}>
           <Plus className="size-4" /> New widget
         </Button>
       </div>
@@ -57,7 +66,14 @@ export function AiWidgetView() {
       ) : (
         <div className="flex flex-col gap-3">
           {configs.map((c) => (
-            <WidgetCard key={c.id} config={c} onDeactivate={(id) => dispatch(deactivateEmbedConfig(id))} onReactivate={(id) => dispatch(reactivateEmbedConfig(id))} />
+            <WidgetCard
+              key={c.id}
+              config={c}
+              onDeactivate={(id) => dispatch(deactivateEmbedConfig(id))}
+              onReactivate={(id) => dispatch(reactivateEmbedConfig(id))}
+              onEdit={openEdit}
+              onRotateKey={(id) => dispatch(rotateEmbedKey(id))}
+            />
           ))}
         </div>
       )}
@@ -66,6 +82,8 @@ export function AiWidgetView() {
         open={dialogOpen}
         onOpenChange={setDialogOpen}
         onCreate={handleCreate}
+        onUpdate={handleUpdate}
+        initial={editing}
         creating={createStatus === "loading"}
       />
     </div>
