@@ -9,7 +9,8 @@
 //   - the course itself: P(not an enrollable programme) — flagged for review, never dropped here
 //     (entity-classifier owns that decision).
 //
-// OFF unless TYPESAFE_API_KEY and the thresholds are set. A failed call changes nothing.
+// ON whenever TYPESAFE_API_KEY is set (JEV_VERIFY_DROP_MIN / JEV_LOOKUP_MIN override the defaults,
+// "0" = off). A failed call changes nothing.
 
 import { choice, noul } from "@typesafe-ai/sdk";
 import { createChildLogger } from "../../../../shared/logger.js";

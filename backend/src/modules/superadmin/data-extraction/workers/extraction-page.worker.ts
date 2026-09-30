@@ -865,8 +865,8 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
             }
           }
 
-          // Jev checks every item against the page and links unlinked lookups (off until
-          // JEV_VERIFY_DROP_MIN / JEV_LOOKUP_MIN are set — lib/jev-course-check.ts).
+          // Jev checks every item against the page and links unlinked lookups (on with
+          // TYPESAFE_API_KEY — lib/jev-course-check.ts).
           const checked = await checkCourseWithJev(course, page.markdown, await loadLookupLists());
           if (checked) {
             const parts = [

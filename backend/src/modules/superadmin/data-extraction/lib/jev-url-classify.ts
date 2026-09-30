@@ -2,7 +2,7 @@
 // The lite-model classifier it replaces returns the URLs it keeps as an echoed list, so anything it
 // omits is silently lost (Yale: 1,363 → 154) and a whole batch can come back empty; a per-URL
 // question cannot omit a URL, and each answer carries its own confidence. Below JEV_URL_CLASSIFY_MIN
-// the URL keeps the free heuristic's verdict. OFF unless that and TYPESAFE_API_KEY are set.
+// the URL keeps the free heuristic's verdict. ON whenever TYPESAFE_API_KEY is set ("0" = off).
 
 import { choice } from "@typesafe-ai/sdk";
 import { createChildLogger } from "../../../../shared/logger.js";
