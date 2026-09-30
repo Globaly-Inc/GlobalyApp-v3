@@ -11,7 +11,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { cn, splitPhone } from "@/lib/utils";
 import { saveAccessToken, saveSelectedOrgId } from "@/lib/session";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { useAuthState } from "@/app/auth/store/auth-slice";
+import { fetchMe, useAuthState } from "@/app/auth/store/auth-slice";
 import { DynamicIcon } from "@/components/dynamic-icon";
 import { geoApi, type Country } from "../geo/apis";
 import { businessApi } from "./apis";
@@ -65,7 +65,8 @@ function OnboardingForm({
   const { status } = useAppSelector((state) => state.businessOnboarding);
   const saving = status === "saving";
   const { user: authUser } = useAuthState();
-  const requireEmail = isNew && (authUser?.businesses.length ?? 0) + (authUser?.institutions.length ?? 0) > 0;
+  const ownsOrg = (u: typeof authUser) => (u?.businesses.length ?? 0) + (u?.institutions.length ?? 0) > 0;
+  const requireEmail = isNew && ownsOrg(authUser);
 
   const [countries, setCountries] = useState<Country[]>([]);
   const [categories, setCategories] = useState<BusinessCategoryOption[]>([]);
@@ -166,6 +167,14 @@ function OnboardingForm({
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    const trimmedEmail = email.trim();
+    // Another tab may have added an org since this one loaded; the server checks live
+    // memberships, so refresh before deciding whether an email is required.
+    let mustHaveEmail = requireEmail;
+    if (isNew && !requireEmail) {
+      const me = await dispatch(fetchMe());
+      if (fetchMe.fulfilled.match(me)) mustHaveEmail = ownsOrg(me.payload);
+    }
     const errors = validateBusinessDetails({
       isInstitution,
       phoneCountryId,
@@ -174,8 +183,8 @@ function OnboardingForm({
       countryId,
       address,
       businessName,
-      email,
-      requireEmail,
+      email: trimmedEmail,
+      requireEmail: mustHaveEmail,
     });
     if (errors) {
       setFieldErrors(errors);
@@ -190,7 +199,7 @@ function OnboardingForm({
         const outcome = await dispatch(
           registerInstitution({
             institution_name: businessName,
-            email: email || undefined,
+            email: trimmedEmail || undefined,
             phone,
             country_id: Number(countryId),
             address,
@@ -214,7 +223,7 @@ function OnboardingForm({
         registerBusiness({
           business_name: businessName,
           business_category_id: Number(categoryId),
-          email: email || undefined,
+          email: trimmedEmail || undefined,
           phone,
           country_id: Number(countryId),
           address,
