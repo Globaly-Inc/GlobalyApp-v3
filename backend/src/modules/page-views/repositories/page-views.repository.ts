@@ -3,6 +3,7 @@
 import { masterKnex } from "../../../core/db/master-pool.js";
 import { SUPERADMIN_SCHEMA as S } from "../../superadmin/consts.js";
 import { STARTING_VIEWS, type PageViewType } from "../consts.js";
+import { approvedCourseSql } from "../../superadmin/consts.js";
 
 const T = "page_views";
 
@@ -28,6 +29,7 @@ export async function entityExists(entityType: PageViewType, entityId: string): 
         .where("ec.id", entityId)
         .whereRaw(`exists (select 1 from ${S}.extraction_jobs ej where ej.id = ec.job_id and ej.status = 'exported')`)
         .where("ec.is_published", true)
+        .whereRaw(approvedCourseSql("ec"))
         .first("ec.id");
       return Boolean(row);
     }

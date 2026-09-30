@@ -7,6 +7,7 @@ import { masterKnex } from "../../../core/db/master-pool.js";
 // to the durations curated on its linked study options — so the picker can't quote a different
 // length than the card the student came from.
 import { courseDurationWeeks } from "../../search/repositories/courses.repository.js";
+import { approvedCourseSql } from "../../superadmin/consts.js";
 
 const T = "superadmin.extraction_courses";
 
@@ -34,13 +35,12 @@ export interface CourseListRow {
 // never offer what neither list shows: the job was promoted (search/courses:
 // PUBLICLY_VISIBLE) AND its institution row is published (search/institutions).
 //
-// Only 'flagged' — an admin's rejection — is excluded, exactly as search/courses does;
-// requiring 'confirmed' would empty the list, since extracted courses start 'unverified'.
+// Approved courses only, exactly as search/courses does (APPROVED_COURSE_STATUSES).
 export const PUBLICLY_VISIBLE = `exists (
   select 1 from superadmin.extraction_jobs ej
   join institutions i on i.source_job_id = ej.id and i.is_published and i.deleted_at is null
   where ej.id = c.job_id and ej.status = 'exported'
-) and coalesce(c.verification_status, 'unverified') <> 'flagged'
+) and ${approvedCourseSql("c")}
   and c.is_published`;
 
 export async function listCourses(opts: { limit: number; offset: number }): Promise<CourseListRow[]> {

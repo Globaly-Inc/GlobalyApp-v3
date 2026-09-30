@@ -611,7 +611,8 @@ export async function listInstitutionMembers(id: number, opts: { search?: string
 export async function listInstitutionCourses(id: number, opts: { search?: string; limit: number; offset: number }) {
   const inst = await requireInstitution(id);
   if (!inst.source_job_id) return { rows: [], total: 0 };
-  const filters = { search: opts.search };
+  // Approved only — this is the Services list on the business pages, not the review screen.
+  const filters = { search: opts.search, approvedOnly: true };
   const [rows, total] = await Promise.all([
     coursesRepo.listCoursesByJob(inst.source_job_id, opts.limit, opts.offset, filters),
     coursesRepo.countCoursesByJob(inst.source_job_id, filters),

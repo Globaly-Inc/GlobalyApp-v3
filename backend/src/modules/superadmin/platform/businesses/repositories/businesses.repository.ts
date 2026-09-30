@@ -3,7 +3,8 @@
 import type { Knex } from "knex";
 import { masterKnex } from "../../../../../core/db/master-pool.js";
 import { getKnex } from "../../../../../core/db/pool-manager.js";
-import { SUPERADMIN_SCHEMA as S } from "../../../consts.js";
+// Services counts are approved courses only — the same set the public pages show.
+import { APPROVED_COURSE_STATUSES, SUPERADMIN_SCHEMA as S } from "../../../consts.js";
 
 const now = () => masterKnex.fn.now();
 
@@ -121,7 +122,7 @@ export async function listBusinesses(
   // courses would otherwise always read as 0.
   const [courseCounts, campusCounts] = borrowedJobIds.length
     ? await Promise.all([
-        masterKnex(`${S}.extraction_courses`).whereIn("job_id", borrowedJobIds).groupBy("job_id").select("job_id").count("id as count"),
+        masterKnex(`${S}.extraction_courses`).whereIn("job_id", borrowedJobIds).whereIn("verification_status", [...APPROVED_COURSE_STATUSES]).groupBy("job_id").select("job_id").count("id as count"),
         masterKnex(`${S}.extraction_campuses`).whereIn("job_id", borrowedJobIds).groupBy("job_id").select("job_id").count("id as count"),
       ])
     : [[], []];
@@ -231,7 +232,7 @@ export async function listInstitutions(
   const jobIds = rows.map((r: any) => r.source_job_id).filter(Boolean);
   const [courseCounts, campusCounts] = jobIds.length
     ? await Promise.all([
-        masterKnex(`${S}.extraction_courses`).whereIn("job_id", jobIds).groupBy("job_id").select("job_id").count("id as count"),
+        masterKnex(`${S}.extraction_courses`).whereIn("job_id", jobIds).whereIn("verification_status", [...APPROVED_COURSE_STATUSES]).groupBy("job_id").select("job_id").count("id as count"),
         masterKnex(`${S}.extraction_campuses`).whereIn("job_id", jobIds).groupBy("job_id").select("job_id").count("id as count"),
       ])
     : [[], []];
@@ -293,7 +294,7 @@ export async function findInstitutionDetail(id: number) {
   let service_count = 0;
   if (row.source_job_id) {
     const [[{ count: courseCount }], [{ count: campusCount }]] = await Promise.all([
-      masterKnex(`${S}.extraction_courses`).where({ job_id: row.source_job_id }).count("id as count"),
+      masterKnex(`${S}.extraction_courses`).where({ job_id: row.source_job_id }).whereIn("verification_status", [...APPROVED_COURSE_STATUSES]).count("id as count"),
       masterKnex(`${S}.extraction_campuses`).where({ job_id: row.source_job_id }).count("id as count"),
     ]);
     service_count = Number(courseCount) || 0;
@@ -383,7 +384,7 @@ export async function findBusinessDetail(id: number) {
   // Same rule as listBusinesses — see readsCountsFromJob.
   if (readsCountsFromJob(row)) {
     const [[{ count: courseCount }], [{ count: campusCount }]] = await Promise.all([
-      masterKnex(`${S}.extraction_courses`).where({ job_id: row.source_job_id }).count("id as count"),
+      masterKnex(`${S}.extraction_courses`).where({ job_id: row.source_job_id }).whereIn("verification_status", [...APPROVED_COURSE_STATUSES]).count("id as count"),
       masterKnex(`${S}.extraction_campuses`).where({ job_id: row.source_job_id }).count("id as count"),
     ]);
     row.branch_count = Number(campusCount) || 0;

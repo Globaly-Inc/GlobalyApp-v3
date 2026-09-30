@@ -210,6 +210,26 @@ export function CoursesTab({
     }
   };
 
+  const approveAll = async (count: number) => {
+    if (!(await confirm(
+      `Approve all ${count} unapproved course${count === 1 ? "" : "s"}?`,
+      "Every course in this extraction that isn't approved yet becomes approved and visible on public pages, search, the AI counsellor and the embed widget. Flagged courses stay flagged.",
+      { confirmLabel: "Approve all", variant: "default" },
+    ))) return;
+    setSaving(true);
+    try {
+      const { updated } = await allExtractionsApi.approveAllCourses(jobId);
+      toast.success(`${updated} course${updated === 1 ? "" : "s"} approved`);
+      setSelectedIds([]);
+      await load();
+      onReload();
+    } catch (e) {
+      toast.error("Action failed", { description: (e as Error).message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const bulkVerify = async (approve: boolean) => {
     setSaving(true);
     try {
@@ -289,6 +309,7 @@ export function CoursesTab({
             onAdd={() => setAdding(true)}
             saving={saving}
             onBulkVerify={bulkVerify}
+            onApproveAll={approveAll}
             onBulkUpdate={() => setBulkUpdating(true)}
             onDelete={deleteCourse}
             onBulkDelete={bulkDelete}

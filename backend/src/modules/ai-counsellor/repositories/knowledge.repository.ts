@@ -2,6 +2,7 @@
 
 import type { Knex } from "knex";
 import { masterKnex } from "../../../core/db/master-pool.js";
+import { approvedCourseSql } from "../../superadmin/consts.js";
 
 // ── Result interfaces ──
 
@@ -300,12 +301,14 @@ export async function searchCourses(opts: {
       "i.name as institution_name", "i.country as institution_country",
     )
     .where(anyKeywordILike(["c.name", "c.subject_area", "c.description"], cleanQuery))
-    // An owner's draft course isn't public yet — the counsellor must not recommend it. Unlike
-    // the export gate below, this one stays unconditional: extracted courses default to
-    // is_published = true, so it only ever hides a service the owner themselves left unpublished.
+    // An owner's draft course isn't public yet, and an unapproved one isn't vetted — the
+    // counsellor must recommend neither. Unlike the export gate below, both stay unconditional:
+    // they apply to the embed widget's own catalogue too (extracted courses default to
+    // is_published = true, so that one only hides a service the owner left unpublished).
     .where("c.is_published", true)
+    .whereRaw(approvedCourseSql("c"))
     .modify((q) => {
-      // Any course status is fine — the gate is the institution being published (job exported,
+      // The institution must be published (job exported,
       // same definition as the search module). An explicit job scope is the widget owner's OWN
       // catalogue (embed mode), which its counsellor must answer from whether or not a
       // superadmin has published it yet: a self-service institution's job sits in 'review'
@@ -624,7 +627,10 @@ export async function getCourseDetails(courseId: string): Promise<CourseDetailRe
       "i.name as institution_name", "i.country as institution_country",
     )
     .where("c.id", courseId)
+    // A model-supplied id must not surface a draft or unapproved course's details either.
     .where("c.is_published", true)
+    .whereRaw(approvedCourseSql("c"))
+    .whereRaw(`exists (select 1 from ${SA}.extraction_jobs ej where ej.id = c.job_id and ej.status = 'exported')`)
     .first();
 
   if (!course) return undefined;

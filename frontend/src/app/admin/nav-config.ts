@@ -15,6 +15,7 @@ import {
   Database,
   FileCheck,
   Upload,
+  FileSpreadsheet,
   Brain,
   Bot,
   Shield,
@@ -72,6 +73,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     items: [
       { icon: FileCheck, label: "All Extractions", href: "/admin/data/all-extractions" },
       { icon: Upload, label: "AgentCIS Import", href: "/admin/data/agentcis-import" },
+      { icon: FileSpreadsheet, label: "Spreadsheet Import", href: "/admin/data/spreadsheet-import" },
       { icon: Brain, label: "AI Memory", href: "/admin/data/ai-memory" },
       { icon: Bot, label: "AI Knowledge", href: "/admin/data/ai-knowledge" },
     ],
