@@ -156,6 +156,16 @@ export const _chainDeps = {
  * rest of the chain existed nowhere. With it saved, the reclaim sweep — which finds the job stuck at
  * "extracting" with a stale heartbeat — resumes exactly these steps instead of jumping to verification.
  */
+/** Runs `beat` now and every `everyMs` until the returned stop is called; a failed beat is logged,
+ *  never thrown. A chained step holds this for as long as it runs, so the reclaim sweep (20 min
+ *  stale) sees a live step as live and only a dead worker's job as stuck. */
+export function keepAlive(beat: () => Promise<unknown>, everyMs: number): () => void {
+  const tick = () => { beat().catch((err) => logger.warn("Heartbeat failed", { error: String(err) })); };
+  tick();
+  const timer = setInterval(tick, everyMs);
+  return () => clearInterval(timer);
+}
+
 export async function continueChain(jobId: string, chain: ChainLink[]): Promise<void> {
   const [next, ...rest] = chain;
   if (!next) return;

@@ -2,7 +2,7 @@
  * After the last page: branches → scholarships → verify, in order, so the linker (dispatched when
  * verification ends) sees the campuses and awards. Run: npm run test:post-extraction-chain
  */
-import { _chainDeps, continueChain, parseChain, pendingChain, postExtractionChain } from "../src/modules/superadmin/data-extraction/lib/queue-completion.js";
+import { _chainDeps, continueChain, keepAlive, parseChain, pendingChain, postExtractionChain } from "../src/modules/superadmin/data-extraction/lib/queue-completion.js";
 import { EXTRACTION_QUEUES } from "../src/modules/superadmin/data-extraction/shared/queues.js";
 
 let passed = 0;
@@ -56,6 +56,16 @@ eq([threw, sent.length, saved[0]?.chain], [true, 0, ["scholarships", "verify"]],
 eq(pendingChain({ post_extraction_chain: ["scholarships", "verify"] }), ["scholarships", "verify"], "the sweep resumes the saved remainder");
 eq(pendingChain(JSON.stringify({ post_extraction_chain: ["branches", "scholarships", "verify"] })), ["branches", "scholarships", "verify"], "…from a string-typed pipeline_progress too");
 eq(pendingChain({ site_map: "done" }), ["verify"], "nothing saved (an older run) → just verification, as before");
+
+{
+  let beats = 0;
+  const stop = keepAlive(async () => { beats++; if (beats === 2) throw new Error("db down"); }, 5);
+  await new Promise((r) => setTimeout(r, 40));
+  stop();
+  const atStop = beats;
+  await new Promise((r) => setTimeout(r, 30));
+  eq([atStop >= 4, beats === atStop], [true, true], "a running step keeps beating past a failed write, and stops when the step ends");
+}
 
 console.log(`${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

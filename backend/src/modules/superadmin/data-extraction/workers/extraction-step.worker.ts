@@ -91,7 +91,7 @@ import {
   runSiteMap, runSiteAnalysis, runUrlClassify, runQueuePages, republishRetryableQueueItems,
 } from "../lib/pipeline-steps.js";
 import { listActiveSiteUrls, upsertSiteUrls, setSiteUrlCategories, listSiteUrlsByCategory } from "../repositories/site-urls.repository.js";
-import { checkAllPagesDone, continueChain, parseChain } from "../lib/queue-completion.js";
+import { checkAllPagesDone, continueChain, keepAlive, parseChain } from "../lib/queue-completion.js";
 
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
@@ -1934,7 +1934,9 @@ await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
     return;
   }
   logger.info("Received step", { jobId, step, courseId, dataType, visaServiceId });
-  if (parseChain(then).length) await heartbeat(jobId);
+  // Held while a chained step runs, so the reclaim sweep never starts a second copy of a slow
+  // campus / scholarship pass (two `branches` would both replace the job's campuses).
+  const stopHeartbeat = parseChain(then).length ? keepAlive(() => heartbeat(jobId), 5 * 60_000) : () => {};
   setLlmContext({ jobId, kind: `step:${step}` });
 
   // Every step is one message that owns its whole step — except site_snapshot, whose batches run
@@ -1986,6 +1988,8 @@ await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
       // run on its own. Absent for every unbatched step, which is what that path expects.
       data: { step, courseId, dataType, visaServiceId, ...(batch ?? {}) },
     });
+  } finally {
+    stopHeartbeat();
   }
   // Post-extraction chain (branches → scholarships → verify, see queue-completion): hand on whether
   // this step succeeded or failed, so a failed campus or scholarship pass never strands the job.

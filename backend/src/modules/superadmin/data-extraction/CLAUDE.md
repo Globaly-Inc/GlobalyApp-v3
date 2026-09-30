@@ -1161,6 +1161,8 @@ Same pass, also 2026-09-30:
   The remaining chain is saved as `pipeline_progress.post_extraction_chain` BEFORE each hand-off and the
   publish is tried 3 times; if it still fails, the reclaim sweep's stale-`extracting` pass resumes
   `pendingChain(progress)` — never straight to VERIFY, which skipped the campus/scholarship steps.
+  A chained step holds `keepAlive` (heartbeat every 5 min, failures logged, stopped in `finally`), so
+  the sweep only resumes a chain whose worker died — never a second copy of a slow `branches` run.
   `SCHOLARSHIP_ITEM_SCHEMA` is shared with the course prompt, which still renders byte-identical.
 - **LLM cache expires** after `LLM_CACHE_MAX_AGE_DAYS` (30); an expired row is refreshed on the next
   save, a fresh one never overwritten. OpenRouter fallback calls now write an
