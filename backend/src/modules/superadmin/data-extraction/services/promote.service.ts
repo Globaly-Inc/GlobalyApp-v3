@@ -120,6 +120,7 @@ async function promoteInstitution(job: any, overview: OverviewRow | undefined) {
 
   const fields = {
     institution_name: name,
+    business_category_id: job.business_category_id ?? (await repo.findCategoryIdBySlug("institutions")),
     email: emailFree ? email : null,
     phone: overview?.phone ?? null,
     ...(await baseProfileFieldsFrom(overview)),

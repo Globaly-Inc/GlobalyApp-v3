@@ -169,6 +169,7 @@ export async function onboardInstitution(userId: number, data: OnboardingInstitu
   });
 
   const sourceJobId = await mintSelfServiceJob(data.institution_name, subdomain);
+  const institutionsCategoryId = await promoteRepo.findCategoryIdBySlug("institutions");
 
   const institution = await repo.insertInstitution({
     platform_user_id: userId,
@@ -180,6 +181,7 @@ export async function onboardInstitution(userId: number, data: OnboardingInstitu
     subdomain,
     institution_name: data.institution_name,
     institution_type: data.institution_type,
+    business_category_id: institutionsCategoryId,
     country_id: data.country_id,
     state: data.state,
     city: data.city,
