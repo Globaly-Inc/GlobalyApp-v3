@@ -244,6 +244,7 @@ async function createInstitution(input: BusinessCreateInput) {
           phone: input.phone ?? null,
           subdomain,
           institution_name: input.business_name,
+          business_category_id: input.business_category_id,
           description: input.description ?? null,
           website: input.website ?? null,
           country_id: input.country_id ?? null,
@@ -401,6 +402,9 @@ export async function updateBusiness(id: number, data: BusinessPatchInput) {
   const updated = await repo.updateBusiness(id, data);
   if (updated?.source_job_id && data.website?.trim()) {
     await jobsRepo.syncOwnedJobUrl(updated.source_job_id, data.website.trim());
+  }
+  if (updated?.source_job_id && data.business_category_id !== undefined) {
+    await jobsRepo.syncOwnedJobCategory(updated.source_job_id, data.business_category_id);
   }
   return withImagePreviews(updated);
 }
@@ -579,12 +583,15 @@ export async function getInstitutionDetail(id: number) {
 }
 
 export async function updateInstitutionDetail(id: number, patch: InstitutionPatchInput) {
-  await requireInstitution(id);
+  const inst = await requireInstitution(id);
   // Wire field is `business_name` (matching the shared row shape); the column is `institution_name`.
   const { business_name, ...rest } = patch;
   const data: Record<string, unknown> = { ...rest };
   if (business_name !== undefined) data.institution_name = business_name;
   await userRepo.updateInstitution(id, data);
+  if (inst.source_job_id && rest.business_category_id !== undefined) {
+    await jobsRepo.syncOwnedJobCategory(inst.source_job_id, rest.business_category_id);
+  }
   // Re-fetch rather than trust the raw update() return: institutions.* alone is missing the
   // country_name/owner_* joins findInstitutionDetail adds, which the frontend detail shape needs.
   return getInstitutionDetail(id);

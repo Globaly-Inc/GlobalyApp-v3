@@ -252,6 +252,18 @@ export async function syncOwnedJobUrl(jobId: string, website: string) {
     .update({ institution_url: url, updated_at: masterKnex.fn.now() });
 }
 
+/**
+ * Keeps a business/institution's own job in step when its category changes after extraction
+ * already started. Unlike syncOwnedJobUrl, no source_type restriction: the category is business
+ * metadata the owner/admin assigns, never something the pipeline crawls or discovers, so there is
+ * no provenance to protect on a real self-service/manual/promoted job either.
+ */
+export async function syncOwnedJobCategory(jobId: string, categoryId: number | null) {
+  return masterKnex(T)
+    .where({ id: jobId })
+    .update({ business_category_id: categoryId, updated_at: masterKnex.fn.now() });
+}
+
 // adminId is required for the same reason as the staged repos: every admin action on a job
 // records who took it. The workers don't call this — they write status/heartbeat/counters
 // through their own queries — so updated_by stays an admin trail, not worker noise.

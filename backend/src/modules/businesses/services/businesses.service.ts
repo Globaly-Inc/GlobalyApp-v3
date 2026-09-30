@@ -23,6 +23,7 @@ import type {
 } from "../schemas/businesses.schema.js";
 import { generateSubdomain } from "../../../shared/subdomain.js";
 import { createJob, getSelfServiceStatus } from "../../superadmin/data-extraction/services/jobs.service.js";
+import * as jobsRepo from "../../superadmin/data-extraction/repositories/jobs.repository.js";
 import { isInstitutionCategory } from "../../superadmin/data-extraction/repositories/promote.repository.js";
 import { listSiteUrls, getSnapshotMarkdownByUrl, updateSnapshotMarkdown, refreshSiteUrls } from "../../superadmin/data-extraction/services/site-urls.service.js";
 import { getBusinessOnboardingProgress, markCoursesReviewedForBusiness } from "./onboarding-progress.service.js";
@@ -231,6 +232,9 @@ export async function updateProfile(orgId: string, data: BusinessProfilePatchInp
   const updated = await repo.updateBusinessProfile(existing.id, data);
   if (data.registration_licenses !== undefined) {
     await branchesRepo.syncSameCompanyRegistration("businesses", { id: Number(existing.id), schema_name: existing.schema_name }, updated.registration_licenses);
+  }
+  if (data.business_category_id !== undefined && updated.source_job_id) {
+    await jobsRepo.syncOwnedJobCategory(updated.source_job_id, updated.business_category_id);
   }
   return withCategory(await withImagePreviews(updated));
 }

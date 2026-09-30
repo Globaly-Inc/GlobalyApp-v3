@@ -34,6 +34,7 @@ export interface InstitutionRecord {
   subdomain: string;
   institution_name: string;
   institution_type: string | null;
+  business_category_id: number | null;
   description: string | null;
   logo_url: string | null;
   cover_url: string | null;
