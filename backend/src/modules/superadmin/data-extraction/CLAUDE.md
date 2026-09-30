@@ -1203,8 +1203,9 @@ OWNER when a BUSINESS USER'S OWN extraction finishes (user decision: "no need to
 an admin"). Rules, all in the one function:
 - **Owner's run only** (`isOwnerRun`): `source_type` is `institution_self_service` / `business_self_service`
   (created only by the portal's "start extraction") AND `updated_by_platform_user_id` is null. Every admin
-  action that starts or continues a run (rerun, resume, deep scrape, reset, run step) stamps that column;
-  nothing the owner does in the portal writes it. So an admin crawl, and an owner's job an admin re-ran,
+  action that starts or continues a run (rerun, resume, deep scrape, reset, run step) stamps that column —
+  `dispatchStep` stamps it before publishing, except for the portal's page-correction re-extraction
+  (`triggerCourseReExtraction`, `actor: "owner"`); nothing else the owner does in the portal writes it. So an admin crawl, and an owner's job an admin re-ran,
   are silent — no email, no timeline event. Ceiling: job-level, so an admin pausing or editing the
   owner's run also suppresses it.
 - **Claimed listing only** (`isOwned`: `claim_status = 'claimed'`; sign-up creates theirs claimed). The

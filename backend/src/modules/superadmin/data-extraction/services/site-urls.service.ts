@@ -165,7 +165,7 @@ export async function triggerCourseReExtraction(jobId: string, url: string, acto
   let failed = 0;
   for (const match of matches) {
     try {
-      await dispatchStep(jobId, { step: "course_data", course_id: match.id, data_type: "course" }, actorId);
+      await dispatchStep(jobId, { step: "course_data", course_id: match.id, data_type: "course" }, actorId, { actor: "owner" });
       dispatched++;
     } catch (err) {
       failed++;
