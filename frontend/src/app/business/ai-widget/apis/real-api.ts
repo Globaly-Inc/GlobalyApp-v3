@@ -1,7 +1,7 @@
 import { httpDelete, httpGet, httpPatch, httpPost } from "@/lib/api/http";
 import type {
   CreateEmbedConfigInput, EmbedConfig, EmbedConfigListResponse,
-  VisitorCounts, VisitorListParams, VisitorListResult, VisitorPatch, WidgetVisitor,
+  VisitorCounts, VisitorListParams, VisitorListResult, VisitorMessage, VisitorPatch, WidgetVisitor,
 } from "./types";
 
 function toVisitorQuery(params: VisitorListParams): string {
@@ -43,4 +43,9 @@ export const aiWidgetRealApi = {
 
   updateVisitor: (id: number, patch: VisitorPatch): Promise<WidgetVisitor> =>
     httpPatch(`/ai-chat/embed/visitors/${id}`, patch),
+
+  listVisitorMessages: async (id: number): Promise<VisitorMessage[]> => {
+    const res = await httpGet<{ messages: VisitorMessage[] }>(`/ai-chat/embed/visitors/${id}/messages`);
+    return res.messages;
+  },
 };

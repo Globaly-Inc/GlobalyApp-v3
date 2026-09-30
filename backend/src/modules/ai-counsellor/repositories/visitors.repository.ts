@@ -78,9 +78,11 @@ function applyFilters(q: Knex.QueryBuilder, params: Pick<VisitorListParams, "sta
   const term = params.search?.trim();
   if (term) {
     const like = `%${term}%`;
-    // Anonymous rows have neither column, so they never match a search — which is right:
-    // there is nothing there to have searched for.
-    q.where((b) => b.whereILike("name", like).orWhereILike("email", like));
+    // `study_preference` too: the Inbox advertises "name, programme or message" search and sends
+    // it here, so a column left out of this clause can't be found from any page that isn't
+    // loaded yet. An anonymous row can match on it alone — the course they asked about is
+    // exactly how an owner remembers a visitor who never gave a name.
+    q.where((b) => b.whereILike("name", like).orWhereILike("email", like).orWhereILike("study_preference", like));
   }
   return q;
 }

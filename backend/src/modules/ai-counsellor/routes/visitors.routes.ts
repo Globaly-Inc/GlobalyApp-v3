@@ -9,6 +9,10 @@ import { requireBusinessOrInstitutionContext } from "../../../core/plugins/auth.
 import { NotFoundError } from "../../../shared/errors.js";
 import { VisitorIdParamSchema, VisitorPatchSchema } from "../schemas/visitor.schema.js";
 import * as repo from "../repositories/visitor-edit.repository.js";
+import * as messagesRepo from "../repositories/messages.repository.js";
+
+/** Newest turns the inbox shows. ponytail: no paging — widget chats are short; page if they aren't. */
+const TRANSCRIPT_LIMIT = 200;
 
 export async function visitorRoutes(app: FastifyInstance) {
   app.get("/embed/visitors/:id", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
@@ -16,6 +20,26 @@ export async function visitorRoutes(app: FastifyInstance) {
     const visitor = await repo.findVisitorById(req.db, id);
     if (!visitor) throw new NotFoundError("Visitor not found");
     return reply.send(visitor);
+  });
+
+  /**
+   * The visitor's conversation with the assistant, read-only, for the Inbox's AI Embed tab.
+   *
+   * The session id is taken from the TENANT's visitor row, never from the URL — that row is the
+   * ownership proof, since `ai_counselor_messages` lives in the shared master schema where any
+   * id would resolve. Only the latest session: the row's `session_id` moves forward each turn.
+   *
+   * Allow-listed to what a transcript draws; token counts, latency and feedback stay internal.
+   */
+  app.get("/embed/visitors/:id/messages", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
+    const { id } = VisitorIdParamSchema.parse(req.params);
+    const visitor = await repo.findVisitorById(req.db, id);
+    if (!visitor) throw new NotFoundError("Visitor not found");
+    const sessionId = visitor.session_id as number | null;
+    const rows = sessionId == null ? [] : await messagesRepo.findBySession(sessionId, { limit: TRANSCRIPT_LIMIT });
+    return reply.send({
+      messages: rows.map((m) => ({ id: m.id, role: m.role, content: m.content, created_at: m.created_at })),
+    });
   });
 
   /**

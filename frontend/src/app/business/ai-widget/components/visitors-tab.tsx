@@ -72,7 +72,7 @@ export function VisitorsTab() {
           <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
           <Input
             className="h-10 pl-8"
-            placeholder="Search name or email"
+            placeholder="Search name, email or programme"
             value={search}
             onChange={(e) => changeQuery(() => setSearch(e.target.value))}
           />

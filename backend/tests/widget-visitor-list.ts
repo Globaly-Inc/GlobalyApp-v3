@@ -71,6 +71,7 @@ console.log("\n4. search");
   const searched = sqlFor("all", "jo");
   assert(/"name" ilike/i.test(searched), "search matches name", searched);
   assert(/or "email" ilike/i.test(searched), "search also matches email", searched);
+  assert(/or "study_preference" ilike/i.test(searched), "search also matches the programme", searched);
   assert(searched.includes("%jo%"), "search is a contains match", searched);
   // The OR must be parenthesised, or on the Leads tab it would swallow the status filter and
   // return every searched visitor as a lead.
