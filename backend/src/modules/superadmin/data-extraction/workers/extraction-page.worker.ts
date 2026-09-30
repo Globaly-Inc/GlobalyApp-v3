@@ -12,7 +12,7 @@ import { queueService } from "../../../../shared/queue/queueService.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
-import { scrapeRenderedHtml } from "../lib/scraper.js";
+import { scrapeFailureText, scrapeRenderedHtml } from "../lib/scraper.js";
 import { getPage, getDocument, isPdfUrl } from "../lib/page-store.js";
 import { JEV_MODEL, shouldSkipPage } from "../lib/jev-page-gate.js";
 import { fillFromPicks } from "../lib/jev-pickers.js";
@@ -359,7 +359,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       const failureClass: FailureClass = page.notFound
         ? "not_found"
         : infraFailure ? "scraper_down" : "anti_bot";
-      logger.warn("Page blocked, not found, or empty", { url, scraper: page.scraper, error: page.error, failureClass });
+      logger.warn("Page blocked, not found, or empty", { url, scraper: page.scraper, error: scrapeFailureText(page), failureClass });
 
       // Say it once per job, loudly: a scraper outage is an operational problem and every page
       // after this one will fail the same way until someone looks. Deduped on the job's own
@@ -379,7 +379,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
           if (alreadyWarned) return;
           await trx(`${S}.extraction_job_events`).insert({
             job_id: jobId, kind: "scraper_unavailable", level: "error", phase: "data_extraction",
-            message: `Scraper stack unavailable — this is OUR infrastructure, not the target site. Check the Scrapling container (docker stats scrapling-mcp). First seen on ${url}: ${page.error ?? "no detail"}`,
+            message: `Scraper stack unavailable — this is OUR infrastructure, not the target site. Check the Scrapling container (docker stats scrapling-mcp). First seen on ${url}: ${scrapeFailureText(page) ?? "no detail"}`,
             data: JSON.stringify({ url, scraper: page.scraper, error: page.error ?? null }),
           });
         });
@@ -395,7 +395,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       // client-side accordion shell (see expandCollapsed above) or the source URL is just dead.
       const meta = {
         ...(item?.processing_meta ?? {}), last_error: reason,
-        last_error_detail: page.error ?? null, last_failure_class: failureClass,
+        last_error_detail: scrapeFailureText(page) ?? null, last_failure_class: failureClass,
       };
 
       // Both retries run Scrapling's browser tiers first (8s render wait; retry 2 with a mobile
@@ -441,7 +441,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
           status: "failed",
           error: page.notFound
             ? `Page does not exist on the source site (404)${page.error ? `: ${page.error}` : ""}`
-            : `Page ${reason} after ${retries} retries (${page.scraper})${page.error ? `: ${page.error}` : ""}`,
+            : `Page ${reason} after ${retries} retries (${page.scraper})${page.error ? `: ${scrapeFailureText(page)}` : ""}`,
           failure_class: failureClass, retry_count: retries,
           processing_meta: JSON.stringify(meta), updated_at: masterKnex.fn.now(),
         });

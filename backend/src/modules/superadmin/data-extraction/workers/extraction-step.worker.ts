@@ -16,6 +16,7 @@ import { scrapeRenderedHtml, mapUrlsDetailed } from "../lib/scraper.js";
 import { crawlSite } from "../lib/site-crawl.js";
 import { linkJobEntities } from "../lib/jev-linker.js";
 import { verifyFieldCoverage } from "../lib/field-coverage.js";
+import { sendCompletionEmail } from "../lib/completion-email.js";
 import { getPage, getDocument, isPdfUrl, mergeUrlLists } from "../lib/page-store.js";
 import { canonicalCourseUrl } from "../lib/course-name.js";
 import * as pageEdits from "../repositories/page-edits.repository.js";
@@ -1907,6 +1908,15 @@ async function handleScholarshipsStep(jobId: string) {
 // ── Link entities to courses (Jev) ─────────────────────────────────────────
 
 async function handleLinkEntitiesStep(jobId: string) {
+  // The completion email waits for linking (see completion-email); a failed link pass still sends it.
+  try {
+    await linkEntities(jobId);
+  } finally {
+    await sendCompletionEmail(jobId);
+  }
+}
+
+async function linkEntities(jobId: string) {
   await writeJobEvent(jobId, "step_start", { phase: "link_entities", message: "Linking campuses, intakes, units, fees, requirements, scholarships and accreditations to courses" });
   const summary = await linkJobEntities(jobId, { heartbeat: () => heartbeat(jobId) });
   if (!summary) {

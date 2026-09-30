@@ -276,9 +276,11 @@ await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
 
     await verifyLookupLinks(jobId);
     await verifyFieldCoverage(jobId).catch((err) => logger.warn("Field coverage report failed", { jobId, error: String(err) }));
-    await sendCompletionEmail(jobId);
     // Linking reads every course's page and is Jev-only; the link step reports coverage again when done.
-    if (_linkerDeps.minLink() != null) await queueService.publish(EXTRACTION_QUEUES.STEPS, { jobId, step: "link_entities" });
+    // The completion email reports linked counts, so it goes out after linking when linking runs.
+    const linking = _linkerDeps.minLink() != null && await queueService.publish(EXTRACTION_QUEUES.STEPS, { jobId, step: "link_entities" })
+      .then(() => true, (err) => { logger.warn("link_entities dispatch failed; sending the completion email now", { jobId, error: String(err) }); return false; });
+    if (!linking) await sendCompletionEmail(jobId);
 
     await writeJobEvent(jobId, "verification_complete", {
       phase: "verification",

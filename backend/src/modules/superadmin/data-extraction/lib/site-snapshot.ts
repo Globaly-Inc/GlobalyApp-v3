@@ -19,6 +19,7 @@ import { upsertSiteUrls, setSiteUrlLiveness, type DeadReason } from "../reposito
 import { politeDelay } from "./scraper.js";
 import { siteOf } from "./html-utils.js";
 import { writeJobEvent } from "./staging-writer.js";
+import { isScraperInfraFailure } from "./classify-failure.js";
 
 // The file layout and its helpers live with the store that writes and reads them.
 export { fileLinksOf, snapshotPathFor, SNAPSHOT_PREFIX } from "./page-store.js";
@@ -113,9 +114,12 @@ export async function snapshotRunOutcome(
  *  concurrent STEPS consumer works batches in parallel. */
 export const SNAPSHOT_BATCH_SIZE = 100;
 
-/** Why a fetched page is INACTIVE, or null when it is readable. Pure; the snapshot step stamps it on the site list. */
-export function deadReasonOf(page: { notFound?: boolean; blocked?: boolean; markdown: string }): DeadReason | null {
+/** Why a fetched page is INACTIVE, or null when it is readable. Pure; the snapshot step stamps it on the site list.
+ *  "scraper_down" is OUR stack failing (a Chromium-leaked Scrapling, no Firecrawl credits) — it says
+ *  nothing about the page, so it is never stamped: 222 live Purdue programme pages were once marked dead that way. */
+export function deadReasonOf(page: { notFound?: boolean; blocked?: boolean; markdown: string; error?: string }): DeadReason | "scraper_down" | null {
   if (page.notFound) return "not_found";
+  if ((page.blocked || page.markdown.length < 50) && isScraperInfraFailure(page.error)) return "scraper_down";
   if (page.blocked) return "blocked";
   if (page.markdown.length < 50) return "empty";
   return null;
@@ -141,6 +145,7 @@ export async function snapshotSite(jobId: string, urls: string[], batch?: Snapsh
   /** Pages that came back unreadable — stamped `dead_reason` on the site list, counted as Inactive on the Site Context tab. */
   const dead: { url: string; reason: DeadReason }[] = [];
   const alive: string[] = [];
+  const scraperDown: string[] = [];
   /** PDFs the pages link to — offered on the Site Context tab as excluded rows the admin can pick up. */
   const linkedPdfs = new Set<string>();
   /** One page through the store (a scrape + file write on a miss). Returns whether the scraper was hit. */
@@ -153,6 +158,7 @@ export async function snapshotSite(jobId: string, urls: string[], batch?: Snapsh
         ? await getDocument(url, { fresh })
         : await getPage(url, { onlyMainContent: true, withLinks: true, fresh });
       const reason = deadReasonOf(page);
+      if (reason === "scraper_down") { failed.push(url); scraperDown.push(url); return true; }
       if (reason) { failed.push(url); dead.push({ url, reason }); return !page.fromCache; }
       uploaded++;
       alive.push(url);
@@ -189,8 +195,9 @@ export async function snapshotSite(jobId: string, urls: string[], batch?: Snapsh
     level: halted || failed.length ? "warn" : "info",
     message: halted
       ? `Site snapshot stopped${label}: job paused or stop requested after ${processed} of ${urls.length} pages`
-      : `${uploaded} of ${urls.length} pages written to ${SNAPSHOT_PREFIX}/${urls[0] ? siteOf(urls[0]) : ""}${label}`,
-    data: { uploaded, processed, failed: failed.length, dead: dead.length, failed_sample: failed.slice(0, 10), suggested_pdfs: suggestedPdfs, halted, fresh, ...(batch ?? {}) },
+      : `${uploaded} of ${urls.length} pages written to ${SNAPSHOT_PREFIX}/${urls[0] ? siteOf(urls[0]) : ""}${label}`
+        + (scraperDown.length ? ` — the scraper itself failed on ${scraperDown.length} (check the Scrapling container, then re-run the snapshot)` : ""),
+    data: { uploaded, processed, failed: failed.length, dead: dead.length, scraper_down: scraperDown.length, failed_sample: failed.slice(0, 10), suggested_pdfs: suggestedPdfs, halted, fresh, ...(batch ?? {}) },
   });
   return uploaded;
 }

@@ -744,7 +744,11 @@ dead page is retried is a `fresh` re-snapshot (`listActiveSiteUrls(jobId, { incl
 because liveness is only knowable by fetching. The exception is an admin re-adding the URL: `addSiteUrl`'s
 merge clears `dead_reason` along with `excluded`, otherwise the UI reported the add as successful while
 every active read still skipped the row (review fix, 2026-09-23). `siteUrlCounts.dead` feeds the tab's Inactive capsule;
-Active there is `total − excluded − dead`. Dead pages have no `extraction_pages` row (`getPage` does
+Active there is `total − excluded − dead`. **Our own scraper failing is not a dead page** (2026-09-30):
+`deadReasonOf` returns `"scraper_down"` when `isScraperInfraFailure(page.error)` (leaked Scrapling,
+no Firecrawl credits) — counted as failed for the batch, never stamped, so the next snapshot retries it
+(Purdue lost 222 live programme pages to this). `ScrapeResult.scraplingError` carries why Scrapling
+failed before a fallback ran; `scrapeFailureText` shows both, while classification still reads `error`. Dead pages have no `extraction_pages` row (`getPage` does
 not store an unreadable result), so they are absent from the snapshots table by construction. The
 snapshots list now also carries `site_url_id` + `category_source` so the visible table's Category
 picker can PATCH the site-list row; the old Details sheet is commented out in `site-tab.tsx`, not
@@ -1194,18 +1198,27 @@ Same pass, also 2026-09-30:
 
 ## Extraction-complete email (2026-09-30)
 
-Not a V2 behaviour — explicitly requested. When the verify worker moves a job to `review`,
-`lib/completion-email.ts` `sendCompletionEmail` mails the OWNER of the institution (`institutions.
-source_job_id` → `platform_user_id`) or business (`businesses.source_job_id` → `owner_id`), else that
-entity's own `email`. A job with no platform institution/business is NOT emailed (the only address would
-be scraped off their site — unsolicited outreach; user decision). Once per run: the claim is
-`pipeline_progress.completion_email`, which the job worker's wholesale rewrite clears at every run start
-(Re-run, Deep scrape), so redelivery / Resume / manual re-verification cannot double-send. Sign-up
-placeholder jobs (`self_service`) are skipped. Template `extractionCompleteEmail` in
-`shared/mail/templates.ts` (shared `emailLayout`: count block, check-list, CTA to
-`WEB_APP_URL/business/portal`). Sent via `queueEmail`; timeline events `completion_email_sent` (masked
-address) / `_skipped` / `_failed`. Never throws — a mail problem cannot undo `review`.
-`test:completion-email`.
+Not a V2 behaviour — explicitly requested. `lib/completion-email.ts` `sendCompletionEmail` mails the
+OWNER when a BUSINESS USER'S OWN extraction finishes (user decision: "no need to send email if it's run by
+an admin"). Rules, all in the one function:
+- **Owner's run only** (`isOwnerRun`): `source_type` is `institution_self_service` / `business_self_service`
+  (created only by the portal's "start extraction") AND `updated_by_platform_user_id` is null. Every admin
+  action that starts or continues a run (rerun, resume, deep scrape, reset, run step) stamps that column;
+  nothing the owner does in the portal writes it. So an admin crawl, and an owner's job an admin re-ran,
+  are silent — no email, no timeline event. Ceiling: job-level, so an admin pausing or editing the
+  owner's run also suppresses it.
+- **Claimed listing only** (`isOwned`: `claim_status = 'claimed'`; sign-up creates theirs claimed). The
+  owner (`institutions.platform_user_id` / `businesses.owner_id`) first, else the listing's own `email`;
+  any `.invalid` placeholder address is refused.
+- **Once per run, retryable**: `pipeline_progress.completion_email`, cleared by the job worker's wholesale
+  rewrite at every run start. `"sent"` is taken just before `queueEmail` and RELEASED if the send fails;
+  `"skipped"` only dedupes the timeline event and does not block a later send in the same run.
+- **After linking**: sent from `handleLinkEntitiesStep` when Jev linking runs (even if it fails), otherwise
+  (or if the link dispatch fails) from the verify worker; only while the job is `review`, since
+  `link_entities` can also be run by hand mid-crawl.
+Template `extractionCompleteEmail` (`shared/mail/templates.ts`, shared `emailLayout`, CTA to
+`WEB_APP_URL/business/portal`); timeline events `completion_email_sent` (masked address) / `_skipped` /
+`_failed`. Never throws. `test:completion-email`.
 
 ## External FK columns
 
