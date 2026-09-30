@@ -14,15 +14,20 @@ import { findCategoryIdBySlug } from "../repositories/promote.repository.js";
 const logger = createChildLogger("agentcis-staging");
 
 
+// Only a FOUND id is cached — a null result (category not seeded yet) must not be, or the worker
+// would keep writing uncategorised jobs forever after the category is later added, until restart.
 let institutionsCategoryIdPromise: Promise<number | null> | null = null;
-export function getInstitutionsCategoryId(): Promise<number | null> {
-  if (!institutionsCategoryIdPromise) {
-    institutionsCategoryIdPromise = findCategoryIdBySlug("institutions").catch((err) => {
-      institutionsCategoryIdPromise = null;
-      throw err;
-    });
+export async function getInstitutionsCategoryId(): Promise<number | null> {
+  institutionsCategoryIdPromise ??= findCategoryIdBySlug("institutions");
+  let id: number | null;
+  try {
+    id = await institutionsCategoryIdPromise;
+  } catch (err) {
+    institutionsCategoryIdPromise = null;
+    throw err;
   }
-  return institutionsCategoryIdPromise;
+  if (id === null) institutionsCategoryIdPromise = null;
+  return id;
 }
 
 // ── Progress tracking ──
