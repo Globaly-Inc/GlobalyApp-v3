@@ -14,6 +14,10 @@
  *     institution/business they were scraped alongside, so joining them unfiltered would fan out
  *     one job into several rows and let an agent's own category ("education_agency") win the
  *     write over the real owner's — excluded here for exactly that reason.
+ *   - no linked owner, but source_type = 'agentcis' → the "institutions" category, hardcoded.
+ *     AgentCIS only ever imports education providers (stageAgentcisInstitution is the sole entity
+ *     path — see the module CLAUDE.md), so this is never a guess, just the one real owner-less
+ *     exception. Matches resolveIsInstitution's own agentcis special-case.
  *   - neither, or the owner itself has no category yet → left untouched. There is no real
  *     category to read, and resolveIsInstitution (promote.service.ts) already treats
  *     "no business_category_id, no owner" as "an admin must set one" rather than a bug to guess
@@ -30,16 +34,20 @@
 
 import "dotenv/config";
 import { masterKnex } from "../src/core/db/master-pool.js";
+import { findCategoryIdBySlug } from "../src/modules/superadmin/data-extraction/repositories/promote.repository.js";
 
 const argv = process.argv.slice(2);
 const APPLY = argv.includes("--apply");
 const idsFlag = argv.indexOf("--ids");
 const ONLY_IDS = idsFlag === -1 ? null : new Set((argv[idsFlag + 1] ?? "").split(",").map((s) => s.trim()).filter(Boolean));
 
+const institutionsCategoryId = await findCategoryIdBySlug("institutions");
+
 type Row = {
   id: string;
   institution_name: string | null;
   institution_url: string | null;
+  source_type: string | null;
   inst_id: number | null;
   inst_category_id: number | null;
   biz_id: number | null;
@@ -54,7 +62,7 @@ let query = masterKnex("superadmin.extraction_jobs as j")
   })
   .whereNull("j.business_category_id")
   .select(
-    "j.id", "j.institution_name", "j.institution_url",
+    "j.id", "j.institution_name", "j.institution_url", "j.source_type",
     "i.id as inst_id", "i.business_category_id as inst_category_id",
     "b.id as biz_id", "b.business_name as biz_name", "b.business_category_id as biz_category_id",
   );
@@ -81,9 +89,12 @@ for (const row of rows) {
   } else if (row.biz_id) {
     skippedOwnerNoCategory++;
     console.log(`  skip  ${row.id}  ${name}  — linked business ${row.biz_id} has no category of its own either`);
+  } else if (row.source_type === "agentcis" && institutionsCategoryId) {
+    console.log(`  ${APPLY ? "set" : "would set"}  ${row.id}  ${name}  [agentcis]  -> business_category_id ${institutionsCategoryId} (institutions)`);
+    toApply.push({ id: row.id, categoryId: institutionsCategoryId });
   } else {
     skippedNoOwner++;
-    console.log(`  skip  ${row.id}  ${name}  — no linked institution/business (e.g. agentcis import, or unclaimed job)`);
+    console.log(`  skip  ${row.id}  ${name}  — no linked institution/business (e.g. unclaimed job)`);
   }
 }
 
