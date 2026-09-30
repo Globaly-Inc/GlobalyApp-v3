@@ -60,9 +60,10 @@ const SCOPE_KINDS = new Set<LinkKind>(["scholarship", "accreditation"]);
 
 const norm = (s: string) => s.toLowerCase().replace(/[‘’']/g, "").replace(/[^a-z0-9$£€]+/g, " ").trim();
 
-/** Needles for an amount: "16020" matches "16,020", "16 020" and "16020". */
+/** Needles for an amount: "16020" matches "16,020", "16 020" and "16020". The WHOLE part, never
+ *  rounded: 1250.50 must find "1,250.50" on the page, and a rounded "1,251" never would. */
 export function amountNeedles(amount: unknown): string[] {
-  const n = Math.round(Number(amount));
+  const n = Math.trunc(Number(amount));
   if (!Number.isFinite(n) || n < 100) return [];
   const s = String(n);
   const grouped = s.replace(/\B(?=(\d{3})+(?!\d))/g, ",");

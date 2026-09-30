@@ -14,6 +14,10 @@ function eq(actual: unknown, expected: unknown, label: string) {
 
 eq(amountNeedles(16020), ["16020", "16,020", "16 020"], "an amount matches grouped and ungrouped spellings");
 eq(amountNeedles(50), [], "small amounts are too ambiguous to match on");
+eq(amountNeedles(1250.5), ["1250", "1,250", "1 250"], "cents are not rounded into a different number");
+eq(candidatesFor({ id: "c", name: "X", degree_level: null, source_url: null }, "Tuition $1,250.50 per unit",
+  [{ kind: "fee", id: "f", label: "f", needles: amountNeedles("1250.50") }], new Set(), new Set(), { agentcis: false, unlinkedIds: new Set(["fee|f"]) }).length,
+  1, "a fee with cents is found on the page that states it");
 eq(amountNeedles(null), [], "no amount, no needle");
 
 const course = { id: "c1", name: "BSc Nursing", degree_level: "Bachelor", source_url: "https://x.edu/nursing" };
