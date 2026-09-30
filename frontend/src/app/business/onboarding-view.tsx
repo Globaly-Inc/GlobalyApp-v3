@@ -66,7 +66,9 @@ function OnboardingForm({
   const saving = status === "saving";
   const { user: authUser } = useAuthState();
   const ownsOrg = (u: typeof authUser) => (u?.businesses.length ?? 0) + (u?.institutions.length ?? 0) > 0;
-  const requireEmail = isNew && ownsOrg(authUser);
+  const [serverRequiresEmail, setServerRequiresEmail] = useState(false);
+  const requireEmail = isNew && (ownsOrg(authUser) || serverRequiresEmail);
+  const submittingRef = useRef(false);
 
   const [countries, setCountries] = useState<Country[]>([]);
   const [categories, setCategories] = useState<BusinessCategoryOption[]>([]);
@@ -167,6 +169,25 @@ function OnboardingForm({
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    try {
+      await submit();
+    } finally {
+      submittingRef.current = false;
+    }
+  };
+
+  // Server checks live memberships; if it still demands an email, reveal the field.
+  const failRegister = (title: string, message?: string) => {
+    if (message && /email is required/i.test(message)) {
+      setServerRequiresEmail(true);
+      setFieldErrors({ email: "Enter a contact email for this organisation" });
+    }
+    toast.error(title, { description: message ?? "Please try again." });
+  };
+
+  const submit = async () => {
     const trimmedEmail = email.trim();
     // Another tab may have added an org since this one loaded; the server checks live
     // memberships, so refresh before deciding whether an email is required.
@@ -209,7 +230,7 @@ function OnboardingForm({
           }),
         );
         if (registerInstitution.rejected.match(outcome)) {
-          toast.error("Couldn't create institution", { description: outcome.error.message ?? "Please try again." });
+          failRegister("Couldn't create institution", outcome.error.message);
           return;
         }
         saveAccessToken(outcome.payload.access_token);
@@ -233,7 +254,7 @@ function OnboardingForm({
         }),
       );
       if (registerBusiness.rejected.match(outcome)) {
-        toast.error("Couldn't create business", { description: outcome.error.message ?? "Please try again." });
+        failRegister("Couldn't create business", outcome.error.message);
         return;
       }
       // Full reload, matching the switcher's own re-fetch rationale — every slice
