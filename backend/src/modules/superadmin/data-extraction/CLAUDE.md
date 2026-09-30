@@ -1102,6 +1102,96 @@ For staging: run `npm run job:extraction-queue-reclaim -- --once` once to clear 
 currently stuck there, then deploy the reclaim worker as a standing process (or cron) alongside
 the existing `job:extraction*` workers so this doesn't recur.
 
+## Discovery is Scrapling-first; Firecrawl is the last resort (2026-09-30)
+
+Not a V2 behaviour — explicitly requested. Reported: re-running rochester.edu / csuohio.edu "stops at
+1 or up to 20 pages". Neither was resume: discovery lost the pages. Rochester: Firecrawl map
+(discovery step 1) was out of credits, no sitemap, crt.sh timed out → 38 homepage links.
+CSU: the www sitemap lists every page on `live-csu-mainsite.pantheonsite.io` (misset Drupal base
+URL), all dropped as off-site; the Acalog catalogue has no sitemap, answers plain HTTP with an AWS WAF
+challenge that was cached as content, and links programmes relatively; the classifier queued 345
+LibGuides pages. Fixes, each tested in `test:site-crawl` / `test:sitemap-parsing` /
+`test:scraper-cascade` (every one verified red with its fix removed):
+- **Alias sitemap hosts** (`noteForeignHost`/`rebaseLocs`, `fetchSitemapUrls({ rebaseAliases })`): a
+  foreign host listed by the SEED's own sitemap is rebased onto the seed origin once one of its paths
+  answers there. Seed only — cert-log/catalogue probes rebasing too minted mirror copies of the site.
+- **Own crawl** (`lib/site-crawl.ts`, called from `runSiteMap`): BFS through `getPage` (so the snapshot
+  later hits cache), follows hub links only, 2 hops, `CRAWL_BUDGET` 300 fetches, from the homepage when
+  discovery found < `CRAWL_THIN` URLs and from any catalogue host that gave only its root. Acalog:
+  only catoids the seed page links to (the archive page reaches every past year). `urls_crawled` event.
+- **Firecrawl map is step 3**, after sitemaps and page links; `mapUrlsUnderPath` tries Scrapling first.
+  The AI-knowledge crawler passes `preferMap: true` and keeps Firecrawl first (one site per source —
+  the cert-log / catalogue probes would pull every subdomain in). A crawl interrupted by pause/stop
+  leaves `site_map` "waiting", not "done", so Resume re-runs it instead of chaining on a partial list;
+  the crawl bumps the heartbeat at every stop check. Course-path ranking applies to `course` rows
+  only — the other categories keep admin-first discovery order for the entity steps' 10-URL cap.
+- **Hard retries are Scrapling browser tiers** (`hardRetryTiers`: no `get`, 8s `wait`, mobile UA on the
+  mobile retry), Firecrawl only after. The flag is still called `forceFirecrawl` so queued messages keep
+  working; it no longer means "skip Scrapling".
+- **Challenge pages** (`isChallengePage`, < 2k chars) are unusable: Scrapling escalates past them and
+  page-store neither stores nor serves them.
+- **Relative links** in markdown resolve against the page (`extractLinksFromMarkdown(md, url)`).
+- **Ranking before every cap** (`rankForCrawl` in both site-URL reads): admin/guided/homepage, catalogue
+  host, course path, rest — page_cap, the snapshot and the classifier's 3,200 all keep the first N.
+  Library/news/events hosts (`NON_CONTENT_HOST`) are off the site list.
+Measured with Firecrawl unset: rochester 38 → 3,830 URLs; csuohio catalogue 1 → 795 current programme pages.
+**Workers load code once — restart the step and page workers after deploying this.**
+
+Jev page gate (`lib/jev-page-gate.ts`, `test:jev-page-gate`): one pinned `jev-1.13.0` yes/no before
+the full-model course extraction. ON whenever `TYPESAFE_API_KEY` is set (default threshold below);
+pick the threshold with `scripts/eval-jev-page-gate.ts` (read-only, labels from
+`extracted_data.courses_found`). Skips are `extracted_data.reason = "jev_not_programme"` + a
+`page_skipped_jev` event; admin retries, intake and visa pages are never gated.
+
+Same pass, also 2026-09-30:
+- **Jev value pickers** (`lib/jev-pickers.ts`, `test:jev-pickers`): on a ONE-course page, for a course the
+  model left without duration or tuition, a regex over-finds candidate spans and Jev `choice` picks one
+  (or none); code copies it verbatim (a bare "$" keeps currency null). On with the key (`JEV_PICK_MIN_CONF` overrides) — it is
+  set; `fields_picked_jev` event. Both Jev features share `lib/jev-client.ts` (model pinned there).
+- **Acalog curriculum** (`parseAcalogProgram`, via `curriculumFromMarkup` at both page-worker markup
+  sites, `test:courselist`): `li.acalog-course` anchors under `div.acalog-core` headings; each titled
+  "or" alternative is its own unit, credits stay null (they are behind a click).
+- **Scholarships**: new site category `scholarships` (path rule ahead of fees/branches — 46 scholarship
+  URLs had been filed under branches), guided key `scholarships_urls`, and step `scholarships`
+  (`scholarshipsPagePrompt`, lite tier, `upsertScholarship`, unlinked — the admin links awards to
+  courses). Dispatched by `checkAllPagesDone` when the job has scholarship pages — as a CHAIN
+  (`postExtractionChain`): branches (if no campuses) → scholarships (if any pages) → VERIFY, each step
+  handing on via the message's `then` whether it succeeded or failed (`continueChain`), so the linker
+  that verification dispatches sees the campuses and awards (`test:post-extraction-chain`).
+  The remaining chain is saved as `pipeline_progress.post_extraction_chain` BEFORE each hand-off and the
+  publish is tried 3 times; if it still fails, the reclaim sweep's stale-`extracting` pass resumes
+  `pendingChain(progress)` — never straight to VERIFY, which skipped the campus/scholarship steps.
+  A chained step holds `keepAlive` (heartbeat every 5 min, failures logged, stopped in `finally`), so
+  the sweep only resumes a chain whose worker died — never a second copy of a slow `branches` run.
+  `SCHOLARSHIP_ITEM_SCHEMA` is shared with the course prompt, which still renders byte-identical.
+- **LLM cache expires** after `LLM_CACHE_MAX_AGE_DAYS` (30); an expired row is refreshed on the next
+  save, a fresh one never overwritten. OpenRouter fallback calls now write an
+  `openrouter:<model>` usage row.
+- **Stuck verification**: the reclaim sweep re-dispatches an incremental VERIFY for an `extracting` job
+  whose heartbeat is 20+ min stale (claimed by bumping the heartbeat). Verified live.
+- **`field_coverage_verified`** event at the end of verification: per-field fill %, weakest first.
+- Measured and NOT built: schema.org Program/Course JSON-LD (0 of 40 institutions' productive pages).
+- **Jev everywhere a wrong decision lands in the DB.** `TYPESAFE_API_KEY` alone turns on every feature
+  that can only ADD data, at the strict `JEV_DEFAULTS` in `lib/jev-client.ts` (URL 0.7, picks 0.85,
+  report suspects 0.9, lookup 0.85, link 0.85). The two that can take data away — the page gate (skips a
+  page's extraction) and item deletion — default OFF and need `JEV_PAGE_GATE_MIN` / `JEV_VERIFY_DROP_MIN`
+  set on purpose (review 2026-09-30: key-only defaults "missed course pages and removed valid course
+  details"). URL classification is additive for courses — Jev may promote, never demote, a heuristic
+  course page, and a URL Jev is unsure of still gets the lite-model pass. The course check only judges
+  items whose own value is on the page Jev reads (fees/units merged from linked pages are never asked).
+  Each env var overrides its default; "0"/"off" switches that feature off (`test:jev-client`). Any failure
+  keeps the non-Jev path:
+  | Env | Where | Decision |
+  |---|---|---|
+  | `JEV_URL_CLASSIFY_MIN` | `jev-url-classify.ts` ← `runUrlClassify` | one `choice` per URL over `SITE_URL_CATEGORY_DESCRIPTIONS` (40/request); replaces both lite-model passes; `category_source = "jev"`; guided/admin still win, unconfident URLs keep the heuristic |
+  | `JEV_PAGE_GATE_MIN` | `jev-page-gate.ts` ← page worker | skip the full-model call on a non-programme page |
+  | `JEV_PICK_MIN_CONF` | `jev-pickers.ts` ← page worker | pick duration / tuition spans the model left empty (single-course pages) |
+  | `JEV_VERIFY_DROP_MIN` | `jev-course-check.ts` ← page worker, before `writeCourse` | per-item noul "wrong for THIS course" on fees, intakes, eligibility, English scores, units — drops only items at/above it (`course_checked_jev` event lists each); flags not-a-programme, never deletes for it |
+  | `JEV_LOOKUP_MIN` | same | `choice` over the seeded degree levels / areas when the resolvers leave a course unlinked |
+  | `JEV_LINK_MIN` | `jev-linker.ts` ← step `link_entities` (dispatched by the verify worker; also runnable alone) | links campuses, intakes, units, fees, requirements, scholarships, accreditations to courses: code finds candidates (name/code/amount on the course's OWN page; every scholarship/accreditation), Jev confirms the page states the relationship. Units and requirements: orphans only; listing pages (one URL, several courses): orphans only; AgentCIS: only a kind the course has none of. Re-runs skip linked pairs; `dryRun` counts candidates (one real job: 11,706 → 360 after the orphan rules). Study options (6 orphans) and agents (no course junction) are not linked. Courses with no stored page snapshot get nothing — there is no evidence to link from. |
+  `scripts/eval-jev-page-gate.ts` measures the page gate and the URL classifier on labelled pages;
+  the course check and pickers have no offline labels yet — start their thresholds high.
+
 ## External FK columns
 
 7 columns reference tables that may not exist yet in V3. These are plain

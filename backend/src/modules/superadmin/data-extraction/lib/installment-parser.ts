@@ -32,14 +32,7 @@ export function parseInstallments(opts: {
   if (count <= 0) return [{ label: "Total", amount: totalAmount }];
 
   const labelFn = pickLabelFn(text, periodType, count);
-  const base = Math.floor(totalAmount / count);
-  // ponytail: rounding remainder goes to last installment, not first — matches V2
-  const remainder = totalAmount - base * count;
-
-  return Array.from({ length: count }, (_, i) => ({
-    label: labelFn(i, count),
-    amount: i === count - 1 ? base + remainder : base,
-  }));
+  return splitCents(toCents(totalAmount), count).map((amount, i) => ({ label: labelFn(i, count), amount }));
 }
 
 const MAX_INSTALLMENTS = 120;
@@ -57,21 +50,27 @@ export function repeatInstallments(
 ): { total: number; installments: Installment[] } {
   if (!rate || rate <= 0) return { total: 0, installments: [] };
   // Count and total are settled HERE, once, so the stored total, the number of payments and
-  // their sum can't disagree: whole payments, the rounding remainder on the last (as
-  // parseInstallments does) — 4 × 10,522.08 is 42,088 in total and 10,522 × 4 in payments.
+  // their sum can't disagree — in whole CENTS: 4 × 10,522.08 is 42,088.32 in total and four payments
+  // of 10,522.08. (Rounding to whole units used to drop the cents from imported AgentCIS/sheet fees.)
   const n = Math.max(1, Math.round(count || 1));
-  const total = Math.round(rate * n);
+  const totalCents = toCents(rate) * n;
+  const total = totalCents / 100;
   // Beyond a plausible schedule (monthly for ten years) the count is a typo or garbage from a
   // sheet — one Total line keeps the amount without building a list that size in memory.
   if (n > MAX_INSTALLMENTS || (n === 1 && !/semester|trimester|term|year/i.test(periodType ?? ""))) {
     return { total, installments: [{ label: "Total", amount: total }] };
   }
   const label = pickLabelFn(null, periodType, n);
-  const base = Math.floor(total / n);
-  return {
-    total,
-    installments: Array.from({ length: n }, (_, i) => ({ label: label(i, n), amount: i === n - 1 ? total - base * (n - 1) : base })),
-  };
+  return { total, installments: splitCents(totalCents, n).map((amount, i) => ({ label: label(i, n), amount })) };
+}
+
+const toCents = (amount: number): number => Math.round(amount * 100);
+
+/** `totalCents` in `n` whole-cent payments, the remainder on the last (as V2 did), back in currency
+ *  units. Integer maths, so 0.1 + 0.2-style float drift can never leave the sum off the total. */
+function splitCents(totalCents: number, n: number): number[] {
+  const base = Math.floor(totalCents / n);
+  return Array.from({ length: n }, (_, i) => (i === n - 1 ? totalCents - base * (n - 1) : base) / 100);
 }
 
 // ── internal ────────────────────────────────────────────────────────────
@@ -195,9 +194,12 @@ if (process.argv[1] && import.meta.url.endsWith(process.argv[1].replace(/.*\//, 
   assert(sem2yr.length === 4, "per semester 2yr → 4");
   assert(sem2yr[0].label === "Year 1 Semester 1", "multi-year label");
   assert(sem2yr[3].label === "Year 2 Semester 2", "last multi-year label");
-  // Rounding: 10001/4 = 2500 base, remainder 1 goes to last
-  assert(sem2yr[3].amount === 2501, "rounding to last");
-  assert(sem2yr.reduce((s, x) => s + x.amount, 0) === 10001, "sum preserved");
+  // Split in whole cents: 10001 / 4 = 2500.25 each, nothing lost to rounding
+  assert(sem2yr.every((x) => x.amount === 2500.25), "cents kept, not rounded to whole units");
+  assert(Math.round(sem2yr.reduce((s, x) => s + x.amount, 0) * 100) === 1000100, "sum preserved to the cent");
+  // A cent that doesn't divide goes to the last payment
+  const odd = parseInstallments({ totalAmount: 100.01, text: "2 payments" });
+  assert(odd[0].amount === 50 && odd[1].amount === 50.01, "remainder cent to last");
 
   // Per Trimester
   const tri = parseInstallments({ totalAmount: 9000, periodType: "Per Trimester", durationWeeks: 52 });

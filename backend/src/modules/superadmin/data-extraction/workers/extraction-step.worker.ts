@@ -13,6 +13,9 @@ import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { scrapeRenderedHtml, mapUrlsDetailed } from "../lib/scraper.js";
+import { crawlSite } from "../lib/site-crawl.js";
+import { linkJobEntities } from "../lib/jev-linker.js";
+import { verifyFieldCoverage } from "../lib/field-coverage.js";
 import { getPage, getDocument, isPdfUrl, mergeUrlLists } from "../lib/page-store.js";
 import { canonicalCourseUrl } from "../lib/course-name.js";
 import * as pageEdits from "../repositories/page-edits.repository.js";
@@ -29,6 +32,7 @@ import {
   bulkFeePrompt, BULK_FEE_SYSTEM,
   courseDataPrompt, COURSE_DATA_SYSTEM,
   visaServiceExtractionPrompt, VISA_SERVICE_EXTRACTION_SYSTEM,
+  scholarshipsPagePrompt, SCHOLARSHIPS_PAGE_SYSTEM,
 } from "../lib/extraction-prompts.js";
 import {
   writeInstitutionOverview,
@@ -67,6 +71,8 @@ import {
   type ExtractedIntake,
   type InstitutionOverview,
   type ExtractedVisaService,
+  upsertScholarship,
+  type ExtractedScholarship,
 } from "../lib/staging-writer.js";
 import { coercePartialDate } from "../lib/partial-date.js";
 import { parseAddress } from "../lib/address-parser.js";
@@ -85,7 +91,7 @@ import {
   runSiteMap, runSiteAnalysis, runUrlClassify, runQueuePages, republishRetryableQueueItems,
 } from "../lib/pipeline-steps.js";
 import { listActiveSiteUrls, upsertSiteUrls, setSiteUrlCategories, listSiteUrlsByCategory } from "../repositories/site-urls.repository.js";
-import { checkAllPagesDone } from "../lib/queue-completion.js";
+import { checkAllPagesDone, continueChain, keepAlive, parseChain } from "../lib/queue-completion.js";
 
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
@@ -133,11 +139,18 @@ const markStepProgress = (jobId: string, step: string, status: string) => setPro
 // Thin wrappers: the work is in lib/pipeline-steps.ts; this file owns the timeline events and the
 // hand-off to the next step through the gate.
 
-async function handleSiteMapStep(jobId: string) {
+async function handleSiteMapStep(jobId: string): Promise<"done" | "pending"> {
   const job = await loadJob(jobId);
-  if (!job) return;
+  if (!job) return "done";
   await writeJobEvent(jobId, "step_start", { phase: "site_map", message: "Mapping the site" });
-  const total = await runSiteMap(jobId, job);
+  const { total, crawlStopped } = await runSiteMap(jobId, job);
+  // Paused or stopped mid-crawl: the list is partial. "waiting", not "done", so Resume re-runs
+  // site_map (crawled pages are cached, so the rerun is fast) instead of chaining on half a list.
+  if (crawlStopped) {
+    await setProgress(jobId, { site_map: "waiting" });
+    await writeJobEvent(jobId, "step_complete", { level: "warn", phase: "site_map", message: `Crawl stopped (job paused or stopped) with ${total} URLs so far — Resume re-runs the site map`, data: { count: total, partial: true } });
+    return "pending";
+  }
   await writeJobEvent(jobId, "step_complete", { phase: "site_map", message: `${total} URLs on the site list`, data: { count: total } });
 
   // site_map publishes BATCHES, not one message, so it uses gate() and dispatches itself.
@@ -146,6 +159,7 @@ async function handleSiteMapStep(jobId: string) {
     await setProgress(jobId, { site_snapshot: "processing" });
     await dispatchSnapshotBatches(jobId, urls, Number(job.page_cap) || 500);
   }
+  return "done";
 }
 
 /**
@@ -396,17 +410,21 @@ function dedupCampuses(campuses: ExtractedCampus[]): ExtractedCampus[] {
   return final;
 }
 
-/** Map URLs under a path prefix via Firecrawl map API. */
+/** URLs under a path prefix: the prefix page's own links via Scrapling, Firecrawl's map only if
+ *  that finds none (it used to be Firecrawl-only, so campus sub-pages vanished with its credits). */
 async function mapUrlsUnderPath(baseOrigin: string, pathPrefix: string): Promise<string[]> {
-  const result = await mapUrlsDetailed(`${baseOrigin}${pathPrefix}`, { limit: 50 });
-  if (!result.success) return [];
-  return result.links.filter(u => {
+  const underPath = (urls: string[]) => urls.filter(u => {
     try {
       const p = new URL(u);
       return p.origin === baseOrigin && p.pathname.startsWith(pathPrefix)
         && p.pathname.replace(pathPrefix, "").replace(/\/$/, "").length > 0;
     } catch { return false; }
   });
+  // Filtered BEFORE deciding: the page's nav alone yields dozens of same-site links, none of them sub-pages.
+  const crawled = underPath((await crawlSite([`${baseOrigin}${pathPrefix}`], { budget: 1, maxDepth: 0 })).urls);
+  if (crawled.length) return crawled;
+  const result = await mapUrlsDetailed(`${baseOrigin}${pathPrefix}`, { limit: 50 });
+  return result.success ? underPath(result.links) : [];
 }
 
 /** Convert raw LLM agent output to AgentSourceRow for enrichment pipeline. */
@@ -1850,18 +1868,75 @@ async function handleVisaServiceDataStep(jobId: string, visaServiceId: string) {
   });
 }
 
+// ── Scholarships ────────────────────────────────────────────────────────────
+
+/**
+ * Scholarship / bursary pages (site category `scholarships` + guided scholarships_urls). The course
+ * prompt refuses to stage such a page as courses, so every award on it used to be dropped:
+ * 1% of courses had a scholarship. Stored job-level via upsertScholarship; linking an award to the
+ * courses it covers stays with the admin (the Scholarships tab), because the page's "eligible
+ * programmes" wording rarely names our course rows exactly.
+ */
+async function handleScholarshipsStep(jobId: string) {
+  const job = await loadJob(jobId);
+  if (!job) return;
+  const urls = await urlsForType(jobId, job, "scholarships_urls");
+  await writeJobEvent(jobId, "step_start", { phase: "scholarships", message: `Reading ${urls.length} scholarship page(s)` });
+  let pages = 0;
+  let stored = 0;
+  for (const url of urls) {
+    // One page's failure (bad JSON, a model error) must not cost the rest of the pages.
+    try {
+      const page = await getPage(url, { onlyMainContent: true });
+      if (page.blocked || page.markdown.length < 200) continue;
+      pages++;
+      const res = await extractJson<{ scholarships?: ExtractedScholarship[] }>({
+        system: SCHOLARSHIPS_PAGE_SYSTEM, prompt: scholarshipsPagePrompt(url, truncateMarkdown(page.markdown)), tier: "lite",
+      });
+      for (const s of res.scholarships ?? []) if (await upsertScholarship(jobId, s, url)) stored++;
+    } catch (err) {
+      logger.warn("Scholarship page failed; continuing", { jobId, url, error: err instanceof Error ? err.message : String(err) });
+    }
+    await heartbeat(jobId);
+  }
+  await writeJobEvent(jobId, "step_complete", {
+    phase: "scholarships", message: `${stored} scholarship(s) from ${pages} of ${urls.length} page(s)`, data: { urls: urls.length, pages, stored },
+  });
+}
+
+// ── Link entities to courses (Jev) ─────────────────────────────────────────
+
+async function handleLinkEntitiesStep(jobId: string) {
+  await writeJobEvent(jobId, "step_start", { phase: "link_entities", message: "Linking campuses, intakes, units, fees, requirements, scholarships and accreditations to courses" });
+  const summary = await linkJobEntities(jobId, { heartbeat: () => heartbeat(jobId) });
+  if (!summary) {
+    await writeJobEvent(jobId, "step_complete", { phase: "link_entities", message: "Skipped — JEV_LINK_MIN / TYPESAFE_API_KEY not set" });
+    return;
+  }
+  const made = Object.entries(summary.linked).filter(([, n]) => n > 0).map(([k, n]) => `${n} ${k.replace("_", " ")}`).join(", ");
+  await writeJobEvent(jobId, "step_complete", {
+    phase: "link_entities", level: summary.failed ? "warn" : "info",
+    message: `Linked ${made || "nothing new"} across ${summary.courses} courses (${summary.asked} checked${summary.failed ? `, ${summary.failed} course checks failed` : ""})`,
+    data: { ...summary },
+  });
+  await verifyFieldCoverage(jobId).catch((err: unknown) => logger.warn("Field coverage report failed", { jobId, error: String(err) }));
+}
+
 // ── Main consumer ───────────────────────────────────────────────────────────
 
 await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
   let jobId: string, step: string, courseId: string | undefined, dataType: string | undefined, visaServiceId: string | undefined,
-    urls: string[] | undefined, batch: SnapshotBatch | undefined, fresh: boolean | undefined;
+    urls: string[] | undefined, batch: SnapshotBatch | undefined, fresh: boolean | undefined, then: unknown;
   try {
-    ({ jobId, step, courseId, dataType, visaServiceId, urls, batch, fresh } = JSON.parse(msg!.content.toString()));
+    ({ jobId, step, courseId, dataType, visaServiceId, urls, batch, fresh, then } = JSON.parse(msg!.content.toString()));
   } catch {
     logger.error("Malformed queue message, discarding", { raw: msg?.content.toString().slice(0, 200) });
     return;
   }
   logger.info("Received step", { jobId, step, courseId, dataType, visaServiceId });
+  // Held while a chained step runs, so the reclaim sweep never starts a second copy of a slow
+  // campus / scholarship pass (two `branches` would both replace the job's campuses).
+  const stopHeartbeat = parseChain(then).length ? keepAlive(() => heartbeat(jobId), 5 * 60_000) : () => {};
   setLlmContext({ jobId, kind: `step:${step}` });
 
   // Every step is one message that owns its whole step — except site_snapshot, whose batches run
@@ -1869,7 +1944,7 @@ await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
   let outcome: "done" | "failed" | "pending" = "done";
   try {
     switch (step as PipelineStep) {
-      case "site_map":          await handleSiteMapStep(jobId); break;
+      case "site_map":          outcome = await handleSiteMapStep(jobId); break;
       case "site_analysis":     await handleSiteAnalysisStep(jobId); break;
       case "url_classify":      await handleUrlClassifyStep(jobId); break;
       case "queue_pages":       await handleQueuePagesStep(jobId); break;
@@ -1884,6 +1959,8 @@ await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
       case "visa_services":     await handleVisaServicesStep(jobId); break;
       case "visa_service_data": await handleVisaServiceDataStep(jobId, visaServiceId!); break;
       case "site_snapshot":     outcome = await handleSiteSnapshotStep(jobId, urls, batch, !!fresh); break;
+      case "scholarships":      await handleScholarshipsStep(jobId); break;
+      case "link_entities":     await handleLinkEntitiesStep(jobId); break;
       default:
         logger.warn("Unknown step", { step });
     }
@@ -1911,7 +1988,13 @@ await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
       // run on its own. Absent for every unbatched step, which is what that path expects.
       data: { step, courseId, dataType, visaServiceId, ...(batch ?? {}) },
     });
+  } finally {
+    stopHeartbeat();
   }
+  // Post-extraction chain (branches → scholarships → verify, see queue-completion): hand on whether
+  // this step succeeded or failed, so a failed campus or scholarship pass never strands the job.
+  const chain = parseChain(then);
+  if (chain.length) await continueChain(jobId, chain).catch((err) => logger.error("Failed to continue post-extraction chain", { jobId, step, chain, error: String(err) }));
 });
 
 logger.info(`Extraction step worker started — consuming "${EXTRACTION_QUEUES.STEPS}" queue`);

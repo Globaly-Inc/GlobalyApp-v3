@@ -14,8 +14,11 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { scrapeRenderedHtml } from "../lib/scraper.js";
 import { getPage, getDocument, isPdfUrl } from "../lib/page-store.js";
+import { JEV_MODEL, shouldSkipPage } from "../lib/jev-page-gate.js";
+import { fillFromPicks } from "../lib/jev-pickers.js";
+import { checkCourseWithJev } from "../lib/jev-course-check.js";
 import { truncateMarkdown, domainOf, MIN_EXTRACTABLE_CHARS, compileBlocklist } from "../lib/html-utils.js";
-import { courseLinksByName, looksLikeCourseList, parseCourseList } from "../lib/courselist-parser.js";
+import { courseLinksByName, curriculumFromMarkup } from "../lib/courselist-parser.js";
 import { extractJson, setLlmContext, withLlmKind } from "../lib/llm-client.js";
 import {
   courseExtractionPrompt, COURSE_EXTRACTION_SYSTEM, studyUnitsFromPagePrompt, STUDY_UNITS_SYSTEM,
@@ -147,9 +150,9 @@ async function unitsFromMarkup(
   let units: ExtractedStudyUnit[] | null = null;
   try {
     const { html } = await scrapeRenderedHtml(resolvedUrl);
-    if (html && looksLikeCourseList(html)) {
-      const parsed = parseCourseList(html);
-      if (parsed.units.length) units = parsed.units;
+    if (html) {
+      const parsed = curriculumFromMarkup(html);
+      if (parsed.length) units = parsed;
     }
   } catch (err) {
     logger.warn("Curriculum markup fetch failed, falling back to the model", {
@@ -395,6 +398,8 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
         last_error_detail: page.error ?? null, last_failure_class: failureClass,
       };
 
+      // Both retries run Scrapling's browser tiers first (8s render wait; retry 2 with a mobile
+      // user agent) and reach Firecrawl only if those fail — see ScrapeOptions.forceFirecrawl.
       // Retry 1: Firecrawl with JS rendering + auto proxy escalation (Firecrawl only
       // pays for its stealth/residential proxy tier if the basic datacenter IP
       // actually gets blocked — free insurance). Retry 2: same, but forced to
@@ -427,7 +432,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
           jobId, queueItemId, url, forceFirecrawl: !infraRetry, mobile: meta.retry_strategy === "mobile", proxy: retryProxy,
           expandCollapsed: true,
         });
-        logger.info(infraRetry ? "Scraper-down page re-queued through the normal cascade" : "Blocked page re-queued for Firecrawl retry",
+        logger.info(infraRetry ? "Scraper-down page re-queued through the normal cascade" : "Blocked page re-queued for a browser-tier retry",
           { url, retries: retries + 1, proxy: retryProxy, failureClass });
       } else {
         // Exhausted retries (or a dead URL that can't benefit from any) — mark failed so
@@ -535,6 +540,30 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       });
       await checkAllPagesDone(jobId);
       return;
+    }
+
+    if (!isVisaService && !isIntakeSource && !adminRetry) {
+      const gate = await shouldSkipPage(url, page.markdown);
+      if (gate.skip) {
+        const owned = await writeIfOwned({
+          status: "completed",
+          extracted_data: JSON.stringify({ skipped: true, reason: "jev_not_programme", p: gate.p, threshold: gate.threshold }),
+          page_id: page.pageId,
+          page_content_hash: page.contentHash,
+          updated_at: masterKnex.fn.now(),
+        });
+        if (!owned) {
+          logger.info("Fenced out — a newer attempt owns this item, dropping stale Jev skip", { jobId, queueItemId, url });
+          return;
+        }
+        await writeJobEvent(jobId, "page_skipped_jev", {
+          phase: "data_extraction",
+          message: `Skipped model call: ${url} is not a programme page (Jev p=${gate.p?.toFixed(2)} < ${gate.threshold})`,
+          data: { url, p: gate.p, threshold: gate.threshold, model: JEV_MODEL },
+        });
+        await checkAllPagesDone(jobId);
+        return;
+      }
     }
 
     const recalled = await recallMemory(domain, memoryStep, markdown.slice(0, 500));
@@ -653,9 +682,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       let pageCourseLinks: Map<string, string> = new Map();
       if (extracted.courses?.some((c) => c.name && !c.study_units?.length)) {
         const { html: pageHtml } = await scrapeRenderedHtml(url);
-        if (pageHtml && looksLikeCourseList(pageHtml)) {
-          pageUnits = parseCourseList(pageHtml).units;
-        }
+        if (pageHtml) pageUnits = curriculumFromMarkup(pageHtml);
         if (pageHtml) pageCourseLinks = courseLinksByName(pageHtml, url);
         if (pageUnits.length || pageCourseLinks.size) {
           logger.info("Parsed curriculum markup", {
@@ -825,6 +852,36 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
                 });
               }
             }
+          }
+
+          if (extracted.courses.length === 1) {
+            const filled = await fillFromPicks(course, page.markdown);
+            if (filled) {
+              await writeJobEvent(jobId, "fields_picked_jev", {
+                phase: "data_extraction",
+                message: `Jev filled ${[filled.duration && `duration "${filled.duration}"`, filled.fees && `${filled.fees} tuition fee(s)`].filter(Boolean).join(" and ")} for "${course.name}"`,
+                data: { url, course: course.name, ...filled },
+              });
+            }
+          }
+
+          // Jev checks every item against the page and links unlinked lookups (on with
+          // TYPESAFE_API_KEY — lib/jev-course-check.ts).
+          const checked = await checkCourseWithJev(course, page.markdown, await loadLookupLists());
+          if (checked) {
+            const parts = [
+              checked.dropped.length && `removed ${checked.dropped.length} item(s)`,
+              checked.suspects.length > checked.dropped.length && `${checked.suspects.length - checked.dropped.length} item(s) to review (kept)`,
+              checked.linked.degree_level && `level → ${checked.linked.degree_level}`,
+              checked.linked.area_of_study && `area → ${checked.linked.area_of_study}`,
+              checked.flagged && `may not be an enrollable programme (p=${checked.notProgramme?.toFixed(2)})`,
+            ].filter(Boolean);
+            await writeJobEvent(jobId, "course_checked_jev", {
+              level: checked.suspects.length || checked.flagged ? "warn" : "info",
+              phase: "data_extraction",
+              message: `Jev check on "${course.name}": ${parts.join(", ")}`,
+              data: { url, course: course.name, ...checked },
+            });
           }
 
           const written = await writeCourse(jobId, {

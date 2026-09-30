@@ -116,13 +116,82 @@ export async function checkAllPagesDone(jobId: string) {
     await writeJobEvent(jobId, "extraction_complete", {
       phase: "data_extraction", message: "All pages extracted, starting verification",
     });
-    await queueService.publish(EXTRACTION_QUEUES.VERIFY, { jobId });
     const job = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).first();
-    if (!job?.source_type || job.source_type === "institution") {
-      const hasCampuses = await masterKnex(`${S}.extraction_campuses`).where({ job_id: jobId }).first();
-      if (!hasCampuses) {
-        await queueService.publish(EXTRACTION_QUEUES.STEPS, { jobId, step: "branches" });
-      }
-    }
+    const isInstitution = !job?.source_type || job.source_type === "institution";
+    const needsBranches = isInstitution && !(await masterKnex(`${S}.extraction_campuses`).where({ job_id: jobId }).first());
+    const hasScholarshipPages = isInstitution && !!(await masterKnex(`${S}.extraction_site_urls`)
+      .where({ job_id: jobId, category: "scholarships", excluded: false }).whereNull("dead_reason").first("id"));
+    await continueChain(jobId, postExtractionChain({ needsBranches, hasScholarshipPages }));
   }
+}
+
+export type ChainLink = "branches" | "scholarships" | "verify";
+
+/**
+ * What runs after the last page, IN ORDER. Campuses (branches) and scholarships are extracted
+ * BEFORE verification because the verify worker dispatches `link_entities` when it finishes, and the
+ * linker only links what exists: fired side by side (as they used to be), a verification that
+ * finished first linked nothing to the campuses and awards stored a moment later. Pure.
+ */
+export function postExtractionChain(o: { needsBranches: boolean; hasScholarshipPages: boolean }): ChainLink[] {
+  return [...(o.needsBranches ? ["branches" as const] : []), ...(o.hasScholarshipPages ? ["scholarships" as const] : []), "verify"];
+}
+
+export const _chainDeps = {
+  publish: (queue: string, payload: Record<string, unknown>) => queueService.publish(queue, payload),
+  savePending: async (jobId: string, chain: ChainLink[]) => {
+    await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
+      pipeline_progress: masterKnex.raw("coalesce(pipeline_progress, '{}'::jsonb) || ?::jsonb", [JSON.stringify({ post_extraction_chain: chain })]),
+    });
+  },
+  retryDelayMs: 1_000,
+};
+
+/**
+ * Publish the head of the chain, carrying the rest. The step worker calls this again when that step
+ * ends — succeeded OR failed — so verification always starts.
+ *
+ * The remaining chain is saved on the job BEFORE the publish. A failed publish is otherwise
+ * unrecoverable: the consumer acks (or nacks without requeue) the message that carried `then`, so the
+ * rest of the chain existed nowhere. With it saved, the reclaim sweep — which finds the job stuck at
+ * "extracting" with a stale heartbeat — resumes exactly these steps instead of jumping to verification.
+ */
+/** Runs `beat` now and every `everyMs` until the returned stop is called; a failed beat is logged,
+ *  never thrown. A chained step holds this for as long as it runs, so the reclaim sweep (20 min
+ *  stale) sees a live step as live and only a dead worker's job as stuck. */
+export function keepAlive(beat: () => Promise<unknown>, everyMs: number): () => void {
+  const tick = () => { beat().catch((err) => logger.warn("Heartbeat failed", { error: String(err) })); };
+  tick();
+  const timer = setInterval(tick, everyMs);
+  return () => clearInterval(timer);
+}
+
+export async function continueChain(jobId: string, chain: ChainLink[]): Promise<void> {
+  const [next, ...rest] = chain;
+  if (!next) return;
+  await _chainDeps.savePending(jobId, chain);
+  const send = () => next === "verify"
+    ? _chainDeps.publish(EXTRACTION_QUEUES.VERIFY, { jobId })
+    : _chainDeps.publish(EXTRACTION_QUEUES.STEPS, { jobId, step: next, then: rest });
+  const attempt = async (n: number): Promise<void> => {
+    try { await send(); } catch (err) {
+      if (n >= 3) throw err;
+      await new Promise((r) => setTimeout(r, _chainDeps.retryDelayMs * n));
+      await attempt(n + 1);
+    }
+  };
+  await attempt(1);
+}
+
+/** The saved remainder of a job's post-extraction chain, or just verification when none was saved. Pure. */
+export function pendingChain(progress: unknown): ChainLink[] {
+  const p = typeof progress === "string" ? JSON.parse(progress) : progress;
+  const saved = parseChain((p as Record<string, unknown> | null)?.post_extraction_chain);
+  return saved.length ? saved : ["verify"];
+}
+
+const CHAIN_LINKS = new Set<string>(["branches", "scholarships", "verify"]);
+/** A `then` field off a queue message, keeping only known links. Pure. */
+export function parseChain(raw: unknown): ChainLink[] {
+  return Array.isArray(raw) ? raw.filter((x): x is ChainLink => typeof x === "string" && CHAIN_LINKS.has(x)) : [];
 }

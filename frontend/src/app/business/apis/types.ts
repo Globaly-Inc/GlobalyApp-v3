@@ -154,14 +154,14 @@ export type ExtractionStatus = {
 /** Mirrors backend lib/url-categories.ts SITE_URL_CATEGORIES exactly. */
 export type SiteUrlCategory =
   | "overview" | "about_us" | "contact_us" | "course" | "branches" | "agents" | "fees"
-  | "study_units" | "study_options" | "intake" | "eligibility" | "accreditations" | "other";
+  | "study_units" | "study_options" | "intake" | "eligibility" | "accreditations" | "scholarships" | "other";
 
 export type SiteUrl = {
   id: string;
   url: string;
   source: string;
   category: SiteUrlCategory | null;
-  category_source: "guided" | "heuristic" | "llm" | "admin" | null;
+  category_source: "guided" | "heuristic" | "llm" | "jev" | "admin" | null;
   created_at: string;
 };
 
