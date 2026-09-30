@@ -428,7 +428,17 @@ export async function runUrlClassify(jobId: string, job: JobRow): Promise<{ cour
     const candidates = urls.filter((u) => !guidedMap.has(u)).slice(0, CLASSIFY_ALL_CAP);
     const jev = await jevCategorise(candidates, await excerptsFor(candidates), jevMin, () =>
       masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({ processing_heartbeat_at: masterKnex.fn.now() }).then(() => undefined));
-    const verdicts = jevVerdicts(urls, jev, guidedMap, looksLikeCourseUrl, heuristicCategory);
+    const placed = jevVerdicts(urls, jev, guidedMap, looksLikeCourseUrl, heuristicCategory);
+    // What neither Jev (confidently) nor a heuristic could place still gets the lite-model pass —
+    // Jev unsure must mean "no Jev", never "other" (review, 2026-09-30).
+    const unplaced = [...placed].filter(([, v]) => v === null).map(([u]) => u).slice(0, CLASSIFY_ALL_CAP);
+    const modelled = unplaced.length ? await categoriseWithModel(jobId, unplaced) : new Map<string, SiteUrlCategory>();
+    const tried = new Set(unplaced);
+    const verdicts = new Map<string, CategoryVerdict>();
+    for (const [url, v] of placed) {
+      const m = modelled.get(url);
+      verdicts.set(url, v ?? (m ? { category: m, source: "llm" } : { category: "other", source: tried.has(url) ? "llm" : "heuristic" }));
+    }
     if (![...verdicts.values()].some((v) => v.category === "course")) {
       verdicts.set(normaliseUrl(job.institution_url), { category: "course", source: "heuristic" }); // fallback: the homepage itself
     }
@@ -439,8 +449,8 @@ export async function runUrlClassify(jobId: string, job: JobRow): Promise<{ cour
     const summary = Object.entries(byCategory).filter(([k]) => k !== "course").map(([k, n]) => `${k} ${n}`).join(", ");
     await _stepDeps.writeEvent(jobId, "urls_filtered", {
       phase: "course_discovery",
-      message: `${course} course pages identified out of ${urls.length} (Jev: ${jev.size} of ${candidates.length} answered confidently)${summary ? `; also ${summary}` : ""}`,
-      data: { count: course, total: urls.length, jev_answered: jev.size, jev_asked: candidates.length, categories: byCategory },
+      message: `${course} course pages identified out of ${urls.length} (Jev: ${jev.size} of ${candidates.length} answered confidently; ${modelled.size} placed by the model pass)${summary ? `; also ${summary}` : ""}`,
+      data: { count: course, total: urls.length, jev_answered: jev.size, jev_asked: candidates.length, model_categorised: modelled.size, categories: byCategory },
     });
     return { course, total: urls.length, categories: byCategory };
   }

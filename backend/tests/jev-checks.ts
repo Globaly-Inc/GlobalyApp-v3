@@ -41,6 +41,10 @@ const course = (): ExtractedCourse => ({
 } as unknown as ExtractedCourse);
 
 // ── course check ────────────────────────────────────────────────────────────
+// The page states every item below, so each one can be judged.
+const PAGE = "Electrical Engineering. International tuition £16,020. Deposit £2,000. Start September 2027. "
+  + "Application deadline 30 June. Units: Circuit Analysis. See also Master of Business Administration.";
+_courseCheckDeps.flagMin = () => 0.9;
 _courseCheckDeps.dropMin = () => 0.9;
 _courseCheckDeps.lookupMin = () => 0.7;
 fake((q) => {
@@ -51,8 +55,8 @@ fake((q) => {
 });
 {
   const c = course();
-  const out = await checkCourseWithJev(c, "page text", lists);
-  eq(c.fees?.map((f) => f.total_amount), [16020], "a fee Jev is sure is wrong is dropped, the tuition stays");
+  const out = await checkCourseWithJev(c, PAGE, lists);
+  eq(c.fees?.map((f) => f.total_amount), [16020], "with JEV_VERIFY_DROP_MIN set, a fee Jev is sure is wrong is dropped");
   eq(c.intakes?.map((i) => i.intake_name), ["September 2027"], "a deadline filed as an intake is dropped");
   eq(c.study_units?.map((u) => u.unit_name), ["Circuit Analysis"], "a programme filed as a unit is dropped");
   eq(out?.dropped.map((d) => d.list), ["fees", "intakes", "study_units"], "every drop is reported");
@@ -73,7 +77,7 @@ fake((q) => {
 fake((q) => (q === "not_programme" ? { noul: 0.95 } : q.includes("_") && !q.startsWith("degree") && !q.startsWith("area") ? { noul: 0.1 } : { choice: "none", confidence: 0.99 }));
 {
   const c = course();
-  const out = await checkCourseWithJev(c, "page text", lists);
+  const out = await checkCourseWithJev(c, PAGE, lists);
   eq([out?.flagged, c.fees?.length], [true, 2], "not-a-programme is flagged for review, nothing is deleted for it");
   eq(c.degree_level, null, "'none' links nothing");
 }
@@ -85,12 +89,32 @@ fake((q) => (q === "not_programme" ? { noul: 0.95 } : q.includes("_") && !q.star
   eq(asked.includes("degree_level") || asked.includes("area_of_study"), false, "a lookup that already links is not asked");
 }
 
+// Default: report only — nothing is removed.
+_courseCheckDeps.dropMin = () => null;
+fake((q) => (q.startsWith("fees_1") || q.startsWith("intakes_1") ? { noul: 0.97 } : { noul: 0.05 }));
+{
+  const c = course();
+  const out = await checkCourseWithJev(c, PAGE, lists);
+  eq([c.fees?.length, c.intakes?.length], [2, 2], "by default a suspect item is KEPT");
+  eq(out?.suspects.map((x) => x.list), ["fees", "intakes"], "…and listed for review");
+  eq(out?.dropped, [], "…with nothing dropped");
+}
+{
+  // Fee and unit merged from a linked page: not on this page, so never judged.
+  const c = { ...course(), fees: [{ name: "Tuition Fee", total_amount: 31000, student_type: "international" }] } as unknown as ExtractedCourse;
+  fake(() => ({ noul: 0.99 }));
+  await checkCourseWithJev(c, PAGE, lists);
+  eq(asked.some((q) => q.startsWith("fees_")), false, "an item whose value is not on the checked page is not asked about");
+}
+
+_courseCheckDeps.flagMin = () => null;
 _courseCheckDeps.dropMin = () => null;
 _courseCheckDeps.lookupMin = () => null;
 let calls = 0;
 _jevDeps.systemOne = (async () => { calls++; return { answers: {} }; }) as unknown as typeof _jevDeps.systemOne;
 eq([await checkCourseWithJev(course(), "page", lists), calls], [null, 0], "off → no call");
 
+_courseCheckDeps.flagMin = () => 0.9;
 _courseCheckDeps.dropMin = () => 0.9;
 _jevDeps.systemOne = (async () => { throw new Error("429"); }) as unknown as typeof _jevDeps.systemOne;
 {
@@ -107,8 +131,11 @@ _jevDeps.systemOne = (async () => { throw new Error("429"); }) as unknown as typ
   const isCourse = (u: string) => /programs|nur\d/.test(u);
   const heuristic = (u: string): SiteUrlCategory | null => (u.endsWith("/about") ? "about_us" : null);
   const v = jevVerdicts(urls, jev, new Map([["https://x.edu/apply", "eligibility" as SiteUrlCategory]]), isCourse, heuristic);
-  eq(v.get(urls[1]), { category: "other", source: "jev" }, "Jev overrules a heuristic 'course' it is sure is not one");
+  eq(v.get(urls[1]), { category: "course", source: "heuristic" }, "Jev never demotes a URL the heuristic calls a course");
   eq(v.get(urls[2]), { category: "about_us", source: "heuristic" }, "an unconfident URL keeps the heuristic verdict");
+  eq(v.get(urls[3]), { category: "scholarships", source: "jev" }, "a confident Jev answer places what the heuristic could not");
+  const unsure = jevVerdicts(["https://x.edu/p/123"], new Map(), new Map(), () => false, () => null);
+  eq(unsure.get("https://x.edu/p/123"), null, "unsure Jev + no heuristic → unplaced (goes to the model pass), never 'other'");
   eq(v.get("https://x.edu/apply"), { category: "eligibility", source: "guided" }, "guided always wins, even off the list");
 
   _jevDeps.systemOne = (async () => { throw new Error("500"); }) as unknown as typeof _jevDeps.systemOne;

@@ -1163,11 +1163,16 @@ Same pass, also 2026-09-30:
   whose heartbeat is 20+ min stale (claimed by bumping the heartbeat). Verified live.
 - **`field_coverage_verified`** event at the end of verification: per-field fill %, weakest first.
 - Measured and NOT built: schema.org Program/Course JSON-LD (0 of 40 institutions' productive pages).
-- **Jev everywhere a wrong decision lands in the DB.** `TYPESAFE_API_KEY` ALONE turns every feature on
-  at the strict built-in `JEV_DEFAULTS` in `lib/jev-client.ts` (URL 0.7, page gate 0.05, picks 0.85,
-  drop 0.95, lookup 0.85, link 0.85 — Jev acts only when very sure, the pre-Jev path handles the rest).
+- **Jev everywhere a wrong decision lands in the DB.** `TYPESAFE_API_KEY` alone turns on every feature
+  that can only ADD data, at the strict `JEV_DEFAULTS` in `lib/jev-client.ts` (URL 0.7, picks 0.85,
+  report suspects 0.9, lookup 0.85, link 0.85). The two that can take data away — the page gate (skips a
+  page's extraction) and item deletion — default OFF and need `JEV_PAGE_GATE_MIN` / `JEV_VERIFY_DROP_MIN`
+  set on purpose (review 2026-09-30: key-only defaults "missed course pages and removed valid course
+  details"). URL classification is additive for courses — Jev may promote, never demote, a heuristic
+  course page, and a URL Jev is unsure of still gets the lite-model pass. The course check only judges
+  items whose own value is on the page Jev reads (fees/units merged from linked pages are never asked).
   Each env var overrides its default; "0"/"off" switches that feature off (`test:jev-client`). Any failure
-  keeps the non-Jev path):
+  keeps the non-Jev path:
   | Env | Where | Decision |
   |---|---|---|
   | `JEV_URL_CLASSIFY_MIN` | `jev-url-classify.ts` ← `runUrlClassify` | one `choice` per URL over `SITE_URL_CATEGORY_DESCRIPTIONS` (40/request); replaces both lite-model passes; `category_source = "jev"`; guided/admin still win, unconfident URLs keep the heuristic |

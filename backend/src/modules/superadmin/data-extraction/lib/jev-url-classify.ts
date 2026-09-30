@@ -45,23 +45,26 @@ export async function jevCategorise(
 }
 
 /**
- * Per-URL verdicts when Jev classified: guided > Jev (confident) > course heuristic > path heuristic
- * > other. Jev outranks the heuristics because it read the page's first words, not just its path —
- * a heuristic "course" (researchguides…/nur334) Jev confidently calls `other` stays other. Pure.
+ * Per-URL verdicts when Jev classified: guided > course heuristic > Jev (confident) > path heuristic
+ * > null. Additive for courses: Jev may PROMOTE a URL to course but never demotes one the heuristic
+ * already calls a course (a missed course page is lost data; a junk page only costs a model call —
+ * and library hosts are already off the list via NON_CONTENT_HOST). null = nobody could place it:
+ * the caller sends those to the lite-model pass, exactly as without Jev. Pure.
  */
 export function jevVerdicts(
   urls: string[], jev: Map<string, SiteUrlCategory>, guided: Map<string, SiteUrlCategory>,
   isCourse: (url: string) => boolean, heuristic: (url: string) => SiteUrlCategory | null,
-): Map<string, CategoryVerdict> {
-  const out = new Map<string, CategoryVerdict>();
+): Map<string, CategoryVerdict | null> {
+  const out = new Map<string, CategoryVerdict | null>();
   for (const url of urls) {
     const g = guided.get(url);
     const j = jev.get(url);
     const h = heuristic(url);
     out.set(url, g ? { category: g, source: "guided" }
-      : j ? { category: j, source: "jev" }
-        : isCourse(url) ? { category: "course", source: "heuristic" }
-          : { category: h ?? "other", source: "heuristic" });
+      : isCourse(url) ? { category: "course", source: "heuristic" }
+        : j ? { category: j, source: "jev" }
+          : h ? { category: h, source: "heuristic" }
+            : null);
   }
   for (const [url, cat] of guided) out.set(url, { category: cat, source: "guided" });
   return out;

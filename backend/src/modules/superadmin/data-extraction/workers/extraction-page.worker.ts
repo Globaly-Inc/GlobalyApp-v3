@@ -870,13 +870,14 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
           const checked = await checkCourseWithJev(course, page.markdown, await loadLookupLists());
           if (checked) {
             const parts = [
-              checked.dropped.length && `dropped ${checked.dropped.length} item(s)`,
+              checked.dropped.length && `removed ${checked.dropped.length} item(s)`,
+              checked.suspects.length > checked.dropped.length && `${checked.suspects.length - checked.dropped.length} item(s) to review (kept)`,
               checked.linked.degree_level && `level → ${checked.linked.degree_level}`,
               checked.linked.area_of_study && `area → ${checked.linked.area_of_study}`,
               checked.flagged && `may not be an enrollable programme (p=${checked.notProgramme?.toFixed(2)})`,
             ].filter(Boolean);
             await writeJobEvent(jobId, "course_checked_jev", {
-              level: checked.dropped.length || checked.flagged ? "warn" : "info",
+              level: checked.suspects.length || checked.flagged ? "warn" : "info",
               phase: "data_extraction",
               message: `Jev check on "${course.name}": ${parts.join(", ")}`,
               data: { url, course: course.name, ...checked },

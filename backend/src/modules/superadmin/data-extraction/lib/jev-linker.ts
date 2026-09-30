@@ -73,12 +73,23 @@ export function amountNeedles(amount: unknown): string[] {
  * Which entities to ask about for one course. Pure. Unlinked entities first (they reach no course at
  * all), then entities of kinds the course has none of, capped.
  */
+/** Does `pageText` literally contain one of `needles`? Amounts ("16,020") as raw text; names and codes
+ *  on whole normalised words, so "Stratford Campus" never matches inside "Stratford Campuses". Pure. */
+export function mentions(pageText: string, needles: Array<string | null | undefined>): boolean {
+  const text = ` ${norm(pageText)} `;
+  const raw = pageText.toLowerCase();
+  return needles.some((n) => {
+    if (!n) return false;
+    if (/^[\d ,]+$/.test(n)) return raw.includes(n);
+    const k = norm(n);
+    return k.length >= 3 && text.includes(` ${k} `);
+  });
+}
+
 export function candidatesFor(
   course: CourseRow, pageText: string, entities: Entity[],
   linked: Set<string>, kindsHeld: Set<LinkKind>, opts: { agentcis: boolean; unlinkedIds: Set<string>; sharedPage?: boolean },
 ): Entity[] {
-  const text = norm(pageText);
-  const raw = pageText.toLowerCase();
   const out = entities.filter((e) => {
     if (linked.has(`${course.id}|${e.kind}|${e.id}`)) return false;
     if (opts.agentcis && kindsHeld.has(e.kind)) return false;
@@ -91,12 +102,7 @@ export function candidatesFor(
     // so only orphans (reaching no course yet) are worth asking about there.
     if (opts.sharedPage && !orphan) return false;
     if (SCOPE_KINDS.has(e.kind)) return true;
-    return e.needles.some((n) => {
-      if (!n) return false;
-      if (/^[\d ,]+$/.test(n)) return raw.includes(n);
-      const k = norm(n);
-      return k.length >= 3 && ` ${text} `.includes(` ${k} `);
-    });
+    return mentions(pageText, e.needles);
   });
   const rank = (e: Entity) => (opts.unlinkedIds.has(`${e.kind}|${e.id}`) ? 0 : kindsHeld.has(e.kind) ? 2 : 1);
   return out.sort((a, b) => rank(a) - rank(b)).slice(0, MAX_CANDIDATES);

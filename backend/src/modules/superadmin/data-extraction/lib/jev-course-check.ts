@@ -2,19 +2,18 @@
 // extract → verify → act pattern. One request per course, every question in parallel:
 //   - lookups: a degree level / subject area that does not link to our closed lists gets a Jev
 //     `choice` over the REAL list (or none), so the writer links it instead of leaving it unlinked;
-//   - every fee, intake, entry requirement, English score and study unit gets a narrow noul framed
-//     so TRUE = wrong for THIS course (another programme's figure, a deadline, paperwork, a figure
-//     the page does not state). Only items Jev is sure are wrong are dropped, and each drop is
-//     reported on the job timeline, so a reviewer sees exactly what the check removed;
-//   - the course itself: P(not an enrollable programme) — flagged for review, never dropped here
-//     (entity-classifier owns that decision).
-//
-// ON whenever TYPESAFE_API_KEY is set (JEV_VERIFY_DROP_MIN / JEV_LOOKUP_MIN override the defaults,
-// "0" = off). A failed call changes nothing.
+//   - fees, intakes, entry requirements, English scores and study units get a narrow noul framed so
+//     TRUE = wrong for THIS course. Only items whose own value appears in the text Jev reads are asked:
+//     the worker also merges fees and units from LINKED pages (curriculum, fee schedule), and Jev
+//     cannot judge — and must never remove — what it was not shown (review, 2026-09-30);
+//   - the course itself: P(not an enrollable programme).
+// By default a suspect item is only REPORTED (JEV_VERIFY_FLAG_MIN, on with the key). Deleting it
+// needs JEV_VERIFY_DROP_MIN set on purpose. A failed call changes nothing.
 
 import { choice, noul } from "@typesafe-ai/sdk";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { _jevDeps, jevThreshold } from "./jev-client.js";
+import { amountNeedles, mentions } from "./jev-linker.js";
 import { resolveAreaOfStudy, resolveDegreeLevel, type LookupLists } from "./lookup-catalog.js";
 import type { ExtractedCourse } from "./staging-writer.js";
 
@@ -27,6 +26,7 @@ const MAX_ITEM_QUESTIONS = 80;
 const NONE = "none";
 
 export const _courseCheckDeps = {
+  flagMin: (): number | null => jevThreshold("JEV_VERIFY_FLAG_MIN"),
   dropMin: (): number | null => jevThreshold("JEV_VERIFY_DROP_MIN"),
   lookupMin: (): number | null => jevThreshold("JEV_LOOKUP_MIN"),
 };
@@ -43,10 +43,13 @@ const ITEM_RULES: Record<ListKey, string> = {
 };
 
 export interface CheckOutcome {
+  /** Items at or above the report bar — listed for review, still written unless also in `dropped`. */
+  suspects: Array<{ list: ListKey; item: string; p: number }>;
+  /** Items actually removed — only with JEV_VERIFY_DROP_MIN set. */
   dropped: Array<{ list: ListKey; item: string; p: number }>;
   linked: { degree_level?: string; area_of_study?: string };
   notProgramme: number | null;
-  /** notProgramme reached the drop threshold — reported for review, the course is still written. */
+  /** notProgramme reached the report bar — reported for review, the course is still written. */
   flagged: boolean;
 }
 
@@ -59,19 +62,34 @@ const label = (list: ListKey, item: Record<string, unknown>): string =>
             : item.name ?? item.description ?? "",
   ).replace(/\s+/g, " ").trim();
 
+/** The item's own value as it would appear on the page it came from. Pure. */
+export function itemNeedles(list: ListKey, item: Record<string, unknown>): Array<string | null | undefined> {
+  const s = (v: unknown) => (v == null || v === "" ? null : String(v));
+  switch (list) {
+    case "fees": return amountNeedles(item.total_amount);
+    case "intakes": return [s(item.intake_name), s(item.start_date)];
+    case "english_requirements": return [s(item.overall_score) && `${item.test_type_name ?? item.test_type ?? ""} ${item.overall_score}`.trim()];
+    case "study_units": return [s(item.unit_code), s(item.unit_name)];
+    case "eligibility": return [s(item.name)];
+  }
+}
+
 /**
- * Check `course` against the page it came from, in place. Returns what changed (for the job event),
- * or null when the check is off, found nothing, or failed.
+ * Check `course` against the page it came from, in place. Returns what changed or was flagged (for
+ * the job event), or null when the check is off, found nothing, or failed.
  */
 export async function checkCourseWithJev(course: ExtractedCourse, markdown: string, lists: LookupLists): Promise<CheckOutcome | null> {
+  const flagMin = _courseCheckDeps.flagMin();
   const dropMin = _courseCheckDeps.dropMin();
   const lookupMin = _courseCheckDeps.lookupMin();
-  if ((dropMin == null && lookupMin == null) || !course.name) return null;
+  const reportBar = flagMin != null && dropMin != null ? Math.min(flagMin, dropMin) : flagMin ?? dropMin;
+  if ((reportBar == null && lookupMin == null) || !course.name) return null;
 
+  const visible = markdown.slice(0, PAGE_CHARS);
   const questions: Record<string, ReturnType<typeof noul> | ReturnType<typeof choice>> = {};
   const items: Array<{ key: string; list: ListKey; index: number; text: string }> = [];
 
-  if (dropMin != null) {
+  if (reportBar != null) {
     questions.not_programme = noul(
       "Is `course.name` NOT a programme a student can enrol in (a degree, diploma, certificate or short course) — " +
       "for example a single unit or module, a department, a research group, or a scholarship?",
@@ -79,6 +97,8 @@ export async function checkCourseWithJev(course: ExtractedCourse, markdown: stri
     for (const list of Object.keys(ITEM_RULES) as ListKey[]) {
       (course[list] as Array<Record<string, unknown>> | undefined)?.forEach((item, index) => {
         if (items.length >= MAX_ITEM_QUESTIONS) return;
+        // Came from a linked page, or sits past what Jev reads: nothing here to judge it against.
+        if (!mentions(visible, itemNeedles(list, item))) return;
         const key = `${list}_${index}`;
         items.push({ key, list, index, text: label(list, item) });
         questions[key] = noul(`Is ${list.replace(/_/g, " ")} item \`checks.${key}\` ${ITEM_RULES[list]}?`);
@@ -104,7 +124,7 @@ export async function checkCourseWithJev(course: ExtractedCourse, markdown: stri
       state: {
         course: { name: course.name, degree_level: course.degree_level ?? null, subject_area: course.subject_area ?? null },
         checks: Object.fromEntries(items.map((i) => [i.key, i.text])),
-        page: markdown.slice(0, PAGE_CHARS),
+        page: visible,
       },
       questions,
     }) as unknown as { answers: typeof answers });
@@ -114,13 +134,18 @@ export async function checkCourseWithJev(course: ExtractedCourse, markdown: stri
   }
 
   const notProgramme = answers.not_programme?.noul ?? null;
-  const outcome: CheckOutcome = { dropped: [], linked: {}, notProgramme, flagged: notProgramme != null && dropMin != null && notProgramme >= dropMin };
+  const outcome: CheckOutcome = {
+    suspects: [], dropped: [], linked: {}, notProgramme,
+    flagged: notProgramme != null && reportBar != null && notProgramme >= reportBar,
+  };
 
-  if (dropMin != null) {
+  if (reportBar != null) {
     const drop = new Map<ListKey, Set<number>>();
     for (const i of items) {
       const p = answers[i.key]?.noul;
-      if (p == null || p < dropMin) continue;
+      if (p == null || p < reportBar) continue;
+      outcome.suspects.push({ list: i.list, item: i.text, p });
+      if (dropMin == null || p < dropMin) continue;
       if (!drop.has(i.list)) drop.set(i.list, new Set());
       drop.get(i.list)!.add(i.index);
       outcome.dropped.push({ list: i.list, item: i.text, p });
@@ -139,5 +164,5 @@ export async function checkCourseWithJev(course: ExtractedCourse, markdown: stri
   if (level) { course.degree_level = level; outcome.linked.degree_level = level; }
   if (area) { course.area_of_study = area; outcome.linked.area_of_study = area; }
 
-  return outcome.dropped.length || level || area || outcome.flagged ? outcome : null;
+  return outcome.suspects.length || level || area || outcome.flagged ? outcome : null;
 }
