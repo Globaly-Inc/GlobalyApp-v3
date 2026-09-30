@@ -137,13 +137,47 @@ export function postExtractionChain(o: { needsBranches: boolean; hasScholarshipP
   return [...(o.needsBranches ? ["branches" as const] : []), ...(o.hasScholarshipPages ? ["scholarships" as const] : []), "verify"];
 }
 
-/** Publish the head of the chain, carrying the rest. The step worker calls this again when that step
- *  ends — succeeded OR failed — so verification always starts. */
+export const _chainDeps = {
+  publish: (queue: string, payload: Record<string, unknown>) => queueService.publish(queue, payload),
+  savePending: async (jobId: string, chain: ChainLink[]) => {
+    await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
+      pipeline_progress: masterKnex.raw("coalesce(pipeline_progress, '{}'::jsonb) || ?::jsonb", [JSON.stringify({ post_extraction_chain: chain })]),
+    });
+  },
+  retryDelayMs: 1_000,
+};
+
+/**
+ * Publish the head of the chain, carrying the rest. The step worker calls this again when that step
+ * ends — succeeded OR failed — so verification always starts.
+ *
+ * The remaining chain is saved on the job BEFORE the publish. A failed publish is otherwise
+ * unrecoverable: the consumer acks (or nacks without requeue) the message that carried `then`, so the
+ * rest of the chain existed nowhere. With it saved, the reclaim sweep — which finds the job stuck at
+ * "extracting" with a stale heartbeat — resumes exactly these steps instead of jumping to verification.
+ */
 export async function continueChain(jobId: string, chain: ChainLink[]): Promise<void> {
   const [next, ...rest] = chain;
   if (!next) return;
-  if (next === "verify") await queueService.publish(EXTRACTION_QUEUES.VERIFY, { jobId });
-  else await queueService.publish(EXTRACTION_QUEUES.STEPS, { jobId, step: next, then: rest });
+  await _chainDeps.savePending(jobId, chain);
+  const send = () => next === "verify"
+    ? _chainDeps.publish(EXTRACTION_QUEUES.VERIFY, { jobId })
+    : _chainDeps.publish(EXTRACTION_QUEUES.STEPS, { jobId, step: next, then: rest });
+  const attempt = async (n: number): Promise<void> => {
+    try { await send(); } catch (err) {
+      if (n >= 3) throw err;
+      await new Promise((r) => setTimeout(r, _chainDeps.retryDelayMs * n));
+      await attempt(n + 1);
+    }
+  };
+  await attempt(1);
+}
+
+/** The saved remainder of a job's post-extraction chain, or just verification when none was saved. Pure. */
+export function pendingChain(progress: unknown): ChainLink[] {
+  const p = typeof progress === "string" ? JSON.parse(progress) : progress;
+  const saved = parseChain((p as Record<string, unknown> | null)?.post_extraction_chain);
+  return saved.length ? saved : ["verify"];
 }
 
 const CHAIN_LINKS = new Set<string>(["branches", "scholarships", "verify"]);

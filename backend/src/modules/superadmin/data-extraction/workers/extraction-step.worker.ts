@@ -1934,6 +1934,7 @@ await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
     return;
   }
   logger.info("Received step", { jobId, step, courseId, dataType, visaServiceId });
+  if (parseChain(then).length) await heartbeat(jobId);
   setLlmContext({ jobId, kind: `step:${step}` });
 
   // Every step is one message that owns its whole step — except site_snapshot, whose batches run

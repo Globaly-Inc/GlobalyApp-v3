@@ -31,7 +31,7 @@ import { queueService } from "../../../../shared/queue/queueService.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
-import { checkAllPagesDone } from "../lib/queue-completion.js";
+import { checkAllPagesDone, continueChain, pendingChain } from "../lib/queue-completion.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
 const logger = createChildLogger("extraction-queue-reclaim-worker");
@@ -200,18 +200,19 @@ async function reclaimStaleQueueItems() {
   const staleVerifying = await masterKnex(`${S}.extraction_jobs`)
     .where({ status: "extracting", stop_requested: false })
     .whereRaw(`greatest(processing_heartbeat_at, updated_at) < now() - interval '${STALE_MINUTES} minutes'`)
-    .select("id");
+    .select("id", "pipeline_progress");
   let verifyRedispatched = 0;
-  for (const { id: jobId } of staleVerifying) {
+  for (const { id: jobId, pipeline_progress: progress } of staleVerifying) {
     const claimed = await masterKnex(`${S}.extraction_jobs`)
       .where({ id: jobId, status: "extracting", stop_requested: false })
       .whereRaw(`greatest(processing_heartbeat_at, updated_at) < now() - interval '${STALE_MINUTES} minutes'`)
       .update({ processing_heartbeat_at: masterKnex.fn.now() });
     if (claimed === 0) continue;
     try {
-      await queueService.publish(EXTRACTION_QUEUES.VERIFY, { jobId });
+      const chain = pendingChain(progress);
+      await continueChain(jobId, chain);
       verifyRedispatched++;
-      logger.info("Re-dispatched verification for a job stuck at extracting", { jobId });
+      logger.info("Resumed the post-extraction chain for a job stuck at extracting", { jobId, chain });
     } catch (err) {
       logger.warn("Verify re-dispatch failed; the next sweep retries", { jobId, error: err instanceof Error ? err.message : String(err) });
     }
