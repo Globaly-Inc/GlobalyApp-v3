@@ -16,7 +16,7 @@ import { queueService } from "../../../../shared/queue/queueService.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { NEXT_STEP, type PipelineStep } from "../schemas/step.schema.js";
-import { discoverUrlsForCrawl } from "./scraper.js";
+import { discoverUrlsForCrawl, scrapeFailureText } from "./scraper.js";
 import { SNAPSHOT_BATCH_SIZE, jobHalted } from "./site-snapshot.js";
 import { CRAWL_BUDGET, crawlSeeds, crawlSite } from "./site-crawl.js";
 import { _urlClassifyDeps, jevCategorise, jevVerdicts } from "./jev-url-classify.js";
@@ -264,7 +264,7 @@ export async function dispatchSnapshotBatches(jobId: string, urls: string[], pag
 export async function runSiteAnalysis(jobId: string, job: JobRow): Promise<string[]> {
   const isVisaService = job.source_type === "visa_service";
   const homepage = await getPage(job.institution_url, { withLinks: true, onlyMainContent: false });
-  if (!homepage.markdown && homepage.error) throw new Error(`Failed to scrape homepage: ${homepage.error}`);
+  if (!homepage.markdown && homepage.error) throw new Error(`Failed to scrape homepage: ${scrapeFailureText(homepage)}`);
 
   await _stepDeps.writeEvent(jobId, "page_fetched", {
     phase: "site_mapping",

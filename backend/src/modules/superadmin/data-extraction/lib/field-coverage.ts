@@ -6,7 +6,8 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { writeJobEvent } from "./staging-writer.js";
 
-export async function verifyFieldCoverage(jobId: string) {
+/** Courses in the job, and how many carry each field or linked entity. Counts only. */
+export async function fieldCoverage(jobId: string): Promise<{ total: number; counts: Record<string, number> }> {
   const has = (junction: string) =>
     `count(*) FILTER (WHERE EXISTS (SELECT 1 FROM ${S}.${junction} a WHERE a.course_id = c.id))::int`;
   const { rows } = await masterKnex.raw(
@@ -24,6 +25,11 @@ export async function verifyFieldCoverage(jobId: string) {
     { jobId },
   );
   const { total, ...counts } = rows[0] as Record<string, number>;
+  return { total, counts };
+}
+
+export async function verifyFieldCoverage(jobId: string) {
+  const { total, counts } = await fieldCoverage(jobId);
   if (!total) return;
   const pct = Object.fromEntries(Object.entries(counts).map(([k, n]) => [k, Math.round((n / total) * 100)]));
   const ranked = Object.entries(pct).sort((a, b) => a[1] - b[1]);

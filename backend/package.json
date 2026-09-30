@@ -52,6 +52,7 @@
     "test:jev-linker": "node --import tsx tests/jev-linker.ts",
     "test:jev-client": "node --import tsx tests/jev-client.ts",
     "test:post-extraction-chain": "node --import tsx tests/post-extraction-chain.ts",
+    "test:completion-email": "node --import tsx tests/completion-email.ts",
     "test:courselist": "node --import tsx tests/courselist-parser.ts",
     "test:classify-failure": "node --import tsx tests/classify-failure.ts",
     "test:agentcis-duration": "node --import tsx tests/agentcis-duration.ts",

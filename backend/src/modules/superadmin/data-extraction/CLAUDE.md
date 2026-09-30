@@ -744,7 +744,11 @@ dead page is retried is a `fresh` re-snapshot (`listActiveSiteUrls(jobId, { incl
 because liveness is only knowable by fetching. The exception is an admin re-adding the URL: `addSiteUrl`'s
 merge clears `dead_reason` along with `excluded`, otherwise the UI reported the add as successful while
 every active read still skipped the row (review fix, 2026-09-23). `siteUrlCounts.dead` feeds the tab's Inactive capsule;
-Active there is `total − excluded − dead`. Dead pages have no `extraction_pages` row (`getPage` does
+Active there is `total − excluded − dead`. **Our own scraper failing is not a dead page** (2026-09-30):
+`deadReasonOf` returns `"scraper_down"` when `isScraperInfraFailure(page.error)` (leaked Scrapling,
+no Firecrawl credits) — counted as failed for the batch, never stamped, so the next snapshot retries it
+(Purdue lost 222 live programme pages to this). `ScrapeResult.scraplingError` carries why Scrapling
+failed before a fallback ran; `scrapeFailureText` shows both, while classification still reads `error`. Dead pages have no `extraction_pages` row (`getPage` does
 not store an unreadable result), so they are absent from the snapshots table by construction. The
 snapshots list now also carries `site_url_id` + `category_source` so the visible table's Category
 picker can PATCH the site-list row; the old Details sheet is commented out in `site-tab.tsx`, not
@@ -1191,6 +1195,31 @@ Same pass, also 2026-09-30:
   | `JEV_LINK_MIN` | `jev-linker.ts` ← step `link_entities` (dispatched by the verify worker; also runnable alone) | links campuses, intakes, units, fees, requirements, scholarships, accreditations to courses: code finds candidates (name/code/amount on the course's OWN page; every scholarship/accreditation), Jev confirms the page states the relationship. Units and requirements: orphans only; listing pages (one URL, several courses): orphans only; AgentCIS: only a kind the course has none of. Re-runs skip linked pairs; `dryRun` counts candidates (one real job: 11,706 → 360 after the orphan rules). Study options (6 orphans) and agents (no course junction) are not linked. Courses with no stored page snapshot get nothing — there is no evidence to link from. |
   `scripts/eval-jev-page-gate.ts` measures the page gate and the URL classifier on labelled pages;
   the course check and pickers have no offline labels yet — start their thresholds high.
+
+## Extraction-complete email (2026-09-30)
+
+Not a V2 behaviour — explicitly requested. `lib/completion-email.ts` `sendCompletionEmail` mails the
+OWNER when a BUSINESS USER'S OWN extraction finishes (user decision: "no need to send email if it's run by
+an admin"). Rules, all in the one function:
+- **Owner's run only** (`isOwnerRun`): `source_type` is `institution_self_service` / `business_self_service`
+  (created only by the portal's "start extraction") AND `updated_by_platform_user_id` is null. Every admin
+  action that starts or continues a run (rerun, resume, deep scrape, reset, run step) stamps that column —
+  `dispatchStep` stamps it before publishing, except for the portal's page-correction re-extraction
+  (`triggerCourseReExtraction`, `actor: "owner"`); nothing else the owner does in the portal writes it. So an admin crawl, and an owner's job an admin re-ran,
+  are silent — no email, no timeline event. Ceiling: job-level, so an admin pausing or editing the
+  owner's run also suppresses it.
+- **Claimed listing only** (`isOwned`: `claim_status = 'claimed'`; sign-up creates theirs claimed). The
+  owner (`institutions.platform_user_id` / `businesses.owner_id`) first, else the listing's own `email`;
+  any `.invalid` placeholder address is refused.
+- **Once per run, retryable**: `pipeline_progress.completion_email`, cleared by the job worker's wholesale
+  rewrite at every run start. `"sent"` is taken just before `queueEmail` and RELEASED if the send fails;
+  `"skipped"` only dedupes the timeline event and does not block a later send in the same run.
+- **After linking**: sent from `handleLinkEntitiesStep` when Jev linking runs (even if it fails), otherwise
+  (or if the link dispatch fails) from the verify worker; only while the job is `review`, since
+  `link_entities` can also be run by hand mid-crawl.
+Template `extractionCompleteEmail` (`shared/mail/templates.ts`, shared `emailLayout`, CTA to
+`WEB_APP_URL/business/portal`); timeline events `completion_email_sent` (masked address) / `_skipped` /
+`_failed`. Never throws. `test:completion-email`.
 
 ## External FK columns
 

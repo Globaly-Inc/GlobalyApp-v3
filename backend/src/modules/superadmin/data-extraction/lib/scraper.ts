@@ -58,6 +58,13 @@ export interface ScrapeResult {
   blocked?: boolean;
   notFound?: boolean;
   error?: string;
+  scraplingError?: string;
+}
+
+/** `error`, naming Scrapling's failure too when a fallback ran after it. */
+export function scrapeFailureText(r: { error?: string; scraplingError?: string }): string | undefined {
+  if (!r.scraplingError) return r.error;
+  return `${r.error ?? "no content"} (after Scrapling failed: ${r.scraplingError})`;
 }
 
 export interface MapOptions {
@@ -691,6 +698,7 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
   const fcKey = getFirecrawlKey();
   const scrapling = getScraplingConfig();
   const c4 = opts.forceFirecrawl ? null : getCrawl4aiConfig();
+  let scraplingError: string | undefined;
 
   // Path 0: Scrapling available
   if (scrapling) {
@@ -713,7 +721,8 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
     // blocked: true is the shape every caller already branches on for "no page to process";
     // notFound tells the page worker to file it as not_found rather than anti_bot.
     if (s.notFound) return { markdown: "", links: [], scraper: "scrapling", blocked: true, notFound: true, error: s.error };
-    logger.warn(`scrapling insufficient for ${url} (tier: ${s.tierUsed ?? "unknown"}) — falling through: ${s.error ?? "content too short"}`);
+    scraplingError = s.error ?? "content too short";
+    logger.warn(`scrapling insufficient for ${url} (tier: ${s.tierUsed ?? "unknown"}) — falling through: ${scraplingError}`);
   }
 
   // Path A: Crawl4AI available
@@ -742,7 +751,7 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
       }
       return {
         markdown: fc.markdown, links: fc.links, scraper: "firecrawl", blocked: true,
-        error: fc.error || a2.error || a1.error || unusableReason(fc.markdown),
+        error: fc.error || a2.error || a1.error || unusableReason(fc.markdown), scraplingError,
         notFound: isDeadUrlSignal(fc.markdown, fc.error)
           || isDeadUrlSignal(a2.markdown, a2.error)
           || isDeadUrlSignal(a1.markdown, a1.error),
@@ -750,7 +759,7 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
     }
     return {
       markdown: "", links: [], scraper: "crawl4ai", blocked: true,
-      error: a2.error || a1.error || unusableReason(a2.markdown),
+      error: a2.error || a1.error || unusableReason(a2.markdown), scraplingError,
       notFound: isDeadUrlSignal(a2.markdown, a2.error) || isDeadUrlSignal(a1.markdown, a1.error),
     };
   }
@@ -761,12 +770,12 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
     const usable = isUsableContent(fc.markdown);
     return {
       markdown: fc.markdown, links: fc.links, scraper: "firecrawl", blocked: !usable,
-      error: fc.error || (usable ? undefined : unusableReason(fc.markdown)),
+      error: fc.error || (usable ? undefined : unusableReason(fc.markdown)), ...(usable ? {} : { scraplingError }),
       notFound: !usable && isDeadUrlSignal(fc.markdown, fc.error),
     };
   }
 
-  return { markdown: "", links: [], scraper: "none", error: "No scraper configured (set CRAWL4AI_BASE_URL or FIRECRAWL_API_KEY)" };
+  return { markdown: "", links: [], scraper: "none", error: "No scraper configured (set CRAWL4AI_BASE_URL or FIRECRAWL_API_KEY)", scraplingError };
 }
 
 // ─── URL discovery ──────────────────────────────────────────────────────────
