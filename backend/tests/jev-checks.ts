@@ -134,6 +134,11 @@ _jevDeps.systemOne = (async () => { throw new Error("429"); }) as unknown as typ
   eq(v.get(urls[1]), { category: "course", source: "heuristic" }, "Jev never demotes a URL the heuristic calls a course");
   eq(v.get(urls[2]), { category: "about_us", source: "heuristic" }, "an unconfident URL keeps the heuristic verdict");
   eq(v.get(urls[3]), { category: "scholarships", source: "jev" }, "a confident Jev answer places what the heuristic could not");
+  const cat = ["https://catalog.x.edu/awards", "https://catalog.x.edu/scholarships"];
+  const onCatalogue = jevVerdicts(cat, new Map([[cat[0], "scholarships" as SiteUrlCategory]]), new Map(), () => true,
+    (u) => (u.endsWith("/scholarships") ? "scholarships" : null));
+  eq([onCatalogue.get(cat[0])?.category, onCatalogue.get(cat[1])?.category], ["scholarships", "scholarships"],
+    "on a catalogue host, a Jev or path scholarship verdict beats the course heuristic");
   const unsure = jevVerdicts(["https://x.edu/p/123"], new Map(), new Map(), () => false, () => null);
   eq(unsure.get("https://x.edu/p/123"), null, "unsure Jev + no heuristic → unplaced (goes to the model pass), never 'other'");
   eq(v.get("https://x.edu/apply"), { category: "eligibility", source: "guided" }, "guided always wins, even off the list");

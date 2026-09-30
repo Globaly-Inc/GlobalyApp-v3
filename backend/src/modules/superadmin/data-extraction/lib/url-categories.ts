@@ -102,7 +102,10 @@ export function categoriesFor(
   for (const url of urls) {
     const g = guided.get(url);
     if (g) { out.set(url, { category: g, source: "guided" }); continue; }
-    if (picked.has(url)) { out.set(url, { category: "course", source: pickSource }); continue; }
+    // A scholarship path beats the course pick: on a catalogue host looksLikeCourseUrl says "course"
+    // for EVERY URL (catalog.x.edu/scholarships included), and a scholarship page queued as a course
+    // page is refused by the course prompt, so its awards are never extracted.
+    if (picked.has(url) && heuristicCategory(url) !== "scholarships") { out.set(url, { category: "course", source: pickSource }); continue; }
     const h = heuristicCategory(url);
     out.set(url, h ? { category: h, source: "heuristic" } : null);
   }

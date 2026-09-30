@@ -60,7 +60,11 @@ export function jevVerdicts(
     const g = guided.get(url);
     const j = jev.get(url);
     const h = heuristic(url);
+    // Scholarship pages outrank the course heuristic (a catalogue host makes every URL "course"),
+    // whether Jev says so or the path does — otherwise the scholarships step never sees them.
     out.set(url, g ? { category: g, source: "guided" }
+      : j === "scholarships" ? { category: j, source: "jev" }
+        : h === "scholarships" ? { category: h, source: "heuristic" }
       : isCourse(url) ? { category: "course", source: "heuristic" }
         : j ? { category: j, source: "jev" }
           : h ? { category: h, source: "heuristic" }

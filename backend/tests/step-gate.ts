@@ -145,6 +145,9 @@ console.log("\n6. URL categories");
   assert(v("https://x.edu/g-courses")?.category === "course" && v("https://x.edu/g-courses")?.source === "guided", "a guided URL not on the list is still categorised", [...cats]);
   const heur = categoriesFor(["https://x.edu/a"], new Set(["https://x.edu/a"]), new Map(), "heuristic");
   assert(heur.get("https://x.edu/a")?.source === "heuristic", "a heuristic-only course pass is not blamed on the model", [...heur]);
+  // A catalogue host makes looksLikeCourseUrl pick EVERY URL, scholarships included.
+  const sch = categoriesFor(["https://catalog.x.edu/scholarships"], new Set(["https://catalog.x.edu/scholarships"]), new Map(), "heuristic");
+  assert(sch.get("https://catalog.x.edu/scholarships")?.category === "scholarships", "a scholarship path beats the course pick", [...sch]);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

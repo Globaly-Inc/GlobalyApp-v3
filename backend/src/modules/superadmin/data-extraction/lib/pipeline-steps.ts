@@ -432,7 +432,19 @@ export async function runUrlClassify(jobId: string, job: JobRow): Promise<{ cour
     // What neither Jev (confidently) nor a heuristic could place still gets the lite-model pass —
     // Jev unsure must mean "no Jev", never "other" (review, 2026-09-30).
     const unplaced = [...placed].filter(([, v]) => v === null).map(([u]) => u).slice(0, CLASSIFY_ALL_CAP);
-    const modelled = unplaced.length ? await categoriseWithModel(jobId, unplaced) : new Map<string, SiteUrlCategory>();
+    // A failed fallback must not fail the step: every URL already placed keeps its verdict and the
+    // unplaced remainder becomes "other" (the same as a URL the model was shown and did not return).
+    const modelled = unplaced.length
+      ? await categoriseWithModel(jobId, unplaced).catch(async (err) => {
+        logger.warn("URL category fallback failed; keeping Jev/heuristic verdicts", { jobId, err: String(err) });
+        await _stepDeps.writeEvent(jobId, "url_category_fallback_failed", {
+          level: "warn", phase: "course_discovery",
+          message: `The model pass for ${unplaced.length} unplaced URLs failed — they are filed as "other"; re-run url_classify to retry`,
+          data: { unplaced: unplaced.length, error: String(err).slice(0, 300) },
+        });
+        return new Map<string, SiteUrlCategory>();
+      })
+      : new Map<string, SiteUrlCategory>();
     const tried = new Set(unplaced);
     const verdicts = new Map<string, CategoryVerdict>();
     for (const [url, v] of placed) {
