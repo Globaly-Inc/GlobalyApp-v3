@@ -30,3 +30,16 @@ export type AcceptInstitutionMemberInviteResult = {
   message: string;
   org_id: string;
 };
+
+export type OnboardingInviteType = "institution" | "business";
+
+export type AcceptOnboardingInviteParams = {
+  token: string;
+  type: OnboardingInviteType;
+};
+
+/** No session on purpose — the user signs in with an OTP, so a mail scanner opening the link can't. */
+export type AcceptOnboardingInviteResult = {
+  email: string;
+  type: OnboardingInviteType;
+};

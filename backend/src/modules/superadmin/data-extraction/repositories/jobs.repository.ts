@@ -210,15 +210,17 @@ export function normaliseHost(url: string): string | null {
   }
 }
 
-export async function findJobByInstitutionHost(institutionUrl: string, db: Knex = masterKnex) {
+export async function findJobByInstitutionHost(institutionUrl: string, db: Knex = masterKnex, ignoreJobId?: string) {
   const host = normaliseHost(institutionUrl);
   if (!host) return null;
 
-  const rows = await db(`${T} as j`)
+  const query = db(`${T} as j`)
     .leftJoin(`${T_OVERVIEW} as o`, "o.job_id", "j.id")
     .select("j.id", "j.institution_url", "o.website", "o.email", "o.phone")
     .select(db.raw("coalesce(j.institution_name, o.name) as institution_name"))
     .whereNot("j.status", "declined");
+  if (ignoreJobId) query.whereNot("j.id", ignoreJobId);
+  const rows = await query;
 
   return rows.find((r) => normaliseHost(r.institution_url) === host || (r.website && normaliseHost(r.website) === host)) ?? null;
 }
@@ -250,6 +252,22 @@ export async function selfServiceJobIds(ids: string[]): Promise<Set<string>> {
 export async function findJobSourceType(id: string): Promise<string | null> {
   const row = await masterKnex(T).where({ id }).first("source_type");
   return row?.source_type ?? null;
+}
+
+/**
+ * A listing's job that holds no extraction of its own, so the owner may start a real one over it:
+ * sign-up's `self_service` placeholder, or an invited (admin-created) institution's `manual` job the
+ * admin never put a course or branch on. A manual job WITH data is the listing's hand-built
+ * catalogue — replacing it would detach those rows, so it does not count.
+ */
+export async function isPlaceholderJob(id: string, db: Knex = masterKnex): Promise<boolean> {
+  const row = await db(T).where({ id }).first("source_type");
+  if (row?.source_type === "self_service") return true;
+  if (row?.source_type !== "manual") return false;
+  const hasData = await db.raw(
+    `select exists (select 1 from superadmin.extraction_courses where job_id = ?)
+         or exists (select 1 from superadmin.extraction_campuses where job_id = ?) as has`, [id, id]);
+  return !hasData.rows[0].has;
 }
 
 export async function syncOwnedJobUrl(jobId: string, website: string) {

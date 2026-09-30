@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useSyncExternalStore } from "react";
 import { greeting } from "../utils";
 import type { OnboardingProgress } from "../../apis/types";
 
@@ -20,6 +20,8 @@ function ProgressRing({ value, total }: Readonly<{ value: number; total: number 
   );
 }
 
+const noopSubscribe = () => () => {};
+
 /**
  * The portal home's hero — a greeting plus how far along the onboarding checklist is, so the
  * capsule on the right always names the single next thing to do. The clock/weather/timezone hero
@@ -30,8 +32,7 @@ export function PortalHero({
   orgName,
   progress,
 }: Readonly<{ orgName: string; progress: OnboardingProgress | null }>) {
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useSyncExternalStore(noopSubscribe, () => true, () => false);
 
   const nextStep = progress?.steps.find((s) => !s.done);
 

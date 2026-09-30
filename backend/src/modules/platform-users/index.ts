@@ -11,6 +11,7 @@ import { institutionPartnersRoutes } from "./routes/institution-partners.routes.
 import { institutionBranchesRoutes } from "./routes/institution-branches.routes.js";
 import { institutionRolesRoutes } from "./routes/institution-roles.routes.js";
 import { publicLookupRoutes } from "./routes/public-lookup.routes.js";
+import { onboardingInvitationAcceptRoutes } from "./routes/onboarding-invitation-accept.routes.js";
 
 export default async function platformUsersModule(app: FastifyInstance) {
   app.register(platformUserRoutes, { prefix: "/api/v3/platform-users" });
@@ -30,4 +31,5 @@ export default async function platformUsersModule(app: FastifyInstance) {
  */
 export async function publicPlatformUsersModule(app: FastifyInstance) {
   app.register(publicLookupRoutes, { prefix: "/api/v3/platform-users" });
+  app.register(onboardingInvitationAcceptRoutes, { prefix: "/api/v3/onboarding-invitations" });
 }

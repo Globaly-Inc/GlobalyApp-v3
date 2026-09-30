@@ -19,6 +19,16 @@ export interface OnboardingProgress {
   steps: OnboardingStep[];
   completed: number;
   total: number;
+  /**
+   * Play the welcome splash on the portal? NOT a checklist step — there is nothing to tick off.
+   *
+   * Set only when an onboarding invitation is accepted, cleared when the splash is dismissed, and
+   * false by default — so an org that predates this, or has no row at all, is never shown one.
+   *
+   * It rides along here because the portal already fetches this on mount, and one boolean does not
+   * deserve its own round trip.
+   */
+  showWelcome: boolean;
 }
 
 function buildSteps(input: {
@@ -68,19 +78,31 @@ function buildSteps(input: {
   return steps;
 }
 
-function summarize(steps: OnboardingStep[]): OnboardingProgress {
-  return { steps, completed: steps.filter((s) => s.done).length, total: steps.length };
+function summarize(steps: OnboardingStep[], row: repo.OnboardingProgressRow | undefined): OnboardingProgress {
+  return {
+    steps,
+    completed: steps.filter((s) => s.done).length,
+    total: steps.length,
+    showWelcome: !!row?.welcome_pending,
+  };
 }
 
-/** `installed` needs a real visitor, not just an active config — an owner can flip a config
- *  active without ever pasting the embed snippet on their site. */
+/**
+ * `installed` needs a real visitor, not just an active config — an owner can flip a config active
+ * without ever pasting the embed snippet on their site.
+ *
+ * `customised` needs a name or greeting, not merely a row: the portal's AI-embed card mints a
+ * default widget for every org the first time it loads, so existence alone would tick "Customise
+ * your AI assistant" for people who have never opened it.
+ */
 async function aiWidgetState(
   db: Knex, column: "business_id" | "institution_id", id: number,
-): Promise<{ exists: boolean; installed: boolean }> {
-  const row = await masterKnex("ai_embed_configs").where({ [column]: id }).first("id");
-  if (!row) return { exists: false, installed: false };
+): Promise<{ customised: boolean; installed: boolean }> {
+  const row = await masterKnex("ai_embed_configs").where({ [column]: id })
+    .orderBy("created_at", "asc").first("id", "display_name", "greeting");
+  if (!row) return { customised: false, installed: false };
   const visitor = await db("ai_widget_visitors").where({ embed_config_id: row.id }).first("id");
-  return { exists: true, installed: !!visitor };
+  return { customised: !!(row.display_name || row.greeting), installed: !!visitor };
 }
 
 async function extractionHasData(sourceJobId: string | null): Promise<boolean> {
@@ -110,10 +132,10 @@ export async function getBusinessOnboardingProgress(
     // ponytail: a plain business's own services aren't counted — only the institution path gates.
     hasCourses: true,
     reviewedCoursesAt: progress?.reviewed_courses_at ?? null,
-    hasAiWidget: widget.exists,
+    hasAiWidget: widget.customised,
     widgetInstalled: widget.installed,
     teamInvited: memberCount > 1 || pendingInvites > 0,
-  }));
+  }), progress);
 }
 
 export async function getInstitutionOnboardingProgress(
@@ -135,11 +157,15 @@ export async function getInstitutionOnboardingProgress(
     extractionHasData: hasData,
     hasCourses: hasData || hasOwnCourses,
     reviewedCoursesAt: progress?.reviewed_courses_at ?? null,
-    hasAiWidget: widget.exists,
+    hasAiWidget: widget.customised,
     widgetInstalled: widget.installed,
     teamInvited: Number(count) > 1 || pendingInvites > 0,
-  }));
+  }), progress);
 }
 
+export const markWelcomePendingForBusiness = repo.markWelcomePendingForBusiness;
+export const markWelcomePendingForInstitution = repo.markWelcomePendingForInstitution;
+export const clearWelcomePendingForBusiness = repo.clearWelcomePendingForBusiness;
+export const clearWelcomePendingForInstitution = repo.clearWelcomePendingForInstitution;
 export const markCoursesReviewedForBusiness = repo.markCoursesReviewedForBusiness;
 export const markCoursesReviewedForInstitution = repo.markCoursesReviewedForInstitution;

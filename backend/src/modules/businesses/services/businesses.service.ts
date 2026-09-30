@@ -26,10 +26,10 @@ import { createJob, getSelfServiceStatus } from "../../superadmin/data-extractio
 import * as jobsRepo from "../../superadmin/data-extraction/repositories/jobs.repository.js";
 import { isInstitutionCategory } from "../../superadmin/data-extraction/repositories/promote.repository.js";
 import { listSiteUrls, getSnapshotMarkdownByUrl, updateSnapshotMarkdown, refreshSiteUrls } from "../../superadmin/data-extraction/services/site-urls.service.js";
-import { getBusinessOnboardingProgress, markCoursesReviewedForBusiness } from "./onboarding-progress.service.js";
-import { parentExtraction } from "./parent-extraction.service.js";
+import { getBusinessOnboardingProgress, markCoursesReviewedForBusiness, clearWelcomePendingForBusiness } from "./onboarding-progress.service.js";
 import { getWidgetAnalytics } from "../../ai-counsellor/services/widget-analytics.service.js";
 import * as branchesRepo from "../../superadmin/platform/business-branches/repositories/business-branches.repository.js";
+import { parentExtraction } from "./parent-extraction.service.js";
 
 const logger = createChildLogger("businesses-service");
 const CLAIM_TOKEN_TTL_MS = 72 * 60 * 60 * 1000; // 72 hours, matching admin claim-request convention
@@ -356,6 +356,13 @@ export async function markOnboardingCoursesReviewed(orgId: string) {
   if (!business) throw new NotFoundError("Business not found");
   await markCoursesReviewedForBusiness(Number(business.id));
   return { reviewed: true };
+}
+
+export async function markOnboardingWelcomeSeen(orgId: string) {
+  const business = await repo.findBusinessByDbName(orgId);
+  if (!business) throw new NotFoundError("Business not found");
+  await clearWelcomePendingForBusiness(Number(business.id));
+  return { seen: true };
 }
 
 export async function getMyWidgetAnalytics(orgId: string) {

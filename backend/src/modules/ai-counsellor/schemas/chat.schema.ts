@@ -76,6 +76,13 @@ export const EmbedConfigUpdateSchema = z.object({
 }).strict();
 export type EmbedConfigUpdateInput = z.infer<typeof EmbedConfigUpdateSchema>;
 
+export const SendSnippetSchema = z.object({
+  invitee: z.object({
+    name: z.string().trim().min(1).max(200),
+    email: z.string().trim().toLowerCase().email().max(320),
+  }).strict().optional(),
+}).strict();
+
 export const EmbedConfigIdParamSchema = z.object({
   id: z.coerce.number().int().positive(),
 });

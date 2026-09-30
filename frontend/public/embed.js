@@ -38,9 +38,9 @@
   var origin = new URL(script.src, location.href).origin;
   var side = script.getAttribute("data-position") === "left" ? "left" : "right";
   var reduceMotion = false;
-  try { reduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches); } catch (e) {}
+  try { reduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches); } catch {}
 
-  // Brand colour → the glow under the orb. Default is the app's indigo.
+  // Brand colour → the orb's own fill, not just a glow under it. Default is the app's indigo.
   var brand = [79, 70, 229];
   function parseHex(hex) {
     var m = /^#?([0-9a-f]{6})$/i.exec(String(hex || "").trim());
@@ -49,9 +49,35 @@
     return [(n >> 16) & 255, (n >> 8) & 255, n & 255];
   }
   function rgba(c, a) { return "rgba(" + c[0] + "," + c[1] + "," + c[2] + "," + a + ")"; }
+  function rgb(c) { return "rgb(" + c[0] + "," + c[1] + "," + c[2] + ")"; }
+
+  /** WCAG relative luminance. */
+  function luminance(c) {
+    var lin = [];
+    for (var j = 0; j < 3; j++) {
+      var s = c[j] / 255;
+      lin.push(s <= 0.03928 ? s / 12.92 : Math.pow((s + 0.055) / 1.055, 2.4));
+    }
+    return 0.2126 * lin[0] + 0.7152 * lin[1] + 0.0722 * lin[2];
+  }
+
+  var INK = "#0B1220";
+  // Derived, never typed in: a literal here drifts from the panel's and moves the crossover.
+  var INK_L = luminance([0x0b, 0x12, 0x20]);
+
+  /**
+   * Readable foreground for the brand fill, measured rather than assumed — a tenant can save any
+   * hex, and a white mark on a bright yellow orb is invisible. Mirrors widgetTheme's `onAccent`
+   * in the panel (src/app/embed/[key]/utils), so the orb and the panel header never disagree.
+   */
+  function onBrand(c) {
+    var L = luminance(c);
+    return (L + 0.05) / (INK_L + 0.05) > 1.05 / (L + 0.05) ? INK : "#FFFFFF";
+  }
+
   function glow(strong) {
-    return "0 " + (strong ? 12 : 8) + "px " + (strong ? 32 : 24) + "px " + rgba(brand, strong ? 0.45 : 0.35) +
-      ",0 0 0 " + (strong ? 4 : 3) + "px " + rgba(brand, 0.18);
+    return "0 " + (strong ? 12 : 8) + "px " + (strong ? 32 : 24) + "px " + rgba(brand, strong ? 0.45 : 0.3) +
+      ",0 0 0 1px " + rgba(brand, 0.1);
   }
 
   var root = document.createElement("div");
@@ -61,7 +87,9 @@
   root.style.cssText = "position:fixed;bottom:20px;" + side + ":20px;z-index:2147480000";
 
   var panel = document.createElement("iframe");
-  panel.title = "AI Counsellor";
+  // Mirrors DEFAULT_WIDGET_NAME in src/app/embed/[key]/const — a static file served to
+  // third-party sites cannot import it, so the two are kept in step by hand.
+  panel.title = "Aly";
   panel.setAttribute("allow", "clipboard-write");
   // Created hidden and with no src: the chat page (and its credit-consuming session)
   // must not load until someone actually opens the widget.
@@ -76,22 +104,33 @@
 
   var button = document.createElement("button");
   button.type = "button";
-  button.setAttribute("aria-label", "Ask our AI counsellor");
+  button.setAttribute("aria-label", "Ask Aly");
   button.setAttribute("aria-expanded", "false");
   button.style.cssText =
-    "position:relative;width:56px;height:56px;padding:0;border:0;border-radius:9999px;background:#fff;cursor:pointer;" +
+    "position:relative;width:56px;height:56px;padding:0;border:0;border-radius:9999px;background:" + rgb(brand) + ";cursor:pointer;" +
     "display:flex;align-items:center;justify-content:center;overflow:hidden;box-shadow:" + glow(false) +
     ";transition:transform .18s ease-out,box-shadow .18s ease-out;-webkit-appearance:none;appearance:none";
   button.onmouseenter = function () { if (!open) { button.style.transform = "scale(1.06)"; button.style.boxShadow = glow(true); } };
   button.onmouseleave = function () { button.style.transform = ""; button.style.boxShadow = glow(false); };
+  // Keyboard users get the same ring the panel uses; the host's :focus styles can't reach here.
+  button.onfocus = function () { button.style.boxShadow = glow(true) + ",0 0 0 3px " + rgba(brand, 0.35); };
+  button.onblur = function () { button.style.boxShadow = glow(false); };
 
-  // The orb only fills the middle ~59% of its frame, so it is scaled up and nudged down to
-  // sit centred in the button — same correction the in-app AlyOrbIcon applies.
-  var orb = document.createElement("img");
-  orb.src = origin + "/globaly-orb-azure.svg";
-  orb.alt = "";
+  // A neutral speech mark in the measured foreground, not the azure Globaly orb: on a customer's
+  // own website the launcher should read as THEIR assistant. Inline SVG rather than an <img>, so
+  // it recolours with the brand and costs no second request.
+  var orb = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  orb.setAttribute("viewBox", "0 0 24 24");
+  orb.setAttribute("width", "26");
+  orb.setAttribute("height", "26");
   orb.setAttribute("aria-hidden", "true");
-  orb.style.cssText = "width:56px;height:56px;transform:translateY(3.1%) scale(1.75)";
+  var bubble = document.createElementNS("http://www.w3.org/2000/svg", "path");
+  bubble.setAttribute("d", "M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7A8.5 8.5 0 0 1 12.5 3a8.38 8.38 0 0 1 8.5 8.5z");
+  bubble.setAttribute("fill", "none");
+  bubble.setAttribute("stroke-width", "2");
+  bubble.setAttribute("stroke-linecap", "round");
+  bubble.setAttribute("stroke-linejoin", "round");
+  orb.appendChild(bubble);
 
   // Open state: a chevron in the brand colour, not an "×" — the same target closes it again.
   var chevron = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -108,11 +147,73 @@
   path.setAttribute("stroke-linejoin", "round");
   chevron.appendChild(path);
 
+  /**
+   * A one-time nudge beside the orb. A bare circle gives a visitor no reason to click it; this
+   * says what the thing is for. Shown once per browser — a teaser that returns on every page view
+   * is an ad, not an offer — and dismissed by opening the widget, by its own close control, or by
+   * a timeout. Storage is the HOST's origin and some sites block it, so every access is guarded
+   * and a failure just means the teaser shows again rather than breaking the launcher.
+   */
+  var TEASER_KEY = "globaly_teaser_seen";
+  function teaserSeen() {
+    try { return localStorage.getItem(TEASER_KEY) === "1"; } catch { return false; }
+  }
+  function markTeaserSeen() {
+    try { localStorage.setItem(TEASER_KEY, "1"); } catch {}
+  }
+
+  var teaser = document.createElement("div");
+  teaser.style.cssText =
+    "display:none;position:absolute;bottom:4px;" + (side === "right" ? "right:70px" : "left:70px") +
+    ";max-width:240px;padding:10px 12px;border-radius:14px;border:1px solid " + rgba(brand, 0.25) +
+    ";background:#fff;color:#0B1220;font:500 13px/18px -apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;" +
+    "box-shadow:0 8px 28px rgba(0,0,0,.16);text-align:left;white-space:normal";
+
+  var teaserText = document.createElement("span");
+  teaserText.textContent = "Ask me about fees, intakes or entry requirements.";
+  teaser.appendChild(teaserText);
+
+  var teaserClose = document.createElement("button");
+  teaserClose.type = "button";
+  teaserClose.setAttribute("aria-label", "Dismiss");
+  teaserClose.textContent = "×";
+  teaserClose.style.cssText =
+    "position:absolute;top:-8px;" + (side === "right" ? "left:-8px" : "right:-8px") +
+    ";width:22px;height:22px;padding:0;border:1px solid rgba(0,0,0,.08);border-radius:9999px;background:#fff;" +
+    "color:#64748B;font-size:14px;line-height:20px;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,.12)";
+
+  function hideTeaser() {
+    teaser.style.display = "none";
+    markTeaserSeen();
+  }
+  teaserClose.onclick = function (e) { e.stopPropagation(); hideTeaser(); };
+  teaser.appendChild(teaserClose);
+
   function paint() {
+    var fg = onBrand(brand);
+    button.style.background = rgb(brand);
     button.style.boxShadow = glow(false);
-    path.setAttribute("stroke", "rgb(" + brand.join(",") + ")");
+    bubble.setAttribute("stroke", fg);
+    path.setAttribute("stroke", fg);
+    teaser.style.borderColor = rgba(brand, 0.25);
   }
   paint();
+
+  // After the page has settled, so it reads as an offer rather than an interruption on load.
+  if (!teaserSeen()) {
+    setTimeout(function () {
+      if (open || teaserSeen()) return;
+      teaser.style.display = "block";
+      if (!reduceMotion && teaser.animate) {
+        teaser.animate(
+          [{ opacity: 0, transform: "translateY(6px) scale(.96)" }, { opacity: 1, transform: "none" }],
+          { duration: 320, easing: "cubic-bezier(.2,.8,.2,1)" }
+        );
+      }
+      // Unclaimed after a while is a no — stop occupying the corner of someone's website.
+      setTimeout(function () { if (teaser.style.display === "block") hideTeaser(); }, 12000);
+    }, 2500);
+  }
 
   // Breathing while idle. Web Animations, not a keyframes rule, so nothing is injected into
   // the host's stylesheets; honours reduced motion by never starting.
@@ -127,14 +228,32 @@
   var open = false;
   button.onclick = function () {
     open = !open;
+    if (open) hideTeaser();
     if (open && !panel.src) panel.src = origin + "/embed/" + encodeURIComponent(key);
     panel.style.cssText = isMobile() ? PANEL_MOBILE : PANEL_DESKTOP;
     panel.style.display = open ? "block" : "none";
     orb.style.display = open ? "none" : "block";
     chevron.style.display = open ? "block" : "none";
+
+    // Grows out of the orb instead of appearing: the corner it expands from is the control that
+    // opened it, which is what makes the panel feel attached to the button rather than dropped on
+    // top of the host's page. Desktop only — on mobile the panel IS the screen, so there is no
+    // corner to grow from. Web Animations, never a keyframes rule: nothing may enter the host's
+    // stylesheets.
+    if (open && !reduceMotion && panel.animate && !isMobile()) {
+      panel.animate(
+        [
+          { opacity: 0, transform: "translateY(12px) scale(.94)" },
+          { opacity: 1, transform: "none" },
+        ],
+        { duration: 260, easing: "cubic-bezier(.2,.8,.2,1)" }
+      );
+      panel.style.transformOrigin = side === "right" ? "bottom right" : "bottom left";
+    }
+
     if (breathe) { if (open) breathe.pause(); else breathe.play(); }
     button.setAttribute("aria-expanded", open ? "true" : "false");
-    button.setAttribute("aria-label", open ? "Close AI counsellor" : "Ask our AI counsellor");
+    button.setAttribute("aria-label", open ? "Close Aly" : "Ask Aly");
   };
   window.addEventListener("resize", function () {
     if (open) { panel.style.cssText = isMobile() ? PANEL_MOBILE : PANEL_DESKTOP; panel.style.display = "block"; }
@@ -143,6 +262,7 @@
   button.appendChild(orb);
   button.appendChild(chevron);
   root.appendChild(panel);
+  root.appendChild(teaser);
   root.appendChild(button);
 
   // The tag is async, so the body may not exist yet on a slow parse.
@@ -160,6 +280,11 @@
         if (cfg.display_name) {
           panel.title = cfg.display_name;
           button.setAttribute("aria-label", open ? "Close " + cfg.display_name : "Ask " + cfg.display_name);
+        }
+        // The tenant's own opening line, so the nudge speaks in their voice rather than ours.
+        // Capped because this is a 240px bubble on someone else's page, not a paragraph.
+        if (cfg.greeting && String(cfg.greeting).trim().length <= 90) {
+          teaserText.textContent = String(cfg.greeting).trim();
         }
       })
       .catch(function () {});

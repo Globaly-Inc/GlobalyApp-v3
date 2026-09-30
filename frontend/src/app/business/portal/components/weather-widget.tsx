@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { Cloud, CloudFog, CloudRain, CloudSnow, Droplets, MapPinOff, Sun, Wind, Zap } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollRow } from "@/components/scroll-row";
@@ -22,21 +22,22 @@ function WeatherIcon({ code, className }: { code: number; className?: string }) 
   return <Cloud className={className} />;
 }
 
+const noopSubscribe = () => () => {};
+
 /**
  * Secondary by design. Open-Meteo and Nominatim are unauthenticated third parties, so a denied permission or
  * any fetch failure just shows a message here — it never touches which widget the toggle has selected.
  */
 export function WeatherWidget() {
   const [weather, setWeather] = useState<WeatherSnapshot | null>(null);
-  const [unavailable, setUnavailable] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const supported = useSyncExternalStore(noopSubscribe, () => !!navigator.geolocation, () => true);
+  const unavailable = failed || !supported;
 
   useEffect(() => {
     let cancelled = false;
 
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setUnavailable(true);
-      return;
-    }
+    if (!navigator.geolocation) return;
 
     navigator.geolocation.getCurrentPosition(
       async ({ coords }) => {
@@ -79,12 +80,12 @@ export function WeatherWidget() {
             })),
           });
         } catch {
-          if (!cancelled) setUnavailable(true);
+          if (!cancelled) setFailed(true);
         }
       },
       // Permission denied or position unavailable — fall back, silently.
       () => {
-        if (!cancelled) setUnavailable(true);
+        if (!cancelled) setFailed(true);
       },
       { timeout: 8000 },
     );

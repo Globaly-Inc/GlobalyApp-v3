@@ -6,8 +6,10 @@ import {
   EmbedConfigIdParamSchema,
   EmbedConfigUpdateSchema,
   EmbedKeyQuerySchema,
+  SendSnippetSchema,
   VisitorListQuerySchema,
 } from "../schemas/chat.schema.js";
+import { embedSnippet, findDeveloper, sendSnippetToDeveloper } from "../services/embed-handoff.service.js";
 import { buildPaginatedResponse } from "../../../shared/pagination.js";
 import * as embedRepo from "../repositories/embed.repository.js";
 import * as visitorsRepo from "../repositories/visitors.repository.js";
@@ -50,6 +52,50 @@ export async function embedRoutes(app: FastifyInstance) {
   app.get("/embed/configs", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
     const configs = await embedRepo.findByOwner(recipientFromRequest(req));
     return reply.send({ configs });
+  });
+
+  /**
+   * What the portal's AI-embed card opens with: the org's widget — minted on the spot if they have
+   * none — plus whoever the snippet would be mailed to, so the card knows whether to ask for one.
+   *
+   * POST, not GET, because the first call writes. Idempotent after that.
+   */
+  app.post("/embed/ensure", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
+    const owner = recipientFromRequest(req);
+    const existing = await embedRepo.findByOwner(owner);
+    const config = await embedRepo.ensureForOwner(owner);
+
+    // Only a genuinely new widget needs its owner's site crawled; re-indexing on every card view
+    // would re-crawl the whole site each time the portal home loads. Matched on id rather than
+    // `existing.length`: findByOwner counts INACTIVE rows too, so an org whose only widget was
+    // deactivated would be handed a brand-new one with no site index behind it.
+    if (!existing.some((c) => c.id === config.id)) startSiteIndex(owner);
+
+    const developer = await findDeveloper(req.db, owner.kind);
+    return reply.send({ config, snippet: embedSnippet(config.embed_key), developer });
+  });
+
+  /**
+   * Mail the snippet to the org's developer. With no developer on the team, `invitee` both invites
+   * one and addresses the mail — the card states that consequence before this is called.
+   *
+   * No config id: the card works on the one widget `ensureForOwner` resolves, which is owner-scoped
+   * by construction, so there is no id here to tamper with.
+   */
+  app.post("/embed/send-snippet", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
+    const { invitee } = SendSnippetSchema.parse(req.body ?? {});
+    const owner = recipientFromRequest(req);
+    const config = await embedRepo.ensureForOwner(owner);
+    const result = await sendSnippetToDeveloper({
+      db: req.db,
+      owner,
+      orgSchemaName: req.auth.orgId as string,
+      orgName: req.institution?.institution_name ?? req.business?.business_name ?? "Your organisation",
+      embedKey: config.embed_key,
+      inviterPlatformUserId: Number(req.auth.sub),
+      invitee,
+    });
+    return reply.send(result);
   });
 
   // Appearance + limits after creation. The key and the owner never change here.

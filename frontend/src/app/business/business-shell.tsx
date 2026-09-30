@@ -24,17 +24,11 @@ import { BUSINESS_NAV_GROUPS, INSTITUTION_SCHOLARSHIPS_ITEM, withBusinessId } fr
 import { BusinessSwitcher, type SwitcherOrg } from "./components/business-switcher";
 import { PortalSidebar } from "@/components/portal-sidebar";
 import { cn } from "@/lib/utils";
-import { ICON } from "@/lib/public-assets";
+import { ICON, APP_ICON_ATTR } from "@/lib/public-assets";
 import { PERSONAL_PORTAL_HOME, SHOW_HEADER_EXTRAS, SHOW_PERSONAL_PORTAL } from "@/app/personal/const";
 import { SIGN_IN_HREF } from "@/app/auth/const";
 
 const SHELL_WIDTH = "mx-auto w-full max-w-7xl px-3 sm:px-4 md:px-6";
-
-/**
- * Routes that render edge-to-edge under the header instead of inside SHELL_WIDTH. Chat is
- * an app surface, not a page in the content column: it owns the whole space below the
- * header and does its own bottom-nav math. Mirrors PersonalShell's list.
- */
 const FULL_BLEED_ROUTES = ["/business/messages"] as const;
 
 /** Same padding as SHELL_WIDTH but no max width — for the business profile's wide tables. */
@@ -57,15 +51,8 @@ function institutionsAsOrgs(institutions: AuthMeInstitution[]): SwitcherOrg[] {
   }));
 }
 
-// "Representative" is hidden for institutions for now — not a removal, just not shown here yet.
-// Order is explicit (Profile, Branches, Services, Scholarships, Team) rather than following
-// BUSINESS_NAV_GROUPS' own item order, which is tuned for the plain-business sidebar instead.
 const INSTITUTION_BUSINESS_ITEM_ORDER = ["Business Profile", "Branches", "Services", "Scholarships", "Team", "Visitors", "Site contents"];
-// Enquiries and Messages used to be hidden here: both called requireBusinessContext routes and
-// just produced a 403 for an institution. They now serve either org kind, because an enquiry
-// nobody represents falls back to the institution that owns the course and it works that lead in
-// these very screens. Everything else in the sidebar is a ComingSoon placeholder that makes no
-// requests, so it stays — so outside the Business group there is nothing left to filter.
+
 const INSTITUTION_NAV_GROUPS = BUSINESS_NAV_GROUPS.map((group) => {
   if (group.label !== "Business") return group;
   const byLabel = new Map([...group.items, INSTITUTION_SCHOLARSHIPS_ITEM].map((item) => [item.label, item]));
@@ -84,19 +71,10 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
   const dispatch = useAppDispatch();
   const { user } = useAuthState();
   const { profile, status, error } = useAppSelector((state) => state.businessOnboarding);
-
-  // Tenant-scoped endpoints 403 without an `orgId` claim, and login never issues
-  // one. Establish it here rather than in each page, so children can fetch
-  // freely — and hold them back until it resolves, or their mount-time fetch
-  // races the switch and 403s.
   const [contextReady, setContextReady] = useState(false);
   const [businesses, setBusinesses] = useState<SwitcherOrg[]>([]);
   const [institutionOrgIds, setInstitutionOrgIds] = useState<Set<string>>(new Set());
   const [activeOrgId, setActiveOrgId] = useState<string | null>(null);
-  // Next's router cache can rehydrate a previously-rendered page's HTML against a client Redux store
-  // that has since moved on (e.g. after a back/forward navigation) — `status`/`profile` in that cached
-  // HTML can genuinely disagree with the live store. Gate on `mounted` so the branch below matches
-  // whatever HTML is being hydrated against on the very first render.
   const [mounted, setMounted] = useState(false);
   useEffect(() => setMounted(true), []);
 
@@ -113,8 +91,6 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
     return merged;
   }, []);
 
-  // Creating a branch mints a new org and refetches /auth/me — reload the switcher when the
-  // membership count changes so it shows up without a page refresh.
   const orgCount = (user?.businesses?.length ?? 0) + (user?.institutions?.length ?? 0);
   const prevOrgCount = useRef(orgCount);
   useEffect(() => {
@@ -131,13 +107,8 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
         if (!active) return;
         const merged = await loadOrgs();
         if (!active) return;
-        // The saved pick can be stale (an org this account isn't in — e.g. after claiming a listing
-        // or another user on this browser): then nothing matched it, the nav fell back to the
-        // business menu and its links lost the org id. Only trust it when it's in the list.
         const saved = getSelectedOrgId();
         setActiveOrgId(merged.some((o) => o.org_id === saved) ? saved : [...merged].sort((a, b) => a.id - b.id)[0]?.org_id ?? null);
-        // A zero-org user has nothing for /businesses/me or /institutions/me to return.
-        // onboarding-view.tsx handles the empty case itself.
         if (merged.length > 0) dispatch(fetchMyProfile());
       })
       .finally(() => {
@@ -168,9 +139,6 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
     router.push(SIGN_IN_HREF);
   };
 
-  // Fresh business-track users (zero businesses) and an explicit "create another"
-  // request both need to reach the onboarding form with no chrome and no profile
-  // dependency — render it bare rather than gating on a fetch that never happens.
   const wantsNewBusiness = searchParams.get("new") === "1";
   const bareOnboarding = pathname === "/business/onboarding" && (businesses.length === 0 || wantsNewBusiness);
   const needsOnboardingRedirect = contextReady && businesses.length === 0 && pathname !== "/business/onboarding";
@@ -232,7 +200,7 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
       <header className="sticky top-0 z-40 h-16 shrink-0 border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
         <div className="flex h-16 items-center">
           <div className="flex h-16 shrink-0 items-center px-3 sm:px-4 md:w-20 md:justify-center md:px-0">
-            <Link href="/" className="flex shrink-0 items-center">
+            <Link href="/" className="flex shrink-0 items-center" {...{ [APP_ICON_ATTR]: "" }}>
               <Image src={ICON.src} alt="Globalyapp" width={ICON.width} height={ICON.height} className="size-9 rounded-[10px]" />
             </Link>
           </div>

@@ -1,32 +1,38 @@
 import { uuid } from "@/lib/utils";
 import type {
-  CreateEmbedConfigInput, EmbedConfig, UpdateEmbedConfigInput,
+  CreateEmbedConfigInput, DeveloperContact, EmbedConfig, EnsureEmbedResult,
+  SendSnippetInput, SendSnippetResult, UpdateEmbedConfigInput,
   VisitorCounts, VisitorListParams, VisitorListResult, VisitorMessage, VisitorPatch, WidgetVisitor,
 } from "./types";
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
+/** Starts empty so the card's "no developer yet" path — the one with real consequences — is the
+ *  default thing you see against mocks. `sendSnippet` fills it, as a real invite would. */
+let mockDeveloper: DeveloperContact | null = null;
+
 let seq = 3;
-const configs: EmbedConfig[] = [
-  {
-    id: 1,
-    business_id: 1,
-    institution_id: null,
-    embed_key: "a3b8f2c1-4d5e-6f70-8192-a3b4c5d6e7f8",
-    display_name: "Acme University Counsellor",
-    logo_url: null,
-    brand_color: "#4f46e5",
-    custom_instructions: "Always mention our February and July intakes.",
-    greeting: "Hi! Ask me anything about studying at Acme.",
-    subtitle: "Usually replies in seconds",
-    monthly_credit_limit: 1000,
-    credits_used_this_month: 214,
-    month_reset_at: "2026-09-01T00:00:00Z",
-    is_active: true,
-    created_at: "2026-08-01T10:00:00Z",
-    updated_at: "2026-08-01T10:00:00Z",
-  },
-];
+
+const seedConfig: EmbedConfig = {
+  id: 1,
+  business_id: 1,
+  institution_id: null,
+  embed_key: "a3b8f2c1-4d5e-6f70-8192-a3b4c5d6e7f8",
+  display_name: "Acme University Counsellor",
+  logo_url: null,
+  brand_color: "#4f46e5",
+  custom_instructions: "Always mention our February and July intakes.",
+  greeting: "Hi! Ask me anything about studying at Acme.",
+  subtitle: "Usually replies in seconds",
+  monthly_credit_limit: 1000,
+  credits_used_this_month: 214,
+  month_reset_at: "2026-09-01T00:00:00Z",
+  is_active: true,
+  created_at: "2026-08-01T10:00:00Z",
+  updated_at: "2026-08-01T10:00:00Z",
+};
+
+const configs: EmbedConfig[] = [seedConfig];
 
 // ── Visitors ─────────────────────────────────────────────────────────────────
 // Deliberately mixed: two anonymous rows, two who handed over their details, one who was
@@ -150,6 +156,30 @@ export const aiWidgetMockApi = {
     console.log("[mock] GET /ai-chat/embed/configs");
     await delay(300);
     return [...configs];
+  },
+
+  ensureConfig: async (): Promise<EnsureEmbedResult> => {
+    console.log("[mock] ensureConfig");
+    await delay(300);
+    // Mirrors ensureForOwner, which resolves the OLDEST active widget — against mocks that is
+    // always the seeded one, because createConfig unshifts newer widgets in front of it. NOT
+    // `configs[0]`: that is the newest, and the card would then follow a key nobody installed.
+    // updateConfig mutates this same object, so edits show up here without a lookup.
+    return {
+      config: seedConfig,
+      snippet: `<script src="https://app.globalyapp.com/embed.js" data-key="${seedConfig.embed_key}" async></script>`,
+      developer: mockDeveloper,
+    };
+  },
+
+  sendSnippet: async (input: SendSnippetInput): Promise<SendSnippetResult> => {
+    console.log("[mock] sendSnippet", input);
+    await delay(500);
+    if (mockDeveloper) return { sent_to: mockDeveloper.email, invited: false };
+    if (!input.invitee) throw new Error("Nobody on your team has the Developer role yet — send a name and email to invite one.");
+    // Mirrors the real thing: the invite lands first, so a second send goes to them, not a new person.
+    mockDeveloper = { email: input.invitee.email, name: input.invitee.name, pending: true };
+    return { sent_to: input.invitee.email, invited: true };
   },
 
   createConfig: async (input: CreateEmbedConfigInput): Promise<EmbedConfig> => {

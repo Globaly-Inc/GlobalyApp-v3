@@ -56,6 +56,18 @@ export async function findByOwner(owner: EmbedOwner): Promise<EmbedConfigRow[]> 
   return masterKnex(TABLE).where(recipientFilter(owner)).orderBy("created_at", "desc");
 }
 
+/** The org's one widget for the portal card, minted on first ask.
+ *
+ *  OLDEST active, where `findByOwner` lists newest first: this resolves the key a customer may
+ *  already have pasted into their site, so creating a second widget never silently points the card,
+ *  the snippet email and the install at a key that is not on their page. */
+export async function ensureForOwner(owner: EmbedOwner): Promise<EmbedConfigRow> {
+  const existing = await masterKnex(TABLE)
+    .where(recipientFilter(owner)).where({ is_active: true })
+    .orderBy("created_at", "asc").first();
+  return (existing as EmbedConfigRow | undefined) ?? create(owner, {});
+}
+
 /** Owner-scoped edit. Undefined = unchanged, null = cleared. */
 export async function update(id: number, owner: EmbedOwner, patch: EmbedConfigPatch): Promise<EmbedConfigRow | undefined> {
   const [row] = await masterKnex(TABLE)

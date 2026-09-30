@@ -39,6 +39,12 @@ export const fetchOnboardingProgress = createAsyncThunk("businessOnboarding/fetc
   businessApi.getOnboardingProgress(),
 );
 
+/** The welcome splash has played. Fire-and-forget from the splash's own dismiss: a failed write
+ *  only costs seeing it once more on a later visit, which is not worth blocking an animation on. */
+export const markWelcomeSeen = createAsyncThunk("businessOnboarding/markWelcomeSeen", () =>
+  businessApi.markWelcomeSeen(),
+);
+
 type BusinessOnboardingState = {
   profile: BusinessProfile | null;
   onboardingProgress: OnboardingProgress | null;
@@ -87,6 +93,11 @@ const businessOnboardingSlice = createSlice({
       })
       .addCase(fetchOnboardingProgress.fulfilled, (state, action) => {
         state.onboardingProgress = action.payload;
+      })
+      // Locally too, not just on the server: the portal fetches progress once per mount, so without
+      // this a remount inside the same session would replay the splash from stale state.
+      .addCase(markWelcomeSeen.fulfilled, (state) => {
+        if (state.onboardingProgress) state.onboardingProgress.showWelcome = false;
       })
       .addCase(registerBusiness.pending, (state) => {
         state.status = "saving";

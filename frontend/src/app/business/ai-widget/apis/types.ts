@@ -44,6 +44,26 @@ export type UpdateEmbedConfigInput = {
 
 export type EmbedConfigListResponse = { configs: EmbedConfig[] };
 
+// ── Snippet handoff ──────────────────────────────────────────────────────────
+// The portal's AI-embed card: the org's widget (minted on first ask), the tag to paste, and
+// whoever the tag gets mailed to.
+
+/** The team member holding the Developer role. `pending` = invited, hasn't accepted yet. */
+export type DeveloperContact = { email: string; name: string | null; pending: boolean };
+
+export type EnsureEmbedResult = {
+  config: EmbedConfig;
+  /** Built by the backend so the email and the card always show the same string. */
+  snippet: string;
+  developer: DeveloperContact | null;
+};
+
+/** `invitee` is read ONLY when the team has no developer — sending it invites that person into
+ *  the org, so the card states that consequence before it lets you send. */
+export type SendSnippetInput = { invitee?: { name: string; email: string } };
+
+export type SendSnippetResult = { sent_to: string; invited: boolean };
+
 // ── Widget visitors and leads ────────────────────────────────────────────────
 // The people who talked to the widget. Rows come from the OWNING tenant's schema
 // (`ai_widget_visitors`), so a business only ever sees its own — the isolation is the

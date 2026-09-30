@@ -251,6 +251,13 @@ export const businessRealApi = {
     return httpPost(base, {});
   },
 
+  markWelcomeSeen: (): Promise<{ seen: boolean }> => {
+    const base = isInstitutionContext()
+      ? "/institutions/me/onboarding/welcome-seen"
+      : "/businesses/me/onboarding/welcome-seen";
+    return httpPost(base, {});
+  },
+
   getWidgetAnalytics: (): Promise<WidgetAnalytics> => {
     const base = isInstitutionContext() ? "/institutions/me/widget-analytics" : "/businesses/me/widget-analytics";
     return httpGet<WidgetAnalytics>(base);

@@ -7,7 +7,6 @@ import { ChatInput } from "@/app/ai/components/chat-input";
 import { ChatMessage, StreamingMessage } from "@/app/ai/components/chat-message";
 import { ThinkingIndicator } from "@/app/ai/components/thinking-indicator";
 import { SuggestedStarters } from "@/app/ai/components/suggested-starters";
-import { CompareTray } from "@/app/(web)/search/components/compare-tray";
 import { AlyOrbIcon } from "@/components/aly-orb-icon";
 import { Button } from "@/components/ui/button";
 import type { CourseCard, Message } from "@/app/ai/apis/types";
@@ -20,7 +19,7 @@ import { ConversationEndCard } from "./conversation-end-card";
 // renders StreamingMessage directly and kept none of them, so the block JSON showed as code.
 import { stripStructuredBlocks } from "@/app/ai/utils";
 import { toMessage, widgetTheme } from "../utils";
-import { embedStarters } from "../const";
+import { DEFAULT_WIDGET_NAME, embedStarters } from "../const";
 import { uuid } from "@/lib/utils";
 
 const FINGERPRINT_KEY = "globaly_embed_fp";
@@ -168,18 +167,21 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
     return <div className="flex h-dvh items-center justify-center p-6 text-center text-sm text-muted-foreground">{configError}</div>;
   }
 
-  const name = config?.display_name ?? "AI Counsellor";
+  const name = config?.display_name?.trim() || DEFAULT_WIDGET_NAME;
   const isChatting = messages.length > 0 || sending;
   const theme = widgetTheme(config?.brand_color);
 
   return (
-    <div className="flex h-dvh flex-col bg-background">
-      {/* Same shape as the in-app Ask Aly popover header: identity on the left, expand on
-          the right. The brand colour stays a hairline accent so the header keeps reading
-          as the counsellor's, not as a coloured banner. */}
+    // theme.vars retints the SHARED chat components through semantic tokens — none of them is
+    // modified here, so the in-app Ask Aly chat keeps its own look.
+    <div className="flex h-dvh flex-col bg-background" style={theme.vars}>
+      {/* The brand owns the header surface rather than a 3px hairline: on a tenant's own site
+          this panel should read as theirs from the first frame. The foreground is measured
+          against that colour (widgetTheme.onAccent), so a dark navy and a bright yellow are both
+          legible without either tenant configuring anything. */}
       <header
-        className="flex shrink-0 items-center gap-2.5 border-b px-4 py-2.5"
-        style={config?.brand_color ? { borderTopColor: config.brand_color, borderTopWidth: 3 } : undefined}
+        className="flex shrink-0 items-center gap-2.5 px-4 py-3"
+        style={{ background: theme.accent, color: theme.onAccent }}
       >
         {config?.logo_url ? (
           <Image src={config.logo_url} alt={name} width={28} height={28} className="size-7 rounded" unoptimized />
@@ -188,7 +190,13 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
         )}
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold">{name}</p>
-          <p className="truncate text-xs text-muted-foreground">{config?.subtitle ?? "AI counsellor · powered by Globaly"}</p>
+          {/* Only before the conversation starts — once there are turns the thread is the
+              subject, and a standing strapline is chrome. */}
+          {!isChatting && (
+            <p className="truncate text-xs opacity-80">
+              {config?.subtitle ?? "AI counsellor · powered by Globaly"}
+            </p>
+          )}
         </div>
         {framed && (
           <Button
@@ -243,12 +251,18 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
         </div>
       )}
 
+      {/* Sits with the conversation rather than as a full-width band above the input: a failed
+          turn is part of the thread, and a red bar spanning a 400px panel reads as the whole
+          widget breaking. role=alert so it is announced, not just seen. */}
       {error && (
-        <p className="border-t bg-destructive/10 px-4 py-2 text-center text-sm text-destructive">{error}</p>
+        <div className="px-4 pb-2">
+          <p role="alert" className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {error}
+          </p>
+        </div>
       )}
 
       <ChatInput value={input} onChange={setInput} onSend={send} disabled={sending} />
-      <CompareTray />
     </div>
   );
 }

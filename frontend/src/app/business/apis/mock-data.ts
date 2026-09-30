@@ -12,6 +12,8 @@ function delay(ms: number) {
 
 let mockExtractionProgressPct = 0;
 let mockReviewedCourses = false;
+/** Starts false so the splash plays against mocks — it is the thing being changed. */
+let mockWelcomeSeen = false;
 const mockEditedSnapshots: Record<string, string> = {};
 
 const MOCK_SITE_URLS: Omit<SiteUrl, "id" | "created_at">[] = [
@@ -295,7 +297,7 @@ export const businessMockApi = {
         detail: "Admissions staff who answer enquiries", duration: "~2 min", done: false,
       },
     ];
-    return { steps, completed: steps.filter((s) => s.done).length, total: steps.length };
+    return { steps, completed: steps.filter((s) => s.done).length, total: steps.length, showWelcome: !mockWelcomeSeen };
   },
 
   markCoursesReviewed: async (): Promise<{ reviewed: boolean }> => {
@@ -303,6 +305,13 @@ export const businessMockApi = {
     await delay(300);
     mockReviewedCourses = true;
     return { reviewed: true };
+  },
+
+  markWelcomeSeen: async (): Promise<{ seen: boolean }> => {
+    console.log("[mock] POST /businesses/me/onboarding/welcome-seen");
+    await delay(300);
+    mockWelcomeSeen = true;
+    return { seen: true };
   },
 
   getWidgetAnalytics: async (): Promise<WidgetAnalytics> => {

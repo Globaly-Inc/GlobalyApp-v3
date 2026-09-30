@@ -5,6 +5,7 @@ import { readSnapshot } from "./page-store.js";
 import { pickGalleryImages } from "./gallery-images.js";
 import { copyExternalImage } from "./image-copy.js";
 import { isExternalUrl } from "../../../../shared/storage/storageService.js";
+import { generateSubdomain } from "../../../../shared/subdomain.js";
 import { findOverviewByJobId, findCountryId } from "../repositories/promote.repository.js";
 import type { OverviewRow } from "../repositories/promote.repository.js";
 
@@ -70,6 +71,33 @@ function blankFieldsPatch<T extends Record<string, unknown>>(current: T, mapped:
   return patch;
 }
 
+/** Subdomains are unique across both tables; the org's own row doesn't count against itself. */
+const subdomainTakenExcept = (table: "institutions" | "businesses", ownId: number) => async (candidate: string) => {
+  const [institution, business] = await Promise.all([
+    masterKnex("institutions").where({ subdomain: candidate }).modify((q) => { if (table === "institutions") q.whereNot({ id: ownId }); }).first("id"),
+    masterKnex("businesses").where({ subdomain: candidate }).modify((q) => { if (table === "businesses") q.whereNot({ id: ownId }); }).first("id"),
+  ]);
+  return Boolean(institution || business);
+};
+
+/**
+ * A blank name being filled means the org was created nameless by an onboarding invite, whose
+ * subdomain was only a stand-in from the email domain — so it's rebuilt from the real name in the
+ * same write. Retries a lost unique race with a fresh candidate, as registerBusiness does.
+ */
+async function applyPatch(table: "institutions" | "businesses", id: number, patch: Record<string, unknown>, nameColumn: string) {
+  const name = patch[nameColumn];
+  for (let attempt = 0; ; attempt++) {
+    const subdomain = typeof name === "string" ? await generateSubdomain(name, subdomainTakenExcept(table, id)) : undefined;
+    try {
+      await masterKnex(table).where({ id }).update({ ...patch, ...(subdomain ? { subdomain } : {}), updated_at: masterKnex.fn.now() });
+      return subdomain;
+    } catch (err) {
+      if (!subdomain || (err as { code?: string }).code !== "23505" || attempt === 4) throw err;
+    }
+  }
+}
+
 export async function backfillSelfServiceProfile(jobId: string): Promise<void> {
   const overview = await findOverviewByJobId(jobId);
   if (!overview) return;
@@ -79,13 +107,15 @@ export async function backfillSelfServiceProfile(jobId: string): Promise<void> {
     const mapped = {
       ...(await baseProfileFieldsFrom(overview)),
       ...institutionExtrasFrom(overview),
+      // Only lands while blank — onboarding invites create the org nameless for exactly this.
+      institution_name: overview.name ?? null,
       email: overview.email ?? null,
       phone: overview.phone ?? null,
     };
     const patch = blankFieldsPatch(institution, mapped);
     if (Object.keys(patch).length > 0) {
-      await masterKnex("institutions").where({ id: institution.id }).update({ ...patch, updated_at: masterKnex.fn.now() });
-      logger.info("Backfilled self-service institution profile", { jobId, institutionId: institution.id, fields: Object.keys(patch) });
+      const subdomain = await applyPatch("institutions", institution.id, patch, "institution_name");
+      logger.info("Backfilled self-service institution profile", { jobId, institutionId: institution.id, fields: Object.keys(patch), subdomain });
     }
     await localizeImages("institutions", Number(institution.id), jobId);
     return;
@@ -96,13 +126,14 @@ export async function backfillSelfServiceProfile(jobId: string): Promise<void> {
   const mapped = {
     ...(await baseProfileFieldsFrom(overview)),
     ...businessExtrasFrom(overview),
+    business_name: overview.name ?? null,
     email: overview.email ?? null,
     phone: overview.phone ?? null,
   };
   const patch = blankFieldsPatch(business, mapped);
   if (Object.keys(patch).length > 0) {
-    await masterKnex("businesses").where({ id: business.id }).update({ ...patch, updated_at: masterKnex.fn.now() });
-    logger.info("Backfilled self-service business profile", { jobId, businessId: business.id, fields: Object.keys(patch) });
+    const subdomain = await applyPatch("businesses", business.id, patch, "business_name");
+    logger.info("Backfilled self-service business profile", { jobId, businessId: business.id, fields: Object.keys(patch), subdomain });
   }
   await localizeImages("businesses", Number(business.id), jobId);
 }

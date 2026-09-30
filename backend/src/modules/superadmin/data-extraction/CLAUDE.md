@@ -1200,23 +1200,32 @@ Same pass, also 2026-09-30:
 
 Not a V2 behaviour — explicitly requested. `lib/completion-email.ts` `sendCompletionEmail` mails the
 OWNER when a BUSINESS USER'S OWN extraction finishes (user decision: "no need to send email if it's run by
-an admin"). Rules, all in the one function:
-- **Owner's run only** (`isOwnerRun`): `source_type` is `institution_self_service` / `business_self_service`
-  (created only by the portal's "start extraction") AND `updated_by_platform_user_id` is null. Every admin
-  action that starts or continues a run (rerun, resume, deep scrape, reset, run step) stamps that column —
-  `dispatchStep` stamps it before publishing, except for the portal's page-correction re-extraction
-  (`triggerCourseReExtraction`, `actor: "owner"`); nothing else the owner does in the portal writes it. So an admin crawl, and an owner's job an admin re-ran,
-  are silent — no email, no timeline event. Ceiling: job-level, so an admin pausing or editing the
-  owner's run also suppresses it.
-- **Claimed listing only** (`isOwned`: `claim_status = 'claimed'`; sign-up creates theirs claimed). The
-  owner (`institutions.platform_user_id` / `businesses.owner_id`) first, else the listing's own `email`;
-  any `.invalid` placeholder address is refused.
+an admin"). GENERIC across business categories (chosen when the admin sends the invitation) — nothing keys
+on the category; portal extraction is institutions-only today, and opening another category means mapping
+it to a pipeline in `businesses.startExtraction` + the portal's start-extraction card, not touching this.
+- **Business user's run only** (`isOwnerRun`): the job's `created_by_platform_user_id` is a member of the
+  listing it feeds (owner, or `user_institution_index` / `user_business_index`), is not a platform admin
+  (`superadmin.admin_users`), and `updated_by_platform_user_id` is null. Every admin action that starts or
+  continues a run stamps that column — rerun, resume, deep scrape, reset, and `dispatchStep` (before
+  publishing; the portal's page-correction re-extraction passes `actor: "owner"` and does not). Ceiling:
+  job-level, so an admin pausing or editing the owner's run also suppresses it.
+- **Claimed listing only** (`isOwned`). Sign-up creates listings claimed; the script
+  `npm run listings:backfill-claimed -- --apply` (scripts/backfill-signup-listings-claimed.ts) backfills the sign-ups made before 2026-08-31, which kept the
+  "unclaimed" default — only rows that really have their owner (owner row, provisioned tenant, owner in
+  the member index); ownerless `signup` rows stay unclaimed, since a claimed listing can never be claimed. The owner first, else the listing's own `email`; `.invalid` addresses refused.
+- **Content follows the pipeline** (`source_type`), not the category: `visa_service` → services found,
+  otherwise courses + campus/fee/intake/eligibility/unit coverage.
 - **Once per run, retryable**: `pipeline_progress.completion_email`, cleared by the job worker's wholesale
   rewrite at every run start. `"sent"` is taken just before `queueEmail` and RELEASED if the send fails;
   `"skipped"` only dedupes the timeline event and does not block a later send in the same run.
 - **After linking**: sent from `handleLinkEntitiesStep` when Jev linking runs (even if it fails), otherwise
-  (or if the link dispatch fails) from the verify worker; only while the job is `review`, since
-  `link_entities` can also be run by hand mid-crawl.
+  (or if the link dispatch fails) from the verify worker; only while the job is `review`.
+Invited (admin-created) institutions can start extraction from the portal: their `manual` job counts as
+a placeholder while it holds no course or branch (`jobsRepo.isPlaceholderJob`, which the portal's
+`withPublicSourceJobId` masks exactly like sign-up's `self_service` job). `startExtraction` passes it to
+`createJob({ ignoreJobId })` so the duplicate-site check doesn't match the listing's own placeholder, and
+declines the replaced manual job so it stops answering that check. A manual job WITH data still blocks —
+replacing it would detach the hand-built catalogue.
 Template `extractionCompleteEmail` (`shared/mail/templates.ts`, shared `emailLayout`, CTA to
 `WEB_APP_URL/business/portal`); timeline events `completion_email_sent` (masked address) / `_skipped` /
 `_failed`. Never throws. `test:completion-email`.
