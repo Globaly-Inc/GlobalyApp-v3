@@ -32,11 +32,14 @@ function eq(actual: unknown, expected: unknown, label: string) {
   const r = await crawlSite(["https://www.u.edu/"], { budget: 50, maxDepth: 2 });
   eq(fetched, ["https://www.u.edu", "https://www.u.edu/academics/programs.html", "https://sas.u.edu/programs/biology"],
     "fetches the seed, then hub links only, stopping at maxDepth");
-  eq(r.urls.includes("https://www.u.edu/about"), true, "a non-hub link is kept though not followed");
-  eq(r.urls.includes("https://sas.u.edu/people/smith"), true, "other same-site subdomain links are kept");
-  eq(r.urls.some((u) => u.includes("other.org")), false, "off-site links are dropped");
-  eq(r.urls.some((u) => u.includes("/news/")), false, "filterUrls' news exclusion applies to crawled links");
-  eq(r.urls.includes("https://sas.u.edu/programs/biology/ba"), true, "links on the last fetched level are kept");
+  // Exact-member and parsed-hostname checks, not substring matches on URLs.
+  const found = new Set(r.urls);
+  const hosts = new Set(r.urls.map((u) => new URL(u).hostname));
+  eq(found.has("https://www.u.edu/about"), true, "a non-hub link is kept though not followed");
+  eq(found.has("https://sas.u.edu/people/smith"), true, "other same-site subdomain links are kept");
+  eq(hosts.has("other.org"), false, "off-site links are dropped");
+  eq(r.urls.some((u) => new URL(u).pathname.startsWith("/news/")), false, "filterUrls' news exclusion applies to crawled links");
+  eq(found.has("https://sas.u.edu/programs/biology/ba"), true, "links on the last fetched level are kept");
 
   fetched.length = 0;
   const capped = await crawlSite(["https://www.u.edu/"], { budget: 2 });
@@ -55,8 +58,25 @@ function eq(actual: unknown, expected: unknown, label: string) {
   };
   _crawlDeps.fetchLinks = async (url) => cat[url] ?? [];
   const r = await crawlSite(["https://catalog.u.edu"], { budget: 50 });
-  eq(r.urls.filter((u) => u.includes("catoid=12")), [], "archived Acalog catalogues (catoid not on the seed page) are dropped");
-  eq(r.urls.includes("https://catalog.u.edu/preview_program.php?catoid=50&poid=7"), true, "current-catalogue programmes are kept");
+  eq(r.urls.filter((u) => new URL(u).searchParams.get("catoid") === "12"), [], "archived Acalog catalogues (catoid not on the seed page) are dropped");
+  eq(new Set(r.urls).has("https://catalog.u.edu/preview_program.php?catoid=50&poid=7"), true, "current-catalogue programmes are kept");
+}
+
+{
+  // Two current catalogues on one site with unrelated catoid ranges: each keeps its own.
+  // The graduate catalogue is only reached ONE HOP in, from the undergraduate one.
+  const two: Record<string, string[]> = {
+    "https://www.u.edu": ["https://catalog.u.edu/content.php?catoid=50&navoid=1"],
+    "https://catalog.u.edu/content.php?catoid=50&navoid=1": [
+      "https://catalog.u.edu/preview_program.php?catoid=50&poid=1", "https://catalog.u.edu/preview_program.php?catoid=12&poid=9",
+      "https://gradcatalog.u.edu/content.php?catoid=7&navoid=2",
+    ],
+    "https://gradcatalog.u.edu/content.php?catoid=7&navoid=2": ["https://gradcatalog.u.edu/preview_program.php?catoid=7&poid=3"],
+  };
+  _crawlDeps.fetchLinks = async (url) => two[url] ?? [];
+  const found = new Set((await crawlSite(["https://www.u.edu"], { budget: 50 })).urls);
+  eq(found.has("https://gradcatalog.u.edu/preview_program.php?catoid=7&poid=3"), true, "a second catalogue's current catoid is not dropped by the first's");
+  eq(found.has("https://catalog.u.edu/preview_program.php?catoid=12&poid=9"), false, "each host still drops its own archived catoids");
 }
 
 eq(isHubLink("https://catalog.x.edu/content.php?catoid=50&navoid=4329"), true, "Acalog nav page is a hub");

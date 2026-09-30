@@ -15,7 +15,7 @@
 // JEV_LINK_MIN. AgentCIS jobs only gain a KIND a course has none of (CLAUDE.md: never overwrite
 // AgentCIS data). Agents are institution-level and have no course junction, so they are not here.
 //
-// OFF unless TYPESAFE_API_KEY and JEV_LINK_MIN are set. Idempotent: already-linked pairs are never
+// ON whenever TYPESAFE_API_KEY is set (JEV_LINK_MIN overrides the default, "0" = off). Idempotent: already-linked pairs are never
 // asked again, so re-running only spends on what is still unlinked.
 
 import { noul } from "@typesafe-ai/sdk";
@@ -151,9 +151,21 @@ async function loadLinks(jobId: string): Promise<{ linked: Set<string>; kindsByC
 
 async function writeLink(jobId: string, courseId: string, e: Entity): Promise<boolean> {
   const { table, col } = JUNCTION[e.kind];
-  const row: Record<string, unknown> = { job_id: jobId, course_id: courseId, [col]: e.id };
-  if (e.kind === "campus") row.campus_name = e.label;
-  const inserted = await masterKnex(`${S}.${table}`).insert(row).onConflict(["course_id", col]).ignore().returning("id");
+  if (e.kind === "campus") {
+    // extraction_course_campuses has no (course_id, campus_id) unique constraint in the migrations
+    // (a local DB may carry one by hand), so ON CONFLICT cannot be used: insert only when absent.
+    // ponytail: not race-proof against a concurrent link run of the same job; one run per job at a time.
+    const { rows } = await masterKnex.raw(
+      `INSERT INTO ${S}.${table} (job_id, course_id, campus_id, campus_name)
+       SELECT :jobId, :courseId, :campusId, :name
+       WHERE NOT EXISTS (SELECT 1 FROM ${S}.${table} WHERE course_id = :courseId AND campus_id = :campusId)
+       RETURNING id`,
+      { jobId, courseId, campusId: e.id, name: e.label },
+    );
+    return rows.length > 0;
+  }
+  const inserted = await masterKnex(`${S}.${table}`).insert({ job_id: jobId, course_id: courseId, [col]: e.id })
+    .onConflict(["course_id", col]).ignore().returning("id");
   return inserted.length > 0;
 }
 

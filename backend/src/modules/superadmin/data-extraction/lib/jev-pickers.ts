@@ -4,8 +4,8 @@
 // never be invented or have a digit transposed. Only for a page about ONE course (a listing's
 // amounts belong to many) and only for a field the model left empty.
 //
-// OFF unless TYPESAFE_API_KEY and JEV_PICK_MIN_CONF are set; a pick below that confidence is
-// discarded. Every failure leaves the course exactly as the model returned it.
+// ON whenever TYPESAFE_API_KEY is set (JEV_PICK_MIN_CONF overrides the default, "0" = off); a pick
+// below that confidence is discarded. Every failure leaves the course exactly as the model returned it.
 
 import { choice } from "@typesafe-ai/sdk";
 import { createChildLogger } from "../../../../shared/logger.js";
@@ -128,7 +128,12 @@ export async function pickTuition(courseName: string, markdown: string, minConf:
   const fee = (p: NonNullable<ReturnType<typeof picked>>, student_type: string, period_type: string | null): ExtractedFee[] =>
     period_type ? [{ name: "Tuition Fee", description: p.c.context, student_type, period_type, currency: p.money.currency, total_amount: p.money.amount }] : [];
   // One figure picked for both is ONE fee for everyone, not two copies of it.
-  if (intl && dom && intl.c.span === dom.c.span) return fee(intl, "both", period("international_period"));
+  if (intl && dom && intl.c.span === dom.c.span) {
+    // One figure for everyone: either confident period will do, but two different ones cannot be chosen between.
+    const pi = period("international_period");
+    const pd = period("domestic_period");
+    return fee(intl, "both", pi && pd && pi !== pd ? null : pi ?? pd);
+  }
   return [
     ...(intl ? fee(intl, "international", period("international_period")) : []),
     ...(dom ? fee(dom, "domestic", period("domestic_period")) : []),

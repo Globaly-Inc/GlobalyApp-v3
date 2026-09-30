@@ -68,6 +68,20 @@ jevAnswers((q) => (q.endsWith("period") ? { choice: "Per Year", confidence: 0.9 
   eq(c.fees?.map((f) => [f.student_type, f.period_type]), [["both", "Per Year"]], "same figure for both → ONE 'both' fee");
 }
 
+jevAnswers((q) => (q === "international_period" ? { choice: "unclear", confidence: 0.9 } : q === "domestic_period" ? { choice: "Per Year", confidence: 0.9 } : { choice: "c2", confidence: 0.9 }));
+{
+  const c = course();
+  await fillFromPicks(c, page);
+  eq(c.fees?.map((f) => [f.student_type, f.period_type]), [["both", "Per Year"]], "shared amount: an unclear international period falls back to a clear domestic one");
+}
+
+jevAnswers((q) => (q === "international_period" ? { choice: "Total", confidence: 0.9 } : q === "domestic_period" ? { choice: "Per Year", confidence: 0.9 } : { choice: "c2", confidence: 0.9 }));
+{
+  const c = course();
+  await fillFromPicks(c, page);
+  eq(c.fees, undefined, "shared amount with two different confident periods → no fee (cannot choose)");
+}
+
 jevAnswers((q) => (q.endsWith("period") ? { choice: "unclear", confidence: 0.9 } : { choice: "c2", confidence: 0.9 }));
 {
   const c = course();

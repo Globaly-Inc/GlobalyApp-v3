@@ -19,8 +19,35 @@ export const _jevDeps = {
   },
 };
 
-/** A 0–1 threshold from the environment, or null (feature off) when Jev or the value is missing. */
-export function jevThreshold(envVar: string): number | null {
-  const v = Number(process.env[envVar]);
-  return isJevConfigured() && v > 0 && v < 1 ? v : null;
+/**
+ * Built-in thresholds: TYPESAFE_API_KEY alone switches every extraction feature on with these.
+ * Deliberately strict — Jev acts only when it is very sure, and everything below falls through to
+ * the pre-Jev behaviour — because none has been tuned on our data yet. Loosen per feature with its
+ * env var after `scripts/eval-jev-page-gate.ts` and a few reviewed jobs.
+ *   JEV_URL_CLASSIFY_MIN  confident per-URL category, else the path heuristic
+ *   JEV_PAGE_GATE_MIN     skip the Gemini call only when P(programme page) is BELOW this (low = safe)
+ *   JEV_PICK_MIN_CONF     fill an empty duration / tuition
+ *   JEV_VERIFY_DROP_MIN   drop an item as wrong-for-this-course (destructive: highest bar)
+ *   JEV_LOOKUP_MIN        link an unlinked degree level / subject area
+ *   JEV_LINK_MIN          link a campus / fee / intake / unit / requirement / scholarship to a course
+ */
+export const JEV_DEFAULTS = {
+  JEV_URL_CLASSIFY_MIN: 0.7,
+  JEV_PAGE_GATE_MIN: 0.05,
+  JEV_PICK_MIN_CONF: 0.85,
+  JEV_VERIFY_DROP_MIN: 0.95,
+  JEV_LOOKUP_MIN: 0.85,
+  JEV_LINK_MIN: 0.85,
+} as const;
+
+/**
+ * The threshold for one feature: null (off) without TYPESAFE_API_KEY or when the env var is "0" /
+ * "off"; the env var when it is a number strictly between 0 and 1; otherwise the built-in default.
+ */
+export function jevThreshold(envVar: keyof typeof JEV_DEFAULTS): number | null {
+  if (!isJevConfigured()) return null;
+  const raw = (process.env[envVar] ?? "").trim().toLowerCase();
+  if (raw === "0" || raw === "off" || raw === "false") return null;
+  const v = Number(raw);
+  return raw && v > 0 && v < 1 ? v : JEV_DEFAULTS[envVar];
 }

@@ -420,7 +420,7 @@ export async function runUrlClassify(jobId: string, job: JobRow): Promise<{ cour
   let picked = new Set(urls.filter(isVisaService ? looksLikeVisaServiceUrl : looksLikeCourseUrl));
   let usedLlm = false;
 
-  // Jev path (JEV_URL_CLASSIFY_MIN set, not a visa-service job): one per-URL question replaces both
+  // Jev path (TYPESAFE_API_KEY set, not a visa-service job): one per-URL question replaces both
   // lite-model passes below. See lib/jev-url-classify.ts.
   const jevMin = isVisaService ? null : _urlClassifyDeps.minConf();
   if (jevMin != null) {

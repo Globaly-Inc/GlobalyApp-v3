@@ -3,9 +3,9 @@
 // stored no course. Jev (TypeSafe System One) is billed per input token at ~1/100th of that and
 // returns a calibrated P(yes), so a page it is confident is not a programme page skips the model.
 //
-// OFF unless BOTH TYPESAFE_API_KEY and JEV_PAGE_GATE_MIN are set: the threshold must come from
-// `scripts/eval-jev-page-gate.ts` on our own labelled pages, not a guess. Any failure → null → the
-// page is extracted as before.
+// ON whenever TYPESAFE_API_KEY is set, at the strict default in jev-client JEV_DEFAULTS unless
+// JEV_PAGE_GATE_MIN overrides it ("0" = off); tune it with `scripts/eval-jev-page-gate.ts`. Any
+// failure → null → the page is extracted as before.
 
 import { noul } from "@typesafe-ai/sdk";
 import { createChildLogger } from "../../../../shared/logger.js";
@@ -15,8 +15,9 @@ export { JEV_MODEL } from "./jev-client.js";
 
 const logger = createChildLogger("jev-page-gate");
 
-/** The page's head: title, headings and intro say what kind of page it is. */
-const STATE_CHARS = 6_000;
+/** How much of the page Jev reads (~10k tokens, well inside its 32k budget; still ~1/12th of the
+ *  120k-character Gemini call it may save). */
+const STATE_CHARS = 40_000;
 
 export const _pageGateDeps = {
   threshold: (): number | null => jevThreshold("JEV_PAGE_GATE_MIN"),
@@ -49,6 +50,9 @@ export async function programmePageProbability(url: string, markdown: string): P
 export async function shouldSkipPage(url: string, markdown: string): Promise<{ skip: boolean; p: number | null; threshold: number | null }> {
   const threshold = _pageGateDeps.threshold();
   if (threshold == null) return { skip: false, p: null, threshold };
+  // A skip is final (the page is marked completed, never extracted), so it is only decided on the
+  // WHOLE page: past STATE_CHARS a long nav can push the programme out of what Jev read.
+  if (markdown.length > STATE_CHARS) return { skip: false, p: null, threshold };
   const p = await programmePageProbability(url, markdown);
   return { skip: p != null && p < threshold, p, threshold };
 }

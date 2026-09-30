@@ -33,6 +33,10 @@ answer(0.03);
 eq((await shouldSkipPage("https://x.edu/news", "text")).skip, true, "below threshold → skip");
 answer(0.4);
 eq((await shouldSkipPage("https://x.edu/programs/ba", "text")).skip, false, "at/above threshold → extract");
+answer(0.01);
+calls = 0;
+eq((await shouldSkipPage("https://x.edu/catalog", "x".repeat(40_001))).skip, false, "a page longer than what Jev reads is never skipped");
+eq(calls, 0, "…and Jev is not even asked (its answer would be about an excerpt)");
 answer(new Error("429"));
 eq((await shouldSkipPage("https://x.edu/programs/ba", "text")).skip, false, "Jev failure → extract, never skip");
 

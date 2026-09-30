@@ -1138,7 +1138,7 @@ Measured with Firecrawl unset: rochester 38 → 3,830 URLs; csuohio catalogue 1 
 **Workers load code once — restart the step and page workers after deploying this.**
 
 Jev page gate (`lib/jev-page-gate.ts`, `test:jev-page-gate`): one pinned `jev-1.13.0` yes/no before
-the full-model course extraction. OFF unless `TYPESAFE_API_KEY` and `JEV_PAGE_GATE_MIN` are both set;
+the full-model course extraction. ON whenever `TYPESAFE_API_KEY` is set (default threshold below);
 pick the threshold with `scripts/eval-jev-page-gate.ts` (read-only, labels from
 `extracted_data.courses_found`). Skips are `extracted_data.reason = "jev_not_programme"` + a
 `page_skipped_jev` event; admin retries, intake and visa pages are never gated.
@@ -1146,7 +1146,7 @@ pick the threshold with `scripts/eval-jev-page-gate.ts` (read-only, labels from
 Same pass, also 2026-09-30:
 - **Jev value pickers** (`lib/jev-pickers.ts`, `test:jev-pickers`): on a ONE-course page, for a course the
   model left without duration or tuition, a regex over-finds candidate spans and Jev `choice` picks one
-  (or none); code copies it verbatim (a bare "$" keeps currency null). Off unless `JEV_PICK_MIN_CONF` is
+  (or none); code copies it verbatim (a bare "$" keeps currency null). On with the key (`JEV_PICK_MIN_CONF` overrides) — it is
   set; `fields_picked_jev` event. Both Jev features share `lib/jev-client.ts` (model pinned there).
 - **Acalog curriculum** (`parseAcalogProgram`, via `curriculumFromMarkup` at both page-worker markup
   sites, `test:courselist`): `li.acalog-course` anchors under `div.acalog-core` headings; each titled
@@ -1163,7 +1163,10 @@ Same pass, also 2026-09-30:
   whose heartbeat is 20+ min stale (claimed by bumping the heartbeat). Verified live.
 - **`field_coverage_verified`** event at the end of verification: per-field fill %, weakest first.
 - Measured and NOT built: schema.org Program/Course JSON-LD (0 of 40 institutions' productive pages).
-- **Jev everywhere a wrong decision lands in the DB** (each OFF until its threshold is set; any failure
+- **Jev everywhere a wrong decision lands in the DB.** `TYPESAFE_API_KEY` ALONE turns every feature on
+  at the strict built-in `JEV_DEFAULTS` in `lib/jev-client.ts` (URL 0.7, page gate 0.05, picks 0.85,
+  drop 0.95, lookup 0.85, link 0.85 — Jev acts only when very sure, the pre-Jev path handles the rest).
+  Each env var overrides its default; "0"/"off" switches that feature off (`test:jev-client`). Any failure
   keeps the non-Jev path):
   | Env | Where | Decision |
   |---|---|---|

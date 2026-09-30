@@ -21,6 +21,10 @@ export function isHubLink(url: string): boolean {
   }
 }
 
+function hostOf(url: string): string | null {
+  try { return new URL(url).hostname; } catch { return null; }
+}
+
 function catoidOf(url: string): string | null {
   try { return new URL(url).searchParams.get("catoid"); } catch { return null; }
 }
@@ -73,7 +77,8 @@ export async function crawlSite(
   // Acalog catalogues, by the catoid their seed page links to. The seed shows only the CURRENT
   // catalogues; its "Archived Catalogs" page reaches every past year (csuohio: ~280 of 1,228 URLs
   // were catoid 1–46 beside the live 49/50), which would stage programmes that no longer run.
-  let currentCatoids: Set<string> | null = null;
+  // Per HOST: two catalogues on one site (catalog. and gradcatalog.) have unrelated catoid ranges.
+  const currentCatoids = new Map<string, Set<string>>();
 
   for (let depth = 0; depth <= maxDepth && frontier.length && fetched < budget; depth++) {
     const next: string[] = [];
@@ -83,15 +88,23 @@ export async function crawlSite(
       wave.forEach((u) => visited.add(u));
       fetched += wave.length;
       const results = await Promise.all(wave.map((u) => _crawlDeps.fetchLinks(u).catch(() => [] as string[])));
-      if (depth === 0) {
-        const ids = results.flat().map(catoidOf).filter((c): c is string => !!c);
-        if (ids.length) currentCatoids = new Set(ids);
-      }
       for (const links of results) {
+        // A host's current catalogues are the catoids on the FIRST page that links into that host,
+        // at whatever depth it is reached — a second catalogue is often one hop in, not on the seed.
+        const onThisPage = new Map<string, Set<string>>();
+        for (const link of links) {
+          const id = catoidOf(link);
+          const host = hostOf(link);
+          if (!id || !host || currentCatoids.has(host)) continue;
+          if (!onThisPage.has(host)) onThisPage.set(host, new Set());
+          onThisPage.get(host)!.add(id);
+        }
+        for (const [host, ids] of onThisPage) currentCatoids.set(host, ids);
         for (const link of filterUrls(links, scope)) {
           if (found.has(link)) continue;
           const catoid = catoidOf(link);
-          if (currentCatoids && catoid && !currentCatoids.has(catoid)) continue;
+          const current = currentCatoids.get(hostOf(link) ?? "");
+          if (current && catoid && !current.has(catoid)) continue;
           found.add(link);
           if (isHubLink(link)) next.push(link);
         }
