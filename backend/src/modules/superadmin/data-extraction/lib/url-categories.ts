@@ -10,12 +10,30 @@
 
 export const SITE_URL_CATEGORIES = [
   "overview", "about_us", "contact_us", "course", "branches", "agents", "fees",
-  "study_units", "study_options", "intake", "eligibility", "accreditations", "other",
+  "study_units", "study_options", "intake", "eligibility", "accreditations", "scholarships", "other",
 ] as const;
 export type SiteUrlCategory = (typeof SITE_URL_CATEGORIES)[number];
 
+/** What each category means — the model's category prompt and Jev's per-URL choice both read this. */
+export const SITE_URL_CATEGORY_DESCRIPTIONS: Record<SiteUrlCategory, string> = {
+  overview: "the homepage or an institution-wide overview / \"why us\" page",
+  about_us: "history, mission, governance, leadership, who we are",
+  contact_us: "contact details, enquiry forms, how to reach the institution",
+  course: "a specific course/programme/degree/service, or a listing of them",
+  branches: "campuses, locations, offices, centres",
+  agents: "education agents, representatives, partner directories, the team",
+  fees: "tuition, fees, costs, payment",
+  study_units: "units, modules, subjects, curriculum outlines",
+  study_options: "study modes — online, part-time, full-time, distance, delivery",
+  intake: "intakes, key dates, academic calendar, application deadlines",
+  eligibility: "entry requirements, admission criteria, English language requirements (NOT how-to-apply / application-process pages — those are other)",
+  accreditations: "accreditation, registration (CRICOS/TEQSA/MARA etc.), rankings, memberships",
+  scholarships: "scholarships, bursaries, grants, fee waivers, funding for students",
+  other: "news, events, blog, staff, research, careers, legal, how to apply / application process, anything that is none of the above",
+};
+
 /** Who decided a URL's category. `admin` is the only one a re-run never overwrites. */
-export type SiteUrlCategorySource = "guided" | "heuristic" | "llm" | "admin";
+export type SiteUrlCategorySource = "guided" | "heuristic" | "llm" | "jev" | "admin";
 export type CategoryVerdict = { category: SiteUrlCategory; source: SiteUrlCategorySource };
 
 /** guided_urls keys (frontend const GUIDED_URL_CATEGORIES / VISA_SERVICE_GUIDED_URL_CATEGORIES) → category. */
@@ -24,6 +42,7 @@ export const GUIDED_KEY_CATEGORY: Record<string, SiteUrlCategory> = {
   contact_urls: "contact_us", branches_urls: "branches", agents_urls: "agents", team_urls: "agents",
   fees_urls: "fees", intakes_urls: "intake", eligibility_urls: "eligibility", units_urls: "study_units",
   accreditations_urls: "accreditations", registration_urls: "accreditations", testimonials_urls: "other",
+  scholarships_urls: "scholarships",
 };
 
 /** Guided URLs keyed by category. Same `*_urls` contract as html-utils.collectGuidedUrls; the legacy flat array is all course. */
@@ -43,8 +62,11 @@ export function guidedUrlCategories(guided: unknown, normalise: (u: string) => s
 // about_us. Compound phrases where a bare word would eat programme names (see html-utils
 // NON_COURSE_PATH_MARKERS for why "policy" and "library" are traps).
 const PATH_SIGNALS: [SiteUrlCategory, string[]][] = [
+  // Not "/bursar" or "/financial-aid": a US Bursar's office and financial-aid office host the
+  // TUITION pages (/bursar/tuition-and-fees, /financial-aid/cost-of-attendance), which are fees.
+  ["scholarships", ["/scholarship", "/bursary", "/bursaries", "/fee-waiver", "/funding-opportunit"]],
   ["accreditations", ["/accreditation", "/accredited", "/cricos", "/teqsa", "/registration", "/recognition", "/affiliation", "/rankings"]],
-  ["fees", ["/fee", "/tuition", "/scholarship", "/cost", "/pricing", "/payment"]],
+  ["fees", ["/fee", "/tuition", "/cost", "/pricing", "/payment"]],
   ["intake", ["/intake", "/academic-calendar", "/key-dates", "/important-dates", "/semester-dates", "/term-dates", "/application-dates", "/apply-by"]],
   // "/how-to-apply" is deliberately NOT here: an application-process page appended to a course's
   // eligibility extraction is where document checklists and personal statements came from.

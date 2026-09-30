@@ -195,7 +195,29 @@ async function reclaimStaleQueueItems() {
       logger.error("checkAllPagesDone failed during stale-heartbeat recheck", { jobId, error: err instanceof Error ? err.message : String(err) }));
   }
 
-  if (stale.length > 0 || staleHeartbeatJobs.length > 0) {
+  // stop_requested: the verify loop returns early on it WITHOUT leaving "extracting", so without this
+  // a stopped job was re-sent every sweep and wrote a fresh "verification_start" each time.
+  const staleVerifying = await masterKnex(`${S}.extraction_jobs`)
+    .where({ status: "extracting", stop_requested: false })
+    .whereRaw(`greatest(processing_heartbeat_at, updated_at) < now() - interval '${STALE_MINUTES} minutes'`)
+    .select("id");
+  let verifyRedispatched = 0;
+  for (const { id: jobId } of staleVerifying) {
+    const claimed = await masterKnex(`${S}.extraction_jobs`)
+      .where({ id: jobId, status: "extracting", stop_requested: false })
+      .whereRaw(`greatest(processing_heartbeat_at, updated_at) < now() - interval '${STALE_MINUTES} minutes'`)
+      .update({ processing_heartbeat_at: masterKnex.fn.now() });
+    if (claimed === 0) continue;
+    try {
+      await queueService.publish(EXTRACTION_QUEUES.VERIFY, { jobId });
+      verifyRedispatched++;
+      logger.info("Re-dispatched verification for a job stuck at extracting", { jobId });
+    } catch (err) {
+      logger.warn("Verify re-dispatch failed; the next sweep retries", { jobId, error: err instanceof Error ? err.message : String(err) });
+    }
+  }
+
+  if (stale.length > 0 || staleHeartbeatJobs.length > 0 || verifyRedispatched > 0) {
     logger.info("Reclaim sweep complete", {
       staleItems: stale.length, failedOutright: failedOutright.size, staleHeartbeatJobsRechecked: staleHeartbeatJobs.length,
     });

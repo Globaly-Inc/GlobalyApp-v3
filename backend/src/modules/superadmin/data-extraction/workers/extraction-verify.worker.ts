@@ -8,6 +8,8 @@ import { queueService } from "../../../../shared/queue/queueService.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
+import { verifyFieldCoverage } from "../lib/field-coverage.js";
+import { _linkerDeps } from "../lib/jev-linker.js";
 import { getPage } from "../lib/page-store.js";
 import { truncateMarkdown } from "../lib/html-utils.js";
 import { extractJson, setLlmContext } from "../lib/llm-client.js";
@@ -189,6 +191,7 @@ await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
       // Check still active
       const current = await masterKnex(`${S}.extraction_jobs`).select("status", "stop_requested").where({ id: jobId }).first();
       if (!current || current.stop_requested || current.status === "paused") return;
+      await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({ processing_heartbeat_at: masterKnex.fn.now() });
 
       try {
         // Verification compares against the LIVE page by definition — fresh, never a snapshot.
@@ -271,6 +274,9 @@ await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
     });
 
     await verifyLookupLinks(jobId);
+    await verifyFieldCoverage(jobId).catch((err) => logger.warn("Field coverage report failed", { jobId, error: String(err) }));
+    // Linking reads every course's page and is Jev-only; the link step reports coverage again when done.
+    if (_linkerDeps.minLink() != null) await queueService.publish(EXTRACTION_QUEUES.STEPS, { jobId, step: "link_entities" });
 
     await writeJobEvent(jobId, "verification_complete", {
       phase: "verification",

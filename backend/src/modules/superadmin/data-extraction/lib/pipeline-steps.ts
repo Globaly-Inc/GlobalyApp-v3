@@ -17,7 +17,9 @@ import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { NEXT_STEP, type PipelineStep } from "../schemas/step.schema.js";
 import { discoverUrlsForCrawl } from "./scraper.js";
-import { SNAPSHOT_BATCH_SIZE } from "./site-snapshot.js";
+import { SNAPSHOT_BATCH_SIZE, jobHalted } from "./site-snapshot.js";
+import { CRAWL_BUDGET, crawlSeeds, crawlSite } from "./site-crawl.js";
+import { _urlClassifyDeps, jevCategorise, jevVerdicts } from "./jev-url-classify.js";
 import { getPage, normaliseUrl, readSnapshot } from "./page-store.js";
 import {
   looksLikeCourseUrl, looksLikeVisaServiceUrl, filterUrls, truncateMarkdown, collectGuidedUrls, compileBlocklist,
@@ -32,7 +34,7 @@ import { writeInstitutionOverview, writeSiteIntelligence, insertQueueItemDetaile
 import {
   upsertSiteUrls, listActiveSiteUrls, listSiteUrlsByCategory, setSiteUrlCategories,
 } from "../repositories/site-urls.repository.js";
-import { SITE_URL_CATEGORIES, categoriesFor, guidedUrlCategories, type CategoryVerdict, type SiteUrlCategory } from "./url-categories.js";
+import { SITE_URL_CATEGORIES, categoriesFor, guidedUrlCategories, heuristicCategory, type CategoryVerdict, type SiteUrlCategory } from "./url-categories.js";
 
 const logger = createChildLogger("pipeline-steps");
 
@@ -60,6 +62,7 @@ interface UrlCategoryResult {
 export const _stepDeps = {
   loadJob: async (jobId: string): Promise<JobRow | undefined> => masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).first(),
   publish: async (queue: string, payload: Record<string, unknown>): Promise<void> => { await queueService.publish(queue, payload); },
+  crawl: crawlSite,
   // ONE atomic jsonb merge, never read-modify-write: snapshot batches land concurrently and the
   // successor hand-off writes in the same window, so two readers of the whole blob overwrite each
   // other and a freshly written "site_analysis: processing" vanishes while its message is already
@@ -143,7 +146,8 @@ async function readJsonList(jobId: string, key: string): Promise<string[]> {
 }
 
 /** Discover every same-site URL and persist the list. Network: discovery only, no page scrapes. */
-export async function runSiteMap(jobId: string, job: JobRow): Promise<number> {
+/** `crawlStopped`: the job was paused/stopped mid-crawl, so the list is PARTIAL — the caller must not report the step done. */
+export async function runSiteMap(jobId: string, job: JobRow): Promise<{ total: number; crawlStopped: boolean }> {
   const discovery = await discoverUrlsForCrawl(job.institution_url, { limit: 10000 });
   const origin = new URL(job.institution_url).origin;
   let found: { url: string; source: string }[] = filterUrls(discovery.urls, origin).map((url) => ({ url, source: discovery.method }));
@@ -165,6 +169,30 @@ export async function runSiteMap(jobId: string, job: JobRow): Promise<number> {
     } catch (err) {
       logger.warn("Related-domain discovery failed", { jobId, domain, err: String(err) });
     }
+  }
+
+  // Our own crawl, where the sitemaps said too little (rochester.edu: none) or a catalogue host gave
+  // only its root. Replaces Firecrawl's map as the default; discovery only reaches Firecrawl last.
+  const seeds = crawlSeeds(job.institution_url, found.map((f) => f.url));
+  let crawlStopped = false;
+  if (seeds.length) {
+    // The crawl can run for minutes: each stop check also bumps the heartbeat so the job never reads as dead.
+    const crawl = await _stepDeps.crawl(seeds, {
+      budget: CRAWL_BUDGET,
+      shouldStop: async () => {
+        await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({ processing_heartbeat_at: masterKnex.fn.now() });
+        return jobHalted(jobId);
+      },
+    });
+    crawlStopped = crawl.stopped;
+    const known = new Set(found.map((f) => f.url));
+    const added = crawl.urls.filter((u) => !known.has(u));
+    found.push(...added.map((url) => ({ url, source: "crawl" })));
+    await _stepDeps.writeEvent(jobId, "urls_crawled", {
+      phase: "course_discovery",
+      message: `Crawled ${crawl.fetched} pages from ${seeds.length} seed(s) — ${added.length} new URLs${crawl.stopped ? " (stopped: job paused)" : ""}`,
+      data: { seeds, fetched: crawl.fetched, added: added.length, stopped: crawl.stopped },
+    });
   }
 
   const { patterns: blocklist, invalid } = compileBlocklist(await readJsonList(jobId, "url_blocklist_patterns"));
@@ -202,7 +230,7 @@ export async function runSiteMap(jobId: string, job: JobRow): Promise<number> {
     message: `Discovered ${total} URLs via ${discovery.method}${sourceNote} — ${inserted} new on the site list`,
     data: { method: discovery.method, count: total, new: inserted, sources: discovery.sources ?? null },
   });
-  return total;
+  return { total, crawlStopped };
 }
 
 /**
@@ -391,6 +419,31 @@ export async function runUrlClassify(jobId: string, job: JobRow): Promise<{ cour
 
   let picked = new Set(urls.filter(isVisaService ? looksLikeVisaServiceUrl : looksLikeCourseUrl));
   let usedLlm = false;
+
+  // Jev path (JEV_URL_CLASSIFY_MIN set, not a visa-service job): one per-URL question replaces both
+  // lite-model passes below. See lib/jev-url-classify.ts.
+  const jevMin = isVisaService ? null : _urlClassifyDeps.minConf();
+  if (jevMin != null) {
+    const guidedMap = guidedUrlCategories(guidedRaw, normaliseUrl);
+    const candidates = urls.filter((u) => !guidedMap.has(u)).slice(0, CLASSIFY_ALL_CAP);
+    const jev = await jevCategorise(candidates, await excerptsFor(candidates), jevMin, () =>
+      masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({ processing_heartbeat_at: masterKnex.fn.now() }).then(() => undefined));
+    const verdicts = jevVerdicts(urls, jev, guidedMap, looksLikeCourseUrl, heuristicCategory);
+    if (![...verdicts.values()].some((v) => v.category === "course")) {
+      verdicts.set(normaliseUrl(job.institution_url), { category: "course", source: "heuristic" }); // fallback: the homepage itself
+    }
+    await setSiteUrlCategories(jobId, verdicts);
+    const byCategory: Record<string, number> = {};
+    for (const { category } of verdicts.values()) byCategory[category] = (byCategory[category] ?? 0) + 1;
+    const course = byCategory.course ?? 0;
+    const summary = Object.entries(byCategory).filter(([k]) => k !== "course").map(([k, n]) => `${k} ${n}`).join(", ");
+    await _stepDeps.writeEvent(jobId, "urls_filtered", {
+      phase: "course_discovery",
+      message: `${course} course pages identified out of ${urls.length} (Jev: ${jev.size} of ${candidates.length} answered confidently)${summary ? `; also ${summary}` : ""}`,
+      data: { count: course, total: urls.length, jev_answered: jev.size, jev_asked: candidates.length, categories: byCategory },
+    });
+    return { course, total: urls.length, categories: byCategory };
+  }
 
   const classify = async (candidates: string[], narrowing: boolean) => {
     usedLlm = true;

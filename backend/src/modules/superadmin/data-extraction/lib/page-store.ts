@@ -15,7 +15,7 @@ import { createHash } from "node:crypto";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
-import { scrapeMarkdown, type ScrapeOptions, type ScrapeResult } from "./scraper.js";
+import { isChallengePage, scrapeMarkdown, type ScrapeOptions, type ScrapeResult } from "./scraper.js";
 import { createDocumentExtractor } from "./document-extractor.js";
 import { domainOf, siteOf, stripMarkdownJunk } from "./html-utils.js";
 import { downloadFile, isConfigured, uploadFile } from "../../../../shared/storage/storageService.js";
@@ -201,7 +201,7 @@ export const isPdfUrl = (url: string): boolean => /\.pdf(\?|#|$)/i.test(url);
 
 const hashOf = (markdown: string) => createHash("sha256").update(markdown).digest("hex");
 const ageDays = (at: Date) => (_pageDeps.now() - new Date(at).getTime()) / 86_400_000;
-const usable = (markdown: string) => markdown.length >= MIN_USABLE_CHARS;
+const usable = (markdown: string) => markdown.length >= MIN_USABLE_CHARS && !isChallengePage(markdown);
 
 /**
  * The row, with its markdown read back from the .md file when the row says the file has it
@@ -297,7 +297,7 @@ export async function getPage(url: string, opts: PageOptions = {}): Promise<Page
 
   // Read the stored row even on a fresh fetch — it is what `changed` is measured against.
   const stored = await lookup(key, mode);
-  if (stored && !fresh && ageDays(stored.scraped_at) <= maxAgeDays) return fromStored(stored, opts.withLinks);
+  if (stored && !fresh && ageDays(stored.scraped_at) <= maxAgeDays && !isChallengePage(stored.markdown ?? "")) return fromStored(stored, opts.withLinks);
 
   // Links are always extracted for the row, so a later caller that wants them gets them;
   // the caller that asked for none still gets none, exactly as scrapeMarkdown behaves.

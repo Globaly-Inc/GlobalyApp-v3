@@ -123,6 +123,9 @@ export async function checkAllPagesDone(jobId: string) {
       if (!hasCampuses) {
         await queueService.publish(EXTRACTION_QUEUES.STEPS, { jobId, step: "branches" });
       }
+      const hasScholarshipPages = await masterKnex(`${S}.extraction_site_urls`)
+        .where({ job_id: jobId, category: "scholarships", excluded: false }).whereNull("dead_reason").first("id");
+      if (hasScholarshipPages) await queueService.publish(EXTRACTION_QUEUES.STEPS, { jobId, step: "scholarships" });
     }
   }
 }

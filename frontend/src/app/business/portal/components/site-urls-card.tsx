@@ -30,6 +30,7 @@ const CATEGORY_LABELS: Record<SiteUrlCategory, string> = {
   intake: "Intake",
   eligibility: "Eligibility",
   accreditations: "Accreditations",
+  scholarships: "Scholarships",
   other: "Other",
 };
 

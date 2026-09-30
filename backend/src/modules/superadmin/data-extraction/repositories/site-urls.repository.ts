@@ -4,6 +4,7 @@ import type { Knex } from "knex";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { normaliseUrl } from "../lib/page-store.js";
+import { rankForCrawl } from "../lib/html-utils.js";
 import { SITE_URL_CATEGORIES, type CategoryVerdict, type SiteUrlCategory, type SiteUrlCategorySource } from "../lib/url-categories.js";
 
 const T = `${S}.extraction_site_urls`;
@@ -70,20 +71,25 @@ export async function addSiteUrl(jobId: string, url: string, category: SiteUrlCa
 }
 
 /**
- * Every live, non-excluded URL for a job, in discovery order. What site_snapshot and url_classify
- * read. `includeDead` is for a `fresh` re-snapshot, which is the one place a dead page gets retried.
+ * Every live, non-excluded URL for a job, likeliest course pages first (rankForCrawl), discovery
+ * order within a rank. site_snapshot and url_classify both keep only the first N of it.
+ * `includeDead` is for a `fresh` re-snapshot, which is the one place a dead page gets retried.
  */
 export async function listActiveSiteUrls(jobId: string, opts: { includeDead?: boolean } = {}): Promise<Pick<SiteUrlRow, "id" | "url" | "source" | "category" | "category_source">[]> {
-  return masterKnex(T).where({ job_id: jobId, excluded: false })
+  const rows = await masterKnex(T).where({ job_id: jobId, excluded: false })
     .modify((qb) => { if (!opts.includeDead) qb.whereNull("dead_reason"); })
     .orderBy("created_at").select("id", "url", "source", "category", "category_source");
+  return rankForCrawl(rows);
 }
 
-/** Live, non-excluded URLs in the given category — queue_pages sends `course` to the page queue. */
+/** Live, non-excluded URLs in the given category. `course` is ranked like listActiveSiteUrls —
+ *  queue_pages sends it to the page queue and page_cap keeps the first N. Every other category keeps
+ *  admin-first discovery order: its entity steps take the first MAX_TYPE_URLS, and a course-path
+ *  ranking would push an institution-wide page (/tuition-fees) below programme-specific ones. */
 export async function listSiteUrlsByCategory(jobId: string, category: SiteUrlCategory): Promise<string[]> {
   const rows = await masterKnex(T).where({ job_id: jobId, excluded: false, category }).whereNull("dead_reason")
-    .orderByRaw("(category_source = 'admin') DESC, created_at").select("url");
-  return rows.map((r: { url: string }) => r.url);
+    .orderByRaw("(category_source = 'admin') DESC, created_at").select("url", "source", "category_source");
+  return (category === "course" ? rankForCrawl(rows) : rows).map((r: { url: string }) => r.url);
 }
 
 /**

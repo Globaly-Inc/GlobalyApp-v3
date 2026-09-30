@@ -63,6 +63,10 @@ export interface ScrapeResult {
 export interface MapOptions {
   limit?: number;
   includeSubdomains?: boolean;
+  /** Firecrawl's map FIRST, as discovery was before 2026-09-30. The AI-knowledge crawler keeps it:
+   *  a knowledge source is one site, and the extraction order's catalogue / cert-log probes would
+   *  pull every subdomain of the institution into it. */
+  preferMap?: boolean;
 }
 
 export interface DiscoveryResult {
@@ -92,11 +96,20 @@ const ACCESS_DENIED_PATTERNS = [
   /you don['’]?t have permission to access/i,
 ];
 const NO_CONTENT_PATTERNS = [...NOT_FOUND_PATTERNS, ...ACCESS_DENIED_PATTERNS];
+const CHALLENGE_PATTERNS = [
+  /verify (that )?you(['’]re| are) (not a robot|human)/i,
+  /checking (your browser|if the site connection is secure)/i,
+];
+const CHALLENGE_MAX_LEN = 2000;
+
+export function isChallengePage(content: string): boolean {
+  return content.length < CHALLENGE_MAX_LEN && CHALLENGE_PATTERNS.some((re) => re.test(content));
+}
 
 // ponytail: phrase-based soft-404 detector, not a content-density model — add one if a
 // real page keeps slipping through with boilerplate-only content but no matching phrase.
 function isUsableContent(content: string): boolean {
-  if (content.length < MIN_CONTENT_LEN) return false;
+  if (content.length < MIN_CONTENT_LEN || isChallengePage(content)) return false;
   return !NO_CONTENT_PATTERNS.some((re) => re.test(content));
 }
 
@@ -114,6 +127,7 @@ function isDeadUrlSignal(content: string, error?: string | null): boolean {
 function unusableReason(content: string): string {
   if (content.length < MIN_CONTENT_LEN) return `page content too short (${content.length} chars)`;
   if (isDeadUrl(content)) return "source page reports the content doesn't exist (404 / not found)";
+  if (isChallengePage(content)) return "anti-bot challenge page (needs a browser tier)";
   if (ACCESS_DENIED_PATTERNS.some((re) => re.test(content))) return "page reports access denied (possible anti-bot block)";
   return "page content unusable";
 }
@@ -297,11 +311,16 @@ function getFirecrawlKey() {
 
 // ─── Crawl4AI ───────────────────────────────────────────────────────────────
 
-function extractLinksFromMarkdown(markdown: string): string[] {
+export function extractLinksFromMarkdown(markdown: string, baseUrl?: string): string[] {
   const links = new Set<string>();
-  const mdLink = /\[[^\]]*\]\((https?:\/\/[^\s)]+)\)/g;
+  const mdLink = /\[[^\]]*\]\(([^\s)]+)\)/g;
   let m: RegExpExecArray | null;
-  while ((m = mdLink.exec(markdown)) !== null) links.add(m[1]);
+  while ((m = mdLink.exec(markdown)) !== null) {
+    const href = m[1];
+    if (/^https?:\/\//i.test(href)) { links.add(href); continue; }
+    if (!baseUrl || /^(#|javascript:|mailto:|tel:|data:)/i.test(href)) continue;
+    try { links.add(new URL(href, baseUrl).toString()); } catch { /* not a URL */ }
+  }
   const bare = /(https?:\/\/[^\s)<>"']+)/g;
   while ((m = bare.exec(markdown)) !== null) links.add(m[1]);
   return [...links];
@@ -456,11 +475,26 @@ export const __browserSlotInternals = { acquireBrowserSlot, releaseBrowserSlot, 
  *  carries no not-found phrasing is a real, thin page — not a wall to escalate past. */
 const MIN_THIN_2XX_LEN = 50;
 
+const MOBILE_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
+
+export function hardRetryTiers(hard: { mobile?: boolean; waitMs?: number }): typeof SCRAPLING_TIERS {
+  const wait = hard.waitMs ?? 8000;
+  const pageTimeout = 55_000;
+  return SCRAPLING_TIERS.filter((t) => t.browser).map((t) => ({
+    ...t,
+    // The client must outlive Scrapling's own page timeout + wait, or it aborts a fetch that was
+    // about to succeed and leaves its Chromium running server-side.
+    timeoutMs: pageTimeout + wait + 20_000,
+    args: { ...t.args, timeout: pageTimeout, wait, ...(hard.mobile ? { useragent: MOBILE_UA } : {}) },
+  }));
+}
+
 async function scraplingScrape(
   url: string,
   cfg: { baseUrl: string; apiKey?: string },
   extractionType: ScraplingExtractionType,
   mainContentOnly: boolean,
+  hard?: { mobile?: boolean; waitMs?: number },
 ): Promise<{ content: string; tierUsed?: string; error?: string; notFound?: boolean }> {
   let client: Client;
   try {
@@ -473,7 +507,7 @@ async function scraplingScrape(
   }
 
   let lastError: string | undefined;
-  for (const tier of SCRAPLING_TIERS) {
+  for (const tier of hard ? hardRetryTiers(hard) : SCRAPLING_TIERS) {
     if (tier.browser) await acquireBrowserSlot();
     try {
       // Inside the try, not before it: anything thrown between acquiring the slot and entering
@@ -505,7 +539,7 @@ async function scraplingScrape(
         return { content: "", tierUsed: tier.tool, notFound: true, error: `${tier.tool}: HTTP ${status} — source page does not exist` };
       }
       const ok2xx = status != null && status >= 200 && status < 300;
-      const thinButReal = ok2xx && content.length >= MIN_THIN_2XX_LEN && !NO_CONTENT_PATTERNS.some((re) => re.test(content));
+      const thinButReal = ok2xx && content.length >= MIN_THIN_2XX_LEN && !isChallengePage(content) && !NO_CONTENT_PATTERNS.some((re) => re.test(content));
       if (isUsableContent(content) || thinButReal) {
         logger.info(`scrapling mcp: tool "${tier.tool}" succeeded for ${url} (${content.length} chars${thinButReal && !isUsableContent(content) ? ", thin 2xx" : ""})`);
         return { content, tierUsed: tier.tool };
@@ -655,7 +689,7 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
   await throttleForHost(url);
 
   const fcKey = getFirecrawlKey();
-  const scrapling = opts.forceFirecrawl ? null : getScraplingConfig();
+  const scrapling = getScraplingConfig();
   const c4 = opts.forceFirecrawl ? null : getCrawl4aiConfig();
 
   // Path 0: Scrapling available
@@ -666,12 +700,13 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
     // with it on, 101k chars with "£9,790 per year" and a paragraph per module with it off
     // (2026-09-21). Nav stays in; Gemini copes and stripMarkdownJunk/truncateMarkdown bound it.
     // `onlyMainContent` still keys the store's mode; it no longer changes what Scrapling returns.
-    const s = await scraplingScrape(url, scrapling, "markdown", false);
+    const s = await scraplingScrape(url, scrapling, "markdown", false,
+      opts.forceFirecrawl ? { mobile: opts.mobile, waitMs: opts.waitFor } : undefined);
     if (s.content) {
       logger.info(`scrapling OK for ${url} (tier: ${s.tierUsed ?? "unknown"}, ${s.content.length} chars)`);
       return {
         markdown: s.content,
-        links: opts.withLinks ? extractLinksFromMarkdown(s.content) : [],
+        links: opts.withLinks ? extractLinksFromMarkdown(s.content, url) : [],
         scraper: "scrapling",
       };
     }
@@ -687,7 +722,7 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
     if (isUsableContent(a1.markdown)) {
       return {
         markdown: a1.markdown,
-        links: opts.withLinks ? extractLinksFromMarkdown(a1.markdown) : [],
+        links: opts.withLinks ? extractLinksFromMarkdown(a1.markdown, url) : [],
         scraper: "crawl4ai",
       };
     }
@@ -695,7 +730,7 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
     if (isUsableContent(a2.markdown)) {
       return {
         markdown: a2.markdown,
-        links: opts.withLinks ? extractLinksFromMarkdown(a2.markdown) : [],
+        links: opts.withLinks ? extractLinksFromMarkdown(a2.markdown, url) : [],
         scraper: "crawl4ai",
       };
     }
@@ -796,6 +831,31 @@ export function sitemapUrlsFromRobots(txt: string): string[] {
 /** Child sitemap URLs inside a `<sitemapindex>`. Pure. */
 export function sitemapIndexChildren(xml: string): string[] {
   return [...xml.matchAll(/<sitemap>[\s\S]*?<loc>([^<]+)<\/loc>[\s\S]*?<\/sitemap>/gi)].map((m) => m[1].trim());
+}
+
+/** Foreign hosts an own-site sitemap points at, recorded as `foreignHost → own origin`. Pure.
+ *  CSU's www index lists 5,000 URLs on live-csu-mainsite.pantheonsite.io (a misset Drupal base
+ *  URL); filterUrls then drops every one as off-site. A partner site listed the same way is not an
+ *  alias, so the caller confirms each candidate against the own origin before rebasing. */
+export function noteForeignHost(listed: string, docUrl: string, site: string, aliases: Map<string, string>): void {
+  try {
+    const l = new URL(listed);
+    const d = new URL(docUrl);
+    if (!isSameSite(l.hostname, site) && isSameSite(d.hostname, site) && !aliases.has(l.host)) aliases.set(l.host, d.origin);
+  } catch { /* not a URL */ }
+}
+
+/** Locs on a confirmed alias host, moved onto the own origin (path and query kept). Pure. */
+export function rebaseLocs(locs: Iterable<string>, confirmed: Map<string, string>): string[] {
+  const out = new Set<string>();
+  for (const loc of locs) {
+    try {
+      const u = new URL(loc);
+      const to = confirmed.get(u.host);
+      out.add(to ? `${to}${u.pathname}${u.search}` : loc);
+    } catch { out.add(loc); }
+  }
+  return [...out];
 }
 
 /** Page URLs inside a `<urlset>`. Pure. */
@@ -906,7 +966,10 @@ async function fetchSitemapDoc(url: string, seedUrl: string, opts: { retry?: boo
   return { ok: false, reachable: false };
 }
 
-export async function fetchSitemapUrls(seedUrl: string, max = 10000): Promise<string[]> {
+/** `rebaseAliases` only for the job's own seed: a cert-log or catalogue host that serves the same
+ *  misset sitemap would otherwise mint a duplicate copy of the site on itself (csuohio.edu and
+ *  csu2.0.csuohio.edu each came back with CSU's 4,300 pages). */
+export async function fetchSitemapUrls(seedUrl: string, max = 10000, opts: { rebaseAliases?: boolean } = {}): Promise<string[]> {
   // Same guard: sitemapsFromLinkedHosts derives the host from a page's own links.
   try {
     await assertPublicUrl(seedUrl);
@@ -948,19 +1011,24 @@ export async function fetchSitemapUrls(seedUrl: string, max = 10000): Promise<st
     return r.ok ? r.text : null;
   }
 
-  async function parse(xml: string, depth: number) {
+  const site = siteOf(seedUrl);
+  const aliases = new Map<string, string>();
+
+  async function parse(xml: string, depth: number, docUrl: string) {
     if (depth > SITEMAP_MAX_DEPTH || seen.size >= max) return;
     if (/<sitemapindex[\s>]/i.test(xml)) {
       for (const sub of sitemapIndexChildren(xml).slice(0, SITEMAP_INDEX_CHILD_CAP)) {
         if (seen.size >= max) return;
         if (tried.has(sub)) continue;
         tried.add(sub);
+        noteForeignHost(sub, docUrl, site, aliases);
         const child = await fetchDoc(sub);
-        if (child) await parse(child, depth + 1);
+        if (child) await parse(child, depth + 1, sub);
       }
       return;
     }
     for (const loc of sitemapLocs(xml)) {
+      noteForeignHost(loc, docUrl, site, aliases);
       seen.add(loc);
       if (seen.size >= max) return;
     }
@@ -970,7 +1038,34 @@ export async function fetchSitemapUrls(seedUrl: string, max = 10000): Promise<st
     if (seen.size >= max || tried.has(url)) return;
     tried.add(url);
     const doc = await fetchDoc(url);
-    if (doc) await parse(doc, 0);
+    if (doc) await parse(doc, 0, url);
+  }
+
+  /** An alias is real when one of its paths answers on the own origin AT that path, and a path that
+   *  cannot exist does not — a site that 200s every URL, or redirects unknown ones home, would
+   *  otherwise "confirm" a partner host and mint its whole sitemap onto ours. */
+  async function confirmedAliases(): Promise<Map<string, string>> {
+    const confirmed = new Map<string, string>();
+    const trimmed = (p: string) => p.replace(/\/+$/, "") || "/";
+    for (const [host, to] of aliases) {
+      const sample = [...seen].find((u) => { try { return new URL(u).host === host && new URL(u).pathname !== "/"; } catch { return false; } });
+      if (!sample) continue;
+      const u = new URL(sample);
+      try {
+        const fetchOpts = { signal: AbortSignal.timeout(SITEMAP_FETCH_TIMEOUT_MS) };
+        const res = await politeFetch(`${to}${u.pathname}${u.search}`, fetchOpts, { referer: seedUrl });
+        const landed = new URL(res.url || `${to}${u.pathname}`);
+        const samePage = res.ok && isSameSite(landed.hostname, site) && trimmed(landed.pathname) === trimmed(u.pathname);
+        const control = samePage
+          ? await politeFetch(`${to}/__alias-check-${Date.now().toString(36)}`, fetchOpts, { referer: seedUrl })
+          : null;
+        if (samePage && control && !control.ok) confirmed.set(host, to);
+        else logger.info(`Sitemap host ${host} is not an alias of ${to}`, { status: res.status, landed: landed.pathname, controlStatus: control?.status });
+      } catch (err) {
+        logger.warn(`Sitemap alias probe failed for ${host}`, { error: String(err) });
+      }
+    }
+    return confirmed;
   }
 
   // robots.txt is read ALWAYS, not as a last resort. It is the site's own declaration of where its
@@ -997,7 +1092,10 @@ export async function fetchSitemapUrls(seedUrl: string, max = 10000): Promise<st
       if (seen.size > 0 || health.get(hostOf(origin))?.dead) break;
     }
   }
-  return [...seen];
+  if (!opts.rebaseAliases || !aliases.size) return [...seen];
+  const confirmed = await confirmedAliases();
+  if (confirmed.size) logger.info(`Rebasing sitemap URLs from alias hosts onto ${origin}`, { hosts: [...confirmed.keys()] });
+  return rebaseLocs(seen, confirmed);
 }
 
 /**
@@ -1183,36 +1281,42 @@ export async function discoverUrlsForCrawl(seedUrl: string, opts: MapOptions = {
   const limit = opts.limit ?? 5000;
   // Course catalogues live on subdomains far more often than not, and both the map
   // call and the URL filter used to exclude them.
-  const mapOpts: MapOptions = { includeSubdomains: true, ...opts };
-
-  // 1. Firecrawl map
-  const map = await mapUrlsDetailed(seedUrl, mapOpts);
-  if (map.success && map.links.length > 1) {
-    return { urls: map.links, method: "map", sources: { map: map.links.length } };
+  const { preferMap, ...rest } = opts;
+  const mapOpts: MapOptions = { includeSubdomains: true, ...rest };
+  if (preferMap) {
+    const first = await mapUrlsDetailed(seedUrl, mapOpts);
+    if (first.success && first.links.length > 1) return { urls: first.links, method: "map", sources: { map: first.links.length } };
   }
-  // 2. sitemap.xml — the seed's, any catalogue subdomain that has one, plus anything
+
+  // 1. sitemap.xml — the seed's, any catalogue subdomain that has one, plus anything
   // Certificate Transparency logs surface that the wordlist and already-linked-hosts
   // paths below could never find on their own (see fetchCertLogSitemaps).
   const [sitemap, catalogue, certLog] = await Promise.all([
-    fetchSitemapUrls(seedUrl, limit),
+    fetchSitemapUrls(seedUrl, limit, { rebaseAliases: true }),
     fetchCatalogueSitemaps(seedUrl, limit),
     fetchCertLogSitemaps(seedUrl, limit),
   ]);
   const merged = [...new Set([...sitemap, ...catalogue, ...certLog])];
   if (merged.length > 1) {
     return {
-      urls: merged, method: "sitemap", error: map.error,
+      urls: merged, method: "sitemap",
       sources: { seed_sitemap: sitemap.length, catalogue: catalogue.length, cert_log: certLog.length },
     };
   }
-  // 3. Scrape seed page for links.
+  // 2. Scrape seed page for links. The pipeline's own crawl (site-crawl.ts) expands from here.
   const res = await scrapeMarkdown(seedUrl, { withLinks: true, onlyMainContent: false });
   if (res.links.length > 1) {
     const linked = await sitemapsFromLinkedHosts(res.links, limit);
     if (linked.length) {
-      return { urls: [...new Set([...linked, ...res.links])], method: "sitemap", error: map.error };
+      return { urls: [...new Set([...linked, ...res.links])], method: "sitemap" };
     }
-    return { urls: res.links, method: "page-links", error: map.error };
+    return { urls: res.links, method: "page-links" };
+  }
+  // 3. Firecrawl map, last: a paid external service, and one whose credits ran out unnoticed while
+  // it sat first here (every job then silently degraded to homepage links).
+  const map = preferMap ? { success: false, links: [] as string[], error: "Firecrawl map returned no links", insufficientCredits: undefined } : await mapUrlsDetailed(seedUrl, mapOpts);
+  if (map.success && map.links.length > 1) {
+    return { urls: map.links, method: "map", sources: { map: map.links.length } };
   }
   // 4. Seed URL only
   return { urls: [seedUrl], method: "seed-only", error: map.error || "No URLs discovered", insufficientCredits: map.insufficientCredits };
