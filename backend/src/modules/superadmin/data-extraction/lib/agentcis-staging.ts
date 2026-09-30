@@ -13,6 +13,18 @@ import { findCategoryIdBySlug } from "../repositories/promote.repository.js";
 
 const logger = createChildLogger("agentcis-staging");
 
+
+let institutionsCategoryIdPromise: Promise<number | null> | null = null;
+export function getInstitutionsCategoryId(): Promise<number | null> {
+  if (!institutionsCategoryIdPromise) {
+    institutionsCategoryIdPromise = findCategoryIdBySlug("institutions").catch((err) => {
+      institutionsCategoryIdPromise = null;
+      throw err;
+    });
+  }
+  return institutionsCategoryIdPromise;
+}
+
 // ── Progress tracking ──
 //
 // pipeline_progress is jsonb — merge with the `||` operator instead of read-modify-write,
@@ -48,7 +60,7 @@ export async function stageAgentcisInstitution(
       institution_url: website,
       status: "processing",
       source_type: "agentcis",
-      business_category_id: await findCategoryIdBySlug("institutions"),
+      business_category_id: await getInstitutionsCategoryId(),
       aggregator_name: "AgentCIS",
       pipeline_progress: JSON.stringify({ phase: "institution", current: 0, total: 0, agentcis_id: institutionId }),
       processing_heartbeat_at: masterKnex.fn.now(),
