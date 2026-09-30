@@ -773,6 +773,51 @@ export function claimBusinessEmail(options: {
   };
 }
 
+/**
+ * "Your profile is ready" — sent by the data-extraction completion step to the institution's or
+ * business's owner (or the entity's own address) once a crawl finishes verification. Counts are
+ * what was captured, so the owner knows what to review; nothing here promises it is live.
+ */
+export function extractionCompleteEmail(options: {
+  recipientName: string | null;
+  entityName: string;
+  website: string | null;
+  /** "courses" for an institution, "services" for a visa/migration provider. */
+  itemLabel: "courses" | "services";
+  itemCount: number;
+  coverage: Array<{ label: string; count: number }>;
+  portalUrl: string;
+}): { subject: string; html: string; text: string } {
+  const entityName = esc(options.entityName);
+  const greeting = options.recipientName ? `Hi ${esc(options.recipientName)},` : `Hi ${entityName} team,`;
+  const site = options.website ? ` from <strong>${esc(options.website)}</strong>` : "";
+  const coverage = options.coverage.filter((c) => c.count > 0).map((c) => `${c.count} ${c.label}`);
+
+  return {
+    subject: `Your ${options.entityName} profile is ready on GlobalyApp`,
+    text: [
+      options.recipientName ? `Hi ${options.recipientName},` : `Hi ${options.entityName} team,`,
+      `We've finished collecting ${options.entityName}'s details${options.website ? ` from ${options.website}` : ""} on GlobalyApp.`,
+      `${options.itemCount} ${options.itemLabel} found${coverage.length ? ` — ${coverage.join(", ")}` : ""}.`,
+      `Review your profile: ${options.portalUrl}`,
+      "Some details may need your review before students see them. You can edit anything from your portal.",
+    ].join("\n\n"),
+    html: emailLayout({
+      heading: "Your profile is ready to review",
+      body: `<p style="margin:0 0 12px">${greeting}</p>
+             <p style="margin:0 0 20px">We've finished collecting <strong>${entityName}</strong>'s details${site} on
+             <strong>GlobalyApp</strong> — the platform connecting students with verified institutions, agents, and
+             education services worldwide.</p>
+             ${countBlock(options.itemCount, `${options.itemLabel} found`)}
+             ${coverage.length ? `<div style="margin:20px 0 0;text-align:left">${benefitList(coverage)}</div>` : ""}
+             <p style="margin:20px 0 0">Take a look and make sure everything is right, so students find accurate
+             information about ${entityName}.</p>`,
+      cta: { label: "Review your profile", href: options.portalUrl },
+      footnote: "Some details may need your review before students see them. You can edit anything from your portal.",
+    }),
+  };
+}
+
 /** The "here's your guide" mail, sent by guide-email.worker.ts with a 7-day signed GCS link. */
 export function guideDeliveryEmail(options: {
   guideTitle: string;

@@ -1192,6 +1192,21 @@ Same pass, also 2026-09-30:
   `scripts/eval-jev-page-gate.ts` measures the page gate and the URL classifier on labelled pages;
   the course check and pickers have no offline labels yet — start their thresholds high.
 
+## Extraction-complete email (2026-09-30)
+
+Not a V2 behaviour — explicitly requested. When the verify worker moves a job to `review`,
+`lib/completion-email.ts` `sendCompletionEmail` mails the OWNER of the institution (`institutions.
+source_job_id` → `platform_user_id`) or business (`businesses.source_job_id` → `owner_id`), else that
+entity's own `email`. A job with no platform institution/business is NOT emailed (the only address would
+be scraped off their site — unsolicited outreach; user decision). Once per run: the claim is
+`pipeline_progress.completion_email`, which the job worker's wholesale rewrite clears at every run start
+(Re-run, Deep scrape), so redelivery / Resume / manual re-verification cannot double-send. Sign-up
+placeholder jobs (`self_service`) are skipped. Template `extractionCompleteEmail` in
+`shared/mail/templates.ts` (shared `emailLayout`: count block, check-list, CTA to
+`WEB_APP_URL/business/portal`). Sent via `queueEmail`; timeline events `completion_email_sent` (masked
+address) / `_skipped` / `_failed`. Never throws — a mail problem cannot undo `review`.
+`test:completion-email`.
+
 ## External FK columns
 
 7 columns reference tables that may not exist yet in V3. These are plain
