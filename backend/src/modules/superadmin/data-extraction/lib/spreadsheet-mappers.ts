@@ -80,17 +80,15 @@ const AUDIENCE_WORDS = /^(domestic|international|both)$/i;
  */
 export function parseDurationCell(v: string | null) {
   const parts = (v ?? "").split(",").map((s) => s.trim()).filter(Boolean);
-  // A part that is exactly a mode word the course writer reads (MODE_MAP: Remote, In Person…) is the
-  // mode. Only with none does a longer part lend one ("4 Years Online" stays the duration and passes
-  // "online" on — the course writer matches whole tokens), and then only a teaching word: a bare
-  // "Campus" there is a place ("4 Years at City Campus").
+  // A part that is exactly a mode word the course writer reads (MODE_MAP: Remote, In Person…) is a
+  // mode. A longer part lends one too ("4 Years Online" stays the duration and passes "online" on —
+  // the course writer matches whole tokens), but only a teaching word: a bare "Campus" there is a
+  // place ("4 Years at City Campus"). Each mode once.
   const isMode = (p: string) => !!MODE_MAP[p.toLowerCase()];
   const modes = parts.filter(isMode);
-  if (!modes.length) {
-    for (const p of parts) {
-      const m = p.match(EMBEDDED_MODE)?.[0].toLowerCase().replace("-", " ");
-      if (m && MODE_MAP[m] && !modes.includes(m)) modes.push(m);
-    }
+  for (const p of parts) {
+    const m = isMode(p) ? null : p.match(EMBEDDED_MODE)?.[0].toLowerCase().replace("-", " ");
+    if (m && MODE_MAP[m] && !modes.some((x) => MODE_MAP[x.toLowerCase()] === MODE_MAP[m])) modes.push(m);
   }
   const loads = parts.filter((p) => LOAD_WORDS.test(p));
   const rest = parts.filter((p) => !isMode(p) && !LOAD_WORDS.test(p) && !AUDIENCE_WORDS.test(p));

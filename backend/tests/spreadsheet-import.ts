@@ -124,6 +124,10 @@ ok([embedded.duration, embedded.study_mode], ["4 Years Online", "online"], "a mo
 ok(extractStudyOptions(embedded).map((o) => [o.study_mode, o.duration_value]), [["online", 4]], "…and the course writer reads it as online");
 ok(extractStudyOptions(rowToProduct(SpreadsheetCourseRowSchema.parse({ course_name: "X", duration: "4 Years at City Campus, Online" }), null)).map((o) => o.study_mode),
   ["online"], "a campus named in the location is not a mode");
+ok(extractStudyOptions(rowToProduct(SpreadsheetCourseRowSchema.parse({ course_name: "X", duration: "4 Years Online, In Person" }), null)).map((o) => o.study_mode),
+  ["on_campus", "online"], "an embedded mode is kept beside an explicit one");
+ok(extractStudyOptions(rowToProduct(SpreadsheetCourseRowSchema.parse({ course_name: "X", duration: "4 Years Online, Online" }), null)).map((o) => o.study_mode),
+  ["online"], "the same mode twice is one option");
 ok(repeatInstallments(100, 1e9, "Per Month").installments.length, 1, "an absurd installment count collapses to one Total line");
 ok(repeatInstallments(100, 12, "Per Month").installments.length, 12, "a real count still repeats");
 ok(rowToProduct(SpreadsheetCourseRowSchema.parse({ course_name: "X", branch_names: "Main   Campus; City\tCampus" }), null).branches,
