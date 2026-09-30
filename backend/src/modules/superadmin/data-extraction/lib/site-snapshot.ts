@@ -124,7 +124,7 @@ export function deadReasonOf(page: { notFound?: boolean; blocked?: boolean; mark
  *  from ~an hour to ~15 minutes; set SNAPSHOT_CONCURRENCY=2 if a site starts answering 429. */
 const SNAPSHOT_CONCURRENCY = Math.max(1, Number(process.env.SNAPSHOT_CONCURRENCY) || 4);
 
-async function jobHalted(jobId: string): Promise<boolean> {
+export async function jobHalted(jobId: string): Promise<boolean> {
   const job = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId })
     .select("status", "stop_requested").first();
   return !job || !!job.stop_requested || ["paused", "failed", "declined"].includes(job.status);

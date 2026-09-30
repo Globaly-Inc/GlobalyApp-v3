@@ -616,7 +616,10 @@ export async function listCountryNames(): Promise<Array<{ name: string; iso2: st
 
 // ── Course detail (single course with all related data) ──
 
-export async function getCourseDetails(courseId: string): Promise<CourseDetailResult | undefined> {
+/** `jobIds`: the embed widget owner's OWN jobs — as in searchCourses, their courses are answerable
+ *  before a superadmin exports the job. Without it only exported jobs are, so a self-service
+ *  institution's widget found its own course in search and then got NO details for it. */
+export async function getCourseDetails(courseId: string, opts: { jobIds?: string[] } = {}): Promise<CourseDetailResult | undefined> {
   const course = await masterKnex(`${SA}.extraction_courses as c`)
     .join(`${SA}.extraction_institution_overview as i`, "c.job_id", "i.job_id")
     .select(
@@ -630,7 +633,10 @@ export async function getCourseDetails(courseId: string): Promise<CourseDetailRe
     // A model-supplied id must not surface a draft or unapproved course's details either.
     .where("c.is_published", true)
     .whereRaw(approvedCourseSql("c"))
-    .whereRaw(`exists (select 1 from ${SA}.extraction_jobs ej where ej.id = c.job_id and ej.status = 'exported')`)
+    .where((q) => {
+      q.whereRaw(`exists (select 1 from ${SA}.extraction_jobs ej where ej.id = c.job_id and ej.status = 'exported')`);
+      if (opts.jobIds?.length) q.orWhereIn("c.job_id", opts.jobIds);
+    })
     .first();
 
   if (!course) return undefined;

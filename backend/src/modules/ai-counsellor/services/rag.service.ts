@@ -251,7 +251,7 @@ export async function searchAll(opts: {
     trace(`Hydrating ${courseIds.length} courses`);
     const details = await Promise.all(
       courseIds.map(id =>
-        knowledge.getCourseDetails(id).catch(err => {
+        knowledge.getCourseDetails(id, { jobIds: opts.jobIds }).catch(err => {
           logger.warn("Course detail fetch failed", { id, err: String(err) });
           return undefined;
         }),

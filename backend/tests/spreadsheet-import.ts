@@ -85,7 +85,8 @@ ok(repeatInstallments(9464, 8, "Per Semester").installments.map((i) => i.amount)
 ok(repeatInstallments(9464, 8, "Per Semester").installments[7].label, "Year 4 Semester 2", "multi-year semester labels");
 ok(repeatInstallments(500, 1, "Total"), { total: 500, installments: [{ label: "Total", amount: 500 }] }, "total fee → single Total line");
 const frac = repeatInstallments(10522.08, 4, "Per Semester");
-ok([frac.total, frac.installments.reduce((n, i) => n + i.amount, 0)], [42088, 42088], "fractional rate: payments sum to the stored total");
+ok([frac.total, frac.installments.map((i) => i.amount)], [42088.32, [10522.08, 10522.08, 10522.08, 10522.08]], "fractional rate: cents are kept in the total and every payment");
+ok(Math.round(frac.installments.reduce((n, i) => n + i.amount, 0) * 100), 4208832, "…and the payments sum to the stored total to the cent");
 const fracCount = repeatInstallments(1000, 2.6, "Per Semester");
 ok([fracCount.total, fracCount.installments.length], [3000, 3], "fractional count: one rounded count for both total and payments");
 // English cells: one number = overall; comma list = Overall, Listening, Reading, Writing, Speaking.
