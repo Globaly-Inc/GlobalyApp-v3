@@ -196,5 +196,76 @@ console.log("\n12. 'sensitive' is subtracted from what is kept, not only announc
     "and the un-subtracted list is what used to leak it — the subtraction is the fix, not the filter");
 }
 
+console.log("\n13. unreadable rules fail CLOSED, not open");
+{
+  // The guest route's own expression, asserted here because it is the whole fix: when the Rack
+  // read is degraded the rules we hold are DEFAULTS, and the default allow-list is wider than a
+  // narrowed one — so trusting it would store fields the institution had switched off.
+  const keepableFor = (collection: { allowed: string[]; sensitive: string[] } | null, rulesUnknown: boolean) =>
+    collection
+      ? collection.allowed.filter((f) => !collection.sensitive.includes(f))
+      : rulesUnknown ? [] : undefined;
+
+  assert(keepableFor(null, true)?.length === 0,
+    "degraded → an EMPTY keep-list, so nothing is extracted and nothing is written");
+  assert(keepableFor(null, false) === undefined,
+    "no institution at all → undefined, which means the built-in set, not a lockout");
+  assert(keepableFor({ allowed: ["nationality"], sensitive: [] }, false)?.length === 1,
+    "a readable rule set is used as given");
+
+  // And an empty keep-list really does drop everything, rather than being ignored as falsy.
+  const extracted = { nationality: "Nepal", study_preference: "MBA" } as never;
+  assert(pe.applyCollectionRules(extracted, []) === null,
+    "an empty allow-list stores nothing — the lockout is real, not cosmetic");
+}
+
+console.log("\n14. withdrawing permission applies to details ALREADY stored");
+{
+  // The gap: collection rules gated the WRITE, so a field switched off yesterday kept flowing
+  // into today's prompt and memory query from rows written while it was still on.
+  const stored = visitor({
+    name: "John", age: "24", gender: "female", nationality: "Nepal", nationality_raw: "Nepali",
+    study_preference: "MBA",
+    language_tests: [{ test_type: "IELTS", overall_score: "7" }],
+    work_experiences: [{ job_title: "Nurse" }],
+  } as Partial<VisitorRow>);
+
+  // The institution has since narrowed itself to the course and the English test.
+  const narrowed = vc.applyCollectionRules(stored, ["study_preference", "language_tests"])!;
+  assert(narrowed.nationality === null && narrowed.nationality_raw === null,
+    "a withdrawn field is stripped, and its raw wording goes with it");
+  assert(narrowed.age === null && narrowed.gender === null && narrowed.name === null,
+    "so are the other scalars");
+  assert(narrowed.work_experiences === null, "and the withdrawn arrays");
+  assert(narrowed.study_preference === "MBA" && narrowed.language_tests?.length === 1,
+    "what is still allowed survives untouched");
+
+  // And the stripping really reaches the two things that consume it.
+  const p = vc.visitorProfileContext(narrowed);
+  assert(p?.profile?.nationality == null, "the prompt's STUDENT PROFILE loses the withdrawn nationality");
+  assert(p?.language_tests.length === 1, "but keeps the test score it may still use");
+  const c = vc.visitorCounsellingContext(narrowed);
+  assert(!c?.notes?.some((n) => /John|24/.test(n)), "the session notes lose the withdrawn name and age", c?.notes);
+  assert(rag.situationText(p, c)?.includes("Nepal") !== true,
+    "and the memory query stops carrying it", rag.situationText(p, c));
+
+  // Unknown rules fail closed, same stance as the extractor's empty keep-list.
+  assert(vc.applyCollectionRules(stored, [])?.nationality === null, "no readable rules → nothing is used");
+  assert(vc.applyCollectionRules(stored, undefined)?.nationality === "Nepal",
+    "no institution at all → unchanged, which is the built-in behaviour and not a lockout");
+}
+
+console.log("\n15. askAt degrades to the minimum, never to NaN");
+{
+  const vs = await import("../src/modules/ai-counsellor/services/visitor.service.js");
+  // The schema rejects a reversed range, so this is the second line: a pair arriving by any
+  // other route (hand-written SQL, a caller that skips zod) must not mute the card forever.
+  const REVERSED = { enabled: true, first_at: [5, 4] as const, gap: [5, 10] as const };
+  const v = visitor({ contact_status: "not_shown" });
+  assert(vs.shouldPrompt(v, 5, REVERSED), "a reversed range falls back to asking at its minimum");
+  assert(vs.shouldPrompt(v, 99, REVERSED), "and keeps working above it — not a NaN comparison, which is false forever");
+  assert(!vs.shouldPrompt(v, 1, REVERSED), "while still respecting that minimum");
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

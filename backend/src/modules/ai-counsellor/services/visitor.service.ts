@@ -238,7 +238,12 @@ function askAt(visitorKey: string, round: number, range: { min: number; max: num
     h ^= seed.charCodeAt(i);
     h = Math.imul(h, 0x01000193);
   }
-  return range.min + (Math.abs(h) % (range.max - range.min + 1));
+  // Span floored at 1. The schema rejects a reversed range, but this is the arithmetic that
+  // turns one into NaN — and a NaN threshold is never reached, so the card goes quiet with
+  // nothing logged. A value that reaches here by any other route (hand-written SQL, a future
+  // caller that skips zod) degrades to "always the min" instead of "never".
+  const span = Math.max(1, range.max - range.min + 1);
+  return range.min + (Math.abs(h) % span);
 }
 
 /**
@@ -680,23 +685,54 @@ export async function recordVolunteeredContact(
   const hasEmail = !!opts.email;
 
   const patch: Record<string, unknown> = { contact_source: "volunteered", updated_at: db.fn.now() };
-  // COALESCE on the column, not on the incoming value: only fill a blank. The card wins, and so
-  // does whatever they said first — a later turn correcting themselves goes through the card.
-  if (opts.name) patch.name = db.raw("COALESCE(name, ?)", [opts.name]);
-  if (opts.email) patch.email = db.raw("COALESCE(email, ?)", [opts.email]);
-  if (opts.phone) patch.phone = db.raw("COALESCE(phone, ?)", [opts.phone]);
+  // REPLACED, not COALESCE'd. These used to only fill a blank, so "sorry, it's john@gmail.com
+  // not john@gmial.com" landed nowhere and the summary went to the typo — which is somebody
+  // else's inbox, holding this visitor's conversation. The extractor reports only what the
+  // LATEST message states (see lib/profile-extract), so a value arriving here is a fresh
+  // statement rather than a re-read of an old one, and the newest statement is the one to keep.
+  if (opts.name) patch.name = opts.name;
+  if (opts.email) patch.email = opts.email;
+  if (opts.phone) patch.phone = opts.phone;
 
   if (hasEmail) {
+    // Enough to stop asking: we have what the card exists to collect, and asking someone for
+    // something they just told us reads as not listening.
     patch.contact_status = "submitted";
-    patch.contact_submitted_at = db.fn.now();
-    // Only when this is the address that landed — a second volunteered email for a visitor who
-    // already has one must not re-arm a summary that has been sent.
-    patch.summary_status = db.raw("CASE WHEN email IS NULL THEN 'pending' ELSE summary_status END");
+    // When we FIRST got details, not when they last corrected them.
+    patch.contact_submitted_at = db.raw("COALESCE(contact_submitted_at, now())");
   }
+
+  // NOTE WHAT IS DELIBERATELY ABSENT: summary_status.
+  //
+  // This used to arm the summary the moment an address appeared in the chat, and that was wrong
+  // in a way worth spelling out, because the card path looks identical and is fine. The card's
+  // own copy asks "want a copy of this conversation?" — submitting it IS the request. An address
+  // typed in passing is not: the visitor may have been giving it for a brochure, for an
+  // application, or to a human. Arming on that meant chat-summary.worker would mail them the
+  // entire transcript once they went idle (it sends on `end_confirmed` OR an idle cutoff, so no
+  // acceptance was ever required), to an address given for something else.
+  //
+  // The consent already exists further along: once we hold an email, decidePrompt offers the
+  // end-of-chat card at a natural ending, and accepting it runs recordConversationEnd, which is
+  // what sets `pending`. Volunteering an address makes that offer possible; it is not the offer.
 
   const [row] = await db<VisitorRow>(TABLE)
     .where(where)
-    .whereNot({ contact_status: "submitted" })
+    // `contact_status = 'submitted'` is NOT the guard any more, and that was the bug: it means
+    // "we have asked and been answered, stop showing the card", not "this address is now
+    // immutable". It only read as immutability because the card was once the sole writer.
+    //
+    // What actually must not be overwritten is narrower, and these are it:
+    //
+    //   1. An address the visitor TYPED INTO THE FORM. That is their own keystrokes, confirmed
+    //      in a field they could see; a model reading a later sentence does not get to replace
+    //      it. IS DISTINCT FROM, not whereNot: `NOT (contact_source = 'card')` is NULL for a row
+    //      that never had contact details, and a NULL predicate excludes the row — which would
+    //      lock out the very first volunteered capture.
+    //   2. An address a summary has already gone to. Once it is sent, correcting the column
+    //      changes nothing that happened and only loses the record of where it went.
+    .whereRaw("contact_source IS DISTINCT FROM 'card'")
+    .where((q) => q.whereNull("summary_status").orWhere({ summary_status: "pending" }))
     .update(patch)
     .returning("*");
   return row;

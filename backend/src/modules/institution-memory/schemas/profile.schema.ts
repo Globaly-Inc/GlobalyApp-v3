@@ -75,6 +75,20 @@ const DEFAULT_ALLOWED: CollectableField[] = [
   "work_experiences", "name", "email",
 ];
 
+/**
+ * A [min, max] message range, checked for ORDER as well as bounds.
+ *
+ * Bounds alone were not enough and the failure was silent: visitor.service's `askAt` computes
+ * `min + (hash % (max - min + 1))`, so a reversed pair makes the span zero, `% 0` is NaN, and
+ * every `nextCount >= askAt(...)` comparison is false forever. The contact card simply stops
+ * appearing, with nothing logged and nothing thrown. Only an API caller can get a pair in here —
+ * the portal exposes `enabled` and not the numbers — but a setting that disables a feature by
+ * arithmetic accident is worth one refine.
+ */
+const AskRange = z
+  .tuple([z.number().int().min(1).max(50), z.number().int().min(1).max(50)])
+  .refine(([min, max]) => min <= max, { message: "The first number must not be greater than the second" });
+
 export const CollectionSchema = z.object({
   /** What the counsellor may record about a visitor. Anything absent is never persisted. */
   allowed: z.array(Field).max(COLLECTABLE_FIELDS.length).default(DEFAULT_ALLOWED),
@@ -88,9 +102,9 @@ export const CollectionSchema = z.object({
   contact_ask: z.object({
     enabled: z.boolean().default(true),
     /** Absolute message number for the first ask — matches visitor.service's FIRST_ASK_AT. */
-    first_at: z.tuple([z.number().int().min(1).max(50), z.number().int().min(1).max(50)]).default([3, 5]),
+    first_at: AskRange.default([3, 5]),
     /** Message gap before every later ask — matches RE_ASK_GAP. */
-    gap: z.tuple([z.number().int().min(1).max(50), z.number().int().min(1).max(50)]).default([5, 10]),
+    gap: AskRange.default([5, 10]),
   }).default({}),
 });
 export type CollectionRules = z.infer<typeof CollectionSchema>;
@@ -121,14 +135,23 @@ export const RackProfileSchema = z.object({
 });
 export type RackProfile = z.infer<typeof RackProfileSchema>;
 
-/** Every block optional — the form PATCHes whichever card was edited. */
+/**
+ * Every block optional — the form PATCHes whichever card was edited.
+ *
+ * `expected_version` is REQUIRED, not optional, and that is the point: it is the version the
+ * editor was built from, and a save without one is a save that can silently overwrite whatever
+ * landed in between. Zero means "there was no row when I read it".
+ */
 export const PatchRackProfileSchema = z.object({
+  expected_version: z.coerce.number().int().min(0),
   voice: VoiceSchema.partial().optional(),
   behaviour: BehaviourSchema.partial().optional(),
   collection: CollectionSchema.partial().optional(),
   learning: LearningSchema.partial().optional(),
 }).strict();
 export type PatchRackProfileInput = z.infer<typeof PatchRackProfileSchema>;
+/** The wire envelope minus the concurrency token — what the service and repository actually write. */
+export type PatchRackProfileBlocks = Omit<PatchRackProfileInput, "expected_version">;
 
 /** Parsing `{}` yields the full default profile — the one place that fact is asserted. */
 export const DEFAULT_PROFILE: RackProfile = RackProfileSchema.parse({});

@@ -22,7 +22,12 @@ export function StyleTab() {
     dispatch(fetchRackProfile());
   }, [dispatch]);
 
-  const save = (patch: PatchRackProfileInput) => { dispatch(saveRackProfile(patch)); };
+  // The version the editor was built from travels with the save; the backend applies the write
+  // only while the stored row still matches, so a concurrent save is a 409 rather than a silent
+  // overwrite of whatever the other person just changed.
+  const save = (patch: Omit<PatchRackProfileInput, "expected_version">) => {
+    dispatch(saveRackProfile({ ...patch, expected_version: version }));
+  };
 
   if (status === "loading" && !profile) {
     return (
@@ -48,7 +53,11 @@ export function StyleTab() {
             ? `Last saved ${savedAt ? relativeTime(savedAt) : "earlier"}.`
             : "Using the defaults. Nothing here has been changed yet."}
         </p>
-        {saveStatus === "failed" && error && <p className="text-xs text-destructive">{error}</p>}
+        {saveStatus === "failed" && error && (
+          <p className="text-xs text-destructive">
+            {error} Your changes are still on screen — reapply the ones you want and save again.
+          </p>
+        )}
       </div>
 
       {/* Remounted on every save so the draft re-initialises from the server's own merged row —

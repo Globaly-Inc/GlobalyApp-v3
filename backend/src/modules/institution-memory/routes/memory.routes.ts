@@ -40,8 +40,10 @@ export async function institutionMemoryRoutes(app: FastifyInstance) {
   });
 
   app.patch("/institution/ai-profile", async (req, reply) => {
-    const patch = parsePatch(req.body ?? {});
-    return reply.send(await patchProfile(req.institutionId, patch, Number(req.auth.sub)));
+    // expected_version is the row the editor was built from; a mismatch is a 409 from the
+    // service, never a silent merge.
+    const { expected_version, ...patch } = parsePatch(req.body ?? {});
+    return reply.send(await patchProfile(req.institutionId, patch, Number(req.auth.sub), expected_version));
   });
 
   // ── Memories ──

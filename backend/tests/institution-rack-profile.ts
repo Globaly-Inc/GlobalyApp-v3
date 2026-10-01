@@ -22,7 +22,9 @@ const repo = await import("../src/modules/institution-memory/repositories/profil
 
 const INST = 49;
 const SELECT_PROFILE = /from "institution_ai_profile"/i;
-const UPSERT = /insert into "institution_ai_profile"/i;
+// Unquoted: the write is raw SQL now (it merges jsonb in Postgres), so the table name carries
+// no identifier quotes the way a knex builder would add.
+const UPSERT = /insert into "?institution_ai_profile"?/i;
 
 /** A stored row as Postgres hands it back. */
 const storedRow = (o: Record<string, unknown>) => ({
@@ -101,6 +103,8 @@ console.log("\n4. repo.get — a stored shape that fails its schema falls back t
   const stored = await repo.get(INST);
   assert(stored.profile.voice.tone === "warm", "a bad enum does not reach the renderer", stored.profile.voice.tone);
   assert(stored.configured === true, "but the row is still reported as configured");
+  assert(stored.degraded === true,
+    "and flagged degraded — these defaults are a guess, so permissions must not be read off them");
   assert(svc.renderProfileBlock(stored.profile) === svc.renderProfileBlock(schema.DEFAULT_PROFILE),
     "and the block is the default one rather than a malformed one");
 }
@@ -111,28 +115,95 @@ console.log("\n5. repo.get — no row at all, and the institution's own schema")
   reset([[SELECT_PROFILE, () => []]]);
   const stored = await repo.get(INST);
   assert(stored.configured === false, "no row → not configured");
+  assert(stored.degraded === false,
+    "no row is a FACT, not a failure — these defaults really are what applies");
   assert(stored.version === 0, "no row → version 0");
   assert(stored.profile.voice.tone === "warm", "no row → full defaults");
   assert(tenantRequests.length === 1 && tenantRequests[0] === INST,
     "read went to this institution's schema and no other", tenantRequests);
 }
 
-console.log("\n6. patchProfile — merges per block, upserts, and bumps the version");
+console.log("\n6. patchProfile — merges in SQL, writes only the blocks it was given");
 {
   svc.clearProfileCache();
   reset([
-    [UPSERT, () => [storedRow({ version: 4 })]],
-    [SELECT_PROFILE, () => [storedRow({ voice: { tone: "formal", response_length: "detailed" } })]],
+    [UPSERT, () => [storedRow({ version: 4, voice: { tone: "formal", response_length: "brief" } })]],
+    [SELECT_PROFILE, () => [storedRow({})]],
   ]);
-  const saved = await svc.patchProfile(INST, { voice: { response_length: "brief" } }, 7);
-  assert(saved.profile.voice.response_length === "brief", "the patched field wins");
-  assert(saved.profile.voice.tone === "formal", "an untouched field in the SAME block survives the merge");
-  assert(saved.profile.behaviour.counselling_style === "consultative", "untouched blocks keep their values");
-  assert(count(UPSERT) === 1, "one statement, not a select-then-insert race", count(UPSERT));
+  const saved = await svc.patchProfile(INST, { voice: { response_length: "brief" } }, 7, 3);
+
+  assert(count(SELECT_PROFILE) === 0,
+    "NO read before the write — the read-modify-write is what let one member's save revert another's",
+    count(SELECT_PROFILE));
+  assert(count(UPSERT) === 1, "one statement", count(UPSERT));
+
   const sql = find(UPSERT)?.text ?? "";
-  assert(/on conflict \("id"\) do update/i.test(sql), "upsert, so the first save creates the row", sql.slice(0, 120));
-  assert(/institution_ai_profile\.version \+ 1/i.test(sql), "version is bumped in SQL, not read-modify-written", sql);
-  assert(bound(UPSERT).includes(7), "updated_by carries the member who saved it");
+  assert(/voice\s+= institution_ai_profile\.voice\s+\|\|/i.test(sql),
+    "each block is merged against the STORED value in SQL, not against one this process read", sql);
+  assert(/institution_ai_profile\.version \+ 1/i.test(sql), "version is bumped in SQL");
+  assert(/where institution_ai_profile\.version = /i.test(sql),
+    "and the write applies only to the version the editor was built from", sql);
+
+  // The bug Greptile reported: a voice-only save must not carry `collection` at all.
+  const values = bound(UPSERT);
+  const collectionBindings = values.filter((v) => typeof v === "string" && v.includes("allowed"));
+  assert(collectionBindings.length === 0,
+    "a voice-only save sends NO collection payload, so it cannot restore permissions someone just removed",
+    collectionBindings);
+  assert(values.filter((v) => v === null).length >= 6,
+    "the blocks it was not given are bound as null and COALESCE'd away", values.length);
+  assert(values.includes(7), "updated_by carries the member who saved it");
+  assert(values.includes(3), "the expected version is bound");
+  assert(saved.profile.voice.response_length === "brief", "the saved row comes back parsed");
+}
+
+console.log("\n6b. patchProfile — a concurrent save is a conflict, not a silent merge");
+{
+  svc.clearProfileCache();
+  // The WHERE matched nothing: someone else saved between the editor's read and this write.
+  reset([[UPSERT, () => []]]);
+  let threw: unknown = null;
+  await svc.patchProfile(INST, { voice: { tone: "formal" } }, 7, 3).catch((e) => { threw = e; });
+  assert(threw !== null, "a stale version does not silently win");
+  // Guarded: without this a regression crashes the whole run on `null.message` and the two
+  // assertions below never report at all.
+  const err = threw as (Error & { statusCode?: number }) | null;
+  assert(!!err && String(err.message).includes("Someone else changed"),
+    "and the message tells the editor what happened", err?.message);
+  assert(!!err && (err.statusCode === 409 || err.constructor.name === "ConflictError"),
+    "surfaced as a conflict", err?.constructor.name);
+}
+
+console.log("\n6c. a failed read is degraded, so permissions are not read off its defaults");
+{
+  svc.clearProfileCache();
+  reset([[SELECT_PROFILE, () => { throw new Error("connection terminated"); }]]);
+  const stored = await repo.get(INST);
+  assert(stored.degraded === true, "a throwing read is flagged degraded, not served as fact");
+  assert(stored.profile.collection.allowed.length > 0,
+    "the defaults it carries are still the real defaults — the flag is what callers branch on");
+  // The hazard in one line: the default allow-list is WIDER than a narrowed one, so a caller
+  // that trusted these would extract and store fields the institution had switched off.
+  assert(stored.profile.collection.allowed.includes("name")
+    && stored.profile.collection.allowed.includes("email"),
+    "which is why failing open here would widen what the widget may store");
+}
+
+console.log("\n6d. a reversed ask range is rejected, and cannot silently mute the card");
+{
+  const range = (first: [number, number]) => schema.CollectionSchema.safeParse({
+    ...schema.DEFAULT_PROFILE.collection,
+    contact_ask: { enabled: true, first_at: first, gap: [5, 10] },
+  });
+  assert(range([3, 5]).success, "an ordered range is accepted");
+  assert(range([4, 4]).success, "a single-value range is accepted — min == max is a fixed point, not an error");
+  assert(!range([5, 4]).success,
+    "a REVERSED range is rejected: askAt would compute a zero span, % 0 is NaN, and every "
+    + "threshold comparison is then false forever");
+  assert(!schema.CollectionSchema.safeParse({
+    ...schema.DEFAULT_PROFILE.collection,
+    contact_ask: { enabled: true, first_at: [3, 5], gap: [10, 5] },
+  }).success, "and the gap range is checked the same way");
 }
 
 console.log("\n7. getProfile — cached, and the cache is cleared by a write");
@@ -147,9 +218,11 @@ console.log("\n7. getProfile — cached, and the cache is cleared by a write");
     [UPSERT, () => [storedRow({ version: 5 })]],
     [SELECT_PROFILE, () => [storedRow({})]],
   ]);
-  await svc.patchProfile(INST, { learning: { auto_learn: true } }, 7);
+  await svc.patchProfile(INST, { learning: { auto_learn: true } }, 7, 3);
   await svc.getProfile(INST);
-  assert(count(SELECT_PROFILE) === 2, "a write invalidates it: one read for the merge, one after", count(SELECT_PROFILE));
+  // ONE read, not two. The write itself no longer reads — the merge happens in Postgres — so the
+  // only SELECT here is the one the invalidated cache forces afterwards.
+  assert(count(SELECT_PROFILE) === 1, "a write invalidates the cache and reads nothing itself", count(SELECT_PROFILE));
 }
 
 await finish();

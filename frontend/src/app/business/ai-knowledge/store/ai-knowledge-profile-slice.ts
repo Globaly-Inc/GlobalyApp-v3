@@ -13,7 +13,22 @@ export const fetchRackProfile = createAsyncThunk("aiKnowledgeProfile/fetch", () 
 
 export const saveRackProfile = createAsyncThunk(
   "aiKnowledgeProfile/save",
-  (patch: PatchRackProfileInput) => aiKnowledgeApi.updateProfile(patch),
+  async (patch: PatchRackProfileInput, { dispatch, rejectWithValue }) => {
+    try {
+      return await aiKnowledgeApi.updateProfile(patch);
+    } catch (err) {
+      // Re-read on a conflict so the editor shows the version it now has to merge against,
+      // rather than leaving a stale draft on screen beside an error about it.
+      dispatch(reloadAfterConflict());
+      return rejectWithValue(err instanceof Error ? err.message : "Couldn't save that.");
+    }
+  },
+);
+
+/** The re-read a conflicting save triggers. Separate thunk so it cannot be mistaken for the
+ *  mount fetch and reset `status` under the form. */
+export const reloadAfterConflict = createAsyncThunk("aiKnowledgeProfile/reload", () =>
+  aiKnowledgeApi.getProfile(),
 );
 
 type AiKnowledgeProfileState = {
@@ -73,6 +88,14 @@ const aiKnowledgeProfileSlice = createSlice({
       .addCase(saveRackProfile.rejected, (state, action) => {
         state.saveStatus = "failed";
         state.error = action.error.message ?? "Couldn't save that.";
+      })
+      // A 409 means someone else saved while this editor was open. The thunk re-reads, and this
+      // lands their version in the store — so the form remounts on the new `version` and the
+      // person sees what they are now editing against instead of a stale draft.
+      .addCase(reloadAfterConflict.fulfilled, (state, action) => {
+        state.profile = action.payload.profile;
+        state.configured = action.payload.configured;
+        state.version = action.payload.version;
       });
   },
 });

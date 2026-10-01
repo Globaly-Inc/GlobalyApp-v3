@@ -40,6 +40,10 @@ export const aiKnowledgeMockApi = {
   updateProfile: async (patch: PatchRackProfileInput): Promise<StoredRackProfile> => {
     console.log("[mock] updateProfile", patch);
     await delay(320);
+    // Mirrors the backend's optimistic check, so the conflict path is reachable in mock mode.
+    if (patch.expected_version !== rackVersion) {
+      throw new Error("Someone else changed these settings while you were editing. Reload to see their version.");
+    }
     // Block-level merge, exactly as the service does it — a deep merge would make clearing a
     // list impossible to express.
     rackProfile = {

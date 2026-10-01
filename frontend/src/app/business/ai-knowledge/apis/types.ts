@@ -217,8 +217,15 @@ export interface StoredRackProfile {
   configured: boolean;
 }
 
-/** Every block optional — the form PATCHes whichever block was edited. */
+/**
+ * Every block optional — the form PATCHes whichever block was edited.
+ *
+ * `expected_version` is required: it is the version the editor was built from, and the backend
+ * applies the write only while the stored row still matches. Without it, two members saving at
+ * once meant the later save silently reverted the earlier one's settings.
+ */
 export interface PatchRackProfileInput {
+  expected_version: number;
   voice?: Partial<VoiceProfile>;
   behaviour?: Partial<BehaviourProfile>;
   collection?: Partial<CollectionRules>;

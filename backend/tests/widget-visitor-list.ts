@@ -272,11 +272,22 @@ console.log("\n11. volunteered details, and the meta bag");
   const { recordMeta, recordVolunteeredContact } = await import("../src/modules/ai-counsellor/services/visitor.service.js");
 
   function fakeDb() {
-    const captured: { updated?: Record<string, unknown> } = {};
+    const captured: { updated?: Record<string, unknown>; sql?: string } = {};
     const builder: Record<string, unknown> = {};
+    const note = (fragment: string) => { captured.sql = `${captured.sql ?? ""} ${fragment}`; };
     Object.assign(builder, {
-      where: () => builder,
+      // knex's `where` takes an object OR a callback that builds a grouped clause. The callback
+      // form is where the summary guard lives, so it has to be INVOKED, not just counted.
+      where: (arg: unknown) => {
+        if (typeof arg === "function") (arg as (b: unknown) => unknown)(builder);
+        else if (typeof arg === "object" && arg) note(JSON.stringify(arg));
+        return builder;
+      },
       whereNot: () => builder,
+      whereNull: (c: string) => { note(`${c} IS NULL`); return builder; },
+      orWhere: (arg: unknown) => { note(JSON.stringify(arg)); return builder; },
+      // The two guards that matter are raw, so this is where they land.
+      whereRaw: (sql: string) => { note(sql); return builder; },
       update: (data: Record<string, unknown>) => { captured.updated = data; return builder; },
       returning: async () => [{ id: 1 }],
       then: (res: (v: unknown) => unknown) => res(1),
@@ -290,7 +301,8 @@ console.log("\n11. volunteered details, and the meta bag");
   await recordVolunteeredContact(withEmail.db, { visitorKey: "k", embedConfigId: 1, name: "John", email: "john@example.com" });
   const e = withEmail.captured.updated ?? {};
   assert(e.contact_status === "submitted", "a volunteered EMAIL settles the contact card for good", e);
-  assert("summary_status" in e, "and arms the summary they are now owed", e);
+  assert(!("summary_status" in e),
+    "but arms NO summary — an address typed in passing is not a request for the transcript", e);
   assert(e.contact_source === "volunteered", "recorded as volunteered, not as the card", e);
   assert(!("status" in e), "never names the generated status column", e);
 
@@ -300,6 +312,39 @@ console.log("\n11. volunteered details, and the meta bag");
   assert(!("contact_status" in n), "a name ALONE does not settle the card — it still has an email to ask for", n);
   assert(!("summary_status" in n), "and arms no summary, because there is nowhere to send one", n);
   assert("name" in n, "but the name is stored, so the card can ask knowing who it is asking", n);
+
+  // A typo must be correctable. The first volunteered address used to lock the row — the filter
+  // skipped `submitted` rows AND the writes were COALESCE'd — so "sorry, it's .com not .cmo"
+  // landed nowhere and the summary went to a stranger holding this visitor's conversation.
+  const fix = fakeDb();
+  await recordVolunteeredContact(fix.db, { visitorKey: "k", embedConfigId: 1, email: "john@gmail.com" });
+  const f = fix.captured.updated ?? {};
+  assert(f.email === "john@gmail.com", "a corrected address REPLACES the stored one, not COALESCE'd away", f);
+  assert(String(f.contact_submitted_at).includes("COALESCE"),
+    "but the timestamp keeps when we FIRST got details", f.contact_submitted_at);
+
+  const sql = fix.captured.sql ?? "";
+  assert(/contact_source IS DISTINCT FROM 'card'/i.test(sql),
+    "a form-typed address is protected — the visitor's own keystrokes beat a model's reading", sql);
+  assert(!/contact_status.*submitted/i.test(sql.replace(/set .*/is, "")),
+    "and contact_status is no longer the guard: it means 'stop asking', not 'immutable'", sql);
+  assert(/summary_status/i.test(sql),
+    "an address a summary already went to is history and stays put", sql);
+
+  // The consent path the volunteered address makes POSSIBLE but does not itself trigger: once an
+  // email is held, the end-of-chat card can be offered, and accepting it is what arms the summary.
+  const { decidePrompt, DEFAULT_CONTACT_ASK } = await import("../src/modules/ai-counsellor/services/visitor.service.js");
+  const holder = {
+    visitor_key: "k", contact_status: "submitted" as const, contact_prompted_at_count: null,
+    contact_prompt_count: 0, email: "john@example.com", conversation_state: "active" as const,
+    end_prompt_count: 0, summary_status: null,
+  };
+  assert(decidePrompt(holder, 6, true, DEFAULT_CONTACT_ASK) === "ending",
+    "a visitor whose address we hold is OFFERED a summary at a natural ending");
+  assert(decidePrompt(holder, 6, false, DEFAULT_CONTACT_ASK) === null,
+    "and is offered nothing while the conversation is still going");
+  assert(decidePrompt({ ...holder, summary_status: "sent" as const }, 6, true, DEFAULT_CONTACT_ASK) === null,
+    "a summary already sent is never offered again");
 
   const meta = fakeDb();
   await recordMeta(meta.db, 1, { referrer: "https://uni.edu/courses" });

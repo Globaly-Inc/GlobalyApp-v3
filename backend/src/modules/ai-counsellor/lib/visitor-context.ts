@@ -31,6 +31,43 @@ type VisitorLike = Pick<
 const list = <T>(v: T[] | null | undefined): T[] => (Array.isArray(v) ? v : []);
 
 /**
+ * The visitor row, with everything this institution no longer collects stripped out.
+ *
+ * The collection rules gate what the extractor WRITES. They did not gate what gets read back, so
+ * a field switched off yesterday kept flowing into today's prompt and memory query from rows
+ * written while it was still on. Withdrawing permission has to apply to the data already held,
+ * or "stop collecting this" means "stop collecting more of this".
+ *
+ * `allowed = null` means the rules could not be read (see StoredProfile.degraded). Everything is
+ * stripped in that case, on the same reasoning as the extractor's empty keep-list: a blip costs
+ * the counsellor its memory of this visitor for a turn, which is recoverable, where guessing
+ * wrong about permissions is not.
+ *
+ * `nationality_raw` is not a collectable field of its own — it is the visitor's wording for
+ * `nationality` — so it lives or dies with it.
+ */
+export function applyCollectionRules(
+  v: VisitorLike | null | undefined,
+  allowed: readonly string[] | null | undefined,
+): VisitorLike | null {
+  if (!v) return null;
+  if (allowed === undefined) return v; // no institution — the built-in behaviour, unchanged
+  const ok = (field: string) => !!allowed?.includes(field);
+  return {
+    name: ok("name") ? v.name : null,
+    age: ok("age") ? v.age : null,
+    gender: ok("gender") ? v.gender : null,
+    nationality: ok("nationality") ? v.nationality : null,
+    nationality_raw: ok("nationality") ? v.nationality_raw : null,
+    study_preference: ok("study_preference") ? v.study_preference : null,
+    qualifications: ok("qualifications") ? v.qualifications : null,
+    language_tests: ok("language_tests") ? v.language_tests : null,
+    academic_tests: ok("academic_tests") ? v.academic_tests : null,
+    work_experiences: ok("work_experiences") ? v.work_experiences : null,
+  };
+}
+
+/**
  * The visitor's structured background as a ProfileContext, or null when they have told us
  * nothing yet.
  *

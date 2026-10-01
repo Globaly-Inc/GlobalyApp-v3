@@ -26,7 +26,7 @@ export function RackProfileForm({
 }: Readonly<{
   profile: RackProfile;
   saving: boolean;
-  onSave: (patch: PatchRackProfileInput) => void;
+  onSave: (patch: Omit<PatchRackProfileInput, "expected_version">) => void;
 }>) {
   const [voice, setVoice] = useState<VoiceProfile>(profile.voice);
   const [behaviour, setBehaviour] = useState<BehaviourProfile>(profile.behaviour);

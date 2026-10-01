@@ -15,9 +15,10 @@
 
 import { createChildLogger } from "../../../shared/logger.js";
 import * as repo from "../repositories/profile.repository.js";
+import { ConflictError } from "../../../shared/errors.js";
 import {
-  DEFAULT_PROFILE, PatchRackProfileSchema, RackProfileSchema,
-  type CollectableField, type PatchRackProfileInput, type RackProfile,
+  DEFAULT_PROFILE, PatchRackProfileSchema,
+  type CollectableField, type PatchRackProfileBlocks, type PatchRackProfileInput, type RackProfile,
 } from "../schemas/profile.schema.js";
 
 const logger = createChildLogger("institution-rack-profile");
@@ -37,22 +38,29 @@ export async function getProfile(institutionId: number): Promise<repo.StoredProf
   return value;
 }
 
-/** Merge a partial edit over what is stored and write the whole profile back. */
+/**
+ * Apply a partial edit.
+ *
+ * The merge happens in Postgres, in one statement, against the version the caller read — it used
+ * to happen here, over a profile this function had SELECTed, and then wrote all four blocks back.
+ * Two members saving at once meant the later write carried the earlier one's stale blocks, so a
+ * voice-only save could restore `collection` permissions someone had just removed. A privacy
+ * setting that silently reverts is worth a round trip's worth of care.
+ *
+ * `expectedVersion` comes from the GET the editor was built from. A mismatch is a 409, not a
+ * merge: two people editing the same block have a disagreement, and picking a winner silently is
+ * how one of them loses work without knowing.
+ */
 export async function patchProfile(
   institutionId: number,
-  patch: PatchRackProfileInput,
+  patch: PatchRackProfileBlocks,
   updatedBy: number | null,
+  expectedVersion: number,
 ): Promise<repo.StoredProfile> {
-  const current = (await repo.get(institutionId)).profile;
-  // Block-level merge, not a deep one: each block is edited as a unit by one card in the portal,
-  // and a deep merge would make "clear this list" impossible to express.
-  const merged = RackProfileSchema.parse({
-    voice: { ...current.voice, ...patch.voice },
-    behaviour: { ...current.behaviour, ...patch.behaviour },
-    collection: { ...current.collection, ...patch.collection },
-    learning: { ...current.learning, ...patch.learning },
-  });
-  const saved = await repo.put(institutionId, merged, updatedBy);
+  const saved = await repo.patch(institutionId, patch, updatedBy, expectedVersion);
+  if (!saved) {
+    throw new ConflictError("Someone else changed these settings while you were editing. Reload to see their version.");
+  }
   cache.delete(institutionId);
   return saved;
 }
