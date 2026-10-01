@@ -30,6 +30,8 @@ import * as learnRepo from "../repositories/learning.repository.js";
 import { createMemory, embedOrNull, flagConflict, hashActor, voteOnMemory, reinforceMemory } from "./memory.service.js";
 import * as memoryRepo from "../repositories/memory.repository.js";
 import { judgeCandidate, judgeContradictions, judgeFollowed, type CandidateJudgement } from "../lib/jev.js";
+import { recordConversationSignals } from "./conversation-signals.service.js";
+import { getProfile } from "./profile.service.js";
 import { MEMORY_QUEUES } from "../shared/queues.js";
 import {
   CreateMemorySchema, ExtractionCandidateSchema, METADATA_BY_TYPE, FREE_TEXT_METADATA_KEYS, MEMORY_TYPES, TECHNIQUES,
@@ -42,8 +44,22 @@ const MIN_CONFIDENCE = 0.6;
 const MAX_DERIVED_FROM_CORRECTION = 2;
 /** Candidates read from one extractor reply, whatever it claims to have found. */
 const MAX_CANDIDATES = 8;
-/** Nearest active memories a candidate is checked against for contradictions. */
+/** Nearest memories a candidate is checked against for contradictions and for near-duplicates. */
 const CONTRADICTION_NEIGHBOURS = 5;
+/**
+ * Cosine above which a candidate is the SAME statement as one already stored, differently worded.
+ *
+ * Dedupe was sha256(normalised content) and nothing else, which caught only an exact repeat. A
+ * model paraphrases every time, so "students often ask about post-study work before fees" and
+ * "visitors usually raise work rights ahead of cost" were two rows with one actor each — and
+ * promotion needs PROMOTION_MIN_ACTORS distinct students on ONE row. The threshold that was
+ * meant to require three conversations instead required three conversations that happened to
+ * phrase it identically, which is to say it was unreachable.
+ *
+ * 0.90 is deliberately high: these embeddings put loosely related counselling statements around
+ * 0.5-0.7, so this fires on a restatement and not on a neighbour. ponytail: constant, tune on evals.
+ */
+export const MERGE_SIMILARITY = 0.90;
 // Jev probability thresholds. ponytail: constants; tune after evals.
 const JEV_PERSON = 0.5;
 const JEV_FACT = 0.6;
@@ -79,7 +95,30 @@ const FACT_RE = [
   /\b\d+\s?(?:%|percent|weeks?|months?|days?)\b/i,             // durations / percentages
 ];
 
-export type RejectReason = "schema" | "confidence" | "mentions_person" | "pii" | "known_name" | "fact_like" | "not_guidance" | "metadata";
+/**
+ * Categories a counselling memory must never carry, whoever phrased it.
+ *
+ * PII_RE catches identifiers — an address, a number, a passport. It does not catch a CATEGORY:
+ * "students with depression should be offered a deferral" names nobody, states no figure, is
+ * genuinely guidance, and passes every other filter in this file. It is also a health inference
+ * about the institution's visitors, stored permanently and injected into future conversations.
+ *
+ * These are the special categories that attract heightened protection almost everywhere, and the
+ * argument for excluding them is not that the sentence is false — it is that a counselling
+ * widget has no business deriving standing policy about them from overheard chat. An institution
+ * that genuinely wants such a rule can write it by hand, as an admin, with its name on it.
+ */
+// Stems take \w* rather than a trailing \b — "depress" with a closing boundary matches neither
+// "depression" nor "depressed", which is every form anyone actually writes.
+const SENSITIVE_CATEGORY_RE = [
+  /\b(?:depress\w*|anxiet\w*|mental health|disab\w*|wheelchair|autis\w*|adhd|dyslex\w*|chronic illness|medical condition|pregnan\w*|hiv)\b/i,
+  /\b(?:asylum|refugee\w*|undocumented|deport\w*|overstay\w*)\b/i,
+  /\b(?:muslim\w*|christian\w*|hindu\w*|buddhist\w*|jewish|sikh\w*|religio\w*|caste|ethnic\w*|race|racial)\b/i,
+  /\b(?:gay|lesbian\w*|bisexual\w*|transgender\w*|lgbt\w*|sexual orientation)\b/i,
+  /\b(?:bankrupt\w*|in debt|cannot afford|poverty|low.income|financial hardship)\b/i,
+];
+
+export type RejectReason = "schema" | "confidence" | "mentions_person" | "pii" | "known_name" | "fact_like" | "not_guidance" | "metadata" | "sensitive_category";
 
 /**
  * Returns the memory input, or why the candidate was thrown away. Pure.
@@ -112,19 +151,29 @@ export function evaluateCandidate(
   opts: { allowFacts?: boolean; judgement?: CandidateJudgement | null } = {},
 ): { ok: true; input: CreateMemoryInput; confidence: number } | { ok: false; reason: RejectReason } {
   const j = opts.judgement ?? null;
+  // GENERAL_KNOWLEDGE is the one type whose whole point is a fact, so it carries its own licence
+  // rather than needing the caller to pass allowFacts — and it pays for that licence by never
+  // auto-promoting (NEVER_AUTO_PROMOTES). It is also exempt from the is_technique floor, which
+  // exists to keep non-guidance out of the TECHNIQUE types and would reject every fact by design.
+  const factual = c.type === "GENERAL_KNOWLEDGE";
+  const allowFacts = opts.allowFacts || factual;
   if (c.mentions_person || (j && j.mentions_person >= JEV_PERSON)) return { ok: false, reason: "mentions_person" };
-  if (j && !opts.allowFacts && j.is_fact >= JEV_FACT) return { ok: false, reason: "fact_like" };
-  if (j && j.is_technique < JEV_GUIDANCE_MIN) return { ok: false, reason: "not_guidance" };
+  if (j && !allowFacts && j.is_fact >= JEV_FACT) return { ok: false, reason: "fact_like" };
+  if (j && !factual && j.is_technique < JEV_GUIDANCE_MIN) return { ok: false, reason: "not_guidance" };
   const confidence = j ? Math.min(c.confidence, j.endorsed) : c.confidence;
   if (confidence < MIN_CONFIDENCE) return { ok: false, reason: "confidence" };
   if (PII_RE.some((re) => re.test(c.content))) return { ok: false, reason: "pii" };
+  // Checked on content AND on the free-text metadata below, because a concern or an approach is
+  // exactly where a health or immigration category would land.
+  if (SENSITIVE_CATEGORY_RE.some((re) => re.test(c.content))) return { ok: false, reason: "sensitive_category" };
   if (namePattern(knownNames)?.test(c.content.toLowerCase())) return { ok: false, reason: "known_name" };
-  if (!opts.allowFacts && FACT_RE.some((re) => re.test(c.content))) return { ok: false, reason: "fact_like" };
+  if (!allowFacts && FACT_RE.some((re) => re.test(c.content))) return { ok: false, reason: "fact_like" };
   const metadata = METADATA_BY_TYPE[c.type].safeParse(c.metadata);
   if (!metadata.success) return { ok: false, reason: "metadata" };
   const freeText = metadataFreeText(metadata.data);
   if (freeText) {
     if (PII_RE.some((re) => re.test(freeText))) return { ok: false, reason: "pii" };
+    if (SENSITIVE_CATEGORY_RE.some((re) => re.test(freeText))) return { ok: false, reason: "sensitive_category" };
     if (namePattern(knownNames)?.test(freeText.toLowerCase())) return { ok: false, reason: "known_name" };
   }
   // Metadata gets the same privacy filters as content, on the free-text keys only. The shape
@@ -150,6 +199,9 @@ const SYSTEM = [
   "It must apply to future students, not to this one.",
   "- Never include a name, a nationality, a grade, a score, a fee, a date, a deadline, or any figure. If the " +
   "only useful thing is a fact, output no candidate.",
+  "- Never produce a rule about health, disability, mental health, immigration status, religion, ethnicity, " +
+  "caste, sexuality, or financial hardship. Those are the institution's to decide deliberately, not yours " +
+  "to infer from a conversation.",
   "- RESPONSE_PATTERN metadata: {technique: one of " + TECHNIQUES.join("|") + ", trigger: <when to use it>}.",
   "- STUDENT_CONCERN_PATTERN metadata: {concern, approach}. TERMINOLOGY metadata: {term, meaning}.",
   "- Confidence is how sure you are that a human counsellor at this institution would endorse it.",
@@ -205,9 +257,40 @@ async function storeCandidates(
     const verdict = evaluateCandidate(c, ctx.knownNames, { judgement });
     if (!verdict.ok) { reject(r, verdict.reason); logger.info("Candidate rejected", { institutionId: ctx.institutionId, reason: verdict.reason, type: c.type, jev: !!judgement }); continue; }
 
-    // One embedding serves both the contradiction check and the insert.
+    // One embedding, and now one vector query, serve three things: the near-duplicate merge, the
+    // contradiction check, and the insert.
     const embedding = await embedOrNull(verdict.input.type, verdict.input.content);
-    const conflictsWith = embedding ? await contradictedMemory(ctx.institutionId, verdict.input.content, embedding) : null;
+    const nearest = embedding
+      // Candidates included: two paraphrases of the same unreviewed observation are the case
+      // this exists for, and they are both candidates.
+      ? await memoryRepo.match(embedding, ctx.institutionId, { count: CONTRADICTION_NEIGHBOURS, statuses: ["active", "candidate"] })
+      : [];
+
+    // CONTRADICTION IS CHECKED FIRST, and the order is the whole safety of this block.
+    //
+    // High similarity does not mean agreement. "Discuss refunds before the student has an offer"
+    // and "Refunds are discussed only after an offer" sit around 0.9 apart because they share
+    // almost every word — and mean the opposite. Merging on similarity before asking whether the
+    // two agree would have silently reinforced the memory that says the reverse, turning a
+    // disagreement into evidence for the thing being disagreed with. The existing conflict test
+    // caught exactly that, with exactly that pair.
+    const conflictsWith = embedding ? await contradictedMemory(ctx.institutionId, verdict.input.content, nearest) : null;
+
+    // Only once the pair is known NOT to contradict is a restatement evidence rather than a row.
+    const duplicate = !conflictsWith
+      && nearest.find((m) => m.type === verdict.input.type && m.similarity >= MERGE_SIMILARITY);
+    if (duplicate) {
+      const existing = await memoryRepo.findById(duplicate.id, ctx.institutionId);
+      if (existing) {
+        await reinforceMemory(existing, WORKER, ctx.evidenceActor ?? null);
+        r.reinforced++; stored++;
+        logger.info("Candidate merged into a near-duplicate", {
+          institutionId: ctx.institutionId, memoryId: duplicate.id, similarity: Number(duplicate.similarity.toFixed(3)),
+        });
+        continue;
+      }
+    }
+
     if (conflictsWith) {
       const flagged = await flagConflict({
         institutionId: ctx.institutionId, input: verdict.input, conflictsWithId: conflictsWith, confidence: verdict.confidence,
@@ -230,8 +313,14 @@ async function storeCandidates(
 }
 
 /** The id of the nearest active memory the statement contradicts, per Jev; null when none or when Jev is off. */
-async function contradictedMemory(institutionId: number, content: string, embedding: number[]): Promise<string | null> {
-  const nearest = await memoryRepo.match(embedding, institutionId, { count: CONTRADICTION_NEIGHBOURS });
+async function contradictedMemory(
+  institutionId: number,
+  content: string,
+  neighbours: memoryRepo.MemoryMatch[],
+): Promise<string | null> {
+  // ACTIVE only. A candidate is an unreviewed proposal, and flagging a new candidate as
+  // contradicting another unreviewed one would block both behind a decision nobody can make.
+  const nearest = neighbours.filter((m) => m.status === "active");
   if (!nearest.length) return null;
   const hits = await judgeContradictions(content, nearest.map((m) => ({ id: m.id, content: m.content })));
   if (!hits?.size) return null;
@@ -343,20 +432,59 @@ export async function learnFromFeedback(job: Extract<LearnJob, { kind: "feedback
   return r;
 }
 
-/** A finished conversation on a widget with auto_learn on: propose patterns as candidates. */
+/**
+ * A finished conversation. Two independent things happen here, and they are gated differently.
+ *
+ *   SIGNALS are the institution's own analytics about its funnel — the journey shape and what
+ *   became of it. They are recorded ALWAYS. Gating them on auto_learn would mean an institution
+ *   that declined to have its counsellor learn also lost the ability to see how its visitors
+ *   convert, which are unrelated choices.
+ *
+ *   LEARNING writes guidance the counsellor will follow, so it stays behind the opt-in.
+ */
 export async function learnFromConversation(job: Extract<LearnJob, { kind: "conversation" }>): Promise<LearnResult> {
   const r = result();
   const session = await learnRepo.findSession(job.session_id);
   const owner = session && await learnRepo.institutionForSession(session);
   if (!session || !owner || owner.institutionId !== job.institution_id) return r;
-  if (!owner.config.auto_learn) { logger.info("auto_learn off; conversation skipped", { sessionId: session.id }); return r; }
+
+  // Never awaited for its result and never allowed to fail the job: an insight is worth less
+  // than the learning that runs after it.
+  await recordConversationSignals({ institutionId: owner.institutionId, session, config: owner.config })
+    .catch((err) => logger.warn("Signals failed", { sessionId: session.id, err: String(err) }));
+
+  // Both opt-ins, either is enough — the per-widget column and the institution-wide Rack toggle.
+  // This check used to live in the publisher; moving it here is what let signals run regardless,
+  // and the Rack half has to come with it or turning learning on in the portal does nothing.
+  const rack = await getProfile(owner.institutionId).catch(() => null);
+  if (!owner.config.auto_learn && !rack?.profile.learning.auto_learn) {
+    logger.info("auto_learn off; conversation not learned from", { sessionId: session.id });
+    return r;
+  }
 
   const turns = await learnRepo.findTranscript(session.id);
   if (turns.filter((t) => t.role === "assistant").length < 2) return r; // nothing to learn from a greeting
   const knownNames = await learnRepo.knownNames(session, owner.config);
-  const prompt = `Conversation:\n${transcriptText(turns)}\n\nWhich counselling techniques or common concerns here would help future conversations at this institution?`;
-  const candidates = await extractCandidates(prompt).catch((err) => { logger.warn("Extractor failed", { err: String(err) }); return []; });
-  await storeCandidates(r, candidates.filter((c) => c.type !== "COUNSELLOR_CORRECTION"), { institutionId: owner.institutionId, knownNames, evidenceActor: actorOf(session), sourceReference: { session_id: session.id }, source: "extracted" });
+  // Off by default. Facts are the costliest thing this system can get wrong, so an institution
+  // opts in to having them proposed at all — and even then every one waits for a human.
+  const learnFacts = !!rack?.profile.learning.learn_general_knowledge;
+  const prompt = [
+    `Conversation:\n${transcriptText(turns)}`,
+    "",
+    "Which counselling techniques or common concerns here would help future conversations at this institution?",
+    learnFacts
+      ? "You may ALSO propose at most one GENERAL_KNOWLEDGE candidate: a fact about studying abroad that is "
+        + "true beyond this one visitor and that a counsellor here would want remembered — \"Australian student "
+        + "visas generally require proof of funds\", never \"this student has the funds\". Its metadata is "
+        + "{topic, destination_country?}. If the conversation contains no such fact, propose none."
+      : "",
+  ].filter(Boolean).join("\n");
+  const candidates = (await extractCandidates(prompt).catch((err) => { logger.warn("Extractor failed", { err: String(err) }); return []; }))
+    .filter((c) => c.type !== "COUNSELLOR_CORRECTION")
+    // Enforced here as well as asked for in the prompt: a model offering a fact it was never
+    // invited to propose is exactly what the stored rule has to catch, and this one admits figures.
+    .filter((c) => learnFacts || c.type !== "GENERAL_KNOWLEDGE");
+  await storeCandidates(r, candidates, { institutionId: owner.institutionId, knownNames, evidenceActor: actorOf(session), sourceReference: { session_id: session.id }, source: "extracted" });
   return r;
 }
 

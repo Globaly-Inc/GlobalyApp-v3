@@ -95,6 +95,24 @@ console.log("\n5. Candidate promotion: conditional on distinct students, in SQL"
   reset([[INSERT_MEMORY, () => []], [PROMOTE, () => [row({ status: "active", source: "extracted" })]], [UPDATE_MEMORY, () => [row({ status: "candidate", source: "extracted" })]], [SELECT_MEMORY, () => [row({ status: "candidate", source: "extracted" })]]]);
   out = await svc.createMemory({ institutionId: INST, input: policy, source: "extracted", actor: worker, evidenceActor: HEX(3) });
   assert(out.outcome === "reinforced" && out.promoted && out.memory.status === "active", "promoted when the predicate holds");
+
+  // …but a FACT never promotes itself, however much evidence accrues. Same fixtures as the line
+  // above — the DB would happily promote it, so the only thing stopping it is the type check in
+  // reinforceMemory, which is what this asserts. Behaviour, not set membership: an assertion on
+  // NEVER_AUTO_PROMOTES alone stayed green when the guard was deleted.
+  const fact = { type: "GENERAL_KNOWLEDGE" as const, content: "Australian student visas generally require proof of funds.", metadata: { topic: "visas" }, importance: 3 };
+  reset([
+    [INSERT_MEMORY, () => []],
+    [PROMOTE, () => [row({ status: "active", source: "extracted", type: "GENERAL_KNOWLEDGE" })]],
+    [UPDATE_MEMORY, () => [row({ status: "candidate", source: "extracted", type: "GENERAL_KNOWLEDGE" })]],
+    [SELECT_MEMORY, () => [row({ status: "candidate", source: "extracted", type: "GENERAL_KNOWLEDGE" })]],
+  ]);
+  out = await svc.createMemory({ institutionId: INST, input: fact, source: "extracted", actor: worker, evidenceActor: HEX(3) });
+  assert(out.outcome === "reinforced" && !out.promoted && out.memory.status === "candidate",
+    "a GENERAL_KNOWLEDGE candidate is reinforced but NEVER promoted by the crowd", out);
+  assert(count(PROMOTE) === 0,
+    "and the promotion statement is not even attempted — three students hearing the same wrong "
+    + "answer is three students misinformed, not three confirmations", count(PROMOTE));
 }
 
 console.log("\n6. Human confirms a candidate; human revives a deprecated one; learned repeat of deprecated is rejected");

@@ -20,6 +20,7 @@ process.env.TYPESAFE_API_KEY = "test-key"; // config reads it at load; the clien
 const h = await import("./institution-memory.harness.js");
 const { assert, reset, all, count, find, INST, OTHER_INST, ID, ID2, HEX, INSERT_MEMORY, UPDATE_MEMORY, SELECT_MEMORY } = h;
 const learn = await import("../src/modules/institution-memory/services/learning.service.js");
+const schema = await import("../src/modules/institution-memory/schemas/memory.schema.js");
 const { _llmDeps } = await import("../src/modules/superadmin/data-extraction/lib/llm-client.js");
 const jev = await import("../src/modules/institution-memory/lib/jev.js");
 type Candidate = import("../src/modules/institution-memory/schemas/memory.schema.js").ExtractionCandidate;
@@ -79,6 +80,86 @@ const cand = (o: Partial<Candidate>): Candidate => ({
   type: "RESPONSE_PATTERN", content: "When asked about refunds, state the timeframe and point to the policy page.",
   metadata: { technique: "answer_then_ask", trigger: "refund question" }, confidence: 0.8, mentions_person: false, ...o,
 });
+
+console.log("\n0. evaluateCandidate — sensitive CATEGORIES, which PII_RE cannot see");
+{
+  const names = ["john"];
+  const ev = (content: string) => learn.evaluateCandidate(
+    { type: "COUNSELLING_GUIDELINE", content, metadata: {}, confidence: 0.9, mentions_person: false },
+    names,
+  );
+  // Each of these names nobody, states no figure, and IS genuine guidance — so every other
+  // filter in the file passes it. What makes it unacceptable is the category it reasons about.
+  const rejected = (content: string, label: string) => {
+    const out = ev(content);
+    assert(!out.ok && out.reason === "sensitive_category", label, out.ok ? "accepted" : out.reason);
+  };
+  rejected("Students with depression should be offered a deferral.", "mental health");
+  rejected("Applicants with a disability need the longer application route.", "disability");
+  rejected("Asylum seekers cannot be offered the scholarship.", "immigration status");
+  rejected("Muslim students should be told about prayer facilities first.", "religion");
+  rejected("Students who cannot afford the deposit should be steered to cheaper courses.", "financial hardship");
+
+  // And the filter must not swallow ordinary counselling, or it would quietly stop all learning.
+  assert(ev("Ask what the student wants from the course before recommending one.").ok,
+    "ordinary counselling guidance is untouched");
+  assert(ev("Explain the application steps in order rather than all at once.").ok,
+    "and so is ordinary process guidance");
+
+  // It reaches free-text metadata too — `concern` is exactly where a health category would land.
+  const meta = learn.evaluateCandidate(
+    { type: "STUDENT_CONCERN_PATTERN", content: "Visitors often worry before applying.",
+      metadata: { concern: "anxiety about the interview", approach: "reassure them" },
+      confidence: 0.9, mentions_person: false },
+    names,
+  );
+  assert(!meta.ok && meta.reason === "sensitive_category", "and it is checked in metadata, not only content", meta);
+}
+
+console.log("\n0b. near-duplicate merge — and why contradiction is checked FIRST");
+{
+  // The ordering this pins down is the dangerous one. Two statements can be ~0.9 apart because
+  // they share almost every word and still mean the opposite ("discuss refunds BEFORE an offer"
+  // vs "only AFTER an offer"). Merging on similarity before asking whether they agree would
+  // reinforce the memory that says the reverse — a disagreement counted as evidence FOR the
+  // thing being disagreed with. §4 below is that exact pair and must stay a conflict, not a merge.
+  assert(learn.MERGE_SIMILARITY >= 0.85,
+    "the merge threshold is high enough that it fires on a restatement, not a neighbour",
+    learn.MERGE_SIMILARITY);
+}
+
+console.log("\n0c. GENERAL_KNOWLEDGE — the one type that may state a fact, and what it pays for it");
+{
+  const names = ["john"];
+  const gk = (content: string, metadata: Record<string, unknown> = { topic: "visas" }) =>
+    learn.evaluateCandidate(
+      { type: "GENERAL_KNOWLEDGE", content, metadata, confidence: 0.9, mentions_person: false }, names);
+  const guideline = (content: string) =>
+    learn.evaluateCandidate(
+      { type: "COUNSELLING_GUIDELINE", content, metadata: {}, confidence: 0.9, mentions_person: false }, names);
+
+  const fact = "Australian student visas generally require evidence of funds for 2026 entry.";
+  assert(gk(fact).ok, "a sector fact is accepted — figures and years included");
+  const asGuideline = guideline(fact);
+  assert(!asGuideline.ok && asGuideline.reason === "fact_like",
+    "the SAME sentence as a guideline is still refused: the licence belongs to the type, not the text",
+    asGuideline);
+
+  // The licence is narrow. Everything that protects a person still applies.
+  assert(!gk("John's visa needed proof of funds.").ok, "a named person is still rejected");
+  assert(!gk("Email admissions@uni.edu about visa funds.").ok, "PII is still rejected");
+  assert(!gk("Refugee applicants generally need extra visa documents.").ok,
+    "and a sensitive category is still rejected, fact or not");
+
+  assert(!gk(fact, {}).ok, "metadata must carry the topic it is filed under");
+
+  // What it pays: no quantity of reinforcement activates it.
+  assert(schema.NEVER_AUTO_PROMOTES.has("GENERAL_KNOWLEDGE"),
+    "GENERAL_KNOWLEDGE can never auto-promote — three students hearing the same wrong answer is "
+    + "three students misinformed, not three confirmations");
+  assert(!schema.NEVER_AUTO_PROMOTES.has("RESPONSE_PATTERN"),
+    "while a counselling technique still promotes on the crowd signal, which is what it is for");
+}
 
 console.log("\n1. evaluateCandidate — the filters (pure)");
 {

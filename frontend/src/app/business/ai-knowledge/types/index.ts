@@ -7,7 +7,7 @@ import type { MemoryStatus } from "../apis/types";
  */
 export type MemoryFilter = Extract<MemoryStatus, "candidate" | "active" | "deprecated"> | "all" | "flagged" | "conflicting";
 
-export type KnowledgeTab = "style" | "memories" | "conversations";
+export type KnowledgeTab = "style" | "memories" | "conversations" | "insights";
 
 /** What the row's action buttons may do, decided from status/source in one place. */
 export interface MemoryActions {

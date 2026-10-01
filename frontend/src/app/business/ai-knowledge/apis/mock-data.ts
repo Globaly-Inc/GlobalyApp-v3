@@ -1,6 +1,7 @@
 import type {
   CreateMemoryInput, CreateMemoryOutcome, Memory, MemoryListParams, PatchMemoryInput,
-  PatchRackProfileInput, RackProfile, ReviewInput, ReviewMessage, ReviewSession, StoredRackProfile,
+  ConversionInsights, PatchRackProfileInput, RackProfile, ReviewInput, ReviewMessage, ReviewSession,
+  StoredRackProfile,
 } from "./types";
 
 import { base, memories, sessions, setMemories, threads } from "./mock-fixtures";
@@ -30,7 +31,41 @@ let rackProfile: RackProfile = {
 };
 let rackVersion = 0;
 
+/**
+ * A plausible funnel rather than round numbers: most conversations never convert, most that do
+ * were asked, and a minority volunteer — which is the asymmetry the panel exists to show.
+ */
+const insights: ConversionInsights = {
+  conversations: 214,
+  converted: 38,
+  volunteered: 11,
+  prompted: 27,
+  median_messages_to_conversion: 7,
+  median_seconds_to_conversion: 412,
+  top_paths: [
+    { path: ["course", "eligibility", "fees", "application"], count: 9 },
+    { path: ["course", "fees", "contact"], count: 6 },
+    { path: ["eligibility", "course", "application"], count: 5 },
+    { path: ["fees", "scholarship", "application"], count: 4 },
+    { path: ["course", "visa", "eligibility", "contact"], count: 3 },
+  ],
+  topic_before_conversion: [
+    { value: "application", count: 14 }, { value: "fees", count: 9 },
+    { value: "contact", count: 7 }, { value: "eligibility", count: 5 }, { value: "visa", count: 3 },
+  ],
+  first_topic: [
+    { value: "course", count: 96 }, { value: "fees", count: 48 }, { value: "eligibility", count: 31 },
+    { value: "visa", count: 19 }, { value: "scholarship", count: 12 }, { value: "other", count: 8 },
+  ],
+};
+
 export const aiKnowledgeMockApi = {
+  getConversionInsights: async (): Promise<ConversionInsights> => {
+    console.log("[mock] getConversionInsights");
+    await delay(240);
+    return insights;
+  },
+
   getProfile: async (): Promise<StoredRackProfile> => {
     console.log("[mock] getProfile");
     await delay(220);

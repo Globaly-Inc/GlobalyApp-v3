@@ -9,6 +9,7 @@ import type { KnowledgeTab } from "../types";
 import { MemoriesTab } from "./memories-tab";
 import { ConversationsTab } from "./conversations-tab";
 import { StyleTab } from "./style-tab";
+import { InsightsTab } from "./insights-tab";
 
 /**
  * What this institution's AI counsellor knows, and where its replies get corrected.
@@ -27,10 +28,11 @@ export function AiKnowledgeView() {
     return (
       <div className="mx-auto flex max-w-3xl flex-col items-center gap-3 rounded-lg border border-dashed p-10 text-center">
         <Lock className="size-8 text-muted-foreground/40" />
-        <p className="text-sm font-medium">AI knowledge is available for institutions</p>
+        <p className="text-sm font-medium">AI knowledge is for institution accounts</p>
         <p className="max-w-sm text-xs text-muted-foreground">
-          Your widget answers from your own courses and website. Teaching it how to counsel —
-          and reviewing what it has learned — is being rolled out to institution accounts first.
+          Your widget still answers from your own courses and website — that part works exactly
+          the same. What this page adds on top, setting how your assistant counsels and reviewing
+          what it has picked up, is built for institution accounts. Talk to us if you need it.
         </p>
       </div>
     );
@@ -58,6 +60,7 @@ export function AiKnowledgeView() {
       {tab === "style" && <StyleTab />}
       {tab === "memories" && <MemoriesTab />}
       {tab === "conversations" && <ConversationsTab />}
+      {tab === "insights" && <InsightsTab />}
     </div>
   );
 }

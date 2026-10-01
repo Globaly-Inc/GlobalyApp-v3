@@ -19,6 +19,7 @@ export const MEMORY_TYPES = [
   "COUNSELLOR_CORRECTION",
   "AVOIDANCE_RULE",
   "GENERAL_CONTEXT",
+  "GENERAL_KNOWLEDGE",
 ] as const;
 export type MemoryType = (typeof MEMORY_TYPES)[number];
 
@@ -43,6 +44,16 @@ export const TECHNIQUES = [
 
 export const SOURCE_AUTHORITY: Record<MemorySource, number> = { admin: 1, correction: 1, feedback: 0.5, extracted: 0.4 };
 export const isHumanSource = (s: MemorySource): boolean => s === "admin" || s === "correction";
+
+/**
+ * Types no amount of reinforcement may activate — only a human approve() can.
+ *
+ * GENERAL_KNOWLEDGE states facts, and the promotion threshold counts DISTINCT STUDENTS who were
+ * in a conversation it was drawn from. Three students hearing the same wrong answer is three
+ * students who were misinformed, not three confirmations — the crowd signal that works for "our
+ * counsellors tend to ask about budget early" is worthless for "the IELTS minimum is 6.0".
+ */
+export const NEVER_AUTO_PROMOTES: ReadonlySet<MemoryType> = new Set<MemoryType>(["GENERAL_KNOWLEDGE"]);
 
 /** Types that describe HOW to respond; retrieval keeps a separate slot for them. */
 export const TECHNIQUE_TYPES: ReadonlySet<MemoryType> = new Set<MemoryType>(["RESPONSE_PATTERN", "RESPONSE_PREFERENCE"]);
@@ -77,6 +88,20 @@ const meta = {
   }),
   AVOIDANCE_RULE: z.object({ severity: z.enum(["hard", "soft"]).default("hard") }),
   GENERAL_CONTEXT: z.object({}),
+  /**
+   * A sector fact that is true beyond this one visitor — "Australian student visas generally
+   * require proof of funds", not "this person has £20,000".
+   *
+   * The ONLY type that may carry a figure, and the trade for that is that it can never activate
+   * itself: see NEVER_AUTO_PROMOTES. Everything else here refuses facts precisely because a
+   * wrong one repeated confidently is the costliest thing this system can produce, so the one
+   * type that admits them buys the right with a mandatory human.
+   */
+  GENERAL_KNOWLEDGE: z.object({
+    topic: Short,
+    /** ISO-2, when the fact is destination-specific. */
+    destination_country: z.string().trim().length(2).optional(),
+  }),
 } satisfies Record<MemoryType, z.ZodTypeAny>;
 
 export const METADATA_BY_TYPE: Record<MemoryType, z.ZodType<Record<string, unknown>, z.ZodTypeDef, unknown>> = meta;
@@ -128,6 +153,7 @@ export const CreateMemorySchema = z.discriminatedUnion("type", [
   opt("COUNSELLOR_CORRECTION", meta.COUNSELLOR_CORRECTION),
   opt("AVOIDANCE_RULE", meta.AVOIDANCE_RULE),
   opt("GENERAL_CONTEXT", meta.GENERAL_CONTEXT),
+  opt("GENERAL_KNOWLEDGE", meta.GENERAL_KNOWLEDGE),
 ]);
 export type CreateMemoryInput = z.infer<typeof CreateMemorySchema>;
 

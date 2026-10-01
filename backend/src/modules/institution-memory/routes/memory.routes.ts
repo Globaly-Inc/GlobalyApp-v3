@@ -11,6 +11,7 @@ import { requireInstitutionContext } from "../../../core/plugins/auth.plugin.js"
 import * as embedRepo from "../../ai-counsellor/repositories/embed.repository.js";
 import * as learnRepo from "../repositories/learning.repository.js";
 import * as memoryRepo from "../repositories/memory.repository.js";
+import * as signalsRepo from "../repositories/signals.repository.js";
 import * as memories from "../services/memory.service.js";
 import { clearRetrievalCache } from "../services/retrieval.service.js";
 import { getProfile, parsePatch, patchProfile } from "../services/profile.service.js";
@@ -101,6 +102,14 @@ export async function institutionMemoryRoutes(app: FastifyInstance) {
     const { id } = IdParam.parse(req.params);
     await memories.remove(id, req.institutionId, actorOf(req));
     return reply.send({ ok: true });
+  });
+
+  // ── Conversion insights ──
+  // How visitors become leads, as aggregates over institution_conversation_signals. Every figure
+  // is a count over journeys: no transcript, no visitor, no message leaves through here, because
+  // that table holds none of them.
+  app.get("/institution/conversion-insights", async (req, reply) => {
+    return reply.send(await signalsRepo.insights(req.institutionId));
   });
 
   // ── Conversations to review ──

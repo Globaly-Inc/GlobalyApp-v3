@@ -58,6 +58,14 @@ export async function buildEmbedContext(config: embedRepo.EmbedConfigRow): Promi
   const website = await embedRepo.businessWebsite(Number(config.business_id));
   const domain = website ? extractDomain(website) : null;
   const jobIds = domain ? await knowledgeRepo.jobIdsByInstitutionDomain(domain) : [];
+  // Null, and therefore no Knowledge Rack for a business widget: no memory retrieval, no voice
+  // profile, no learning. That is a DECISION (2026-10-01), not an oversight — the memory module
+  // is keyed on an institution id throughout, and making it owner-scoped is a ~15-file change
+  // that belongs in its own reviewed PR rather than riding along here.
+  //
+  // The business widget is otherwise whole: it answers from the owner's own matched extraction
+  // jobs above. The portal says so on the AI knowledge page rather than hiding the nav item, so
+  // the gap is visible to whoever hits it.
   return { config, jobIds, rackInstitutionId: null };
 }
 

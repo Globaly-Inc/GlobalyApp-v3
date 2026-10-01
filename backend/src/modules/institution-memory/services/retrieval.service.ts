@@ -80,7 +80,7 @@ const LABEL: Record<MemoryType, string> = {
   COUNSELLING_GUIDELINE: "guideline", RESPONSE_PREFERENCE: "preference", RESPONSE_PATTERN: "technique",
   INSTITUTION_POLICY: "policy", COURSE_RECOMMENDATION_RULE: "recommendation rule", TERMINOLOGY: "terminology",
   STUDENT_CONCERN_PATTERN: "common concern", COUNSELLOR_CORRECTION: "counsellor correction",
-  AVOIDANCE_RULE: "never", GENERAL_CONTEXT: "context",
+  AVOIDANCE_RULE: "never", GENERAL_CONTEXT: "context", GENERAL_KNOWLEDGE: "general knowledge",
 };
 
 /** Pure: the prompt block. Every line passes the same injection filter as custom_instructions. */

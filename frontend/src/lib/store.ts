@@ -47,6 +47,7 @@ import { aiWidgetVisitorDetailReducer } from "@/app/business/ai-widget/store/ai-
 import { aiKnowledgeReducer as institutionKnowledgeReducer } from "@/app/business/ai-knowledge/store/ai-knowledge-slice"
 import { aiKnowledgeReviewsReducer } from "@/app/business/ai-knowledge/store/ai-knowledge-reviews-slice"
 import { aiKnowledgeProfileReducer } from "@/app/business/ai-knowledge/store/ai-knowledge-profile-slice"
+import { aiKnowledgeInsightsReducer } from "@/app/business/ai-knowledge/store/ai-knowledge-insights-slice"
 import { enquiriesReducer as monitoringEnquiriesReducer } from "@/app/admin/monitoring/enquiries/store/enquiries-slice"
 import { creditsLedgerReducer } from "@/app/admin/revenue/subscriptions/credits/store/credits-ledger-slice"
 import { comingSoonReducer } from "@/app/coming-soon/store/coming-soon-slice"
@@ -100,6 +101,7 @@ const appReducer = combineReducers({
     aiKnowledge: institutionKnowledgeReducer,
     aiKnowledgeReviews: aiKnowledgeReviewsReducer,
     aiKnowledgeProfile: aiKnowledgeProfileReducer,
+    aiKnowledgeInsights: aiKnowledgeInsightsReducer,
     monitoringEnquiries: monitoringEnquiriesReducer,
     creditsLedger: creditsLedgerReducer,
     comingSoon: comingSoonReducer,

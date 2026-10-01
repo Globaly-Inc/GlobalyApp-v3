@@ -233,13 +233,25 @@
         <li><strong>DB / worker / API.</strong> One tenant migration · no worker · one GET/PATCH pair + portal page.</li>
       </ul>
       <div class="gap blocking">
-        <strong>Capability gap: business-owned widgets have no memory at all</strong>
-        <code>buildEmbedContext</code> returns <code>rackInstitutionId: null</code> for a business, so
+        <strong>Decided 2026-10-01: business widgets stay memory-less for MVP</strong>
+<code>buildEmbedContext</code> returns <code>rackInstitutionId: null</code> for a business, so
         <code>retrieveMemories</code> is never called, <code>onConversationEnd</code> returns early on
         <code>config.institution_id == null</code>, and <code>database/migrations/business/</code> has no
-        <code>institution_ai_memories</code>. A business widget is silently memory-less — no error, no log.
-        Per <em>Businesses = institutions</em> this should be the same table in the business template,
-        or the limitation should be stated in the portal.
+        <code>institution_ai_memories</code>.
+        <br><br>
+        The analysis offered two ways out — parity, or stating the limitation. <strong>The limitation is
+        stated.</strong> The portal page says so instead of hiding the nav item, and both silent sites now
+        carry a note naming this decision, so the gap reads as a choice rather than a bug to whoever
+        finds it next.
+        <br><br>
+        Parity was measured, not guessed: <code>institutionId</code> appears 53× in
+        <code>memory.repository</code>, 42× in <code>memory.service</code>, 25× in <code>learning.service</code>,
+        17× in the routes, plus 8 test files. Institution and business ids are both integers from
+        different tables, so every signature would become an owner <code>{kind, id}</code> and the routes
+        would move to <code>requireBusinessOrInstitutionContext</code>. That is a ~15-file mechanical change
+        on a should-have, in the module where six of seven review findings came from a rule being right
+        at one end and wrong at the other — which is the shape of change a seventh would hide in. It
+        belongs in its own reviewed PR.
       </div>
     </div>
 
