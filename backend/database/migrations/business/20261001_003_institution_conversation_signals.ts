@@ -36,6 +36,12 @@ export async function up(knex: Knex): Promise<void> {
     /** Coarse labels in order, deduped consecutively: ["course","eligibility","fees","apply"]. */
     t.jsonb("topic_sequence").notNullable().defaultTo("[]");
     t.integer("message_count").notNullable().defaultTo(0);
+    /**
+     * First message to the journey's OUTCOME — the hand-over for a converted journey, the last
+     * thing they did otherwise. NOT first-to-last_activity_at, which keeps advancing as a
+     * converted visitor carries on chatting and would report the whole conversation as time to
+     * conversion. The panel reads this only over converted rows, where it means time to the lead.
+     */
     t.integer("duration_seconds").nullable();
     // NO course_interests column. It would have needed the shared MESSAGE_COLUMNS query widened
     // to carry `cards`, which changes what the learning path reads as well — and a column nothing

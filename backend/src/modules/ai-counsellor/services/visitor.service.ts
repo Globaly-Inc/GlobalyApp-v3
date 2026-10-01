@@ -57,6 +57,14 @@ export interface VisitorRow {
   contact_prompted_at_count: number | null;
   contact_prompted_at: Date | null;
   contact_submitted_at: Date | null;
+  /**
+   * message_count at the moment they handed over their details (20261001_004).
+   *
+   * Captured here because it cannot be recovered afterwards: message_count keeps climbing as the
+   * visitor carries on asking things, so reading it at conversation end would count every later
+   * message as effort spent winning the lead.
+   */
+  contact_submitted_at_count: number | null;
   message_count: number;
   first_seen_at: Date;
   last_activity_at: Date;
@@ -628,6 +636,9 @@ export async function recordContact(
       contact_source: "card",
       contact_status: "submitted",
       contact_submitted_at: db.fn.now(),
+      // The card is answered in its own request, after the turn that prompted it was recorded,
+      // so the stored count is already current — no +1 here, unlike the volunteered path.
+      contact_submitted_at_count: db.raw("message_count"),
       // Arms the summary as OWED, not as due. The card promised them one, so from here it is
       // going to be sent; confirming the end of the chat just makes it due immediately, and
       // the idle/close fallback covers everyone who never presses the button.
@@ -700,6 +711,10 @@ export async function recordVolunteeredContact(
     patch.contact_status = "submitted";
     // When we FIRST got details, not when they last corrected them.
     patch.contact_submitted_at = db.raw("COALESCE(contact_submitted_at, now())");
+    // +1 because this runs DURING the turn that carried the address: recordTurn has not
+    // incremented yet, so the stored count is still the one before this message. COALESCE for
+    // the same reason as the timestamp — a later correction must not move where it happened.
+    patch.contact_submitted_at_count = db.raw("COALESCE(contact_submitted_at_count, message_count + 1)");
   }
 
   // NOTE WHAT IS DELIBERATELY ABSENT: summary_status.

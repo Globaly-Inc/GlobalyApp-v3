@@ -79,16 +79,16 @@ export function InsightsTab() {
       <div className="rounded-lg border p-5">
         <h2 className="text-sm font-semibold">How they shared their details</h2>
         <p className="mt-0.5 mb-4 text-xs text-muted-foreground">
-          Whether your counsellor had asked. Two slices of the same {converted} leads — not two
-          different measures.
+          Whether your counsellor had asked. These two split the same {converted} leads between
+          them and add up to it — not two different measures.
         </p>
         <InsightBars
           emptyLabel="No leads yet."
           rows={[
             { key: "volunteered", label: "Offered without being asked", count: volunteered,
-              title: "The visitor gave their details in conversation before any prompt." },
+              title: "The contact card was never shown to this visitor — they gave their details unprompted." },
             { key: "prompted", label: "After your counsellor asked", count: prompted,
-              title: "The visitor had been shown the contact card at least once." },
+              title: "The contact card had been shown at least once, however the details finally arrived." },
           ]}
         />
       </div>

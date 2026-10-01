@@ -20,10 +20,31 @@ import { tenantDbFor } from "../../ai-counsellor/services/visitor.service.js";
 import type { EmbedConfigRow } from "../../ai-counsellor/repositories/embed.repository.js";
 import * as learnRepo from "../repositories/learning.repository.js";
 import * as signalsRepo from "../repositories/signals.repository.js";
+import * as memoryRepo from "../repositories/memory.repository.js";
+import { enqueueLearning } from "./learning.service.js";
 import { topicOf, topicSequence, type Topic } from "../lib/conversation-topics.js";
 import { ConversationSignalsSchema } from "../schemas/signals.schema.js";
 
 const logger = createChildLogger("conversation-signals");
+
+/**
+ * When the journey ENDED, for duration purposes.
+ *
+ * Exported and pure because this is the third figure in this file derived from a column that
+ * keeps moving after the moment it is meant to describe — `message_count` was the first, and the
+ * comment above it named the hazard while the code did it anyway. A converted journey ends when
+ * they handed over their details; `last_activity_at` advances on every later turn, so using it
+ * would report the whole conversation as "time to conversion".
+ *
+ * An unconverted journey genuinely ends at the last thing they did, so that is what it uses.
+ */
+export function journeyEndedAt(visitor: {
+  contact_submitted_at?: Date | string | null;
+  last_activity_at?: Date | string | null;
+} | null, converted: boolean): number | null {
+  const at = converted && visitor?.contact_submitted_at ? visitor.contact_submitted_at : visitor?.last_activity_at;
+  return at ? new Date(at).getTime() : null;
+}
 
 /**
  * The visitor's last question BEFORE they handed over their details.
@@ -66,7 +87,7 @@ export async function recordConversationSignals(opts: {
     const visitor = db
       ? await db("ai_widget_visitors")
           .select("email", "contact_source", "contact_prompt_count", "contact_submitted_at",
-                  "message_count", "first_seen_at", "last_activity_at")
+                  "contact_submitted_at_count", "message_count", "first_seen_at", "last_activity_at")
           .where({ visitor_key: session.visitor_key, embed_config_id: session.embed_config_id })
           .first()
           .catch(() => null)
@@ -74,14 +95,20 @@ export async function recordConversationSignals(opts: {
 
     const sequence = topicSequence(turns);
     const converted = !!visitor?.email;
-    // Their message count at submission. The row's current count is where they finished, which
-    // for a visitor who kept talking afterwards is not the same number.
-    const messagesToConversion = converted ? Number(visitor?.message_count ?? 0) || null : null;
+    // Their count AT SUBMISSION, recorded by the contact writers — not message_count, which is
+    // where they finished. This comment used to say exactly that and the line below read
+    // message_count anyway, so a visitor who kept chatting had every later message counted as
+    // effort spent winning the lead, and topic_before_conversion could land on a question asked
+    // after they had already shared their details.
+    //
+    // Null rather than a fallback when the column is empty (a row that converted before
+    // 20261001_004): an unknown figure is honest, a wrong one quietly skews the median.
+    const messagesToConversion = converted ? Number(visitor?.contact_submitted_at_count ?? 0) || null : null;
     // Both timestamps come from the visitor row rather than the transcript: the shared
     // MESSAGE_COLUMNS query carries no created_at, and widening it for one derived number would
     // change what the learning path reads too.
     const first = visitor?.first_seen_at ? new Date(visitor.first_seen_at).getTime() : null;
-    const last = visitor?.last_activity_at ? new Date(visitor.last_activity_at).getTime() : null;
+    const last = journeyEndedAt(visitor, converted);
 
     const signals = ConversationSignalsSchema.parse({
       session_id: session.id,
@@ -109,4 +136,46 @@ export async function recordConversationSignals(opts: {
   } catch (err) {
     logger.warn("Conversation signals not recorded", { institutionId, sessionId: session.id, err: String(err) });
   }
+}
+
+/** How long a conversation-end job is presumed still in flight before the sweep replays it. */
+const SIGNALS_RECOVERY_GRACE_MIN = Number(process.env.LEARN_RECOVERY_GRACE_MIN) || 15;
+/** One sweep's worth; a backlog drains over successive hourly runs rather than in one burst. */
+const SIGNALS_RECOVERY_BATCH = 200;
+
+/**
+ * Replay journeys whose conversation-end job never produced a signals row.
+ *
+ * The learning side has had a recovery sweep since the broker outage that motivated it, keyed on
+ * `*_learned_at` columns. The conversation job carries a SESSION rather than a message, so it had
+ * no marker and no replay — documented at the time as a known gap, and acceptable while the only
+ * cost was a missed learning opportunity. It stopped being acceptable when conversion insights
+ * started riding the same job: a dropped publish now permanently understates the funnel, and an
+ * undercount nobody can see is worse than a gap someone can.
+ *
+ * No new marker column is needed. Both tables are in the SAME tenant schema, so "ended, with no
+ * journey recorded" is a left join — and `record()` upserts on session_id, so replaying one that
+ * did land is harmless.
+ */
+export async function sweepMissingSignals(): Promise<{ found: number; requeued: number }> {
+  const cutoff = new Date(Date.now() - SIGNALS_RECOVERY_GRACE_MIN * 60_000);
+  let found = 0;
+  let requeued = 0;
+
+  for (const institutionId of await memoryRepo.provisionedInstitutionIds()) {
+    try {
+      const rows = await signalsRepo.endedWithoutSignals(institutionId, cutoff, SIGNALS_RECOVERY_BATCH);
+      found += rows.length;
+      for (const row of rows) {
+        if (await enqueueLearning({ kind: "conversation", institution_id: institutionId, session_id: row.session_id })) {
+          requeued++;
+        }
+      }
+    } catch (err) {
+      // An un-migrated tenant schema is the usual cause; the others still get swept.
+      logger.warn("Signals recovery failed for institution", { institutionId, err: String(err) });
+    }
+  }
+  if (found) logger.info("Conversation signals recovery", { found, requeued });
+  return { found, requeued };
 }

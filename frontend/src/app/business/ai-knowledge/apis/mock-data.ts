@@ -38,6 +38,8 @@ let rackVersion = 0;
 const insights: ConversionInsights = {
   conversations: 214,
   converted: 38,
+  // volunteered + prompted === converted: one axis (was the counsellor ever asked), so the two
+  // partition the leads rather than overlapping.
   volunteered: 11,
   prompted: 27,
   median_messages_to_conversion: 7,

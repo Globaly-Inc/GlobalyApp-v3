@@ -260,11 +260,23 @@ async function storeCandidates(
     // One embedding, and now one vector query, serve three things: the near-duplicate merge, the
     // contradiction check, and the insert.
     const embedding = await embedOrNull(verdict.input.type, verdict.input.content);
-    const nearest = embedding
-      // Candidates included: two paraphrases of the same unreviewed observation are the case
-      // this exists for, and they are both candidates.
-      ? await memoryRepo.match(embedding, ctx.institutionId, { count: CONTRADICTION_NEIGHBOURS, statuses: ["active", "candidate"] })
-      : [];
+    // TWO scoped queries, not one widened one. A single `statuses: ["active","candidate"]` fetch
+    // shares its five slots between both kinds, so five nearer CANDIDATES can push a contradicting
+    // ACTIVE rule out of the window entirely — the statement is then stored unlinked and can be
+    // promoted into use against a rule the institution actually follows. The active set has to be
+    // guaranteed, and the only way to guarantee it is to ask for it on its own.
+    const [activeNearest, mergeNearest] = embedding
+      ? await Promise.all([
+          // Active only (the function's default) — the set a conflict may be FLAGGED against.
+          memoryRepo.match(embedding, ctx.institutionId, { count: CONTRADICTION_NEIGHBOURS }),
+          // Plus candidates — the wider set the merge may fold into. Two paraphrases of one
+          // unreviewed observation are the case that exists for, and both are candidates.
+          memoryRepo.match(embedding, ctx.institutionId, { count: CONTRADICTION_NEIGHBOURS, statuses: ["active", "candidate"] }),
+        ])
+      : [[], []];
+
+    // Deduped by id: the two windows overlap on active rows, and Jev should see each statement once.
+    const nearest = [...new Map([...activeNearest, ...mergeNearest].map((m) => [m.id, m])).values()];
 
     // CONTRADICTION IS CHECKED FIRST, and the order is the whole safety of this block.
     //
@@ -274,11 +286,12 @@ async function storeCandidates(
     // two agree would have silently reinforced the memory that says the reverse, turning a
     // disagreement into evidence for the thing being disagreed with. The existing conflict test
     // caught exactly that, with exactly that pair.
-    const conflictsWith = embedding ? await contradictedMemory(ctx.institutionId, verdict.input.content, nearest) : null;
+    const disagrees = embedding ? await contradictions(verdict.input.content, nearest) : new Set<string>();
 
-    // Only once the pair is known NOT to contradict is a restatement evidence rather than a row.
-    const duplicate = !conflictsWith
-      && nearest.find((m) => m.type === verdict.input.type && m.similarity >= MERGE_SIMILARITY);
+    // A restatement is evidence; a disagreement never is. Every neighbour this could merge into
+    // has been asked, so a contradicted one is excluded here whatever its status.
+    const duplicate = mergeNearest.find((m) =>
+      m.type === verdict.input.type && m.similarity >= MERGE_SIMILARITY && !disagrees.has(m.id));
     if (duplicate) {
       const existing = await memoryRepo.findById(duplicate.id, ctx.institutionId);
       if (existing) {
@@ -291,6 +304,12 @@ async function storeCandidates(
       }
     }
 
+    // FLAGGING is narrower than asking. A conflict link blocks auto-promotion until a human
+    // clears it, which only makes sense against something the institution actually follows —
+    // linking two unreviewed candidates would block both behind a decision nobody can make. So a
+    // contradicted CANDIDATE is simply not merged into (above) and lands as its own candidate
+    // row; the pair then sit side by side awaiting review, which is the honest outcome.
+    const conflictsWith = activeNearest.find((m) => disagrees.has(m.id))?.id ?? null;
     if (conflictsWith) {
       const flagged = await flagConflict({
         institutionId: ctx.institutionId, input: verdict.input, conflictsWithId: conflictsWith, confidence: verdict.confidence,
@@ -313,19 +332,19 @@ async function storeCandidates(
 }
 
 /** The id of the nearest active memory the statement contradicts, per Jev; null when none or when Jev is off. */
-async function contradictedMemory(
-  institutionId: number,
+async function contradictions(
   content: string,
   neighbours: memoryRepo.MemoryMatch[],
-): Promise<string | null> {
-  // ACTIVE only. A candidate is an unreviewed proposal, and flagging a new candidate as
-  // contradicting another unreviewed one would block both behind a decision nobody can make.
-  const nearest = neighbours.filter((m) => m.status === "active");
-  if (!nearest.length) return null;
-  const hits = await judgeContradictions(content, nearest.map((m) => ({ id: m.id, content: m.content })));
-  if (!hits?.size) return null;
-  // Nearest first: `nearest` is already ordered by cosine.
-  return nearest.find((m) => hits.has(m.id))?.id ?? null;
+): Promise<Set<string>> {
+  // Asked of EVERY neighbour, candidates included. The question "do these two disagree" has to
+  // cover anything this statement could be merged into, and the merge below accepts candidates.
+  // Asking only about active rows left a gap: a statement contradicting an unreviewed candidate
+  // raised no conflict, so the near-duplicate merge treated it as a restatement and reinforced
+  // the memory saying the opposite — the exact failure the ordering was meant to prevent,
+  // arriving through the candidate path instead.
+  if (!neighbours.length) return new Set();
+  const hits = await judgeContradictions(content, neighbours.map((m) => ({ id: m.id, content: m.content })));
+  return hits ?? new Set();
 }
 
 const actorOf = (s: learnRepo.LearnSession) => s.platform_user_id ? hashActor(`u:${s.platform_user_id}`) : s.visitor_key ? hashActor(`v:${s.visitor_key}`) : null;

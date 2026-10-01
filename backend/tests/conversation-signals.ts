@@ -15,6 +15,7 @@ process.env.DB_HOST = process.env.DB_HOST || "127.0.0.1";
 process.env.JWT_SECRET = process.env.JWT_SECRET || "x";
 
 const t = await import("../src/modules/institution-memory/lib/conversation-topics.js");
+const sig = await import("../src/modules/institution-memory/services/conversation-signals.service.js");
 const schema = await import("../src/modules/institution-memory/schemas/signals.schema.js");
 
 let passed = 0, failed = 0;
@@ -117,6 +118,72 @@ console.log("\n5. the §11 distinction this table exists for");
   assert(worked.converted && worked.ai_prompted, "prompted: converted after the counsellor asked");
   assert(easy.ai_prompted !== worked.ai_prompted,
     "and the two are distinguishable, which `email_captured = true` never was");
+}
+
+console.log("\n6. journeyEndedAt — a converted journey ends at the HAND-OVER");
+{
+  // Third figure in this file derived from a column that keeps moving after the moment it is
+  // meant to describe (message_count was the first). last_activity_at advances on every turn a
+  // converted visitor takes afterwards, so using it reports the WHOLE conversation as "time to
+  // conversion" — and the panel prints that number beside "Messages to a lead".
+  const submitted = new Date("2026-10-01T10:05:00Z");
+  const lastActivity = new Date("2026-10-01T10:40:00Z"); // they kept chatting for 35 more minutes
+  const v = { contact_submitted_at: submitted, last_activity_at: lastActivity };
+
+  assert(sig.journeyEndedAt(v, true) === submitted.getTime(),
+    "converted → ends when they handed over their details, not 35 minutes later");
+  assert(sig.journeyEndedAt(v, false) === lastActivity.getTime(),
+    "unconverted → genuinely ends at the last thing they did");
+  assert(sig.journeyEndedAt({ last_activity_at: lastActivity }, true) === lastActivity.getTime(),
+    "converted with no recorded hand-over falls back rather than returning nothing");
+  assert(sig.journeyEndedAt(null, true) === null, "no visitor row → no duration");
+}
+
+console.log("\n7. volunteered vs prompted PARTITION the leads — one axis, no double count");
+{
+  // A visitor can be shown the card and then type their address into the chat instead. That row
+  // carries contact_source = 'volunteered' AND ai_prompted = true, so keying the two groups on
+  // different columns counted the same lead twice and the panel's "these add up to N" was false.
+  // The axis is ai_prompted alone: §11 asks whether the lead came without being asked.
+  const leads = [
+    { converted: true, ai_prompted: false, contact_source: "volunteered" }, // never asked
+    { converted: true, ai_prompted: true, contact_source: "card" },         // asked, used the card
+    { converted: true, ai_prompted: true, contact_source: "volunteered" },  // asked, typed it anyway
+    { converted: false, ai_prompted: true, contact_source: null },          // asked, never converted
+  ];
+  const converted = leads.filter((l) => l.converted).length;
+  const volunteered = leads.filter((l) => l.converted && !l.ai_prompted).length;
+  const prompted = leads.filter((l) => l.converted && l.ai_prompted).length;
+
+  assert(volunteered + prompted === converted,
+    "the two groups sum to the converted total, which is what the panel claims", { volunteered, prompted, converted });
+
+  // The row that broke it, named explicitly so a future change to contact_source can be judged.
+  const bothMarkers = leads.filter((l) => l.converted && l.ai_prompted && l.contact_source === "volunteered");
+  assert(bothMarkers.length === 1, "the overlapping case exists and is real — asked, then typed it in chat anyway");
+  const onContactSource = leads.filter((l) => l.converted && l.contact_source === "volunteered").length;
+  assert(onContactSource + prompted > converted,
+    "and keying on contact_source instead would over-count it — the old behaviour", { onContactSource, prompted, converted });
+}
+
+console.log("\n8. topic rules — anchors, stems, and the overlap that mattered");
+{
+  // `\ba|b|c\b` anchors \b to the FIRST and LAST alternative only, so every middle one matched
+  // inside a word. Every rule in the list had it; these are the cases that proved it.
+  assert(t.topicOf("costume design course") === "course",
+    "'costume' no longer matches the fees rule's unanchored 'cost'");
+  assert(t.topicOf("what are the living costs?") === "accommodation",
+    "'living cost' reaches the accommodation rule — fees used to swallow it on a bare 'cost'");
+  assert(t.topicOf("is accommodation included in the fees?") === "accommodation",
+    "accommodation sits ABOVE fees: a housing question that mentions cost is about housing");
+  assert(t.topicOf("how much is the tuition?") === "fees",
+    "and nothing travels the other way — a fees question carries no housing word");
+
+  // Stems take \w*, so every real form matches rather than only the bare stem.
+  assert(t.topicOf("am I eligible?") === "eligibility", "'eligible'");
+  assert(t.topicOf("what are the entry requirements?") === "eligibility", "'requirements'");
+  assert(t.topicOf("when are the application deadlines?") === "application", "'deadlines'");
+  assert(t.topicOf("do you have scholarships?") === "scholarship", "'scholarships'");
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

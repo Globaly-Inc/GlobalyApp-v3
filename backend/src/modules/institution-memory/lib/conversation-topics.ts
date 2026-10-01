@@ -18,18 +18,28 @@ export type Topic = (typeof TOPICS)[number];
 /**
  * Ordered, first match wins — so precedence is a property of this list rather than an accident
  * of regex alternation. The order encodes what a message is ABOUT when it mentions two things:
- * "what are the fees for the MBA" is a fees question that happens to name a course, and
- * "do I qualify for a scholarship" is about the scholarship, not about qualifying.
+ * "what are the fees for the MBA" is a fees question that happens to name a course,
+ * "do I qualify for a scholarship" is about the scholarship rather than about qualifying, and
+ * "what are the living costs" is about living somewhere rather than about cost.
  */
 const RULES: ReadonlyArray<readonly [Topic, RegExp]> = [
-  ["scholarship", /\bscholarship|bursar|financial aid|funding\b/i],
-  ["fees", /\bfee|fees|tuition|cost|price|how much|instal|deposit|refund\b/i],
-  ["visa", /\bvisa|immigration|work permit|study permit|embassy|sponsor(ship)?\b/i],
-  ["accommodation", /\baccommodat|housing|hostel|dorm|where (will|would) i live|living cost\b/i],
-  ["application", /\bapply|application|deadline|intake|enrol|enroll|admission|offer letter|documents?\b/i],
-  ["eligibility", /\beligib|qualify|requirement|entry|ielts|toefl|pte|gpa|grade|backlog|prerequisite\b/i],
-  ["contact", /\bcontact|speak to|talk to (a|someone)|call me|email me|counsell?or|advisor|human\b/i],
-  ["course", /\bcourse|program|programme|degree|master|bachelor|diploma|mba|msc|study|subject|major\b/i],
+  // EVERY alternation is wrapped in (?:...) — `\ba|b|c\b` anchors \b to the first and last
+  // alternative ONLY, so the middle ones matched anywhere inside a word. "costume" was a fees
+  // question and "living cost" never reached the accommodation rule below it.
+  //
+  // Stems take \w* rather than a trailing \b, for the same reason the sensitive-category filter
+  // does: `\beligib\b` matches neither "eligible" nor "eligibility", which is every real form.
+  ["scholarship", /\b(?:scholarship\w*|bursar\w*|financial aid|funding)\b/i],
+  // ABOVE fees deliberately: an accommodation question almost always mentions cost, and
+  // "what are the living costs" is about living somewhere, not about tuition. A fees question
+  // carries no housing word, so nothing travels the other way.
+  ["accommodation", /\b(?:accommodat\w*|housing|hostel\w*|dorm\w*|halls of residence|living costs?|where (?:will|would) i live)\b/i],
+  ["fees", /\b(?:fee|fees|tuition|costs?|price\w*|how much|instal\w*|deposit\w*|refund\w*|scholarship money)\b/i],
+  ["visa", /\b(?:visa\w*|immigration|work permit|study permit|embassy|sponsorship|sponsor)\b/i],
+  ["application", /\b(?:apply|applying|application\w*|deadline\w*|intake\w*|enrol\w*|enroll\w*|admission\w*|offer letter|documents?)\b/i],
+  ["eligibility", /\b(?:eligib\w*|qualify|qualifies|qualified|requirement\w*|entry|ielts|toefl|pte|gpa|grade\w*|backlog\w*|prerequisite\w*)\b/i],
+  ["contact", /\b(?:contact|speak to|talk to (?:a|someone)|call me|email me|counsell?or\w*|advisor\w*|human)\b/i],
+  ["course", /\b(?:course\w*|program\w*|degree\w*|master\w*|bachelor\w*|diploma\w*|mba|msc|study|studying|subject\w*|major\w*|specialisation|specialization)\b/i],
 ];
 
 /** One message → one label. "other" when nothing matches, which is a real answer, not a failure. */

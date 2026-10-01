@@ -61,7 +61,17 @@ export async function insights(institutionId: number): Promise<ConversionInsight
       })
       .select(
         k.raw("count(*) FILTER (WHERE converted) AS converted"),
-        k.raw("count(*) FILTER (WHERE converted AND contact_source = 'volunteered') AS volunteered"),
+        // ONE axis — `ai_prompted` — so the two groups PARTITION the converted set and sum to it.
+        //
+        // `volunteered` used to key on contact_source = 'volunteered', which answers a different
+        // question: how the value arrived, not whether we had to ask. A visitor shown the card
+        // who then types their address into the chat instead carries BOTH markers, so that lead
+        // was counted in both groups and the panel's "two slices of the same N leads" was false.
+        //
+        // §11 asks whether a lead came easily, and "were they ever asked" is that question.
+        // contact_source stays on the row and in the visitor drawer, where "card or conversation"
+        // is the thing someone actually wants to know.
+        k.raw("count(*) FILTER (WHERE converted AND NOT ai_prompted) AS volunteered"),
         k.raw("count(*) FILTER (WHERE converted AND ai_prompted) AS prompted"),
       )
       .first();
@@ -114,4 +124,30 @@ export async function insights(institutionId: number): Promise<ConversionInsight
     logger.warn("Conversion insights read failed", { institutionId, err: String(err) });
     return empty;
   }
+}
+
+/**
+ * Conversations that ended but produced no journey — the recovery sweep's input.
+ *
+ * A left join inside ONE tenant schema: ai_widget_visitors and institution_conversation_signals
+ * both live here, so no marker column and no cross-schema lookup is needed. `end_confirmed_at`
+ * is the only honest "this conversation is over" signal on the row — it is set by the visitor
+ * pressing end, which is the same event that publishes the job this recovers.
+ */
+export async function endedWithoutSignals(
+  institutionId: number,
+  endedBefore: Date,
+  limit: number,
+): Promise<Array<{ session_id: number }>> {
+  const k = await memoryRepo.tenantDbOrNull(institutionId);
+  if (!k) return [];
+  return k("ai_widget_visitors as v")
+    .leftJoin(`${TABLE} as s`, "s.session_id", "v.session_id")
+    .whereNotNull("v.session_id")
+    .whereNotNull("v.end_confirmed_at")
+    .where("v.end_confirmed_at", "<", endedBefore)
+    .whereNull("s.id")
+    .orderBy("v.end_confirmed_at", "asc")
+    .limit(limit)
+    .select<Array<{ session_id: number }>>("v.session_id");
 }

@@ -245,7 +245,9 @@ console.log("\n2. learnFromCorrection: correction stored active; derived rules a
   assert(/never store facts/i.test(modelCalls[0]!.system) && /mentions_person/.test(modelCalls[0]!.system), "system prompt forbids facts and requires mentions_person");
   const judged = jevCalls.filter((c) => c.keys.includes("mentions_person"));
   assert(judged.length === 5, "Jev judged the correction and each derived candidate up to the survivor cap (1 + 4)", judged.length);
-  assert(count(h.MATCH_FN) === 2, "each survivor was checked for neighbours (no neighbours here → no contradiction question)", count(h.MATCH_FN));
+  // TWO queries per survivor, not one: the active set is fetched on its own so that nearer
+  // candidates can never crowd a contradicting active rule out of the window.
+  assert(count(h.MATCH_FN) === 4, "each survivor fetched BOTH neighbour windows (2 survivors x 2 scopes)", count(h.MATCH_FN));
 }
 
 console.log("\n2a. approved / flagged reviews act on the memories the reply used");
@@ -311,6 +313,47 @@ console.log("\n2c. A contradicting candidate is stored linked, never as a plain 
   const check = jevCalls.find((c) => c.keys[0] === "c0");
   assert(!!check && JSON.stringify(check.state).includes("Discuss refunds before") && JSON.stringify(check.state).includes("only after an offer"), "Jev saw the new statement and the neighbour");
   assert(h.embedCalls.length >= 1, "one embedding served both the contradiction check and the insert");
+  jevOverride = {};
+}
+
+console.log("\n2d. A contradicted CANDIDATE is never merged into — the gap between two right decisions");
+{
+  // The bug this pins down lived between two individually-correct choices:
+  //   - the contradiction check was narrowed to ACTIVE memories, because flagging one unreviewed
+  //     candidate against another blocks both behind a decision nobody can make;
+  //   - the near-duplicate merge was widened to INCLUDE candidates, because two paraphrases of
+  //     the same unreviewed observation are exactly what it exists to fold together.
+  // Together they left a hole: a statement contradicting a CANDIDATE raised no conflict, so the
+  // merge read it as a restatement and reinforced the memory saying the opposite — which three
+  // distinct visitors would then promote. The question is now asked of every neighbour the merge
+  // could touch; only the FLAG stays active-only.
+  modelCalls = []; jevCalls = [];
+  modelReply = { candidates: [cand({ type: "INSTITUTION_POLICY", content: "Discuss refunds before the student has an offer.", metadata: {} })] };
+  jevOverride = { c0: 0.9 }; // Jev: these disagree
+  reset([
+    // Same wording distance as 2c (0.9) and the same disagreement — but UNREVIEWED.
+    //
+    // The route HONOURS the statuses binding, which is what makes this test mean anything: the
+    // active-only window must come back EMPTY, exactly as Postgres would answer it, or the
+    // candidate leaks into the set a conflict can be flagged against and the assertion passes
+    // for the wrong reason.
+    [h.MATCH_FN, (stmt) => (JSON.stringify(stmt.values).includes("candidate")
+      ? [{ id: ID, type: "INSTITUTION_POLICY", content: "Refunds are discussed only after an offer.", metadata: {}, source: "extracted", confidence: 0.7, importance: 3, status: "candidate", reinforce_count: 0, use_count: 0, similarity: 0.9 }]
+      : [])],
+    ...baseRoutes(),
+  ]);
+  const r = await learn.learnFromCorrection({ kind: "correction", institution_id: INST, message_id: 77 });
+
+  assert(r.reinforced === 0,
+    "the disagreement is NOT counted as support for the candidate it contradicts", r);
+  const stored = all(INSERT_MEMORY).find((st) => st.values.includes("INSTITUTION_POLICY") && !st.values.includes("COUNSELLOR_CORRECTION"));
+  assert(!!stored, "it lands as its own row instead", stored?.values);
+  assert(!!stored && !stored.values.includes(ID),
+    "and carries NO conflicts_with_id: linking two unreviewed candidates would block both behind "
+    + "a decision nobody can make — they sit side by side awaiting review", stored?.values);
+  const asked = jevCalls.find((c) => c.keys[0] === "c0");
+  assert(!!asked && JSON.stringify(asked.state).includes("only after an offer"),
+    "the candidate WAS put to Jev — asking is wider than flagging", asked?.keys);
   jevOverride = {};
 }
 
