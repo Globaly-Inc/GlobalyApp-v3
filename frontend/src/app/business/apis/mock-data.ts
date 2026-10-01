@@ -191,6 +191,7 @@ export const businessMockApi = {
         fees: Math.round(30 * scale),
         intakes: Math.round(12 * scale),
         eligibility: Math.round(20 * scale),
+        scholarships: Math.round(5 * scale),
         units: Math.round(90 * scale),
         study_options: Math.round(15 * scale),
         accreditations: Math.round(3 * scale),

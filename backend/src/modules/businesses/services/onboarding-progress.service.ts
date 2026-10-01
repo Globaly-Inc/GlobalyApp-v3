@@ -24,6 +24,9 @@ export interface OnboardingProgress {
 function buildSteps(input: {
   showExtractionStep: boolean;
   extractionHasData: boolean;
+  /** Any course to review — extracted, hand-added or shared from a head office. A visit to an
+   *  empty Services tab must not tick "Review courses". */
+  hasCourses: boolean;
   reviewedCoursesAt: string | null;
   hasAiWidget: boolean;
   widgetInstalled: boolean;
@@ -44,7 +47,7 @@ function buildSteps(input: {
     {
       key: "review_courses", label: "Review courses & services",
       detail: "Check what we found, fix gaps", duration: "~10 min",
-      done: !!input.reviewedCoursesAt,
+      done: !!input.reviewedCoursesAt && input.hasCourses,
     },
     {
       key: "customize_assistant", label: "Customise your AI assistant",
@@ -104,6 +107,8 @@ export async function getBusinessOnboardingProgress(
   return summarize(buildSteps({
     showExtractionStep,
     extractionHasData: hasData,
+    // ponytail: a plain business's own services aren't counted — only the institution path gates.
+    hasCourses: true,
     reviewedCoursesAt: progress?.reviewed_courses_at ?? null,
     hasAiWidget: widget.exists,
     widgetInstalled: widget.installed,
@@ -115,6 +120,7 @@ export async function getInstitutionOnboardingProgress(
   institutionId: number,
   sourceJobId: string | null,
   schemaName: string,
+  hasOwnCourses = false,
 ): Promise<OnboardingProgress> {
   const db = await getKnex(institutionId, schemaName);
   const [progress, hasData, widget, [{ count }], pendingInvites] = await Promise.all([
@@ -127,6 +133,7 @@ export async function getInstitutionOnboardingProgress(
   return summarize(buildSteps({
     showExtractionStep: true,
     extractionHasData: hasData,
+    hasCourses: hasData || hasOwnCourses,
     reviewedCoursesAt: progress?.reviewed_courses_at ?? null,
     hasAiWidget: widget.exists,
     widgetInstalled: widget.installed,

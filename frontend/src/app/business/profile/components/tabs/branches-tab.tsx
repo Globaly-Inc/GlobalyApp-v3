@@ -1,20 +1,23 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Building2, GitBranch, Link2, Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { OriginChip } from "../origin-chip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Combobox } from "@/components/combobox";
 import { Pagination } from "@/components/ui/pagination";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { useAuthState } from "@/app/auth/store/auth-slice";
+import { fetchMe, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchBranches, deleteBranch } from "../../store/business-profile-detail-slice";
 import type { Branch, BranchFilter } from "../../apis/types";
 import { LinkBranchDialog } from "../branches/link-branch-dialog";
 import { DeleteBranchDialog } from "../branches/delete-branch-dialog";
+import { HeadOfficeCard } from "../branches/head-office-card";
+import type { Country } from "@/app/geo/apis";
 
 const PAGE_SIZE = 10;
 
@@ -27,9 +30,22 @@ const FILTER_OPTIONS: { value: BranchFilter; label: string }[] = [
 export function BranchesTab({
   businessId,
   isInstitution,
-}: Readonly<{ businessId: number; isInstitution: boolean }>) {
+  countries = [],
+}: Readonly<{ businessId: number; isInstitution: boolean; countries?: Country[] }>) {
   // Names the exact org in the link — ids alone can collide across businesses and institutions.
-  const activeOrgId = useAuthState().user?.orgId;
+  const authUser = useAuthState().user;
+  const activeOrgId = authUser?.orgId;
+  const parentLogo = useAppSelector((s) => s.businessOnboarding.profile?.logo_url ?? null);
+  // A created branch is owned by this user, so its signed logo URL is already in /auth/me. A
+  // same-company branch (or an extracted campus) without its own logo shows the parent's brand.
+  const logoFor = (b: Branch) => {
+    const own = b.linked_business_id != null
+      ? authUser?.businesses?.find((o) => o.id === b.linked_business_id)?.logo_url
+      : b.linked_institution_id != null
+        ? authUser?.institutions?.find((o) => o.id === b.linked_institution_id)?.logo_url
+        : null;
+    return own || (b.extracted || b.branch_type === "same_company" ? parentLogo : null);
+  };
   const orgQuery = activeOrgId ? `?org=${encodeURIComponent(activeOrgId)}` : "";
   const router = useRouter();
   const dispatch = useAppDispatch();
@@ -46,8 +62,16 @@ export function BranchesTab({
   const [filterBranch, setFilterBranch] = useState<BranchFilter>("all");
   const [page, setPage] = useState(1);
 
+  // Listing converts any extracted campuses into real branch orgs server-side — refresh /auth/me
+  // once after the first load so the org switcher shows them without a reload.
+  const meRefreshedRef = useRef(false);
   const fetchPage = (p: number) => {
-    dispatch(fetchBranches({ id: businessId, params: { search: search || undefined, filter_branch: filterBranch, page: p, limit: PAGE_SIZE } }));
+    dispatch(fetchBranches({ id: businessId, params: { search: search || undefined, filter_branch: filterBranch, page: p, limit: PAGE_SIZE } }))
+      .then(() => {
+        if (meRefreshedRef.current) return;
+        meRefreshedRef.current = true;
+        dispatch(fetchMe());
+      });
   };
 
   useEffect(() => {
@@ -99,13 +123,17 @@ export function BranchesTab({
         {branches.map((b) => (
           <div key={b.id} className="flex items-center justify-between rounded-lg border p-3">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-muted text-xs font-semibold uppercase">
-                {b.name.slice(0, 2)}
+              <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg bg-muted text-xs font-semibold uppercase">
+                {logoFor(b) ? (
+                  // eslint-disable-next-line @next/next/no-img-element -- signed storage URL, not a static asset
+                  <img src={logoFor(b)!} alt="" className="size-full object-contain p-0.5" />
+                ) : b.name.slice(0, 2)}
               </div>
               <div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium">{b.name}</span>
                   {b.is_primary && <Badge className="text-[10px]">Head Office</Badge>}
+                  {b.origin && <OriginChip origin={b.origin} />}
                   {(b.linked_business_id != null || b.linked_institution_id != null) && (
                     <Badge variant="outline" className="text-[10px] capitalize">{b.branch_type.replaceAll("_", " ")}</Badge>
                   )}
@@ -113,14 +141,15 @@ export function BranchesTab({
                 <p className="text-xs text-muted-foreground">{[b.city, b.state, b.country].filter(Boolean).join(", ") || "—"}</p>
               </div>
             </div>
-            <div className="flex items-center gap-1">
-              {/* A linked row (business or institution) is its own org — its name/contact are edited
-                 from its own profile; here the parent only edits the link (type, shared services). */}
+            {!b.extracted && <div className="flex items-center gap-1">
+              {/* A branch this org created opens the full edit form (details are written to the branch
+                 org itself). One linked from elsewhere is someone else's org — only the link
+                 (type, shared services) is edited here. */}
               <Button
                 size="icon-sm"
                 variant="ghost"
                 onClick={() => {
-                  if (b.linked_business_id != null || b.linked_institution_id != null) {
+                  if ((b.linked_business_id != null || b.linked_institution_id != null) && !b.owned) {
                     setEditingLinkedBranch(b);
                     setLinkOpen(true);
                   } else {
@@ -136,7 +165,7 @@ export function BranchesTab({
                   <Trash2 className="h-4 w-4" />
                 </Button>
               )}
-            </div>
+            </div>}
           </div>
         ))}
       </div>
@@ -185,6 +214,7 @@ export function BranchesTab({
         />
       </div>
 
+      <HeadOfficeCard countries={countries} />
       {list}
 
       {branchesTotal > 0 && (

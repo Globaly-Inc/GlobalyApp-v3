@@ -22,7 +22,9 @@ export default function BusinessProfilePage() {
 
   useEffect(() => {
     if (initializing || !user) return;
-    router.replace(target ? `/business/profile/${target.id}` : "/business/portal");
+    // Keep ?tab=… (and any other query) — dropping it sent every "Branches"/"Services" link that
+    // arrived here without an id back to the Business Profile tab.
+    router.replace(target ? `/business/profile/${target.id}${window.location.search}` : "/business/portal");
   }, [initializing, user, target, router]);
 
   return (

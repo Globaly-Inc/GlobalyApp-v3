@@ -10,6 +10,10 @@ import type { BranchFilter } from "../repositories/business-branches.repository.
 import type { BranchInput, BranchPatch, LinkExistingBranchInput } from "../schemas/business-branches.schema.js";
 import { registerBusiness } from "../../../../businesses/services/businesses.service.js";
 import { onboardInstitution } from "../../../../platform-users/services/platform-users.service.js";
+import { createChildLogger } from "../../../../../shared/logger.js";
+import { BranchInputSchema } from "../schemas/business-branches.schema.js";
+
+const logger = createChildLogger("business-branches");
 
 /** Branch country is free text on the branch form (no country_id field) — a real business/
  * institution row needs the FK, so this best-effort resolves it by name. Unmatched (typo, a
@@ -77,6 +81,33 @@ async function syncRegistrationOnTypeChange(
   if (data.branch_type === "same_company") await repo.setOwnedBranchRegistration(table, parentId, [orgId], parentRegistration);
 }
 
+/** The branch org this parent CREATED (its parent_*_id points here), or null for a plain row or a
+ * linked org that belongs to someone else. A created branch is the parent's to manage, so its
+ * details are editable from the parent's Branches tab — see writeOwnedBranchDetails. */
+async function ownedBranchOrgId(
+  table: "businesses" | "institutions", parentId: number,
+  existing: { linked_business_id: number | null; linked_institution_id: number | null },
+): Promise<number | null> {
+  const orgId = table === "businesses" ? existing.linked_business_id : existing.linked_institution_id;
+  if (orgId == null) return null;
+  const parentColumn = table === "businesses" ? "parent_business_id" : "parent_institution_id";
+  const row = await masterKnex(table).where({ id: orgId, [parentColumn]: parentId }).whereNull("deleted_at").first("id");
+  return row ? orgId : null;
+}
+
+/** Writes name/contact onto the branch org itself — the list reads them live from there
+ * (withLiveOrgDetails), so the org's own profile and the parent's list stay in step. */
+async function writeOwnedBranchDetails(table: "businesses" | "institutions", orgId: number, data: BranchPatch) {
+  const patch: Record<string, unknown> = {};
+  if (data.name !== undefined) patch[table === "businesses" ? "business_name" : "institution_name"] = data.name;
+  for (const k of ["state", "city", "address", "phone", "email", "website"] as const) {
+    if (data[k] !== undefined) patch[k] = data[k];
+  }
+  if (data.country !== undefined) patch.country_id = (await resolveCountryId(data.country)) ?? null;
+  if (Object.keys(patch).length === 0) return;
+  await masterKnex(table).where({ id: orgId }).update({ ...patch, updated_at: masterKnex.fn.now() });
+}
+
 async function requireBusiness(id: number) {
   const biz = await platformRepo.findBusinessById(id);
   if (!biz) throw new NotFoundError("Business not found");
@@ -89,29 +120,36 @@ function campusAsBranch(c: { id: string; name: string | null; country: string | 
     id: c.id, name: c.name ?? "Unnamed campus", country: c.country, state: c.state, city: c.city,
     address: c.address, phone: c.phone, email: c.email, is_primary: false, linked_business_id: null,
     branch_type: "same_company", share_description: false, shared_services: [], created_at: c.created_at,
+    extracted: true,
   };
+}
+
+/** Own branches first, then the source job's scraped campuses as read-only stand-ins. Campuses are
+ * never copied into business_branches, so a claimed org that ran its own extraction would otherwise
+ * never see them. An unclaimed org (no tenant schema) passes ownTotal 0 and listOwn is never called. */
+async function ownThenCampuses(
+  jobId: string | null, filter: BranchFilter, search: string | undefined, limit: number, offset: number,
+  ownTotal: number, listOwn: (limit: number, offset: number) => Promise<unknown[]>,
+) {
+  const campusTotal = jobId && filter !== "linked_branches" ? await reviewRepo.countCampusesByJob(jobId, { search, unconverted: true }) : 0;
+  const own = offset < ownTotal ? await listOwn(limit, offset) : [];
+  const room = limit - own.length;
+  const campuses = jobId && room > 0 && campusTotal > 0
+    ? await reviewRepo.listCampusesByJobPaged(jobId, room, Math.max(0, offset - ownTotal), { search, unconverted: true })
+    : [];
+  // origin: the portal's Extracted / Manual chip — a converted campus counts as extracted.
+  const converted = await reviewRepo.convertedBranchIds(own.map((r) => String((r as { id: string }).id)));
+  const ownRows = own.map((r) => ({ ...(r as object), origin: converted.has(String((r as { id: string }).id)) ? "extracted" : "manual" }));
+  return { rows: [...ownRows, ...campuses.map((c) => ({ ...campusAsBranch(c), origin: "extracted" }))], total: ownTotal + campusTotal };
 }
 
 export async function listBranches(businessId: number, limit: number, offset: number, filter: BranchFilter, search?: string) {
   const biz = await requireBusiness(businessId);
 
-  // Same fallback as the business list/detail counts: a pre-seeded business (never provisioned)
-  // has no business_branches rows of its own — the extraction job's scraped campuses are read-only
-  // stand-ins until it's claimed and actually gets a tenant schema.
-  if (biz.account_status === 0 && biz.source_job_id) {
-    if (filter === "linked_branches") return { rows: [], total: 0 };
-    const [rows, total] = await Promise.all([
-      reviewRepo.listCampusesByJobPaged(biz.source_job_id, limit, offset, { search }),
-      reviewRepo.countCampusesByJob(biz.source_job_id, { search }),
-    ]);
-    return { rows: rows.map(campusAsBranch), total };
-  }
-
-  const [rows, total] = await Promise.all([
-    repo.listBranches(businessId, biz.schema_name, limit, offset, filter, search),
-    repo.countBranches(businessId, biz.schema_name, filter, search),
-  ]);
-  return { rows, total };
+  // A pre-seeded business (account_status 0) has no tenant schema yet — campuses only.
+  const ownTotal = biz.account_status === 0 ? 0 : await repo.countBranches(businessId, biz.schema_name, filter, search);
+  return ownThenCampuses(biz.source_job_id, filter, search, limit, offset, ownTotal,
+    (l, o) => repo.listBranches(businessId, biz.schema_name, l, o, filter, search));
 }
 
 /**
@@ -123,7 +161,10 @@ export async function listBranches(businessId: number, limit: number, offset: nu
  * branch list the same way an existing business is (linkExistingBranch), so branches created here
  * and businesses linked from elsewhere both surface identically in the Branches tab.
  */
-export async function createBranch(businessId: number, data: BranchInput) {
+type CampusClaim = { id: string; claimId: string };
+
+/** campus: set only by convertCampusesToBranches, which has already claimed that campus. */
+export async function createBranch(businessId: number, data: BranchInput, campus?: CampusClaim) {
   const biz = await requireBusiness(businessId);
   // The PARENT's owner owns the branch — not whichever member created it — so the parent's owner
   // can always manage it (same as the superadmin create path).
@@ -143,6 +184,8 @@ export async function createBranch(businessId: number, data: BranchInput) {
   return linkOrDiscard("businesses", Number(org.id), { id: businessId, schema_name: biz.schema_name }, async () => {
     // registerBusiness takes no email — set it before linking so the branch row copies it too.
     if (data.email) await masterKnex("businesses").where({ id: Number(org.id) }).update({ email: data.email });
+    const website = data.website === undefined ? biz.website : data.website;
+    if (website) await masterKnex("businesses").where({ id: Number(org.id) }).update({ website });
     const businessRegistration = registrationFor(data, biz.registration_licenses);
     if (businessRegistration) {
       await masterKnex("businesses").where({ id: Number(org.id) }).update({ registration_licenses: businessRegistration });
@@ -155,8 +198,12 @@ export async function createBranch(businessId: number, data: BranchInput) {
     if (!result) throw new NotFoundError("Business not found");
     // Lets the org switcher nest the branch under this parent.
     await masterKnex("businesses").where({ id: Number(org.id) }).update({ parent_business_id: businessId });
-    if (!data.share_description) return result.branch;
-    return repo.updateBranch(businessId, biz.schema_name, result.branch.id, { share_description: true });
+    const branch = data.share_description
+      ? await repo.updateBranch(businessId, biz.schema_name, result.branch.id, { share_description: true })
+      : result.branch;
+    // Inside linkOrDiscard: if stamping fails, the new org is discarded rather than left beside its campus.
+    if (campus) await reviewRepo.markCampusConverted(campus.id, campus.claimId, result.branch.id);
+    return branch;
   });
 }
 
@@ -178,8 +225,12 @@ export async function updateBranch(businessId: number, branchId: string, data: B
   const biz = await requireBusiness(businessId);
   const existing = await repo.findBranchById(businessId, biz.schema_name, branchId);
   if (!existing) throw new NotFoundError("Branch not found");
-  assertLinkOnlyPatch(existing, data);
-  const updated = await repo.updateBranch(businessId, biz.schema_name, branchId, data);
+  const ownedOrgId = await ownedBranchOrgId("businesses", businessId, existing);
+  if (ownedOrgId == null) assertLinkOnlyPatch(existing, data);
+  else await writeOwnedBranchDetails("businesses", ownedOrgId, data);
+  // business_branches has no website column — it lives only on the branch org (above).
+  const { website: _website, ...rowData } = data;
+  const updated = await repo.updateBranch(businessId, biz.schema_name, branchId, rowData);
   await syncRegistrationOnTypeChange("businesses", businessId, existing, data, biz.registration_licenses);
   return updated;
 }
@@ -204,29 +255,17 @@ async function requireInstitution(id: number) {
 export async function listInstitutionBranches(institutionId: number, limit: number, offset: number, filter: BranchFilter, search?: string) {
   const inst = await requireInstitution(institutionId);
 
-  // Same fallback as listBranches: a promoted-but-unclaimed institution (never provisioned) has
-  // no business_branches rows of its own yet — its scraped campuses stand in until claimed.
-  if (inst.account_status === 0 && inst.source_job_id) {
-    if (filter === "linked_branches") return { rows: [], total: 0 };
-    const [rows, total] = await Promise.all([
-      reviewRepo.listCampusesByJobPaged(inst.source_job_id, limit, offset, { search }),
-      reviewRepo.countCampusesByJob(inst.source_job_id, { search }),
-    ]);
-    return { rows: rows.map(campusAsBranch), total };
-  }
-
-  const [rows, total] = await Promise.all([
-    repo.listBranches(institutionId, inst.schema_name, limit, offset, filter, search),
-    repo.countBranches(institutionId, inst.schema_name, filter, search),
-  ]);
-  return { rows, total };
+  // Same as listBranches: a promoted-but-unclaimed institution has no tenant schema yet.
+  const ownTotal = inst.account_status === 0 ? 0 : await repo.countBranches(institutionId, inst.schema_name, filter, search);
+  return ownThenCampuses(inst.source_job_id, filter, search, limit, offset, ownTotal,
+    (l, o) => repo.listBranches(institutionId, inst.schema_name, l, o, filter, search));
 }
 
 /** Same reasoning as createBranch above, for an institution's own campuses — mints a real,
  * separately loggable institution via onboardInstitution (schema provisioned, owner member,
  * user_institution_index) instead of a plain address record, then links it the same way
  * linkExistingBranch does for businesses. */
-export async function createInstitutionBranch(institutionId: number, data: BranchInput) {
+export async function createInstitutionBranch(institutionId: number, data: BranchInput, campus?: CampusClaim) {
   const inst = await requireInstitution(institutionId);
   // Parent's owner owns the branch — see createBranch.
   if (!inst.platform_user_id) throw new NotFoundError("Institution has no owner to assign the new branch to");
@@ -244,6 +283,8 @@ export async function createInstitutionBranch(institutionId: number, data: Branc
 
   return linkOrDiscard("institutions", Number(institution.id), { id: institutionId, schema_name: inst.schema_name }, async () => {
     // onboardInstitution takes no registration details — they belong on the new institution itself.
+    const website = data.website === undefined ? inst.website : data.website;
+    if (website) await masterKnex("institutions").where({ id: Number(institution.id) }).update({ website });
     const institutionRegistration = registrationFor(data, inst.registration_licenses);
     if (institutionRegistration) {
       await masterKnex("institutions").where({ id: Number(institution.id) }).update({ registration_licenses: institutionRegistration });
@@ -256,8 +297,11 @@ export async function createInstitutionBranch(institutionId: number, data: Branc
     if (!result) throw new NotFoundError("Institution not found");
     // Lets the branch find this parent later to read the courses shared with it.
     await masterKnex("institutions").where({ id: Number(institution.id) }).update({ parent_institution_id: institutionId });
-    if (!data.share_description) return result.branch;
-    return repo.updateBranch(institutionId, inst.schema_name, result.branch.id, { share_description: true });
+    const branch = data.share_description
+      ? await repo.updateBranch(institutionId, inst.schema_name, result.branch.id, { share_description: true })
+      : result.branch;
+    if (campus) await reviewRepo.markCampusConverted(campus.id, campus.claimId, result.branch.id);
+    return branch;
   });
 }
 
@@ -272,8 +316,11 @@ export async function updateInstitutionBranch(institutionId: number, branchId: s
   const inst = await requireInstitution(institutionId);
   const existing = await repo.findBranchById(institutionId, inst.schema_name, branchId);
   if (!existing) throw new NotFoundError("Branch not found");
-  assertLinkOnlyPatch(existing, data);
-  const updated = await repo.updateBranch(institutionId, inst.schema_name, branchId, data);
+  const ownedOrgId = await ownedBranchOrgId("institutions", institutionId, existing);
+  if (ownedOrgId == null) assertLinkOnlyPatch(existing, data);
+  else await writeOwnedBranchDetails("institutions", ownedOrgId, data);
+  const { website: _website, ...rowData } = data;
+  const updated = await repo.updateBranch(institutionId, inst.schema_name, branchId, rowData);
   await syncRegistrationOnTypeChange("institutions", institutionId, existing, data, inst.registration_licenses);
   return updated;
 }
@@ -281,4 +328,50 @@ export async function updateInstitutionBranch(institutionId: number, branchId: s
 export async function deleteInstitutionBranch(institutionId: number, branchId: string) {
   const inst = await requireInstitution(institutionId);
   return repo.deleteBranch(institutionId, inst.schema_name, branchId);
+}
+
+// ─── Extracted campuses → real branches ─────────────────────────────────────
+// Every campus scraped by a claimed org's source job becomes a real branch org, exactly as if the
+// owner had used "Create branch" — so it shows in the org switcher. Runs when an extraction
+// finishes; older jobs (and campuses an admin adds later) go through `npm run job:convert-campuses`.
+// Never on a request: minting an org provisions a schema, too slow and too costly to retry per visit.
+// Never throws. A failed campus is marked (failCampus) and not retried — the mint may already have
+// left a provisioned schema behind (see linkOrDiscard) — and keeps showing as an extracted campus.
+
+export async function convertCampusesToBranches(jobId: string): Promise<number> {
+  try {
+    // An unprovisioned (account_status 0) org has no tenant schema to link a branch into.
+    const inst = await masterKnex("institutions").where({ source_job_id: jobId }).whereNull("deleted_at")
+      .whereNot({ account_status: 0 }).first("id");
+    const biz = inst ? null : await masterKnex("businesses").where({ source_job_id: jobId }).whereNull("deleted_at")
+      .whereNot({ account_status: 0 }).first("id");
+    if (!inst && !biz) return 0;
+
+    const campuses = await reviewRepo.listCampusesByJobPaged(jobId, 1000, 0, { unconverted: true });
+    let converted = 0;
+    for (const c of campuses) {
+      const claimId = await reviewRepo.claimCampus(c.id);
+      if (!claimId) continue; // another run holds it
+      try {
+        // Same website as the head office, so it shares the head office's catalog rather than
+        // extracting its own: the courses linked to this campus, or all of them when none are.
+        const courseIds = await reviewRepo.listCourseIdsByCampus(c.id);
+        const data = BranchInputSchema.parse({
+          name: c.name?.trim() || "Unnamed campus", country: c.country, state: c.state, city: c.city,
+          address: c.address, phone: c.phone, email: c.email,
+          shared_services: courseIds.length > 0 ? courseIds : "all",
+        });
+        if (inst) await createInstitutionBranch(Number(inst.id), data, { id: c.id, claimId });
+        else await createBranch(Number(biz!.id), data, { id: c.id, claimId });
+        converted += 1;
+      } catch (err) {
+        await reviewRepo.failCampus(c.id, claimId);
+        logger.warn("Campus → branch conversion failed", { jobId, campusId: c.id, error: String(err) });
+      }
+    }
+    return converted;
+  } catch (err) {
+    logger.warn("Campus → branch conversion skipped", { jobId, error: String(err) });
+    return 0;
+  }
 }

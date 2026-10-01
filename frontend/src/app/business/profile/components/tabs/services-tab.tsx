@@ -7,7 +7,7 @@ import { toast } from "sonner";
 import { Loader2, Package, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Combobox } from "@/components/combobox";
+import { ServiceFilters, type ServiceFilterValues } from "../services/service-filters";
 import { Pagination } from "@/components/ui/pagination";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { businessApi } from "@/app/business/apis";
@@ -15,17 +15,15 @@ import { deleteServiceThunk, fetchServices, toggleServicePublished, updateServic
 import type { BusinessService } from "../../apis/types";
 import { DeleteServiceDialog } from "../services/delete-service-dialog";
 import { ServiceManagementTable, type ColumnKey, type SortColumn, type SortState } from "../services/service-management-table";
+import { useCourseApproval } from "../services/use-course-approval";
+import { SelectAllBanner, ServiceBulkBar } from "../services/service-bulk-bar";
+import { useServiceBulkActions } from "../services/use-service-bulk-actions";
 
 const PAGE_SIZE = 10;
 const DEFAULT_COLUMNS: ColumnKey[] = ["category", "degree_level", "area_of_study", "price", "status"];
 // Short courses have no degree_level/area_of_study (those are academic-course fields only —
 // see courseToService) — showing them here would just be an empty "—" in every row.
 const SHORT_COURSE_COLUMNS: ColumnKey[] = ["category", "price", "status"];
-const STATUS_OPTIONS = [
-  { value: "all", label: "All statuses" },
-  { value: "published", label: "Published" },
-  { value: "draft", label: "Draft" },
-];
 // Institutions only — extraction_courses.course_category splits their catalog into degree
 // programs and standalone offerings, so the tab shows one or the other rather than a single
 // list where a workshop sits next to a Bachelor's degree with no way to tell them apart.
@@ -46,7 +44,7 @@ export function ServicesTab({
   const [deletingService, setDeletingService] = useState<BusinessService | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [search, setSearch] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
+  const [filters, setFilters] = useState<ServiceFilterValues>({});
   const [courseCategory, setCourseCategory] = useState<"academic" | "short_course">("academic");
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState<SortState>({ column: null, direction: "asc" });
@@ -59,10 +57,11 @@ export function ServicesTab({
   }, [isInstitution, courseCategory]);
 
   const [hasLoaded, setHasLoaded] = useState(false);
+  const listParams = { search: search || undefined, course_category: isInstitution ? courseCategory : undefined, ...filters };
   const fetchPage = (p: number) => {
     dispatch(fetchServices({
       id: businessId,
-      params: { search: search || undefined, page: p, limit: PAGE_SIZE, course_category: isInstitution ? courseCategory : undefined },
+      params: { ...listParams, page: p, limit: PAGE_SIZE },
     })).finally(() => setHasLoaded(true));
   };
 
@@ -71,10 +70,11 @@ export function ServicesTab({
   // navigation even landed.
   const reviewedRef = useRef(false);
   useEffect(() => {
-    if (!hasLoaded || reviewedRef.current) return;
+    // An empty tab isn't a review — wait until there's something in it.
+    if (!hasLoaded || reviewedRef.current || total === 0) return;
     reviewedRef.current = true;
     businessApi.markCoursesReviewed().catch(() => {});
-  }, [hasLoaded]);
+  }, [hasLoaded, total]);
 
   // Debounced, backend-driven search — the backend already supports `search` (and, for
   // institutions, filters their extraction courses by it too), so this no longer fetches
@@ -87,7 +87,7 @@ export function ServicesTab({
     const timer = setTimeout(() => fetchPage(1), isFirstRun ? 0 : 300);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch, businessId, search, courseCategory]);
+  }, [dispatch, businessId, search, courseCategory, filters]);
 
   const handlePageChange = (p: number) => {
     setPage(p);
@@ -98,14 +98,10 @@ export function ServicesTab({
     setSort((s) => (s.column === column ? { column, direction: s.direction === "asc" ? "desc" : "asc" } : { column, direction: "asc" }));
   };
 
-  // Status filter and sort apply only within the current backend page — the search endpoint has
-  // no status/sort query params, and a page is only PAGE_SIZE rows, so this is a light, page-local
-  // refinement rather than a full re-query.
+  // Filters (status, source, degree level) run on the server across every page; only column sort
+  // is page-local — the search endpoint has no sort param, and a page is just PAGE_SIZE rows.
   const pageRows = useMemo(() => {
     let rows = services;
-    if (statusFilter !== "all") {
-      rows = rows.filter((s) => (statusFilter === "published" ? s.is_published : !s.is_published));
-    }
     if (sort.column === "price") {
       // s.price is a formatted currency string ("AUD 4,500"), not a raw number — a string
       // compare would sort "AUD 1,200" before "AUD 450" (lexical, not numeric). An institution
@@ -130,7 +126,7 @@ export function ServicesTab({
       rows = [...rows].sort((a, b) => key(a).localeCompare(key(b)) * (sort.direction === "asc" ? 1 : -1));
     }
     return rows;
-  }, [services, statusFilter, sort]);
+  }, [services, sort]);
 
   const handleTogglePublish = async (serviceId: string, next: boolean) => {
     try {
@@ -164,24 +160,21 @@ export function ServicesTab({
     }
   };
 
-  const handleBulkPublish = async (is_published: boolean) => {
-    await Promise.all([...selectedIds].map((id) => dispatch(toggleServicePublished({ id: businessId, serviceId: id, is_published }))));
-    toast.success(is_published ? "Services published" : "Services unpublished");
-    setSelectedIds(new Set());
-  };
-
-  const handleBulkDelete = async () => {
-    await Promise.all([...selectedIds].map((id) => dispatch(deleteServiceThunk({ id: businessId, serviceId: id }))));
-    toast.success("Services deleted");
-    setSelectedIds(new Set());
-  };
+  const { canApprove, approve } = useCourseApproval(() => fetchPage(page));
+  const bulk = useServiceBulkActions({
+    businessId, services, pageRows, selectedIds, setSelectedIds, approve,
+    scopeKey: `${search}|${courseCategory}|${JSON.stringify(filters)}`,
+    scopeParams: listParams,
+    reload: () => fetchPage(page),
+  });
+  const { scope, selectedRows, pageAllSelected, clearSelection } = bulk;
 
   return (
     <div>
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-bold">{readOnly ? "Courses" : "Service management"}</h2>
-          <p className="text-sm text-muted-foreground">
+          <h2 className="text-2xl font-bold">{readOnly ? "Courses" : "Service management"}</h2>
+          <p className="text-muted-foreground">
             {readOnly ? "Courses extracted for this institution." : "Manage your service listings."}
           </p>
         </div>
@@ -212,12 +205,14 @@ export function ServicesTab({
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           {!readOnly && selectedIds.size > 0 && (
-            <div className="flex items-center gap-2 rounded-lg border bg-muted/40 px-3 py-1.5 text-sm">
-              <span>{selectedIds.size} selected</span>
-              <Button size="sm" variant="outline" onClick={() => handleBulkPublish(true)}>Publish</Button>
-              <Button size="sm" variant="outline" onClick={() => handleBulkPublish(false)}>Unpublish</Button>
-              <Button size="sm" variant="outline" className="text-destructive" onClick={handleBulkDelete}>Delete</Button>
-            </div>
+            <ServiceBulkBar
+              selected={selectedRows}
+              canApprove={canApprove}
+              onApprove={bulk.handleBulkApprove}
+              onPublish={() => bulk.handleBulkPublish(true)}
+              onUnpublish={() => bulk.handleBulkPublish(false)}
+              onDelete={bulk.handleBulkDelete}
+            />
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -225,9 +220,7 @@ export function ServicesTab({
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input className="h-10 pl-9" placeholder={readOnly ? "Search courses..." : "Search services..."} value={search} onChange={(e) => setSearch(e.target.value)} />
           </div>
-          {!readOnly && (
-            <Combobox className="h-10 w-40" options={STATUS_OPTIONS} value={statusFilter} onChange={setStatusFilter} placeholder="Filter" />
-          )}
+          {!readOnly && <ServiceFilters value={filters} onChange={setFilters} isInstitution={isInstitution} />}
         </div>
       </div>
 
@@ -239,6 +232,20 @@ export function ServicesTab({
           <p className="text-sm font-medium">{readOnly ? "No courses yet" : "No services yet"}</p>
         </div>
       ) : (
+        <>
+        {!readOnly && pageAllSelected && total > pageRows.length && (
+          <SelectAllBanner
+            pageCount={pageRows.length}
+            total={total}
+            allSelected={!!scope.allRows && selectedIds.size >= scope.allRows.length}
+            loading={scope.loading}
+            onSelectAll={async () => {
+              const rows = await scope.selectAll();
+              if (rows) setSelectedIds(new Set(rows.map((s) => s.id)));
+            }}
+            onClear={clearSelection}
+          />
+        )}
         <ServiceManagementTable
           services={pageRows}
           visibleColumns={visibleColumns}
@@ -248,11 +255,13 @@ export function ServicesTab({
           onSelectedIdsChange={setSelectedIds}
           onEdit={(id) => router.push(`/business/profile/${businessId}/services/${id}/edit${orgQuery}`)}
           onTogglePublish={handleTogglePublish}
+          onApprove={canApprove ? (id) => approve([id]) : undefined}
           onPriceSave={handlePriceSave}
           onDelete={setDeletingService}
           readOnly={readOnly}
           isInstitution={isInstitution}
         />
+        </>
       )}
 
       {total > 0 && <Pagination page={page} total={total} limit={PAGE_SIZE} onPageChange={handlePageChange} />}

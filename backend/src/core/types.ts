@@ -75,6 +75,8 @@ export interface InstitutionRecord {
 export interface BusinessRecord {
   id: string;
   owner_id: number;
+  /** Set on a branch created from another business's Branches tab. */
+  parent_business_id?: number | null;
   email: string | null;
   phone: string | null;
   subdomain: string;

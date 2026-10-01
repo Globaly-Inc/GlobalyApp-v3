@@ -8,6 +8,7 @@ import type {
   PartnerInstitutionCourse, PartnerInstitutionCourseListParams, PartnerInstitutionCourseListResult, PartnerInstitutionDetail, Permission,
   Role, RoleCreateInput, RolePatch,
   RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, Scholarship, ScholarshipInput, ServiceAiAssistInput, ServiceAiAssistResult,
+  ExtractedScholarship, ExtractedScholarshipInput,
   ScholarshipListParams, ScholarshipListResult, ScholarshipPatch, ServiceAccreditationLink, ServiceEligibility,
   ServiceEligibilityInput, ServiceEligibilityPatch, ServiceFee, ServiceFeeInput, ServiceFeePatch, ServiceInput,
   ServiceIntake, ServiceIntakeInput, ServiceIntakePatch, ServicePatch, ServiceSearchParams, ServiceSearchResult,
@@ -105,6 +106,7 @@ const mockSearchableInstitutions: BusinessSearchResult[] = [
 const mockActivity: { id: string; action: string; details: Record<string, unknown>; created_at: string; admin_first_name: string | null; admin_last_name: string | null }[] = [];
 let mockScholarships: Scholarship[] = [];
 let mockScholarshipSeq = 1;
+let mockExtracted: ExtractedScholarship[] = [];
 
 export const businessProfileDetailMockApi = {
   searchBusinesses: async (params: BusinessSearchParams = {}): Promise<BusinessSearchResult[]> => {
@@ -189,6 +191,11 @@ export const businessProfileDetailMockApi = {
     mockServices = mockServices.map((s) => (s.id === serviceId ? { ...s, ...patch, price: patch.price != null ? String(patch.price) : s.price } : s));
     return mockServices.find((s) => s.id === serviceId)!;
   },
+  approveServices: async (ids: string[]): Promise<{ approved: number }> => {
+    await delay(300);
+    mockServices = mockServices.map((s) => (ids.includes(s.id) ? { ...s, approval_status: "approved" } : s));
+    return { approved: ids.length };
+  },
   deleteService: async (serviceId: string): Promise<void> => {
     await delay(300);
     mockServices = mockServices.filter((s) => s.id !== serviceId);
@@ -261,7 +268,7 @@ export const businessProfileDetailMockApi = {
   inviteMember: async (input: MemberInviteInput): Promise<{ id: string; email: string; status: string }> => {
     await delay(300);
     const invitation: InvitedMember = {
-      id: uuid(), first_name: input.first_name, last_name: input.last_name, email: input.email,
+      id: uuid(), first_name: input.first_name ?? null, last_name: input.last_name ?? null, email: input.email,
       phone: input.phone ?? null, role: input.role, admin_point_of_contact: input.admin_point_of_contact ?? false,
       invited_at: new Date().toISOString(), expires_at: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
     };
@@ -382,6 +389,32 @@ export const businessProfileDetailMockApi = {
   deleteScholarship: async (scholarshipId: number): Promise<void> => {
     await delay(300);
     mockScholarships = mockScholarships.filter((s) => s.id !== scholarshipId);
+  },
+  getExtractedScholarships: async (params: ScholarshipListParams = {}): Promise<{ data: ExtractedScholarship[]; total: number }> => {
+    console.log("[mock] GET /businesses/extracted-scholarships", params);
+    await delay(300);
+    const q = params.search?.toLowerCase() ?? "";
+    const filtered = q ? mockExtracted.filter((s) => s.name.toLowerCase().includes(q)) : mockExtracted;
+    return { data: filtered, total: filtered.length };
+  },
+  createExtractedScholarship: async (input: ExtractedScholarshipInput): Promise<{ id: string }> => {
+    await delay(300);
+    const row: ExtractedScholarship = {
+      id: crypto.randomUUID(), name: input.name ?? "", applicable_to: input.applicable_to ?? "both",
+      coverage_type: input.coverage_type ?? null, amount: input.amount ?? null, currency: input.currency ?? null,
+      deadline: input.deadline ?? null, application_url: input.application_url ?? null,
+      description: input.description ?? null, created_at: new Date().toISOString(),
+    };
+    mockExtracted = [row, ...mockExtracted];
+    return { id: row.id };
+  },
+  updateExtractedScholarship: async (id: string, patch: ExtractedScholarshipInput): Promise<void> => {
+    await delay(300);
+    mockExtracted = mockExtracted.map((s) => (s.id === id ? { ...s, ...patch } as ExtractedScholarship : s));
+  },
+  deleteExtractedScholarship: async (id: string): Promise<void> => {
+    await delay(300);
+    mockExtracted = mockExtracted.filter((s) => s.id !== id);
   },
   startScholarshipImport: async (rows: ScholarshipInput[]): Promise<ImportJob> => {
     console.log("[mock] POST /businesses/scholarships/import", { rows: rows.length });

@@ -459,7 +459,8 @@ export type SearchJob = {
 };
 
 export type SearchScholarship = {
-  id: number;
+  /** A number for platform scholarships, a uuid for an institution's own. */
+  id: number | string;
   title: string;
   slug: string;
   provider_name: string | null;

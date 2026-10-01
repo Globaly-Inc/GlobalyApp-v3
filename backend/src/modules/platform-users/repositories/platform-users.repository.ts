@@ -3,6 +3,7 @@
 
 import type { Knex } from "knex";
 import { masterKnex } from "../../../core/db/master-pool.js";
+import { withCountryCurrency } from "../../../shared/country-currency.js";
 
 export interface AccountCategory {
   type: "personal" | "business" | "institution";
@@ -67,6 +68,9 @@ export async function insert(data: {
   const { meta, ...rest } = data;
   const [row] = await db<PlatformUserRow>("platform_users")
     .insert({
+      // Every user has a personal account — an invited org member or an org owner too — so the
+      // personal portal and profile always work for them (see the personal_account_for_all migration).
+      is_personal_account: true,
       ...rest,
       // Only set when provided, so the column default ('{}') still applies otherwise. pg serialises a
       // plain object into jsonb, so no manual JSON.stringify.
@@ -478,7 +482,7 @@ export async function clearInstitutionClaim(id: number) {
 export async function updateInstitution(id: number, data: Record<string, unknown>) {
   const [row] = await masterKnex("institutions")
     .where({ id })
-    .update({ ...data, updated_at: masterKnex.fn.now() })
+    .update({ ...withCountryCurrency(data), updated_at: masterKnex.fn.now() })
     .returning("*");
   return row;
 }

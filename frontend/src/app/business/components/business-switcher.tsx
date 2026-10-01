@@ -77,7 +77,7 @@ export function BusinessSwitcher({
             <Building2 className="h-3.5 w-3.5 text-muted-foreground" />
           )}
         </span>
-        <span className="max-w-[160px] truncate">{active?.business_name ?? "Business"}</span>
+        <span className="max-w-[160px] truncate" title={active?.business_name}>{active?.business_name ?? "Business"}</span>
         <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64">
@@ -101,7 +101,7 @@ export function BusinessSwitcher({
                 )}
               </span>
               <span className="flex-1 min-w-0">
-                <span className="block truncate text-sm">{b.business_name}</span>
+                <span className="block truncate text-sm" title={b.business_name}>{b.business_name}</span>
                 <span className="block truncate text-xs text-muted-foreground capitalize">
                   {[depth ? "Branch" : b.kind === "institution" ? "Institution" : null, b.role].filter(Boolean).join(" · ")}
                 </span>

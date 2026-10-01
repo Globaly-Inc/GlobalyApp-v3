@@ -4,12 +4,10 @@ import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
 import { isValidPhoneNumber } from "libphonenumber-js";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Combobox } from "@/components/combobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Sheet, SheetContent, SheetDescription, SheetFooter, SheetHeader, SheetTitle } from "@/components/ui/sheet";
-import { Switch } from "@/components/ui/switch";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { FieldError } from "@/components/field-error";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { isValidEmail } from "@/app/admin/platform/businesses/utils";
@@ -36,10 +34,7 @@ export function AddMemberDrawer({
 
   const [form, setForm] = useState(EMPTY);
   const [role, setRole] = useState("member");
-  const [active, setActive] = useState(true);
   const [pointOfContact, setPointOfContact] = useState(false);
-  const [isOwner, setIsOwner] = useState(false);
-  const [isPublic, setIsPublic] = useState(false);
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
 
@@ -48,18 +43,11 @@ export function AddMemberDrawer({
     if (roles.length === 0) dispatch(fetchMemberRoles());
     if (editingMember) {
       setRole(editingMember.role ?? "member");
-      setActive(editingMember.account_status === 1);
-      setPointOfContact(editingMember.admin_point_of_contact);
-      setIsOwner(editingMember.is_owner);
-      setIsPublic(editingMember.is_public);
       setForm((f) => ({ ...f, position: editingMember.position ?? "" }));
     } else {
       setForm(EMPTY);
       setRole("member");
-      setActive(true);
       setPointOfContact(false);
-      setIsOwner(false);
-      setIsPublic(false);
     }
     setErrors({});
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -93,10 +81,8 @@ export function AddMemberDrawer({
           updateMember({
             id: businessId,
             memberId: editingMember.id,
-            patch: {
-              role, admin_point_of_contact: pointOfContact, account_status: active ? 1 : 0, is_owner: isOwner,
-              position: form.position.trim() || null, is_public: isPublic,
-            },
+            // Same fields as the invite form — visibility is toggled from the table itself.
+            patch: { role, position: form.position.trim() || null },
           }),
         ).unwrap();
         toast.success("Member updated");
@@ -136,14 +122,14 @@ export function AddMemberDrawer({
   const submitLabel = isEdit ? "Save changes" : "Invite member";
 
   return (
-    <Sheet open={open} onOpenChange={(next) => { if (!next) handleClose(); }}>
-      <SheetContent side="right" className="w-full overflow-y-auto sm:max-w-md">
-        <SheetHeader>
-          <SheetTitle>{heading}</SheetTitle>
-          <SheetDescription>{subheading}</SheetDescription>
-        </SheetHeader>
+    <Dialog open={open} onOpenChange={(next) => { if (!next && !saving) handleClose(); }}>
+      <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{heading}</DialogTitle>
+          <DialogDescription>{subheading}</DialogDescription>
+        </DialogHeader>
 
-        <div className="flex flex-col gap-4 px-4">
+        <div className="flex flex-col gap-4">
           {isEdit ? (
             <>
               <div className="grid grid-cols-2 gap-3">
@@ -163,22 +149,6 @@ export function AddMemberDrawer({
               <div className="flex flex-col gap-2">
                 <Label>Position / job title</Label>
                 <Input className="h-10" value={form.position} onChange={(e) => setForm((f) => ({ ...f, position: e.target.value }))} placeholder="e.g. Admissions Officer" />
-              </div>
-              <div className="flex items-center gap-2">
-                <Checkbox checked={active} onCheckedChange={(checked) => setActive(checked === true)} />
-                <Label className="font-normal">Active</Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <Checkbox checked={pointOfContact} onCheckedChange={(checked) => setPointOfContact(checked === true)} />
-                <Label className="font-normal">Point of contact for super admin</Label>
-              </div>
-              <div className="flex items-center gap-2">
-                <Checkbox checked={isOwner} onCheckedChange={(checked) => setIsOwner(checked === true)} disabled={editingMember?.is_owner} />
-                <Label className="font-normal">Make business owner</Label>
-              </div>
-              <div className="flex items-center justify-between">
-                <Label className="font-normal">Show on public profile</Label>
-                <Switch checked={isPublic} onCheckedChange={setIsPublic} />
               </div>
             </>
           ) : (
@@ -228,15 +198,15 @@ export function AddMemberDrawer({
           )}
         </div>
 
-        <SheetFooter className="flex-row justify-end gap-2">
+        <DialogFooter className="flex-row justify-end gap-2">
           <Button variant="outline" onClick={handleClose} disabled={saving}>
             Cancel
           </Button>
           <Button onClick={handleSubmit} disabled={saving || !canSubmit}>
             {saving ? (isEdit ? "Saving…" : "Sending…") : submitLabel}
           </Button>
-        </SheetFooter>
-      </SheetContent>
-    </Sheet>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

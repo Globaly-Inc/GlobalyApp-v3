@@ -41,17 +41,21 @@ export async function getServiceListExtras(businessId: number, schemaName: strin
   return { fieldValues, durations };
 }
 
-export async function searchServices(businessId: number, schemaName: string, limit: number, offset: number, search?: string) {
+export async function searchServices(
+  businessId: number, schemaName: string, limit: number, offset: number, search?: string, published?: boolean,
+) {
   const db = await getKnex(businessId, schemaName);
   const base = () => {
     const q = db("business_services as s").leftJoin("service_categories as cat", "cat.id", "s.service_category_id").whereNull("s.deleted_at");
     if (search) q.whereILike("s.name", `%${search}%`);
+    if (published !== undefined) q.where("s.is_published", published);
     return q;
   };
   const [{ count }] = await base().count<{ count: string }[]>("s.id as count");
   const rows = await base()
     .select([...SERVICE_COLUMNS.map((c) => `s.${c}`), "cat.name as category_name"])
-    .orderBy("s.name")
+    .orderBy("s.created_at", "desc") // recently added first
+    .orderBy("s.id", "desc")
     .limit(limit)
     .offset(offset);
   return { rows, total: Number(count) };

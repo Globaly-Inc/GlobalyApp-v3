@@ -19,7 +19,7 @@ const STEPS = [
 ];
 
 const CATEGORIES = [
-  "Courses", "Branches", "Fees", "Intakes", "Eligibility", "Study units", "Study options", "Accreditations", "Agents",
+  "Courses", "Branches", "Fees", "Intakes", "Eligibility", "Scholarships", "Study units", "Study options", "Accreditations", "Agents",
 ];
 
 function isValidUrl(value: string): boolean {
@@ -40,10 +40,12 @@ export function StartExtractionCard({
 
   const isInstitution = (profile.business_category_name ?? "").toLowerCase().includes("institution");
   if (!isInstitution) return null;
-  if (profile.source_job_id) {
+  // A branch sharing its head office's website shows that extraction — the status endpoint
+  // answers with the head office's job — instead of offering to crawl the same site again.
+  if (profile.source_job_id || profile.extraction_parent_name) {
     return (
       <div id="extraction-card">
-        <ExtractionProgressCard />
+        <ExtractionProgressCard sharedFrom={profile.extraction_parent_name ?? null} />
       </div>
     );
   }

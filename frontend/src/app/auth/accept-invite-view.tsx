@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { authApi } from "./apis";
 import { LOGO } from "@/lib/public-assets";
+import { SIGN_IN_HREF } from "@/app/auth/const";
 
 type Status = "loading" | "success" | "error";
 
@@ -61,7 +62,7 @@ export function AcceptInviteView() {
           </CardHeader>
           {status !== "loading" && (
             <CardContent>
-              <Button className="h-10 w-full cursor-pointer" onClick={() => router.push("/auth/sign-in")}>
+              <Button className="h-10 w-full cursor-pointer" onClick={() => router.push(SIGN_IN_HREF)}>
                 Continue to Sign In
               </Button>
             </CardContent>

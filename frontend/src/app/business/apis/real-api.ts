@@ -48,6 +48,7 @@ type InstitutionMe = {
   institution_type: string | null;
   /** Extraction job this institution was linked to (self-triggered). Null = no extracted data yet. */
   source_job_id: string | null;
+  extraction_parent_name?: string | null;
 };
 
 /**
@@ -88,6 +89,7 @@ function institutionToBusinessProfile(inst: InstitutionMe): BusinessProfile {
     business_type: null,
     business_category_id: null,
     source_job_id: inst.source_job_id,
+    extraction_parent_name: inst.extraction_parent_name ?? null,
     // Institutions aren't categorised against `business_categories`; their ownership sector is
     // what the badge carries, exactly as on the public institution page.
     institution_type: inst.institution_type,

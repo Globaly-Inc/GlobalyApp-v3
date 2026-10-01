@@ -70,11 +70,12 @@ export function InvitedMembersList({ businessId }: Readonly<{ businessId: number
           <div key={i.id} className="flex items-center justify-between rounded-lg border p-3">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 items-center justify-center rounded-full bg-muted text-xs font-semibold uppercase">
-                {(i.first_name ?? "?").slice(0, 2)}
+                {(i.first_name || i.email || "?").slice(0, 2)}
               </div>
               <div>
                 <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">{i.first_name ? `${i.first_name} ${i.last_name}` : "—"}</span>
+                  {/* Invites only ask for an email now — the name arrives with the invitee's own account. */}
+                  <span className="text-sm font-medium">{i.first_name ? `${i.first_name} ${i.last_name ?? ""}`.trim() : i.email ?? "—"}</span>
                   {i.role && <span className="text-xs text-muted-foreground">{i.role}</span>}
                   <Badge variant="secondary">Invited</Badge>
                 </div>

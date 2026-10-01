@@ -1,5 +1,10 @@
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { createChildLogger } from "../../../../shared/logger.js";
+import { countryCurrency } from "../../../../shared/country-currency.js";
+import { readSnapshot } from "./page-store.js";
+import { pickGalleryImages } from "./gallery-images.js";
+import { copyExternalImage } from "./image-copy.js";
+import { isExternalUrl } from "../../../../shared/storage/storageService.js";
 import { findOverviewByJobId, findCountryId } from "../repositories/promote.repository.js";
 import type { OverviewRow } from "../repositories/promote.repository.js";
 
@@ -7,12 +12,28 @@ const logger = createChildLogger("overview-sync");
 
 const OWNERSHIP_TYPE_MAP: Record<string, "Public" | "Private"> = { public: "Public", private: "Private" };
 
+async function galleryFrom(overview: OverviewRow | undefined): Promise<string[] | null> {
+  const pageUrl = overview?.source_url ?? overview?.website;
+  if (!pageUrl) return null;
+  const page = await readSnapshot(pageUrl);
+  const images = page ? pickGalleryImages(page.markdown, pageUrl, overview?.logo_url ?? null) : [];
+  return images.length > 0 ? images : null;
+}
+
 export async function baseProfileFieldsFrom(overview: OverviewRow | undefined) {
+  const country_id = await findCountryId(overview?.country);
+  const gallery = await galleryFrom(overview);
   return {
     description: overview?.description ?? null,
     logo_url: overview?.logo_url ?? null,
     website: overview?.website ?? null,
-    country_id: await findCountryId(overview?.country),
+    country_id,
+    // Default currency follows the country; only fills a blank one (blankFieldsPatch / repatch).
+    currency: await countryCurrency(country_id),
+    // A few photos from the scraped homepage for the Media section, and the first as the cover —
+    // each only when the profile has none yet.
+    gallery_images: gallery,
+    cover_url: gallery?.[0] ?? null,
     state: overview?.state ?? null,
     city: overview?.city ?? null,
     address: overview?.address ?? null,
@@ -20,13 +41,13 @@ export async function baseProfileFieldsFrom(overview: OverviewRow | undefined) {
   };
 }
 
-/** Institutions have no social-link columns; ownership_type is their one extra field. */
+/** Institutions get the extracted social links too, plus ownership_type as their one extra field. */
 export function institutionExtrasFrom(overview: OverviewRow | undefined) {
   const mapped = overview?.ownership_type ? OWNERSHIP_TYPE_MAP[overview.ownership_type.toLowerCase()] : undefined;
-  return { institution_type: mapped ?? null };
+  return { institution_type: mapped ?? null, ...businessExtrasFrom(overview) };
 }
 
-/** Businesses have social-link columns institutions don't. */
+/** The extracted social links — both businesses and institutions have these columns. */
 export function businessExtrasFrom(overview: OverviewRow | undefined) {
   return {
     linkedin_url: overview?.linkedin_url ?? null,
@@ -66,6 +87,7 @@ export async function backfillSelfServiceProfile(jobId: string): Promise<void> {
       await masterKnex("institutions").where({ id: institution.id }).update({ ...patch, updated_at: masterKnex.fn.now() });
       logger.info("Backfilled self-service institution profile", { jobId, institutionId: institution.id, fields: Object.keys(patch) });
     }
+    await localizeImages("institutions", Number(institution.id), jobId);
     return;
   }
 
@@ -82,4 +104,30 @@ export async function backfillSelfServiceProfile(jobId: string): Promise<void> {
     await masterKnex("businesses").where({ id: business.id }).update({ ...patch, updated_at: masterKnex.fn.now() });
     logger.info("Backfilled self-service business profile", { jobId, businessId: business.id, fields: Object.keys(patch) });
   }
+  await localizeImages("businesses", Number(business.id), jobId);
+}
+
+/** Where copied extraction photos live — shared by every org on the job, not one org's own folder. */
+export const extractedMediaDir = (jobId: string) => `public/extracted/${jobId}/gallery`;
+
+/**
+ * Swaps any hot-linked (external) gallery/cover image on this org for a copy in our storage
+ * (copyExternalImage), so it survives the site removing it and the crop tool can load it. One that
+ * can't be copied keeps its URL. Also migrates rows extracted before copies were made.
+ */
+export async function localizeImages(table: "institutions" | "businesses", id: number, jobId: string): Promise<void> {
+  const row = await masterKnex(table).where({ id }).first("gallery_images", "cover_url");
+  if (!row) return;
+  const copies = new Map<string, string>();
+  const local = async (url: string) => {
+    if (!isExternalUrl(url)) return url;
+    if (!copies.has(url)) copies.set(url, (await copyExternalImage(url, extractedMediaDir(jobId))) ?? url);
+    return copies.get(url)!;
+  };
+  const gallery: string[] | null = row.gallery_images ? await Promise.all((row.gallery_images as string[]).map(local)) : row.gallery_images;
+  const cover: string | null = row.cover_url ? await local(row.cover_url) : row.cover_url;
+  const changed = cover !== row.cover_url || (gallery ?? []).some((g, i) => g !== row.gallery_images[i]);
+  if (!changed) return;
+  await masterKnex(table).where({ id }).update({ gallery_images: gallery, cover_url: cover, updated_at: masterKnex.fn.now() });
+  logger.info("Copied extracted images into storage", { table, id, jobId, copied: [...copies.values()].filter((v) => !isExternalUrl(v)).length });
 }

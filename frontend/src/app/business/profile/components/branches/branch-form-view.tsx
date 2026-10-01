@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { ArrowLeft, Loader2, Plus } from "lucide-react";
@@ -9,7 +9,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { flagFromIso2 } from "@/app/admin/platform/categories/utils";
 import { geoApi, type City, type Country } from "@/app/geo/apis";
-import { CreateBranchDetailsStep, EMPTY_BRANCH_FORM } from "@/app/admin/platform/businesses/components/branches/create-branch-details-step";
+import { CreateBranchDetailsStep, EMPTY_BRANCH_FORM, branchWebsite, branchWebsiteError, branchWebsitePatch, websiteFields } from "@/app/admin/platform/businesses/components/branches/create-branch-details-step";
 import { isValidEmail } from "@/app/admin/platform/businesses/utils";
 import type { Branch, BranchType, SharedServices } from "../../apis/types";
 import { createBranch, fetchBranch, updateBranch } from "../../store/business-profile-detail-slice";
@@ -57,13 +57,22 @@ export function BranchFormView({ businessId, branchId }: Readonly<{ businessId: 
   const [citiesLoading, setCitiesLoading] = useState(false);
   const [branchType, setBranchType] = useState<BranchType>("same_company");
   const [copyDescription, setCopyDescription] = useState(false);
-  const [sharedServices, setSharedServices] = useState<SharedServices>([]);
+  // A new branch defaults to the same website as its head office, so it shares the head office's
+  // catalog; "own website" starts empty (it extracts its own). Once the owner picks in the
+  // Services step, the website choice stops overriding them.
+  const [sharedServices, setSharedServices] = useState<SharedServices>(isEdit ? [] : "all");
+  const servicesTouchedRef = useRef(false);
+  const pickServices = (v: SharedServices) => {
+    servicesTouchedRef.current = true;
+    setSharedServices(v);
+  };
   const [registration, setRegistration] = useState<RegLicenses>({});
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
 
-  const set = <K extends keyof typeof EMPTY_BRANCH_FORM>(key: K, value: string) => {
+  const set = <K extends keyof typeof EMPTY_BRANCH_FORM>(key: K, value: (typeof EMPTY_BRANCH_FORM)[K]) => {
     setForm((f) => ({ ...f, [key]: value }));
+    if (key === "websiteMode" && !isEdit && !servicesTouchedRef.current) setSharedServices(value === "same" ? "all" : []);
     setErrors((e) => (e[key as string] ? { ...e, [key]: undefined } : e));
   };
 
@@ -84,6 +93,7 @@ export function BranchFormView({ businessId, branchId }: Readonly<{ businessId: 
       state: editBranch.state ?? "",
       email: editBranch.email ?? "",
       phone: editBranch.phone ?? "",
+      ...(editBranch.owned ? websiteFields(editBranch.website, parent?.website) : {}),
     });
     setBranchType(editBranch.branch_type);
     setCopyDescription(editBranch.share_description);
@@ -120,6 +130,8 @@ export function BranchFormView({ businessId, branchId }: Readonly<{ businessId: 
     if (form.name.trim().length < 2) next.name = "Branch name is required";
     if (!form.countryId) next.countryId = "Select a country";
     if (form.email && !isValidEmail(form.email)) next.email = "Enter a valid email";
+    const websiteError = isEdit && !editBranch?.owned ? undefined : branchWebsiteError(form);
+    if (websiteError) next.website = websiteError;
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -148,14 +160,19 @@ export function BranchFormView({ businessId, branchId }: Readonly<{ businessId: 
       };
 
       if (isEdit && branchId) {
-        await dispatch(updateBranch({ id: businessId, branchId, patch: input })).unwrap();
+        const website = editBranch?.owned ? { website: branchWebsitePatch(form, parent?.website) } : {};
+        await dispatch(updateBranch({ id: businessId, branchId, patch: { ...input, ...website } })).unwrap();
         toast.success("Branch updated");
       } else {
         // Same Company → nothing sent; the backend copies the parent's registration.
         const registration_licenses = branchType === "same_company" ? {} : cleanRegistrationLicenses(registration);
         await dispatch(createBranch({
           id: businessId,
-          input: { ...input, ...(Object.keys(registration_licenses).length ? { registration_licenses } : {}) },
+          input: {
+            ...input,
+            ...(Object.keys(registration_licenses).length ? { registration_licenses } : {}),
+            ...(branchWebsite(form) !== undefined ? { website: branchWebsite(form) } : {}),
+          },
         })).unwrap();
         // The branch is a new org owned by this user — refetch /auth/me so the org switcher shows it.
         dispatch(fetchMe());
@@ -215,6 +232,8 @@ export function BranchFormView({ businessId, branchId }: Readonly<{ businessId: 
                 onCityChange={handleCityChange}
                 branchType={branchType}
                 onBranchTypeChange={setBranchType}
+                countryIso2={countries.find((c) => String(c.id) === form.countryId)?.iso2 ?? null}
+              showWebsite={!isEdit || !!editBranch?.owned}
               />
             )}
 
@@ -246,7 +265,7 @@ export function BranchFormView({ businessId, branchId }: Readonly<{ businessId: 
                 <p className="text-sm text-muted-foreground">Share services from the parent business.</p>
                 <ServiceSharingPicker
                   value={sharedServices}
-                  onChange={setSharedServices}
+                  onChange={pickServices}
                   emptyText="No services available to share."
                 />
               </>

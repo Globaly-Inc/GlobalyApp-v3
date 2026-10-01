@@ -5,7 +5,7 @@
 import type { Knex } from "knex";
 import { masterKnex } from "../../../core/db/master-pool.js";
 import type { SavedItemType } from "../consts.js";
-import { approvedCourseSql } from "../../superadmin/consts.js";
+import { approvedCourseSql, publicJobSql } from "../../superadmin/consts.js";
 
 const T = "saved_items";
 
@@ -79,7 +79,7 @@ export async function coursePublicById(courseId: string): Promise<boolean> {
   if (!UUID.test(courseId)) return false;
   const row = await masterKnex("superadmin.extraction_courses as ec")
     .where("ec.id", courseId)
-    .whereRaw("exists (select 1 from superadmin.extraction_jobs ej where ej.id = ec.job_id and ej.status = 'exported')")
+    .whereRaw(`exists (select 1 from superadmin.extraction_jobs ej where ej.id = ec.job_id and ${publicJobSql("ej")})`)
     .where("ec.is_published", true)
     .whereRaw(approvedCourseSql("ec"))
     .first("ec.id");

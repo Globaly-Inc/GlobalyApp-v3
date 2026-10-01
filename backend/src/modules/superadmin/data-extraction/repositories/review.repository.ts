@@ -55,12 +55,56 @@ export async function updateAgent(id: string, data: Record<string, unknown>, adm
 
 // ── Campuses ──
 
-export type CampusListFilters = { search?: string };
+/** unconverted: leave out campuses already turned into a real branch (the owner's Branches tab). */
+export type CampusListFilters = { search?: string; unconverted?: boolean };
 
-function filteredCampusesQuery(jobId: string, { search }: CampusListFilters = {}) {
+function filteredCampusesQuery(jobId: string, { search, unconverted }: CampusListFilters = {}) {
   const q = masterKnex(`${S}.extraction_campuses`).where({ job_id: jobId });
   if (search) q.whereILike("name", `%${search}%`);
+  if (unconverted) q.whereNull("converted_branch_id");
   return q;
+}
+
+/** Takes a campus for conversion so two runs can never convert it twice. Returns the claim id
+ * (null when someone else holds it). A claim older than CLAIM_STALE is reclaimable — its run died
+ * before finishing — and a failed campus is never claimed again until convert_failed_at is
+ * cleared. Only the current claim's holder can finish it (markCampusConverted / failCampus), so a
+ * slow run that was reclaimed can't also record a branch. */
+const CLAIM_STALE = "15 minutes";
+export async function claimCampus(id: string): Promise<string | null> {
+  const [row] = await masterKnex(`${S}.extraction_campuses`).where({ id })
+    .whereNull("converted_branch_id").whereNull("convert_failed_at")
+    .where((w) => w.whereNull("convert_claimed_at").orWhereRaw(`convert_claimed_at < now() - interval '${CLAIM_STALE}'`))
+    .update({ convert_claimed_at: masterKnex.fn.now(), convert_claim_id: masterKnex.raw("gen_random_uuid()") })
+    .returning("convert_claim_id");
+  return row ? String(row.convert_claim_id) : null;
+}
+
+export async function failCampus(id: string, claimId: string) {
+  await masterKnex(`${S}.extraction_campuses`).where({ id, convert_claim_id: claimId })
+    .update({ convert_claimed_at: null, convert_claim_id: null, convert_failed_at: masterKnex.fn.now() });
+}
+
+/** The courses the extraction linked to this campus — what a branch made from it teaches. */
+export async function listCourseIdsByCampus(campusId: string): Promise<string[]> {
+  const rows = await masterKnex(`${S}.extraction_course_campuses`).where({ campus_id: campusId })
+    .whereNotNull("course_id").distinct("course_id");
+  return rows.map((r) => String(r.course_id));
+}
+
+/** Throws when this run no longer holds the claim — the caller (inside linkOrDiscard) then
+ * discards the branch it just made, leaving the reclaiming run's branch as the only one. */
+export async function markCampusConverted(id: string, claimId: string, branchId: string) {
+  const count = await masterKnex(`${S}.extraction_campuses`).where({ id, convert_claim_id: claimId })
+    .update({ converted_branch_id: branchId, convert_claimed_at: null, convert_claim_id: null, updated_at: masterKnex.fn.now() });
+  if (count === 0) throw new Error(`Campus ${id} was reclaimed by another run`);
+}
+
+/** Which of these business_branches ids were made from an extracted campus. */
+export async function convertedBranchIds(branchIds: string[]): Promise<Set<string>> {
+  if (branchIds.length === 0) return new Set();
+  const rows = await masterKnex(`${S}.extraction_campuses`).whereIn("converted_branch_id", branchIds).select("converted_branch_id");
+  return new Set(rows.map((r) => String(r.converted_branch_id)));
 }
 
 export async function listCampusesByJob(jobId: string) {

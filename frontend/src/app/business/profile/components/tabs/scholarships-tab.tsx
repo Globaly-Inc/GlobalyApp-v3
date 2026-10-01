@@ -89,8 +89,8 @@ export function ScholarshipsTab({ businessId }: Readonly<{ businessId: number }>
     <div>
       <div className="mb-4 flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-bold">Scholarships</h2>
-          <p className="text-sm text-muted-foreground">Offer scholarships to attract prospective students.</p>
+          <h2 className="text-2xl font-bold">Scholarships</h2>
+          <p className="text-muted-foreground">Offer scholarships to attract prospective students.</p>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" className="h-10" onClick={() => setImportOpen(true)}>

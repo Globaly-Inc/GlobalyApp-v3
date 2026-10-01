@@ -29,6 +29,8 @@ export type PortalNavGroup = {
   /** Where the rail tile points. Defaults to the first item's href. */
   href?: string;
   items?: PortalNavItem[];
+  /** Pinned to the bottom of the rail (e.g. Settings) instead of following the list. */
+  pinBottom?: boolean;
 };
 
 export function isPortalNavActive(pathname: string | null, href: string, currentSearch?: string | null): boolean {
@@ -94,26 +96,30 @@ export function PortalSidebar({ groups }: Readonly<{ groups: PortalNavGroup[] }>
           submenuItems.length > 0 && "border-r border-border",
         )}
       >
-        <nav className="flex flex-col items-center gap-1">
-          {groups.map((group) => (
-            <Link
-              key={group.label}
-              href={groupHref(group)}
-              aria-label={group.label}
-              className={cn(
-                "flex h-14 w-16 flex-col items-center justify-center gap-1 rounded-lg px-1 transition-colors",
-                activeGroup?.label === group.label
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
-              )}
-            >
-              <group.icon className="h-5 w-5" />
-              <span className="max-w-full truncate text-center text-[10px] font-medium leading-tight">
-                {group.label}
-              </span>
-            </Link>
-          ))}
-        </nav>
+        {[groups.filter((g) => !g.pinBottom), groups.filter((g) => g.pinBottom)].map((list, i) =>
+          list.length === 0 ? null : (
+            <nav key={i} className={cn("flex flex-col items-center gap-1", i === 1 && "mt-auto pt-2")}>
+              {list.map((group) => (
+                <Link
+                  key={group.label}
+                  href={groupHref(group)}
+                  aria-label={group.label}
+                  className={cn(
+                    "flex h-14 w-16 flex-col items-center justify-center gap-1 rounded-lg px-1 transition-colors",
+                    activeGroup?.label === group.label
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  )}
+                >
+                  <group.icon className="h-5 w-5" />
+                  <span className="max-w-full truncate text-center text-[10px] font-medium leading-tight">
+                    {group.label}
+                  </span>
+                </Link>
+              ))}
+            </nav>
+          ),
+        )}
       </div>
 
       {submenuItems.length > 0 && activeGroup && (

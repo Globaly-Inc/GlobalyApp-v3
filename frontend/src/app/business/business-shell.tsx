@@ -25,7 +25,8 @@ import { BusinessSwitcher, type SwitcherOrg } from "./components/business-switch
 import { PortalSidebar } from "@/components/portal-sidebar";
 import { cn } from "@/lib/utils";
 import { ICON } from "@/lib/public-assets";
-import { PERSONAL_PORTAL_HOME } from "@/app/personal/const";
+import { PERSONAL_PORTAL_HOME, SHOW_HEADER_EXTRAS, SHOW_PERSONAL_PORTAL } from "@/app/personal/const";
+import { SIGN_IN_HREF } from "@/app/auth/const";
 
 const SHELL_WIDTH = "mx-auto w-full max-w-7xl px-3 sm:px-4 md:px-6";
 
@@ -35,6 +36,9 @@ const SHELL_WIDTH = "mx-auto w-full max-w-7xl px-3 sm:px-4 md:px-6";
  * header and does its own bottom-nav math. Mirrors PersonalShell's list.
  */
 const FULL_BLEED_ROUTES = ["/business/messages"] as const;
+
+/** Same padding as SHELL_WIDTH but no max width — for the business profile's wide tables. */
+const SHELL_WIDE = "w-full px-3 sm:px-4 md:px-6";
 // Institution accounts act as businesses throughout this shell — their records are adapted
 // to the SwitcherOrg shape so the switcher can render them uniformly, with kind="institution"
 // to distinguish them visually and drive the nav-group filter.
@@ -74,6 +78,9 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
   const pathname = usePathname();
   const isFullBleed = FULL_BLEED_ROUTES.some((route) => pathname?.startsWith(route)) ?? false;
   const searchParams = useSearchParams();
+  // Business profile tabs (services, branches, scholarships, team…) are mostly wide tables —
+  // give the whole profile area the full content width.
+  const isWide = /^\/business\/profile\/\d/.test(pathname ?? "");
   const dispatch = useAppDispatch();
   const { user } = useAuthState();
   const { profile, status, error } = useAppSelector((state) => state.businessOnboarding);
@@ -124,7 +131,11 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
         if (!active) return;
         const merged = await loadOrgs();
         if (!active) return;
-        setActiveOrgId(getSelectedOrgId() ?? [...merged].sort((a, b) => a.id - b.id)[0]?.org_id ?? null);
+        // The saved pick can be stale (an org this account isn't in — e.g. after claiming a listing
+        // or another user on this browser): then nothing matched it, the nav fell back to the
+        // business menu and its links lost the org id. Only trust it when it's in the list.
+        const saved = getSelectedOrgId();
+        setActiveOrgId(merged.some((o) => o.org_id === saved) ? saved : [...merged].sort((a, b) => a.id - b.id)[0]?.org_id ?? null);
         // A zero-org user has nothing for /businesses/me or /institutions/me to return.
         // onboarding-view.tsx handles the empty case itself.
         if (merged.length > 0) dispatch(fetchMyProfile());
@@ -154,7 +165,7 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
 
   const handleSignOut = () => {
     dispatch(logout());
-    router.push("/auth/sign-in");
+    router.push(SIGN_IN_HREF);
   };
 
   // Fresh business-track users (zero businesses) and an explicit "create another"
@@ -203,8 +214,16 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
 
   const isInstitution = institutionOrgIds.has(activeOrgId ?? "");
   const initial = (user?.first_name?.[0] ?? user?.email?.[0])?.toUpperCase() ?? "U";
-  const activeBusinessId = businesses.find((b) => b.org_id === activeOrgId)?.id ?? null;
-  const navGroups = withBusinessId(isInstitution ? INSTITUTION_NAV_GROUPS : BUSINESS_NAV_GROUPS, activeBusinessId);
+  // Falls back to the loaded profile, so the nav's tab links always carry an id — a bare
+  // /business/profile?tab=… link used to land back on the profile tab.
+  const activeBusinessId = businesses.find((b) => b.org_id === activeOrgId)?.id ?? profile.id ?? null;
+  // A listing promoted/claimed as a BUSINESS row in the Institutions category (not an institutions
+  // row) still gets the business nav — but Representative is hidden for it, as for a real institution.
+  const isInstitutionCategory = (profile.business_category_name ?? "").toLowerCase().includes("institution");
+  const baseNav = isInstitution
+    ? INSTITUTION_NAV_GROUPS
+    : isInstitutionCategory ? BUSINESS_NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => i.label !== "Representative") })) : BUSINESS_NAV_GROUPS;
+  const navGroups = withBusinessId(baseNav, activeBusinessId);
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -228,21 +247,25 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
           </div>
 
           <div className="flex items-center gap-2 ml-auto pr-3 sm:pr-4 md:pr-2">
-            <Link
-              href="/business/notifications"
-              className="hidden md:inline-flex relative items-center justify-center rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
-              aria-label="Notifications"
-            >
-              <Bell className="h-4.5 w-4.5" />
-              <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-destructive" aria-hidden />
-            </Link>
-            <Link
-              href="/business/credits"
-              className="hidden md:inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 h-8 text-xs font-medium text-muted-foreground hover:bg-muted"
-            >
-              <Coins className="h-3.5 w-3.5" />
-              Credits
-            </Link>
+            {SHOW_HEADER_EXTRAS && (
+              <>
+                <Link
+                  href="/business/notifications"
+                  className="hidden md:inline-flex relative items-center justify-center rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  aria-label="Notifications"
+                >
+                  <Bell className="h-4.5 w-4.5" />
+                  <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-destructive" aria-hidden />
+                </Link>
+                <Link
+                  href="/business/credits"
+                  className="hidden md:inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 h-8 text-xs font-medium text-muted-foreground hover:bg-muted"
+                >
+                  <Coins className="h-3.5 w-3.5" />
+                  Credits
+                </Link>
+              </>
+            )}
           </div>
 
           {/* Account menu carries identity actions only — business switching lives in
@@ -266,7 +289,7 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
             <DropdownMenuContent align="end" className="w-56 p-1.5 rounded-md">
               <DropdownMenuItem
                 className="cursor-pointer px-1.5 py-1.5 flex items-center gap-2"
-                onClick={() => router.push("/business/profile")}
+                onClick={() => router.push("/personal/profile")}
               >
                 <Avatar className="size-8 shrink-0">
                   {user?.photo_url && <AvatarImage src={user.photo_url} alt={user?.first_name ?? "User"} />}
@@ -280,9 +303,11 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
                 </div>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push(PERSONAL_PORTAL_HOME)}>
-                Personal Portal
-              </DropdownMenuItem>
+              {SHOW_PERSONAL_PORTAL && (
+                <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push(PERSONAL_PORTAL_HOME)}>
+                  Personal Portal
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/business/portal")}>
                 Business Portal
               </DropdownMenuItem>
@@ -307,7 +332,7 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
         <PortalSidebar groups={navGroups} />
 
         <main className={cn("min-w-0 flex-1 overflow-x-clip", isFullBleed ? "" : "py-4 md:py-6")}>
-          {isFullBleed ? children : <div className={SHELL_WIDTH}>{children}</div>}
+          {isFullBleed ? children : <div className={isWide ? SHELL_WIDE : SHELL_WIDTH}>{children}</div>}
         </main>
       </div>
     </div>

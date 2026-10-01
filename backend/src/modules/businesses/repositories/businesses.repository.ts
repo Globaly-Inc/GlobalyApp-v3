@@ -2,6 +2,7 @@
 
 import { masterKnex } from "../../../core/db/master-pool.js";
 import type { BusinessRecord } from "../../../core/types.js";
+import { withCountryCurrency } from "../../../shared/country-currency.js";
 
 export async function findBusinessBySubdomain(subdomain: string): Promise<BusinessRecord | undefined> {
   return masterKnex<BusinessRecord>("businesses").where({ subdomain }).whereNull("deleted_at").first();
@@ -146,7 +147,7 @@ export async function updateBusinessStatus(id: string, accountStatus: number): P
 export async function updateBusinessProfile(id: string, data: Record<string, unknown>): Promise<BusinessRecord> {
   const [row] = await masterKnex<BusinessRecord>("businesses")
     .where({ id })
-    .update({ ...data, updated_at: masterKnex.fn.now() })
+    .update({ ...withCountryCurrency(data), updated_at: masterKnex.fn.now() })
     .returning("*");
   return row;
 }

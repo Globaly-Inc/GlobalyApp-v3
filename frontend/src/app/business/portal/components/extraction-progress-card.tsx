@@ -18,6 +18,7 @@ const SECONDARY_COUNTS: { key: keyof ExtractionCounts; label: string }[] = [
   { key: "fees", label: "Fees" },
   { key: "intakes", label: "Intakes" },
   { key: "eligibility", label: "Eligibility" },
+  { key: "scholarships", label: "Scholarships" },
   { key: "units", label: "Study units" },
   { key: "study_options", label: "Study options" },
   { key: "accreditations", label: "Accreditations" },
@@ -25,7 +26,7 @@ const SECONDARY_COUNTS: { key: keyof ExtractionCounts; label: string }[] = [
 ];
 
 /** Shown in place of StartExtractionCard once a real job is linked — polls until the job finishes. */
-export function ExtractionProgressCard() {
+export function ExtractionProgressCard({ sharedFrom = null }: Readonly<{ sharedFrom?: string | null }>) {
   const [data, setData] = useState<ExtractionStatus>(null);
   const fetchedRef = useRef(false);
   const pollCountRef = useRef(0);
@@ -86,6 +87,11 @@ export function ExtractionProgressCard() {
         </div>
       </CardHeader>
       <CardContent className="space-y-5">
+        {sharedFrom && (
+          <p className="text-xs text-muted-foreground">
+            Same website as your head office — showing <strong>{sharedFrom}</strong>&apos;s extraction, so there&apos;s nothing to run here.
+          </p>
+        )}
         <div className="space-y-1.5">
           <div className="flex items-baseline justify-between">
             <span className="text-xs font-medium text-muted-foreground">Progress</span>

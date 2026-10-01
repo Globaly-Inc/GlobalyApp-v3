@@ -195,3 +195,6 @@ export const SEARCH_SUGGESTIONS_BY_SLUG: Record<string, string[]> = {
  */
 export const FACT_CHIP_CLASS =
   "h-auto gap-2 border-primary/25 bg-primary/10 px-4 py-2 text-sm font-medium text-primary [&>svg]:size-4!";
+
+/** Shown in place of "Get Started" while sign-up is off (SIGN_UP_ENABLED) — a booked intro call. */
+export const BOOK_MEETING_URL = "https://cal.com/amit-ranjitkar/globaly-ai-intro-meeting";

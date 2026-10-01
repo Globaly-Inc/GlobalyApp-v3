@@ -131,15 +131,17 @@ export function InstitutionServiceFormView({ businessId, serviceId }: Readonly<{
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Matches admin's institution form: a brand-new service defaults straight to "Courses" (every
-  // institution service lives in the extraction catalog regardless of category, but Courses is
-  // what unlocks the course-only tabs/fields below) rather than leaving the picker blank.
+  // Matches admin's institution form: a service with no category defaults straight to "Courses"
+  // (every institution service lives in the extraction catalog regardless of category, but Courses
+  // is what unlocks the course-only tabs/fields below) rather than leaving the picker blank. That
+  // covers editing too: the extraction never sets service_category_id on the courses it writes, so
+  // every extracted course opens uncategorised. Shown only — saved when the admin picks a category.
   useEffect(() => {
-    if (isEdit || form.service_category_id || serviceCategories.length === 0) return;
+    if (form.service_category_id || serviceCategories.length === 0) return;
     const courses = serviceCategories.find((c) => c.slug === "courses");
     if (courses) set("service_category_id", courses.id);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isEdit, form.service_category_id, serviceCategories]);
+  }, [form.service_category_id, serviceCategories]);
 
   // Every institution service lives in extraction_courses regardless of category
   // (service_category_id is a plain column there — see institution-courses.repository.ts), so

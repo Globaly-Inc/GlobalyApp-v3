@@ -1,6 +1,7 @@
 // Scholarships repository — admin-managed content (see categories/countries for the same pattern).
 
 import { masterKnex } from "../../../../../core/db/master-pool.js";
+import { SUPERADMIN_SCHEMA as S, approvedCourseSql, publicJobSql } from "../../../consts.js";
 
 const TABLE = "scholarships";
 const now = () => masterKnex.fn.now();
@@ -107,21 +108,66 @@ function applyPublicFilters(q: ReturnType<typeof masterKnex>, filters: PublicFil
   return q;
 }
 
+/** An institution scholarship's public slug — they have no slug of their own. */
+const EXTRACTED_SLUG_PREFIX = "inst-";
+const raw = (sql: string) => masterKnex.raw(sql);
+
+/**
+ * Public scholarships come from two places: the platform's own curated `scholarships`, and each
+ * institution's own (superadmin.extraction_scholarships — what the portal's Scholarships tab
+ * edits), shaped to the same columns. An institution scholarship is public on the same terms as
+ * its courses: published institution, public job (publicJobSql), and at least one approved,
+ * published course behind it — a linked one, or for an institution-wide (unlinked) scholarship any
+ * of the job's. Institution scholarships have no review of their own, so that course gate is it.
+ * degree_levels come from those same courses, so the degree-level filter finds them.
+ */
+function publicScholarships() {
+  const platform = masterKnex(TABLE).where({ is_published: true }).select(
+    raw("id::text as id"), "title", "slug", "description", "provider_name", "source_type", "country", "city", "region",
+    "basis", "degree_levels", "requirements_summary", "coverage_type", "coverage_amount", "coverage_currency",
+    "coverage_description", "deadline", "deadline_notes", "application_url", "source_url", "is_featured", "view_count",
+    raw("null::int as institution_id"),
+  );
+  const A = `${S}.extraction_course_scholarship_assignments`;
+  // The approved, published courses that make an institution scholarship public: its linked ones,
+  // or — when it links none (institution-wide) — every one on its job.
+  const backingCourses = `from ${S}.extraction_courses ec
+    where ${approvedCourseSql("ec")} and ec.is_published and (
+      ec.id in (select a.course_id from ${A} a where a.scholarship_id = es.id)
+      or (ec.job_id = es.job_id and not exists (select 1 from ${A} a where a.scholarship_id = es.id)))`;
+  const institution = masterKnex(`${S}.extraction_scholarships as es`)
+    .join("institutions as i", (j) => j.on("i.source_job_id", "es.job_id").andOnVal("i.is_published", true).andOnNull("i.deleted_at"))
+    .join(`${S}.extraction_jobs as ej`, "ej.id", "es.job_id")
+    .leftJoin("countries as c", "c.id", "i.country_id")
+    .whereRaw(publicJobSql("ej"))
+    .whereRaw(`exists (select 1 ${backingCourses})`)
+    .select(
+      raw("es.id::text as id"), "es.name as title", raw(`'${EXTRACTED_SLUG_PREFIX}' || es.id as slug`), "es.description",
+      "i.institution_name as provider_name", raw("'university' as source_type"), "c.name as country", "i.city",
+      raw("null::text as region"), raw("null::text as basis"), raw(`coalesce((select array_agg(distinct ec.degree_level_code) ${backingCourses} and ec.degree_level_code is not null), '{}'::text[]) as degree_levels`),
+      raw("null::text as requirements_summary"), raw("coalesce(es.coverage_type, 'various') as coverage_type"),
+      "es.amount as coverage_amount", raw("coalesce(es.currency, 'USD') as coverage_currency"),
+      raw("null::text as coverage_description"), "es.deadline", raw("null::text as deadline_notes"),
+      "es.application_url", "es.source_url", raw("false as is_featured"), raw("0 as view_count"), "i.id as institution_id",
+    );
+  return masterKnex.from(masterKnex.raw("(? union all ?) as s", [platform, institution]));
+}
+
 export async function listPublished(limit: number, offset: number, filters: PublicFilters) {
-  const q = masterKnex(TABLE).where({ is_published: true })
-    .orderBy("is_featured", "desc").orderBy("deadline", "asc").limit(limit).offset(offset);
+  const q = publicScholarships().select("*")
+    .orderBy("is_featured", "desc").orderByRaw("deadline asc nulls last").limit(limit).offset(offset);
   return applyPublicFilters(q, filters);
 }
 
 export async function countPublished(filters: PublicFilters) {
-  const q = masterKnex(TABLE).where({ is_published: true }).count("* as count");
+  const q = publicScholarships().count("* as count");
   applyPublicFilters(q, filters);
-  const [row] = await q;
+  const [row] = (await q) as unknown as { count: string | number }[];
   return Number(row.count);
 }
 
 export async function findPublishedBySlug(slug: string) {
-  return masterKnex(TABLE).where({ slug, is_published: true }).first();
+  return publicScholarships().select("*").where({ slug }).first();
 }
 
 export async function incrementViewCount(id: number) {
