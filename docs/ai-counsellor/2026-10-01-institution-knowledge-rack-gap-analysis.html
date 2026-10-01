@@ -817,7 +817,7 @@ CONFLICT RESOLUTION
       </ul>
     </div>
 
-    <h3>Phase 2 — Close the two retrieval/capture holes</h3>
+    <h3>Phase 2 — Close the two retrieval/capture holes <span class="pill done">Built 2026-10-01</span></h3>
     <ul>
       <li><strong>2a · Visitor context into the prompt.</strong> Adapter from <code>VisitorRow</code> → <code>ProfileContext</code> (field names already match <code>platform_user_*</code>); <code>guest.routes.ts</code> passes it to <code>buildSystemPrompt({ profile })</code> and its <code>situationText</code> to <code>retrieveMemories({ situation })</code>. No migration, no worker, no endpoint.</li>
       <li><strong>2b · Volunteered contact details.</strong> <code>lib/profile-extract.ts</code> gains <code>name</code>/<code>email</code>/<code>phone</code> keys built from the institution's <code>collection.allowed</code> set; <code>guest.routes</code> routes a hit to <code>recordContact({ source: 'volunteered' })</code>. Prompt gains a confirm-don't-harvest instruction.</li>
@@ -825,6 +825,34 @@ CONFLICT RESOLUTION
       <li><strong>Tests.</strong> Extend the existing profile-extract fixtures — email in prose is captured, an email inside a <em>course</em> description is not, a restricted field is never returned. Each must fail first.</li>
       <li><strong>Risk to watch.</strong> 2b makes the AI read addresses out of free text. Ship it behind <code>collection.allowed</code> defaulting to <strong>on</strong> for email, <strong>off</strong> for phone.</li>
     </ul>
+    <div class="gap good">
+      <strong>As built</strong>
+      <ul>
+        <li><strong>No new prompt section for 2a.</strong> The visitor's structured background maps onto
+          <code>ProfileContext</code> field for field and the loose scalars onto <code>CounsellingContext</code> —
+          both already rendered, both already feeding <code>situationText</code>. <code>lib/visitor-context.ts</code>
+          is the whole adapter. <code>individual_category</code> is pinned to <code>null</code> so the
+          PROFILE COMPLETION nag can never fire at someone with no profile to complete, and the
+          test asserts exactly that.</li>
+        <li><strong>Consent: confirm, don't harvest.</strong> The Rack's collection block now carries one
+          standing line — confirm an address back once before relying on it — rendered whenever
+          email is collectable, which is the default. The model sees the address in the message
+          it is answering, so the confirmation lands in that same reply.</li>
+        <li><strong>A name alone is now storable.</strong> <code>chk_ai_widget_visitors_contact_pair</code> is
+          dropped: it described the CARD, where both fields are asked for, and it refused the real
+          case of a visitor who says only &ldquo;I'm John&rdquo;. What it protected still holds elsewhere —
+          <code>status</code> derives from <code>email</code>, so a name alone keeps them a Visitor, and the
+          summary is armed only when an address exists. An email takes the full submit path and
+          settles the card; a name alone leaves the card free to ask later, with the name known.</li>
+        <li><strong>Two orphaned validators found and fixed.</strong> <code>UpdateVisitorSchema</code> carried two
+          refines whose only justification was that CHECK; left in place they would have refused
+          to add an email to a name-only row. The card's own both-required refine stays, for the
+          product reason rather than the database one.</li>
+        <li><strong>The counsellor's own address is rejected.</strong> A widget that has just printed the
+          admissions email is the likeliest way to record one the visitor never gave, so any
+          contact value appearing in the counsellor's recent turns is dropped.</li>
+      </ul>
+    </div>
 
     <h3>Phase 3 — Conversion journeys</h3>
     <ul>

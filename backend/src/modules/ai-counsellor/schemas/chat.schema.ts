@@ -111,8 +111,11 @@ export const GuestMigrateSchema = z.object({
  * the field, and a bot that fills every field gets a plausible success with no write, so it
  * has nothing to adapt to.
  *
- * The refine is the reason this is one schema rather than two — a "submit" without a name or
- * email would otherwise write half a contact and trip the DB's contact-pair CHECK as a 500.
+ * The refine is the reason this is one schema rather than two. It outlived the DB constraint it
+ * was written for (20261001_002 dropped chk_ai_widget_visitors_contact_pair so that details a
+ * visitor VOLUNTEERS in prose can be stored a half at a time) and it stays, because this is the
+ * CARD: it asks for both fields and its copy promises a summary, which needs an address. A
+ * submit missing either one means the form broke, not that the visitor said less.
  */
 export const GuestContactSchema = z
   .object({

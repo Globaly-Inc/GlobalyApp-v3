@@ -22,7 +22,8 @@ import * as rag from "../services/rag.service.js";
 import { parseBlocks, parseCards, parseChips, stripBlocks } from "../lib/card-parser.js";
 import { judgeConclusion } from "../lib/conclusion-detect.js";
 import { extractProfile } from "../lib/profile-extract.js";
-import { profileBlockFor, retrieveMemories } from "../../institution-memory/index.js";
+import { getProfile, profileBlockFor, retrieveMemories } from "../../institution-memory/index.js";
+import { visitorCounsellingContext, visitorProfileContext } from "../lib/visitor-context.js";
 import * as learningSignals from "../services/learning-signals.service.js";
 import { ForbiddenError } from "../../../shared/errors.js";
 import { createChildLogger } from "../../../shared/logger.js";
@@ -206,6 +207,22 @@ export async function guestRoutes(app: FastifyInstance) {
       // RAG search (no profile context for guests), beside the institution's own counselling
       // memory — the same pairing as chat.service, and the memory call never throws.
       const trace = (step: string) => writeEvent(reply, "trace", { step });
+
+      // What this visitor has told the counsellor in earlier turns. Until now the guest path
+      // passed `profile: null`, so everything extractProfile wrote to ai_widget_visitors was
+      // discarded and the counsellor re-asked for it. Scoped to this visitor_key and read on
+      // their own turn only — it is never pooled, embedded or retrieved by similarity.
+      // Read once, before the stream: the card decision is made while the socket is still open,
+      // and the extractor below needs the same rules. Cached 60s, never throws.
+      const rack = embed?.rackInstitutionId ? await getProfile(embed.rackInstitutionId) : null;
+      const collection = rack?.profile.collection ?? null;
+      const contactAsk = collection
+        ? { enabled: collection.contact_ask.enabled, first_at: collection.contact_ask.first_at, gap: collection.contact_ask.gap }
+        : visitorService.DEFAULT_CONTACT_ASK;
+
+      const visitorProfile = visitorProfileContext(visitor);
+      const visitorContext = visitorCounsellingContext(visitor);
+      const situation = rag.situationText(visitorProfile, visitorContext);
       const [ragOutput, memory, rackProfile] = await Promise.all([
         rag.searchAll({
           query: input.content,
@@ -220,6 +237,9 @@ export async function guestRoutes(app: FastifyInstance) {
               institutionId: embed.rackInstitutionId,
               institutionName: embed.config.display_name,
               query: input.content,
+              // Situation-bound guidance could never match before: the query carried the
+              // message and nothing about who was asking.
+              situation,
               onTrace: trace,
             })
           : null,
@@ -237,7 +257,8 @@ export async function guestRoutes(app: FastifyInstance) {
       if (noMoneyData) trace(`Money question, no evidence for ${rag.moneyTopicsOf(input.content).join("/")}: answer withheld`);
 
       const system = buildSystemPrompt({
-        profile: null,
+        profile: visitorProfile,
+        counsellingContext: visitorContext,
         ragContext: ragOutput.contextText,
         // A returning visitor mid-thread must not get the opening greeting again.
         isFirstMessage: history.length === 0,
@@ -278,10 +299,36 @@ export async function guestRoutes(app: FastifyInstance) {
       // carrying a column a lagging tenant schema lacks fails the whole write and freezes
       // message_count, which is exactly how both cards silently died a week ago. This one is
       // allowed to fail alone.
-      const profile = visitor && tenantDb ? await extractProfile(history, input.content) : null;
+      // Same rules object read before the stream — what may be asked for, and what may be kept.
+      //
+      // `sensitive` is subtracted, not just announced to the model. The portal's own words for
+      // it are "use it to answer, never record it", and until this line the extractor was still
+      // handed the field and still wrote it: `sensitive` is a subset of `allowed`, so the stored
+      // rule said one thing and the storage did another. The model can still USE it — it is in
+      // the transcript either way — but nothing asks for it and nothing keeps it.
+      const keepable = collection
+        ? collection.allowed.filter((f) => !collection.sensitive.includes(f))
+        : undefined;
+      const { profile, contact } = visitor && tenantDb
+        ? await extractProfile(history, input.content, keepable)
+        : { profile: null, contact: null };
+
       if (profile && visitor && tenantDb) {
         await visitorService.attempt("recordProfile", () =>
           visitorService.recordProfile(tenantDb, visitor.id, profile),
+        );
+      }
+
+      // Details they gave in prose rather than in the card. An email settles the card for good
+      // and arms the summary; a name alone is stored and the card may still ask later, with
+      // their name already known. Separate statement from recordProfile for the same reason
+      // that one is separate from recordTurn: a lagging tenant schema must fail one write, not
+      // the turn.
+      if (contact && visitor && tenantDb && visitorKey && embed) {
+        await visitorService.attempt("recordVolunteeredContact", () =>
+          visitorService.recordVolunteeredContact(tenantDb, {
+            visitorKey, embedConfigId: embed.config.id, ...contact,
+          }),
         );
       }
 
@@ -307,8 +354,8 @@ export async function guestRoutes(app: FastifyInstance) {
       // and an already-ended chat skips the concluded branch both ways. It is also strictly
       // tighter — once end_prompt_count hits 1 the offer is spent, and we stop asking forever.
       const judgementMatters = !!embed && !!visitor && !forceEnd &&
-        visitorService.decidePrompt(visitor, nextCount, true) !==
-          visitorService.decidePrompt(visitor, nextCount, false);
+        visitorService.decidePrompt(visitor, nextCount, true, contactAsk) !==
+          visitorService.decidePrompt(visitor, nextCount, false, contactAsk);
 
       // Asked as its own call, over the transcript, rather than as a block the counsellor was
       // supposed to append to its own reply. See conclusion-detect for why that never fired.
@@ -317,7 +364,7 @@ export async function guestRoutes(app: FastifyInstance) {
         : null;
 
       const prompted = embed && visitor
-        ? visitorService.decidePrompt(visitor, nextCount, forceEnd || concluded?.likelihood === "high")
+        ? visitorService.decidePrompt(visitor, nextCount, forceEnd || concluded?.likelihood === "high", contactAsk)
         : null;
 
       // Why no card appeared is otherwise unanswerable: a missing visitor row, a gate that was

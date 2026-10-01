@@ -79,6 +79,16 @@ export function VisitorDetailDrawer({
                 <Row label="Messages" value={String(visitor.message_count)} />
                 <Row label="Conversation" value={CONVERSATION_STATE_LABELS[visitor.conversation_state] ?? visitor.conversation_state} />
                 <Row label="Contact details" value={CONTACT_STATUS_LABELS[visitor.contact_status] ?? visitor.contact_status} />
+                {/* How they came to us matters for reading the rest: details read out of a
+                    sentence are the counsellor's interpretation, details typed into the card
+                    are the visitor's own confirmation. */}
+                {visitor.contact_source && (
+                  <Row
+                    label="Shared via"
+                    value={visitor.contact_source === "volunteered" ? "Mentioned in conversation" : "The contact form"}
+                  />
+                )}
+                {visitor.phone && <Row label="Phone" value={visitor.phone} />}
                 <Row label="First seen" value={relativeTime(visitor.first_seen_at)} />
                 <Row label="Last activity" value={relativeTime(visitor.last_activity_at)} />
                 {visitor.summary_status && (

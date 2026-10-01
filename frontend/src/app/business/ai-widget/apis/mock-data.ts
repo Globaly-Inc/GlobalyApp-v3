@@ -34,7 +34,7 @@ const configs: EmbedConfig[] = [
 // easily — asked, declined, still a Visitor.
 const visitors: WidgetVisitor[] = [
   {
-    id: 4, embed_config_id: 1, session_id: 812, name: null, email: null, status: "visitor",
+    id: 4, embed_config_id: 1, session_id: 812, name: null, email: null, phone: null, contact_source: null, status: "visitor",
     contact_status: "not_shown", contact_submitted_at: null, conversation_state: "active",
     message_count: 2,
     first_seen_at: new Date(Date.now() - 4 * 60_000).toISOString(),
@@ -44,7 +44,7 @@ const visitors: WidgetVisitor[] = [
     summary_status: null, summary_sent_at: null,
   },
   {
-    id: 3, embed_config_id: 1, session_id: 809, name: "John Doe", email: "john@example.com", status: "lead",
+    id: 3, embed_config_id: 1, session_id: 809, name: "John Doe", email: "john@example.com", phone: null, contact_source: "volunteered", status: "lead",
     contact_status: "submitted",
     contact_submitted_at: new Date(Date.now() - 6 * 60_000).toISOString(),
     conversation_state: "end_confirmed", message_count: 11,
@@ -60,7 +60,7 @@ const visitors: WidgetVisitor[] = [
     summary_status: "sent", summary_sent_at: new Date(Date.now() - 4 * 60_000).toISOString(),
   },
   {
-    id: 2, embed_config_id: 1, session_id: 804, name: null, email: null, status: "visitor",
+    id: 2, embed_config_id: 1, session_id: 804, name: null, email: null, phone: null, contact_source: null, status: "visitor",
     contact_status: "skipped", contact_submitted_at: null, conversation_state: "continue",
     message_count: 7,
     first_seen_at: new Date(Date.now() - 3 * 3_600_000).toISOString(),
@@ -72,7 +72,7 @@ const visitors: WidgetVisitor[] = [
     summary_status: null, summary_sent_at: null,
   },
   {
-    id: 1, embed_config_id: 1, session_id: 791, name: "Priya Sharma", email: "priya.sharma@example.com", status: "lead",
+    id: 1, embed_config_id: 1, session_id: 791, name: "Priya Sharma", email: "priya.sharma@example.com", phone: "+977 98 1234 5678", contact_source: "card", status: "lead",
     contact_status: "submitted",
     contact_submitted_at: new Date(Date.now() - 2 * 86_400_000).toISOString(),
     conversation_state: "active", message_count: 19,

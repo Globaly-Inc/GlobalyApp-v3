@@ -99,10 +99,11 @@ export type CollectionRules = z.infer<typeof CollectionSchema>;
 
 export const LearningSchema = z.object({
   /**
-   * Learn counselling patterns from finished conversations. Mirrors
-   * ai_embed_configs.auto_learn, which stays the authority until every widget is migrated —
-   * profile.service reads this only when the column is false, so turning it on here cannot
-   * silently override a widget the institution deliberately switched off.
+   * Learn counselling patterns from finished conversations.
+   *
+   * Sits beside the older per-widget `ai_embed_configs.auto_learn`, and learning runs when
+   * EITHER is on (learning-signals.onConversationEnd). This one is institution-wide and is what
+   * the portal exposes; the column stays so a widget already set up that way keeps working.
    */
   auto_learn: z.boolean().default(false),
   /** Allow general sector facts as human-approval-only candidates. Phase 4; off until then. */

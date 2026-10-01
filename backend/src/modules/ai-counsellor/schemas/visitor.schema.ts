@@ -116,18 +116,16 @@ export const VisitorPatchSchema = z
     academic_tests: sectionSchema(VISITOR_ENTRY_SHAPES.academic_tests),
   })
   .strict()
-  // Name and email move together or not at all. CHECK chk_ai_widget_visitors_contact_pair is
-  // `(name IS NULL) = (email IS NULL)`, so a patch touching one alone can take a valid row to
-  // an invalid one — a 500 from Postgres instead of a 400 from here. Requiring both in the
-  // patch keeps the invariant checkable without first reading the row.
-  .refine((v) => (v.name === undefined) === (v.email === undefined), {
-    message: "Name and email must be edited together",
-    path: ["email"],
-  })
-  .refine((v) => (v.name === null) === (v.email === null), {
-    message: "Name and email must be cleared together",
-    path: ["email"],
-  })
+  // Name and email are independent here, and used to not be. Both halves of this patch were
+  // guarded by two refines whose only justification was CHECK chk_ai_widget_visitors_contact_pair
+  // — "a patch touching one alone can take a valid row to an invalid one, a 500 from Postgres
+  // instead of a 400 from here". 20261001_002 dropped that constraint so a visitor who
+  // volunteered a name and no address can be stored, and the guards then did real harm: adding
+  // an email to such a row was refused unless the name was re-sent with it.
+  //
+  // What the constraint protected is still true and still enforced, just not here: `status` is
+  // GENERATED from `email`, so a name alone keeps them a Visitor, and the summary worker needs
+  // an address it checks for itself.
   .refine((v) => Object.keys(v).length > 0, { message: "Nothing to update" });
 
 export type VisitorPatch = z.infer<typeof VisitorPatchSchema>;

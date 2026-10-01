@@ -40,9 +40,11 @@ console.log("\n1. renderProfileBlock — defaults emit the privacy floor and not
   // NOT empty, and deliberately so: the default allow-list withholds age, gender and phone, and
   // a model that is not told to withhold them will ask. A privacy default that is stricter than
   // the model's own behaviour has to be spent on; everything else is omitted until it changes.
-  assert(block.split("\n").length === 2, "defaults emit exactly one instruction", block);
+  assert(block.split("\n").length === 3, "defaults emit exactly two instructions", block);
   assert(/Never ask for, and never repeat back, age, gender, their phone number/.test(block),
-    "and that instruction is the privacy floor", block);
+    "the first is the privacy floor", block);
+  assert(/confirm it back to them once/.test(block),
+    "the second is the consent posture for volunteered details", block);
   assert(!/Warm and personable|Answer fully|Counsel:/.test(block), "no style line on an untouched profile");
   const d = schema.DEFAULT_PROFILE;
   assert(d.collection.allowed.includes("name") && d.collection.allowed.includes("email"),
@@ -85,6 +87,11 @@ console.log("\n3. renderProfileBlock — collection rules");
     collection: { ...schema.DEFAULT_PROFILE.collection, contact_ask: { enabled: false, first_at: [3, 5], gap: [5, 10] } },
   }));
   assert(/Never ask for contact details/.test(off), "contact_ask disabled is stated outright");
+
+  const noEmail = svc.renderProfileBlock(profile({
+    collection: { ...schema.DEFAULT_PROFILE.collection, allowed: ["study_preference"], may_ask_for: ["study_preference"], sensitive: [] },
+  }));
+  assert(!/confirm it back/.test(noEmail), "an institution that does not collect email is not told to confirm one");
 }
 
 console.log("\n4. repo.get — a stored shape that fails its schema falls back to defaults");

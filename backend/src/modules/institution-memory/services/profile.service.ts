@@ -193,7 +193,18 @@ function renderCollectionLines(profile: RackProfile): string[] {
     out.push(`  - Never ask for, and never repeat back, ${offLimits.map(label).join(", ")}.`);
   }
 
+  // The consent posture for volunteered details. The counsellor now reads an address out of
+  // prose and stores it, so the visitor has to hear that happen — confirming once is the
+  // difference between a counsellor that listened and one that harvested. Rendered whenever
+  // email is collectable, which is the default, because it applies to that default.
+  if (c.allowed.includes("email")) {
+    out.push("  - If they give you an email or phone number in passing, confirm it back to them once "
+      + "(\"I'll send that to <address> — is that right?\") before relying on it. Never ask twice.");
+  }
+
   if (c.sensitive.length) {
+    // The model is told, AND the extractor is never handed these fields (guest.routes subtracts
+    // them from `allowed`). Saying it here alone would be a promise the storage breaks.
     out.push(`  - Treat ${c.sensitive.map(label).join(", ")} as sensitive: use it to answer, never record it.`);
   }
 

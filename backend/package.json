@@ -70,6 +70,7 @@
     "test:manual-institution-job": "node --import tsx tests/manual-institution-job.ts",
     "test:ai-embed-owner": "node --import tsx tests/ai-embed-owner.ts",
     "test:widget-visitor-list": "node --import tsx tests/widget-visitor-list.ts",
+    "test:widget-visitor-context": "node --import tsx tests/widget-visitor-context.ts",
     "test:institution-rack-profile": "node --import tsx tests/institution-rack-profile.ts",
     "test:institution-memory-lifecycle": "node --import tsx tests/institution-memory-lifecycle.ts",
     "test:institution-memory-retrieval": "node --import tsx tests/institution-memory-retrieval.ts",

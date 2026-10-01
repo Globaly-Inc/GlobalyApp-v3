@@ -194,9 +194,13 @@ console.log("\n9. what an owner may edit");
   assert(ok({ age: "early 30s" }), "a verbatim age is accepted, not parsed as a number");
   assert(ok({ nationality: "Nepal", study_preference: "BSc Computer Science" }), "the other stated fields are editable");
 
-  assert(!ok({ name: "Jo" }), "name alone is rejected — it would violate the contact-pair CHECK");
-  assert(!ok({ email: "jo@example.com" }), "email alone is rejected for the same reason");
-  assert(!ok({ name: "Jo", email: null }), "setting one while clearing the other is rejected");
+  // These three asserted the opposite until 20261001_002 dropped chk_ai_widget_visitors_contact_pair.
+  // The halves are independent now, because a visitor who volunteers only "I'm John" has given
+  // us a real name and no address — and the two refines that enforced the old rule here were
+  // then REFUSING to add an email to such a row, which is why they went.
+  assert(ok({ name: "Jo" }), "a name alone is accepted — a half contact is a real answer now");
+  assert(ok({ email: "jo@example.com" }), "an email alone is accepted, and is what promotes them to a lead");
+  assert(ok({ name: "Jo", email: null }), "setting one while clearing the other is a legitimate edit");
   assert(!ok({ name: "Jo", email: "not-an-email" }), "a malformed email is rejected here, not by the database");
   assert(!ok({}), "an empty patch is rejected rather than counted as a successful edit");
 
@@ -259,6 +263,57 @@ console.log("\n10. the popups, the extractor and the patch schema agree");
   });
   const test = subs.success ? (subs.data.language_tests?.[0] as { sub_scores?: Record<string, string> }) : {};
   assert(subs.success && test.sub_scores?.Reading === "7" && !("Writing" in (test.sub_scores ?? {})), "a blank sub-score is dropped", JSON.stringify(test));
+}
+
+console.log("\n11. volunteered details, and the meta bag");
+{
+  // Same fakeDb shape as section 8 — the point is which columns each write names, because every
+  // one of these is a product rule hiding in an UPDATE.
+  const { recordMeta, recordVolunteeredContact } = await import("../src/modules/ai-counsellor/services/visitor.service.js");
+
+  function fakeDb() {
+    const captured: { updated?: Record<string, unknown> } = {};
+    const builder: Record<string, unknown> = {};
+    Object.assign(builder, {
+      where: () => builder,
+      whereNot: () => builder,
+      update: (data: Record<string, unknown>) => { captured.updated = data; return builder; },
+      returning: async () => [{ id: 1 }],
+      then: (res: (v: unknown) => unknown) => res(1),
+    });
+    const fake = () => builder;
+    Object.assign(fake, { fn: { now: () => "now()" }, raw: (sql: string) => sql });
+    return { db: fake as never, captured };
+  }
+
+  const withEmail = fakeDb();
+  await recordVolunteeredContact(withEmail.db, { visitorKey: "k", embedConfigId: 1, name: "John", email: "john@example.com" });
+  const e = withEmail.captured.updated ?? {};
+  assert(e.contact_status === "submitted", "a volunteered EMAIL settles the contact card for good", e);
+  assert("summary_status" in e, "and arms the summary they are now owed", e);
+  assert(e.contact_source === "volunteered", "recorded as volunteered, not as the card", e);
+  assert(!("status" in e), "never names the generated status column", e);
+
+  const nameOnly = fakeDb();
+  await recordVolunteeredContact(nameOnly.db, { visitorKey: "k", embedConfigId: 1, name: "John" });
+  const n = nameOnly.captured.updated ?? {};
+  assert(!("contact_status" in n), "a name ALONE does not settle the card — it still has an email to ask for", n);
+  assert(!("summary_status" in n), "and arms no summary, because there is nowhere to send one", n);
+  assert("name" in n, "but the name is stored, so the card can ask knowing who it is asking", n);
+
+  const meta = fakeDb();
+  await recordMeta(meta.db, 1, { referrer: "https://uni.edu/courses" });
+  assert(String((meta.captured.updated ?? {}).meta).includes("meta ||"),
+    "meta is merged in SQL, not read-modify-written", meta.captured.updated);
+
+  const empty = fakeDb();
+  await recordMeta(empty.db, 1, {});
+  assert(empty.captured.updated === undefined, "an empty patch issues no statement at all");
+
+  const huge = fakeDb();
+  await recordMeta(huge.db, 1, { blob: "x".repeat(5000) });
+  assert(huge.captured.updated === undefined,
+    "an oversized patch is dropped — this row is read on every single turn");
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

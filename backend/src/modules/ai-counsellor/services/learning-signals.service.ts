@@ -10,7 +10,7 @@
 import * as sessionsRepo from "../repositories/sessions.repository.js";
 import type { EmbedConfigRow } from "../repositories/embed.repository.js";
 import * as learnRepo from "../../institution-memory/repositories/learning.repository.js";
-import { enqueueLearning, hashActor, type ReviewMessageInput } from "../../institution-memory/index.js";
+import { enqueueLearning, getProfile, hashActor, type ReviewMessageInput } from "../../institution-memory/index.js";
 import { NotFoundError } from "../../../shared/errors.js";
 
 /** Who is thumbing: the signed-in student, or a widget visitor on one specific widget. */
@@ -57,9 +57,22 @@ export async function recordCounsellorReview(messageId: number, review: ReviewMe
   }
 }
 
-/** A widget visitor ended their chat. Learns only where the institution opted in. */
+/**
+ * A widget visitor ended their chat. Learns only where the institution opted in.
+ *
+ * Two sources of that opt-in, and either is enough. `ai_embed_configs.auto_learn` is per widget
+ * and predates the Rack; `institution_ai_profile.learning.auto_learn` is per institution and is
+ * what the portal actually exposes. Reading only the column — which is what this did until the
+ * Rack's toggle was wired — meant switching learning on in the portal changed nothing at all.
+ *
+ * OR rather than a precedence rule: the column is the older, narrower switch, so a widget that
+ * already has it on keeps working, and the institution-wide toggle turns it on for the rest.
+ * Turning it off in the portal does not force off a widget whose column was set deliberately.
+ */
 export async function onConversationEnd(config: EmbedConfigRow, visitorKey: string): Promise<void> {
-  if (!config.auto_learn || config.institution_id == null) return;
+  if (config.institution_id == null) return;
+  const rack = await getProfile(Number(config.institution_id)).catch(() => null);
+  if (!config.auto_learn && !rack?.profile.learning.auto_learn) return;
   const session = await sessionsRepo.findByVisitor(visitorKey, config.id);
   if (session) await enqueueLearning({ kind: "conversation", institution_id: Number(config.institution_id), session_id: session.id });
 }
