@@ -12,7 +12,7 @@ import * as sessionsRepo from "../repositories/sessions.repository.js";
 import * as creditService from "./credit.service.js";
 import * as embedRepo from "../repositories/embed.repository.js";
 import type { EmbedContext } from "./embed.service.js";
-import { retrieveMemories } from "../../institution-memory/index.js";
+import { profileBlockFor, retrieveMemories } from "../../institution-memory/index.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import * as storage from "../../../shared/storage/storageService.js";
 
@@ -229,7 +229,7 @@ export async function handleMessage(opts: {
     let memoryIds: string[] = [];
     if (!result) {
       const institutionId = opts.embed?.rackInstitutionId;
-      const [ragOutput, memory] = await Promise.all([
+      const [ragOutput, memory, rackProfile] = await Promise.all([
         rag.searchAll({
           query: opts.content,
           userId: opts.userId,
@@ -248,6 +248,9 @@ export async function handleMessage(opts: {
               onTrace: trace,
             })
           : null,
+        // The Rack's configuration half. Cached 60s and never throws, so it rides the same
+        // Promise.all rather than adding a round trip of its own.
+        institutionId ? profileBlockFor(institutionId) : "",
       ]);
       memoryIds = memory?.ids ?? [];
       sources = ragOutput.sources;
@@ -273,6 +276,7 @@ export async function handleMessage(opts: {
           discoveryTurn,
           returning,
           embedConfig: opts.embed?.config,
+          rackProfile,
           institutionGuidance: memory?.text,
           noMoneyData,
         }),

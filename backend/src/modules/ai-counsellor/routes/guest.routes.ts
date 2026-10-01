@@ -22,7 +22,7 @@ import * as rag from "../services/rag.service.js";
 import { parseBlocks, parseCards, parseChips, stripBlocks } from "../lib/card-parser.js";
 import { judgeConclusion } from "../lib/conclusion-detect.js";
 import { extractProfile } from "../lib/profile-extract.js";
-import { retrieveMemories } from "../../institution-memory/index.js";
+import { profileBlockFor, retrieveMemories } from "../../institution-memory/index.js";
 import * as learningSignals from "../services/learning-signals.service.js";
 import { ForbiddenError } from "../../../shared/errors.js";
 import { createChildLogger } from "../../../shared/logger.js";
@@ -206,7 +206,7 @@ export async function guestRoutes(app: FastifyInstance) {
       // RAG search (no profile context for guests), beside the institution's own counselling
       // memory — the same pairing as chat.service, and the memory call never throws.
       const trace = (step: string) => writeEvent(reply, "trace", { step });
-      const [ragOutput, memory] = await Promise.all([
+      const [ragOutput, memory, rackProfile] = await Promise.all([
         rag.searchAll({
           query: input.content,
           userId: 0, // ponytail: guests have no userId, profile context will be empty
@@ -223,6 +223,9 @@ export async function guestRoutes(app: FastifyInstance) {
               onTrace: trace,
             })
           : null,
+        // The Rack's configuration half — voice, behaviour, what may be collected. Cached 60s
+        // and never throws, so it rides the same Promise.all rather than adding a round trip.
+        embed?.rackInstitutionId ? profileBlockFor(embed.rackInstitutionId) : "",
       ]);
 
       if (ragOutput.sources.length) {
@@ -239,6 +242,7 @@ export async function guestRoutes(app: FastifyInstance) {
         // A returning visitor mid-thread must not get the opening greeting again.
         isFirstMessage: history.length === 0,
         embedConfig: embed?.config,
+        rackProfile,
         institutionGuidance: memory?.text,
         noMoneyData,
       });

@@ -62,6 +62,11 @@ export function buildSystemPrompt(opts: {
    * by institution-memory's retrieveMemories. Sits after BOUNDARIES so its own hard-limits
    * line is the last rule the model reads before the student data. */
   institutionGuidance?: string;
+  /** Embed mode: the institution's own voice/behaviour/collection settings, already rendered by
+   *  institution-memory's renderProfileBlock. Sits BEFORE the memory block so that block's
+   *  hard-limits line stays the last rule read before the student data. Empty when the
+   *  institution has changed nothing from the defaults. */
+  rackProfile?: string;
   /** This turn asked about money and retrieval found nothing to ground it: withhold, don't guess. */
   noMoneyData?: boolean;
 }): string {
@@ -225,6 +230,12 @@ export function buildSystemPrompt(opts: {
     "set aside course recommendations, and encourage them to speak with a qualified professional or " +
     "local support service.",
   );
+
+  // ── Institution Knowledge Rack configuration (embed) ──
+  // Configuration outranks anything the system learned about style, and says so itself. It is
+  // placed before the memory block deliberately: that block closes with HARD LIMITS STILL
+  // APPLY, which must remain the last instruction before the student's own data.
+  if (opts.rackProfile) sections.push(opts.rackProfile);
 
   // ── Institution counselling memory (embed) ──
   if (opts.institutionGuidance) sections.push(opts.institutionGuidance);
