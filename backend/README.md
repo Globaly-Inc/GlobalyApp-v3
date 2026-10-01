@@ -656,3 +656,6 @@ All async work goes through **LavinMQ** (AMQP). One worker process (`npm run job
         └── outbox-drainer.ts
 ```
 
+```bash
+trigger 0.1 
+```
