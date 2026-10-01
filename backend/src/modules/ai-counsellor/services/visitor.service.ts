@@ -20,6 +20,8 @@ const logger = createChildLogger("widget-visitor");
 const TABLE = "ai_widget_visitors";
 
 export type ContactStatus = "not_shown" | "shown" | "skipped" | "submitted";
+/** How we came to hold this visitor's details: the card, or their own words (20261001_002). */
+export type ContactSource = "card" | "volunteered";
 /** Derived by Postgres from whether the visitor ever left their details — see VisitorRow.status. */
 export type VisitorStatus = "visitor" | "lead";
 export type SummaryStatus = "pending" | "processing" | "sent" | "failed";
@@ -35,6 +37,14 @@ export interface VisitorRow {
   session_id: number | null;
   name: string | null;
   email: string | null;
+  phone: string | null;
+  /**
+   * Null until we hold something. `chk_ai_widget_visitors_contact_pair` is GONE (20261001_002):
+   * a visitor who only said "I'm John" has given us a real name and no address, and the halves
+   * are independently nullable now. `status` still derives from `email`, so a name alone keeps
+   * them a Visitor.
+   */
+  contact_source: ContactSource | null;
   /**
    * Read-only. A GENERATED ALWAYS column (20260923_001) that Postgres derives from `email`, so
    * it appears in every `returning("*")` here but must never be written — an INSERT or UPDATE
@@ -79,6 +89,15 @@ export interface VisitorRow {
   nationality: string | null;
   nationality_raw: string | null;
   study_preference: string | null;
+  /**
+   * Server-observed details with no column of their own — where the widget was embedded, the
+   * referrer, campaign parameters, locale. Always an object (CHECK), so no null handling.
+   *
+   * NOT a second home for model output. The four jsonb columns above are what the extractor
+   * writes, through cleanProfile; nothing read out of the conversation belongs in here. See
+   * 20261001_002 for why that line is drawn in the migration and not left to taste.
+   */
+  meta: Record<string, unknown>;
   summary_status: SummaryStatus | null;
   summary_attempts: number;
   summary_sent_at: Date | null;
@@ -162,6 +181,23 @@ export async function resolveVisitor(
  * different number, and there is no PATCH endpoint for widget settings, so those columns could
  * only ever have been changed by hand-written SQL anyway.
  */
+/**
+ * The contact-card schedule, and whether to run it at all.
+ *
+ * These were plain constants with a note that no institution had ever asked for different
+ * numbers. The Rack's collection rules now expose exactly this (CollectionSchema.contact_ask),
+ * so the constants became the DEFAULT rather than the rule — and until this parameter existed,
+ * an institution could switch "offer to email a summary" off in the portal, see the prompt stop
+ * asking in prose, and still watch the card appear on message four.
+ */
+export interface ContactAskRules {
+  enabled: boolean;
+  /** Absolute message number for the first ask, as [min, max]. */
+  first_at: readonly [number, number];
+  /** Message gap before every later ask, as [min, max]. */
+  gap: readonly [number, number];
+}
+
 /** Absolute message number for the first ask. */
 const FIRST_ASK_AT = { min: 3, max: 5 } as const;
 /**
@@ -171,6 +207,15 @@ const FIRST_ASK_AT = { min: 3, max: 5 } as const;
  * ignoring the card is asked roughly every 5-10 messages rather than on a fixed cadence.
  */
 const RE_ASK_GAP = { min: 5, max: 10 } as const;
+
+/** What every caller got before the Rack existed, and what a caller that passes nothing gets. */
+export const DEFAULT_CONTACT_ASK: ContactAskRules = {
+  enabled: true,
+  first_at: [FIRST_ASK_AT.min, FIRST_ASK_AT.max],
+  gap: [RE_ASK_GAP.min, RE_ASK_GAP.max],
+};
+
+const range = (pair: readonly [number, number]) => ({ min: pair[0], max: pair[1] });
 
 /**
  * A stable number in [min, max] for this visitor and this round.
@@ -193,7 +238,12 @@ function askAt(visitorKey: string, round: number, range: { min: number; max: num
     h ^= seed.charCodeAt(i);
     h = Math.imul(h, 0x01000193);
   }
-  return range.min + (Math.abs(h) % (range.max - range.min + 1));
+  // Span floored at 1. The schema rejects a reversed range, but this is the arithmetic that
+  // turns one into NaN — and a NaN threshold is never reached, so the card goes quiet with
+  // nothing logged. A value that reaches here by any other route (hand-written SQL, a future
+  // caller that skips zod) degrades to "always the min" instead of "never".
+  const span = Math.max(1, range.max - range.min + 1);
+  return range.min + (Math.abs(h) % span);
 }
 
 /**
@@ -206,11 +256,12 @@ function askAt(visitorKey: string, round: number, range: { min: number; max: num
 function contactCooledDown(
   visitor: Pick<VisitorRow, "visitor_key" | "contact_prompted_at_count" | "contact_prompt_count">,
   nextCount: number,
+  rules: ContactAskRules = DEFAULT_CONTACT_ASK,
 ): boolean {
   const last = visitor.contact_prompted_at_count;
   if (last == null) return true;
   const round = visitor.contact_prompt_count ?? 0;
-  return nextCount - last >= askAt(visitor.visitor_key, round, RE_ASK_GAP);
+  return nextCount - last >= askAt(visitor.visitor_key, round, range(rules.gap));
 }
 
 /**
@@ -229,12 +280,17 @@ export function shouldPrompt(
     "visitor_key" | "contact_status" | "contact_prompted_at_count" | "contact_prompt_count"
   >,
   nextCount: number,
+  rules: ContactAskRules = DEFAULT_CONTACT_ASK,
 ): boolean {
+  // The institution turned the card off. The prompt is told the same thing, but the card is
+  // drawn from here, so saying it in only one of the two places is how the two disagree.
+  if (!rules.enabled) return false;
+
   // They gave us their details. Never ask again, in this conversation or any later one.
   if (visitor.contact_status === "submitted") return false;
 
   if (visitor.contact_status === "not_shown") {
-    return nextCount >= askAt(visitor.visitor_key, 0, FIRST_ASK_AT);
+    return nextCount >= askAt(visitor.visitor_key, 0, range(rules.first_at));
   }
 
   // "shown" and "skipped" are treated alike on purpose. A card the visitor ignored and one
@@ -302,6 +358,7 @@ export function decidePrompt(
   >,
   nextCount: number,
   concluded: boolean,
+  rules: ContactAskRules = DEFAULT_CONTACT_ASK,
 ): PromptKind | null {
   // Already sent, sending, or failed. Offering again would duplicate it or promise a second one
   // we will not send. `pending` is fine to offer over — see summarySettled.
@@ -331,12 +388,15 @@ export function decidePrompt(
     // conclusion satisfies the "enough turns have passed" threshold on its own and brings the
     // contact card forward. A visitor who only just declined still gets their cooldown —
     // being at a natural ending does not make a second ask any less of a second ask.
-    if (visitor.contact_status !== "submitted") {
-      return contactCooledDown(visitor, nextCount) ? "contact" : null;
+    // `rules.enabled` guards this branch too, not only shouldPrompt below: a natural ending is
+    // the one place the card is brought FORWARD, so an institution that switched the card off
+    // would otherwise still meet it exactly once, at the end of every conversation.
+    if (rules.enabled && visitor.contact_status !== "submitted") {
+      return contactCooledDown(visitor, nextCount, rules) ? "contact" : null;
     }
   }
 
-  return shouldPrompt(visitor, nextCount) ? "contact" : null;
+  return shouldPrompt(visitor, nextCount, rules) ? "contact" : null;
 }
 
 /**
@@ -565,12 +625,17 @@ export async function recordContact(
     .update({
       name: opts.name ?? null,
       email: opts.email ?? null,
+      contact_source: "card",
       contact_status: "submitted",
       contact_submitted_at: db.fn.now(),
       // Arms the summary as OWED, not as due. The card promised them one, so from here it is
       // going to be sent; confirming the end of the chat just makes it due immediately, and
       // the idle/close fallback covers everyone who never presses the button.
-      summary_status: "pending",
+      //
+      // Conditional on an address since 20261001_002 dropped the pair constraint. The card
+      // always sends both, so this is a no-op here — it is stated because the constraint that
+      // used to guarantee it is gone, and the summary worker has nowhere to send without one.
+      summary_status: db.raw("CASE WHEN ? IS NOT NULL THEN 'pending' ELSE summary_status END", [opts.email ?? null]),
       updated_at: db.fn.now(),
     })
     .returning("*");
@@ -593,4 +658,119 @@ export async function attempt<T>(label: string, fn: () => Promise<T>): Promise<T
     });
     return null;
   }
+}
+
+/**
+ * Details the visitor gave in conversation rather than in the card.
+ *
+ * Why this is not just `recordContact({ action: "submit" })`:
+ *
+ *   - An EMAIL is the whole transaction. It promotes them to a lead, settles the contact card
+ *     for good, and arms the summary they are now owed — so it takes the full submit path.
+ *   - A NAME alone is not. It is worth storing (greeting someone by name costs nothing and
+ *     reads as having listened), but it answers none of the card's question, so
+ *     `contact_status` is left exactly where it was and the card may still ask later — with
+ *     their name already known.
+ *
+ * Never overwrites what the card captured: a visitor who typed their details in has confirmed
+ * them, and a model reading a different address out of a later sentence must not replace that.
+ * The same guard makes this idempotent across turns, since the extractor re-reads a message it
+ * has already seen whenever the visitor restates something.
+ */
+export async function recordVolunteeredContact(
+  db: Knex,
+  opts: { visitorKey: string; embedConfigId: number; name?: string; email?: string; phone?: string },
+): Promise<VisitorRow | undefined> {
+  const where = { visitor_key: opts.visitorKey, embed_config_id: opts.embedConfigId };
+  const hasEmail = !!opts.email;
+
+  const patch: Record<string, unknown> = { contact_source: "volunteered", updated_at: db.fn.now() };
+  // REPLACED, not COALESCE'd. These used to only fill a blank, so "sorry, it's john@gmail.com
+  // not john@gmial.com" landed nowhere and the summary went to the typo — which is somebody
+  // else's inbox, holding this visitor's conversation. The extractor reports only what the
+  // LATEST message states (see lib/profile-extract), so a value arriving here is a fresh
+  // statement rather than a re-read of an old one, and the newest statement is the one to keep.
+  if (opts.name) patch.name = opts.name;
+  if (opts.email) patch.email = opts.email;
+  if (opts.phone) patch.phone = opts.phone;
+
+  if (hasEmail) {
+    // Enough to stop asking: we have what the card exists to collect, and asking someone for
+    // something they just told us reads as not listening.
+    patch.contact_status = "submitted";
+    // When we FIRST got details, not when they last corrected them.
+    patch.contact_submitted_at = db.raw("COALESCE(contact_submitted_at, now())");
+  }
+
+  // NOTE WHAT IS DELIBERATELY ABSENT: summary_status.
+  //
+  // This used to arm the summary the moment an address appeared in the chat, and that was wrong
+  // in a way worth spelling out, because the card path looks identical and is fine. The card's
+  // own copy asks "want a copy of this conversation?" — submitting it IS the request. An address
+  // typed in passing is not: the visitor may have been giving it for a brochure, for an
+  // application, or to a human. Arming on that meant chat-summary.worker would mail them the
+  // entire transcript once they went idle (it sends on `end_confirmed` OR an idle cutoff, so no
+  // acceptance was ever required), to an address given for something else.
+  //
+  // The consent already exists further along: once we hold an email, decidePrompt offers the
+  // end-of-chat card at a natural ending, and accepting it runs recordConversationEnd, which is
+  // what sets `pending`. Volunteering an address makes that offer possible; it is not the offer.
+
+  const [row] = await db<VisitorRow>(TABLE)
+    .where(where)
+    // `contact_status = 'submitted'` is NOT the guard any more, and that was the bug: it means
+    // "we have asked and been answered, stop showing the card", not "this address is now
+    // immutable". It only read as immutability because the card was once the sole writer.
+    //
+    // What actually must not be overwritten is narrower, and these are it:
+    //
+    //   1. An address the visitor TYPED INTO THE FORM. That is their own keystrokes, confirmed
+    //      in a field they could see; a model reading a later sentence does not get to replace
+    //      it. IS DISTINCT FROM, not whereNot: `NOT (contact_source = 'card')` is NULL for a row
+    //      that never had contact details, and a NULL predicate excludes the row — which would
+    //      lock out the very first volunteered capture.
+    //   2. An address a summary has already gone to. Once it is sent, correcting the column
+    //      changes nothing that happened and only loses the record of where it went.
+    .whereRaw("contact_source IS DISTINCT FROM 'card'")
+    .where((q) => q.whereNull("summary_status").orWhere({ summary_status: "pending" }))
+    .update(patch)
+    .returning("*");
+  return row;
+}
+
+/** Serialized size past which a merge is dropped. A bag merged every turn would otherwise grow
+ *  without limit, and this row is read on every single one. */
+const MAX_META_BYTES = 4096;
+
+/**
+ * Merge server-observed details into the visitor's `meta`.
+ *
+ * Shallow merge in SQL (`meta || patch`) rather than the read-modify-write recordProfile needs:
+ * there is no per-entry dedupe to do here, so one statement is enough and two turns landing
+ * together cannot lose each other's keys.
+ *
+ * Best-effort and size-capped. Nothing here is worth failing a turn for, and a bag that grows
+ * every message would quietly become the most expensive column on the row.
+ *
+ * Call it with what the REQUEST carried. Never with anything a model returned — see the
+ * migration for why that is a rule rather than a preference.
+ */
+export async function recordMeta(
+  db: Knex,
+  visitorId: number,
+  patch: Record<string, unknown>,
+): Promise<void> {
+  const keys = Object.keys(patch);
+  if (!keys.length) return;
+  const json = JSON.stringify(patch);
+  if (json.length > MAX_META_BYTES) {
+    logger.warn("Visitor meta patch too large; dropped", { visitorId, bytes: json.length, keys });
+    return;
+  }
+  await db(TABLE)
+    .where({ id: visitorId })
+    .update({
+      meta: db.raw("meta || ?::jsonb", [json]),
+      updated_at: db.fn.now(),
+    });
 }

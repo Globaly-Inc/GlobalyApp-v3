@@ -72,6 +72,12 @@ export type WidgetVisitor = {
   /** Null for everyone who never handed over their details — the anonymous majority. */
   name: string | null;
   email: string | null;
+  phone: string | null;
+  /**
+   * How we came to hold these details. "volunteered" means the counsellor read them out of what
+   * the visitor typed; "card" means they filled the form in. Null when we hold none.
+   */
+  contact_source: "card" | "volunteered" | null;
   status: VisitorStatus;
   contact_status: "not_shown" | "shown" | "skipped" | "submitted";
   contact_submitted_at: string | null;
@@ -121,7 +127,9 @@ export type VisitorListResult = { data: WidgetVisitor[]; total: number; counts: 
  * from name/email — the backend rejects any key outside this shape rather than ignoring it.
  *
  * `null` clears a field; a key left out is untouched. Name and email must move TOGETHER — the
- * table's CHECK forbids half a contact — so both keys are sent, or neither.
+ * the card asks for both and its copy promises a summary, which needs an address — so both
+ * keys are sent, or neither. (The DB no longer forbids a half contact: details a visitor
+ * volunteers in conversation can arrive one at a time.)
  */
 export type VisitorPatch = {
   name?: string | null;

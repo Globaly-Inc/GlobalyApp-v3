@@ -61,6 +61,12 @@ async function db(institutionId: number): Promise<Knex> {
 /** For reads: null means "no schema, so no memories" — the caller returns empty. */
 const dbOrNull = (institutionId: number) => _memoryDeps.tenantDb(institutionId);
 
+// Shared with profile.repository so the Rack has ONE schema resolution and ONE cache: a second
+// copy would also need its own clearSchemaCache, and the test seam above would only fake one
+// of them.
+export const tenantDb = (institutionId: number) => db(institutionId);
+export const tenantDbOrNull = (institutionId: number) => dbOrNull(institutionId);
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 const COLUMNS = [

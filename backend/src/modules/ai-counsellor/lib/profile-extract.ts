@@ -1,6 +1,9 @@
 import { generateText } from "../../../shared/ai/gemini.js";
 import { parseModelJson } from "../../../shared/ai/parse-model-json.js";
-import { cleanProfile, type VisitorProfile } from "./card-parser.js";
+import {
+  CONTACT_FIELDS, PROFILE_KEYS, PROFILE_SCALARS, cleanProfile,
+  type ContactField, type VisitorContact, type VisitorProfile,
+} from "./card-parser.js";
 import { resolveCountryName } from "../../superadmin/data-extraction/lib/lookup-catalog.js";
 import type { Turn } from "./conclusion-detect.js";
 import { createChildLogger } from "../../../shared/logger.js";
@@ -73,6 +76,20 @@ export const LOOKS_LIKE_BACKGROUND = new RegExp(
 const BARE_AGE = /\b(i'?m|i am|im|age)\s*:?\s*\d{1,2}\b|\b\d{1,2}\s*(years?|yrs?)\b/i;
 
 /**
+ * A visitor handing over their details in passing — the case the contact CARD cannot see.
+ *
+ * Matched on framing and on the shape of an address, never on a vocabulary of names. The email
+ * pattern alone is most of the value: "you can send it to john@example.com" carries no keyword
+ * at all.
+ */
+const LOOKS_LIKE_CONTACT = new RegExp([
+  "[\\w.+-]+@[\\w-]+\\.[\\w.-]+",                                   // an address, anywhere
+  "\\bmy name is\\b|\\bi'?m called\\b|\\bthis is\\b",                    // "my name is John"
+  "\\bsend (it|them|the|me|that)\\b|\\bemail me\\b|\\breach me\\b|\\bcontact me\\b",
+  "\\bmy (email|e-mail|number|phone|mobile)\\b",
+].join("|"), "i");
+
+/**
  * "I'm Nepali", "I am an Italian", "im Chinese" — a demonym, which no framing word above catches.
  * Matched by SUFFIX (-i, -an, -ese, -ish), not a list of nationalities. Over-fires on "I'm Rohan";
  * that is one cheap call returning {}.
@@ -137,6 +154,28 @@ const SYSTEM = [
 ].join("\n");
 
 /**
+ * The extra instructions for contact details, added only for the fields this institution allows.
+ *
+ * Built per call rather than baked into SYSTEM because the allow-list is per institution: asking
+ * a model for a phone number and then dropping it is a waste, and leaving the key in the shape
+ * invites it to fill one in.
+ */
+function contactClause(allowed: readonly ContactField[]): string {
+  if (!allowed.length) return "";
+  const shape = allowed.map((f) => `"${f}":""`).join(",");
+  return [
+    "",
+    `ALSO return these keys when the STUDENT gives them about THEMSELVES: {${shape}}`,
+    '  "I\'m John, you can send it to john@example.com" -> {"name":"John","email":"john@example.com"}',
+    "- ONLY their own details. An address the COUNSELLOR gave them — an admissions office, a",
+    "  department, anything on the institution's own website — is never theirs. If the only",
+    "  address in the conversation came from the counsellor, return no email key.",
+    "- Never guess an address from their name, and never complete a partial one.",
+    "- A name is what they call themselves, not a course, a city or an institution.",
+  ].join("\n");
+}
+
+/**
  * Whether this turn is worth a call. Exported because it is the only branch here that can lose
  * data silently — a message it rejects is never looked at again.
  *
@@ -148,12 +187,71 @@ const SYSTEM = [
 export function worthExtracting(message: string, previousCounsellorTurn?: string): boolean {
   const text = message.trim();
   if (LOOKS_LIKE_BACKGROUND.test(text) || BARE_AGE.test(text) || DEMONYM.test(text)) return true;
+  // Volunteered details carry none of the above — "I'm John" has no demonym suffix and
+  // "send it to john@example.com" has no background keyword.
+  if (LOOKS_LIKE_CONTACT.test(text)) return true;
   // An answer carries no keyword of its own — "22", "Nepali", "yes, 7 in each" — so it is judged
   // by the question it answers. Only the counsellor's LAST question counts: almost every
   // counsellor turn mentions a course somewhere, and matching the whole turn would make every
   // reply qualify.
   const question = previousCounsellorTurn && lastQuestion(previousCounsellorTurn);
   return !!question && LOOKS_LIKE_BACKGROUND.test(question);
+}
+
+/** Addresses and numbers the COUNSELLOR put on screen — the institution's own, never the visitor's. */
+function counsellorContacts(history: Turn[]): string[] {
+  const text = history.filter((t) => t.role === "model").map((t) => t.parts.map((p) => p.text).join(" ")).join(" ");
+  return [...text.matchAll(/[\w.+-]+@[\w-]+\.[\w.-]+|\+?\d[\d\s().-]{7,}\d/g)]
+    .map((m) => m[0].trim().toLowerCase());
+}
+
+const EMAIL_RE = /^[\w.+-]+@[\w-]+\.[\w.-]+$/;
+/** Loose on purpose — numbers are written a dozen ways and this only has to reject prose. */
+const PHONE_RE = /^\+?[\d\s().-]{7,20}$/;
+const MAX_CONTACT_VALUE = 200;
+
+/**
+ * The contact keys the model returned, cleaned — or null.
+ *
+ * Every value is validated for SHAPE here rather than trusted, and anything the counsellor
+ * itself printed is rejected: a widget that has just shown the admissions address is the most
+ * likely way for a model to hand back an "email" the visitor never gave.
+ */
+export function cleanContact(
+  raw: Record<string, unknown>,
+  allowed: readonly ContactField[],
+  counsellorOwn: string[] = [],
+): VisitorContact | null {
+  const out: VisitorContact = {};
+  for (const field of CONTACT_FIELDS) {
+    if (!allowed.includes(field)) continue;
+    const value = raw[field];
+    if (typeof value !== "string") continue;
+    const trimmed = value.trim().slice(0, MAX_CONTACT_VALUE);
+    if (!trimmed) continue;
+    if (counsellorOwn.includes(trimmed.toLowerCase())) continue;
+    if (field === "email" && !EMAIL_RE.test(trimmed)) continue;
+    if (field === "phone" && !PHONE_RE.test(trimmed)) continue;
+    out[field] = trimmed;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+/**
+ * Drop anything this institution has not allowed. The model is told; it is also checked.
+ *
+ * Typed on VisitorProfile rather than a generic Record because that interface has no index
+ * signature — and giving it one to satisfy a helper would weaken every other reader of it.
+ */
+export function applyCollectionRules(
+  value: VisitorProfile | null,
+  allowed: readonly string[],
+): VisitorProfile | null {
+  if (!value) return null;
+  const out = Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).filter(([k]) => allowed.includes(k)),
+  ) as VisitorProfile;
+  return Object.keys(out).length ? out : null;
 }
 
 /** The counsellor's most recent words, or undefined at the start of a chat. */
@@ -188,15 +286,26 @@ function transcriptOf(history: Turn[], latestUserMessage: string): string {
  * facts to return. Re-returning them would overwrite an owner's correction with a value the
  * visitor never restated, and resurrect a record entry the owner deleted.
  */
+export interface Extraction {
+  profile: VisitorProfile | null;
+  /** Details the visitor volunteered in prose. Routed to recordVolunteeredContact, not recordProfile. */
+  contact: VisitorContact | null;
+}
+
+const NOTHING: Extraction = { profile: null, contact: null };
+
 export async function extractProfile(
   history: Turn[],
   latestUserMessage: string,
-): Promise<VisitorProfile | null> {
-  if (!worthExtracting(latestUserMessage, lastCounsellorTurn(history))) return null;
+  /** The institution's Rack collection rules. Anything absent is neither asked for nor kept. */
+  allowed: readonly string[] = [...PROFILE_SCALARS, ...PROFILE_KEYS],
+): Promise<Extraction> {
+  if (!worthExtracting(latestUserMessage, lastCounsellorTurn(history))) return NOTHING;
+  const contactAllowed = CONTACT_FIELDS.filter((f) => allowed.includes(f));
 
   try {
     const raw = await generateText({
-      system: SYSTEM,
+      system: SYSTEM + contactClause(contactAllowed),
       prompt: transcriptOf(history, latestUserMessage),
       maxTokens: 700,
       // Extraction, not writing. Any creativity here is a fabricated grade or an invented gender.
@@ -215,13 +324,16 @@ export async function extractProfile(
         length: raw.length,
         looksJson: raw.trimStart().startsWith("{"),
       });
-      return null;
+      return NOTHING;
     }
 
     // Unknown keys dropped, values bounded, strings only. The model is told the exact shape but
-    // is not trusted to have produced it.
-    const profile = cleanProfile(value);
+    // is not trusted to have produced it. The allow-list is applied AFTER cleaning and not
+    // instead of the prompt instruction — a model that returns a field it was never asked for is
+    // exactly the case the stored rule has to catch.
+    const profile = applyCollectionRules(cleanProfile(value), allowed);
     if (profile) await resolveNationality(profile);
+    const contact = cleanContact(value, contactAllowed, counsellorContacts(history));
 
     // Both key sets, because "the model only returned one key" and "the cleaner dropped one" are
     // the two ways this loses data and they are indistinguishable from the columns alone.
@@ -230,12 +342,13 @@ export async function extractProfile(
     logger.debug("Profile extracted", {
       returned: Object.keys(value),
       kept: profile ? Object.keys(profile) : null,
+      contact: contact ? Object.keys(contact) : null,
       via,
     });
-    return profile;
+    return { profile, contact };
   } catch (err) {
     logger.warn("Profile extraction failed", { err: err instanceof Error ? err.message : String(err) });
-    return null;
+    return NOTHING;
   }
 }
 

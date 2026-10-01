@@ -1,5 +1,5 @@
-// Institution portal: what its counsellor has been told and has learned, and the widget
-// conversations it can review. Everything here is scoped by req.institutionId — the tenant
+// Institution portal: how its counsellor is configured, what it has been told and has learned,
+// and the widget conversations it can review. Everything here is scoped by req.institutionId — the tenant
 // plugin resolves it from the token, and the repository turns it into that institution's schema.
 //
 // Mounted by the ai-counsellor module under /api/v3/ai-chat/institution/…; the review action
@@ -13,6 +13,7 @@ import * as learnRepo from "../repositories/learning.repository.js";
 import * as memoryRepo from "../repositories/memory.repository.js";
 import * as memories from "../services/memory.service.js";
 import { clearRetrievalCache } from "../services/retrieval.service.js";
+import { getProfile, parsePatch, patchProfile } from "../services/profile.service.js";
 import { CreateMemorySchema, MemoryQuerySchema, PatchMemorySchema, booleanQueryParam, type Actor } from "../schemas/memory.schema.js";
 import { NotFoundError } from "../../../shared/errors.js";
 
@@ -30,6 +31,20 @@ const configIdsOf = async (institutionId: number) =>
 
 export async function institutionMemoryRoutes(app: FastifyInstance) {
   app.addHook("preHandler", requireInstitutionContext);
+
+  // ── Knowledge Rack configuration ──
+  // Voice, behaviour and data-collection rules. One row per institution, in its own schema;
+  // an institution that has never saved reads as defaults rather than 404.
+  app.get("/institution/ai-profile", async (req, reply) => {
+    return reply.send(await getProfile(req.institutionId));
+  });
+
+  app.patch("/institution/ai-profile", async (req, reply) => {
+    // expected_version is the row the editor was built from; a mismatch is a 409 from the
+    // service, never a silent merge.
+    const { expected_version, ...patch } = parsePatch(req.body ?? {});
+    return reply.send(await patchProfile(req.institutionId, patch, Number(req.auth.sub), expected_version));
+  });
 
   // ── Memories ──
   app.get("/institution/memories", async (req, reply) => {

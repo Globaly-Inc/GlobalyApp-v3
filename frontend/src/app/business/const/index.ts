@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Award, Bot, BookOpen, Building2, CalendarDays, CreditCard, Coins, GraduationCap, Globe, Handshake, Home, Inbox, MapPin, Megaphone, MessageSquare, PenLine, Plug, Receipt, Settings, UserSearch, Users } from "lucide-react";
+import { Award, Bot, BookOpen, Brain, Building2, CalendarDays, CreditCard, Coins, GraduationCap, Globe, Handshake, Home, Inbox, MapPin, Megaphone, MessageSquare, PenLine, Plug, Receipt, Settings, UserSearch, Users } from "lucide-react";
 
 export type BusinessNavItem = { icon: LucideIcon; label: string; href: string };
 export type BusinessNavGroup = { icon: LucideIcon; label: string; items: BusinessNavItem[] };
@@ -50,6 +50,10 @@ export const BUSINESS_NAV_GROUPS: BusinessNavGroup[] = [
       { icon: Receipt, label: "Application charges", href: "/business/settings/application-charges" },
       { icon: Plug, label: "Integrations", href: "/business/settings/integrations" },
       { icon: Bot, label: "AI embed", href: "/business/settings/ai-embed" },
+      // Institution-only on the backend (requireInstitutionContext). The page says so
+      // itself rather than vanishing from the sidebar — a business asking where its
+      // counsellor's knowledge lives deserves the answer, not a missing menu item.
+      { icon: Brain, label: "AI knowledge", href: "/business/ai-knowledge" },
     ],
   },
   { icon: Inbox, label: "Inbox", items: [{ icon: Inbox, label: "Inbox", href: "/business/messages" }] },

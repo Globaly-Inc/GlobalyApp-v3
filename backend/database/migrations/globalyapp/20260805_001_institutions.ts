@@ -8,7 +8,7 @@ export async function up(knex: Knex): Promise<void> {
     t.integer("platform_user_id").unsigned().notNullable().references("id").inTable("platform_users").onDelete("CASCADE");
     t.text("first_name").notNullable();
     t.text("last_name").notNullable();
-    t.text("email").unique().notNullable();
+    t.text("email").notNullable();
     t.text("phone").nullable();
 
     // Identity

@@ -194,9 +194,13 @@ console.log("\n9. what an owner may edit");
   assert(ok({ age: "early 30s" }), "a verbatim age is accepted, not parsed as a number");
   assert(ok({ nationality: "Nepal", study_preference: "BSc Computer Science" }), "the other stated fields are editable");
 
-  assert(!ok({ name: "Jo" }), "name alone is rejected — it would violate the contact-pair CHECK");
-  assert(!ok({ email: "jo@example.com" }), "email alone is rejected for the same reason");
-  assert(!ok({ name: "Jo", email: null }), "setting one while clearing the other is rejected");
+  // These three asserted the opposite until 20261001_002 dropped chk_ai_widget_visitors_contact_pair.
+  // The halves are independent now, because a visitor who volunteers only "I'm John" has given
+  // us a real name and no address — and the two refines that enforced the old rule here were
+  // then REFUSING to add an email to such a row, which is why they went.
+  assert(ok({ name: "Jo" }), "a name alone is accepted — a half contact is a real answer now");
+  assert(ok({ email: "jo@example.com" }), "an email alone is accepted, and is what promotes them to a lead");
+  assert(ok({ name: "Jo", email: null }), "setting one while clearing the other is a legitimate edit");
   assert(!ok({ name: "Jo", email: "not-an-email" }), "a malformed email is rejected here, not by the database");
   assert(!ok({}), "an empty patch is rejected rather than counted as a successful edit");
 
@@ -259,6 +263,102 @@ console.log("\n10. the popups, the extractor and the patch schema agree");
   });
   const test = subs.success ? (subs.data.language_tests?.[0] as { sub_scores?: Record<string, string> }) : {};
   assert(subs.success && test.sub_scores?.Reading === "7" && !("Writing" in (test.sub_scores ?? {})), "a blank sub-score is dropped", JSON.stringify(test));
+}
+
+console.log("\n11. volunteered details, and the meta bag");
+{
+  // Same fakeDb shape as section 8 — the point is which columns each write names, because every
+  // one of these is a product rule hiding in an UPDATE.
+  const { recordMeta, recordVolunteeredContact } = await import("../src/modules/ai-counsellor/services/visitor.service.js");
+
+  function fakeDb() {
+    const captured: { updated?: Record<string, unknown>; sql?: string } = {};
+    const builder: Record<string, unknown> = {};
+    const note = (fragment: string) => { captured.sql = `${captured.sql ?? ""} ${fragment}`; };
+    Object.assign(builder, {
+      // knex's `where` takes an object OR a callback that builds a grouped clause. The callback
+      // form is where the summary guard lives, so it has to be INVOKED, not just counted.
+      where: (arg: unknown) => {
+        if (typeof arg === "function") (arg as (b: unknown) => unknown)(builder);
+        else if (typeof arg === "object" && arg) note(JSON.stringify(arg));
+        return builder;
+      },
+      whereNot: () => builder,
+      whereNull: (c: string) => { note(`${c} IS NULL`); return builder; },
+      orWhere: (arg: unknown) => { note(JSON.stringify(arg)); return builder; },
+      // The two guards that matter are raw, so this is where they land.
+      whereRaw: (sql: string) => { note(sql); return builder; },
+      update: (data: Record<string, unknown>) => { captured.updated = data; return builder; },
+      returning: async () => [{ id: 1 }],
+      then: (res: (v: unknown) => unknown) => res(1),
+    });
+    const fake = () => builder;
+    Object.assign(fake, { fn: { now: () => "now()" }, raw: (sql: string) => sql });
+    return { db: fake as never, captured };
+  }
+
+  const withEmail = fakeDb();
+  await recordVolunteeredContact(withEmail.db, { visitorKey: "k", embedConfigId: 1, name: "John", email: "john@example.com" });
+  const e = withEmail.captured.updated ?? {};
+  assert(e.contact_status === "submitted", "a volunteered EMAIL settles the contact card for good", e);
+  assert(!("summary_status" in e),
+    "but arms NO summary — an address typed in passing is not a request for the transcript", e);
+  assert(e.contact_source === "volunteered", "recorded as volunteered, not as the card", e);
+  assert(!("status" in e), "never names the generated status column", e);
+
+  const nameOnly = fakeDb();
+  await recordVolunteeredContact(nameOnly.db, { visitorKey: "k", embedConfigId: 1, name: "John" });
+  const n = nameOnly.captured.updated ?? {};
+  assert(!("contact_status" in n), "a name ALONE does not settle the card — it still has an email to ask for", n);
+  assert(!("summary_status" in n), "and arms no summary, because there is nowhere to send one", n);
+  assert("name" in n, "but the name is stored, so the card can ask knowing who it is asking", n);
+
+  // A typo must be correctable. The first volunteered address used to lock the row — the filter
+  // skipped `submitted` rows AND the writes were COALESCE'd — so "sorry, it's .com not .cmo"
+  // landed nowhere and the summary went to a stranger holding this visitor's conversation.
+  const fix = fakeDb();
+  await recordVolunteeredContact(fix.db, { visitorKey: "k", embedConfigId: 1, email: "john@gmail.com" });
+  const f = fix.captured.updated ?? {};
+  assert(f.email === "john@gmail.com", "a corrected address REPLACES the stored one, not COALESCE'd away", f);
+  assert(String(f.contact_submitted_at).includes("COALESCE"),
+    "but the timestamp keeps when we FIRST got details", f.contact_submitted_at);
+
+  const sql = fix.captured.sql ?? "";
+  assert(/contact_source IS DISTINCT FROM 'card'/i.test(sql),
+    "a form-typed address is protected — the visitor's own keystrokes beat a model's reading", sql);
+  assert(!/contact_status.*submitted/i.test(sql.replace(/set .*/is, "")),
+    "and contact_status is no longer the guard: it means 'stop asking', not 'immutable'", sql);
+  assert(/summary_status/i.test(sql),
+    "an address a summary already went to is history and stays put", sql);
+
+  // The consent path the volunteered address makes POSSIBLE but does not itself trigger: once an
+  // email is held, the end-of-chat card can be offered, and accepting it is what arms the summary.
+  const { decidePrompt, DEFAULT_CONTACT_ASK } = await import("../src/modules/ai-counsellor/services/visitor.service.js");
+  const holder = {
+    visitor_key: "k", contact_status: "submitted" as const, contact_prompted_at_count: null,
+    contact_prompt_count: 0, email: "john@example.com", conversation_state: "active" as const,
+    end_prompt_count: 0, summary_status: null,
+  };
+  assert(decidePrompt(holder, 6, true, DEFAULT_CONTACT_ASK) === "ending",
+    "a visitor whose address we hold is OFFERED a summary at a natural ending");
+  assert(decidePrompt(holder, 6, false, DEFAULT_CONTACT_ASK) === null,
+    "and is offered nothing while the conversation is still going");
+  assert(decidePrompt({ ...holder, summary_status: "sent" as const }, 6, true, DEFAULT_CONTACT_ASK) === null,
+    "a summary already sent is never offered again");
+
+  const meta = fakeDb();
+  await recordMeta(meta.db, 1, { referrer: "https://uni.edu/courses" });
+  assert(String((meta.captured.updated ?? {}).meta).includes("meta ||"),
+    "meta is merged in SQL, not read-modify-written", meta.captured.updated);
+
+  const empty = fakeDb();
+  await recordMeta(empty.db, 1, {});
+  assert(empty.captured.updated === undefined, "an empty patch issues no statement at all");
+
+  const huge = fakeDb();
+  await recordMeta(huge.db, 1, { blob: "x".repeat(5000) });
+  assert(huge.captured.updated === undefined,
+    "an oversized patch is dropped — this row is read on every single turn");
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

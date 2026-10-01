@@ -154,6 +154,18 @@ export type ProfileScalar = (typeof PROFILE_SCALARS)[number];
 /** Every scalar column the writer may set, including the one only the server produces. */
 export const PROFILE_SCALAR_COLUMNS = [...PROFILE_SCALARS, "nationality_raw"] as const;
 
+/**
+ * Contact details, which a visitor may VOLUNTEER mid-conversation rather than type into the card.
+ *
+ * Kept out of PROFILE_SCALARS deliberately: those are merged into the visitor row by
+ * recordProfile, and these go through recordVolunteeredContact instead, because handing over an
+ * address is a different act from mentioning a grade — it promotes the row to a lead, suppresses
+ * the contact card, and arms a summary email.
+ */
+export const CONTACT_FIELDS = ["name", "email", "phone"] as const;
+export type ContactField = (typeof CONTACT_FIELDS)[number];
+export type VisitorContact = Partial<Record<ContactField, string>>;
+
 /** Bounds on model output going into a database column. Generous, but not unbounded. */
 const MAX_PROFILE_ITEMS = 10;
 const MAX_PROFILE_VALUE = 200;
