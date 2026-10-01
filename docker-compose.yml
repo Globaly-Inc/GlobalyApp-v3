@@ -525,6 +525,77 @@ services:
     networks:
       - globalyapp
 
+  # Long-running poller (60s): emails widget visitors their conversation summary.
+  chat-summary-worker:
+    container_name: globalyapp-chat-summary-worker
+    image: globalyapp-backend:local
+    profiles: ["globalyapp-chat-summary"]
+    command: npm run job:chat-summary
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dragonfly:
+        condition: service_started
+      lavinmq:
+        condition: service_started
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
+  # One-shot sweeps below: each runs once and exits (cron jobs in production).
+  # Run manually with e.g. `docker compose --profile globalyapp-guide-email up guide-email-worker`.
+  guide-email-worker:
+    container_name: globalyapp-guide-email-worker
+    image: globalyapp-backend:local
+    profiles: ["globalyapp-guide-email"]
+    command: npm run job:guide-email
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
+  seo-snapshot-worker:
+    container_name: globalyapp-seo-snapshot-worker
+    image: globalyapp-backend:local
+    profiles: ["globalyapp-seo-snapshot"]
+    command: npm run job:seo-snapshot
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
+  referral-codes-worker:
+    container_name: globalyapp-referral-codes-worker
+    image: globalyapp-backend:local
+    profiles: ["globalyapp-referral-codes"]
+    command: npm run job:referral-codes
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
   lavinmq:
     container_name: globalyapp-lavinmq
     image: cloudamqp/lavinmq:2.4
