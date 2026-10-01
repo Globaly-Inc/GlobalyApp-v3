@@ -10,6 +10,7 @@ import {
   CONTACT_STATUS_LABELS, CONVERSATION_STATE_LABELS, SUMMARY_STATUS_LABELS, VISITOR_STATUS_BADGE,
 } from "../const";
 import type { WidgetVisitor } from "../apis/types";
+import { visitorNationality } from "../utils";
 
 /**
  * Every card on this page carries this. The fields below are not a profile the person filled
@@ -33,11 +34,7 @@ export function VisitorDetailCards({
   visitor,
   onEdit,
 }: Readonly<{ visitor: WidgetVisitor; onEdit: () => void }>) {
-  // Shows the resolved country and the visitor's own wording when the two differ, so a bad
-  // resolution ("Kashmiri" → nothing, "Nepali" → Nepal) is visible rather than hidden.
-  const nationality = visitor.nationality && visitor.nationality_raw && visitor.nationality_raw !== visitor.nationality
-    ? `${visitor.nationality} (said “${visitor.nationality_raw}”)`
-    : visitor.nationality ?? visitor.nationality_raw;
+  const nationality = visitorNationality(visitor);
 
   return (
     <>

@@ -1,7 +1,9 @@
-import { httpDelete, httpGet, httpPatch, httpPost } from "@/lib/api/http";
+import { httpDelete, httpGet, httpPatch, httpPost, httpPostForm, httpPostNoContent } from "@/lib/api/http";
+import type { MessageAttachment } from "@/components/chat/types";
 import type {
-  CreateEmbedConfigInput, EmbedConfig, EmbedConfigListResponse, EnsureEmbedResult,
-  SendSnippetInput, SendSnippetResult, UpdateEmbedConfigInput,
+  ConversationControlResult, CreateEmbedConfigInput, EmbedConfig, EmbedConfigListResponse, EnsureEmbedResult, HandoffMode,
+  SendSnippetInput, SendSnippetResult, SendVisitorMessageResult,
+  UpdateEmbedConfigInput,
   VisitorCounts, VisitorListParams, VisitorListResult, VisitorMessage, VisitorPatch, WidgetVisitor,
 } from "./types";
 
@@ -61,5 +63,30 @@ export const aiWidgetRealApi = {
   listVisitorMessages: async (id: number): Promise<VisitorMessage[]> => {
     const res = await httpGet<{ messages: VisitorMessage[] }>(`/ai-chat/embed/visitors/${id}/messages`);
     return res.messages;
+  },
+
+  // ── Human takeover ─────────────────────────────────────────────────────────
+  // The contract from the takeover plan; these endpoints don't exist yet, so the Inbox runs on
+  // the mock until the backend lands. The server sets `role: "agent"` and the sender from the
+  // token — nothing here says who is sending.
+
+  /** Sends a staff reply. Takes the chat over from the AI if it was handling it. */
+  sendVisitorMessage: (id: number, body: string, attachments: string[]): Promise<SendVisitorMessageResult> =>
+    httpPost(`/ai-chat/embed/visitors/${id}/messages`, { body, attachments }),
+
+  /** "human" takes the chat over without a message; "ai" hands it back. */
+  setVisitorHandoff: (id: number, mode: HandoffMode): Promise<ConversationControlResult> =>
+    httpPatch(`/ai-chat/embed/visitors/${id}/handoff`, { mode }),
+
+  resolveVisitorChat: (id: number, resolved: boolean): Promise<ConversationControlResult> =>
+    httpPatch(`/ai-chat/embed/visitors/${id}/resolve`, { resolved }),
+
+  /** 204 — the caller has already zeroed the count. */
+  markVisitorChatRead: (id: number): Promise<void> => httpPostNoContent(`/ai-chat/embed/visitors/${id}/read`),
+
+  uploadVisitorAttachment: (file: File): Promise<MessageAttachment> => {
+    const form = new FormData();
+    form.append("file", file);
+    return httpPostForm("/ai-chat/embed/visitors/messages/media", form);
   },
 };

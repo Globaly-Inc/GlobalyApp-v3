@@ -1,19 +1,34 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Bot, Loader2, MessageSquare, Search, User } from "lucide-react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Bot, Loader2, MessageSquare, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
-import { MIN_SEARCH_LENGTH, SIDEBAR_LABEL, SIDEBAR_ROW, SIDEBAR_ROW_ACTIVE } from "@/components/chat/const";
+import { MIN_SEARCH_LENGTH, SIDEBAR_LABEL } from "@/components/chat/const";
 import { ConversationRow } from "@/components/chat/conversation-row";
-import { activityDate, listStamp, threadTitle } from "@/components/chat/utils";
+import { activityDate, threadTitle } from "@/components/chat/utils";
 import type { ChatThread, EnquiryMessage } from "@/components/chat/types";
 import { cn } from "@/lib/utils";
-import { VISITOR_STATUS_BADGE } from "@/app/business/ai-widget/const";
-import { visitorDisplayName, visitorInitials } from "@/app/business/ai-widget/utils";
 import type { WidgetVisitor } from "@/app/business/ai-widget/apis/types";
+import { embedChatState } from "../utils";
+import { EmbedRow } from "./embed-row";
+
+/** The AI Conversations tab's quick filters, over the rows already loaded. */
+const EMBED_FILTERS = [
+  { value: "all", label: "All" },
+  { value: "ai", label: "AI handling" },
+  { value: "human", label: "With team" },
+  { value: "unread", label: "Unread" },
+  { value: "resolved", label: "Resolved" },
+] as const;
+type EmbedFilter = (typeof EMBED_FILTERS)[number]["value"];
+
+function matchesFilter(v: WidgetVisitor, filter: EmbedFilter): boolean {
+  if (filter === "all") return true;
+  if (filter === "unread") return (v.unread_count ?? 0) > 0;
+  return embedChatState(v) === filter;
+}
 
 type Item =
   /** `messageId`: the newest loaded message matching the search, revealed on open. */
@@ -68,6 +83,8 @@ export function InboxListSidebar({
   onLoadMore: () => void;
 }>) {
   const [query, setQuery] = useState("");
+  const [filter, setFilter] = useState<EmbedFilter>("all");
+  const embedOnly = threads.length === 0;
 
   useEffect(() => {
     const t = setTimeout(() => onSearchVisitors(query.trim()), 300);
@@ -93,14 +110,12 @@ export function InboxListSidebar({
     const all: Item[] = [
       ...enquiries,
       ...visitors
-        .filter((v) => hit(v.name, v.email, v.study_preference))
+        .filter((v) => hit(v.name, v.email, v.study_preference) && (!embedOnly || matchesFilter(v, filter)))
         .map((visitor) => ({ kind: "embed" as const, at: new Date(visitor.last_activity_at).getTime(), visitor })),
     ];
-    const unread = (i: Item) => Number(i.kind === "enquiry" && i.thread.unread_count > 0);
+    const unread = (i: Item) => Number(i.kind === "enquiry" ? i.thread.unread_count > 0 : (i.visitor.unread_count ?? 0) > 0);
     return all.sort((a, b) => unread(b) - unread(a) || b.at - a.at);
-  }, [threads, visitors, messagesByThread, query]);
-
-  const embedOnly = threads.length === 0;
+  }, [threads, visitors, messagesByThread, query, embedOnly, filter]);
 
   return (
     <div className="flex h-full flex-col border-border bg-card md:border-r">
@@ -119,6 +134,26 @@ export function InboxListSidebar({
           />
         </div>
         {header}
+        {embedOnly && (
+          <div className="mt-2 flex flex-wrap gap-1" role="group" aria-label="Filter AI conversations">
+            {EMBED_FILTERS.map((f) => (
+              <button
+                key={f.value}
+                type="button"
+                aria-pressed={filter === f.value}
+                onClick={() => setFilter(f.value)}
+                className={cn(
+                  "rounded-full border px-2.5 py-0.5 text-xs transition-colors",
+                  filter === f.value
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-border text-muted-foreground hover:bg-muted",
+                )}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
@@ -143,8 +178,10 @@ export function InboxListSidebar({
             ) : (
               <MessageSquare className="mb-2 size-8 text-muted-foreground/40" aria-hidden />
             )}
-            <p className="text-sm text-muted-foreground">{query ? "No matching conversations" : "No conversations yet"}</p>
-            {!query && (
+            <p className="text-sm text-muted-foreground">
+              {query || filter !== "all" ? "No matching conversations" : "No conversations yet"}
+            </p>
+            {!query && filter === "all" && (
               <p className="mt-1 text-xs text-muted-foreground/80">
                 {embedOnly
                   ? "Conversations visitors have with the AI assistant on your website appear here."
@@ -183,52 +220,5 @@ export function InboxListSidebar({
         )}
       </div>
     </div>
-  );
-}
-
-/** `ConversationRow`'s layout, with a bot badge on the avatar marking it as a widget chat. */
-function EmbedRow({ visitor, isActive, onOpen }: Readonly<{ visitor: WidgetVisitor; isActive: boolean; onOpen: () => void }>) {
-  const badge = VISITOR_STATUS_BADGE[visitor.status];
-  return (
-    <button
-      type="button"
-      onClick={onOpen}
-      className={cn(SIDEBAR_ROW, "cursor-pointer items-start", isActive ? SIDEBAR_ROW_ACTIVE : "hover:bg-muted/60")}
-    >
-      <span className="relative shrink-0">
-        <Avatar className="size-8">
-          <AvatarFallback className="bg-muted text-xs text-muted-foreground">
-            {visitor.name ? visitorInitials(visitor) : <User className="size-4" aria-hidden />}
-          </AvatarFallback>
-        </Avatar>
-        <span
-          className="absolute -bottom-0.5 -right-0.5 flex size-3.5 items-center justify-center rounded-full bg-primary ring-2 ring-card"
-          title="AI conversation"
-        >
-          <Bot className="size-2.5 text-primary-foreground" aria-hidden />
-        </span>
-      </span>
-
-      <span className="min-w-0 flex-1 text-left">
-        <span className="flex items-baseline gap-1.5">
-          <span className={cn("truncate", !visitor.name && "italic text-muted-foreground")}>
-            {visitorDisplayName(visitor)}
-          </span>
-          <span className="ml-auto shrink-0 text-[10px] font-normal text-muted-foreground">
-            {listStamp(visitor.last_activity_at)}
-          </span>
-        </span>
-        <span className="mt-0.5 flex items-center gap-1.5 text-xs font-normal text-muted-foreground">
-          <span className="truncate">
-            AI · {visitor.email ?? visitor.study_preference ?? `${visitor.message_count} message${visitor.message_count === 1 ? "" : "s"}`}
-          </span>
-          {visitor.status === "lead" && (
-            <span className={cn("ml-auto shrink-0 rounded px-1.5 text-[10px] font-medium", badge.className)}>
-              {badge.label}
-            </span>
-          )}
-        </span>
-      </span>
-    </button>
   );
 }

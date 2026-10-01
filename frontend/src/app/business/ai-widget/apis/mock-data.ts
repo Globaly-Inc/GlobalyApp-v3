@@ -1,8 +1,10 @@
 import { uuid } from "@/lib/utils";
+import { aiWidgetInboxMock } from "./mock-inbox";
+import { mockVisitors } from "./mock-visitors";
 import type {
   CreateEmbedConfigInput, DeveloperContact, EmbedConfig, EnsureEmbedResult,
   SendSnippetInput, SendSnippetResult, UpdateEmbedConfigInput,
-  VisitorCounts, VisitorListParams, VisitorListResult, VisitorMessage, VisitorPatch, WidgetVisitor,
+  VisitorCounts, VisitorListParams, VisitorListResult, VisitorPatch, WidgetVisitor,
 } from "./types";
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -34,81 +36,9 @@ const seedConfig: EmbedConfig = {
 
 const configs: EmbedConfig[] = [seedConfig];
 
-// ── Visitors ─────────────────────────────────────────────────────────────────
-// Deliberately mixed: two anonymous rows, two who handed over their details, one who was
-// shown the contact card and skipped it. That last one is the case the UI gets wrong most
-// easily — asked, declined, still a Visitor.
-const visitors: WidgetVisitor[] = [
-  {
-    id: 4, embed_config_id: 1, session_id: 812, name: null, email: null, phone: null, contact_source: null, status: "visitor",
-    contact_status: "not_shown", contact_submitted_at: null, conversation_state: "active",
-    message_count: 2,
-    first_seen_at: new Date(Date.now() - 4 * 60_000).toISOString(),
-    last_activity_at: new Date(Date.now() - 2 * 60_000).toISOString(),
-    qualifications: null, language_tests: null, academic_tests: null, work_experiences: null,
-    age: null, gender: null, nationality: null, nationality_raw: null, study_preference: null,
-    summary_status: null, summary_sent_at: null,
-  },
-  {
-    id: 3, embed_config_id: 1, session_id: 809, name: "John Doe", email: "john@example.com", phone: null, contact_source: "volunteered", status: "lead",
-    contact_status: "submitted",
-    contact_submitted_at: new Date(Date.now() - 6 * 60_000).toISOString(),
-    conversation_state: "end_confirmed", message_count: 11,
-    first_seen_at: new Date(Date.now() - 22 * 60_000).toISOString(),
-    last_activity_at: new Date(Date.now() - 5 * 60_000).toISOString(),
-    qualifications: [{ degree_title: "BSc Computer Science", institution_name: "Tribhuvan University", grade_value: "3.4", grading_system: "GPA" }],
-    language_tests: [{ test_type: "IELTS", overall_score: "7.0", test_date: "2026-06-12", sub_scores: { listening: "7.5", reading: "7.0" } }],
-    academic_tests: null,
-    work_experiences: [{ job_title: "Junior Developer", organization_name: "Leapfrog", is_current: true, start_date: "2025-02-01" }],
-    // "I'm Nepali" — resolved to the country, with their own wording kept beside it.
-    age: "24", gender: "male", nationality: "Nepal", nationality_raw: "Nepali",
-    study_preference: "MSc Data Science",
-    summary_status: "sent", summary_sent_at: new Date(Date.now() - 4 * 60_000).toISOString(),
-  },
-  {
-    id: 2, embed_config_id: 1, session_id: 804, name: null, email: null, phone: null, contact_source: null, status: "visitor",
-    contact_status: "skipped", contact_submitted_at: null, conversation_state: "continue",
-    message_count: 7,
-    first_seen_at: new Date(Date.now() - 3 * 3_600_000).toISOString(),
-    last_activity_at: new Date(Date.now() - 95 * 60_000).toISOString(),
-    qualifications: [{ degree_title: "High School", institution_name: "St. Xavier's" }],
-    language_tests: null, academic_tests: null, work_experiences: null,
-    age: null, gender: null, nationality: null, nationality_raw: null,
-    study_preference: "Bachelor of Business Administration",
-    summary_status: null, summary_sent_at: null,
-  },
-  {
-    id: 1, embed_config_id: 1, session_id: 791, name: "Priya Sharma", email: "priya.sharma@example.com", phone: "+977 98 1234 5678", contact_source: "card", status: "lead",
-    contact_status: "submitted",
-    contact_submitted_at: new Date(Date.now() - 2 * 86_400_000).toISOString(),
-    conversation_state: "active", message_count: 19,
-    first_seen_at: new Date(Date.now() - 2 * 86_400_000).toISOString(),
-    last_activity_at: new Date(Date.now() - 26 * 3_600_000).toISOString(),
-    qualifications: null,
-    language_tests: [{ test_status: "booked", test_type: "PTE", test_date: "2026-11-02" }],
-    academic_tests: [{ test_type: "GRE", overall_score: "318" }],
-    work_experiences: null,
-    // "early 30s" is why age is verbatim text, and "Kashmiri" is why an unmatched nationality
-    // keeps the raw wording rather than being filed under a country they did not name.
-    age: "early 30s", gender: "female", nationality: null, nationality_raw: "Kashmiri",
-    study_preference: "MBA",
-    summary_status: "pending", summary_sent_at: null,
-  },
-];
+const visitors = mockVisitors;
 
 export const aiWidgetVisitorsMock = {
-  listVisitorMessages: async (id: number): Promise<VisitorMessage[]> => {
-    console.log("[mock] GET /ai-chat/embed/visitors/" + id + "/messages");
-    await delay(250);
-    const at = (min: number) => new Date(Date.now() - min * 60_000).toISOString();
-    return [
-      { id: id * 10 + 1, role: "user", content: "Hi, do you offer a Masters in Data Science?", created_at: at(30) },
-      { id: id * 10 + 2, role: "assistant", content: "Yes! Our **MSc Data Science** runs for 18 months with February and July intakes.", created_at: at(29) },
-      { id: id * 10 + 3, role: "user", content: "What IELTS score do I need?", created_at: at(27) },
-      { id: id * 10 + 4, role: "assistant", content: "An overall **6.5** with no band below 6.0.", created_at: at(26) },
-    ];
-  },
-
   getVisitor: async (id: number): Promise<WidgetVisitor> => {
     console.log("[mock] GET /ai-chat/embed/visitors/" + id);
     await delay(250);
@@ -147,7 +77,8 @@ export const aiWidgetVisitorsMock = {
     const filtered = status === "all" ? searched : searched.filter((v) => v.status === status);
     const page = params.page ?? 1;
     const limit = params.limit ?? 10;
-    return { data: filtered.slice((page - 1) * limit, page * limit), total: filtered.length, counts };
+    // Copies: Redux freezes what it stores, and the takeover mock mutates these rows later.
+    return { data: filtered.slice((page - 1) * limit, page * limit).map((v) => ({ ...v })), total: filtered.length, counts };
   },
 };
 
@@ -240,4 +171,5 @@ export const aiWidgetMockApi = {
   },
 
   ...aiWidgetVisitorsMock,
+  ...aiWidgetInboxMock,
 };

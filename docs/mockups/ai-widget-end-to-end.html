@@ -1,0 +1,1111 @@
+<!doctype html>
+<html lang="en" style="color-scheme:light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI Widget Journey</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Geist+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap">
+<style>
+/* GlobalyApp tokens (frontend/src/app/globals.css). Light only: the product has no dark theme. */
+:root{
+  --bg:hsl(210 20% 99%); --card:#fff; --fg:hsl(222 47% 11%); --muted:hsl(210 17% 96%); --muted-fg:hsl(215 16% 47%);
+  --border:hsl(215 16% 90%); --primary:#012E8A; --primary-soft:hsl(220 86% 95%); --primary-10:hsl(222 35% 92%);
+  --aqua:hsl(187 85% 32%); --aqua-soft:hsl(187 92% 94%); --sky:hsl(204 90% 95%); --sky-b:hsl(204 80% 82%); --sky-fg:hsl(204 80% 28%);
+  --ok:hsl(152 60% 30%); --ok-soft:hsl(152 60% 94%); --warn:hsl(32 90% 32%); --warn-soft:hsl(40 90% 93%);
+  --bad:hsl(0 84% 60%); --bad-soft:hsl(0 84% 96%); --radius:10px;
+  --brand:#012E8A; /* the widget's brand colour — the Branding step changes it */
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+html,body{margin:0}
+body{background:var(--bg);color:var(--fg);font:14px/1.5 "Inter",system-ui,-apple-system,"Segoe UI",sans-serif;padding-inline:16px;padding-block:0 48px}
+h1,h2,h3{margin:0;text-wrap:balance}
+p{margin:0}
+button{font:inherit;color:inherit}
+button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid var(--aqua);outline-offset:2px}
+.serif{font-family:"Fraunces",Georgia,serif;letter-spacing:-.01em}
+.mono{font-family:"Geist Mono",ui-monospace,monospace}
+.wrap{max-width:1440px;margin:0 auto;display:flex;flex-direction:column;gap:16px}
+
+/* ---------- journey bar ---------- */
+.jhead{position:sticky;top:env(safe-area-inset-top,0px);z-index:50;background:var(--bg);padding-block:14px 10px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--border)}
+.jtitle{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.jtitle h1{font-family:"Fraunces",Georgia,serif;font-size:22px;font-weight:600}
+.legend{display:flex;gap:10px;align-items:center;font-size:12px;color:var(--muted-fg);margin-left:auto;flex-wrap:wrap}
+.steps{display:flex;gap:6px;overflow-x:auto;padding-bottom:4px;scrollbar-width:thin}
+.step{flex:none;display:flex;align-items:center;gap:6px;border:1px solid var(--border);background:var(--card);border-radius:999px;padding:5px 10px 5px 5px;font-size:12px;cursor:pointer;white-space:nowrap}
+.step b{width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font:600 10.5px/1 "Inter";background:var(--muted);color:var(--muted-fg)}
+.step.on{border-color:var(--primary);background:var(--primary);color:#fff}
+.step.on b{background:#fff;color:var(--primary)}
+.step.done b{background:var(--ok-soft);color:var(--ok)}
+.step .grp{font-size:10px;color:var(--muted-fg)}
+.step.on .grp{color:hsl(220 60% 85%)}
+.navrow{display:flex;gap:8px;align-items:center}
+.navrow .sp{flex:1}
+.kbd{font:500 11px/1 "Geist Mono";border:1px solid var(--border);border-bottom-width:2px;border-radius:4px;padding:2px 5px;color:var(--muted-fg);background:var(--card)}
+
+/* ---------- scene layout ---------- */
+.scene{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:16px;align-items:start}
+@media (max-width:1100px){.scene{grid-template-columns:1fr}}
+.stage{min-width:0;display:flex;flex-direction:column;gap:12px}
+.notes{position:sticky;top:120px;background:var(--card);border:1px solid var(--border);border-radius:12px;padding:16px;display:flex;flex-direction:column;gap:12px;font-size:13px}
+@media (max-width:1100px){.notes{position:static}}
+.notes h2{font-family:"Fraunces",Georgia,serif;font-size:18px;font-weight:600}
+.notes h4{margin:0;font:600 10.5px/1 "Inter";letter-spacing:.08em;text-transform:uppercase;color:var(--muted-fg)}
+.notes ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:4px}
+.notes .try{background:var(--primary-soft);color:var(--primary);border-radius:8px;padding:8px 10px}
+
+/* ---------- shared UI ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:6px;height:34px;padding:0 12px;border-radius:8px;border:1px solid var(--border);background:var(--card);font-size:13px;font-weight:500;cursor:pointer;white-space:nowrap;text-decoration:none;color:var(--fg);transition:background .15s,transform .1s}
+.btn:hover{background:var(--muted)}
+.btn:active{transform:translateY(1px)}
+.btn.sm{height:28px;padding:0 10px;font-size:12px}
+.btn.pri{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn.pri:hover{background:hsl(220 99% 22%)}
+.btn.ghost{border-color:transparent;background:transparent}
+.btn.ghost:hover{background:var(--muted)}
+.btn.dash{border-style:dashed}
+.btn[disabled]{opacity:.5;cursor:not-allowed}
+.pill{display:inline-flex;align-items:center;gap:5px;border-radius:999px;padding:2px 9px;font-size:11.5px;font-weight:500;white-space:nowrap}
+.p-ai{background:var(--primary-soft);color:var(--primary)}
+.p-h{background:var(--aqua-soft);color:var(--aqua)}
+.p-ok{background:var(--ok-soft);color:var(--ok)}
+.p-warn{background:var(--warn-soft);color:var(--warn)}
+.p-bad{background:var(--bad-soft);color:hsl(0 70% 42%)}
+.p-mute{background:var(--muted);color:var(--muted-fg)}
+.planned{font:600 9.5px/1 "Inter";letter-spacing:.04em;text-transform:uppercase;color:hsl(270 60% 45%);background:hsl(270 80% 96%);border:1px dashed hsl(270 50% 75%);border-radius:4px;padding:3px 5px;white-space:nowrap}
+.today{font:600 9.5px/1 "Inter";letter-spacing:.04em;text-transform:uppercase;color:var(--ok);background:var(--ok-soft);border-radius:4px;padding:3px 5px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:12px}
+.label{font:600 11px/1 "Inter";letter-spacing:.08em;text-transform:uppercase;color:var(--muted-fg)}
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:13px;font-weight:500;display:flex;gap:6px;align-items:center}
+.field small{color:var(--muted-fg);font-size:12px}
+.input,.textarea{width:100%;border:1px solid var(--border);border-radius:8px;padding:8px 10px;font:inherit;background:var(--card);color:var(--fg)}
+.input{height:40px}
+.textarea{resize:vertical;min-height:70px}
+.input.err{border-color:var(--bad)}
+.errtxt{color:hsl(0 70% 45%);font-size:12px}
+.toggle{width:36px;height:20px;border-radius:999px;background:var(--border);position:relative;border:0;cursor:pointer;flex:none;transition:background .2s}
+.toggle::after{content:"";position:absolute;top:2px;left:2px;width:16px;height:16px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2);transition:left .2s}
+.toggle[aria-checked="true"]{background:var(--primary)}
+.toggle[aria-checked="true"]::after{left:18px}
+.av{width:32px;height:32px;border-radius:50%;display:grid;place-items:center;flex:none;font:600 11.5px/1 "Inter";background:var(--primary-soft);color:var(--primary);position:relative}
+.av.sm{width:24px;height:24px;font-size:9.5px}
+.av.agent{background:var(--sky);color:var(--sky-fg)}
+.av .bdg{position:absolute;right:-3px;bottom:-3px;width:15px;height:15px;border-radius:50%;border:2px solid #fff;display:grid;place-items:center;font-size:7.5px;color:#fff;font-weight:700}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%) translateY(20px);opacity:0;background:var(--fg);color:#fff;padding:10px 14px;border-radius:10px;font-size:13px;box-shadow:0 10px 30px rgba(15,23,42,.25);transition:all .25s;z-index:100;pointer-events:none}
+.toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+/* ---------- GlobalyApp shell ---------- */
+.appframe{border:1px solid var(--border);border-radius:14px;overflow:hidden;background:var(--card);box-shadow:0 1px 2px rgba(15,23,42,.04)}
+.appscroll{overflow-x:auto}
+.shell{display:grid;grid-template-columns:68px minmax(0,1fr);grid-template-rows:54px auto;min-width:1000px}
+.topbar{grid-column:1/-1;display:flex;align-items:center;gap:12px;padding:0 16px;border-bottom:1px solid var(--border)}
+.logo{width:32px;height:32px;border-radius:9px;background:var(--primary);color:#fff;display:grid;place-items:center;font:700 17px/1 "Inter"}
+.org{display:flex;align-items:center;gap:8px;font-weight:600}
+.org span{color:var(--muted-fg);font-weight:400}
+.topbar .sp{flex:1}
+.credits{font-size:12px;color:var(--muted-fg);border:1px solid var(--border);border-radius:999px;padding:5px 11px}
+.me{width:30px;height:30px;border-radius:50%;background:var(--primary);color:#fff;display:grid;place-items:center;font-weight:600;font-size:12px}
+.rail{border-right:1px solid var(--border);display:flex;flex-direction:column;gap:4px;padding:8px 7px}
+.rail a{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10px;color:var(--muted-fg);text-decoration:none;padding:7px 2px;border-radius:10px;cursor:pointer}
+.rail a i{font-style:normal;font-size:15px;line-height:1}
+.rail a.on{background:var(--primary-soft);color:var(--primary)}
+.content{min-width:0;background:var(--bg);position:relative}
+.page{padding:24px 28px;display:flex;flex-direction:column;gap:18px;max-width:1000px;margin:0 auto}
+.pagehead{display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap}
+.pagehead h2{font-size:20px;font-weight:600;display:flex;align-items:center;gap:8px}
+.pagehead p{color:var(--muted-fg)}
+.pagehead .sp{flex:1}
+.tabs{display:flex;gap:2px;border-bottom:1px solid var(--border)}
+.tabs button{border:0;background:none;padding:8px 12px;font-size:13px;color:var(--muted-fg);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button.on{color:var(--primary);border-bottom-color:var(--primary);font-weight:500}
+
+/* ---------- wizard ---------- */
+.wiz{display:grid;grid-template-columns:minmax(0,1fr) 400px;gap:0;min-height:640px}
+.wiz-form{padding:22px 26px;display:flex;flex-direction:column;gap:18px;border-right:1px solid var(--border);background:var(--card)}
+.wiz-steps{display:flex;gap:4px;flex-wrap:wrap}
+.wiz-steps span{font-size:12px;padding:5px 10px;border-radius:999px;background:var(--muted);color:var(--muted-fg)}
+.wiz-steps span.on{background:var(--primary);color:#fff}
+.wiz-steps span.done{background:var(--ok-soft);color:var(--ok)}
+.wiz-prev{background:linear-gradient(160deg,hsl(220 40% 97%),hsl(210 30% 94%));position:relative;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;padding:18px}
+.wiz-prev .cap{position:absolute;top:14px;left:16px;right:16px;display:flex;justify-content:space-between;font-size:11.5px;color:var(--muted-fg)}
+.swatches{display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+.sw{width:28px;height:28px;border-radius:8px;border:2px solid #fff;box-shadow:0 0 0 1px var(--border);cursor:pointer}
+.sw.on{box-shadow:0 0 0 2px var(--fg)}
+.chipsedit{display:flex;flex-wrap:wrap;gap:6px}
+.chipsedit span{border:1px solid var(--border);border-radius:999px;padding:4px 10px;font-size:12px;background:var(--card);display:inline-flex;gap:6px;align-items:center}
+.row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.radio{display:flex;flex-direction:column;gap:6px}
+.radio label{display:flex;gap:10px;align-items:flex-start;border:1px solid var(--border);border-radius:10px;padding:10px 12px;cursor:pointer;font-size:13px}
+.radio label.on{border-color:var(--primary);background:var(--primary-soft)}
+.radio input{margin-top:3px;accent-color:var(--primary)}
+.codebox{background:hsl(222 47% 11%);color:hsl(210 40% 92%);border-radius:10px;padding:14px 16px;font:12.5px/1.6 "Geist Mono",monospace;overflow-x:auto;position:relative}
+.codebox .k{color:hsl(187 80% 65%)}.codebox .s{color:hsl(40 90% 70%)}
+.install-tabs{display:flex;gap:4px}
+.install-tabs button{border:1px solid var(--border);background:var(--card);border-radius:8px;padding:5px 10px;font-size:12px;cursor:pointer}
+.install-tabs button.on{border-color:var(--primary);color:var(--primary);background:var(--primary-soft)}
+.checkrow{display:flex;gap:10px;align-items:center;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--card)}
+.spin{width:14px;height:14px;border-radius:50%;border:2px solid var(--border);border-top-color:var(--primary);animation:spin .8s linear infinite;flex:none}
+@keyframes spin{to{transform:rotate(360deg)}}
+.progress{height:6px;border-radius:999px;background:var(--muted);overflow:hidden}
+.progress i{display:block;height:100%;background:var(--primary);border-radius:999px}
+
+/* ---------- external website ---------- */
+.browser{border:1px solid var(--border);border-radius:14px;overflow:hidden;background:#fff;box-shadow:0 12px 40px rgba(15,23,42,.08)}
+.chrome{display:flex;align-items:center;gap:10px;padding:8px 12px;background:hsl(210 17% 95%);border-bottom:1px solid var(--border)}
+.dots{display:flex;gap:6px}.dots i{width:10px;height:10px;border-radius:50%;background:hsl(0 70% 70%)}.dots i:nth-child(2){background:hsl(40 85% 62%)}.dots i:nth-child(3){background:hsl(140 45% 58%)}
+.addr{flex:1;background:#fff;border:1px solid var(--border);border-radius:999px;padding:4px 12px;font-size:12px;color:var(--muted-fg);display:flex;gap:6px;align-items:center}
+.viewport{position:relative;height:680px;overflow:hidden;background:#fff}
+.site{height:100%;overflow:hidden;font-family:Georgia,"Times New Roman",serif;color:#1d2433}
+.site-nav{display:flex;align-items:center;gap:22px;padding:16px 32px;border-bottom:1px solid #e8e3d8;font-family:"Inter",sans-serif;font-size:13px}
+.site-nav .crest{width:34px;height:34px;border-radius:6px;background:#7a1f2b;color:#f5e9d6;display:grid;place-items:center;font:700 16px/1 Georgia}
+.site-nav b{font-family:Georgia,serif;font-size:17px}
+.site-nav .sp{flex:1}
+.site-nav a{color:#39404f;text-decoration:none}
+.site-hero{padding:56px 32px 36px;background:linear-gradient(120deg,#f6f1e7,#efe6d6);display:grid;grid-template-columns:1.2fr 1fr;gap:28px}
+.site-hero h3{font-size:40px;line-height:1.1;font-weight:400}
+.site-hero p{font-family:"Inter",sans-serif;color:#4a5263;margin-top:12px;max-width:44ch}
+.site-hero .cta{margin-top:18px;display:inline-block;background:#7a1f2b;color:#fff;font:600 13px "Inter";padding:10px 16px;border-radius:4px}
+.site-hero .img{border-radius:6px;background:linear-gradient(160deg,#c9b89a,#8c7a5c);min-height:190px;position:relative}
+.site-hero .img::after{content:"Admissions Hall";position:absolute;left:12px;bottom:10px;color:#fff;font:italic 13px Georgia;opacity:.8}
+.site-cols{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;padding:28px 32px}
+.site-cols div{border-top:2px solid #7a1f2b;padding-top:10px}
+.site-cols h4{margin:0 0 6px;font-size:17px;font-weight:400}
+.site-cols p{font-family:"Inter",sans-serif;font-size:12.5px;color:#5a6172}
+
+/* ---------- phone ---------- */
+.phones{display:flex;gap:24px;flex-wrap:wrap;justify-content:center;padding:12px}
+.phone{width:320px;height:640px;border-radius:40px;border:10px solid hsl(222 30% 16%);background:#fff;position:relative;overflow:hidden;box-shadow:0 20px 50px rgba(15,23,42,.18);flex:none}
+.phone .notch{position:absolute;top:0;left:50%;transform:translateX(-50%);width:110px;height:22px;background:hsl(222 30% 16%);border-radius:0 0 14px 14px;z-index:30}
+.phone .site-nav{padding:30px 16px 12px;gap:10px}
+.phone .site-nav a{display:none}
+.phone .site-hero{grid-template-columns:1fr;padding:26px 16px}
+.phone .site-hero h3{font-size:26px}
+.phone .site-cols{grid-template-columns:1fr;padding:16px}
+
+/* ---------- widget ---------- */
+.w-layer{position:absolute;inset:0;pointer-events:none;z-index:20}
+.w-layer > *{pointer-events:auto}
+.w-orb{position:absolute;right:22px;bottom:22px;width:58px;height:58px;border-radius:50%;border:0;cursor:pointer;background:radial-gradient(circle at 30% 30%,#fff 0,color-mix(in srgb,var(--brand) 55%,#fff) 28%,var(--brand) 70%);box-shadow:0 8px 24px color-mix(in srgb,var(--brand) 45%,transparent),0 0 0 0 color-mix(in srgb,var(--brand) 40%,transparent);animation:orbPulse 2.6s ease-out infinite;transition:transform .2s}
+.w-orb:hover{transform:scale(1.06)}
+.w-orb.open{animation:none;transform:rotate(90deg) scale(.92)}
+.w-orb svg{width:24px;height:24px;color:#fff}
+.w-orb .dot{position:absolute;top:2px;right:2px;min-width:18px;height:18px;padding:0 5px;border-radius:999px;background:var(--bad);color:#fff;font:700 10px/18px "Inter";border:2px solid #fff}
+@keyframes orbPulse{0%{box-shadow:0 8px 24px color-mix(in srgb,var(--brand) 45%,transparent),0 0 0 0 color-mix(in srgb,var(--brand) 35%,transparent)}70%{box-shadow:0 8px 24px color-mix(in srgb,var(--brand) 45%,transparent),0 0 0 16px transparent}100%{box-shadow:0 8px 24px color-mix(in srgb,var(--brand) 45%,transparent),0 0 0 0 transparent}}
+.w-left .w-orb{right:auto;left:22px}.w-left .w-panel{right:auto;left:20px;transform-origin:bottom left}.w-left .w-teaser{right:auto;left:92px}
+.w-teaser{position:absolute;right:92px;bottom:30px;max-width:230px;background:#fff;border:1px solid var(--border);border-radius:14px 14px 4px 14px;padding:10px 12px;font:13px/1.4 "Inter";color:var(--fg);box-shadow:0 8px 24px rgba(15,23,42,.12);animation:teaseIn .5s ease-out both;cursor:pointer}
+.w-teaser .x{position:absolute;top:-8px;right:-8px;width:20px;height:20px;border-radius:50%;border:1px solid var(--border);background:#fff;font-size:11px;cursor:pointer;display:grid;place-items:center}
+@keyframes teaseIn{from{opacity:0;transform:translateY(8px) scale(.96)}to{opacity:1;transform:none}}
+.w-panel{position:absolute;right:20px;bottom:92px;width:380px;height:min(600px,calc(100% - 112px));background:#fff;border-radius:18px;box-shadow:0 18px 50px rgba(15,23,42,.22),0 0 0 1px rgba(15,23,42,.06);display:flex;flex-direction:column;overflow:hidden;transform-origin:bottom right;transform:scale(.6) translateY(30px);opacity:0;pointer-events:none;transition:transform .28s cubic-bezier(.2,.9,.3,1.2),opacity .2s,width .3s,height .3s,right .3s,bottom .3s,border-radius .3s;font-family:"Inter",sans-serif}
+.w-panel.open{transform:none;opacity:1;pointer-events:auto}
+.w-panel.full{right:0;bottom:0;width:100%;height:100%;border-radius:0}
+.phone .w-panel.open{right:0;bottom:0;width:100%;height:100%;border-radius:0;padding-top:30px}
+/* The status bar / notch: a full-screen sheet starts below it (env(safe-area-inset-top) on a real phone). */
+.phone .w-panel.open .w-head::before{top:30px}
+/* On a phone the sheet covers the launcher's spot; the header's minimise button closes it instead. */
+.phone .w-orb.open{opacity:0;pointer-events:none;transform:scale(.6)}
+.phone .w-foot{padding-bottom:16px}
+.phone .w-orb{right:14px;bottom:14px;width:52px;height:52px}
+.phone .w-teaser{right:76px;bottom:20px}
+.w-head{display:flex;align-items:center;gap:10px;padding:12px 12px 12px 14px;border-bottom:1px solid var(--border);position:relative}
+.w-head::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:var(--brand)}
+.w-logo{width:34px;height:34px;border-radius:10px;background:var(--brand);color:#fff;display:grid;place-items:center;font:700 14px Georgia;flex:none;position:relative}
+.w-logo.agent{background:var(--sky);color:var(--sky-fg);font:600 12px "Inter";border-radius:50%}
+.w-logo .live{position:absolute;right:-2px;bottom:-2px;width:10px;height:10px;border-radius:50%;background:hsl(142 70% 45%);border:2px solid #fff}
+.w-head .t{min-width:0;flex:1}
+.w-head .t b{display:block;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.w-head .t small{display:block;color:var(--muted-fg);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.w-ico{width:30px;height:30px;border-radius:8px;border:0;background:none;display:grid;place-items:center;cursor:pointer;color:var(--muted-fg);font-size:14px}
+.w-ico:hover{background:var(--muted);color:var(--fg)}
+.w-body{flex:1;overflow-y:auto;padding:16px 14px;display:flex;flex-direction:column;gap:12px;background:#fff;scroll-behavior:smooth}
+.w-banner{font-size:12px;padding:7px 12px;display:flex;gap:8px;align-items:center}
+.w-banner.off{background:var(--warn-soft);color:var(--warn)}
+.w-banner.bad{background:var(--bad-soft);color:hsl(0 70% 40%)}
+.w-banner.h{background:var(--aqua-soft);color:var(--aqua)}
+.w-welcome{display:flex;flex-direction:column;align-items:center;text-align:center;gap:8px;padding:14px 8px 4px}
+.w-welcome .w-logo{width:48px;height:48px;font-size:19px;border-radius:14px}
+.w-welcome h5{margin:0;font-size:16px}
+.w-welcome p{color:var(--muted-fg);font-size:13px}
+.m{display:flex;gap:8px;max-width:100%;animation:msgIn .25s ease-out both}
+@keyframes msgIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+.m.u{justify-content:flex-end}
+.m.u .bb{background:var(--muted);border-radius:16px 16px 4px 16px;padding:8px 12px;max-width:80%;font-size:13.5px}
+.m.u .st{font-size:10.5px;color:var(--muted-fg);text-align:right;margin-top:3px}
+.m.u .st.fail{color:hsl(0 70% 45%)}
+.m.u .st button{border:0;background:none;color:var(--primary);cursor:pointer;font-size:10.5px;text-decoration:underline;padding:0}
+.m.a .mk{width:24px;height:24px;border-radius:8px;flex:none;background:radial-gradient(circle at 30% 30%,#fff 0,color-mix(in srgb,var(--brand) 55%,#fff) 30%,var(--brand) 75%)}
+.m.a .tx{font-size:13.5px;max-width:88%}
+.m.a .tx p+p{margin-top:6px}
+.m.g .bb{background:var(--sky);border:1px solid var(--sky-b);border-radius:16px 16px 16px 4px;padding:8px 12px;font-size:13.5px;max-width:82%}
+.m.g .who{font-size:11px;color:var(--muted-fg);margin-bottom:3px}
+.m.g .who b{color:var(--fg);font-weight:600}
+.sysline{display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted-fg);animation:msgIn .25s ease-out both}
+.sysline::before,.sysline::after{content:"";flex:1;height:1px;background:var(--border)}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+.chip{border:1px solid color-mix(in srgb,var(--brand) 30%,var(--border));color:var(--brand);background:#fff;border-radius:999px;padding:5px 11px;font-size:12.5px;cursor:pointer;transition:background .15s}
+.chip:hover{background:color-mix(in srgb,var(--brand) 8%,#fff)}
+.courses{display:flex;flex-direction:column;gap:6px;margin-top:8px}
+.course{border:1px solid var(--border);border-radius:10px;padding:8px 10px;display:flex;gap:10px;align-items:center;background:#fff}
+.course i{font-style:normal;width:30px;height:30px;border-radius:8px;background:color-mix(in srgb,var(--brand) 10%,#fff);color:var(--brand);display:grid;place-items:center;font-size:14px;flex:none}
+.course b{display:block;font-size:12.5px}
+.course small{color:var(--muted-fg);font-size:11.5px}
+.thinking{display:flex;gap:8px;align-items:center;font-size:12.5px;color:var(--muted-fg);animation:msgIn .2s both}
+.dots3{display:inline-flex;gap:3px}
+.dots3 i{width:6px;height:6px;border-radius:50%;background:var(--muted-fg);animation:bounce 1.2s infinite}
+.dots3 i:nth-child(2){animation-delay:.15s}.dots3 i:nth-child(3){animation-delay:.3s}
+@keyframes bounce{0%,60%,100%{transform:translateY(0);opacity:.5}30%{transform:translateY(-4px);opacity:1}}
+.wcard{border:1px solid var(--border);border-radius:14px;padding:14px;background:#fff;box-shadow:0 1px 3px rgba(15,23,42,.06);display:flex;flex-direction:column;gap:8px;animation:msgIn .3s both}
+.wcard b{font-size:13.5px}
+.wcard p{font-size:12px;color:var(--muted-fg)}
+.wcard .input{height:34px;font-size:12.5px}
+.wcard .rowb{display:flex;gap:8px}
+.wcard .rowb .btn{flex:1}
+.w-foot{border-top:1px solid var(--border);padding:10px 12px;display:flex;flex-direction:column;gap:6px;background:#fff}
+.w-inrow{display:flex;gap:8px;align-items:flex-end;border:1px solid var(--border);border-radius:14px;padding:6px 6px 6px 12px;transition:border-color .15s}
+.w-inrow:focus-within{border-color:var(--brand)}
+.w-inrow textarea{flex:1;border:0;outline:0;resize:none;font:13.5px/1.4 "Inter";max-height:90px;padding:5px 0;background:transparent}
+.w-send{width:32px;height:32px;border-radius:10px;border:0;background:var(--brand);color:#fff;cursor:pointer;display:grid;place-items:center;flex:none}
+.w-send[disabled]{opacity:.35;cursor:not-allowed}
+.w-attach{width:32px;height:32px;border-radius:10px;border:0;background:none;color:var(--muted-fg);cursor:pointer;flex:none}
+.w-powered{text-align:center;font-size:10.5px;color:var(--muted-fg)}
+
+.faces{display:flex;justify-content:center;gap:6px}
+.face{width:42px;height:42px;border-radius:50%;border:1px solid var(--border);background:#fff;font-size:22px;cursor:pointer;transition:transform .15s,background .15s,border-color .15s;filter:grayscale(.6);opacity:.85}
+.face:hover{transform:scale(1.12);filter:none;opacity:1}
+.face.on{border-color:var(--brand);background:color-mix(in srgb,var(--brand) 8%,#fff);transform:scale(1.15);filter:none;opacity:1}
+/* ---------- inbox (takeover) ---------- */
+.inbox{display:grid;grid-template-columns:280px minmax(0,1fr) 250px;height:640px}
+.inbox.two{grid-template-columns:250px minmax(0,1fr);height:660px}
+.pane{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--border);background:var(--card)}
+.pane:last-child{border-right:0}
+.ibar{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);background:var(--card);flex-wrap:wrap}
+.ibar .sp{flex:1}
+.wsw{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:8px;padding:4px 9px;font-size:12.5px}
+.ilist-top{padding:10px;display:flex;flex-direction:column;gap:8px;border-bottom:1px solid var(--border)}
+.isearch{border:1px solid var(--border);border-radius:8px;padding:6px 10px;color:var(--muted-fg);font-size:12.5px;background:var(--muted)}
+.ichips{display:flex;gap:4px;flex-wrap:wrap}
+.ichips span{font-size:11px;padding:2px 8px;border-radius:999px;border:1px solid var(--border);color:var(--muted-fg)}
+.ichips span.on{background:var(--primary);border-color:var(--primary);color:#fff}
+.irows{overflow:auto;flex:1}
+.irow{display:grid;grid-template-columns:34px 1fr auto;gap:8px;padding:9px 10px;border-bottom:1px solid var(--border);font-size:12.5px;cursor:pointer}
+.irow.sel{background:var(--primary-soft)}
+.irow .n{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.irow .pv{color:var(--muted-fg);font-size:11.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.irow .pv.u{color:var(--fg);font-weight:600}
+.irow .r{display:flex;flex-direction:column;align-items:flex-end;gap:3px;font-size:10.5px;color:var(--muted-fg)}
+.cnt{background:var(--bad);color:#fff;border-radius:999px;font:600 10px/1 "Inter";padding:3px 6px}
+.thead{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);flex-wrap:wrap}
+.thead .who b{font-family:"Fraunces",Georgia,serif;font-size:15px;font-weight:600}
+.thead .who small{display:block;color:var(--muted-fg);font-size:11.5px}
+.thead .sp{flex:1}
+.tstrip{padding:7px 14px;font-size:12px;border-bottom:1px solid var(--border)}
+.tstrip.ai{background:var(--primary-soft);color:var(--primary)}
+.tstrip.h{background:var(--aqua-soft);color:var(--aqua)}
+.tstrip.need{background:var(--warn-soft);color:var(--warn);display:flex;gap:10px;align-items:center}
+.tbody{flex:1;overflow:auto;padding:14px 18px;background:var(--bg);display:flex;flex-direction:column;gap:10px}
+.run{display:flex;flex-direction:column;gap:3px;max-width:78%;animation:msgIn .25s both}
+.run.l{align-self:flex-start}.run.r{align-self:flex-end;align-items:flex-end}
+.run .rh{font-size:11px;color:var(--muted-fg)}
+.run .rh b{color:var(--fg);font-weight:600}
+.run .rh b.ai{color:var(--primary)}
+.run .rb{display:flex;gap:7px;align-items:flex-end}
+.run.r .rb{flex-direction:row-reverse}
+.tb{padding:8px 12px;border-radius:14px;font-size:13px;line-height:1.45}
+.tb.v{background:hsl(210 17% 94%);border-bottom-left-radius:4px}
+.tb.ai{background:var(--primary-10);border-bottom-right-radius:4px}
+.tb.ag{background:var(--sky);border:1px solid var(--sky-b);border-bottom-right-radius:4px}
+.orbmk{width:22px;height:22px;border-radius:50%;background:radial-gradient(circle at 30% 30%,#fff 0,hsl(220 70% 75%) 30%,var(--primary) 75%);flex:none}
+.tcomp{border-top:1px solid var(--border);padding:10px 12px;background:var(--card);display:flex;flex-direction:column;gap:8px}
+.tban{font-size:12px;padding:6px 10px;border-radius:8px}
+.tban.ai{background:var(--warn-soft);color:var(--warn)}
+.tban.h{background:var(--aqua-soft);color:hsl(187 70% 24%)}
+.tbox{border:1px solid var(--border);border-radius:10px;padding:8px 10px;display:flex;flex-direction:column;gap:8px}
+.tbox textarea{border:0;outline:0;resize:none;font:13px/1.4 "Inter";min-height:36px}
+.tools{display:flex;gap:10px;align-items:center;color:var(--muted-fg);font-size:12px}
+.tools .sp{flex:1}
+.side{overflow:auto;padding:14px 12px;display:flex;flex-direction:column;gap:14px;font-size:12.5px}
+.side .id{display:flex;flex-direction:column;align-items:center;gap:5px;text-align:center}
+.side .id .av{width:50px;height:50px;font-size:16px}
+.sec{display:flex;flex-direction:column;gap:7px;border-top:1px solid var(--border);padding-top:11px}
+.kv{display:grid;grid-template-columns:84px 1fr;gap:4px 8px}
+.kv dt{color:var(--muted-fg)}.kv dd{margin:0;overflow-wrap:anywhere}
+.split{display:grid;grid-template-columns:minmax(0,1.25fr) minmax(0,1fr);gap:14px;align-items:start}
+@media (max-width:1250px){.split{grid-template-columns:1fr}}
+.split .viewport{height:640px}
+.split2{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:18px;align-items:start}
+@media (max-width:1200px){.split2{grid-template-columns:1fr;justify-items:center}}
+.split2 > .appframe{width:100%}
+.vcap{font-size:12px;color:var(--muted-fg);text-align:center;margin-top:8px}
+
+/* ---------- visitors ---------- */
+.vt{width:100%;border-collapse:collapse;font-size:13px;background:var(--card)}
+.vt th{text-align:left;font:500 11.5px/1 "Inter";color:var(--muted-fg);padding:10px 12px;border-bottom:1px solid var(--border);background:var(--muted)}
+.vt td{padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:middle}
+.vt tr.new td{animation:rowIn 1.6s ease-out}
+@keyframes rowIn{0%{background:hsl(152 60% 90%)}100%{background:transparent}}
+.vt tr:hover td{background:hsl(210 17% 98%)}
+.vbox{border:1px solid var(--border);border-radius:12px;overflow:hidden;overflow-x:auto}
+.hero{border-radius:12px;overflow:hidden;border:1px solid var(--border);background:var(--card)}
+.hero .cover{height:90px;background:linear-gradient(120deg,var(--primary),hsl(200 80% 45%))}
+.hero .body{padding:0 20px 16px;display:flex;gap:14px;align-items:flex-end;margin-top:-30px;flex-wrap:wrap}
+.hero .big{width:72px;height:72px;border-radius:16px;background:#fff;border:3px solid #fff;box-shadow:0 2px 8px rgba(15,23,42,.12);display:grid;place-items:center;font:600 22px "Inter";color:var(--primary)}
+.grid3{display:grid;grid-template-columns:2fr 1fr;gap:14px}
+@media (max-width:900px){.grid3{grid-template-columns:1fr}}
+.sc{padding:14px 16px;display:flex;flex-direction:column;gap:10px}
+.sc h4{margin:0;font-size:14px;display:flex;gap:8px;align-items:center}
+.fields{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px 18px}
+.fields small{display:block;color:var(--muted-fg);font-size:11.5px}
+.email{border:1px solid var(--border);border-radius:12px;overflow:hidden;background:#fff;font-family:"Inter",sans-serif}
+.email .eh{padding:10px 14px;border-bottom:1px solid var(--border);font-size:12px;color:var(--muted-fg)}
+.email .eb{padding:16px 18px;display:flex;flex-direction:column;gap:10px;font-size:13px}
+
+.vd-sec{overflow:hidden}
+.vd-h{display:flex;align-items:center;gap:10px;padding:16px 18px;border-bottom:1px solid var(--border)}
+.vd-h b{font-size:16.5px;font-weight:600}
+.vd-i{color:var(--primary);font-size:15px}
+.vd-n{font-size:11px;background:var(--muted);border-radius:999px;padding:1px 7px;color:var(--muted-fg)}
+.vd-b{padding:16px 18px}
+.vd-f4{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.vd-f2{display:grid;grid-template-columns:repeat(2,1fr);gap:14px 20px}
+@media (max-width:700px){.vd-f4{grid-template-columns:1fr 1fr}}
+.vd-b small{display:block;color:var(--muted-fg);font-size:12px}
+.vd-b b{font-weight:600;font-size:14px}
+.vd-edit{opacity:0;transition:opacity .15s}
+.vd-sec:hover .vd-edit{opacity:1}
+.vd-rec{display:flex;gap:14px;align-items:center;border:1px solid var(--border);border-radius:10px;padding:14px 16px;font-size:13.5px}
+.vd-rec:hover{border-color:hsl(215 16% 80%)}
+.vd-ri{width:64px;height:64px;border-radius:10px;background:var(--primary-soft);display:grid;place-items:center;font-size:22px;flex:none}
+.vd-ra{display:flex;gap:2px;opacity:0;transition:opacity .15s}
+.vd-rec:hover .vd-ra{opacity:1}
+.tl2{list-style:none;margin:0;padding:0;display:flex;flex-direction:column;gap:0;position:relative}
+.tl2 li{display:grid;grid-template-columns:28px 1fr;gap:10px;padding-bottom:14px;position:relative}
+.tl2 li:not(:last-child)::before{content:"";position:absolute;left:13px;top:28px;bottom:0;width:2px;background:var(--border)}
+.tl2 b{display:block;font-size:13px;font-weight:500}
+.tl2 small{color:var(--muted-fg);font-size:11.5px}
+.tl-dot{width:28px;height:28px;border-radius:50%;background:var(--muted);display:grid;place-items:center;font-size:12px}
+.tl-dot.ok{background:var(--ok-soft)}.tl-dot.h{background:var(--aqua-soft)}.tl-dot.warn{background:var(--warn-soft)}
+/* ---------- states gallery ---------- */
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(270px,1fr));gap:14px}
+.gcard{background:var(--card);border:1px solid var(--border);border-radius:12px;overflow:hidden;display:flex;flex-direction:column}
+.gcard .gh{padding:10px 12px;border-bottom:1px solid var(--border);display:flex;gap:8px;align-items:center;justify-content:space-between}
+.gcard .gh b{font-size:13px}
+.gcard .gb{padding:12px;background:var(--bg);flex:1;display:flex;flex-direction:column;gap:8px}
+.gcard .gf{padding:8px 12px;font-size:12px;color:var(--muted-fg);border-top:1px solid var(--border)}
+.mini{background:#fff;border:1px solid var(--border);border-radius:14px;overflow:hidden;font-size:12.5px;box-shadow:0 4px 14px rgba(15,23,42,.06)}
+.mini .w-head{padding:9px 10px}
+.mini .w-logo{width:26px;height:26px;font-size:11px;border-radius:8px}
+.mini .mb{padding:10px;display:flex;flex-direction:column;gap:8px;min-height:90px}
+.skel{background:linear-gradient(90deg,var(--muted),hsl(210 17% 91%),var(--muted));background-size:200% 100%;animation:sh 1.3s infinite;border-radius:6px;height:10px}
+@keyframes sh{to{background-position:-200% 0}}
+.gaps{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:14px}
+.gaps .card{padding:14px 16px;display:flex;flex-direction:column;gap:8px}
+.gaps ul{margin:0;padding-left:18px;display:flex;flex-direction:column;gap:5px;font-size:13px}
+.pri-h{color:hsl(0 70% 45%)}.pri-m{color:var(--warn)}.pri-l{color:var(--muted-fg)}
+@media (prefers-reduced-motion:reduce){*,*::before,*::after{animation:none!important;transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="jhead">
+    <div class="jtitle">
+      <h1>AI Widget journey</h1>
+      <span class="pill p-mute">Clickable prototype · sample data</span>
+      <div class="legend"><span class="today">Today</span> exists in GlobalyApp <span class="planned">Planned</span> designed here, not built</div>
+    </div>
+    <nav class="steps" id="steps" aria-label="Journey steps"></nav>
+    <div class="navrow">
+      <button class="btn sm" id="prev" type="button">← Back</button>
+      <button class="btn sm pri" id="next" type="button">Next step →</button>
+      <span class="sp"></span>
+      <span style="font-size:12px;color:var(--muted-fg)">Keys: <span class="kbd">←</span> <span class="kbd">→</span></span>
+      <button class="btn sm ghost" id="restart" type="button">Restart journey</button>
+    </div>
+  </header>
+  <main class="scene">
+    <section class="stage" id="stage" aria-live="polite"></section>
+    <aside class="notes" id="notes"></aside>
+  </main>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+(function () {
+"use strict";
+const $ = (s, r = document) => r.querySelector(s);
+const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+const esc = (s) => String(s).replace(/[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" })[c]);
+const now = () => new Date().toLocaleTimeString([], { hour: "numeric", minute: "2-digit" });
+function toast(t) { const el = $("#toast"); el.textContent = t; el.classList.add("show"); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove("show"), 2200); }
+
+/* ============ shared config (the widget being built) ============ */
+const CFG = {
+  name: "Northfield Admissions", subtitle: "Usually replies in seconds",
+  greeting: "Hi! I'm Northfield's admissions assistant. Ask me about courses, entry requirements, fees or scholarships.",
+  brand: "#7a1f2b", logo: "N", position: "right",
+  instructions: "Always mention our February and July intakes. Recommend booking a campus tour for undergraduates.",
+  limit: 1000, used: 184,
+  starters: ["What Masters courses do you offer?", "What IELTS score do I need?", "Are there scholarships?"],
+  contactAfter: 2, handoff: true, hours: "Mon–Fri, 9am–5pm",
+};
+const BRANDS = ["#7a1f2b", "#012E8A", "#0f766e", "#7c3aed", "#c2410c", "#111827"];
+const AGENT = { name: "Alex Morgan", first: "Alex", ini: "AM" };
+/* End-of-chat rating: five faces, worst to best. A low score asks what went wrong. */
+const RATINGS = [["😞", "Very unhappy"], ["🙁", "Unhappy"], ["😐", "Okay"], ["🙂", "Happy"], ["😍", "Loved it"]];
+function applyBrand() { document.documentElement.style.setProperty("--brand", CFG.brand); }
+
+/* ============ widget engine (visitor side) ============ */
+const W = {};
+function wReset(o = {}) {
+  const gen = (W.gen || 0) + 1;
+  Object.assign(W, { gen, open: false, full: false, teaser: true, msgs: [], mode: "ai", typing: null, contact: "none", sent: 0,
+    endShown: false, ended: false, rating: null, ratingDone: false, ratingNote: "", unread: 0, offline: false, returning: false, draft: "", agentTyping: false }, o);
+}
+wReset();
+let seq = 1;
+const M = (who, text, extra = {}) => ({ id: seq++, who, text, at: now(), ...extra });
+
+const ICON = {
+  chat: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+  x: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>',
+  send: '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 2 11 13M22 2l-7 20-4-9-9-4 20-7z"/></svg>',
+};
+
+function wMsgHTML(m) {
+  if (m.who === "sys") return `<div class="sysline">${esc(m.text)}</div>`;
+  if (m.who === "u") {
+    const st = m.state === "sending" ? `<div class="st">Sending…</div>` : m.state === "failed"
+      ? `<div class="st fail">Not sent · <button type="button" data-retry="${m.id}">Retry</button></div>` : "";
+    return `<div class="m u"><div style="display:flex;flex-direction:column;align-items:flex-end;max-width:80%"><div class="bb" style="max-width:100%">${esc(m.text)}</div>${st}</div></div>`;
+  }
+  if (m.who === "g") return `<div class="m g"><div class="av sm agent">${AGENT.ini}</div><div style="max-width:84%"><div class="who"><b>${AGENT.first}</b> · Admissions team</div><div class="bb" style="max-width:100%">${esc(m.text)}</div></div></div>`;
+  if (m.who === "card") return wCardHTML(m);
+  const paras = m.text.split("\n").map((p) => `<p>${p.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>")}</p>`).join("");
+  const courses = m.courses ? `<div class="courses">${m.courses.map((c) => `<div class="course"><i>🎓</i><div><b>${esc(c[0])}</b><small>${esc(c[1])}</small></div></div>`).join("")}</div>` : "";
+  const chips = m.chips && m === lastAI() ? `<div class="chips">${m.chips.map((c) => `<button class="chip" type="button" data-say="${esc(c)}">${esc(c)}</button>`).join("")}</div>` : "";
+  return `<div class="m a"><span class="mk" aria-hidden="true"></span><div class="tx">${paras}${courses}${chips}</div></div>`;
+}
+function lastAI() { for (let i = W.msgs.length - 1; i >= 0; i--) if (W.msgs[i].who === "a") return W.msgs[i]; return null; }
+
+function wCardHTML(m) {
+  if (m.kind === "contact") {
+    if (W.contact === "done") return `<div class="wcard"><b>Thanks, ${esc(W.cname || "Priya")}!</b><p>We've saved your details. We'll send a summary of this conversation to <b style="color:var(--fg)">${esc(W.cemail || "priya.sharma@example.com")}</b> once you're done here.</p></div>`;
+    if (W.contact === "skipped") return `<div class="sysline">You can share your details any time — just ask</div>`;
+    const e = W.cerr || {};
+    return `<div class="wcard"><b>Want a summary of this chat?</b><p>Leave your name and email and I'll send you a summary of the courses and requirements we've covered. No account needed.</p>
+      <input class="input ${e.name ? "err" : ""}" id="cName" placeholder="Your name" aria-label="Your name" value="${esc(W.cname || "")}">${e.name ? `<span class="errtxt">${e.name}</span>` : ""}
+      <input class="input ${e.email ? "err" : ""}" id="cEmail" type="email" placeholder="Email address" aria-label="Email address" value="${esc(W.cemail || "")}">${e.email ? `<span class="errtxt">${e.email}</span>` : ""}
+      <div class="rowb"><button class="btn sm pri" type="button" id="cSave" style="background:var(--brand);border-color:var(--brand)">${W.csaving ? "Sending…" : "Email me a summary"}</button><button class="btn sm ghost" type="button" id="cSkip" style="flex:0">Not now</button></div></div>`;
+  }
+  if (m.kind === "end") {
+    if (W.ended) return `<div class="wcard"><b>Thanks for chatting!</b><p>${W.contact === "done" ? `A summary of everything we discussed is on its way to <b style="color:var(--fg)">${esc(W.cemail || "priya.sharma@example.com")}</b>. ` : ""}Ask me anything else whenever you like.</p></div>${ratingHTML()}`;
+    return `<div class="wcard"><b>Anything else I can help with?</b><p>We covered the MSc Data Science entry requirements, IELTS 6.5 and the Global Futures scholarship. I can end the chat and email you a summary.</p>
+      <div class="rowb"><button class="btn sm pri" type="button" id="eEnd" style="background:var(--brand);border-color:var(--brand)">End chat &amp; send summary</button><button class="btn sm ghost" type="button" id="eCont" style="flex:0">Continue chatting</button></div></div>`;
+  }
+  if (m.kind === "waiting") return `<div class="wcard" style="border-color:var(--sky-b);background:var(--sky)"><div style="display:flex;gap:8px;align-items:center"><span class="spin" style="border-top-color:var(--sky-fg)"></span><b>Connecting you to the admissions team…</b></div><p>Someone usually joins within a few minutes (${CFG.hours}). You can keep typing; they'll see everything.</p></div>`;
+  return "";
+}
+
+function ratingHTML() {
+  if (W.ratingDone) return `<div class="wcard" style="align-items:center;text-align:center"><div style="font-size:26px">${RATINGS[W.rating][0]}</div><b>Thanks for your feedback!</b><p>${W.rating <= 2 ? "The team will look at what went wrong." : "It helps us make the assistant better."}</p></div>`;
+  const low = W.rating !== null && W.rating !== undefined && W.rating <= 2;
+  return `<div class="wcard rate"><b style="text-align:center">How was this chat?</b>
+    <div class="faces" role="radiogroup" aria-label="Rate this chat">${RATINGS.map(([f, l], i) => `<button type="button" role="radio" aria-checked="${W.rating === i}" class="face ${W.rating === i ? "on" : ""}" data-rate="${i}" title="${l}" aria-label="${l}">${f}</button>`).join("")}</div>
+    <p style="text-align:center;min-height:16px">${W.rating !== null && W.rating !== undefined ? RATINGS[W.rating][1] : "Tap a face"}</p>
+    ${W.rating !== null && W.rating !== undefined ? `${low ? `<textarea class="textarea" id="rNote" rows="2" style="min-height:54px;font-size:12.5px" placeholder="What could we have done better? (optional)">${esc(W.ratingNote || "")}</textarea>` : ""}<button class="btn sm pri" type="button" id="rSend" style="background:var(--brand);border-color:var(--brand)">Send feedback</button>` : ""}</div>`;
+}
+
+function widgetHTML(opts = {}) {
+  const human = W.mode === "human";
+  const head = `<div class="w-head">
+    ${human ? `<div class="w-logo agent">${AGENT.ini}<span class="live"></span></div>` : `<div class="w-logo">${esc(CFG.logo)}</div>`}
+    <div class="t"><b>${esc(CFG.name)}</b><small>${human ? `${AGENT.first} from the admissions team is replying` : W.mode === "waiting" ? "Waiting for a team member…" : esc(CFG.subtitle)}</small></div>
+    ${opts.noFull ? "" : `<button class="w-ico" type="button" data-w="full" title="${W.full ? "Exit full screen" : "Full screen"}" aria-label="Toggle full screen">${W.full ? "⤡" : "⤢"}</button>`}
+    <button class="w-ico" type="button" data-w="min" title="Minimise" aria-label="Minimise">—</button></div>`;
+  const banner = W.offline ? `<div class="w-banner bad"><span class="spin" style="border-top-color:currentColor"></span>You're offline. Reconnecting… messages will send when you're back.</div>`
+    : human ? `<div class="w-banner h">👋 You're chatting with a person from the admissions team.</div>` : "";
+  const welcome = `<div class="w-welcome"><div class="w-logo">${esc(CFG.logo)}</div><h5>${esc(CFG.name)}</h5><p>${esc(CFG.greeting)}</p></div>`;
+  const starters = W.msgs.filter((m) => m.who === "u").length === 0 && !W.returning
+    ? `<div class="chips" style="justify-content:center">${CFG.starters.map((s) => `<button class="chip" type="button" data-say="${esc(s)}">${esc(s)}</button>`).join("")}</div>` : "";
+  const back = W.returning ? `<div class="sysline">Welcome back — here's your last conversation</div>` : "";
+  const typing = W.typing ? `<div class="thinking"><span class="mk" style="width:24px;height:24px;border-radius:8px;background:radial-gradient(circle at 30% 30%,#fff 0,color-mix(in srgb,var(--brand) 55%,#fff) 30%,var(--brand) 75%)"></span><span class="dots3"><i></i><i></i><i></i></span>${esc(W.typing)}</div>` : "";
+  const agentTyping = W.agentTyping ? `<div class="thinking"><div class="av sm agent">${AGENT.ini}</div><span class="dots3"><i></i><i></i><i></i></span>${AGENT.first} is typing…</div>` : "";
+  const body = `<div class="w-body" id="wBody">${welcome}${starters}${back}${W.msgs.map(wMsgHTML).join("")}${typing}${agentTyping}</div>`;
+  const foot = `<div class="w-foot"><div class="w-inrow"><button class="w-attach" type="button" title="Attach a file (planned)" aria-label="Attach a file">📎</button><textarea id="wIn" rows="1" placeholder="${W.ended ? "Start a new question…" : "Ask about courses, fees, requirements…"}" aria-label="Message">${esc(W.draft)}</textarea><button class="w-send" id="wSend" type="button" aria-label="Send" ${W.draft.trim() ? "" : "disabled"}>${ICON.send}</button></div><div class="w-powered">Powered by Globaly · AI can make mistakes</div></div>`;
+  const panel = `<div class="w-panel ${W.open ? "open" : ""} ${W.full ? "full" : ""}" role="dialog" aria-label="${esc(CFG.name)} chat">${head}${banner}${body}${foot}</div>`;
+  const teaser = !W.open && W.teaser && !opts.noTeaser ? `<div class="w-teaser" data-w="open">${esc(CFG.greeting.split(".")[0])}. 👋<button class="x" type="button" data-w="noteaser" aria-label="Dismiss">✕</button></div>` : "";
+  const orb = `<button class="w-orb ${W.open ? "open" : ""}" type="button" data-w="toggle" aria-label="${W.open ? "Close chat" : "Open chat"}">${W.open ? ICON.x : ICON.chat}${!W.open && W.unread ? `<span class="dot">${W.unread}</span>` : ""}</button>`;
+  return `<div class="w-layer ${CFG.position === "left" ? "w-left" : ""}">${teaser}${panel}${orb}</div>`;
+}
+
+function siteHTML() {
+  return `<div class="site"><div class="site-nav"><span class="crest">N</span><b>Northfield University</b><span class="sp"></span><a>Study</a><a>Admissions</a><a>Research</a><a>Campus life</a><a>International</a></div>
+    <div class="site-hero"><div><h3>Find the course that fits your future.</h3><p>Over 180 undergraduate and postgraduate programmes, with February and July intakes for international students.</p><span class="cta">Explore courses</span></div><div class="img"></div></div>
+    <div class="site-cols"><div><h4>Postgraduate study</h4><p>Masters and research degrees across engineering, business and health.</p></div><div><h4>Scholarships</h4><p>Merit awards of up to 50% of tuition for international applicants.</p></div><div><h4>Visit us</h4><p>Book a campus tour or join an online information session.</p></div></div></div>`;
+}
+function browserHTML(url = "northfield.edu/admissions", extra = "") {
+  return `<div class="browser"><div class="chrome"><span class="dots"><i></i><i></i><i></i></span><span class="addr">🔒 ${url}</span></div><div class="viewport" id="wHost">${siteHTML()}${widgetHTML()}</div>${extra}</div>`;
+}
+
+let mountWidget = () => {};
+function renderWidget() {
+  const host = $("#wHost"); if (!host) return;
+  const hadFocus = document.activeElement?.id === "wIn";
+  const layer = $(".w-layer", host); const html = widgetHTML(host.dataset.opts ? JSON.parse(host.dataset.opts) : {});
+  const t = document.createElement("div"); t.innerHTML = html; layer.replaceWith(t.firstElementChild);
+  const inp = $("#wIn"); const body = $("#wBody");
+  if (body) body.scrollTop = body.scrollHeight;
+  if (inp && hadFocus) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
+  mountWidget();
+  if (window.onWidgetChange) window.onWidgetChange();
+}
+
+function bindWidget() {
+  const host = $("#wHost"); if (!host) return;
+  host.onclick = (e) => {
+    const t = e.target.closest("[data-w],[data-say],[data-retry],[data-rate],#rSend,#wSend,#cSave,#cSkip,#eEnd,#eCont"); if (!t) return;
+    const w = t.dataset.w;
+    if (w === "toggle") { W.open = !W.open; W.teaser = false; if (W.open) W.unread = 0; if (!W.open) W.full = false; }
+    else if (w === "open") { W.open = true; W.teaser = false; W.unread = 0; }
+    else if (w === "noteaser") { e.stopPropagation(); W.teaser = false; }
+    else if (w === "min") { W.open = false; W.full = false; }
+    else if (w === "full") { W.full = !W.full; }
+    else if (t.dataset.say) { visitorSend(t.dataset.say); return; }
+    else if (t.dataset.retry) { const m = W.msgs.find((x) => x.id === +t.dataset.retry); if (m) { m.state = "sending"; renderWidget(); setTimeout(() => { m.state = null; renderWidget(); respond(m.text); }, 700); } return; }
+    else if (t.dataset.rate) { W.rating = +t.dataset.rate; }
+    else if (t.id === "rSend") { W.ratingDone = true; toast(`Rated ${RATINGS[W.rating][0]} ${RATINGS[W.rating][1]}`); }
+    else if (t.id === "wSend") { visitorSend(W.draft); return; }
+    else if (t.id === "cSave") { submitContact(); return; }
+    else if (t.id === "cSkip") { W.contact = "skipped"; }
+    else if (t.id === "eEnd") { endChat(); return; }
+    else if (t.id === "eCont") { W.msgs = W.msgs.filter((m) => m.kind !== "end"); W.endShown = true; W.msgs.push(M("a", "Of course — what else would you like to know?")); }
+    renderWidget();
+  };
+  host.oninput = (e) => {
+    if (e.target.id === "wIn") { W.draft = e.target.value; const b = $("#wSend"); if (b) b.disabled = !W.draft.trim(); }
+    if (e.target.id === "cName") W.cname = e.target.value;
+    if (e.target.id === "cEmail") W.cemail = e.target.value;
+    if (e.target.id === "rNote") W.ratingNote = e.target.value;
+  };
+  host.onkeydown = (e) => {
+    if (e.target.id === "wIn" && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); visitorSend(W.draft); }
+    if (e.target.id === "cEmail" && e.key === "Enter") submitContact();
+  };
+}
+
+function visitorSend(text) {
+  text = (text || "").trim(); if (!text) return;
+  W.draft = ""; W.returning = false;
+  if (W.ended) { W.ended = false; W.msgs = W.msgs.filter((m) => m.kind !== "end"); W.msgs.push(M("sys", "New conversation")); }
+  const m = M("u", text, { state: "sending" }); W.msgs.push(m); W.sent++;
+  renderWidget();
+  const gen = W.gen;
+  setTimeout(() => {
+    if (gen !== W.gen) return;
+    if (W.offline) { m.state = "failed"; renderWidget(); return; }
+    m.state = null; renderWidget(); respond(text);
+  }, 450);
+}
+
+function aiSay(msg, delay = 1300, steps = ["Searching Northfield's courses…"]) {
+  const gen = W.gen;
+  W.typing = steps[0]; renderWidget();
+  let i = 0; const stepT = setInterval(() => { if (gen !== W.gen) return clearInterval(stepT); i++; if (steps[i]) { W.typing = steps[i]; renderWidget(); } }, 650);
+  setTimeout(() => {
+    clearInterval(stepT); if (gen !== W.gen) return; W.typing = null;
+    const full = msg.text; const out = M("a", "", { chips: msg.chips, courses: null }); W.msgs.push(out);
+    const words = full.split(" "); let n = 0;
+    const tick = setInterval(() => {
+      if (gen !== W.gen) return clearInterval(tick);
+      n += 3; out.text = words.slice(0, n).join(" ");
+      if (n >= words.length) { clearInterval(tick); out.text = full; out.courses = msg.courses || null; if (!W.open) W.unread++; renderWidget(); msg.after && msg.after(); return; }
+      renderWidget();
+    }, 45);
+  }, delay);
+}
+
+const RULES = [
+  { re: /human|person|agent|someone|talk to|speak to|real/i, fn: requestHuman },
+  { re: /thank|bye|that'?s all|that is all|done/i, fn: () => aiSay({ text: "You're welcome! I'm glad I could help.", after: showEndCard }, 900, ["Wrapping up…"]) },
+  { re: /master|course|program|degree|study/i, fn: () => aiSay({ text: "Here are three Masters courses international students ask about most. All three take **February and July** intakes:", courses: [["MSc Data Science", "18 months · On campus · £21,500/yr"], ["MSc Computer Science", "12 months · On campus · £20,900/yr"], ["MBA (Global)", "15 months · Blended · £24,000/yr"]], chips: ["Entry requirements for Data Science", "Are there scholarships?"], after: maybeContact }, 1500, ["Searching Northfield's courses…", "Checking intakes…"]) },
+  { re: /ielts|english|toefl|pte|requirement/i, fn: () => aiSay({ text: "For the **MSc Data Science** you need an IELTS overall of **6.5**, with no band below 6.0. PTE Academic 62 or TOEFL iBT 90 are also accepted.\nYou'll also need a 2:1 bachelor's (or equivalent) in a quantitative subject.", chips: ["What if my writing band is 6.0?", "How do I apply?"], after: maybeContact }, 1300, ["Reading entry requirements…"]) },
+  { re: /scholar|fund|fee|cost|money|price/i, fn: () => aiSay({ text: "International applicants are automatically considered for the **Global Futures Scholarship** — up to 50% off tuition for strong academic records. There's no separate form.", chips: ["How is it decided?", "How do I apply?"], after: maybeContact }, 1300, ["Looking up scholarships…"]) },
+  { re: /apply|deadline|when/i, fn: () => aiSay({ text: "Applications for the **July intake** close on **30 April**. You apply online in about 20 minutes; you'll need transcripts, your IELTS result and a personal statement.", chips: ["What documents do I need?"], after: maybeContact }) },
+];
+function respond(text) {
+  if (W.mode === "human" || W.mode === "waiting") { if (window.onVisitorToAgent) window.onVisitorToAgent(text); return; }
+  const rule = RULES.find((r) => r.re.test(text));
+  if (rule) rule.fn(text);
+  else aiSay({ text: "Good question. I can help with courses, entry requirements, fees and scholarships at Northfield — could you tell me which programme you're interested in?", chips: CFG.starters.slice(0, 2), after: maybeContact });
+}
+function maybeContact() {
+  if (W.contact === "none" && W.sent >= CFG.contactAfter) { W.contact = "shown"; W.msgs.push(M("card", "", { kind: "contact" })); renderWidget(); }
+}
+function submitContact() {
+  const n = (W.cname || "").trim(), em = (W.cemail || "").trim(); const err = {};
+  if (!n) err.name = "Enter your name";
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(em)) err.email = "Enter a valid email address";
+  W.cerr = err; if (Object.keys(err).length) { renderWidget(); return; }
+  W.csaving = true; renderWidget();
+  const gen = W.gen;
+  setTimeout(() => {
+    if (gen !== W.gen) return; W.csaving = false; W.contact = "done"; renderWidget(); toast("Lead created · Visitors & Leads"); if (window.onLead) window.onLead(); }, 900);
+}
+function requestHuman() {
+  if (!CFG.handoff) { aiSay({ text: "I can't connect you to a person from this chat, but you can email admissions@northfield.edu and the team will reply within a working day." }); return; }
+  aiSay({ text: "Of course. I've asked the admissions team to join — they'll see our whole conversation, so you won't need to repeat anything.", after: () => { W.mode = "waiting"; W.msgs.push(M("card", "", { kind: "waiting" })); renderWidget(); if (window.onHandoffRequested) window.onHandoffRequested(); } }, 1000, ["Letting the team know…"]);
+}
+function showEndCard() { if (W.endShown) return; W.endShown = true; W.msgs.push(M("card", "", { kind: "end" })); renderWidget(); }
+function endChat() { W.ended = true; renderWidget(); toast(W.contact === "done" ? "Chat ended · summary email queued" : "Chat ended"); if (window.onEnded) window.onEnded(); }
+
+/* agent actions (Inbox side) */
+function agentJoin() {
+  W.mode = "human"; W.msgs = W.msgs.filter((m) => m.kind !== "waiting"); W.msgs.push(M("sys", `${AGENT.first} from the admissions team joined`)); renderWidget();
+}
+function agentSend(text) {
+  if (W.mode !== "human") agentJoin();
+  W.agentTyping = true; renderWidget();
+  const gen = W.gen;
+  setTimeout(() => { if (gen !== W.gen) return; W.agentTyping = false; W.msgs.push(M("g", text)); if (!W.open) W.unread++; renderWidget(); }, 1100);
+}
+function agentHandBack() {
+  W.mode = "ai"; W.msgs.push(M("sys", "The AI assistant is back — ask me anything")); renderWidget();
+}
+
+/* ============ Inbox (staff side, mirrors W) ============ */
+function inboxThreadHTML(opts = {}) {
+  const st = W.mode === "human" ? "human" : W.mode === "waiting" ? "need" : "ai";
+  const pill = st === "human" ? `<span class="pill p-h">You have this</span>` : st === "need" ? `<span class="pill p-warn">Wants a person</span>` : `<span class="pill p-ai">AI is handling</span>`;
+  const btns = st === "human" ? `<button class="btn sm" type="button" data-i="back">🤖 Resume AI</button>` : `<button class="btn sm pri" type="button" data-i="take">✋ Take over</button>`;
+  const strip = st === "need" ? `<div class="tstrip need"><b>Priya asked for a person</b><span>The AI has paused and is waiting for the team.</span></div>`
+    : st === "human" ? `<div class="tstrip h">You're handling this chat, so the AI is paused. It takes over again 15 minutes after your last reply.</div>`
+    : `<div class="tstrip ai">The AI assistant is answering this visitor. Replying or clicking Take over pauses it.</div>`;
+  const runs = W.msgs.filter((m) => ["u", "a", "g", "sys"].includes(m.who)).map((m) => {
+    if (m.who === "sys") return `<div class="sysline">${esc(m.text)}</div>`;
+    if (m.who === "u") return `<div class="run l"><div class="rh"><b>${esc(W.cname || "Priya Sharma")}</b> · ${m.at}</div><div class="rb"><div class="av sm">PS</div><div class="tb v">${esc(m.text)}</div></div></div>`;
+    if (m.who === "g") return `<div class="run r"><div class="rh">${m.at} · <b>${AGENT.name}</b> · Team</div><div class="rb"><div class="av sm agent">${AGENT.ini}</div><div class="tb ag">${esc(m.text)}</div></div></div>`;
+    return `<div class="run r"><div class="rh">${m.at} · <b class="ai">AI Assistant</b></div><div class="rb"><span class="orbmk"></span><div class="tb ai">${m.text.replace(/\*\*(.+?)\*\*/g, "<b>$1</b>") || "…"}</div></div></div>`;
+  }).join("");
+  const ban = st === "human" ? `<div class="tban h">✋ Replies go to Priya's chat window on northfield.edu within a few seconds.</div>` : `<div class="tban ai">🤖 AI is handling this conversation. Sending a reply takes it over.</div>`;
+  return `<div class="pane" style="border-right:${opts.panel ? "1px solid var(--border)" : "0"}">
+    <div class="thead"><div class="av">PS<span class="bdg" style="background:var(--primary)">💬</span></div><div class="who"><b>${esc(W.cname || "Priya Sharma")}</b> <span class="pill p-ok" style="font-size:10px">Lead</span><small>via Web widget · ${esc(W.cemail || "priya.sharma@example.com")}</small></div><span class="sp"></span>${pill}${btns}<button class="btn sm" type="button" data-i="resolve">✓ Resolve</button></div>
+    ${strip}<div class="tbody" id="tBody">${runs}</div>
+    <div class="tcomp">${ban}<div class="tbox"><textarea id="aIn" placeholder="Reply to Priya… (Enter to send, Shift+Enter for a new line)" aria-label="Reply"></textarea><div class="tools"><b>B</b><i>I</i><span>•≡</span><span>😊</span><span>📎 Attach</span><span class="sp"></span><button class="btn sm pri" type="button" data-i="send">Send</button></div></div></div></div>`;
+}
+function renderInbox() {
+  const host = $("#iHost"); if (!host) return;
+  const old = $("#aIn"); const draft = old ? old.value : ""; const hadFocus = document.activeElement === old;
+  host.innerHTML = inboxThreadHTML(); const b = $("#tBody"); if (b) b.scrollTop = b.scrollHeight;
+  const ta = $("#aIn"); if (ta) { ta.value = draft; if (hadFocus) ta.focus(); }
+}
+function bindInbox() {
+  const host = $("#iHost"); if (!host) return;
+  host.onclick = (e) => {
+    const t = e.target.closest("[data-i]"); if (!t) return;
+    const a = t.dataset.i;
+    if (a === "take") { agentJoin(); toast("You took over · the AI is paused"); }
+    if (a === "back") { agentHandBack(); toast("Handed back to the AI"); }
+    if (a === "resolve") { W.mode = "ai"; toast("Resolved · the AI answers if Priya writes again"); renderWidget(); }
+    if (a === "send") { const v = $("#aIn").value.trim(); if (!v) return; agentSend(v); $("#aIn").value = ""; }
+    renderInbox();
+  };
+  host.onkeydown = (e) => { if (e.target.id === "aIn" && e.key === "Enter" && !e.shiftKey) { e.preventDefault(); const v = e.target.value.trim(); if (!v) return; agentSend(v); e.target.value = ""; renderInbox(); } };
+}
+
+/* ============ app shell ============ */
+const SUBNAVS = {
+  Settings: { title: "Settings", items: [["💳", "Subscription"], ["🪙", "Credits"], ["🧾", "Application charges"], ["🔌", "Integrations"]], on: "" },
+  Business: { title: "Business", items: [["🏢", "Business Profile"], ["📍", "Branches"], ["📖", "Services"], ["🎓", "Scholarships"], ["👥", "Team"], ["🌐", "Site contents"]], on: "" },
+  Contacts: { title: "Contacts", items: [["🧑", "Visitors"]], on: "Visitors" },
+};
+function subnavHTML(key) {
+  const n = SUBNAVS[key];
+  return `<nav style="border-right:1px solid var(--border);background:var(--card);padding:14px 10px;display:flex;flex-direction:column;gap:2px"><span class="label" style="padding:4px 10px 8px">${n.title}</span>${n.items.map(([i, l]) => `<a style="font-size:13px;padding:7px 10px;border-radius:8px;display:flex;gap:8px;color:${l === n.on ? "var(--primary)" : "var(--muted-fg)"};background:${l === n.on ? "var(--primary-soft)" : "transparent"};${l === n.on ? "border-left:2px solid var(--primary);font-weight:500" : ""}"><span style="width:16px;text-align:center;filter:grayscale(${l === n.on ? 0 : 1})">${i}</span>${l}</a>`).join("")}</nav>`;
+}
+function shell(active, inner, bar = "", sub = true) {
+  const items = [["⌂", "Home"], ["▦", "Business"], ["📣", "Marketing"], ["✎", "Scribe"], ["🎓", "LMS"], ["👥", "Contacts"], ["📥", "Inbox"], ["⚙", "Settings"]];
+  return `<div class="appframe"><div class="appscroll"><div class="shell">
+    <div class="topbar"><div class="logo">g</div><div class="org">🎓 Northfield University <span>▾</span></div><span class="sp"></span><span>🔔</span><span class="credits">Credits</span><div class="me">A</div></div>
+    <nav class="rail" aria-label="App navigation">${items.map(([i, l]) => `<a class="${l === active ? "on" : ""}"><i>${i}</i>${l}</a>`).join("")}</nav>
+    <div class="content">${SUBNAVS[active] && sub !== false ? `<div style="display:grid;grid-template-columns:190px minmax(0,1fr);min-height:100%">${subnavHTML(active)}<div style="min-width:0;position:relative">${bar}${inner}</div></div>` : bar + inner}</div></div></div></div>`;
+}
+function inboxBar() {
+  return `<div class="ibar"><span class="wsw">💬 Widget · On <button class="toggle" role="switch" aria-checked="true" aria-label="Widget" type="button" onclick="this.setAttribute('aria-checked',this.getAttribute('aria-checked')==='true'?'false':'true')"></button></span><button class="btn sm dash" type="button" data-go="channels">📡 Connect a channel</button><span class="sp"></span><button class="btn sm" type="button" data-go="install" title="Widget settings">⚙ Widget</button></div>`;
+}
+
+/* ============ create dialog (the real one: Settings → AI embed → New widget) ============ */
+let moreOpen = false;
+function dialogHTML() {
+  const f = (id, label, input, hint = "") => `<div class="field"><label for="${id}">${label}</label>${input}${hint ? `<small>${hint}</small>` : ""}</div>`;
+  const more = `<div style="border-top:1px solid var(--border);padding-top:10px"><button class="btn sm ghost" type="button" id="moreBtn" style="padding:0 4px">${moreOpen ? "▾" : "▸"} More settings <span class="planned">Planned</span></button>
+    ${moreOpen ? `<div style="display:flex;flex-direction:column;gap:12px;margin-top:10px">
+      ${f("fStart", "Suggested questions", `<div class="chipsedit">${CFG.starters.map((x) => `<span>${esc(x)} ✕</span>`).join("")}<span style="border-style:dashed;color:var(--muted-fg)">+ Add</span></div>`)}
+      ${f("fPos", "Launcher position", `<div class="radio" style="flex-direction:row">${["right", "left"].map((p) => `<label class="${CFG.position === p ? "on" : ""}" style="flex:1;padding:6px 10px"><input type="radio" name="pos" value="${p}" ${CFG.position === p ? "checked" : ""}> Bottom ${p}</label>`).join("")}</div>`)}
+      ${f("fCa", "Ask for name &amp; email", `<select class="input" id="fCa" style="height:36px">${[[1, "After the first answer"], [2, "After 2 questions (recommended)"], [0, "Only when they ask for a summary"]].map(([v, l]) => `<option value="${v}" ${CFG.contactAfter === v ? "selected" : ""}>${l}</option>`).join("")}</select>`)}
+      <label style="display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:500">Let visitors ask for a person<button class="toggle" type="button" role="switch" id="fHand" aria-checked="${CFG.handoff}" aria-label="Let visitors ask for a person"></button></label>
+    </div>` : ""}</div>`;
+  return `<div style="position:absolute;inset:0;background:rgba(15,23,42,.35);display:flex;align-items:flex-start;justify-content:center;padding:24px;z-index:5;overflow:auto">
+    <div role="dialog" aria-label="New AI widget" style="background:#fff;border-radius:14px;width:100%;max-width:448px;padding:20px 22px;box-shadow:0 20px 60px rgba(15,23,42,.3);display:flex;flex-direction:column;gap:14px;animation:teaseIn .2s both">
+      <div style="display:flex;align-items:center"><b style="font-size:16px">New AI widget</b><span style="flex:1"></span><button class="w-ico" type="button" data-go="widgets" aria-label="Close">✕</button></div>
+      ${f("fName", "Display name", `<input class="input" id="fName" value="${esc(CFG.name)}" placeholder="Acme University Counsellor">`)}
+      ${f("fSub", "Subtitle (optional)", `<input class="input" id="fSub" value="${esc(CFG.subtitle)}" maxlength="120" placeholder="Usually replies in seconds">`)}
+      ${f("fGreet", "Greeting (optional)", `<textarea class="textarea" id="fGreet" maxlength="300" rows="2" style="min-height:52px" placeholder="Hi! Ask me anything about studying with us.">${esc(CFG.greeting)}</textarea>`)}
+      ${f("fLogo", "Logo URL (optional)", `<input class="input" id="fLogo" placeholder="https://…/logo.png">`)}
+      ${f("fColor", "Brand colour", `<input class="input" id="fColor" type="color" value="${CFG.brand}" style="width:80px;height:40px;padding:4px">`)}
+      ${f("fIns", "Custom instructions (optional)", `<textarea class="textarea" id="fIns" rows="2" style="min-height:52px" placeholder="e.g. Always mention our February and July intakes.">${esc(CFG.instructions)}</textarea>`, "Instructions that attempt to override the counsellor's behaviour are ignored.")}
+      ${f("fLim", "Monthly message limit", `<input class="input" id="fLim" type="number" min="1" value="${CFG.limit}">`)}
+      ${more}
+      <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" type="button" data-go="widgets">Cancel</button><button class="btn pri" type="button" id="createBtn">Create widget</button></div>
+    </div></div>`;
+}
+let installTab = "html", copied = false, checkState = "idle";
+function installHelpHTML() {
+  const tips = { html: "Paste it just before <span class='mono'>&lt;/body&gt;</span> on every page, or in your site's shared footer template.", wordpress: "Appearance → Theme File Editor → footer.php, before <span class='mono'>&lt;/body&gt;</span>. Or use a “Header &amp; Footer scripts” plugin.", webflow: "Site settings → Custom code → Footer code. Publish the site afterwards.", gtm: "New tag → Custom HTML → paste → trigger on All Pages → Submit." };
+  const check = checkState === "idle" ? `<button class="btn sm" type="button" id="chk">Check my website</button><span style="color:var(--muted-fg);font-size:12px">We look for the widget on northfield.edu</span>`
+    : checkState === "running" ? `<span class="spin"></span><span>Looking for the widget on northfield.edu…</span>`
+    : `<span class="pill p-ok">✓ Found</span><span>Seen on northfield.edu/admissions · just now</span>`;
+  return `<div class="card" style="padding:16px;display:flex;flex-direction:column;gap:12px;border-style:dashed"><div style="display:flex;gap:8px;align-items:center"><b>Add it to your website</b><span class="planned">Planned</span></div>
+    <div class="install-tabs">${[["html", "Any website"], ["wordpress", "WordPress"], ["webflow", "Webflow"], ["gtm", "Tag Manager"]].map(([k, l]) => `<button type="button" class="${installTab === k ? "on" : ""}" data-tab="${k}">${l}</button>`).join("")}</div><p style="font-size:13px">${tips[installTab]}</p>
+    <div class="checkrow">${check}</div></div>`;
+}
+function bindWizard() {
+  const stage = $("#stage");
+  stage.oninput = (e) => {
+    const id = e.target.id;
+    if (id === "fName") CFG.name = e.target.value || "AI Counsellor";
+    if (id === "fSub") CFG.subtitle = e.target.value;
+    if (id === "fGreet") CFG.greeting = e.target.value;
+    if (id === "fIns") CFG.instructions = e.target.value;
+    if (id === "fColor") { CFG.brand = e.target.value; applyBrand(); }
+  };
+  stage.onchange = (e) => {
+    if (e.target.name === "pos") { CFG.position = e.target.value; rerender(); }
+    if (e.target.id === "fCa") CFG.contactAfter = +e.target.value;
+  };
+  stage.onclick = (e) => {
+    const t = e.target.closest("#moreBtn,#fHand,#createBtn,#copy,#chk,[data-tab]"); if (!t) return;
+    if (t.id === "moreBtn") { moreOpen = !moreOpen; rerender(); }
+    if (t.id === "fHand") { CFG.handoff = !CFG.handoff; rerender(); }
+    if (t.id === "createBtn") { toast("Widget created"); go(SC.findIndex((x) => x.id === "install")); }
+    if (t.id === "copy") { copied = true; rerender(); toast("Embed code copied"); setTimeout(() => { copied = false; if (cur().id === "install") rerender(); }, 2000); }
+    if (t.id === "chk") { checkState = "running"; rerender(); setTimeout(() => { checkState = "found"; if (cur().id === "install") rerender(); toast("Widget found on your website"); }, 1800); }
+    if (t.dataset.tab) { installTab = t.dataset.tab; rerender(); }
+  };
+}
+
+/* ============ static dashboard screens ============ */
+function widgetsPage(empty, overlay = "", below = "") {
+  const card = `<div class="card" style="padding:16px;display:flex;flex-direction:column;gap:12px">
+      <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="width:10px;height:10px;border-radius:50%;background:var(--brand)"></span><b>${esc(CFG.name)}</b><span style="flex:1"></span><button class="w-ico" type="button" data-go="create" title="Appearance">🎨</button><button class="w-ico" type="button" data-go="preview" title="Preview on a sample page">👁</button><button class="w-ico" type="button" data-toast="Old snippet stops working. Continue?" title="Regenerate key">🔑</button><button class="w-ico" type="button" data-toast="Pause on your site?" title="Pause">⏻</button></div>
+      <p style="font-size:12px;color:var(--muted-fg)">${esc(CFG.subtitle)} · “${esc(CFG.greeting)}”</p>
+      <div><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted-fg);margin-bottom:5px"><span>Messages this month</span><span>${CFG.used} / ${CFG.limit}</span></div><div class="progress"><i style="width:${CFG.used / CFG.limit * 100}%"></i></div></div>
+      <div><p style="font-size:12px;color:var(--muted-fg);font-weight:500;margin-bottom:6px">Embed on your website</p><div style="display:flex;gap:8px;align-items:flex-start"><code class="mono" style="flex:1;background:var(--muted);border-radius:8px;padding:8px;font-size:11.5px;overflow-x:auto;white-space:nowrap">&lt;script src="https://app.globaly.com/embed.js" data-key="8f3c2a91-4d7e-4b1a-9c55-2e6f0d81b7aa"${CFG.position === "left" ? ' data-position="left"' : ""} async&gt;&lt;/script&gt;</code><button class="btn sm" type="button" id="copy" title="Copy">${copied ? "✓" : "⧉"}</button></div></div>
+    </div>`;
+  const emptyBox = `<div class="card" style="padding:40px 20px;text-align:center;border-style:dashed;color:var(--muted-fg);font-size:13px">No widgets yet. Create one to get your embed code.</div>`;
+  return shell("Inbox", `<div class="page" style="max-width:768px;min-height:640px"><a data-go="takeover" style="color:var(--primary);cursor:pointer;font-size:13px">← Inbox</a><div class="pagehead" style="margin-top:-8px"><div><p style="font-size:12px;color:var(--muted-fg)">Inbox / Widget</p><h2 class="serif">🤖 AI Widget</h2><p>Embed a branded AI counsellor on your website, scoped to your courses.</p></div><span class="sp"></span><button class="btn pri" type="button" data-go="create">＋ New widget</button></div>
+    ${empty ? emptyBox : card}${below}</div>${overlay}`);
+}
+
+const PROFILE_TABS = ["Profile", "Branches", "Partners", "Team", "Visitors & Leads", "Services", "Scholarships", "Activity"];
+/* Visitors & Leads — the existing table, moved from Business → Visitors to a new Contacts menu. */
+function leadsPage() {
+  const rows = [
+    [W.cname || "Priya Sharma", W.cemail || "priya.sharma@example.com", "Lead", "24", "Female", "Nepal", "MSc Data Science", W.msgs.filter((m) => m.who === "u").length || 9, "just now", true],
+    ["John Doe", "john@example.com", "Lead", "24", "Male", "Nepal", "MSc Data Science", 11, "5 min ago"],
+    ["", "", "Visitor", "", "", "", "Bachelor of Business Administration", 7, "1 hr ago"],
+    ["", "", "Visitor", "", "", "", "", 2, "2 hrs ago"],
+    ["Wei Chen", "wei.chen@example.com", "Lead", "early 30s", "Male", "China", "MBA (Global)", 19, "Yesterday"],
+  ];
+  const leads = rows.filter((r) => r[2] === "Lead").length;
+  const ini = (n) => n ? n.split(" ").map((x) => x[0]).join("") : "👤";
+  return shell("Contacts", `<div class="page" style="max-width:1240px"><div class="card" style="padding:16px 16px 12px;display:flex;flex-direction:column;gap:14px">
+    <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="color:var(--muted-fg)">👥</span><b style="font-size:15px">Visitors &amp; Leads</b><span class="pill p-ai" style="font-size:11px">${rows.length}</span><span style="flex:1"></span><div style="position:relative;width:260px"><span style="position:absolute;left:10px;top:9px;color:var(--muted-fg);font-size:12px">🔍</span><input class="input" style="height:38px;padding-left:30px" placeholder="Search name, email or programme" aria-label="Search visitors"></div></div>
+    <div style="display:inline-flex;gap:2px;background:var(--muted);padding:3px;border-radius:10px;width:fit-content">${[["All", rows.length], ["Visitors", rows.length - leads], ["Leads", leads]].map(([t, n], i) => `<button type="button" style="border:0;border-radius:8px;padding:6px 12px;font-size:13.5px;cursor:pointer;background:${i === 0 ? "#fff" : "transparent"};${i === 0 ? "box-shadow:0 1px 2px rgba(15,23,42,.08);font-weight:600" : "color:var(--muted-fg)"}">${t} <span style="color:var(--muted-fg);font-weight:400">${n}</span></button>`).join("")}</div>
+    <div class="vbox"><table class="vt"><thead><tr><th style="width:36px"><input type="checkbox" aria-label="Select all on this page"></th><th>Visitor</th><th>Age</th><th>Gender</th><th>Nationality</th><th>Study preference</th><th>Status</th><th>Chats</th><th>Last activity</th><th></th></tr></thead><tbody>
+    ${rows.map((r) => `<tr class="${r[9] ? "new" : ""}" style="background:#fff"><td><input type="checkbox" aria-label="Select"></td><td><div style="display:flex;gap:10px;align-items:center"><div class="av">${ini(r[0])}</div><div>${r[0] ? `<b style="font-weight:500">${esc(r[0])}</b><br><small style="color:var(--muted-fg)">${esc(r[1])}</small>` : `<span style="font-style:italic;color:var(--muted-fg)">Anonymous visitor</span>`}</div></div></td><td>${r[3] || "—"}</td><td>${r[4] || "—"}</td><td>${r[5] || "—"}</td><td style="max-width:220px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(r[6]) || "—"}</td><td><span class="pill ${r[2] === "Lead" ? "p-ok" : "p-mute"}" style="font-size:11px">${r[2]}</span></td><td style="white-space:nowrap">💬 ${r[7]}</td><td style="color:var(--muted-fg);white-space:nowrap">${r[8]}</td><td><button class="btn sm pri" type="button" ${r[9] ? 'data-go="profile"' : 'data-toast="Opens this visitor"'}>View</button></td></tr>`).join("")}
+    </tbody></table></div>
+    <div style="display:flex;align-items:center;font-size:12px;color:var(--muted-fg)">Showing 1–${rows.length} of ${rows.length}<span style="flex:1"></span><button class="btn sm ghost" type="button" disabled>‹</button><button class="btn sm pri" type="button" style="width:28px;padding:0">1</button><button class="btn sm ghost" type="button" disabled>›</button></div>
+  </div><p style="font-size:12px;color:var(--muted-fg)">The highlighted row is Priya, created the moment she shared her details in the widget. Click View to open her.</p></div>`);
+}
+
+/* The real visitor detail page (/business/ai-widget/visitors/:id), plus one addition: Open conversation. */
+function profilePage() {
+  const nm = W.cname || "Priya Sharma", em = W.cemail || "priya.sharma@example.com";
+  const msgs = W.msgs.filter((m) => m.who === "u").length || 9;
+  const summarySent = W.ended && W.contact === "done";
+  const took = W.msgs.some((m) => m.who === "g") || W.mode === "human";
+  // Newest first, as a feed reads. Built from what this journey actually did, with sample times.
+  const timeline = [
+    W.ratingDone && [RATINGS[W.rating][0], `Rated the chat “${RATINGS[W.rating][1]}”${W.ratingNote ? ` — “${esc(W.ratingNote)}”` : ""}`, "just now", W.rating <= 2 ? "warn" : "ok"],
+    summarySent && ["✉", "Summary emailed", "just now", "ok"],
+    W.ended && ["✓", "Visitor ended the chat", "just now"],
+    W.msgs.some((m) => m.who === "sys" && /back/.test(m.text)) && ["🤖", "Handed back to the AI", "2 min ago"],
+    took && ["✋", `${AGENT.name} took over`, "4 min ago", "h"],
+    ["🙋", "Asked for a person", "5 min ago", "warn"],
+    ["👤", "Became a lead — shared name and email", "8 min ago", "ok"],
+    ["💬", "Asked about IELTS requirements", "9 min ago"],
+    ["💬", "Asked about Masters courses", "10 min ago"],
+    ["🌐", "Opened the widget on /admissions", "6 days ago"],
+  ].filter(Boolean);
+  const self = `<span class="pill p-ai" style="font-size:11px;background:var(--primary-soft)">Self-reported</span>`;
+  const pencil = `<button class="w-ico vd-edit" type="button" data-toast="Edit details" aria-label="Edit">✎</button>`;
+  const add = `<button class="btn sm" type="button" data-toast="Add a record">＋ Add</button>`;
+  const section = (icon, title, badge, right, body, count) => `<div class="card vd-sec"><div class="vd-h"><span class="vd-i">${icon}</span><b>${title}</b>${count ? `<span class="vd-n">${count}</span>` : ""}${badge}<span style="flex:1"></span>${right}</div><div class="vd-b">${body}</div></div>`;
+  const fld = (l, v) => `<div><small>${l}</small><b>${v}</b></div>`;
+  const rec = (icon, title, sub, meta = "", tag = "") => `<div class="vd-rec"><span class="vd-ri">${icon}</span><div style="flex:1;min-width:0"><div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap"><b>${title}</b>${tag ? `<span class="pill p-ai" style="font-size:11px">${tag}</span>` : ""}</div><div style="color:var(--muted-fg)">${sub}</div>${meta ? `<small style="color:var(--muted-fg)">${meta}</small>` : ""}</div><span class="vd-ra"><button class="w-ico" type="button" data-toast="Edit record" aria-label="Edit">✎</button><button class="w-ico" type="button" data-toast="Delete record" aria-label="Delete" style="color:var(--bad)">🗑</button></span></div>`;
+  return shell("Contacts", `<div class="page" style="max-width:1240px">
+    <a style="color:var(--fg);cursor:pointer;font-size:13px;font-weight:500" data-go="leads">← Visitors &amp; Leads</a>
+    <div class="card" style="overflow:hidden"><div style="height:160px;background:linear-gradient(90deg,var(--primary),color-mix(in srgb,var(--primary) 70%,#fff))"></div>
+      <div style="padding:0 24px 24px;display:flex;gap:16px;align-items:flex-end;flex-wrap:wrap;margin-top:-56px">
+        <div style="width:112px;height:112px;border-radius:10px;border:4px solid #fff;box-shadow:0 10px 24px rgba(15,23,42,.18);background:linear-gradient(135deg,var(--primary),color-mix(in srgb,var(--primary) 70%,#fff));display:grid;place-items:center;color:#fff;font:700 30px/1 Inter">PS</div>
+        <div style="flex:1;min-width:220px;padding-bottom:4px"><div style="display:flex;gap:8px;align-items:center"><h2 class="serif" style="font-size:20px">${esc(nm)}</h2><span class="pill p-ok" style="font-size:11px">Lead</span></div>
+          <p style="color:var(--muted-fg);font-size:13.5px">${esc(em)}</p><p style="color:var(--muted-fg);font-size:12px">First seen 6 days ago · Last active just now</p></div>
+        <button class="btn pri" type="button" data-go="takeover" style="margin-bottom:4px">💬 Open conversation <span class="planned" style="background:#fff">Planned</span></button>
+      </div></div>
+    <div class="grid3">
+      <div style="display:flex;flex-direction:column;gap:18px">
+        ${section("👤", "Personal Details", self, pencil, `<div class="vd-f4">${fld("Full Name", esc(nm))}${fld("Age", "24")}${fld("Gender", "female")}${fld("Nationality", "Nepal")}</div>`)}
+        ${section("✉", "Contact Details", self, pencil, `<div class="vd-f2">${fld("Email", esc(em))}${fld("Contact card", "Shared their details")}</div>`)}
+        ${section("💬", "Conversation", "", "", `<div class="vd-f4">${fld("Status", `<span class="pill p-ok">Lead</span>`)}${fld("Messages", String(msgs))}${fld("First seen", "6 days ago")}${fld("Last activity", "just now")}${fld("Conversation", W.ended ? "Ended by the visitor" : "In progress")}${fld("Chat summary", summarySent ? "Summary sent" : "Summary owed")}${fld("Handled by", W.mode === "human" ? AGENT.name : "AI assistant")}${fld("Chat rating", W.ratingDone ? `${RATINGS[W.rating][0]} ${RATINGS[W.rating][1]}` : "Not rated")}</div>`)}
+        ${section("✨", "Study Preference", self, pencil, `<p class="label" style="margin-bottom:8px">Course discussed</p><span class="pill p-ai" style="font-size:12px">MSc Data Science</span>`)}
+        ${section("🎓", "Education Background", self, add, rec("🎓", "BSc Computer Science", "Tribhuvan University", "Computer Science &nbsp; GPA 3.4", "Bachelor"), 1)}
+        ${section("💼", "Work Experience", self, add, rec("💼", "Junior Developer", "Leapfrog Technology"), 1)}
+        ${section("🌐", "Language Tests", self, add, rec("🌐", "IELTS", "Overall 7.0", "Listening 7.5 &nbsp; Reading 7.0 &nbsp; Writing 6.0"), 1)}
+      </div>
+      <div style="display:flex;flex-direction:column;gap:18px">
+        ${section("📝", "Chat summary", `<span class="planned">Planned</span>`, `<span class="pill ${summarySent ? "p-ok" : "p-warn"}" style="font-size:11px">${summarySent ? "Emailed to visitor" : "Owed"}</span>`, `
+          <p style="font-size:13.5px;line-height:1.55">${esc(nm.split(" ")[0])} (24, Nepal) wants the <b>MSc Data Science</b> for the July intake. She meets the IELTS 6.5 overall, but her writing band is 6.0 — exactly the minimum. She asked about the Global Futures Scholarship; ${AGENT.first} confirmed she's considered automatically.</p>
+          <p class="label" style="margin:12px 0 6px">Topics</p><div style="display:flex;flex-wrap:wrap;gap:6px">${["Masters courses", "IELTS requirements", "Scholarships", "Application deadline"].map((t) => `<span class="pill p-mute">${t}</span>`).join("")}</div>
+          <p class="label" style="margin:12px 0 6px">Next step</p><p style="font-size:13px">Send the application link and the writing-band policy before 30 April.</p>
+          <p style="font-size:11.5px;color:var(--muted-fg);margin-top:10px">Generated from the conversation. ${summarySent ? `Sent to ${esc(em)}.` : "Sent to the visitor when the chat ends."}</p>`)}
+        ${section("🕒", "Activity timeline", `<span class="planned">Planned</span>`, "", `<ol class="tl2">${timeline.map(([icon, text, when, tone]) => `<li><span class="tl-dot ${tone || ""}">${icon}</span><div><b>${text}</b><small>${when}</small></div></li>`).join("")}</ol>`)}
+      </div>
+    </div></div>`, "", false);
+}
+
+function channelsPage() {
+  return shell("Inbox", `<div class="page"><a style="color:var(--primary);cursor:pointer;font-size:13px" data-go="takeover">← Back to Inbox</a><div><h2 class="serif" style="font-size:24px">Channels</h2><p style="color:var(--muted-fg)">Connect messaging platforms to your Inbox.</p></div>
+    <div class="label">Web widget</div><div class="card" style="padding:16px;display:flex;gap:14px;align-items:center;max-width:760px;flex-wrap:wrap"><div class="w-logo" style="background:var(--primary-soft);color:var(--primary)">🌐</div><div style="flex:1;min-width:200px"><b>AI chat widget</b><p style="color:var(--muted-fg);font-size:13px">Live AI chat on northfield.edu. Your team can take over any conversation from the Inbox.</p><a style="color:var(--primary);font-size:12px;cursor:pointer" data-go="widgets">Widget settings →</a></div><span class="wsw">On <button class="toggle" type="button" role="switch" aria-checked="true" aria-label="Widget" onclick="this.setAttribute('aria-checked',this.getAttribute('aria-checked')==='true'?'false':'true')"></button></span></div>
+    <div class="label">Available channels</div><div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:14px">${[["💬", "WhatsApp", "Reply to WhatsApp Business messages from your Inbox.", "hsl(142 60% 93%)"], ["📸", "Instagram", "Manage Instagram DMs from your connected page.", "hsl(330 80% 95%)"]].map(([i, n, d, bg]) => `<div class="card" style="padding:16px;display:flex;gap:12px;align-items:flex-start;border-style:dashed"><div class="w-logo" style="background:${bg};color:var(--fg)">${i}</div><div style="flex:1"><b>${n}</b><p style="color:var(--muted-fg);font-size:13px">${d}</p></div><span class="pill p-mute">Coming soon</span></div>`).join("")}</div></div>`);
+}
+
+function inboxFull(withSide = true) {
+  const rows = [["PS", "Priya Sharma", W.mode === "waiting" ? "Can I talk to someone?" : W.mode === "human" ? "You: " + (W.msgs.filter((m) => m.who === "g").slice(-1)[0]?.text || "…") : "Are there scholarships?", W.mode === "human" ? "h" : "ai", W.mode === "waiting" ? 1 : 0, true],
+    ["SK", "Sita Karki", "Can I apply with a 6.0 IELTS?", "h2", 2], ["?", "Anonymous visitor", "AI: Here are the scholarship options…", "ai", 0], ["AT", "Aarav Thapa", "Thank you!", "ok", 0]];
+  const bdg = { ai: ["var(--primary)", "AI"], h: ["var(--aqua)", "AM"], h2: ["var(--aqua)", "MS"], ok: ["var(--ok)", "✓"] };
+  return `<div class="inbox ${withSide ? "" : "two"}"><div class="pane"><div class="ilist-top"><div class="isearch">Search by name, programme or message</div><div class="ichips"><span class="on">All</span><span>AI handling</span><span>With team</span><span>Unread</span><span>Resolved</span></div></div><div class="irows">${rows.map((r) => `<div class="irow ${r[5] ? "sel" : ""}"><div class="av">${r[0]}<span class="bdg" style="background:${bdg[r[3]][0]}">${bdg[r[3]][1]}</span></div><div style="min-width:0"><div class="n">${r[1]} ${r[5] && W.mode === "waiting" ? `<span class="pill p-warn" style="font-size:9.5px;padding:1px 6px">Wants a person</span>` : ""}</div><div class="pv ${r[4] ? "u" : ""}">${esc(r[2])}</div></div><div class="r"><span>${r[5] ? "now" : "5:40 PM"}</span>${r[4] ? `<span class="cnt">${r[4]}</span>` : ""}</div></div>`).join("")}</div></div>
+    <div id="iHost" style="display:contents"></div>
+    ${withSide ? `<div class="pane side"><div class="id"><div class="av">PS</div><b>${esc(W.cname || "Priya Sharma")}</b><span class="pill p-ok" style="font-size:10px">Lead</span><small style="color:var(--muted-fg)">💬 Web widget</small></div>
+      <div class="sec"><div class="label">Handled by</div><span class="pill ${W.mode === "human" ? "p-h" : W.mode === "waiting" ? "p-warn" : "p-ai"}" style="width:fit-content">${W.mode === "human" ? "You · since " + now() : W.mode === "waiting" ? "Waiting for the team" : "AI assistant"}</span></div>
+      <div class="sec"><div class="label">Contact</div><dl class="kv"><dt>Email</dt><dd>${esc(W.cemail || "priya.sharma@example.com")}</dd><dt>Age</dt><dd>24</dd><dt>Nationality</dt><dd>Nepal</dd></dl></div>
+      <div class="sec"><div class="label">Study preference</div><dl class="kv"><dt>Interested in</dt><dd>MSc Data Science</dd></dl></div>
+      <div class="sec"><div class="label">Timeline</div><dl class="kv"><dt>First seen</dt><dd>Today</dd><dt>Page</dt><dd>/admissions</dd><dt>Summary</dt><dd>Summary owed</dd></dl><a style="color:var(--primary);font-size:12px;cursor:pointer" data-go="profile">Open full visitor record →</a></div></div>` : ""}</div>`;
+}
+
+/* ============ presets: history the widget carries into a step ============ */
+function preConversation(extra = []) {
+  W.msgs = [M("u", "What Masters courses do you offer?"), M("a", "Here are three Masters courses international students ask about most. All three take **February and July** intakes:", { courses: [["MSc Data Science", "18 months · On campus · £21,500/yr"], ["MSc Computer Science", "12 months · On campus · £20,900/yr"], ["MBA (Global)", "15 months · Blended · £24,000/yr"]] }),
+    M("u", "What IELTS score do I need for Data Science?"), M("a", "For the **MSc Data Science** you need an IELTS overall of **6.5**, with no band below 6.0."), ...extra];
+  W.sent = 2;
+}
+function preContactDone() { W.contact = "done"; W.cname = "Priya Sharma"; W.cemail = "priya.sharma@example.com"; }
+
+/* ============ scenes ============ */
+const SC = [
+  { id: "widgets", grp: "Setup", label: "No widgets yet", title: "Start: Inbox → Widget",
+    what: "The AI Widget page, reached only from the Widget button in the Inbox bar. It is no longer in Settings. This is before any widget exists.",
+    today: ["AI Widget page with the “New widget” button", "Empty state: “No widgets yet. Create one to get your embed code.”"], planned: ["Moved from Settings → AI embed to Inbox → Widget"],
+    tryit: "Click New widget.", render: () => widgetsPage(true), after: bindWizard },
+  { id: "create", grp: "Setup", label: "New widget", title: "The New AI widget dialog",
+    what: "The same dialog as the app, with the same fields in the same order. The brand colour you pick here colours the widget for the rest of the journey. The planned settings sit folded under “More settings”, so the dialog stays short.",
+    today: ["Display name, subtitle, greeting, logo URL, brand colour, custom instructions, monthly message limit"], planned: ["More settings: suggested questions, launcher position, when to ask for name & email, letting visitors ask for a person"],
+    tryit: "Change the brand colour, open More settings, then click Create widget.", pre: () => wReset({ teaser: false }), render: () => widgetsPage(true, dialogHTML()), after: bindWizard },
+  { id: "install", grp: "Setup", label: "Embed code", title: "Widget created: copy the embed code",
+    what: "The real widget card: Appearance, Preview, Regenerate key and Pause, messages used this month, and the one-line embed code with a copy button. embed.js only loads the chat when a visitor opens it.",
+    today: ["Widget card with the snippet and copy button", "Regenerate key and Pause, each with a confirmation"], planned: ["Per-platform install instructions", "Installation check"],
+    tryit: "Copy the code, then try Check my website.", pre: () => wReset({ teaser: false }), render: () => widgetsPage(false, "", installHelpHTML()), after: bindWizard },
+  { id: "preview", grp: "Setup", label: "Preview", title: "Preview on a sample page",
+    what: "The existing Preview page: a sample website running your real widget, so you can test before going live.",
+    today: ["Preview page with the live widget"], planned: [],
+    tryit: "Open the launcher and ask a question.", pre: () => wReset({ teaser: false }),
+    render: () => `<div class="card" style="padding:10px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b>Preview</b><span style="color:var(--muted-fg);font-size:12.5px">Sample page · the launcher bottom-right is your live widget</span><span style="flex:1"></span><button class="btn sm" type="button" data-go="install">← Back to embed code</button><button class="btn sm pri" type="button" data-go="website">Looks good — see it on your website →</button></div>${browserHTML("app.globaly.com/business/ai-widget/preview")}` },
+  { id: "website", grp: "Website", label: "On your website", title: "The widget on northfield.edu",
+    what: "What a visitor sees: the site as normal, with a pulsing launcher and a short greeting bubble that can be dismissed. Nothing blocks the page, and nobody is asked to sign in.",
+    today: ["Floating launcher in the brand colour", "Chat panel loads only when opened"], planned: ["Greeting bubble", "Pulse animation", "Unread count on the launcher"],
+    tryit: "Click the launcher or the greeting bubble. Use — to minimise and ⤢ for full screen.", pre: () => wReset(), render: () => browserHTML() },
+  { id: "mobile", grp: "Website", label: "Mobile", title: "Mobile and responsive",
+    what: "On a phone the panel opens full screen, the keyboard pushes the input up, and the minimise button returns to the launcher.",
+    today: ["Responsive chat panel"], planned: ["Full-screen sheet on small screens", "Safe-area padding"],
+    tryit: "Tap the launcher on the phone.", pre: () => wReset(),
+    render: () => `<div class="phones"><div class="phone"><span class="notch"></span><div class="viewport" id="wHost" data-opts='{"noFull":true}' style="height:100%">${siteHTML()}${widgetHTML({ noFull: true })}</div></div><div style="max-width:320px;display:flex;flex-direction:column;gap:10px;justify-content:center"><div class="card" style="padding:14px"><b>Breakpoints</b><ul style="margin:6px 0 0;padding-left:18px;font-size:13px;display:flex;flex-direction:column;gap:4px"><li>≥ 640px: 380 × 600 floating panel</li><li>&lt; 640px: full-screen sheet</li><li>Full screen on desktop from ⤢</li><li>The launcher moves to the left when the setting says so</li></ul></div></div></div>` },
+  { id: "welcome", grp: "Visitor chat", label: "First open", title: "First-time visitor opens the widget",
+    what: "The welcome message and suggested questions. The panel opens from the launcher with a spring animation. No login and no form.",
+    today: ["Greeting", "Suggested starters", "No sign-in wall"], planned: ["Configurable starters"],
+    tryit: "Click a suggested question, or type your own and press Enter.", pre: () => wReset({ open: true, teaser: false }), render: () => browserHTML() },
+  { id: "chat", grp: "Visitor chat", label: "AI conversation", title: "AI conversation",
+    what: "The assistant shows its thinking steps, streams the answer in, and can add course cards and follow-up chips. Messages show Sending… and, when offline, Not sent · Retry.",
+    today: ["Thinking steps", "Streamed answers", "Course cards", "Follow-up chips"], planned: ["Visitor attachments", "Offline and retry states"],
+    tryit: "Ask “Are there scholarships?”, then try offline mode.",
+    pre: () => { wReset({ open: true, teaser: false }); W.msgs = [M("u", "What Masters courses do you offer?")]; W.sent = 1; setTimeout(() => RULES[2].fn(), 300); },
+    render: () => `${browserHTML()}<div class="card" style="padding:10px 14px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><b style="font-size:13px">Simulate</b><button class="btn sm" type="button" id="offBtn">📴 Go offline</button><span style="font-size:12px;color:var(--muted-fg)">Send a message while offline to see the retry state.</span></div>`,
+    after: () => { $("#offBtn").onclick = () => { W.offline = !W.offline; $("#offBtn").textContent = W.offline ? "📶 Back online" : "📴 Go offline"; renderWidget(); }; } },
+  { id: "contact", grp: "Visitor chat", label: "Name & email", title: "Collect name and email",
+    what: "After two questions the contact card offers a summary email. It validates inline, and Not now always works. Sharing details turns the visitor into a lead straight away.",
+    today: ["Contact card with validation", "Not now", "Visitor becomes a lead on submit"], planned: ["Card timing configured per widget"],
+    tryit: "Submit with an empty name to see the validation, then fill it in.", pre: () => { wReset({ open: true, teaser: false }); preConversation([M("card", "", { kind: "contact" })]); W.contact = "shown"; }, render: () => browserHTML() },
+  { id: "human", grp: "Handover", label: "Ask for a person", title: "Visitor asks for a person",
+    what: "The visitor asks for a human in their own words. The AI never suggests it first; it hands over only when asked. It says so plainly, pauses itself and flags the chat in the Inbox. The visitor can keep typing, and the team sees everything.",
+    today: [], planned: ["Detecting that the visitor wants a person", "“Wants a person” flag in the Inbox", "Waiting card with office hours", "Fallback to an email address when handover is off"],
+    tryit: "Type “Can I talk to someone?” or “I want to speak to a person”. Nothing offers this first: the handover starts only when the visitor asks.", pre: () => { wReset({ open: true, teaser: false }); preConversation(); preContactDone(); W.msgs.push(M("a", "International applicants are automatically considered for the **Global Futures Scholarship**.", { chips: ["How is it decided?", "How do I apply?"] })); }, render: () => browserHTML() },
+  { id: "takeover", grp: "Handover", label: "Agent takes over", title: "Agent takes over from the Inbox",
+    what: "Both sides at once. On the left is the Inbox we built (the takeover UI); on the right is the visitor's widget. Replies reach the widget within about 5 seconds. The header switches to the agent, the AI pauses, and staff bubbles are clearly human.",
+    today: ["Inbox takeover UI (frontend built, running on the mock)"], planned: ["Backend: agent role, handoff check, endpoints", "Agent typing indicator in the widget", "“You're chatting with a person” banner"],
+    tryit: "Click Take over, then type a reply in the Inbox and press Enter. Then reply as the visitor in the widget.",
+    pre: () => { if (W.mode !== "waiting") { wReset({ open: true, teaser: false }); preConversation(); preContactDone(); W.msgs.push(M("u", "Can I talk to someone about my writing band?"), M("a", "Of course. I've asked the admissions team to join — they'll see our whole conversation.")); W.mode = "waiting"; W.msgs.push(M("card", "", { kind: "waiting" })); } W.open = true; },
+    render: () => `<div class="split2"><div class="appframe">${inboxBar()}${inboxFull(false)}</div><div><div class="phone" style="height:700px"><span class="notch"></span><div class="viewport" id="wHost" data-opts='{"noFull":true}' style="height:100%">${siteHTML()}${widgetHTML({ noFull: true })}</div></div><p class="vcap">Priya's view · northfield.edu on her phone</p></div></div>`,
+    after: () => { renderInbox(); bindInbox(); window.onWidgetChange = renderInbox; window.onVisitorToAgent = () => renderInbox(); } },
+  { id: "resume", grp: "Handover", label: "Resume AI", title: "Hand back to the AI",
+    what: "Staff click Resume AI, or the AI takes over by itself 15 minutes after the last staff reply. The widget says the assistant is back, and the AI can see what the agent said.",
+    today: ["Resume AI button (frontend)"], planned: ["15-minute auto-return (server)", "AI history includes the agent's replies"],
+    tryit: "Click Resume AI, then ask the widget “When is the deadline?”.",
+    pre: () => { if (W.mode !== "human") { wReset({ open: true, teaser: false }); preConversation(); preContactDone(); W.mode = "human"; W.msgs.push(M("sys", `${AGENT.first} from the admissions team joined`), M("g", "Hi Priya, I'm Alex from admissions 👋 A 6.0 in writing meets the minimum, so you're fine to apply.")); } W.open = true; },
+    render: () => `<div class="split2"><div class="appframe">${inboxBar()}${inboxFull(false)}</div><div><div class="phone" style="height:700px"><span class="notch"></span><div class="viewport" id="wHost" data-opts='{"noFull":true}' style="height:100%">${siteHTML()}${widgetHTML({ noFull: true })}</div></div><p class="vcap">Priya's view · northfield.edu on her phone</p></div></div>`,
+    after: () => { renderInbox(); bindInbox(); window.onWidgetChange = renderInbox; window.onVisitorToAgent = () => renderInbox(); } },
+  { id: "end", grp: "Lifecycle", label: "End chat", title: "Ending the conversation",
+    what: "The server works out from the visitor's intent that the chat has reached a natural end (there's no keyword list). It offers a wrap-up card once. Ending sends the summary email, and only promises it when the visitor gave an email address.",
+    today: ["Intent-based end detection", "End chat & send summary card", "Summary email to the visitor"], planned: ["An explicit “End chat” button in the header", "Rating with five faces after the chat ends; a low score asks what went wrong", "The rating shows on the visitor page and in the timeline"],
+    tryit: "Type “Thanks, that's all”, choose End chat & send summary, then rate the chat. Try a sad face to see the follow-up question.",
+    pre: () => { wReset({ open: true, teaser: false }); preConversation(); preContactDone(); W.msgs.push(M("a", "Applications for the **July intake** close on **30 April**.")); }, render: () => browserHTML(),
+    after: () => { window.onEnded = () => setTimeout(() => { const s = $("#emailPrev"); if (s) s.hidden = false; }, 400); },
+    extra: true },
+  { id: "returning", grp: "Lifecycle", label: "Returning visitor", title: "Returning visitor",
+    what: "The same browser comes back days later. History is restored from the visitor's fingerprint and the launcher shows it's the same chat. Typing again carries on, or starts a new conversation after an ended one.",
+    today: ["Thread restored on reload (fingerprint in localStorage)"], planned: ["“Welcome back” line", "New-conversation divider after an ended chat"],
+    tryit: "Open the widget and ask another question.", pre: () => { wReset({ open: false, teaser: false, unread: 0 }); preConversation(); preContactDone(); W.returning = true; W.ended = true; W.msgs.push(M("card", "", { kind: "end" })); }, render: () => browserHTML("northfield.edu · 3 days later") },
+  { id: "leads", grp: "Leads", label: "Visitor → Lead", title: "Visitors & Leads",
+    what: "The existing Visitors & Leads table, now under a new Contacts menu instead of Business. Priya is a lead because she shared her name and email; anonymous visitors stay visitors.",
+    today: ["Visitors & Leads table: All, Visitors and Leads tabs, search, row selection, Chats count, pagination and View"], planned: ["New Contacts menu holding Visitors (moved out of Business)"],
+    tryit: "Click View on Priya's row.", render: leadsPage },
+  { id: "profile", grp: "Leads", label: "Visitor detail", title: "Visitor detail",
+    what: "The existing visitor page, rearranged. On the left: what the visitor told us, plus the Conversation and Study Preference cards. On the right: the AI chat summary and an activity timeline built from the journey you just played through.",
+    today: ["Hero, Personal and Contact Details, Conversation and Study Preference cards", "Education, Work and Language records with Add, edit and delete"], planned: ["Open conversation button", "Header shows the email only", "Conversation and Study Preference moved to the left column", "Chat summary card", "Activity timeline"],
+    tryit: "Play through the takeover and end-chat steps first, then come back. The timeline and summary change to match.", render: profilePage },
+  { id: "channels", grp: "Leads", label: "Channels", title: "Channels",
+    what: "The channel management page we designed: the widget switch, plus WhatsApp and Instagram as Coming soon.",
+    today: ["Channels page and widget switch (frontend built)"], planned: ["WhatsApp and Instagram connections"],
+    tryit: "Turn the widget switch off and on.", render: channelsPage },
+  { id: "states", grp: "Reference", label: "All states", title: "Every other state",
+    what: "Loading, empty, error, offline, unavailable, permission and limit states, in one place for design and QA.",
+    today: [], planned: [], tryit: "Scroll the gallery.", render: statesGallery },
+  { id: "gaps", grp: "Reference", label: "What's missing", title: "What the flow still needs",
+    what: "Gaps found while walking the journey, ranked by risk. Items marked high should be decided before the backend is built.",
+    today: [], planned: [], tryit: "", render: gapsPage },
+];
+let at = 0;
+const cur = () => SC[at];
+
+function statesGallery() {
+  const mini = (head, body, cls = "") => `<div class="mini ${cls}"><div class="w-head"><div class="w-logo">N</div><div class="t"><b style="font-size:12.5px">${esc(CFG.name)}</b><small>${head}</small></div></div>${body}</div>`;
+  const cards = [
+    ["Widget paused", "p-mute", mini("Unavailable", `<div class="mb" style="align-items:center;text-align:center;justify-content:center"><div style="font-size:22px">⏸</div><b>This counsellor is currently unavailable</b><p style="color:var(--muted-fg);font-size:12px">Email admissions@northfield.edu and the team will reply within a working day.</p></div>`), "Server refuses a paused widget today. Planned: a friendly panel with a fallback contact, instead of an error."],
+    ["Monthly limit reached", "p-warn", mini("Limit reached", `<div class="mb"><div class="w-banner off" style="border-radius:8px">We've answered a lot of questions this month! The assistant is resting until 1 November.</div><p style="font-size:12px;color:var(--muted-fg)">Leave your email and the team will get back to you.</p></div>`), "“Monthly message limit reached” today. Dashboard: warn at 80% and 100%."],
+    ["Offline / reconnecting", "p-bad", mini("Reconnecting…", `<div class="w-banner bad"><span class="spin" style="border-top-color:currentColor"></span>You're offline. Reconnecting…</div><div class="mb"><div class="m u"><div style="display:flex;flex-direction:column;align-items:flex-end"><div class="bb">When is the deadline?</div><div class="st fail">Not sent · <u>Retry</u></div></div></div></div>`), "Planned. The draft and the unsent message are kept."],
+    ["Stream stopped halfway", "p-bad", mini("", `<div class="mb"><div class="m a"><span class="mk"></span><div class="tx"><p>The MSc Data Science requires an IELTS of…</p><p style="color:hsl(0 70% 45%);font-size:12px">The answer stopped. <u>Try again</u></p></div></div></div>`), "Planned. Today a dropped stream can leave an empty AI bubble."],
+    ["Waiting, outside office hours", "p-warn", mini("Waiting for a team member…", `<div class="mb"><div class="wcard" style="background:var(--sky);border-color:var(--sky-b)"><b>The team is offline right now</b><p>They're back Monday at 9am. Leave your email and they'll reply there, or keep chatting with the AI.</p></div></div>`), "Planned. Handover requests outside office hours."],
+    ["Agent went quiet", "p-mute", mini("Usually replies in seconds", `<div class="mb"><div class="sysline">Alex stepped away · the AI assistant is back</div><div class="m a"><span class="mk"></span><div class="tx"><p>I can keep helping while the team is away.</p></div></div></div>`), "15-minute auto-return. The visitor is told, instead of waiting forever."],
+    ["Loading the chat", "p-mute", mini("Connecting…", `<div class="mb"><div class="skel" style="width:60%"></div><div class="skel" style="width:85%"></div><div class="skel" style="width:40%;align-self:flex-end"></div></div>`), "Skeleton while embed.js loads the panel iframe."],
+    ["Contact form error", "p-bad", mini("", `<div class="mb"><div class="wcard"><b>Want a summary of this chat?</b><input class="input err" value="priya@" style="height:30px"><span class="errtxt">Enter a valid email address</span><span class="errtxt">Couldn't save your details. Please try again.</span></div></div>`), "Today: inline validation. The typed values are kept after a network failure."],
+    ["Inbox: no conversations", "p-mute", `<div class="card" style="padding:18px;text-align:center"><div style="font-size:26px">🤖</div><b style="font-size:13px">No conversations yet</b><p style="font-size:12px;color:var(--muted-fg)">Conversations visitors have with the AI assistant on your website appear here.</p></div>`, "Today."],
+    ["Inbox: transcript failed", "p-bad", `<div class="card" style="padding:18px;text-align:center"><p style="font-size:13px">Couldn't load this conversation.</p><button class="btn sm" type="button">Try again</button></div>`, "Today shows the message. Planned: a retry button."],
+    ["Inbox: reply failed", "p-bad", `<div class="card" style="padding:12px;display:flex;flex-direction:column;gap:6px"><div style="background:var(--fg);color:#fff;border-radius:8px;padding:8px 10px;font-size:12px"><b>Couldn't send your reply</b><br>Please try again.</div><p style="font-size:12px;color:var(--muted-fg)">The text stays in the composer.</p></div>`, "Built (toast). The composer keeps the text."],
+    ["Colleague has this chat", "p-h", `<div class="card" style="padding:12px;display:flex;flex-direction:column;gap:8px"><span class="pill p-h" style="width:fit-content">Manjil has this</span><button class="btn sm pri" type="button">✋ Take over from Manjil</button><p style="font-size:12px;color:var(--muted-fg)">A reply is sent, and Manjil stays in charge.</p></div>`, "Built. The button names the colleague, so nobody takes over by accident."],
+    ["Widget switched off (Inbox)", "p-warn", `<div class="card" style="padding:0;overflow:hidden"><div style="background:var(--warn-soft);color:var(--warn);padding:8px 12px;font-size:12px">The chat widget is off. It's hidden on your website and visitors can't send messages. Past conversations stay here.</div><div style="padding:10px 12px;font-size:12px">Toast: “Chat widget turned off” · <u>Undo</u></div></div>`, "Built. Turning it off also stops chats a person has taken over."],
+    ["No permission", "p-mute", `<div class="card" style="padding:16px;text-align:center"><div style="font-size:22px">🔒</div><b style="font-size:13px">Only admins can change the widget</b><p style="font-size:12px;color:var(--muted-fg)">You can still reply to conversations. Ask an owner to edit settings.</p></div>`, "Open question: who may switch the widget off, and who may edit it?"],
+    ["Snippet not found", "p-warn", `<div class="checkrow"><span class="pill p-warn">Not seen yet</span><span style="font-size:12px">We haven't seen the widget on northfield.edu. Check the code is before &lt;/body&gt; and the site is published.</span></div>`, "Planned. The installation check fails."],
+    ["Key regenerated", "p-bad", `<div class="card" style="padding:12px;font-size:12px"><b>Old snippet stops working. Continue?</b><div style="display:flex;gap:6px;margin-top:8px"><button class="btn sm pri" type="button">Yes, regenerate</button><button class="btn sm" type="button">No</button></div></div>`, "Today. After this, sites with the old key show the unavailable panel."],
+  ];
+  return `<div class="gallery">${cards.map(([t, p, b, f]) => `<div class="gcard"><div class="gh"><b>${t}</b><span class="pill ${p}">${p === "p-bad" ? "Error" : p === "p-warn" ? "Warning" : p === "p-h" ? "Team" : "State"}</span></div><div class="gb">${b}</div><div class="gf">${f}</div></div>`).join("")}</div>`;
+}
+
+function gapsPage() {
+  const g = [
+    ["Handover and staffing", [
+      ["h", "Visitor-initiated handover isn't in the backend plan yet. It needs intent detection, a “wants a person” state, an Inbox flag, and a notification to staff."],
+      ["h", "Nobody is notified when a chat wants a person. Decide: Inbox badge, email or push, and to whom."],
+      ["m", "Office hours: what the visitor sees when the team is offline, and whether handover is offered at all."],
+      ["m", "Agent typing indicator and the “You're chatting with a person” banner in the widget (needs the widget poll)."],
+      ["l", "Canned replies and templates for common questions."],
+    ]],
+    ["Widget reliability", [
+      ["h", "A dropped stream can leave an empty AI bubble or a spinner that never stops (the widget never aborts). Add a timeout, abort and “Try again”."],
+      ["m", "Offline and reconnect handling: keep drafts and unsent messages and retry them."],
+      ["m", "Paused, limit-reached and revoked-key panels with a fallback contact, instead of a raw error."],
+      ["l", "Domain allow-list, so the key can't be reused on someone else's site."],
+    ]],
+    ["Privacy and consent", [
+      ["h", "The summary email has no unsubscribe and the contact card has no privacy notice. Add consent wording and a privacy-policy link setting."],
+      ["m", "Data retention for anonymous visitors, and deleting a visitor on request."],
+      ["l", "An “AI can make mistakes” disclaimer is shown. Confirm the wording with legal."],
+    ]],
+    ["Setup and ops", [
+      ["m", "The installation check, so a business knows the widget is actually live."],
+      ["m", "Usage alerts at 80% and 100% of the monthly limit."],
+      ["m", "Permissions: who can edit, pause or regenerate the widget, and who can reply."],
+      ["m", "Chat rating needs storage (one rating and an optional comment per conversation), and a place to see low scores: an Inbox filter or an alert."],
+      ["l", "Analytics: conversations, leads, takeovers and time to first human reply."],
+      ["l", "Average chat rating over time, split by AI-only chats and chats a person took over."],
+      ["l", "Multi-language greetings and answers."],
+    ]],
+  ];
+  return `<div class="gaps">${g.map(([t, items]) => `<div class="card"><h3 class="serif" style="font-size:17px">${t}</h3><ul>${items.map(([p, x]) => `<li><b class="pri-${p}">${p === "h" ? "High" : p === "m" ? "Medium" : "Low"}</b> · ${x}</li>`).join("")}</ul></div>`).join("")}</div>`;
+}
+
+/* ============ render + navigation ============ */
+function notesHTML(s) {
+  const list = (a) => a.length ? `<ul>${a.map((x) => `<li>${x}</li>`).join("")}</ul>` : `<p style="color:var(--muted-fg)">—</p>`;
+  return `<span class="label">${at + 1} of ${SC.length} · ${s.grp}</span><h2>${s.title}</h2><p>${s.what}</p>
+    ${s.tryit ? `<div class="try"><b>Try it:</b> ${s.tryit}</div>` : ""}
+    ${s.today.length || s.planned.length ? `<h4>Exists today</h4>${list(s.today)}<h4>Planned</h4>${list(s.planned)}` : ""}`;
+}
+function stepsHTML() {
+  return SC.map((s, i) => `<button class="step ${i === at ? "on" : i < at ? "done" : ""}" type="button" data-step="${i}" aria-current="${i === at ? "step" : "false"}"><b>${i < at ? "✓" : i + 1}</b><span>${s.label}</span><span class="grp">${s.grp}</span></button>`).join("");
+}
+function rerender() {
+  const s = cur();
+  window.onWidgetChange = null; window.onVisitorToAgent = null; window.onEnded = null; window.onLead = null;
+  const stage = $("#stage"); stage.onclick = stage.oninput = stage.onchange = null;
+  let html = s.render();
+  if (s.extra) html += `<div class="email" id="emailPrev" hidden><div class="eh">📧 To: priya.sharma@example.com · From: ${esc(CFG.name)} · “Your conversation with Northfield University”</div><div class="eb"><b class="serif" style="font-size:18px">Here's what we covered, Priya</b><ul style="margin:0;padding-left:18px"><li>MSc Data Science: 18 months, February and July intakes</li><li>Entry: IELTS 6.5 overall, no band below 6.0 (your 6.0 writing is fine)</li><li>Global Futures Scholarship: considered automatically</li></ul><p><b>Next step:</b> apply for July by 30 April.</p><p style="font-size:11px;color:var(--muted-fg)">Sent because you asked for a summary in the chat.</p></div></div>`;
+  $("#stage").innerHTML = html;
+  $("#notes").innerHTML = notesHTML(s);
+  $("#steps").innerHTML = stepsHTML();
+  $("#prev").disabled = at === 0; $("#next").disabled = at === SC.length - 1;
+  mountWidget = bindWidget; bindWidget();
+  const b = $("#wBody"); if (b) b.scrollTop = b.scrollHeight;
+  s.after && s.after();
+  $(".step.on")?.scrollIntoView({ block: "nearest", inline: "center", behavior: "smooth" });
+}
+function go(i) {
+  if (i < 0 || i >= SC.length) return;
+  at = i; const s = cur(); if (s.pre) s.pre(); rerender(); window.scrollTo({ top: 0, behavior: "smooth" });
+}
+document.addEventListener("click", (e) => {
+  const st = e.target.closest("[data-step]"); if (st) { go(+st.dataset.step); return; }
+  const g = e.target.closest("[data-go]"); if (g && g.dataset.go) { const i = SC.findIndex((s) => s.id === g.dataset.go); if (i >= 0) { go(i); return; } }
+  const t = e.target.closest("[data-toast]"); if (t) toast(t.dataset.toast);
+});
+$("#prev").onclick = () => go(at - 1);
+$("#next").onclick = () => go(at + 1);
+$("#restart").onclick = () => { Object.assign(CFG, { brand: "#7a1f2b", position: "right", handoff: true, contactAfter: 2 }); applyBrand(); go(0); };
+document.addEventListener("keydown", (e) => {
+  if (["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName)) return;
+  if (e.key === "ArrowRight") go(at + 1);
+  if (e.key === "ArrowLeft") go(at - 1);
+});
+applyBrand();
+go(0);
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,343 @@
+<title>AI Conversation Takeover</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Geist+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap">
+<style>
+/* GlobalyApp tokens, light only (the product has no dark theme). */
+:root{
+  --bg:hsl(210 20% 99%); --surface:#FFFFFF; --ink:hsl(222 47% 11%); --muted:hsl(215 16% 47%); --line:hsl(215 16% 90%);
+  --primary:#012E8A; --primary-soft:hsl(220 86% 95%); --aqua:hsl(187 85% 32%); --aqua-soft:hsl(187 92% 94%);
+  --add:hsl(152 60% 30%); --add-soft:hsl(152 60% 94%); --warn:hsl(32 90% 32%); --warn-soft:hsl(40 90% 93%);
+  --bad:hsl(0 70% 45%); --bad-soft:hsl(0 84% 96%); --code:hsl(210 17% 96%); --purple:hsl(270 60% 45%); --purple-soft:hsl(270 80% 96%);
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.6 "Inter",system-ui,-apple-system,"Segoe UI",sans-serif;padding-inline:20px;padding-block:0 64px;margin:0}
+.wrap{max-width:1120px;margin:0 auto;display:flex;flex-direction:column;gap:44px}
+header.top{padding-block:44px 4px;display:flex;flex-direction:column;gap:12px}
+.eyebrow{font:500 12px/1 "Geist Mono",ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--aqua)}
+h1{font-family:"Fraunces",Georgia,serif;letter-spacing:-.01em;font-size:clamp(28px,4vw,40px);line-height:1.15;margin:0;font-weight:600;text-wrap:balance}
+h2{font-family:"Fraunces",Georgia,serif;letter-spacing:-.01em;font-size:23px;margin:0;font-weight:600;text-wrap:balance}
+h3{font-size:16px;margin:0;font-weight:600}
+p{margin:0;max-width:74ch}
+.lede{color:var(--muted);font-size:17px}
+section{display:flex;flex-direction:column;gap:16px}
+section > header{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-top:24px}
+.toc{display:flex;flex-wrap:wrap;gap:8px}
+.toc a{font:500 13px/1 "Inter",sans-serif;color:var(--primary);background:var(--primary-soft);padding:7px 10px;border-radius:999px;text-decoration:none}
+a{color:var(--primary)}
+a:focus-visible{outline:2px solid var(--aqua);outline-offset:2px}
+code,.mono{font-family:"Geist Mono",ui-monospace,SFMono-Regular,monospace;font-size:.86em}
+p code,li code,td code{background:var(--code);padding:1px 5px;border-radius:4px}
+pre.code{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:14px 16px;overflow-x:auto;margin:0;font:12.8px/1.55 "Geist Mono",ui-monospace,monospace;color:var(--ink)}
+.cm{color:var(--muted)}
+ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(250px,1fr));gap:16px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:10px}
+.note{font-size:13px;color:var(--muted)}
+.tablebox{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font:500 12px/1.3 "Geist Mono",monospace;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:var(--code)}
+tr:last-child td{border-bottom:0}
+td.col{font-family:"Geist Mono",monospace;font-size:13px;white-space:nowrap}
+.tag{font:500 11px/1 "Geist Mono",monospace;padding:3px 6px;border-radius:4px;white-space:nowrap;display:inline-block}
+.tag.new{background:var(--add-soft);color:var(--add)}
+.tag.chg{background:var(--warn-soft);color:var(--warn)}
+.tag.no{background:var(--code);color:var(--muted)}
+.tag.done{background:var(--primary-soft);color:var(--primary)}
+.tag.q{background:var(--purple-soft);color:var(--purple)}
+.tbl-title{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+.tbl-title .mono{color:var(--muted)}
+.diagram{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto}
+.files td:first-child{font-family:"Geist Mono",monospace;font-size:12.5px;word-break:break-all;width:42%}
+.steps{counter-reset:s;list-style:none;padding:0;display:flex;flex-direction:column;gap:12px}
+.steps li{counter-increment:s;display:grid;grid-template-columns:30px 1fr;gap:10px;align-items:start}
+.steps li::before{content:counter(s);font:600 12px/30px "Geist Mono",monospace;width:30px;height:30px;text-align:center;border-radius:50%;background:var(--primary-soft);color:var(--primary)}
+.steps li.built::before{content:"✓";background:var(--add-soft);color:var(--add)}
+.status{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+.status .panel{gap:6px}
+.status b{font-size:14px}
+.nav{display:flex;gap:6px;flex-wrap:wrap;align-items:center;font-size:13px}
+.nav span{border:1px solid var(--line);border-radius:8px;padding:5px 10px;background:var(--surface)}
+.nav span.hl{border-color:var(--primary);background:var(--primary-soft);color:var(--primary);font-weight:500}
+.nav i{font-style:normal;color:var(--muted)}
+.dlabel{font:600 11px/1 "Inter",sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:10px}
+svg .nt{font:600 15px "Inter",sans-serif}
+svg .ns{font:400 12px "Inter",sans-serif}
+svg .el{font:500 12px "Inter",sans-serif}
+.closeflow{display:flex;flex-direction:column;gap:12px}
+.cf-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.cf-arrow{font-size:12.5px;color:var(--muted)}
+.cf-arrow b{color:var(--ink)}
+.cf-from,.cf-node{border-radius:10px;padding:6px 12px;font-size:13.5px;font-weight:600;border:2px solid}
+.cf-from{background:var(--code);border-color:var(--line);color:var(--ink)}
+.cf-ai{background:var(--primary-soft);border-color:var(--primary);color:var(--primary)}
+.cf-end{background:var(--add-soft);border-color:var(--add);color:var(--add)}
+.cf-res{background:var(--add-soft);border-color:var(--add);color:var(--add)}
+.cf-rate{background:#fff;border-color:var(--line);font-weight:500}
+</style>
+
+<div class="wrap">
+<header class="top">
+  <span class="eyebrow">AI widget · Inbox · plan v4 · 1 October 2026</span>
+  <h1>AI Conversations: takeover, contacts and the widget journey</h1>
+  <p class="lede">The implementation plan, updated with every decision made on the mockups so far. The Inbox UI is built on mock data; everything else, including the whole backend, waits for this plan to be reviewed.</p>
+  <nav class="toc" aria-label="Sections">
+    <a href="#status">Status</a><a href="#decisions">Decisions</a><a href="#nav">Navigation</a><a href="#flow">AI control flow</a><a href="#db">Database</a><a href="#api">Backend &amp; API</a><a href="#fe">Frontend</a><a href="#phases">Phases</a><a href="#risks">Risks &amp; open questions</a>
+  </nav>
+</header>
+
+<!-- ================= STATUS ================= -->
+<section id="status">
+  <header><h2>1 · Where things stand</h2></header>
+  <div class="status">
+    <div class="panel"><span class="tag done">Built · mock data</span><b>Inbox takeover UI</b><p class="note">Branch <code>dev-feat-ai-embed-takeover-ui-rojan</code>, not committed. Composer, Take over / Resume AI / Resolve, staff bubbles, visitor panel, unread, filters, widget switch, Channels page. tsc and eslint pass.</p></div>
+    <div class="panel"><span class="tag new">Designed</span><b>End-to-end prototype</b><p class="note"><a href="https://claude.ai/artifact/FTcPTMpELpzDDkqwqmsW8W">AI Widget journey</a>: 19 clickable steps from creating a widget to the visitor record, plus all states and gaps. Source: <code>docs/mockups/ai-widget-end-to-end.html</code>.</p></div>
+    <div class="panel"><span class="tag no">Not started</span><b>Backend</b><p class="note">Migrations, the handoff check, agent replies, handover requests, ratings and the stored summary. Waiting on your review of sections 4–6.</p></div>
+    <div class="panel"><span class="tag no">Not started</span><b>Navigation and visitor-page changes</b><p class="note">Contacts menu, the widget page moving under Inbox, menu order, and the visitor detail layout. Frontend only.</p></div>
+  </div>
+</section>
+
+<!-- ================= DECISIONS ================= -->
+<section id="decisions">
+  <header><h2>2 · Decisions so far</h2><p class="note">Everything below is settled unless it's marked as an open question in section 9.</p></header>
+  <div class="tablebox"><table>
+    <thead><tr><th>Topic</th><th>Decision</th></tr></thead>
+    <tbody>
+      <tr><td>Who can take over</td><td>Any member of the business or institution.</td></tr>
+      <tr><td>Agent goes quiet</td><td>The AI takes back over 15 minutes after the last staff reply, checked when the visitor next writes. A message sent during the gap waits for the visitor's next one.</td></tr>
+      <tr><td>Resolve vs Return to AI</td><td>Separate actions. Resolve has its own <code>resolved_at</code> and doesn't touch <code>conversation_state</code>, so no summary email fires.</td></tr>
+      <tr><td>Realtime</td><td>Polling: open thread 5 s, Inbox list 15 s, widget 5 s. No sockets in v1.</td></tr>
+      <tr><td>Asking for a person</td><td><strong>The visitor asks first, always.</strong> The AI never offers it (no chip, no prompt). It hands over only when the visitor asks for a person in their own words.</td></tr>
+      <tr><td>End-of-chat rating</td><td>Five faces (😞 🙁 😐 🙂 😍) after the chat ends. A sad face asks "What could we have done better?" (optional).</td></tr>
+      <tr><td>Inbox scope</td><td>AI Conversations only for now. The All / Enquiries tabs are hidden; the enquiry code stays.</td></tr>
+      <tr><td>Widget settings</td><td>Reached only from the <strong>⚙ Widget</strong> button in the Inbox bar. "AI embed" leaves Settings.</td></tr>
+      <tr><td>Visitors</td><td>Move out of Business into a new <strong>Contacts</strong> menu.</td></tr>
+      <tr><td>Menu order</td><td>Home · Business · Marketing · Scribe · LMS · Contacts · Inbox · Settings.</td></tr>
+      <tr><td>Contact card wording</td><td>"Want a summary of this chat?", not "a copy".</td></tr>
+      <tr><td>Visitor detail page</td><td>Header shows the email only. Add an Open conversation button. Conversation and Study Preference move left; the right column holds Chat summary and Activity timeline.</td></tr>
+      <tr><td>Mockups</td><td>Light theme only, real app screens and routes; planned extras are folded away rather than lengthening a screen.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ================= NAVIGATION ================= -->
+<section id="nav">
+  <header><h2>3 · Navigation changes</h2><p class="note">All in <code>frontend/src/app/business/const/index.ts</code> plus three routes. Frontend only.</p></header>
+  <div class="panel">
+    <h3>Left menu</h3>
+    <div class="nav"><span>Home</span><i>›</i><span>Business</span><i>›</i><span>Marketing</span><i>›</i><span>Scribe</span><i>›</i><span>LMS</span><i>›</i><span class="hl">Contacts (new)</span><i>›</i><span class="hl">Inbox</span><i>›</i><span class="hl">Settings (last)</span></div>
+  </div>
+  <div class="tablebox"><table>
+    <thead><tr><th>Change</th><th>How</th></tr></thead>
+    <tbody>
+      <tr><td><b>Contacts menu</b>, holding Visitors</td><td>New nav group "Contacts" with one item, Visitors → new route <code>/business/contacts/visitors</code>, which renders the existing <code>&lt;VisitorsTab /&gt;</code>. Remove <code>"visitors"</code> from the Business profile tabs (<code>VALID_TABS</code> and the institution allow-list in <code>business-profile-detail-view.tsx</code>) and from the Business sub-menu.</td></tr>
+      <tr><td>Back link on the visitor page</td><td>"← Visitors &amp; Leads" points at <code>/business/contacts/visitors</code>. This also removes the bare <code>/business/profile?tab=visitors</code> link, which loses the tab without an org id.</td></tr>
+      <tr><td><b>AI Widget only through the Inbox</b></td><td>Remove "AI embed" from the Settings group. <code>/business/settings/ai-embed</code> redirects to <code>/business/ai-widget</code> so old bookmarks keep working. The Inbox bar's right-hand button becomes <strong>⚙ Widget</strong> → <code>/business/ai-widget</code>. The page shows "← Inbox" and highlights Inbox in the menu.</td></tr>
+      <tr><td>Inbox bar</td><td>Widget · On/Off switch, Connect a channel (→ Channels page), ⚙ Widget (→ widget settings). Already built except the Widget button, which is still labelled Channels.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ================= FLOW ================= -->
+<section id="flow">
+  <header><h2>4 · AI control flow</h2><p class="note">Three nullable columns on the visitor row decide who answers: <code>handoff_requested_at</code>, <code>handled_by_user_id</code> and <code>resolved_at</code>.</p></header>
+  <div class="diagram">
+    <p class="dlabel">Who answers</p>
+    <svg viewBox="0 0 940 340" role="img" aria-labelledby="flowA-t" style="width:100%;min-width:720px;height:auto;display:block">
+  <title id="flowA-t">Who answers: AI, waiting for a person, or a staff member</title>
+  <defs>
+    <marker id="arP" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="#012E8A"/></marker>
+    <marker id="arA" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="hsl(187 85% 30%)"/></marker>
+    <marker id="arW" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="8" markerHeight="8" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="hsl(32 90% 34%)"/></marker>
+  </defs>
+  <!-- start -->
+  <circle cx="140" cy="312" r="7" fill="hsl(222 47% 11%)"/>
+  <path d="M140 304 L140 246" stroke="hsl(222 47% 11%)" stroke-width="1.8" fill="none" marker-end="url(#arP)"/>
+  <text x="156" y="316" class="el" fill="hsl(215 16% 40%)">visitor opens the widget</text>
+  <!-- AI ↔ Human -->
+  <path d="M244 196 L696 196" stroke="hsl(187 85% 30%)" stroke-width="2.2" fill="none" marker-end="url(#arA)"/>
+  <path d="M696 226 L244 226" stroke="#012E8A" stroke-width="2.2" fill="none" marker-end="url(#arP)"/>
+  <!-- AI → Waiting, Waiting → AI -->
+  <path d="M118 178 C 118 100, 250 62, 364 58" stroke="hsl(32 90% 34%)" stroke-width="2.2" fill="none" marker-end="url(#arW)"/>
+  <path d="M386 94 C 330 130, 240 148, 176 177" stroke="#012E8A" stroke-width="2.2" stroke-dasharray="6 5" fill="none" marker-end="url(#arP)"/>
+  <!-- Waiting → Human -->
+  <path d="M574 58 C 690 62, 800 100, 802 176" stroke="hsl(187 85% 30%)" stroke-width="2.2" fill="none" marker-end="url(#arA)"/>
+  <g><rect x="40" y="177" width="200" height="68" rx="14" fill="hsl(220 86% 95%)" stroke="#012E8A" stroke-width="2"/><text x="140" y="206" text-anchor="middle" class="nt" fill="#012E8A">AI answers</text><text x="140" y="227" text-anchor="middle" class="ns" fill="#012E8A">every message</text></g>
+  <g><rect x="370" y="26" width="200" height="68" rx="14" fill="hsl(40 90% 93%)" stroke="hsl(32 90% 34%)" stroke-width="2"/><text x="470" y="55" text-anchor="middle" class="nt" fill="hsl(32 90% 26%)">Waiting for a person</text><text x="470" y="76" text-anchor="middle" class="ns" fill="hsl(32 90% 26%)">AI paused · waiting card</text></g>
+  <g><rect x="700" y="177" width="200" height="68" rx="14" fill="hsl(187 92% 94%)" stroke="hsl(187 85% 30%)" stroke-width="2"/><text x="800" y="206" text-anchor="middle" class="nt" fill="hsl(187 85% 24%)">Staff member</text><text x="800" y="227" text-anchor="middle" class="ns" fill="hsl(187 85% 24%)">AI paused · person replies</text></g>
+  <g><rect x="112" y="80" width="186" height="22" rx="11" fill="#fff" stroke="hsl(32 90% 34%)" stroke-opacity=".35"/><text x="205" y="95" text-anchor="middle" class="el" fill="hsl(32 90% 34%)">visitor asks for a person</text></g>
+  <g><rect x="217" y="128" width="165" height="22" rx="11" fill="#fff" stroke="#012E8A" stroke-opacity=".35"/><text x="300" y="143" text-anchor="middle" class="el" fill="#012E8A">nobody joins in 15 min</text></g>
+  <g><rect x="623" y="76" width="179" height="22" rx="11" fill="#fff" stroke="hsl(187 85% 30%)" stroke-opacity=".35"/><text x="712" y="91" text-anchor="middle" class="el" fill="hsl(187 85% 30%)">staff reply or Take over</text></g>
+  <g><rect x="381" y="170" width="179" height="22" rx="11" fill="#fff" stroke="hsl(187 85% 30%)" stroke-opacity=".35"/><text x="470" y="185" text-anchor="middle" class="el" fill="hsl(187 85% 30%)">staff reply or Take over</text></g>
+  <g><rect x="324" y="234" width="293" height="22" rx="11" fill="#fff" stroke="#012E8A" stroke-opacity=".35"/><text x="470" y="249" text-anchor="middle" class="el" fill="#012E8A">Resume AI · or 15 min with no staff reply</text></g>
+</svg>
+    <p class="note" style="margin-top:6px">Solid arrows are actions; the dashed arrow is a timeout. While a person is waited for or replying, visitor messages are stored and shown in the Inbox, but the AI doesn't answer and no credits are used.</p>
+  </div>
+  <div class="diagram">
+    <p class="dlabel">How a chat closes</p>
+    <div class="closeflow">
+    <div class="cf-row"><span class="cf-from">AI or Staff</span><span class="cf-arrow">visitor ends the chat <b>→</b></span><span class="cf-node cf-end">Ended</span><span class="cf-arrow">summary email, then <b>→</b></span><span class="cf-node cf-rate">😞 🙁 😐 🙂 😍 rating</span><span class="cf-arrow">visitor writes again <b>→</b></span><span class="cf-from cf-ai">AI</span></div>
+    <div class="cf-row"><span class="cf-from">AI or Staff</span><span class="cf-arrow">staff click Resolve <b>→</b></span><span class="cf-node cf-res">Resolved</span><span class="cf-arrow">no email, no rating · visitor writes again <b>→</b></span><span class="cf-from cf-ai">AI</span></div>
+  </div>
+  </div>
+  <div class="tablebox"><table>
+    <thead><tr><th>Event</th><th>Server</th><th>Visitor sees</th><th>Staff sees</th></tr></thead>
+    <tbody>
+      <tr><td>Visitor message, AI handling</td><td>Today's path. <code>unread_count + 1</code>. The judge call also returns <code>wants_human</code></td><td>Streamed AI reply</td><td>Unread count on the next poll</td></tr>
+      <tr><td>Visitor asks for a person</td><td>Judge returns <code>wants_human</code> → sets <code>handoff_requested_at</code>, pauses the AI, sends SSE <code>event: handover</code></td><td>"I've asked the admissions team to join" + waiting card</td><td>"Wants a person" flag on the row and header; sorted first</td></tr>
+      <tr><td>Visitor writes while waiting</td><td>Stores the user row only. No LLM, no credits</td><td>Their message; waiting card stays</td><td>The message within 5 s</td></tr>
+      <tr><td>Nobody joins within 15 min</td><td>On the next visitor message: clears <code>handoff_requested_at</code>, runs the AI turn</td><td>System line "The team couldn't join yet; I can keep helping", then the AI answer</td><td>Flag clears; the request stays in the timeline</td></tr>
+      <tr><td>Staff take over / reply</td><td>Sets <code>handled_by_*</code>, clears <code>handoff_requested_at</code> and <code>resolved_at</code>, inserts <code>role='agent'</code>, unread 0</td><td>"Alex from the admissions team joined" + staff bubble</td><td>"You have this"</td></tr>
+      <tr><td>Resume AI / 15-minute idle</td><td>Clears <code>handled_by_*</code></td><td>"The AI assistant is back"</td><td>"AI is handling"</td></tr>
+      <tr><td>Visitor ends the chat</td><td>Today's end card and summary email. Then <code>POST /guest/rating</code></td><td>Thanks card, then "How was this chat?"</td><td>Rating on the visitor page and timeline</td></tr>
+      <tr><td>Staff Resolve</td><td>Sets <code>resolved_at</code>, clears the handoff, unread 0. Leaves <code>conversation_state</code> alone</td><td>Nothing changes</td><td>Resolved pill and filter</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ================= DATABASE ================= -->
+<section id="db">
+  <header><h2>5 · Database changes</h2><p class="note">One <code>globalyapp</code> migration and one twin pair (<code>business/</code> + <code>institution/</code>). No new tables. You run the migrations; nothing here runs them.</p></header>
+  <div class="tbl-title"><h3 style="font-size:14px">globalyapp.ai_counselor_messages</h3></div>
+  <div class="tablebox"><table>
+    <thead><tr><th>Column / constraint</th><th>Change</th><th>Definition</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td class="col">ai_messages_role_check</td><td><span class="tag chg">changed</span></td><td><code>role IN ('user','assistant','agent')</code></td><td>Staff replies are never shown as AI.</td></tr>
+      <tr><td class="col">sender_user_id, sender_name</td><td><span class="tag new">new</span></td><td><code>integer NULL</code>, <code>text NULL</code></td><td>Sender from the JWT; the name is saved so the widget never looks across schemas.</td></tr>
+      <tr><td class="col">ai_messages_agent_sender_check</td><td><span class="tag new">new</span></td><td><code>(role = 'agent') = (sender_user_id IS NOT NULL)</code></td><td>Every agent row has a sender.</td></tr>
+      <tr><td class="col">attachments</td><td>reused</td><td><code>jsonb</code> (exists, unused)</td><td>Staff attachments.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="tbl-title"><h3 style="font-size:14px">&lt;tenant&gt;.ai_widget_visitors</h3><span class="mono">twin migrations</span></div>
+  <div class="tablebox"><table>
+    <thead><tr><th>Column</th><th>Change</th><th>Definition</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td class="col">handled_by_user_id, handled_by_name, handled_at</td><td><span class="tag new">new</span></td><td><code>integer</code>, <code>text</code>, <code>timestamptz</code>, all NULL; id and name set together (CHECK)</td><td>Who is answering, and the 15-minute idle clock.</td></tr>
+      <tr><td class="col">handoff_requested_at</td><td><span class="tag new">new</span></td><td><code>timestamptz NULL</code></td><td>The visitor asked for a person; the AI is paused while it's set. Drives "Wants a person".</td></tr>
+      <tr><td class="col">resolved_at, resolved_by_user_id</td><td><span class="tag new">new</span></td><td><code>timestamptz NULL</code>, <code>integer NULL</code></td><td>Staff Resolve, kept apart from <code>conversation_state</code>.</td></tr>
+      <tr><td class="col">unread_count</td><td><span class="tag new">new</span></td><td><code>integer NOT NULL DEFAULT 0</code></td><td>One counter per org.</td></tr>
+      <tr><td class="col">rating, rating_comment, rated_at</td><td><span class="tag new">new</span></td><td><code>smallint NULL CHECK (rating BETWEEN 1 AND 5)</code>, <code>text NULL</code> (≤ 1000), <code>timestamptz NULL</code></td><td>End-of-chat rating. One per conversation; a later rating replaces it.</td></tr>
+      <tr><td class="col">summary</td><td><span class="tag new">new</span></td><td><code>jsonb NULL</code> → <code>{ text, topics[], next_step }</code></td><td>Today the worker generates the summary for the email and throws it away (only <code>summary_status</code> is kept). Storing it feeds the Chat summary card.</td></tr>
+    </tbody>
+  </table></div>
+  <p class="note">Every existing writer (<code>recordTurn</code>, <code>recordContact</code>, <code>recordProfile</code>, the summary worker) must leave the new columns alone, except that <code>recordTurn</code> increments <code>unread_count</code> and clears <code>resolved_at</code>. <code>status</code> stays GENERATED ALWAYS and out of every write. The activity timeline needs no table of its own: it is derived from these timestamps plus the transcript (see section 9 for the limit).</p>
+</section>
+
+<!-- ================= API ================= -->
+<section id="api">
+  <header><h2>6 · Backend and API</h2></header>
+  <div class="grid2">
+    <div class="panel">
+      <h3>Dashboard endpoints <span class="note">(contract already used by the built frontend)</span></h3>
+<pre class="code">POST  /ai-chat/embed/visitors/:id/messages  { body, attachments[] }
+      → 201 { message: { role:"agent", sender_name, attachments… }, control }
+PATCH /ai-chat/embed/visitors/:id/handoff   { mode: "human" | "ai" } → { control }
+PATCH /ai-chat/embed/visitors/:id/resolve   { resolved: boolean }   → { control }
+POST  /ai-chat/embed/visitors/:id/read      → 204
+POST  /ai-chat/embed/visitors/messages/media  multipart → MessageAttachment
+GET   /ai-chat/embed/visitors           + handled_by_*, handled_by_me, handoff_requested_at,
+                                          resolved_at, unread_count, rating, summary
+<span class="cm">// control = { handled_by_user_id, handled_by_name, handled_by_me,
+//             handled_at, resolved_at, resolved_by_name, unread_count }</span></pre>
+      <p class="note">Guard: <code>requireBusinessOrInstitutionContext</code> + <code>findVisitorById(req.db, id)</code>. The server always writes <code>role:'agent'</code> from the JWT.</p>
+    </div>
+    <div class="panel">
+      <h3>Guest (widget) endpoints</h3>
+<pre class="code">POST /ai-chat/guest/messages        <span class="cm">// changed — see the check below</span>
+     SSE events added: handover { }, handoff { agent_name }
+GET  /ai-chat/guest/session         <span class="cm">// + agent rows, agent_name, waiting flag</span>
+POST /ai-chat/guest/rating          <span class="cm">// new, no auth, rate-limited</span>
+     { fingerprint, embed_key, rating: 1..5, comment? } → 204</pre>
+      <p class="note">The rating is only accepted once the chat has ended (<code>conversation_state = 'end_confirmed'</code>), and the comment is trimmed and capped.</p>
+    </div>
+  </div>
+  <div class="panel">
+    <h3>The check in <code>guest.routes.ts</code>, before any model call</h3>
+<pre class="code">const IDLE_MS = 15 * 60_000;
+const since = (t) => t ? Date.now() - new Date(t).getTime() : Infinity;
+
+if (visitor.handled_by_user_id &amp;&amp; since(visitor.handled_at) &gt;= IDLE_MS)       <span class="cm">// staff went quiet</span>
+  await visitorService.setHandoff(tenantDb, visitor.id, null);
+if (visitor.handoff_requested_at &amp;&amp; since(visitor.handoff_requested_at) &gt;= IDLE_MS) <span class="cm">// nobody joined</span>
+  await visitorService.expireHandoverRequest(tenantDb, visitor.id);
+
+if (humanActive(visitor) || waitingForHuman(visitor)) {
+  <span class="cm">// store the user row, unread+1, SSE handoff/handover, [DONE] — no RAG, no LLM, no credits</span>
+}</pre>
+    <ul>
+      <li><strong>Detecting "I want a person":</strong> the existing conclusion judge (<code>judgeConclusion</code>, already a separate call) gains a <code>wants_human</code> boolean. It's a separate call from the reply on purpose: a hidden instruction inside the reply gets dropped on busy turns and by the fallback model. Only when <code>wants_human</code> is true, and handover is on for the widget, does the server set <code>handoff_requested_at</code> and send the fixed "I've asked the team to join" line as its own message.</li>
+      <li><strong>The AI never offers a person:</strong> the system prompt says not to suggest contacting the team, and no chip may offer it. Handover depends only on what the visitor writes.</li>
+      <li>History sent to the model maps <code>agent → model</code>, so after Resume the AI treats staff replies as its own side.</li>
+      <li><code>chat-summary.worker</code> saves <code>{ text, topics, next_step }</code> into <code>summary</code> when it generates the email, and labels agent turns ("Advisor (Alex):") in the transcript it summarises.</li>
+      <li>Contact card heading in <code>guest.routes.ts:354</code>: "Want a copy of this conversation?" → "Want a summary of this conversation?".</li>
+    </ul>
+  </div>
+</section>
+
+<!-- ================= FRONTEND ================= -->
+<section id="fe">
+  <header><h2>7 · Frontend</h2></header>
+  <div class="tablebox"><table class="files">
+    <thead><tr><th>Area / files</th><th>Change</th></tr></thead>
+    <tbody>
+      <tr><td>business/messages/** <span class="tag done">built</span></td><td>Takeover UI: header controls, staff bubbles, handover lines, composer, visitor panel, unread, filters, polling, widget switch, Channels page. Inbox pinned to AI Conversations.</td></tr>
+      <tr><td>business/messages/components/inbox-channel-bar.tsx</td><td>Right-hand button: "Channels" → <strong>"⚙ Widget"</strong> linking to <code>/business/ai-widget</code>.</td></tr>
+      <tr><td>business/messages (row, header, panel, utils)</td><td>Add the <strong>"Wants a person"</strong> state: amber pill, sorted first, header strip "Priya asked for a person", and a filter chip.</td></tr>
+      <tr><td>business/const/index.ts</td><td>Menu order, the new Contacts group, removal of "AI embed" from Settings and of Visitors from Business.</td></tr>
+      <tr><td>business/contacts/visitors/{page,layout}.tsx <span class="tag new">new</span></td><td>Renders the existing <code>VisitorsTab</code>.</td></tr>
+      <tr><td>business/settings/ai-embed/page.tsx</td><td>Redirects to <code>/business/ai-widget</code>.</td></tr>
+      <tr><td>business/ai-widget/components/ai-widget-view.tsx</td><td>"← Inbox" link; Inbox highlighted in the menu.</td></tr>
+      <tr><td>business/ai-widget/components/visitor-detail-view.tsx</td><td>Header shows the email only; <strong>Open conversation</strong> button (→ Inbox with this visitor open); new two-column layout.</td></tr>
+      <tr><td>business/ai-widget/components/visitor-detail-cards.tsx + 2 new cards</td><td>Conversation card gains Handled by and Chat rating. New <strong>ChatSummaryCard</strong> (text, topics, next step, emailed / owed) and <strong>ActivityTimeline</strong> (newest first, derived from timestamps and the transcript).</td></tr>
+      <tr><td>embed/[key]/components/* (the visitor's widget)</td><td>Staff bubbles and "Alex is replying" header, a 5 s poll, the waiting card, the handover and handoff SSE events, no empty AI bubble, the rating card after the end card.</td></tr>
+      <tr><td>ai/{apis/types.ts, components/chat-message.tsx}</td><td><code>MessageRole</code> gains <code>agent</code>, with an agent branch in the shared renderer.</td></tr>
+    </tbody>
+  </table></div>
+</section>
+
+<!-- ================= PHASES ================= -->
+<section id="phases">
+  <header><h2>8 · Phases, each shippable</h2></header>
+  <ol class="steps">
+    <li class="built"><strong>Inbox takeover UI on mock data.</strong> Done; still to commit.</li>
+    <li><strong>Navigation (frontend only).</strong> Menu order, Contacts → Visitors, widget page via the Inbox Widget button, Settings item removed with a redirect. Can ship now; it needs no backend.</li>
+    <li><strong>Takeover backend.</strong> Migrations, <code>agent</code> role, the handoff check with 15-minute idle, the dashboard endpoints, history mapping. Switch the Inbox from mock to real.</li>
+    <li><strong>Widget receives staff replies.</strong> Agent bubbles, the poll, the handoff event, "Alex is replying".</li>
+    <li><strong>Visitor asks for a person.</strong> <code>wants_human</code> in the judge, <code>handoff_requested_at</code>, waiting card, "Wants a person" in the Inbox, 15-minute expiry, staff notification (see open questions).</li>
+    <li><strong>Ratings and summary.</strong> <code>POST /guest/rating</code>, the rating card, summary storage in the worker, contact card wording.</li>
+    <li><strong>Visitor detail page.</strong> New layout, Open conversation, email-only header, Chat summary and Activity timeline cards.</li>
+  </ol>
+  <p class="note">Checks for every phase: backend <code>tsc --noEmit</code>; frontend tsc and eslint; you run the migrations and DB tests locally. Backend tests to add: the handoff check skips the LLM and billing, a spoofed role is still stored as <code>agent</code>, the agent CHECK rejects a missing sender, both 15-minute expiries, a rating before the chat has ended is refused, and <code>wants_human</code> is false for "thanks, that's all".</p>
+</section>
+
+<!-- ================= RISKS ================= -->
+<section id="risks">
+  <header><h2>9 · Risks and open questions</h2></header>
+  <div class="tablebox"><table>
+    <thead><tr><th>Item</th><th>Risk / question</th><th>Proposal</th></tr></thead>
+    <tbody>
+      <tr><td><span class="tag q">question</span> Staff notification</td><td>When a visitor asks for a person, who hears about it and how? Today nothing outside the Inbox would show it.</td><td>v1: "Wants a person" flag and unread in the Inbox, plus an entry under the notification bell for every org member. Email or push later.</td></tr>
+      <tr><td><span class="tag q">question</span> Office hours</td><td>What should the visitor see when they ask for a person outside office hours?</td><td>The waiting card says when the team is back, and the AI keeps answering in the meantime.</td></tr>
+      <tr><td><span class="tag q">question</span> Widget switch permission</td><td>Any member can pause the widget today; GlobalyOS limits it to admins and owners.</td><td>Your call. Takeover stays open to every member either way.</td></tr>
+      <tr><td><span class="tag q">question</span> Other routes to the widget page</td><td>The portal's "AI assistant" tile also links to <code>/business/ai-widget</code>, so the Inbox button isn't literally the only way in.</td><td>Keep the tile (it's a shortcut, not a menu item), or point it at the Inbox. Your call.</td></tr>
+      <tr><td><span class="tag q">question</span> Summaries without an email</td><td>Summaries are only generated for visitors who gave an email, so most cards would say "no summary".</td><td>Generate one for every ended chat (costs one model call each), or show "No summary — the visitor didn't ask for one".</td></tr>
+      <tr><td>Judge misreads intent</td><td>"Is there a person I can email?" isn't a handover request, but it might be read as one.</td><td>Test phrases for the judge, both should-hand-over and shouldn't; the 15-minute expiry limits the damage either way.</td></tr>
+      <tr><td>Takeover while the AI is streaming</td><td>That AI reply still lands after the takeover.</td><td>Accepted for v1; the "joined" line makes the order clear.</td></tr>
+      <tr><td>Derived timeline</td><td>With single columns, an earlier takeover that was later handed back only survives in the transcript; repeated handover requests show only the latest.</td><td>Good enough for v1. Add an events table if the team needs a full audit trail.</td></tr>
+      <tr><td>Off means off</td><td>Pausing the widget also stops chats a person has taken over.</td><td>The Inbox banner says so.</td></tr>
+      <tr><td>Rating abuse</td><td>The rating endpoint is public.</td><td>Requires an ended chat, one rating per conversation, the existing per-key-and-IP rate limit.</td></tr>
+      <tr><td>Consent</td><td>The summary email has no unsubscribe link and the contact card has no privacy notice (already an open item).</td><td>Settle it before the summary card makes summaries more prominent.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="panel">
+    <h3>Left out of v1</h3>
+    <ul>
+      <li>Internal notes, typing indicators, "agent is viewing", read ticks, reactions and edit/delete on AI chats, visitor-side attachments.</li>
+      <li>The AI handing over by itself (low confidence, loop cap). Handover is visitor-initiated only.</li>
+      <li>WhatsApp and Instagram (shown as Coming soon), priority, tags, snooze, tickets, a rating analytics dashboard.</li>
+    </ul>
+  </div>
+</section>
+</div>

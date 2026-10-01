@@ -1,6 +1,8 @@
 /** Wire types for the AI-widget (embed config) API. A widget is owned by a business or an
  *  institution — exactly one of the two ids is set. */
 
+import type { MessageAttachment } from "@/components/chat/types";
+
 export type EmbedConfig = {
   id: number;
   business_id: number | null;
@@ -125,7 +127,7 @@ export type WidgetVisitor = {
   study_preference: string | null;
   summary_status: "pending" | "processing" | "sent" | "failed" | null;
   summary_sent_at: string | null;
-};
+} & ConversationControl;
 
 /** Tally per tab, honouring the current search — so a tab never promises rows it won't show. */
 export type VisitorCounts = Record<VisitorStatusFilter, number>;
@@ -172,10 +174,44 @@ export type VisitorPatch = {
 /** The four editable record sections, by the key each is stored under. */
 export type VisitorRecordSection = "qualifications" | "work_experiences" | "language_tests" | "academic_tests";
 
-/** One turn of a visitor's chat with the assistant — the Inbox's read-only AI Embed transcript. */
+/**
+ * Who wrote a turn: the visitor, the AI assistant, or a staff member who took the chat over.
+ * `agent` is set by the server from the token — the client never says who it is.
+ */
+export type VisitorMessageRole = "user" | "assistant" | "agent";
+
+/** One turn of a visitor's chat, as the Inbox's AI Conversations transcript shows it. */
 export type VisitorMessage = {
   id: number;
-  role: "user" | "assistant";
+  role: VisitorMessageRole;
   content: string;
   created_at: string;
+  /** Agent turns only: the staff member's name, saved on the message when it was sent. */
+  sender_name?: string | null;
+  /** Agent turns only. Signed URLs, like enquiry chat attachments. */
+  attachments?: MessageAttachment[];
 };
+
+/**
+ * Who is answering a widget chat, and whether staff have closed it.
+ *
+ * Optional on the wire until the takeover backend ships: a row without these fields reads as
+ * "the AI is handling it, nothing unread, not resolved" — exactly what the widget does today.
+ */
+export type ConversationControl = {
+  /** Null → the AI assistant answers. Set → it stays silent and this person answers. */
+  handled_by_user_id?: number | null;
+  handled_by_name?: string | null;
+  /** The server's answer to "is that me?" — the auth state carries no user id to compare. */
+  handled_by_me?: boolean;
+  /** The handler's last activity. The server hands the chat back to the AI 15 minutes after it. */
+  handled_at?: string | null;
+  resolved_at?: string | null;
+  resolved_by_name?: string | null;
+  /** Visitor messages since staff last opened or answered. One counter per org. */
+  unread_count?: number;
+};
+
+export type SendVisitorMessageResult = { message: VisitorMessage; control: ConversationControl };
+export type ConversationControlResult = { control: ConversationControl };
+export type HandoffMode = "human" | "ai";

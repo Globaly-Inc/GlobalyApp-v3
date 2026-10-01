@@ -4,6 +4,7 @@ import { aiWidgetRealApi } from "./real-api";
 
 export const aiWidgetApi = createApi({ mock: aiWidgetMockApi, real: aiWidgetRealApi });
 export type {
+  ConversationControl, ConversationControlResult, HandoffMode, SendVisitorMessageResult, VisitorMessageRole,
   CreateEmbedConfigInput, DeveloperContact, EmbedConfig, EnsureEmbedResult,
   SendSnippetInput, SendSnippetResult, UpdateEmbedConfigInput,
   VisitorCounts, VisitorListParams, VisitorListResult, VisitorProfileEntry,
