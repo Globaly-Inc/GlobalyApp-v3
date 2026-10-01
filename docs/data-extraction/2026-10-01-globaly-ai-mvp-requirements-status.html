@@ -1,0 +1,525 @@
+<!doctype html>
+<!-- Globaly AI MVP — product requirements with per-requirement build status.
+     Requirements as supplied 2026-10-01. Status read from the code on 2026-10-01,
+     branch dev-feat-ai-widget-counseling. No JS, no deps. -->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Globaly AI MVP — requirements &amp; build status</title>
+<style>
+  :root {
+    color-scheme: light;
+    --ink: #111827; --muted: #6b7280; --line: #e5e7eb; --bg: #f8fafc; --card: #fff;
+    --done: #047857; --done-bg: #ecfdf5; --done-line: #a7f3d0;
+    --part: #b45309; --part-bg: #fffbeb; --part-line: #fde68a;
+    --miss: #b91c1c; --miss-bg: #fef2f2; --miss-line: #fecaca;
+    --ask: #4338ca; --ask-bg: #eef2ff; --ask-line: #c7d2fe;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 980px; margin: 0 auto; padding: 48px 24px 96px; }
+  h1 { font-size: 32px; line-height: 1.2; margin: 0 0 8px; }
+  h2 { font-size: 21px; margin: 0; }
+  h3 { font-size: 15px; margin: 22px 0 8px; text-transform: uppercase;
+       letter-spacing: .06em; color: var(--muted); }
+  h4 { font-size: 16px; margin: 20px 0 6px; }
+  p { margin: 0 0 12px; }
+  .sub { color: var(--muted); margin-bottom: 32px; }
+  code { font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+         background: #f1f5f9; border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+  ul { margin: 0 0 4px; padding-left: 22px; }
+  li { margin-bottom: 6px; }
+  .req { color: var(--muted); }
+
+  .pill { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .04em;
+          text-transform: uppercase; padding: 3px 10px; border-radius: 999px; border: 1px solid; white-space: nowrap; }
+  .done { color: var(--done); background: var(--done-bg); border-color: var(--done-line); }
+  .part { color: var(--part); background: var(--part-bg); border-color: var(--part-line); }
+  .miss { color: var(--miss); background: var(--miss-bg); border-color: var(--miss-line); }
+  .ask  { color: var(--ask);  background: var(--ask-bg);  border-color: var(--ask-line); }
+
+  .summary { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+             padding: 4px 22px 18px; margin-bottom: 36px; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; padding: 10px 12px 10px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  tbody tr:last-child td { border-bottom: 0; }
+
+  .step { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+          padding: 22px 24px; margin-bottom: 18px; }
+  .step-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 4px; }
+  .num { flex: none; min-width: 30px; height: 30px; padding: 0 6px; border-radius: 15px; background: var(--ink); color: #fff;
+         font-size: 14px; font-weight: 700; display: grid; place-items: center; }
+  .rule { border-top: 1px solid var(--line); margin: 20px 0 0; padding-top: 16px; }
+  .rule:first-of-type { border-top: 0; padding-top: 0; }
+  .rule-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .rule-head h4 { margin: 0 0 6px; }
+  .gap { border-left: 3px solid var(--part-line); background: var(--part-bg);
+         padding: 12px 16px; border-radius: 0 8px 8px 0; margin-top: 12px; }
+  .gap.blocking { border-left-color: var(--miss-line); background: var(--miss-bg); }
+  .gap.question { border-left-color: var(--ask-line); background: var(--ask-bg); }
+  .gap strong { display: block; margin-bottom: 4px; }
+  footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); margin-top: 40px; padding-top: 18px; }
+  @media print { body { background: #fff; } .step, .summary { break-inside: avoid; } }
+</style>
+</head>
+<body>
+<main>
+
+  <h1>Globaly AI MVP — requirements &amp; build status</h1>
+  <p class="sub">
+    The MVP requirement set as supplied on <strong>2026-10-01</strong>, each requirement tracked against
+    what is actually in the code (branch <code>dev-feat-ai-widget-counseling</code>, read 2026-10-01).
+    Statuses below were read from the source, not from the plan docs. Supersedes
+    <em>2026-09-30-business-self-service-flow-status</em>, whose six steps are folded into §3–§4 and the appendix.
+  </p>
+
+  <section class="summary">
+    <h3>At a glance</h3>
+    <table>
+      <thead>
+        <tr><th style="width:52px">§</th><th>Area</th><th style="width:118px">Status</th><th>Headline gap</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>2</td><td>Website &amp; lead capture</td><td><span class="pill part">Partial</span></td>
+            <td>Booking works; no on-site lead form and no lead notification to Globaly.</td></tr>
+        <tr><td>3</td><td>Invitation &amp; registration</td><td><span class="pill part">Partial</span></td>
+            <td>Send works. No per-invitation record, no revoke, no state machine, public signup still live.</td></tr>
+        <tr><td>4</td><td>Registration &amp; onboarding</td><td><span class="pill part">Partial</span></td>
+            <td>Registration is still two-step; no first-time experience; checklist is built.</td></tr>
+        <tr><td>5</td><td>Existing institution data</td><td><span class="pill part">Partial</span></td>
+            <td>Detection is email-only — exactly what the requirement rules out.</td></tr>
+        <tr><td>A</td><td>Extraction &amp; management <span class="req">(reqs pending)</span></td><td><span class="pill part">Partial</span></td>
+            <td>Pipeline done; gated to institutions, URL list review-only, no completion email.</td></tr>
+        <tr><td>B</td><td>Business &amp; contact management <span class="req">(reqs pending)</span></td><td><span class="pill part">Partial</span></td>
+            <td>Visitors/contacts UI exists; no lead-alert email to the business.</td></tr>
+        <tr><td>C</td><td>AI counsellor &amp; knowledge <span class="req">(reqs pending)</span></td><td><span class="pill part">Partial</span></td>
+            <td>Memory engine is backend-only — no portal UI to approve or deprecate.</td></tr>
+        <tr><td>D</td><td>Widget &amp; conversations <span class="req">(reqs pending)</span></td><td><span class="pill part">Partial</span></td>
+            <td>Widget ships; nothing auto-creates a config when extraction finishes.</td></tr>
+        <tr><td>E</td><td>Feedback &amp; AI learning <span class="req">(reqs pending)</span></td><td><span class="pill done">Done</span></td>
+            <td>Thumbs, counsellor review and conversation-end learning all live.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ============================ 1 ============================ -->
+  <section class="step">
+    <div class="step-head"><span class="num">1</span><h2>Overview</h2></div>
+    <p>
+      The Globaly AI MVP lets institutions onboard onto GlobalyApp through invitation-only registration,
+      import or extract their institutional data, configure an AI Counsellor, and embed that counsellor
+      into their own website.
+    </p>
+    <p>Seven core areas:</p>
+    <ul>
+      <li>Website &amp; lead capture — §2</li>
+      <li>Institution invitation &amp; onboarding — §3</li>
+      <li>Institution data extraction &amp; management — appendix A <span class="req">(detailed requirements not yet supplied)</span></li>
+      <li>Business &amp; contact management — appendix B <span class="req">(not yet supplied)</span></li>
+      <li>AI counsellor &amp; knowledge management — appendix C <span class="req">(not yet supplied)</span></li>
+      <li>AI widget &amp; conversation management — appendix D <span class="req">(not yet supplied)</span></li>
+      <li>Lead capture, feedback &amp; AI learning — appendix E <span class="req">(not yet supplied)</span></li>
+    </ul>
+    <div class="gap question">
+      <strong>Requirement text ends mid-§5.1</strong>
+      The supplied document stops at “A warning/confirmation mechanism should be presented d…”. §2–§5 below
+      carry the requirements verbatim; the five areas with no requirement text are tracked in the appendix
+      from code only, so the gap list stays complete. Send the rest and they move up into numbered sections.
+    </div>
+  </section>
+
+  <!-- ============================ 2 ============================ -->
+  <section class="step">
+    <div class="step-head"><span class="num">2</span><h2>Website &amp; lead capture</h2><span class="pill part">Partial</span></div>
+
+    <div class="rule">
+      <div class="rule-head"><h4>2.1 Public website</h4><span class="pill done">Done</span></div>
+      <p class="req">Visitors should be able to browse the Globaly website and access information about the product and services.</p>
+      <ul>
+        <li>Separate Next.js app at <code>globalyai-website/</code> — hero, product sections, demo film,
+          cookie consent, and Terms / Privacy / Cookies pages.</li>
+        <li>Content is in code (<code>src/lib/site.ts</code>, <code>src/components/v6/*</code>); there is no CMS,
+          so copy changes are deploys.</li>
+      </ul>
+    </div>
+
+    <div class="rule">
+      <div class="rule-head"><h4>2.2 Lead conversion — book a meeting</h4><span class="pill done">Done</span></div>
+      <p class="req">Visitors can book a meeting directly with Amit or the Sales Team.</p>
+      <ul>
+        <li>Every CTA on the site is one component pointed at one URL —
+          <code>CAL_BOOKING_URL = https://cal.com/amit-ranjitkar/globaly-ai-intro-meeting</code>
+          (<code>globalyai-website/src/lib/site.ts:7</code>, used by <code>CtaButton</code> in
+          <code>components/v6/primitives.tsx:83</code>).</li>
+        <li>Scheduling, reminders and the booking notification are Cal.com's, not ours.</li>
+      </ul>
+    </div>
+
+    <div class="rule">
+      <div class="rule-head"><h4>2.2 Lead conversion — submit information</h4><span class="pill miss">Not built</span></div>
+      <p class="req">Visitors can submit their information through the website.</p>
+      <ul>
+        <li>No form exists anywhere in <code>globalyai-website/src</code> — the only <code>&lt;form&gt;</code>
+          and <code>mailto:</code> hits are inside the legal pages.</li>
+        <li>No API route either: <code>globalyai-website/src/app</code> contains no <code>route.ts</code>, so the
+          marketing site currently has no server surface to post a lead to.</li>
+      </ul>
+    </div>
+
+    <div class="rule">
+      <div class="rule-head"><h4>2.2 Lead conversion — notification to Globaly</h4><span class="pill miss">Not built</span></div>
+      <p class="req">Globaly receives an email notification when a lead is generated.</p>
+      <ul>
+        <li>Follows from the above: no submission path, nothing to notify on. Cal.com's own booking email is
+          the only alert today.</li>
+        <li><code>backend/src/shared/mail/templates.ts</code> has OTP, claim, enquiry (unlocked / lead / claim),
+          guide delivery, chat summary and waitlist. No inbound-lead template.</li>
+      </ul>
+      <div class="gap">
+        <strong>Smallest path</strong>
+        One route handler on the marketing app that posts to the existing backend, reusing the
+        <code>waitlist</code> module's store plus a new template — rather than a second lead table.
+        Decide whether website leads should land in <code>waitlist</code>, in <code>enquiries</code>, or in a CRM.
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ 3 ============================ -->
+  <section class="step">
+    <div class="step-head"><span class="num">3</span><h2>Institution invitation &amp; registration</h2><span class="pill part">Partial</span></div>
+    <p class="req">
+      Institutions should not have direct access to the standard public signup flow. Instead, a Super Admin
+      generates and sends a unique invitation link to each institution after the sales/verification process.
+    </p>
+
+    <div class="rule">
+      <div class="rule-head"><h4>3.1 Invitation contents</h4><span class="pill part">Partial</span></div>
+      <p class="req">Institution/business name · recipient name · recipient email · unique token/link · invitation status · invitation history. Each invitation individually tracked.</p>
+      <ul>
+        <li>Built: a 32-byte token with a 72-hour TTL, minted per institution and emailed as
+          <code>${WEB_APP_URL}/invite/institution/accept?token=…</code> —
+          <code>sendInstitutionClaimRequest</code>,
+          <code>superadmin/platform/businesses/services/businesses.service.ts:469</code>
+          (business twin at :418). Name and recipient come off the row; the recipient is the owner's
+          address when there is an owner, otherwise the contact email extraction captured, and that choice
+          deliberately mirrors what <code>acceptInstitutionClaim</code> resolves against.</li>
+        <li>Not built: there is <strong>no invitation record</strong>. <code>claim_token</code> and
+          <code>claim_token_expires_at</code> are two columns on the institution/business row, so a resend
+          overwrites the previous token in place. No history, no per-invitation status, nothing to list.</li>
+      </ul>
+      <div class="gap blocking">
+        <strong>Gap — “each invitation should be individually tracked” needs a table</strong>
+        Today's shape cannot express it. The precedent already exists in the codebase: both
+        <code>member_invitations</code> (institution staff) and <code>agent_invitations</code> (business staff)
+        are per-invitation rows with <code>status</code>, <code>invited_by</code>, <code>expired_at</code>.
+        The institution claim should become a third table of the same shape rather than a third pair of columns.
+      </div>
+    </div>
+
+    <div class="rule">
+      <div class="rule-head"><h4>3.1 Separate template when data already exists</h4><span class="pill miss">Not built</span></div>
+      <p class="req">If the institution already has existing data in GlobalyApp, a separate invitation email/template should be used.</p>
+      <ul>
+        <li>One template serves every case — <code>claimBusinessEmail</code>
+          (<code>shared/mail/templates.ts:751</code>) is sent for businesses, for institutions, and whether or
+          not the row carries extracted data. The institution send even carries a standing note that
+          institution-specific copy was deferred (<code>businesses.service.ts:502</code>).</li>
+      </ul>
+    </div>
+
+    <div class="rule">
+      <div class="rule-head"><h4>3.2 Invitation management area</h4><span class="pill part">Partial</span></div>
+      <p class="req">Super Admin area to create, send, view status, track usage, resend, revoke, and handle expired invitations.</p>
+      <ul>
+        <li><strong>Create</strong> — Done. Admin adds the institution/business
+          (<code>app/admin/platform/businesses/components/add-business-view.tsx</code>), or it arrives by
+          promotion from an extraction job.</li>
+        <li><strong>Send</strong> — Done, singly and in bulk.
+          <code>claim-request-dialog.tsx</code> → <code>sendClaimRequest</code>;
+          bulk goes through <code>queueBulkClaimRequests</code> → the
+          <code>job:business-claim-requests</code> worker, with an inline fallback when the queue is down.</li>
+        <li><strong>View status</strong> — Partial. A single badge driven by the row's <code>status</code> /
+          <code>claim_status</code> (<code>unverified</code> → <code>claim_pending</code> → <code>claimed</code>),
+          filterable in the admin list. There is no invitation list and no “sent at / opened / used at”.</li>
+        <li><strong>Resend</strong> — Partial. Pressing send again mints a new token over the old one. It works,
+          but it is indistinguishable from a first send and silently invalidates the link already in the
+          recipient's inbox.</li>
+        <li><strong>Revoke</strong> — Not built. No endpoint, no UI; <code>revoke</code> appears nowhere in the
+          claim code.</li>
+        <li><strong>Expired</strong> — Not built as an admin action. Expiry is only read at accept time; nothing
+          surfaces or sweeps expired invitations.</li>
+      </ul>
+    </div>
+
+    <div class="rule">
+      <div class="rule-head"><h4>3.2 Hide the public signup page</h4><span class="pill miss">Not built</span></div>
+      <p class="req">The existing public signup page should be hidden/disabled for the MVP.</p>
+      <ul>
+        <li><code>/signup</code> is live and linked (<code>frontend/src/app/signup/</code>,
+          plus <code>/auth/sign-up</code>). <code>POST /businesses/register</code> backs it
+          (<code>businesses.routes.ts:31</code>) and is not gated on an invitation.</li>
+        <li>Note before disabling it: the signup page is also where the existing-data claim offer appears
+          (§5.1), so hiding the page removes that path too unless it moves.</li>
+      </ul>
+    </div>
+
+    <div class="rule">
+      <div class="rule-head"><h4>3.3 Invitation states</h4><span class="pill part">Partial</span></div>
+      <p class="req">Pending · Sent · Accepted/Used · Expired · Revoked.</p>
+      <ul>
+        <li>Expressible today: <em>Sent</em> (<code>claim_pending</code>) and <em>Accepted</em>
+          (<code>claimed</code>). <em>Expired</em> is implicit — a timestamp compared at accept time, never a
+          state. <em>Pending</em> (created, not yet sent) and <em>Revoked</em> do not exist.</li>
+        <li>The guard at <code>businesses.service.ts:424</code> refuses to re-send to an already-claimed row,
+          which is the one piece of state-machine behaviour present.</li>
+      </ul>
+    </div>
+
+    <div class="rule">
+      <div class="rule-head"><h4>3.3 Expired / revoked / used link handling</h4><span class="pill miss">Not built</span></div>
+      <p class="req">Explain the status clearly · offer “Request a New Link” · notify the admin · let the admin resend.</p>
+      <ul>
+        <li>Every failure collapses into one message. <code>claim-accept-view.tsx:59</code> catches any error and
+          renders “Claim link invalid” — expired, already used, revoked and malformed are indistinguishable to
+          the user. The backend does distinguish them (“This claim link has expired”,
+          <code>institution-claim.service.ts:124</code>), so the copy is there; the page just overwrites it on
+          some paths and offers no next action.</li>
+        <li>No “Request a New Link” button, and no admin notification on a failed claim attempt.</li>
+      </ul>
+      <div class="gap">
+        <strong>Half of this already exists elsewhere</strong>
+        <code>requestClaimByEmail</code> (<code>modules/businesses/services/businesses.service.ts:368</code>)
+        is exactly the self-serve “send me a new link” action, wired today only into the signup claim-offer
+        card. Pointing the expired-link page at it is a small change; the admin notification is the new part.
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ 4 ============================ -->
+  <section class="step">
+    <div class="step-head"><span class="num">4</span><h2>Institution registration &amp; onboarding</h2><span class="pill part">Partial</span></div>
+
+    <div class="rule">
+      <div class="rule-head"><h4>4.1 Registration from a valid invitation link</h4><span class="pill part">Partial</span></div>
+      <p class="req">Valid link → registration → single registration form (not the two-step flow) → email/OTP verification → redirect to the Business Portal after login.</p>
+      <ul>
+        <li>Built: the accept page collects first/last name and calls
+          <code>acceptInstitutionClaim</code>, which creates the claimant's <code>platform_user</code> from
+          those names, writes them onto the listing, and hands off to sign-in
+          (<code>frontend/src/app/invite/claim-accept-view.tsx</code>).</li>
+        <li>Built: OTP verification (<code>otpEmail</code>, <code>templates.ts:683</code>) promotes
+          <code>account_status</code> 0 → 1 and issues the session, so the user lands logged in.</li>
+        <li><strong>Not done — single form.</strong> Business/institution onboarding is still two steps:
+          <code>TOTAL_STEPS = 2</code> in <code>frontend/src/app/business/onboarding-view.tsx:29</code>
+          (details step, then profile step).</li>
+      </ul>
+      <div class="gap question">
+        <strong>Open — which form does an invited institution see?</strong>
+        An invited claimant fills the name form and then signs in; the two-step onboarding is the
+        <em>self-signup</em> path. If the requirement is that both converge on one single-page form, say so —
+        it changes whether <code>onboarding-view.tsx</code> is collapsed or simply bypassed for invited users.
+      </div>
+    </div>
+
+    <div class="rule">
+      <div class="rule-head"><h4>4.2 First-time user experience</h4><span class="pill miss">Not built</span></div>
+      <p class="req">Welcome screens, short explanations, simple animations, key feature introductions — before the dashboard.</p>
+      <ul>
+        <li>Nothing of the sort exists. A search across the portal for welcome / tour / walkthrough /
+          first-run components returns only the messages empty-state. New users land directly on the
+          dashboard.</li>
+      </ul>
+    </div>
+
+    <div class="rule">
+      <div class="rule-head"><h4>4.3 Onboarding checklist</h4><span class="pill done">Done</span></div>
+      <p class="req">The Home page should contain an onboarding checklist showing the actions required to complete setup.</p>
+      <ul>
+        <li><code>businesses/services/onboarding-progress.service.ts</code> builds the list and serves it at
+          <code>GET /businesses/me/onboarding</code>; the portal renders it in
+          <code>app/business/portal/components/get-set-up-checklist.tsx</code>.</li>
+        <li>Six steps: create account · verify email · extract your website data (institution categories only)
+          · review courses &amp; services · customise your AI assistant · add the chat widget · invite your team.</li>
+        <li>Each step's <code>done</code> is computed from real state, not from a stored cursor — the widget step
+          flips when a config exists, “installed” requires an actual visitor row, “invite team” requires a
+          second member or a pending invitation.</li>
+      </ul>
+      <div class="gap question">
+        <strong>Open question — order</strong>
+        <em>Can onboarding steps be completed in any order, or must they be sequential?</em>
+        As built they are <strong>order-independent</strong>: every step evaluates itself, nothing is locked.
+        Sequential would be the new work, not the status quo.
+      </div>
+      <div class="gap question">
+        <strong>Open question — two sequences</strong>
+        The requirement asks for a separate sequence for institutions <em>with</em> existing data and
+        institutions <em>without</em>. Not built: the one conditional in the list is
+        <code>isInstitutionCategory</code>, which hides the extraction step for non-institution categories.
+        Nothing branches on whether data already exists.
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ 5 ============================ -->
+  <section class="step">
+    <div class="step-head"><span class="num">5</span><h2>Existing institution data</h2><span class="pill part">Partial</span></div>
+    <p class="req">
+      If GlobalyApp already has data for an institution, the user should reach the platform with that data
+      already available. The Home page should show: overview of existing data · current data/extraction status ·
+      relevant onboarding actions · AI Counsellor setup status · option to obtain/copy the AI widget script.
+    </p>
+
+    <div class="rule">
+      <div class="rule-head"><h4>5.0 Home page content</h4><span class="pill part">Partial</span></div>
+      <ul>
+        <li><strong>Data/extraction status</strong> — Done. <code>GET /businesses/me/extraction-status</code> →
+          <code>getSelfServiceStatus</code> (<code>data-extraction/services/jobs.service.ts:141</code>) returns
+          <code>{ status, progress_pct, counts }</code> over courses, fees, intakes, eligibility, scholarships,
+          study units, study options, accreditations, branches, agents and visa services. Rendered by
+          <code>extraction-progress-card.tsx</code> and <code>site-urls-card.tsx</code>.</li>
+        <li><strong>Onboarding actions</strong> — Done (the §4.3 checklist).</li>
+        <li><strong>AI Counsellor setup status</strong> — Partial. The checklist's
+          <code>customize_assistant</code> / <code>add_chat_widget</code> steps carry it; there is no counsellor
+          status panel on Home.</li>
+        <li><strong>Widget script</strong> — Partial. The snippet lives on <code>/business/ai-widget</code>,
+          not on Home; Home only links there.</li>
+        <li><strong>Overview of existing data</strong> — Partial. The counts above are the only overview, and
+          they come from <code>source_job_id</code> — an institution whose data arrived by any route other than
+          a linked extraction job shows zeroes.</li>
+      </ul>
+    </div>
+
+    <div class="rule">
+      <div class="rule-head"><h4>5.1 Existing data detection</h4><span class="pill part">Partial</span></div>
+      <p class="req">
+        Institution data may not be associated with the same email used during lead capture or registration,
+        so the system should not rely solely on email matching. A warning/confirmation mechanism should be
+        presented…<span class="req"> [requirement text ends here]</span>
+      </p>
+      <ul>
+        <li>Built, and built exactly the way the requirement rules out: detection is
+          <strong>email-only</strong>. <code>findUnclaimedBusinessByContactEmail</code> matches the address typed
+          at signup against the listing's own contact email; a hit renders the claim-offer card
+          (<code>frontend/src/app/signup/components/business-claim-offer-card.tsx</code>) — “Yes, claim it” /
+          “No, use another email” — and <code>requestClaimByEmail</code> mails the claim link.</li>
+        <li>That card is also the only warning/confirmation mechanism in place, and it resolves silently on a
+          miss by design (anti-enumeration: no found/not-found signal).</li>
+        <li>Not built: matching on institution name, website domain, or any fuzzy candidate set; a
+          disambiguation step when several rows match; and any admin-side review of a claimed match.</li>
+      </ul>
+      <div class="gap blocking">
+        <strong>Decision needed before this can be built</strong>
+        Non-email matching and anti-enumeration pull against each other — showing “we think you are
+        <em>X University</em>” to an unauthenticated visitor leaks that X is in the database. Likely answer:
+        match on domain of the work email plus admin confirmation, rather than open name search. Confirm the
+        intended match keys and who approves a match, then this becomes a small service change.
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================ Appendix ============================ -->
+  <section class="step">
+    <div class="step-head"><span class="num">A–E</span><h2>Appendix — areas awaiting requirement text</h2></div>
+    <p>
+      The overview lists five further areas whose detailed requirements have not been supplied. Status below is
+      read from code only, so nothing from the previous status document is lost while the requirements are written.
+    </p>
+
+    <div class="rule">
+      <div class="rule-head"><h4>A · Institution data extraction &amp; management</h4><span class="pill part">Partial</span></div>
+      <ul>
+        <li><strong>Pipeline — Done.</strong> <code>site_map → site_snapshot → site_analysis → url_classify →
+          queue_pages</code> (<code>data-extraction/schemas/step.schema.ts:27</code>), driven by
+          <code>lib/pipeline-steps.ts</code> and the <code>extraction-job / page / step / verify /
+          queue-reclaim / schedule</code> workers. Pages become one Markdown snapshot each
+          (<code>lib/page-store.ts</code>); writes go through <code>lib/staging-writer.ts</code>; completion is
+          reconciled in <code>lib/queue-completion.ts</code>.</li>
+        <li><strong>Self-service start — Partial.</strong> <code>POST /businesses/me/start-extraction</code>
+          takes a row lock and refuses a second job once <code>source_job_id</code> is set
+          (<code>businesses.service.ts:233</code>), but throws <em>“Extraction is only available for
+          institutions”</em> unless the category passes <code>isInstitutionCategory</code> (:236), and the card
+          hides itself for everyone else (<code>start-extraction-card.tsx:41</code>).</li>
+        <li><strong>URL review — Partial.</strong> <code>getExtractionSiteUrls</code> forces
+          <code>excluded: false</code>: the institution can read the list, edit a page's Markdown and request a
+          re-fetch of up to 10 URLs, but cannot deselect pages before the crawl. Exclusion stays an admin action
+          by design — confirm whether self-service should expose it.</li>
+        <li><strong>Completion email — Not built.</strong> <code>lib/queue-completion.ts:116</code> writes an
+          <code>extraction_complete</code> job event and that string appears nowhere else in the codebase: no
+          consumer, no template. Needs an <code>extractionCompleteEmail</code>, a recipient lookup from
+          <code>source_job_id</code>, and a re-send guard — Resume and Re-run both re-enter completion.</li>
+      </ul>
+    </div>
+
+    <div class="rule">
+      <div class="rule-head"><h4>B · Business &amp; contact management</h4><span class="pill part">Partial</span></div>
+      <ul>
+        <li>Profile CRUD at <code>GET|PATCH /businesses/me</code>, AI-drafted profile copy via
+          <code>POST /me/ai-assist</code>, review confirmation via <code>POST /me/onboarding/review-courses</code>.</li>
+        <li>Staff invitations exist per tenant and <em>are</em> per-invitation rows —
+          <code>member_invitations</code> (institutions) and <code>agent_invitations</code> (businesses), with
+          resend supported from the admin side (<code>resendInstitutionInvitation</code>).</li>
+        <li>Widget contacts: <code>POST /ai-chat/guest/contact</code> records a visitor's name and email on the
+          tenant visitor row (<code>visitor.service.ts</code>), surfaced in
+          <code>app/business/ai-widget/visitors/</code> with a detail drawer and edit dialogs.</li>
+        <li><strong>Gap:</strong> no email to the business when a lead hands over contact details — the only
+          mail on that path is <code>chatSummaryEmail</code>, which goes to the <em>visitor</em>.</li>
+      </ul>
+    </div>
+
+    <div class="rule">
+      <div class="rule-head"><h4>C · AI counsellor &amp; knowledge management</h4><span class="pill part">Partial</span></div>
+      <ul>
+        <li>Retrieval over the institution's own extracted data and crawled site, with a per-topic money guard
+          (fees / refund / scholarship / living) in <code>services/rag.service.ts</code>.</li>
+        <li>Institution memory is complete on the backend: <code>GET|POST /institution/memories</code>,
+          <code>:id/approve</code>, <code>:id/deprecate</code>, <code>:id/reactivate</code>,
+          <code>:id/unflag</code>, <code>DELETE</code>, plus <code>GET /institution/conversations</code> and
+          <code>/:id/messages</code>.</li>
+        <li><strong>Gap — no portal UI.</strong> No frontend file references
+          <code>institution/memories</code> or <code>institution/conversations</code>. Today an institution
+          cannot see, approve or deprecate what its counsellor has learned.</li>
+      </ul>
+    </div>
+
+    <div class="rule">
+      <div class="rule-head"><h4>D · AI widget &amp; conversation management</h4><span class="pill part">Partial</span></div>
+      <ul>
+        <li>Config CRUD plus <code>rotate-key</code> and <code>activate</code> —
+          <code>ai-counsellor/routes/embed.routes.ts</code>. Launcher at
+          <code>frontend/public/embed.js</code>; the panel at <code>/embed/&lt;key&gt;</code> is deliberately
+          framable; test host page <code>frontend/public/widget-demo.html?key=…</code>.</li>
+        <li>Visitor threads, visitor list and analytics (<code>GET /businesses/me/widget-analytics</code>) are live.</li>
+        <li><strong>Gap — creation is a user action.</strong> <code>createConfig</code> has no backend caller;
+          the only path is clicking Create in <code>/business/ai-widget</code>
+          (<code>ai-widget-view.tsx:29</code>). To match “automatically created”, mint a default config at the
+          same completion hook as the extraction email — the two share one insertion point, so they are one
+          change, not two.</li>
+      </ul>
+    </div>
+
+    <div class="rule">
+      <div class="rule-head"><h4>E · Lead capture, feedback &amp; AI learning</h4><span class="pill done">Done</span></div>
+      <ul>
+        <li>Visitor thumbs: <code>POST /ai-chat/guest/messages/:id/feedback</code> →
+          <code>recordStudentFeedback</code>; counsellor correction:
+          <code>POST /ai-chat/messages/:id/review</code> → <code>recordCounsellorReview</code>
+          (<code>services/learning-signals.service.ts</code>).</li>
+        <li>Conversation end (<code>POST /guest/conversation-end</code>) drives
+          <code>onConversationEnd</code> into the institution-memory learning worker; lost learning is replayed
+          by the hourly sweep on <code>learned_at</code>.</li>
+        <li>Contact capture and the visitor-facing summary email are in place (see B).</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>
+    Requirements as supplied 2026-10-01 · status read from the code on 2026-10-01 ·
+    branch <code>dev-feat-ai-widget-counseling</code> · line numbers are accurate as of that commit and will drift.
+  </footer>
+
+</main>
+</body>
+</html>

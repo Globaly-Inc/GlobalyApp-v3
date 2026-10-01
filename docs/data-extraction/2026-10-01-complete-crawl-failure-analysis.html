@@ -1,0 +1,999 @@
+<!-- Completeness failure analysis for the extraction pipeline: every point at which a page or an
+     entity can be lost without anything reporting it. Read from the code on 2026-10-01, branch
+     dev-feat-ai-widget-counseling. No JS, no deps. -->
+<title>Complete-crawl failure analysis</title>
+<style>
+  :root {
+    color-scheme: light;
+    --ink: #111827; --muted: #6b7280; --line: #e5e7eb; --bg: #f8fafc; --card: #fff;
+    --done: #047857; --done-bg: #ecfdf5; --done-line: #a7f3d0;
+    --part: #b45309; --part-bg: #fffbeb; --part-line: #fde68a;
+    --miss: #b91c1c; --miss-bg: #fef2f2; --miss-line: #fecaca;
+    --info: #1d4ed8; --info-bg: #eff6ff; --info-line: #bfdbfe;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1120px; margin: 0 auto; padding: 48px 24px 96px; }
+  h1 { font-size: 32px; line-height: 1.2; margin: 0 0 8px; }
+  h2 { font-size: 23px; margin: 0 0 4px; }
+  h3 { font-size: 17px; margin: 26px 0 8px; }
+  h4 { font-size: 13px; margin: 20px 0 6px; text-transform: uppercase;
+       letter-spacing: .06em; color: var(--muted); }
+  p { margin: 0 0 12px; }
+  .sub { color: var(--muted); margin-bottom: 32px; }
+  code { font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+         background: #f1f5f9; border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+  pre { background: #0f172a; color: #e2e8f0; border-radius: 10px; padding: 16px 18px;
+        overflow-x: auto; font: 13px/1.6 ui-monospace, SFMono-Regular, Menlo, monospace; }
+  pre code { background: none; border: 0; padding: 0; color: inherit; }
+  ul, ol { margin: 0 0 12px; padding-left: 22px; }
+  li { margin-bottom: 6px; }
+  .pill { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .04em;
+          text-transform: uppercase; padding: 3px 10px; border-radius: 999px; border: 1px solid; white-space: nowrap; }
+  .crit { color: var(--miss); background: var(--miss-bg); border-color: var(--miss-line); }
+  .imp { color: var(--part); background: var(--part-bg); border-color: var(--part-line); }
+  .opt { color: var(--info); background: var(--info-bg); border-color: var(--info-line); }
+  .ok { color: var(--done); background: var(--done-bg); border-color: var(--done-line); }
+  section { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+            padding: 24px 26px; margin-bottom: 20px; }
+  .lede { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+          padding: 20px 24px; margin-bottom: 32px; }
+  .tablewrap { overflow-x: auto; margin: 0 0 12px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 900px; }
+  th, td { text-align: left; padding: 9px 12px 9px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  tbody tr:last-child td { border-bottom: 0; }
+  .callout { border-left: 3px solid var(--miss-line); background: var(--miss-bg);
+             padding: 12px 16px; border-radius: 0 8px 8px 0; margin: 14px 0; }
+  .callout.warn { border-left-color: var(--part-line); background: var(--part-bg); }
+  .callout.note { border-left-color: var(--info-line); background: var(--info-bg); }
+  .callout strong { display: block; margin-bottom: 4px; }
+  .answer { border: 2px solid var(--miss-line); background: var(--miss-bg); border-radius: 12px;
+            padding: 22px 26px; margin-bottom: 20px; }
+  footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line);
+           margin-top: 40px; padding-top: 18px; }
+  @media print { body { background: #fff; } section { break-inside: avoid; } }
+</style>
+
+<main>
+  <h1>Complete-crawl failure analysis</h1>
+  <p class="sub">
+    Every point at which the extraction pipeline can lose a page or an entity without reporting it.
+    Read from the source on 2026-10-01, branch <code>dev-feat-ai-widget-counseling</code>.
+    Line references are accurate as of that commit and will drift.
+  </p>
+
+  <div class="lede">
+    <h2>The one-sentence answer</h2>
+    <p style="margin-bottom:0">
+      <strong>No — the current architecture cannot guarantee complete site scraping, and the gap is
+      structural rather than a matter of tuning.</strong> Discovery is a single-shot, first-source-wins
+      lookup with no graph traversal, so a page that no sitemap lists and the homepage does not link
+      is unreachable by construction; and completion is defined as
+      <em>no page is pending or processing</em>, which counts a permanently failed page as a
+      finished one. Those two facts together mean a job can report <code>review</code> with 100%
+      progress while an arbitrary fraction of the site was never discovered, never fetched, or
+      fetched and discarded.
+    </p>
+  </div>
+
+  <!-- ══════════════════════════════════════════════════════════ A -->
+  <section>
+    <h2>A. Current completeness model</h2>
+
+    <p>The pipeline has <strong>no explicit definition of complete</strong>. Completeness is an
+      emergent property of three independent checks, none of which was written to answer the
+      question "did we get the whole site?".</p>
+
+    <h4>1. Discovery is "complete" when one source answered</h4>
+    <p><code>discoverUrlsForCrawl</code> (<code>lib/scraper.ts:1176</code>) is a
+      <strong>first-success-wins cascade, not a union</strong>:</p>
+<pre><code>1. Firecrawl map        → if (map.success && map.links.length > 1) RETURN
+2. sitemap ∪ catalogue ∪ cert-log → if (merged.length > 1)     RETURN
+3. seed page links      → if (res.links.length > 1)            RETURN
+4. [seedUrl]                                                   RETURN</code></pre>
+    <p>The branches are mutually exclusive. A Firecrawl map that returns <em>two</em> URLs
+      short-circuits every sitemap source permanently — <code>robots.txt</code> declarations,
+      sitemap indexes, catalogue subdomains and the Certificate-Transparency probe are all skipped.
+      The per-source accounting (<code>sources</code>, added after the Yale incident) reports the
+      zero-yield of a source <em>within</em> a branch, but cannot report a branch that never ran.</p>
+
+    <h4>2. Page processing is "complete" when nothing is pending or processing</h4>
+    <p><code>checkAllPagesDone</code> (<code>lib/queue-completion.ts:44</code>):</p>
+<pre><code>count(*) filter (where status in ('pending', 'processing')) as remaining
+...
+if (Number(counts?.remaining) === 0) { /* advance to verification */ }</code></pre>
+    <div class="callout">
+      <strong>This is the single most consequential line in the pipeline.</strong>
+      <code>failed</code> is not in that filter. A page that exhausted its retries, or that the
+      reclaim sweep gave up on after three stale reclaims, is <em>terminal</em> — and terminal is
+      treated as done. The job advances to verification and then to <code>review</code> with its
+      failures recorded only as <code>pages_failed</code> and a scatter of
+      <code>page_error</code> timeline rows that nothing gates on.
+    </div>
+
+    <h4>3. The job is "complete" when the queue is empty or discovery found nothing new</h4>
+    <p><code>runQueuePages</code> (<code>lib/pipeline-steps.ts:509</code>) writes
+      <code>status: "review"</code> when <code>idle</code> — nothing newly queued and nothing live.
+      The docstring is explicit that the denominator of the progress bar is
+      <em>what was queued, not what was found</em>, because URLs refused at <code>page_cap</code>
+      "were thrown away and can never be scraped, so counting them holds a finished job below
+      100%". That is a deliberate decision to make a truncated crawl display as 100% complete.</p>
+
+    <h4>What the model does guarantee</h4>
+    <p>Credit where due — the hard parts of <em>exactly-once logical processing</em> are solved
+      properly, and better than most pipelines of this size:</p>
+    <ul>
+      <li>DB unique constraint on <code>(job_id, url)</code> is the real dedupe, not a check-then-insert.</li>
+      <li><code>attempt_token</code> fencing makes a slow-but-alive worker's writes a no-op after reclaim.</li>
+      <li>Atomic claim (<code>status IN ('pending','failed') → 'processing'</code>) kills duplicate messages.</li>
+      <li>The LLM result cache keys on the full prompt hash, so an unchanged page costs nothing on re-run.</li>
+      <li><code>LLM_TOTAL_BUDGET_MS</code> (12 min) is deliberately under <code>STALE_MINUTES</code> (20) so a
+        slow model call cannot trigger a false reclaim.</li>
+    </ul>
+    <p>The gap is not in the machinery. It is that the machinery is asked the wrong question.</p>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════ B -->
+  <section>
+    <h2>B. Complete-site failure points</h2>
+    <p>Severity is about <em>silent</em> loss: how much can go missing before anything says so.</p>
+
+    <h3>B1. Discovery</h3>
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>Failure scenario</th><th>Current behaviour</th><th>Missed?</th><th>Sev</th><th>Fix</th></tr></thead>
+      <tbody>
+        <tr>
+          <td><strong>Firecrawl map returns a partial list</strong></td>
+          <td><code>scraper.ts:1181</code> — any result with &gt;1 link short-circuits all sitemap sources</td>
+          <td>Yes, unbounded</td>
+          <td><span class="pill crit">Critical</span></td>
+          <td>Union all sources always; never let one short-circuit the rest</td>
+        </tr>
+        <tr>
+          <td><strong>No recursive crawl</strong> — the site graph is never traversed</td>
+          <td>Discovery runs once in <code>runSiteMap</code>. Links found on scraped pages are never fed back</td>
+          <td>Yes, unbounded</td>
+          <td><span class="pill crit">Critical</span></td>
+          <td>A frontier table + a crawl step that loops until the frontier drains</td>
+        </tr>
+        <tr>
+          <td>Orphan pages (in no sitemap, not linked from the homepage)</td>
+          <td>Unreachable. The <code>page-links</code> fallback reads the seed page only, one level</td>
+          <td>Yes</td>
+          <td><span class="pill crit">Critical</span></td>
+          <td>Covered by the frontier crawl above</td>
+        </tr>
+        <tr>
+          <td><code>filterUrls</code> path blocklist over-matches</td>
+          <td><code>html-utils.ts:395</code> — <code>/\/(…|privacy|news|media|blog|terms|…)\b/</code>. <code>\b</code> matches before a hyphen. <strong>Verified by running the actual regex:</strong> <code>/media-studies-ba</code>, <code>/privacy-law-llm</code>, <code>/blog-writing-course</code>, <code>/news-media-degree</code> and even <code>/courses/media</code> are all DROPPED; <code>/newsletter-design</code> and <code>/registered-nursing</code> correctly survive</td>
+          <td>Yes</td>
+          <td><span class="pill crit">Critical</span></td>
+          <td>Anchor each marker as a full segment (<code>(?:/|$)</code>), not <code>\b</code>. The identical trap is already documented and fixed in <code>NON_COURSE_PATH_MARKERS</code> — <code>filterUrls</code> was not updated with it</td>
+        </tr>
+        <tr>
+          <td>JS-generated links, "load more", infinite scroll, faceted nav</td>
+          <td>Never executed during discovery. <code>expandCollapsed</code> exists but only on page-worker <em>retries</em></td>
+          <td>Yes</td>
+          <td><span class="pill crit">Critical</span></td>
+          <td>Rendered-DOM link harvest in the crawl step; detect and follow facet/pagination parameter spaces</td>
+        </tr>
+        <tr>
+          <td>Catalogue behind a POST/search form (no GET URLs)</td>
+          <td>Invisible to every source</td>
+          <td>Yes</td>
+          <td><span class="pill imp">Important</span></td>
+          <td>Per-site adapter; out of scope for a generic crawler</td>
+        </tr>
+        <tr>
+          <td>Discovery hard cap</td>
+          <td><code>limit: 10000</code> in <code>runSiteMap</code>; <code>fetchSitemapUrls</code> stops at <code>max</code></td>
+          <td>Yes, on large universities</td>
+          <td><span class="pill imp">Important</span></td>
+          <td>Make it a budget that pages rather than truncates; record the overflow explicitly</td>
+        </tr>
+        <tr>
+          <td>Sitemap sub-caps</td>
+          <td><code>SITEMAP_INDEX_CHILD_CAP</code> 200, <code>ROBOTS_SITEMAP_CAP</code> 20, <code>SITEMAP_MAX_DEPTH</code> 3, <code>CERT_LOG_HOST_CAP</code> 25, linked hosts <code>.slice(0,5)</code>, <code>CATALOGUE_SUBDOMAINS</code> 9 fixed words</td>
+          <td>Yes, silently at the caps</td>
+          <td><span class="pill imp">Important</span></td>
+          <td>Record a <code>cap_hit</code> event per cap with the dropped count (one already does — copy it)</td>
+        </tr>
+        <tr>
+          <td>Alternate-language / hreflang / mobile variants</td>
+          <td>Not read. <code>m.</code> hosts pass <code>isSameSite</code> and become duplicate content</td>
+          <td>Both ways: missed and duplicated</td>
+          <td><span class="pill imp">Important</span></td>
+          <td>Parse <code>rel=alternate</code>; collapse on <code>rel=canonical</code></td>
+        </tr>
+        <tr>
+          <td>Canonical URLs never consulted</td>
+          <td>Two URLs for one page are two queue rows, two scrapes, two Gemini calls</td>
+          <td>Cost, plus duplicate entities</td>
+          <td><span class="pill imp">Important</span></td>
+          <td>Store <code>canonical_url</code> on the page row; dedupe the frontier on it</td>
+        </tr>
+        <tr>
+          <td>Redirects not recorded</td>
+          <td><code>safeFetch</code> follows them; the landing URL is not written back to the site list</td>
+          <td>Duplicates</td>
+          <td><span class="pill opt">Optional</span></td>
+          <td>Persist the final URL and alias the source</td>
+        </tr>
+        <tr>
+          <td>Query-param URLs</td>
+          <td><code>normaliseUrl</code> strips only <code>utm_*/fbclid/gclid/mc_*/ref</code> and sorts the rest. Facet explosions are kept as distinct pages</td>
+          <td>Cost blow-up, not loss</td>
+          <td><span class="pill imp">Important</span></td>
+          <td>Per-site param allowlist learned from the sitemap's own shape</td>
+        </tr>
+        <tr>
+          <td>PDFs and documents</td>
+          <td>Handled — <code>isPdfUrl</code>, Gemini Vision read, linked files recorded in the snapshot footer</td>
+          <td>No</td>
+          <td><span class="pill ok">OK</span></td>
+          <td>—</td>
+        </tr>
+        <tr>
+          <td><code>robots.txt</code> <code>Disallow</code> not parsed</td>
+          <td>Only <code>Sitemap:</code> lines are read (<code>sitemapUrlsFromRobots</code>)</td>
+          <td>No (helps completeness)</td>
+          <td><span class="pill opt">Note</span></td>
+          <td>Compliance decision, not a completeness one. Worth a conscious choice</td>
+        </tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>B2. Crawl depth and traversal</h3>
+    <p><strong>There is no crawl.</strong> The effective depth of the main chain is 0 (sitemap/map
+      list) or 1 (the <code>page-links</code> fallback reading the seed page once). Three narrow
+      exceptions exist and none of them generalises:</p>
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>Mechanism</th><th>Where</th><th>Reach</th><th>Feeds discovery back?</th></tr></thead>
+      <tbody>
+        <tr><td><code>detectPaginationUrls</code></td><td><code>extraction-page.worker.ts:61</code></td>
+          <td><code>?page=N</code> / <code>/page/N</code> links, plus DataTables "Showing 1 to 10 of 486"</td>
+          <td>Queues to PAGES directly — never written to <code>extraction_site_urls</code>, so it is invisible to the site list and to any re-classification</td></tr>
+        <tr><td><code>handleDiscoveryStep</code></td><td><code>extraction-step.worker.ts:920</code></td>
+          <td>depth 2, but <strong>only</strong> over admin-supplied <code>guided_urls.course_list_urls</code>; throws if none are supplied</td>
+          <td>Yes, but admin-triggered only</td></tr>
+        <tr><td>Secondary fetches (<code>curriculum_page_url</code>, <code>courseOwnPage</code>)</td><td><code>extraction-page.worker.ts:700-760</code></td>
+          <td>One hop from a course, read inline</td>
+          <td>No — never queued, never retried, never counted</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p><strong>A page that links to another page not in the sitemap is a dead end.</strong> Nothing
+      harvests <code>page.links</code> during normal page processing except the pagination regex.
+      <code>queue_pages</code> can and does finish while undiscovered pages exist — it has no concept
+      of undiscovered.</p>
+
+    <h3>B3. Premature stopping conditions</h3>
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>Stop</th><th>Where</th><th>Consequence</th><th>Sev</th></tr></thead>
+      <tbody>
+        <tr><td><code>page_cap</code> (default 500) <strong>discards</strong> URLs</td>
+          <td><code>staging-writer.ts:2812</code>, reported by <code>runQueuePages</code> as "DISCARDED at the page cap"</td>
+          <td>Course URLs that were correctly discovered and classified are thrown away. The job then displays 100%, because <code>total_pages_found</code> is set from the <em>queue</em>, not from what was found</td>
+          <td><span class="pill crit">Critical</span></td></tr>
+        <tr><td><code>dispatchSnapshotBatches</code> caps at <code>pageCap || 500</code></td>
+          <td><code>pipeline-steps.ts:216</code> — <code>urls.slice(0, pageCap || 500)</code></td>
+          <td>On a 10,000-URL site only the first 500 are ever snapshotted — in arbitrary DB order. Everything after that is classified by URL string alone (no excerpt) and is never fetched</td>
+          <td><span class="pill crit">Critical</span></td></tr>
+        <tr><td><code>CLASSIFY_ALL_CAP = 3200</code></td>
+          <td><code>pipeline-steps.ts:322</code></td>
+          <td>When the heuristic finds nothing, only the first 3200 URLs are classified; the tail is <code>other</code> and never queued. The same cap truncates the "unplaced" categorisation pass</td>
+          <td><span class="pill imp">Important</span></td></tr>
+        <tr><td><code>atPageCap</code> halts <code>handleDiscoveryStep</code> mid-recursion</td>
+          <td><code>extraction-step.worker.ts:943</code></td>
+          <td>Correct as a cost guard, but leaves no record of which category pages were never opened</td>
+          <td><span class="pill imp">Important</span></td></tr>
+        <tr><td><code>idle → status: "review"</code></td>
+          <td><code>pipeline-steps.ts:509</code></td>
+          <td>Unconditional write, unlike <code>checkAllPagesDone</code>'s <code>where status='processing'</code> guard. Two concurrent <code>queue_pages</code> runs can both flip the job</td>
+          <td><span class="pill imp">Important</span></td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>B4. Scraping and retries</h3>
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>Failure mode</th><th>Retried?</th><th>How many</th><th>Recorded?</th><th>Can it look permanent when it is not?</th></tr></thead>
+      <tbody>
+        <tr><td><code>anti_bot</code> (blocked / thin)</td><td>Yes</td>
+          <td>2 — <code>browser_render</code> (Firecrawl + auto proxy + expandCollapsed), then <code>mobile</code> (stealth proxy)</td>
+          <td><code>failure_class</code>, <code>last_error_detail</code></td>
+          <td>Yes. After 2 retries → <code>failed</code>, never re-attempted. A WAF having a bad hour is indistinguishable from a permanent block</td></tr>
+        <tr><td><code>scraper_down</code> (our stack)</td><td>Yes, through the normal cascade</td><td>2</td>
+          <td>One deduped <code>scraper_unavailable</code> event per job, via advisory lock</td>
+          <td><strong>Yes, badly.</strong> A container outage lasting longer than 2 retries per page burns every in-flight page's budget and marks them all permanently failed. The warning is written once; the data loss is silent</td></tr>
+        <tr><td><code>not_found</code></td><td>No, by design</td><td>0</td><td>Yes</td>
+          <td>Yes — a transient 404 from a CDN edge or a maintenance window is terminal</td></tr>
+        <tr><td><code>ai_5xx</code> / rate limit</td><td>Yes</td><td>3, plus deferred retry honouring <code>retry_after_ms</code></td>
+          <td>Yes, with <code>awaiting_publish</code> for reclaim</td>
+          <td>Handled well — this is the best-engineered retry path in the module</td></tr>
+        <tr><td>Worker crash mid-page</td><td>Yes, by the reclaim sweep</td><td>3 stale reclaims, then <code>failed</code> with <code>worker_stale</code></td>
+          <td>Yes</td><td>Yes, after 3</td></tr>
+        <tr><td>Partial HTML returned as success</td><td>No</td><td>—</td><td>No</td>
+          <td><strong>Yes.</strong> <code>isUsableContent</code> checks only length ≥ 200 and the absence of 404/access-denied phrases. A render that returned the header and half the body passes every gate and is stored as the page's snapshot</td></tr>
+        <tr><td>Consumer callback throws</td><td>—</td><td>—</td><td>—</td>
+          <td><code>channel.nack(msg, false, false)</code> with <strong>no dead-letter exchange</strong> (<code>queueService.ts:247,321</code>). The message is destroyed. On PAGES the reclaim sweep recovers the row; on STEPS nothing does — see B6</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>B5. Page content completeness</h3>
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>Limit</th><th>Value</th><th>Where</th><th>Reported when hit?</th></tr></thead>
+      <tbody>
+        <tr><td>Markdown truncation (course pages)</td><td><strong>120,000 chars</strong></td><td><code>html-utils.ts:475</code></td>
+          <td><span class="pill crit">No.</span> Silent. The Yale catalogue page cited in the source comments was 325,703 chars — roughly two-thirds of it never reached the model, and no event records that</td></tr>
+        <tr><td>Course-data text cap</td><td>60,000 chars</td><td><code>COURSE_DATA_TEXT_CAP</code></td><td>No</td></tr>
+        <tr><td>Discovery-step text cap</td><td>30,000 chars</td><td><code>extraction-step.worker.ts:957</code></td><td>No</td></tr>
+        <tr><td>Gemini output tokens</td><td><strong>65,536</strong></td><td>page worker's <code>extractJson</code> calls</td>
+          <td><span class="pill crit">Detected but not surfaced.</span> <code>finishReason === "MAX_TOKENS"</code> sets <code>truncated</code>, which correctly suppresses <em>caching</em> (<code>shouldCache</code>) — but the truncated answer is still parsed, returned and written to staging. A 120-course listing page silently stages only the courses that fit</td></tr>
+        <tr><td>Thin-page skip</td><td>&lt; 4,000 chars</td><td><code>MIN_EXTRACTABLE_CHARS</code></td>
+          <td>Yes — <code>page_skipped_thin</code>. Honest, measured trade (74 wasted calls saved, 2 productive pages lost per 266 on the tuning run ≈ 0.75% known loss)</td></tr>
+        <tr><td>Accordions / tabs / collapsed sections</td><td>—</td><td><code>expandCollapsed</code></td>
+          <td>Only applied on <strong>retry</strong>, never on the first attempt. A page whose first fetch returns a plausible-looking 5,000-char shell never gets the click treatment, because it never looked blocked</td></tr>
+        <tr><td>Embedded JSON-LD / microdata</td><td>—</td><td>not parsed anywhere</td>
+          <td>Not read. UEL's <code>Course</code> JSON-LD is in the snapshot and ignored</td></tr>
+        <tr><td>iframes, API-backed content</td><td>—</td><td>—</td><td>Not followed</td></tr>
+        <tr><td>HTML tables</td><td>—</td><td><code>courselist-parser.ts</code></td>
+          <td>Only <code>table.sc_courselist</code> (CourseLeaf). Every other table shape goes to the model as markdown, where markdown conversion frequently mangles it</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>B6. Queue, workers and completion</h3>
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>Area</th><th>Scenario</th><th>Current behaviour</th><th>Missed?</th><th>Sev</th><th>Fix</th></tr></thead>
+      <tbody>
+        <tr><td>Queue</td><td>Consumer throws</td><td><code>nack(requeue=false)</code>, no DLX configured anywhere</td>
+          <td>Message destroyed</td><td><span class="pill crit">Critical</span></td>
+          <td>Declare a DLX on every queue; alert on depth</td></tr>
+        <tr><td>Steps</td><td>A step worker dies mid-step</td>
+          <td>No event written, <code>pipeline_progress[step]</code> stays <code>"processing"</code>. <code>checkAllPagesDone</code>'s <code>inFlightStep</code> guard then <strong>blocks completion forever</strong>. The reclaim sweep only re-calls <code>checkAllPagesDone</code>, which keeps deferring</td>
+          <td>Job wedged permanently, no alert</td><td><span class="pill crit">Critical</span></td>
+          <td>A step-level staleness sweep mirroring the queue one</td></tr>
+        <tr><td>Completion</td><td><code>failed</code> rows do not block</td><td><code>queue-completion.ts:48</code> counts only <code>pending|processing</code></td>
+          <td>Yes — the headline risk</td><td><span class="pill crit">Critical</span></td>
+          <td>Split <code>failed</code> into retryable vs permanent; require an explicit operator acknowledgement of permanent failures before <code>review</code></td></tr>
+        <tr><td>Completion</td><td>Non-discovery step failures do not block</td>
+          <td>The guard iterates <code>DISCOVERY_STEP_ORDER</code> only. A failed <code>courses</code> or <code>discovery</code> step does not defer completion</td>
+          <td>Yes</td><td><span class="pill imp">Important</span></td>
+          <td>Widen the guard to every step that can produce queue rows</td></tr>
+        <tr><td>Completion</td><td>Pagination siblings queued after the transition</td>
+          <td>A reclaim-republished page can detect pagination and queue siblings after the job already moved to <code>extracting</code></td>
+          <td>Orphaned rows</td><td><span class="pill imp">Important</span></td>
+          <td>Re-open the job when a new row is inserted into a non-<code>processing</code> job</td></tr>
+        <tr><td>Scale</td><td>Thousands–millions of URLs</td>
+          <td><code>runQueuePages</code> does one round-trip <em>and one publish</em> per URL in a serial loop; <code>upsertSiteUrls</code> takes the whole list at once</td>
+          <td>No loss, but a 100k-URL job spends hours in a single step message and risks the 20-min heartbeat</td><td><span class="pill imp">Important</span></td>
+          <td>Batch inserts + batched publishes; chunk the step across messages like <code>site_snapshot</code> already does</td></tr>
+        <tr><td>Scale</td><td>Autoscaling signal</td><td><code>maxWorkers: 10</code>, <code>prefetch: 1</code>, scale on queue size/CPU/error-rate</td>
+          <td>No</td><td><span class="pill ok">OK</span></td><td>—</td></tr>
+        <tr><td>Idempotency</td><td>Duplicate delivery</td><td>Atomic claim + <code>attempt_token</code> fencing + DB unique on <code>(job_id,url)</code></td>
+          <td>No</td><td><span class="pill ok">OK</span></td><td>—</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <h3>B7. Secondary pages — asked about specifically</h3>
+    <p>The caches do exactly what they were built for. The cap does something else.</p>
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>Mechanism</th><th>Scope</th><th>Behaviour</th><th>Verdict</th></tr></thead>
+      <tbody>
+        <tr><td><code>curriculumCache</code></td><td>per message</td><td>URL → parsed units; a second variant reuses it and clears <code>currUrl</code></td><td><span class="pill ok">Correct</span></td></tr>
+        <tr><td><code>secondaryPageCache</code></td><td>per message</td><td>Memoises <em>failures</em> too (<code>null</code>), so one dead link costs one attempt, not forty</td><td><span class="pill ok">Correct</span></td></tr>
+        <tr><td><code>markupCache</code></td><td>per message</td><td>CourseLeaf table parse result; settles units with zero LLM spend</td><td><span class="pill ok">Correct</span></td></tr>
+        <tr><td><code>fetchable()</code></td><td>per message</td><td><code>secondaryPageCache.has(u) || secondaryFetches &lt; CAP</code> — a cached URL is still served past the cap</td><td><span class="pill ok">Correct</span></td></tr>
+        <tr><td><strong><code>SECONDARY_FETCH_CAP = 20</code></strong></td><td>per message</td>
+          <td>The 21st <em>distinct</em> curriculum/fees page on one listing is <strong>silently skipped</strong> — no event, no queue row, no flag on the course</td>
+          <td><span class="pill crit">Silent loss</span></td></tr>
+      </tbody>
+    </table>
+    </div>
+    <div class="callout">
+      <strong>The shared-page case is solved; the distinct-page case is not.</strong>
+      Your example — A, B, C all pointing at curriculum page X — costs exactly one fetch and is
+      correct. The failure is the opposite shape: a listing page with 40 courses each having
+      <em>its own</em> curriculum page. Twenty are fetched. Twenty are dropped. Those courses are
+      written to staging with no study units and nothing marks them as incomplete, so they are
+      indistinguishable from courses that genuinely publish no curriculum.
+    </div>
+    <p><strong>Better strategy:</strong> stop treating secondary pages as an inline side-effect.
+      A secondary page is a page. Queue it as a first-class row with
+      <code>page_role = 'secondary'</code> and a <code>parent_course_id</code>, let the normal
+      worker, retry, reclaim and completion machinery own it, and let the per-job budget — not a
+      per-message counter — decide what gets deferred. The cap then becomes a scheduling priority
+      rather than a silent discard, and a deferred secondary page is <em>visible</em> as deferred.</p>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════ C -->
+  <section>
+    <h2>C. Silent data-loss risks, ranked</h2>
+    <p>These are the cases where the system reports success and the data is simply not there. Ranked
+      by expected volume lost × likelihood of going unnoticed.</p>
+    <ol>
+      <li><strong>Permanently failed pages do not block completion.</strong>
+        <code>queue-completion.ts:48</code>. A scraper outage can fail hundreds of pages; the job
+        still reaches <code>review</code> and the business-facing status reads
+        <code>progress_pct: 100</code>.</li>
+      <li><strong>Discovery short-circuit.</strong> <code>scraper.ts:1181</code>. A thin Firecrawl
+        map suppresses every sitemap source. The per-source warning cannot fire for a source that
+        never ran.</li>
+      <li><strong>Snapshot cap of <code>page_cap</code>.</strong> <code>pipeline-steps.ts:216</code>.
+        9,500 of 10,000 discovered URLs are never fetched, and the URL classifier then judges them
+        without an excerpt — making it more likely they are also mis-categorised as
+        <code>other</code>.</li>
+      <li><strong><code>page_cap</code> discards classified course URLs.</strong> Reported in the
+        timeline as a warning, then erased from the progress denominator by design.</li>
+      <li><strong>Markdown truncated at 120k chars.</strong> No event. The largest catalogue pages —
+        exactly the ones with the most courses — lose the most.</li>
+      <li><strong>Gemini output truncated at 65,536 tokens.</strong> Detected, correctly not cached,
+        and then <em>used anyway</em>. The courses past the cut never existed as far as staging is
+        concerned.</li>
+      <li><strong>Secondary-fetch cap of 20.</strong> Courses silently staged without curriculum.</li>
+      <li><strong><code>filterUrls</code> hyphen over-match.</strong>
+        <code>/media-studies</code>, <code>/privacy-law-llm</code> and friends never enter the site
+        list at all — the earliest and hardest drop in the pipeline.</li>
+      <li><strong>Step worker death wedges the job.</strong> Not loss, but indefinite stall with no
+        alert — and an operator who eventually force-resumes may not realise the snapshot was
+        partial.</li>
+      <li><strong>Partial HTML accepted as a complete page.</strong> Stored as the snapshot, hashed,
+        and then treated as unchanged on every subsequent run — so the error becomes sticky.</li>
+    </ol>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════ D -->
+  <section>
+    <h2>D. Hard guarantees vs assumptions</h2>
+
+    <h4>Guaranteed by code</h4>
+    <ul>
+      <li>A queue row is processed by at most one attempt at a time — atomic claim + <code>attempt_token</code>.</li>
+      <li>A duplicate queue message is a no-op.</li>
+      <li>One <code>(job_id, url)</code> yields at most one queue row — DB unique constraint.</li>
+      <li>A crashed page worker's row is reclaimed within <code>STALE_MINUTES + 5 min</code>, up to 3 times.</li>
+      <li>An unchanged page + unchanged prompt costs no model tokens — <code>extraction_llm_cache</code> on the full input hash.</li>
+      <li>A truncated or JSON-repaired model answer is never cached.</li>
+      <li>Every external fetch is bounded (<code>EXTERNAL_FETCH_TIMEOUT_MS</code>, <code>SITEMAP_FETCH_TIMEOUT_MS</code>, <code>LLM_REQUEST_TIMEOUT_MS</code>, <code>LLM_TOTAL_BUDGET_MS</code>).</li>
+      <li>Per-host pacing is serialised across processes via <code>extraction_host_slots</code>.</li>
+      <li>Verification cannot start while a discovery step is failed or in flight.</li>
+    </ul>
+
+    <h4>Probabilistic — works most of the time, no guarantee</h4>
+    <ul>
+      <li>Course-URL identification: heuristic, then an LLM narrowing pass protected only by a 25% floor (<code>classifierDistrusted</code>).</li>
+      <li>Course extraction itself: no floor, no cross-check, no count reconciliation.</li>
+      <li>Catalogue-subdomain discovery: a 9-word list, plus crt.sh ranked and capped at 25.</li>
+      <li>Soft-404 detection: four regexes over page text.</li>
+      <li>Anti-bot escalation: two tiers, then give up.</li>
+    </ul>
+
+    <h4>Assumptions baked in, never checked</h4>
+    <ul>
+      <li>That a sitemap or Firecrawl map <em>is</em> the site. Nothing ever measures coverage against the live link graph.</li>
+      <li>That <code>page_cap</code> is a budget rather than a correctness boundary — it is currently both.</li>
+      <li>That 120,000 chars contains the whole page.</li>
+      <li>That a page returning ≥200 chars without a 404 phrase is complete.</li>
+      <li>That a <code>failed</code> page is acceptable collateral.</li>
+    </ul>
+
+    <h4>Undocumented behaviour worth writing down</h4>
+    <ul>
+      <li><code>nack(requeue=false)</code> with no DLX — messages are destroyed on an uncaught throw.</li>
+      <li><code>dispatchSnapshotBatches</code> silently applies <code>page_cap</code> to the snapshot set; the parameter is named <code>pageCap</code> but its effect on <em>discovery coverage</em> is not noted anywhere.</li>
+      <li>Snapshot order is unspecified DB order, so which 500 of 10,000 URLs get fetched is effectively arbitrary.</li>
+      <li>Secondary pages are outside the queue state model entirely.</li>
+      <li><code>onlyMainContent</code> is a snapshot-store key; whether main-content stripping actually occurs depends on the scraper tier. Worth re-verifying for the Crawl4AI and Firecrawl paths — the Scrapling path was fixed to always pass <code>main_content_only=false</code>.</li>
+    </ul>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════ E -->
+  <section>
+    <h2>E. Proposed complete-crawl architecture</h2>
+    <p>Keep everything that works — the queue machinery, fencing, reclaim, the result cache, the
+      snapshot store, the step chain's inspectability. The change is to put a <strong>frontier</strong>
+      in front of it and a <strong>ledger</strong> behind it.</p>
+
+<pre><code>                    ┌──────────────────── FRONTIER (new) ────────────────────┐
+  seeds ───────────▶│  url_frontier: url, depth, state, discovered_via,      │
+  (sitemap ∪ map ∪  │  canonical_url, content_hash, etag, last_modified      │
+   robots ∪ cert ∪  │                                                        │
+   catalogue — ALL, │   loop until no url is in state 'frontier':            │
+   never first-win) │     claim batch → fetch (cheap GET) → store snapshot   │
+                    │     → harvest links (DOM, not regex)                   │
+                    │     → normalise + canonicalise → insert new frontier   │
+                    │     → classify (deterministic first)                   │
+                    └───────────────────────────┬────────────────────────────┘
+                                                │  only 'relevant' pages
+                    ┌───────────────────────────▼────────────────────────────┐
+                    │  STRUCTURED PASS (deterministic, zero LLM)             │
+                    │   JSON-LD / microdata → Course, Offer, EducationalOcc. │
+                    │   known CMS table parsers (CourseLeaf, Acalog, T4…)    │
+                    │   generic <table> + <dl> extractor                     │
+                    │   → entity confidence score                            │
+                    └───────────────────────────┬────────────────────────────┘
+                                   confident?   │   no / partial
+                               yes ├────────────┤
+                                   ▼            ▼
+                            staging      ┌─────────────────────────────┐
+                                         │  LLM PASS (only ambiguous   │
+                                         │  regions, chunked, with a   │
+                                         │  declared expected count)   │
+                                         └──────────────┬──────────────┘
+                                                        ▼
+                    ┌──────────────── LEDGER (new) ──────────────────────────┐
+                    │  every url ends in exactly one terminal state, and     │
+                    │  a job cannot reach 'review' with any url in a         │
+                    │  non-terminal or unacknowledged-permanent state        │
+                    └────────────────────────────────────────────────────────┘</code></pre>
+
+    <h4>The six principles</h4>
+    <ol>
+      <li><strong>Union, never first-win.</strong> Every discovery source runs, always. They are
+        cheap relative to one Gemini call and they disagree constantly.</li>
+      <li><strong>The frontier is the crawl.</strong> Discovery is not a step that finishes; it is a
+        state that drains. A page's links go back into the frontier. The job cannot complete while
+        the frontier is non-empty.</li>
+      <li><strong>Caps defer, they never discard.</strong> <code>page_cap</code> becomes a
+        <em>rate</em> budget: past the cap, URLs are parked in state <code>deferred</code>, counted,
+        and resumable. A truncated crawl must be visible as truncated.</li>
+      <li><strong>Deterministic before probabilistic.</strong> Structured data and known table
+        shapes are free and exact. The model sees only what survives that pass.</li>
+      <li><strong>Fetching and understanding are separate budgets.</strong> HTTP is cheap and should
+        be exhaustive; Gemini is expensive and should be selective. Today they are coupled through
+        <code>page_cap</code>, which is why completeness and cost are in direct conflict.</li>
+      <li><strong>Completion is proved, not inferred.</strong> See F.</li>
+    </ol>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════ F -->
+  <section>
+    <h2>F. State machine</h2>
+
+    <h4>URL / page states</h4>
+<pre><code>                    ┌─────────────┐
+                    │  frontier   │  known, not yet fetched
+                    └──────┬──────┘
+                           │ claim
+                    ┌──────▼──────┐
+          ┌─────────│  fetching   │─────────┐
+          │         └──────┬──────┘         │
+          │ transient      │ ok             │ permanent
+          │ failure        │                │ failure
+   ┌──────▼──────┐  ┌──────▼──────┐  ┌──────▼─────────────┐
+   │ retry_wait  │  │  fetched    │  │ failed_permanent   │ ← requires a reason
+   │ (due_at,    │  └──────┬──────┘  │  + operator ack    │   AND an ack before
+   │  attempts)  │         │         └────────────────────┘   the job may close
+   └──────┬──────┘         │
+          └────────────────┤
+                           │ classify
+              ┌────────────┼────────────┐
+              ▼            ▼            ▼
+      ┌──────────────┐ ┌────────┐ ┌──────────┐
+      │  irrelevant  │ │deferred│ │ relevant │  (budget parked it)
+      │ (+ reason)   │ └────────┘ └────┬─────┘
+      └──────────────┘                 │ extract
+                              ┌────────┼────────┐
+                              ▼        ▼        ▼
+                     ┌──────────┐ ┌─────────┐ ┌──────────────────┐
+                     │ extracted│ │ partial │ │ extract_failed   │
+                     │          │ │ (+ why: │ │  + operator ack  │
+                     │          │ │ trunc., │ └──────────────────┘
+                     │          │ │ cap,    │
+                     │          │ │ budget) │
+                     └──────────┘ └─────────┘</code></pre>
+
+    <p>Three states the current schema conflates and must not:</p>
+    <ul>
+      <li><code>completed</code> today covers <em>extracted entities</em>, <em>blocklisted</em> and
+        <em>too_thin</em>. Only the first is a success.</li>
+      <li><code>failed</code> today covers <em>retry budget exhausted</em>, <em>stale-reclaimed three
+        times</em> and <em>404</em>. Only the last is genuinely permanent.</li>
+      <li><strong><code>partial</code> does not exist at all</strong> — and it is the state that
+        every truncation, every capped secondary fetch, and every MAX_TOKENS answer should be
+        landing in.</li>
+    </ul>
+
+    <h4>Job states</h4>
+<pre><code>pending → discovering ⇄ fetching ⇄ extracting → verifying
+                                                    ↓
+                                        ┌───────────┴───────────┐
+                                        ▼                       ▼
+                                 complete_clean          complete_with_gaps
+                                 (zero partial,          (gaps enumerated and
+                                  zero permanent)         acknowledged)
+                                        └───────────┬───────────┘
+                                                    ▼
+                                                 review → approved → exported</code></pre>
+    <p>The ⇄ arrows matter: with a frontier, discovery and fetching interleave rather than running
+      once. The job leaves the loop only when the frontier is empty and no worker can add to it.</p>
+
+    <h4>The completion predicate</h4>
+<pre><code>job_complete(J) ⟺
+    (1) no url in J is in state frontier | fetching | retry_wait | deferred
+AND (2) no discovery or extraction worker holds a claim on J
+    (proved by: no in-flight claim token, and no step in 'processing')
+AND (3) every url is in exactly one of:
+        extracted | irrelevant | partial | failed_permanent
+AND (4) ∀ url in partial ∪ failed_permanent:
+        the url carries a machine-readable reason
+AND (5) count(partial) + count(failed_permanent) is either 0
+        (→ complete_clean)
+        or has been explicitly acknowledged by an operator
+        (→ complete_with_gaps)</code></pre>
+    <p>Your draft definition is close; three amendments:</p>
+    <ul>
+      <li><strong>"every discoverable relevant URL has been discovered" is not checkable</strong> and
+        so cannot be part of a predicate. Replace it with the fixed-point condition — <em>no worker
+        is capable of producing a new URL</em> — which is checkable, and add a separate
+        <em>coverage estimate</em> as an observability metric rather than a gate.</li>
+      <li><strong>Add <code>partial</code>.</strong> Your version has no state for "we fetched it,
+        we extracted it, and we know the result is incomplete". That is the most common real
+        outcome and the one currently reported as success.</li>
+      <li><strong>Make "explicitly recorded" into "explicitly acknowledged".</strong> A record
+        nobody has to read is how the current <code>pages_failed</code> counter already fails.</li>
+    </ul>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════ G -->
+  <section>
+    <h2>G. Cost optimisation without losing completeness</h2>
+
+    <h4>Already good — keep</h4>
+    <ul>
+      <li><code>extraction_llm_cache</code> on the full input hash. Model id in the key; cross-job by
+        construction; truncated and repaired answers excluded.</li>
+      <li>Page snapshot store with content hash and a freshness window — a re-run of an unchanged
+        site is free.</li>
+      <li>CourseLeaf markup parse before the model.</li>
+      <li>Per-message secondary caches, including negative caching of failures.</li>
+      <li><code>MIN_EXTRACTABLE_CHARS</code> — a measured, documented trade.</li>
+      <li><code>tier: "lite"</code> routing for classification.</li>
+    </ul>
+
+    <h4>Biggest wins available, in order of value per unit of work</h4>
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>Change</th><th>Why it pays</th><th>Completeness effect</th></tr></thead>
+      <tbody>
+        <tr><td><strong>JSON-LD / microdata reader</strong></td>
+          <td>Universities increasingly publish <code>schema.org/Course</code> inline. UEL already does and it is parsed by nothing. Zero marginal cost, exact values, no hallucination</td>
+          <td><span class="pill ok">Increases</span> — catches courses the model misses</td></tr>
+        <tr><td><strong>Generic table + definition-list extractor</strong></td>
+          <td>Fees, intakes and curricula are overwhelmingly tabular. Markdown conversion mangles tables, which is exactly where the model then guesses</td>
+          <td><span class="pill ok">Increases</span></td></tr>
+        <tr><td><strong>Chunk long pages instead of truncating</strong></td>
+          <td>Costs more tokens on the few very long pages; saves every re-run of a job whose output was wrong because the tail was missing</td>
+          <td><span class="pill ok">Increases</span> — removes two silent-loss paths at once</td></tr>
+        <tr><td><strong>Section-level routing</strong></td>
+          <td>Send the model the course-bearing region, not 120k chars of navigation. <code>stripMarkdownJunk</code> is the beginning of this; take it further with structural segmentation</td>
+          <td>Neutral to positive</td></tr>
+        <tr><td><strong>Separate the fetch budget from the model budget</strong></td>
+          <td>HTTP is ~1000× cheaper than a Gemini call. Fetch everything; model-extract selectively. This is the change that stops cost and completeness from fighting</td>
+          <td><span class="pill ok">Large increase</span></td></tr>
+        <tr><td><strong>Content-hash gate before extraction</strong></td>
+          <td>Already stored. Skip the model entirely when a page's hash is unchanged <em>and</em> its prior extraction succeeded — cheaper than a cache lookup on a 120k-char prompt</td>
+          <td>Neutral</td></tr>
+        <tr><td><strong>ETag / Last-Modified on fetch</strong></td>
+          <td>A conditional GET returning 304 costs almost nothing and is the correct primitive for scheduled re-crawls</td>
+          <td>Neutral</td></tr>
+        <tr><td><strong>Cross-job secondary-page sharing</strong></td>
+          <td>The snapshot store is already keyed by URL, so this is largely free today — but secondary fetches bypass the queue, so their accounting is invisible</td>
+          <td>Neutral</td></tr>
+        <tr><td><strong>Declared-count reconciliation</strong></td>
+          <td>Ask the model how many courses the page contains, then compare to how many it returned. Mismatch → chunk and re-ask that region only</td>
+          <td><span class="pill ok">Increases</span> — turns a silent truncation into a detected one</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <div class="callout note">
+      <strong>The structural point about cost.</strong>
+      <code>page_cap</code> currently protects the Gemini bill by refusing to <em>fetch</em>.
+      That couples the two budgets and makes every cost decision a completeness decision.
+      Decouple them: an unbounded cheap crawl plus a bounded expensive extraction gives a strictly
+      better frontier — you keep the full page inventory, you know exactly what you have not
+      extracted yet, and you can extract the rest later without re-crawling.
+    </div>
+
+    <h3 id="measured">G2. Measured cost — <code>extraction_llm_usage</code>, 2026-09-21 → 09-29</h3>
+    <p>The first draft of this section argued from "HTTP is ~1000× cheaper than a model call",
+      which was an assumption. It has now been replaced with the actual usage table. <strong>Two jobs
+      (Curtin, UEL) are the entire instrumented history</strong> — the usage table was created by
+      migration <code>20260915_001</code>, so anything before 2026-09-21 is not in this data.</p>
+
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>Model</th><th>Used by</th><th>Calls</th><th>Input tokens</th><th>Output tokens</th><th>Share of cost*</th></tr></thead>
+      <tbody>
+        <tr><td><code>gemini-3.5-flash</code></td><td><code>course_extraction</code></td><td>843</td><td>16.55M</td><td>2.01M</td><td><strong>83%</strong></td></tr>
+        <tr><td><code>gemini-3.5-flash-lite</code></td><td><code>secondary</code>, <code>url_classify</code></td><td>2,549</td><td>19.08M</td><td>0.40M</td><td>17%</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p style="font-size:14px;color:var(--muted)">* <code>LLM_MODEL_PRICES</code> is <strong>unset</strong>, so the
+      system cannot price its own jobs. Share-of-cost uses published Flash-class rates as an
+      illustration ($0.30/$2.50 per 1M in/out; Lite $0.10/$0.40). The absolute dollars move with the
+      real rate card; every <em>ratio</em> below is rate-independent in structure.</p>
+
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>Call kind</th><th>Calls</th><th>Avg in</th><th>Avg out</th><th>Cost / call*</th><th>Cache hit rate</th></tr></thead>
+      <tbody>
+        <tr><td><code>course_extraction</code> (flash)</td><td>839</td><td>19,688</td><td>2,397</td><td><strong>$0.0119</strong></td><td><strong>0.0%</strong> — 0 of 839</td></tr>
+        <tr><td><code>secondary</code> (lite)</td><td>2,523</td><td>10,616</td><td>221</td><td>$0.0008</td><td>29.7%</td></tr>
+        <tr><td><code>url_classify</code> (lite, 200 URLs/batch)</td><td>3</td><td>15,967</td><td>3,032</td><td>$0.000014 / URL</td><td>0%</td></tr>
+      </tbody>
+    </table>
+    </div>
+
+    <p>Three facts follow directly, and they overturn the intuition that page count is the cost driver:</p>
+    <ol>
+      <li><strong>Classification is ~850× cheaper per URL than extraction.</strong>
+        Classifying 10,000 URLs on the lite tier costs about <strong>$0.14</strong>. Extracting 500
+        pages costs about <strong>$5.95</strong>. Crawling and classifying an entire site is a
+        rounding error against a single page-extraction budget.</li>
+      <li><strong>A quarter of full-model spend currently produces nothing.</strong> Measured
+        zero-yield from <code>extraction_queue.extracted_data-&gt;&gt;'courses_found'</code>, which the
+        page worker writes per page: <strong>Curtin 55.0%</strong> (246 of 447),
+        <strong>AIT 41.7%</strong>, <strong>UEL 16.3%</strong> (64 of 392), one unnamed job 5.1%.
+        Overall <strong>349 of 1,347 pages (25.9%)</strong> returned no course. The 5%–55% spread
+        across sites says this is a <em>classification-quality</em> problem, not a page-count problem.
+        <br>
+        <span style="color:var(--muted);font-size:14px">Measure it only this way. Joining
+        <code>extraction_courses.source_url</code> to <code>extraction_queue.url</code> is wrong:
+        on Curtin only 66 of 301 distinct <code>source_url</code> values correspond to a queue row
+        (courses are attributed to the secondary/curriculum page they were read from), which inflates
+        Curtin's apparent zero-yield from 55% to 85%.</span></li>
+      <li><strong>The result cache is dead for the call that matters.</strong>
+        <code>course_extraction</code> has a 0.0% hit rate across 839 calls while
+        <code>secondary</code> achieves 29.7%. The prompt embeds
+        <code>recallMemory()</code>'s cosine-similarity examples, which shift as
+        <code>extraction_memory</code> grows — so the same unchanged page hashes differently on
+        every run and a re-run pays full price for work already done.</li>
+    </ol>
+
+    <div class="callout warn">
+      <strong>Corrected conclusion.</strong> Exhaustive <em>crawling</em> is close to free; exhaustive
+      <em>extraction</em> is not, and scales linearly at ~$0.012/page. So the recommendation is not
+      "extract more" — it is "crawl everything, and reallocate the existing extraction budget away
+      from the 26% of calls that return nothing". Halving Curtin's zero-yield frees ~123 calls
+      (~$1.46); at its observed 45% productive rate that buys roughly <strong>25–30% more
+      productive pages at an unchanged bill</strong> — worthwhile, but not the 2× an earlier draft
+      of this section claimed on a miscomputed figure.
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════ H -->
+  <section>
+    <h2>H. Implementation changes</h2>
+
+    <h3><span class="pill crit">Critical</span> — silent loss, fix before scaling</h3>
+    <ol>
+      <li><strong>Union every discovery source.</strong> <code>lib/scraper.ts:1176</code>
+        <code>discoverUrlsForCrawl</code> — run map, sitemap, catalogue, cert-log unconditionally and
+        merge. Keep <code>method</code> for the timeline, add every source's count to
+        <code>sources</code>. Removes the largest single completeness hole for a few extra HTTP calls.</li>
+      <li><strong>Make <code>failed</code> block completion.</strong>
+        <code>lib/queue-completion.ts:48</code> — add a permanent-failure count to the gate; introduce
+        <code>complete_with_gaps</code> rather than letting <code>review</code> mean both things.</li>
+      <li><strong>Stop discarding at <code>page_cap</code>.</strong>
+        <code>lib/staging-writer.ts:2812</code> <code>insertQueueItemDetailed</code> — insert with
+        <code>status: 'deferred'</code> instead of refusing. <code>lib/pipeline-steps.ts:216</code>
+        <code>dispatchSnapshotBatches</code> — stop slicing the URL list; batch all of it.</li>
+      <li><strong>Fix the <code>filterUrls</code> hyphen over-match.</strong>
+        <code>lib/html-utils.ts:395</code> — replace <code>\b</code> with a full-segment anchor.
+        One-line change; recovers whole families of legitimate programme pages.</li>
+      <li><strong>Surface truncation.</strong> <code>lib/html-utils.ts:475</code>
+        <code>truncateMarkdown</code> — return whether it cut, write a <code>page_truncated</code>
+        event, and set the page row to <code>partial</code>. Same for
+        <code>generated.truncated</code> in <code>lib/llm-client.ts</code>: it is already detected
+        and already suppresses caching — propagate it to the caller instead of swallowing it.</li>
+      <li><strong>Declare a dead-letter exchange</strong> on every queue in
+        <code>shared/queue/queueService.ts</code>, and alert on DLQ depth.</li>
+      <li><strong>Add a step-staleness sweep</strong> alongside
+        <code>extraction-queue-reclaim.worker.ts</code> — a step stuck in
+        <code>pipeline_progress = "processing"</code> past a threshold is republished or marked
+        failed. Today it wedges the job permanently via the <code>inFlightStep</code> guard.</li>
+    </ol>
+
+    <h3><span class="pill crit">Critical</span> — cost, measured in G2</h3>
+    <ol>
+      <li><strong>Fix the <code>course_extraction</code> cache key.</strong>
+        <code>lib/llm-client.ts</code> <code>inputHash</code> hashes the whole prompt, which now
+        includes <code>recallMemory()</code>'s nearest-neighbour examples. Those shift as
+        <code>extraction_memory</code> grows, giving a 0.0% hit rate across 839 calls. Key on
+        <code>(page content_hash, prompt_version, model, lookup_version)</code> and keep the
+        volatile addendum out of the key. Makes re-runs of unchanged pages near free.</li>
+      <li><strong>Add a deterministic zero-yield gate before the full-model call.</strong>
+        85% of Curtin's extraction calls returned no course. Before spending
+        <code>gemini-3.5-flash</code>, check the markdown for course-shaped evidence —
+        a qualification token, a unit/course code, credit points, a fee figure, or a
+        <code>schema.org/Course</code> block. No evidence → no call, row marked
+        <code>irrelevant</code> with a reason. <code>MIN_EXTRACTABLE_CHARS</code> is the same idea
+        but only fired 5 times across every job on record, so it is not doing this work today.</li>
+      <li><strong>Set <code>LLM_MODEL_PRICES</code>.</strong> It is unset, so
+        <code>totalCostUsd</code> returns null and no job can report what it cost. Every cost
+        decision is currently being made without the number.</li>
+    </ol>
+
+    <h3><span class="pill imp">Important</span> — completeness ceilings</h3>
+    <ol>
+      <li><strong>Introduce the frontier.</strong> New table <code>extraction_url_frontier</code>
+        (url, canonical_url, depth, state, discovered_via, etag, last_modified, content_hash) and a
+        <code>crawl</code> step that loops until drained. Harvest links in the page worker — the
+        data is already in <code>page.links</code> and currently only a pagination regex reads it.</li>
+      <li><strong>Promote secondary pages to queue rows</strong>
+        (<code>page_role</code>, <code>parent_course_id</code>). Retires
+        <code>SECONDARY_FETCH_CAP</code> as a silent discard and puts curriculum fetches under the
+        same retry and reclaim guarantees as everything else.</li>
+      <li><strong>Split the queue states</strong> per section F. Migration is additive:
+        <code>failed_permanent</code>, <code>partial</code>, <code>deferred</code>,
+        <code>irrelevant</code>, plus a <code>reason</code> column.</li>
+      <li><strong>Widen the completion guard</strong> beyond <code>DISCOVERY_STEP_ORDER</code> to
+        every step that can produce queue rows (<code>courses</code>, <code>discovery</code>).</li>
+      <li><strong>Deterministic extractors before the model</strong> — JSON-LD first, then generic
+        tables. Route to Gemini only what they could not settle.</li>
+      <li><strong>Chunk long pages</strong> rather than truncating at 120k.</li>
+      <li><strong>Batch <code>runQueuePages</code></strong> — one insert statement and one publish
+        batch per chunk, and split the step across messages like <code>site_snapshot</code> does.</li>
+      <li><strong>Apply <code>expandCollapsed</code> on the first attempt</strong> for pages whose
+        markdown is suspiciously short relative to their HTML, not only after a failure.</li>
+    </ol>
+
+    <h3><span class="pill opt">Optional</span></h3>
+    <ol>
+      <li>Canonical-URL consolidation and <code>rel=alternate</code> / hreflang handling.</li>
+      <li>Conditional GET (ETag / Last-Modified) for scheduled re-crawls.</li>
+      <li>Declared-count reconciliation in the course prompt.</li>
+      <li>Per-site query-parameter allowlist learned from the sitemap's own URL shapes.</li>
+      <li>Coverage estimate: sampled link-graph crawl compared against the sitemap inventory, as a
+        reported metric rather than a gate.</li>
+      <li>A conscious decision on <code>robots.txt</code> <code>Disallow</code> — currently unparsed.</li>
+    </ol>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════ I -->
+  <section>
+    <h2>I. Test matrix for proving complete scraping</h2>
+    <p>Every row needs a <strong>known ground truth</strong> — the real page count — or it proves
+      nothing. That is the part worth investing in first: a fixture site you control, plus three or
+      four real sites whose catalogue size you have counted by hand.</p>
+    <div class="tablewrap">
+    <table>
+      <thead><tr><th>#</th><th>Site shape</th><th>What it proves</th><th>Pass criterion</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>Fixture site, 500 pages, complete sitemap</td><td>Baseline</td><td>500/500 discovered, fetched, terminal-stated</td></tr>
+        <tr><td>2</td><td>Fixture, <strong>no sitemap</strong>, 4 levels deep</td><td>Frontier traversal exists</td><td>100% — today this fails at depth ≥ 2</td></tr>
+        <tr><td>3</td><td>Fixture, 50 <strong>orphan</strong> pages linked only from a depth-3 page</td><td>Link harvesting feeds discovery</td><td>All 50 found; today: 0</td></tr>
+        <tr><td>4</td><td>Fixture with a <strong>deliberately partial</strong> sitemap (60% of pages)</td><td>Sources are unioned, not first-win</td><td>100%; today: 60%</td></tr>
+        <tr><td>5</td><td>Fixture, 10,000 pages, <code>page_cap</code> 500</td><td>Caps defer, never discard</td><td>500 extracted + 9,500 <code>deferred</code> and resumable; today 9,500 are lost</td></tr>
+        <tr><td>6</td><td>Fixture page with 120 courses in one table</td><td>No output-token truncation loss</td><td>120 staged, or an explicit <code>partial</code></td></tr>
+        <tr><td>7</td><td>Fixture page of 400,000 chars</td><td>No input truncation loss</td><td>Chunked; nothing silently dropped</td></tr>
+        <tr><td>8</td><td>Fixture listing: 40 courses, <strong>40 distinct</strong> curriculum pages</td><td><code>SECONDARY_FETCH_CAP</code> is not a silent discard</td><td>40 curricula, or 20 + 20 explicitly deferred; today: 20 + silence</td></tr>
+        <tr><td>9</td><td>Fixture listing: 40 courses, <strong>1 shared</strong> curriculum page</td><td>Caching still works (regression guard for #8)</td><td>Exactly 1 fetch</td></tr>
+        <tr><td>10</td><td>Fixture with JS-rendered course links and a "Load more" button</td><td>Dynamic link discovery</td><td>All found; today: none</td></tr>
+        <tr><td>11</td><td>Fixture with <code>?page=N</code> and with cursor-based pagination</td><td>Pagination beyond the <code>page=N</code> regex</td><td>All pages; today: only <code>page=N</code> and DataTables</td></tr>
+        <tr><td>12</td><td>Fixture serving <strong>502 for 30 minutes</strong>, then recovering</td><td>Transient ≠ permanent</td><td>Eventually 100%; today: permanently failed after 2 retries</td></tr>
+        <tr><td>13</td><td>Fixture returning <strong>truncated HTML</strong> on 10% of requests</td><td>Partial-response detection</td><td>Detected and retried; today: stored as a valid snapshot</td></tr>
+        <tr><td>14</td><td><strong>Kill the page worker</strong> at 50% through</td><td>Reclaim</td><td>100% after recovery — this one should pass today</td></tr>
+        <tr><td>15</td><td><strong>Kill the step worker</strong> mid-<code>site_snapshot</code></td><td>Step-level recovery</td><td>Job recovers; today: wedged forever</td></tr>
+        <tr><td>16</td><td><strong>Restart the broker</strong> mid-job</td><td>Durability</td><td>100%; durable queues + persistent messages should hold</td></tr>
+        <tr><td>17</td><td><strong>DB unavailable</strong> for 2 minutes mid-job</td><td>No message destruction</td><td>100%; today a throw in the catch path nacks with no DLQ</td></tr>
+        <tr><td>18</td><td>Gemini returns 429 with a 90s <code>retryDelay</code></td><td>Deferred retry</td><td>100% — should pass today, it is the best-built path</td></tr>
+        <tr><td>19</td><td>Cloudflare-protected real site</td><td>Escalation ladder</td><td>Either success or an explicit, acknowledged permanent failure — never a silent one</td></tr>
+        <tr><td>20</td><td>Site serving the same page at 3 URLs with <code>rel=canonical</code></td><td>Dedupe</td><td>1 fetch, 1 course; today: 3 of each</td></tr>
+        <tr><td>21</td><td>Real site with <code>/media-studies</code>, <code>/privacy-law-llm</code></td><td>The <code>filterUrls</code> regression</td><td>Both discovered; today: both dropped</td></tr>
+        <tr><td>22</td><td>Full re-run of an unchanged site</td><td>Cache correctness</td><td>Near-zero LLM spend, identical entity counts</td></tr>
+        <tr><td>23</td><td>Re-run after 1 page changes</td><td>Incremental</td><td>Exactly 1 extraction</td></tr>
+        <tr><td>24</td><td>Two concurrent jobs on the same site</td><td>Isolation + shared snapshot reuse</td><td>No cross-contamination; snapshot shared</td></tr>
+      </tbody>
+    </table>
+    </div>
+    <p><strong>The harness matters more than the cases.</strong> One assertion —
+      <code>discovered == fetched + permanently_failed + deferred</code>, and
+      <code>fetched == extracted + partial + irrelevant</code> — run after every scenario, catches
+      every silent-loss class in this document. It cannot be written against the current schema,
+      which is itself the finding.</p>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <section>
+    <h2>Observability — the report each job should end with</h2>
+    <p>Every number below is derivable from the state model in F and from
+      <code>extraction_llm_usage</code>, which already exists.</p>
+<pre><code>JOB a1b2c3  monash.edu              12h 41m        $4.18
+
+DISCOVERY
+  sources            map 0 (skipped) · seed_sitemap 3,252 · catalogue 1,335 · cert_log 48
+  discovered         4,114 unique   (frontier drained, depth reached 6)
+  caps hit           none
+  excluded           1,201  (asset 402 · off-site 388 · path rule 411)
+
+FETCH
+  attempted          2,913      scraped ok       2,847  (97.7%)
+  from snapshot      2,610      newly fetched      303
+  retryable now          0      permanently failed  66  ⚠ ACK REQUIRED
+                                 ├ anti_bot  41
+                                 ├ not_found 19
+                                 └ worker_stale 6
+  deferred (budget)      0
+
+EXTRACT
+  model calls          303      cache hits     2,610  (89.6%)
+  tokens         4.1M in / 892K out
+  skipped: too thin    74      blocklisted       12
+  partial               9  ⚠   ├ input truncated  6
+                               └ output MAX_TOKENS 3
+  secondary fetches   412      deduped by cache 1,840  (saved ≈ $2.30)
+
+ENTITIES  courses 1,284 · fees 2,201 · intakes 844 · units 9,120 · scholarships 61
+
+VERDICT   complete_with_gaps — 66 permanent failures, 9 partial pages
+          → 75 URLs listed below need an operator decision</code></pre>
+    <p>The line that does not exist today and matters most is the last one. A job should not be able
+      to finish by saying nothing.</p>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════ -->
+  <div class="answer">
+    <h2>Final answer</h2>
+    <p><strong>Can the current architecture guarantee complete site scraping? No.</strong></p>
+    <p>It is a well-engineered <em>best-effort</em> pipeline. The exactly-once machinery, the
+      fencing, the reclaim sweep, the bounded timeouts and the result cache are genuinely solid —
+      better than the median system of this size, and most of the comments in the source record a
+      real incident that produced them. None of that is the problem.</p>
+    <p>The problem is that completeness was never made a property the system can hold. Three
+      specific facts put a ceiling on it:</p>
+    <ol>
+      <li><strong>Discovery cannot reach the whole site.</strong> It is a single-shot, first-source-wins
+        lookup with no graph traversal. A page in no sitemap and not linked from the seed is
+        unreachable by construction, not by misconfiguration.</li>
+      <li><strong>Caps discard rather than defer.</strong> <code>page_cap</code> and the snapshot
+        slice throw URLs away, and the progress denominator is then taken from the queue, so a
+        truncated crawl displays as 100%.</li>
+      <li><strong>Completion counts failures as finished.</strong> <code>pending|processing</code> is
+        the only thing that holds a job open, so permanent failures, truncated pages and skipped
+        secondary fetches all pass through the gate invisibly.</li>
+    </ol>
+    <p><strong>Moving to an eventually-complete crawl with explicit failure accounting requires
+      exactly three structural changes:</strong></p>
+    <ol>
+      <li><strong>A frontier</strong> — discovery becomes a state that drains rather than a step that
+        finishes, fed by unioned sources and by links harvested from every page fetched.</li>
+      <li><strong>A state model with <code>partial</code>, <code>deferred</code> and
+        <code>failed_permanent</code></strong> — so that "we did not get this" is representable at
+        all, which today it is not.</li>
+      <li><strong>A completion predicate that is proved rather than inferred</strong> — the frontier
+        is empty, no worker holds a claim, every URL is terminal, and every gap is acknowledged.</li>
+    </ol>
+    <p>Cost does not have to rise, and should fall. The reason completeness and cost are currently
+      in tension is that one budget — <code>page_cap</code> — governs both fetching and extraction.
+      Separate them: crawl exhaustively over cheap HTTP, extract selectively with deterministic
+      parsers first and Gemini only for genuinely ambiguous prose. That gives you the full page
+      inventory, an exact account of what has not been extracted yet, and the ability to extract the
+      remainder later without re-crawling a single page.</p>
+    <p style="margin-bottom:0">The seven <span class="pill crit">Critical</span> items in section H
+      are the ones that cause silent loss today. Four of them are small, local changes — the
+      discovery union, the <code>filterUrls</code> anchor, surfacing truncation, and the DLX. Those
+      four are worth doing regardless of whether the frontier rewrite is scheduled.</p>
+  </div>
+
+  <footer>
+    Read from the code on 2026-10-01 · branch <code>dev-feat-ai-widget-counseling</code> ·
+    no code was modified · line numbers are accurate as of that commit and will drift.
+  </footer>
+</main>
