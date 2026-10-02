@@ -34,6 +34,10 @@ console.log("\n1. an org that already has an active widget keeps it — nothing 
   const s = find(SEL);
   assert(/"institution_id" = \$\d/.test(s.text) && s.values.includes(49), "lookup scoped to the institution", s.text);
   assert(/"is_active"/.test(s.text), "only an ACTIVE widget counts — a paused key would 403 for the developer", s.text);
+  // The whole defence against two racing first visits. Each re-reads after its own insert commits,
+  // so both see both rows; this ordering is what makes them agree on which one is the org's widget.
+  assert(/order by "created_at" asc, "id" asc/i.test(s.text),
+    "oldest first, id breaking a same-millisecond tie — a race must not hand out two different keys", s.text);
 }
 
 console.log("\n2. an org with none gets one, owned by them and nobody else");

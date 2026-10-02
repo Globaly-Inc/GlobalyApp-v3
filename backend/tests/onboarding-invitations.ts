@@ -285,6 +285,22 @@ try {
   const deletedTwice = await rejects(() => deleteInvitation(doomed.id));
   assert(deletedTwice?.statusCode === 404, "deleting a missing invite → 404", deletedTwice);
 
+  console.log("\n4e. an invite mid-acceptance can't be deleted out from under the new account");
+  const claimedAddress = email("claimed");
+  await seedInvite(claimedAddress);
+  const claimed = await masterKnex("onboarding_invitations").where({ email: claimedAddress }).first("id");
+  // Exactly what claimPending leaves behind while registerBusiness/onboardInstitution runs: the
+  // invite is taken, but recordAccepted hasn't written the owner yet.
+  await masterKnex("onboarding_invitations").where({ id: claimed.id }).update({ status: "accepted", accepted_user_id: null });
+  const midSetup = await rejects(() => deleteInvitation(claimed.id));
+  assert(midSetup?.statusCode === 409, "deleting mid-setup is refused, not silently orphaning the account", midSetup);
+  assert(Boolean(await masterKnex("onboarding_invitations").where({ id: claimed.id }).first()), "the row survives the attempt");
+  const anyUser = await masterKnex("platform_users").first("id");
+  await masterKnex("onboarding_invitations").where({ id: claimed.id }).update({ accepted_user_id: anyUser.id });
+  await deleteInvitation(claimed.id);
+  assert(!(await masterKnex("onboarding_invitations").where({ id: claimed.id }).first()),
+    "once setup recorded its owner, the admin can delete it again");
+
   console.log("\n5. revoke and accept can't overwrite each other");
   const raceAddress = email("race");
   await seedInvite(raceAddress);

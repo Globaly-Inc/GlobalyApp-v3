@@ -115,7 +115,11 @@ export async function resendInvitation(id: string, { ifRequested = false } = {})
 }
 
 export async function deleteInvitation(id: string) {
-  if (!(await repo.deleteInvitation(id))) throw new NotFoundError("Invite not found");
+  if (await repo.deleteInvitation(id)) return;
+  if (await repo.findById(id)) {
+    throw new ConflictError("This invite is being accepted right now — their account is still being set up.");
+  }
+  throw new NotFoundError("Invite not found");
 }
 
 export async function revokeInvitation(id: string) {

@@ -29,18 +29,22 @@ export function BusinessInvitesView({ reloadKey = 0 }: Readonly<{ reloadKey?: nu
     latest.current = { filter, search, page, limit, count: invites.length };
   });
 
+  const loadSeq = useRef(0);
+
   const load = (
     nextPage = 1,
     nextFilter = latest.current.filter,
     nextLimit = latest.current.limit,
     nextSearch = latest.current.search.trim(),
-  ) =>
-    dispatch(fetchInvites({
+  ) => {
+    loadSeq.current += 1;
+    return dispatch(fetchInvites({
       page: nextPage,
       limit: nextLimit,
       status: nextFilter === "all" ? undefined : nextFilter,
       search: nextSearch || undefined,
     }));
+  };
 
   const lastKey = useRef<number | null>(null);
   useEffect(() => {
@@ -95,9 +99,11 @@ export function BusinessInvitesView({ reloadKey = 0 }: Readonly<{ reloadKey?: nu
   };
 
   const reloadAfterChange = async () => {
-    const { filter: wanted, search: searched, page: at } = latest.current;
-    const outcome = await load(at);
-    if (latest.current.filter !== wanted || latest.current.search !== searched) return;
+    const at = latest.current.page;
+    const pending = load(at);
+    const seq = loadSeq.current;
+    const outcome = await pending;
+    if (loadSeq.current !== seq) return;
     if (at > 1 && fetchInvites.fulfilled.match(outcome) && outcome.payload.data.length === 0) load(at - 1);
   };
 
@@ -121,6 +127,8 @@ export function BusinessInvitesView({ reloadKey = 0 }: Readonly<{ reloadKey?: nu
 
   const handleDelete = async (invite: OnboardingInvite) => {
     if (!(await confirm(`Delete the invitation to ${invite.email}?`))) return;
+    const { page: at, count } = latest.current;
+    const seq = loadSeq.current;
     setBusyId(invite.id);
     const outcome = await dispatch(deleteInvite(invite.id));
     setBusyId(null);
@@ -129,7 +137,7 @@ export function BusinessInvitesView({ reloadKey = 0 }: Readonly<{ reloadKey?: nu
       return;
     }
     toast.success(`Invitation to ${invite.email} deleted`);
-    const { page: at, count } = latest.current;
+    if (loadSeq.current !== seq) return;
     load(count === 1 && at > 1 ? at - 1 : at);
   };
 

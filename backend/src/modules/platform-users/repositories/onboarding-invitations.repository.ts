@@ -145,9 +145,14 @@ export async function listInvitations(limit: number, offset: number, status?: In
   return { rows, total: Number(count), counts };
 }
 
-/** Hard delete — the row and every link it carried. Accounts an accepted invite created stay. */
 export async function deleteInvitation(id: string): Promise<boolean> {
-  return (await masterKnex(T).where({ id }).delete()) > 0;
+  return (await masterKnex(T).where({ id })
+    .whereRaw("not (status = 'accepted' and accepted_user_id is null)")
+    .delete()) > 0;
+}
+
+export async function findById(id: string) {
+  return masterKnex<OnboardingInvitationRow>(T).where({ id }).first();
 }
 
 export async function findPendingById(id: string) {
