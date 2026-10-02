@@ -1,27 +1,43 @@
 "use client";
 
 import { AlertTriangle, Flag, Pin } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { relativeTime } from "@/components/feed/utils";
-import { MEMORY_TYPE_META, SOURCE_LABEL, STATUS_META } from "../const";
-import { actionsFor, confidencePct, isAlwaysOn, provenanceLine } from "../utils";
+import { MEMORY_TYPE_META, SOURCE_LABEL } from "../const";
+import { actionsFor, confidencePct, isAlwaysOn, needsDecision, provenanceLine } from "../utils";
 import type { Memory } from "../apis/types";
 
-const TONE: Record<"ok" | "pending" | "muted", string> = {
-  ok: "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
-  pending: "border-amber-500/20 bg-amber-500/10 text-amber-700 dark:text-amber-400",
-  muted: "border-border bg-muted text-muted-foreground",
+/**
+ * The spine colour down the card's left edge, by what the row needs from you.
+ *
+ * STATE, not type. Eleven memory types would mean eleven hues nobody can hold in their head, and
+ * the question someone is actually answering while scanning this list is "does this need me" —
+ * so there are four states and the colour answers that. The label beside the icon still names
+ * the type, so identity never rests on colour alone.
+ */
+const SPINE: Record<"attention" | "pending" | "live" | "retired", string> = {
+  attention: "bg-destructive",
+  pending: "bg-[hsl(var(--gold))]",
+  live: "bg-emerald-500",
+  retired: "bg-border",
 };
+
+function spineOf(memory: Memory): keyof typeof SPINE {
+  if (memory.conflicts_with_id || memory.flagged_at) return "attention";
+  if (memory.status === "candidate") return "pending";
+  if (memory.status === "deprecated") return "retired";
+  return "live";
+}
 
 /**
  * One thing the counsellor knows.
  *
- * The statement itself is the heading — not the type, not the status. Someone scanning this list
- * is deciding whether a sentence is right, and every label around it is there to answer "should I
- * trust this one", which is why provenance sits directly under the text rather than behind the
- * detail sheet.
+ * The statement is the card — it is set at reading size with the metadata shrunk around it,
+ * because someone scanning this list is deciding whether a sentence is right and everything else
+ * is there to answer "should I trust this one". Provenance stays on the card rather than behind
+ * the sheet for the same reason: "seen in 2 conversations, 1 more puts it to work" is the line
+ * that decides whether to act now or wait.
  */
 export function MemoryCard({
   memory, onOpen, onApprove, onDeprecate, onReactivate, busy,
@@ -34,85 +50,116 @@ export function MemoryCard({
   busy: boolean;
 }>) {
   const type = MEMORY_TYPE_META[memory.type];
-  const status = STATUS_META[memory.status];
   const actions = actionsFor(memory);
   const Icon = type?.icon;
   const provenance = provenanceLine(memory);
   const learned = memory.source === "extracted" || memory.source === "feedback";
+  const needsYou = needsDecision(memory);
 
   return (
-    <div
+    <article
       className={cn(
-        "rounded-lg border p-4 transition-colors",
-        memory.status === "deprecated" && "opacity-60",
-        memory.conflicts_with_id && "border-destructive/30 bg-destructive/[0.03]",
+        "group relative overflow-hidden rounded-xl border bg-card pl-5 transition-all",
+        "hover:border-foreground/15 hover:shadow-sm",
+        memory.status === "deprecated" && "opacity-65",
+        memory.conflicts_with_id && "border-destructive/25",
       )}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <div className="mb-1.5 flex flex-wrap items-center gap-1.5">
-            {Icon && <Icon className="size-3.5 shrink-0 text-muted-foreground" />}
-            <span className="text-xs font-medium text-muted-foreground">{type?.label ?? memory.type}</span>
-            <Badge variant="outline" className={cn("text-[11px]", TONE[status.tone])}>{status.label}</Badge>
-            {isAlwaysOn(memory) && (
-              <Badge variant="outline" className="gap-1 text-[11px]">
-                <Pin className="size-3" /> Every reply
-              </Badge>
-            )}
-            {memory.flagged_at && (
-              <Badge variant="outline" className="gap-1 border-amber-500/20 bg-amber-500/10 text-[11px] text-amber-700 dark:text-amber-400">
-                <Flag className="size-3" /> Flagged
-              </Badge>
-            )}
+      {/* The spine. Inset rather than a border so the card keeps one radius and the colour
+          doesn't have to be re-stated on every edge. */}
+      <span aria-hidden className={cn("absolute inset-y-0 left-0 w-1.5", SPINE[spineOf(memory)])} />
+
+      <div className="p-4">
+        <div className="mb-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+          {Icon && <Icon className="size-3.5 shrink-0 text-muted-foreground" />}
+          <span className="font-medium text-muted-foreground">{type?.label ?? memory.type}</span>
+
+          {isAlwaysOn(memory) && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+              <Pin className="size-2.5" /> Every reply
+            </span>
+          )}
+          {memory.flagged_at && (
+            <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-medium text-destructive">
+              <Flag className="size-2.5" /> Flagged
+            </span>
+          )}
+          {memory.status === "candidate" && (
+            <span className="rounded-full bg-[hsl(var(--gold)/0.15)] px-2 py-0.5 text-[11px] font-medium text-[hsl(187_92%_28%)] dark:text-[hsl(var(--gold))]">
+              Awaiting review
+            </span>
+          )}
+          {memory.status === "deprecated" && (
+            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+              Retired
+            </span>
+          )}
+        </div>
+
+        {/* The statement, at reading size. A button so the whole sentence is the target — a
+            "Details" link at the end of a three-line paragraph is a 60px target after 300px of
+            unclickable text. */}
+        <button
+          type="button"
+          onClick={() => onOpen(memory)}
+          className="cursor-pointer text-left text-[15px] font-medium leading-relaxed text-foreground decoration-muted-foreground/40 underline-offset-4 hover:underline"
+        >
+          {memory.content}
+        </button>
+
+        <p className="mt-2 text-xs text-muted-foreground">
+          {SOURCE_LABEL[memory.source]}
+          {learned && ` · ${confidencePct(memory.confidence)} confident`}
+          {` · ${relativeTime(memory.created_at)}`}
+          {provenance && ` · ${provenance}`}
+        </p>
+
+        {memory.conflicts_with_id && (
+          <div className="mt-3 flex items-start gap-2 rounded-lg bg-destructive/[0.07] p-3 text-xs text-destructive">
+            <AlertTriangle className="mt-px size-3.5 shrink-0" />
+            <span className="text-destructive/90">
+              This contradicts something your counsellor already follows, so it will never go into
+              use on its own. Open it to see both and decide.
+            </span>
           </div>
+        )}
 
-          <button
-            type="button"
-            onClick={() => onOpen(memory)}
-            className="cursor-pointer text-left text-sm leading-relaxed hover:underline"
-          >
-            {memory.content}
-          </button>
+        {/*
+          Actions are always on screen for a row that needs a decision, and appear on hover or
+          keyboard focus for one that does not.
 
-          <p className="mt-1.5 text-xs text-muted-foreground">
-            {SOURCE_LABEL[memory.source]}
-            {learned && ` · ${confidencePct(memory.confidence)} confident`}
-            {` · ${relativeTime(memory.created_at)}`}
-          </p>
-          {provenance && <p className="mt-0.5 text-xs text-muted-foreground">{provenance}</p>}
+          `focus-within` is the half that makes this keyboard-reachable: a hover-only control is
+          invisible to someone tabbing through, and these are the primary actions of the page.
+          The retired/in-use rows still carry Details, so no row is ever actionless.
+        */}
+        <div
+          className={cn(
+            "flex flex-wrap items-center gap-1.5 transition-opacity",
+            needsYou
+              ? "mt-3"
+              : "mt-3 opacity-0 group-hover:opacity-100 focus-within:opacity-100",
+          )}
+        >
+          {actions.canApprove && (
+            <Button size="sm" onClick={() => onApprove(memory)} disabled={busy}>
+              {memory.conflicts_with_id ? "Use this one instead" : "Put into use"}
+            </Button>
+          )}
+          {actions.canDeprecate && (
+            <Button size="sm" variant="outline" onClick={() => onDeprecate(memory)} disabled={busy}>
+              {memory.status === "candidate" ? "Discard" : "Retire"}
+            </Button>
+          )}
+          {actions.canReactivate && (
+            <Button size="sm" variant="outline" onClick={() => onReactivate(memory)} disabled={busy}>
+              Put back into use
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" onClick={() => onOpen(memory)}>
+            Details
+          </Button>
         </div>
       </div>
-
-      {memory.conflicts_with_id && (
-        <div className="mt-3 flex items-start gap-2 rounded-md border border-destructive/20 bg-destructive/5 p-2.5 text-xs">
-          <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-destructive" />
-          <span>
-            This contradicts something your counsellor already follows, so it will never go into
-            use on its own. Open it to see both and decide.
-          </span>
-        </div>
-      )}
-
-      <div className="mt-3 flex flex-wrap items-center gap-1.5">
-        {actions.canApprove && (
-          <Button size="sm" onClick={() => onApprove(memory)} disabled={busy}>
-            {memory.conflicts_with_id ? "Use this one instead" : "Put into use"}
-          </Button>
-        )}
-        {actions.canDeprecate && (
-          <Button size="sm" variant="outline" onClick={() => onDeprecate(memory)} disabled={busy}>
-            {memory.status === "candidate" ? "Discard" : "Retire"}
-          </Button>
-        )}
-        {actions.canReactivate && (
-          <Button size="sm" variant="outline" onClick={() => onReactivate(memory)} disabled={busy}>
-            Put back into use
-          </Button>
-        )}
-        <Button size="sm" variant="ghost" onClick={() => onOpen(memory)}>
-          Details
-        </Button>
-      </div>
-    </div>
+    </article>
   );
 }

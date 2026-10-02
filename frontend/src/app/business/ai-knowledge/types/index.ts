@@ -18,3 +18,22 @@ export interface MemoryActions {
   canEdit: boolean;
   canDelete: boolean;
 }
+
+/**
+ * The header's figures, from one unfiltered read of the memory list.
+ *
+ * `saturated` is the honest half of this: the list endpoint caps at 200 rows, so an institution
+ * past that would otherwise be told it has exactly 200 rules. When it is true the header says
+ * "200+" — a number that stops being exact should look like it, rather than quietly lying.
+ */
+export interface MemorySummary {
+  active: number;
+  candidate: number;
+  conflicting: number;
+  flagged: number;
+  alwaysOn: number;
+  /** Rows wanting a decision, counted per row by `needsDecision` — never candidate + flagged +
+   *  conflicting, which counts a candidate that also contradicts something twice. */
+  needsYou: number;
+  saturated: boolean;
+}

@@ -46,7 +46,13 @@ export function InsightBars({
   );
 }
 
-/** One figure and what it means. No plot — a single number needs no chart. */
+/**
+ * One figure and what it means. No plot — a single number needs no chart.
+ *
+ * NOT CURRENTLY RENDERED. The insights tab's four equal tiles became one `ConversionHero`, which
+ * ranks the figures instead of listing them. Kept because the next panel that needs a bare
+ * number should use this rather than write a third one.
+ */
 export function StatTile({
   label, value, hint,
 }: Readonly<{ label: string; value: string; hint?: string }>) {

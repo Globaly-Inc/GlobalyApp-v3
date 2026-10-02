@@ -85,6 +85,9 @@ export const PROMOTION_MIN_ACTORS = 3;
 export const CANDIDATE_TTL_DAYS = 90;
 
 export const MEMORY_PAGE_SIZE = 100;
+/** The list endpoint's own ceiling (memory.schema.ts: `limit ... .max(200)`). Asking for more is
+ *  a 400, so the header's unfiltered read takes exactly this and reports "200+" when it fills. */
+export const SUMMARY_LIMIT = 200;
 export const CONVERSATION_PAGE_SIZE = 50;
 
 // ── Knowledge Rack configuration ─────────────────────────────────────────────

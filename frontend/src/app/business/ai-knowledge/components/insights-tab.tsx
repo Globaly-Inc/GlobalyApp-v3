@@ -5,10 +5,10 @@ import { Loader2, TrendingUp } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchConversionInsights } from "../store/ai-knowledge-insights-slice";
 import { TOPIC_LABEL } from "../const";
-import { InsightBars, StatTile } from "./insight-bars";
+import { InsightBars } from "./insight-bars";
+import { ConversionHero } from "./conversion-hero";
 
 const topic = (value: string) => TOPIC_LABEL[value] ?? value;
-const pct = (n: number, of: number) => (of > 0 ? `${Math.round((n / of) * 100)}%` : "—");
 
 /** Seconds as something a person reads. "7 min", not "412". */
 function duration(seconds: number | null): string {
@@ -60,23 +60,14 @@ export function InsightsTab() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-        <StatTile label="Conversations" value={String(conversations)} hint="Finished chats with your widget." />
-        <StatTile label="Became leads" value={String(converted)} hint={`${pct(converted, conversations)} of conversations.`} />
-        <StatTile
-          label="Shared details unasked" value={String(volunteered)}
-          hint={converted > 0 ? `${pct(volunteered, converted)} of leads offered them first.` : "None yet."}
-        />
-        <StatTile
-          label="Messages to a lead"
-          value={insights.median_messages_to_conversion == null ? "—" : String(insights.median_messages_to_conversion)}
-          hint={`Typical count before someone shares their details${
-            insights.median_seconds_to_conversion == null ? "" : `, over about ${duration(insights.median_seconds_to_conversion)}`
-          }.`}
-        />
-      </div>
+      <ConversionHero
+        conversations={conversations}
+        converted={converted}
+        messages={insights.median_messages_to_conversion}
+        duration={duration(insights.median_seconds_to_conversion)}
+      />
 
-      <div className="rounded-lg border p-5">
+      <div className="rounded-xl border bg-card p-5">
         <h2 className="text-sm font-semibold">How they shared their details</h2>
         <p className="mt-0.5 mb-4 text-xs text-muted-foreground">
           Whether your counsellor had asked. These two split the same {converted} leads between
@@ -94,7 +85,7 @@ export function InsightsTab() {
       </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        <div className="rounded-lg border p-5">
+        <div className="rounded-xl border bg-card p-5">
           <h2 className="text-sm font-semibold">What they asked about last</h2>
           <p className="mt-0.5 mb-4 text-xs text-muted-foreground">
             The subject on the table when someone shared their details.
@@ -105,7 +96,7 @@ export function InsightsTab() {
           />
         </div>
 
-        <div className="rounded-lg border p-5">
+        <div className="rounded-xl border bg-card p-5">
           <h2 className="text-sm font-semibold">What they opened with</h2>
           <p className="mt-0.5 mb-4 text-xs text-muted-foreground">
             Across every conversation, converted or not.
@@ -117,7 +108,7 @@ export function InsightsTab() {
         </div>
       </div>
 
-      <div className="rounded-lg border p-5">
+      <div className="rounded-xl border bg-card p-5">
         <h2 className="text-sm font-semibold">Routes that ended in a lead</h2>
         <p className="mt-0.5 mb-4 text-xs text-muted-foreground">
           The order subjects came up in, for conversations that produced one.

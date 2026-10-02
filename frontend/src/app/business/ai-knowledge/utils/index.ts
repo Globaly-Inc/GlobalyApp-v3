@@ -4,9 +4,9 @@
 // backend/src/modules/institution-memory/services/memory.service.ts, so if those move, the UI
 // starts offering actions the API refuses. Cover it the day a frontend runner lands.
 
-import { PROMOTION_MIN_ACTORS } from "../const";
+import { PROMOTION_MIN_ACTORS, SUMMARY_LIMIT } from "../const";
 import type { Memory, MemoryListParams } from "../apis/types";
-import type { MemoryActions, MemoryFilter } from "../types";
+import type { KnowledgeTab, MemoryActions, MemoryFilter, MemorySummary } from "../types";
 
 /** One capsule → the query the list endpoint understands. */
 export function filterToParams(filter: MemoryFilter): MemoryListParams {
@@ -93,3 +93,100 @@ export function metadataPairs(metadata: Record<string, unknown>): { label: strin
       value: Array.isArray(value) ? value.join(", ") : String(value),
     }));
 }
+
+/**
+ * Does this row want a decision from a human?
+ *
+ * Shared by the card (which shows its actions unconditionally when true) and by `summarise`
+ * (which counts it). Deliberately ONE function: when the card and the header each decided this
+ * for themselves, a flagged ACTIVE rule made the header say "3 rules are flagged" while the
+ * figure beside it read 0 — the header shouting about work the counter did not believe existed.
+ *
+ * Counted per row, never as a sum of separate counters, so a candidate that also contradicts
+ * something is one piece of work rather than two.
+ */
+export function needsDecision(memory: Memory): boolean {
+  return memory.status === "candidate" || !!memory.conflicts_with_id || !!memory.flagged_at;
+}
+
+/**
+ * Counts for the header, in one pass.
+ *
+ * Conflicting and flagged are counted across every status rather than within candidates, because
+ * the header's job is "is anything wrong", and a flagged ACTIVE rule — one visitors have pushed
+ * back on while it is in use — is the most urgent thing on this page, not the least.
+ */
+export function summarise(memories: Memory[]): MemorySummary {
+  const summary: MemorySummary = {
+    active: 0, candidate: 0, conflicting: 0, flagged: 0, alwaysOn: 0, needsYou: 0,
+    saturated: memories.length >= SUMMARY_LIMIT,
+  };
+  for (const m of memories) {
+    if (m.status === "active") summary.active++;
+    if (m.status === "candidate") summary.candidate++;
+    if (m.conflicts_with_id) summary.conflicting++;
+    if (m.flagged_at) summary.flagged++;
+    if (isAlwaysOn(m)) summary.alwaysOn++;
+    if (needsDecision(m)) summary.needsYou++;
+  }
+  return summary;
+}
+
+/** A count that may have hit the read ceiling. 200 rows back means "200+", never "200". */
+export const countLabel = (n: number, saturated: boolean): string => (saturated ? `${n}+` : String(n));
+
+/**
+ * What the header says, and the one thing it offers to do about it.
+ *
+ * Ordered by what would cost the institution most if it sat unseen, NOT by count: a rule that
+ * contradicts one the counsellor already follows outranks forty unreviewed suggestions, because
+ * the contradiction is already affecting answers while the suggestions are only waiting. A
+ * flagged ACTIVE rule outranks everything for the same reason — visitors are pushing back on
+ * something that is in use right now.
+ *
+ * Exactly one call to action, ever. A header offering three things to do is a header nobody acts
+ * on, so the most urgent state wins and the rest stay reachable through the tabs.
+ */
+export function headlineFor(
+  summary: MemorySummary | null,
+  unreviewedReplies: number,
+): { line: string; cta?: { label: string; tab: KnowledgeTab } } {
+  if (!summary) return { line: "Reading what your counsellor knows…" };
+
+  if (summary.flagged > 0) {
+    return {
+      line: `${plural(summary.flagged, "rule is", "rules are")} flagged — visitors pushed back on replies that used ${summary.flagged === 1 ? "it" : "them"}.`,
+      cta: { label: "See what was flagged", tab: "memories" },
+    };
+  }
+  if (summary.conflicting > 0) {
+    return {
+      line: `${plural(summary.conflicting, "suggestion contradicts", "suggestions contradict")} something your counsellor already follows. Neither goes into use until you pick one.`,
+      cta: { label: "Settle it", tab: "memories" },
+    };
+  }
+  if (summary.candidate > 0) {
+    return {
+      line: `${plural(summary.candidate, "suggestion is", "suggestions are")} waiting on you. Nothing learned is used in a reply until you approve it.`,
+      cta: { label: "Review suggestions", tab: "memories" },
+    };
+  }
+  if (unreviewedReplies > 0) {
+    return {
+      line: `${plural(unreviewedReplies, "reply has", "replies have")} not been looked at yet. Correcting one teaches your counsellor in your own words.`,
+      cta: { label: "Review replies", tab: "conversations" },
+    };
+  }
+  if (summary.active === 0) {
+    return {
+      line: "Answering from your courses and website. Give it the things you'd tell a new counsellor on their first day.",
+      cta: { label: "Add your first rule", tab: "memories" },
+    };
+  }
+  return {
+    line: `Following ${summary.active} ${summary.active === 1 ? "rule" : "rules"}, and nothing needs you right now.`,
+  };
+}
+
+/** "1 rule is" / "4 rules are" — the count and the verb agree or the sentence reads broken. */
+const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;
