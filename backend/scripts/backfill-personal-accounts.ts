@@ -6,6 +6,8 @@
  * (false), so /personal/profile bounced them to /business/profile. New rows are covered in code
  * (platform-users.repository insert() always sets it); this fixes the rows created before that.
  *
+ * REQUIRED after deploying this change to each environment (docs/setup/post-deploy-steps.md).
+ *
  * DRY RUN BY DEFAULT — prints the plan and writes nothing. Pass --apply to commit.
  * Rerunnable: only touches rows where is_personal_account is false.
  *

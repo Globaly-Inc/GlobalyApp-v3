@@ -5,6 +5,8 @@
  * and any profile edit that sets the country); this fixes the rows created before that.
  * Never overwrites a currency someone already picked.
  *
+ * REQUIRED after deploying this change to each environment (docs/setup/post-deploy-steps.md).
+ *
  * DRY RUN BY DEFAULT — prints the plan and writes nothing. Pass --apply to commit.
  * Rerunnable: only touches rows whose currency is blank and whose country has one.
  *
