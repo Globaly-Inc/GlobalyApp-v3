@@ -343,8 +343,18 @@ function mergeInstitutionFields(merged: Record<string, unknown>, data: Record<st
   }
 }
 
-function sha1(...parts: (string | null | undefined)[]): string {
-  return createHash("sha1").update(parts.map(p => p ?? "").join("|")).digest("hex");
+/**
+ * A stable identity key for a scraped row that carries no id of its own — NOT a security hash.
+ *
+ * SHA-256 rather than SHA-1 because a collision here silently merges two different agencies into
+ * one staged row, and because a function named for its algorithm invites both a scanner finding
+ * and the assumption that it is protecting something. It is not: the inputs go on to be stored
+ * in the clear beside it, so the digest conceals nothing, and swapping the algorithm changes no
+ * privacy property. It is `external_id` for dedup, scoped to one job by
+ * `extraction_agents_job_external_uniq`.
+ */
+function identityKey(...parts: (string | null | undefined)[]): string {
+  return createHash("sha256").update(parts.map(p => p ?? "").join("|")).digest("hex");
 }
 
 /** Detect paginated sibling pages from links (DataTables, ?page=N, /page/N). Ported from V2. */
@@ -894,7 +904,7 @@ async function handleAgentsStep(jobId: string) {
   for (const agent of allRawAgents) {
     if (!agent.name?.trim()) continue;
     const normalized = normalizeAgentRow(agent as any);
-    const externalId = agent.external_id || sha1(agent.name, normalized.country, normalized.email, agent.website);
+    const externalId = agent.external_id || identityKey(agent.name, normalized.country, normalized.email, agent.website);
 
     const agentData: Record<string, unknown> = {
       name: agent.name, country: normalized.country, state: normalized.state,

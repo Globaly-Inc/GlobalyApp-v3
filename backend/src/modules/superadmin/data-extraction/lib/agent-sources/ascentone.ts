@@ -41,8 +41,10 @@ function normaliseWebsite(raw: unknown): string | null {
   return /^https?:\/\//i.test(w) ? w : `https://${w}`;
 }
 
-function sha1Hex(input: string): string {
-  return createHash("sha1").update(input).digest("hex");
+/** Same job as the worker's identityKey: a stable dedup id, never a security hash. SHA-256 for
+ *  collision resistance; the 32-hex truncation at the call site keeps `ao:` ids their old length. */
+function stableHash(input: string): string {
+  return createHash("sha256").update(input).digest("hex");
 }
 
 function dedupKey(name: string | null, country: string | null): string {
@@ -151,7 +153,7 @@ async function fetchAgents(iframeUrl: string): Promise<ProviderResult | null> {
     const email = s(chosen.email) || head?.email || null;
     const phone = s(chosen.phone) || s(chosen.Agentphone) || head?.phone || null;
     const website = normaliseWebsite(chosen.website) || head?.website || null;
-    const synth = sha1Hex(`${(name || "").toLowerCase().trim()}|${(country || "").toLowerCase().trim()}`);
+    const synth = stableHash(`${(name || "").toLowerCase().trim()}|${(country || "").toLowerCase().trim()}`);
     agents.push({
       name, country, email, phone, website,
       street1: street1 || head?.street1 || null,
