@@ -2,9 +2,15 @@
 
 import { Label } from "@/components/ui/label";
 import { ToggleRow } from "./setting-row";
-import { COLLECTABLE_FIELDS } from "../apis/types";
+import { CustomFields } from "./custom-fields";
+import { COLLECTABLE_FIELDS, CONTACT_FIELDS } from "../apis/types";
 import { FIELD_CAUTION, FIELD_LABEL } from "../const";
 import type { CollectableField, CollectionRules } from "../apis/types";
+
+/** Everything except the contact fields, which are fixed and rendered on their own above. */
+const OPTIONAL_FIELDS = COLLECTABLE_FIELDS.filter(
+  (f) => !(CONTACT_FIELDS as readonly string[]).includes(f),
+);
 
 /**
  * What the counsellor may record about a visitor, and what it may ask for outright.
@@ -16,6 +22,10 @@ import type { CollectableField, CollectionRules } from "../apis/types";
  *
  * Sensitive is the fourth state and sits apart: usable to answer the question in front of it,
  * never persisted.
+ *
+ * Name, email and phone are the exception and have no states at all: they are always recorded,
+ * so they lead the list as a statement rather than as three checkboxes nobody should be weighing.
+ * WHEN the counsellor asks for them is still a setting — "Asking for contact details" above.
  */
 export function CollectionCard({
   collection, onChange, disabled,
@@ -42,12 +52,26 @@ export function CollectionCard({
     <div className="rounded-lg border p-5">
       <h2 className="text-sm font-semibold">What it may collect</h2>
       <p className="mt-0.5 mb-4 text-xs text-muted-foreground">
-        Anything switched off is never written down, even if a visitor volunteers it. Your
-        counsellor only asks outright for what you tick as &ldquo;may ask&rdquo;.
+        Contact details are always kept. Of the rest, anything switched off is never written
+        down, even if a visitor volunteers it, and your counsellor only asks outright for what
+        you tick as &ldquo;may ask&rdquo;.
       </p>
 
       <div className="flex flex-col gap-2.5">
-        {COLLECTABLE_FIELDS.map((field) => {
+        <div className="rounded-md border bg-muted/40 px-3 py-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <Label className="text-sm">
+              {CONTACT_FIELDS.map((f) => FIELD_LABEL[f] ?? f).join(", ")}
+            </Label>
+            <span className="text-xs text-muted-foreground">Always recorded</span>
+          </div>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Recorded whenever a visitor gives them — they are how anyone follows up. When your
+            counsellor asks for them is set under &ldquo;Asking for contact details&rdquo;.
+          </p>
+        </div>
+
+        {OPTIONAL_FIELDS.map((field) => {
           const on = collection.allowed.includes(field);
           return (
             <div key={field} className="flex flex-wrap items-center justify-between gap-3 rounded-md border px-3 py-2.5">
@@ -93,6 +117,12 @@ export function CollectionCard({
           );
         })}
       </div>
+
+      <CustomFields
+        fields={collection.custom}
+        disabled={disabled}
+        onChange={(custom) => onChange({ custom })}
+      />
 
       <div className="mt-4">
         <ToggleRow

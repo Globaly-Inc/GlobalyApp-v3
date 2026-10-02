@@ -69,6 +69,16 @@ export const parsePatch = (body: unknown): PatchRackProfileInput => PatchRackPro
 
 // ── Rendering ────────────────────────────────────────────────────────────────
 
+/** "en" reads as a config value in a prompt; "English" reads as an instruction. Intl has the
+ *  names already, and an unknown tag comes back as itself, which is still the best thing to say. */
+const languageName = (tag: string): string => {
+  try {
+    return new Intl.DisplayNames(["en"], { type: "language" }).of(tag) ?? tag;
+  } catch {
+    return tag;
+  }
+};
+
 const TONE_LINE: Record<RackProfile["voice"]["tone"], string> = {
   warm: "Warm and personable.",
   neutral: "Even and matter-of-fact.",
@@ -151,7 +161,7 @@ export function renderProfileBlock(profile: RackProfile): string {
       ? "Be encouraging; acknowledge what they are trying to do before answering."
       : "Stay businesslike. Skip reassurance they did not ask for.");
   }
-  if (v.language) lines.push(`Reply in ${v.language} unless they write in another language.`);
+  if (v.language) lines.push(`Reply in ${languageName(v.language)} unless they write in another language.`);
   if (v.use_cards !== d.voice.use_cards && !v.use_cards) lines.push("Do not use course cards; describe courses in prose.");
 
   if (b.counselling_style !== d.behaviour.counselling_style) lines.push(STYLE_LINE[b.counselling_style]);
@@ -189,8 +199,12 @@ function renderCollectionLines(profile: RackProfile): string[] {
   const d = DEFAULT_PROFILE.collection;
   const mayAsk = c.may_ask_for.filter((f) => c.allowed.includes(f));
   const mayAskChanged = mayAsk.length !== d.may_ask_for.length || mayAsk.some((f) => !d.may_ask_for.includes(f));
-  if (mayAsk.length && mayAskChanged) {
-    out.push(`  - You may ask directly for: ${mayAsk.map(label).join(", ")}. Anything else, record only if they offer it.`);
+  // Custom subjects ride the SAME bullet rather than a sentence of their own: this line is paid
+  // on every turn, and "you may ask for X, and also for Y" is two lines saying one thing.
+  const customAsk = c.custom.filter((f) => f.may_ask).map((f) => f.label);
+  const asking = [...mayAsk.map(label), ...customAsk];
+  if (asking.length && (mayAskChanged || customAsk.length)) {
+    out.push(`  - You may ask directly for: ${asking.join(", ")}. Anything else, record only if they offer it.`);
   }
 
   // The important half. A field that is not allowed must never be written down, and the model

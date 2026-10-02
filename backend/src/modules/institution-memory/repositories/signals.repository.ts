@@ -3,10 +3,22 @@
 
 import { createChildLogger } from "../../../shared/logger.js";
 import * as memoryRepo from "./memory.repository.js";
-import type { ConversationSignals, ConversionInsights } from "../schemas/signals.schema.js";
+import { transitionGuidance } from "../lib/conversation-topics.js";
+import type { ConversationSignals, ConversionInsights, TopicTransition } from "../schemas/signals.schema.js";
 
 const logger = createChildLogger("institution-signals-repo");
 const TABLE = "institution_conversation_signals";
+
+/**
+ * Conversations a step must appear in before it is shown at all.
+ *
+ * The gap analysis deferred pattern mining precisely because "a pattern mined from twenty
+ * conversations is noise", and a floor is the cheap half of that: two visitors who both happened
+ * to mention fees then visas is a coincidence an institution should not be invited to teach its
+ * counsellor. The panel shows the corpus size beside the list so the reader can judge the rest.
+ */
+const MIN_TRANSITION_SUPPORT = 3;
+const TRANSITION_LIMIT = 12;
 
 /**
  * Record one journey.
@@ -50,7 +62,7 @@ export async function insights(institutionId: number): Promise<ConversionInsight
   const empty: ConversionInsights = {
     conversations: 0, converted: 0, volunteered: 0, prompted: 0,
     median_messages_to_conversion: null, median_seconds_to_conversion: null,
-    top_paths: [], topic_before_conversion: [], first_topic: [],
+    top_paths: [], topic_before_conversion: [], first_topic: [], transitions: [],
   };
   if (!k) return empty;
 
@@ -105,6 +117,30 @@ export async function insights(institutionId: number): Promise<ConversionInsight
       .orderBy("count", "desc")
       .limit(5);
 
+    // ── Phase 5: topic transitions ──
+    // Adjacent pairs across every journey, counted by CONVERSATION. One pass: the sequence is
+    // unnested WITH ORDINALITY so position i joins position i+1 inside the same row, which is a
+    // GROUP BY rather than the corpus scan a mining pipeline would have been.
+    const transitionRows = await k
+      .raw<{ rows: Array<{ from_topic: string; to_topic: string; support: string; converted: string }> }>(
+        `WITH steps AS (
+           SELECT s.id, s.converted, t.topic, t.i
+             FROM ?? s,
+                  LATERAL jsonb_array_elements_text(s.topic_sequence) WITH ORDINALITY AS t(topic, i)
+         )
+         SELECT a.topic AS from_topic,
+                b.topic AS to_topic,
+                count(DISTINCT a.id) AS support,
+                count(DISTINCT a.id) FILTER (WHERE a.converted) AS converted
+           FROM steps a
+           JOIN steps b ON b.id = a.id AND b.i = a.i + 1
+          GROUP BY 1, 2
+         HAVING count(DISTINCT a.id) >= ?
+          ORDER BY support DESC, converted DESC
+          LIMIT ?`,
+        [TABLE, MIN_TRANSITION_SUPPORT, TRANSITION_LIMIT],
+      );
+
     return {
       conversations: Number(totals?.conversations ?? 0),
       converted: Number(totals?.converted ?? 0),
@@ -118,6 +154,13 @@ export async function insights(institutionId: number): Promise<ConversionInsight
       })),
       topic_before_conversion: await group("topic_before_conversion", { converted: true }),
       first_topic: await group("first_topic"),
+      transitions: (transitionRows.rows ?? []).map((r): TopicTransition => ({
+        from: r.from_topic,
+        to: r.to_topic,
+        support: Number(r.support),
+        converted: Number(r.converted),
+        suggestion: transitionGuidance(r.from_topic, r.to_topic),
+      })),
     };
   } catch (err) {
     // An un-migrated tenant schema is the usual cause. An empty panel, never a failed page.

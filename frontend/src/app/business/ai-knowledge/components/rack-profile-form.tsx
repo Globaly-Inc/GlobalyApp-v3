@@ -2,11 +2,9 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
-  FOLLOW_UP_CHOICES, INITIATIVE_CHOICES, LEAD_CHOICES, LENGTH_CHOICES, RECOMMENDATION_CHOICES,
-  SCALE_CHOICES, STYLE_CHOICES, TONE_CHOICES, UNCERTAINTY_CHOICES,
+  FOLLOW_UP_CHOICES, INITIATIVE_CHOICES, LANGUAGE_CHOICES, LEAD_CHOICES, LENGTH_CHOICES,
+  RECOMMENDATION_CHOICES, SCALE_CHOICES, STYLE_CHOICES, TONE_CHOICES, UNCERTAINTY_CHOICES,
 } from "../const";
 import type {
   BehaviourProfile, CollectionRules, LearningRules, PatchRackProfileInput, RackProfile, VoiceProfile,
@@ -68,19 +66,12 @@ export function RackProfileForm({
           checked={voice.use_cards} disabled={saving}
           onChange={(use_cards) => setVoice({ ...voice, use_cards })}
         />
-        <div className="flex flex-col gap-2 border-t py-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
-          <div className="min-w-0 sm:max-w-[48%]">
-            <Label htmlFor="rack-language" className="text-sm">Reply language</Label>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Leave empty to answer in whatever language the visitor writes in.
-            </p>
-          </div>
-          <Input
-            id="rack-language" className="h-10 w-full sm:w-72" placeholder="e.g. en, ne, th"
-            maxLength={10} value={voice.language} disabled={saving}
-            onChange={(e) => setVoice({ ...voice, language: e.target.value })}
-          />
-        </div>
+        <ChoiceRow
+          label="Reply language"
+          hint="English unless you change it. Pick “Match the visitor’s language” to answer in whatever they write in."
+          options={LANGUAGE_CHOICES} value={voice.language} disabled={saving}
+          onChange={(language) => setVoice({ ...voice, language })}
+        />
       </div>
 
       <div className="rounded-lg border p-5">

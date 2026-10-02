@@ -237,8 +237,20 @@ export async function guestRoutes(app: FastifyInstance) {
       // read back from rows written while it was still on — "stop collecting this" has to cover
       // what is already held, not just what arrives next.
       const visible = applyVisitorCollectionRules(visitor, collection ? collection.allowed : rulesUnknown ? [] : undefined);
+      // Empty whenever the rules could not be read, by the same reasoning as `keepable` below:
+      // an institution's own subjects are neither asked for, kept, nor read back on a turn where
+      // we cannot tell which subjects it still has.
+      const customFields = collection?.custom ?? [];
+      // One indexed read, and only when this institution has defined a subject at all. Its own
+      // table rather than a column on the row above, so it is its own query — and its own
+      // failure: `attempt` keeps a lagging tenant schema costing the counsellor this memory
+      // rather than the turn.
+      const customValues = customFields.length && visitor && tenantDb
+        ? await visitorService.attempt("customValues", () =>
+            visitorService.customValuesFor(tenantDb, visitor.id)) ?? {}
+        : {};
       const visitorProfile = visitorProfileContext(visible);
-      const visitorContext = visitorCounsellingContext(visible);
+      const visitorContext = visitorCounsellingContext(visible, customFields, customValues);
       const situation = rag.situationText(visitorProfile, visitorContext);
       const [ragOutput, memory, rackProfile] = await Promise.all([
         rag.searchAll({
@@ -328,13 +340,21 @@ export async function guestRoutes(app: FastifyInstance) {
         // Empty list, not `undefined`: undefined means "no institution, use the built-in set",
         // while an unreadable rule set means "we do not know what we may keep" — so keep nothing.
         : rulesUnknown ? [] : undefined;
-      const { profile, contact } = visitor && tenantDb
-        ? await extractProfile(history, input.content, keepable)
-        : { profile: null, contact: null };
+      const { profile, contact, custom } = visitor && tenantDb
+        ? await extractProfile(history, input.content, keepable, customFields)
+        : { profile: null, contact: null, custom: null };
 
       if (profile && visitor && tenantDb) {
         await visitorService.attempt("recordProfile", () =>
           visitorService.recordProfile(tenantDb, visitor.id, profile),
+        );
+      }
+
+      // The institution's own subjects. Its own statement for the same reason as the two around
+      // it: one jsonb column, one cleaner, and a lagging tenant schema costs this write alone.
+      if (custom && visitor && tenantDb) {
+        await visitorService.attempt("recordCustom", () =>
+          visitorService.recordCustom(tenantDb, visitor.id, custom),
         );
       }
 

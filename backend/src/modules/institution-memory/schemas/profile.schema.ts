@@ -27,8 +27,8 @@ export const VoiceSchema = z.object({
   /** 1 = strictly transactional, 5 = openly encouraging. */
   warmth: Scale.default(3),
   response_length: z.enum(RESPONSE_LENGTHS).default("standard"),
-  /** BCP-47-ish. Empty means answer in whatever language the visitor writes in. */
-  language: z.string().trim().max(10).default(""),
+  /** BCP-47-ish. English by default; empty means answer in whatever language the visitor writes in. */
+  language: z.string().trim().max(10).default("en"),
   use_cards: z.boolean().default(true),
 });
 export type VoiceProfile = z.infer<typeof VoiceSchema>;
@@ -66,14 +66,62 @@ export type CollectableField = (typeof COLLECTABLE_FIELDS)[number];
 const Field = z.enum(COLLECTABLE_FIELDS);
 
 /**
- * Defaults say no to the two the analysis flagged: `gender` and `age` are collected from every
- * visitor today with no stated purpose, and `phone` is more than a counsellor needs to answer a
- * question. An institution that wants them turns them on and owns that choice.
+ * Name, email and phone are how a counsellor follows anything up, so they are recorded for every
+ * visitor and carry no record/may-ask/sensitive choice at all — see CONTACT_FIELDS below.
+ *
+ * Defaults still say no to the two the analysis flagged: `gender` and `age` are collected from
+ * every visitor today with no stated purpose. An institution that wants them turns them on and
+ * owns that choice.
  */
 const DEFAULT_ALLOWED: CollectableField[] = [
   "nationality", "study_preference", "qualifications", "language_tests", "academic_tests",
-  "work_experiences", "name", "email",
+  "work_experiences", "name", "email", "phone",
 ];
+
+/**
+ * Contact details: always recorded, never qualified.
+ *
+ * Enforced on the FIELD rather than in the portal, because the portal is one of two writers. A
+ * PATCH that omits them still reads back with them, and one that marks email sensitive does not
+ * leave storage and the prompt disagreeing about whether it exists.
+ */
+export const CONTACT_FIELDS = ["name", "email", "phone"] as const;
+const isContact = (f: CollectableField) => (CONTACT_FIELDS as readonly string[]).includes(f);
+
+const FieldList = z.array(Field).max(COLLECTABLE_FIELDS.length);
+const RecordList = FieldList.transform((f): CollectableField[] => [...new Set([...f, ...CONTACT_FIELDS])]);
+const QualifierList = FieldList.transform((f): CollectableField[] => f.filter((x) => !isContact(x)));
+
+// ── Custom fields ────────────────────────────────────────────────────────────
+
+/**
+ * A subject this institution collects that the fixed vocabulary has no name for — "Preferred
+ * intake", "Budget", "Where they heard about us".
+ *
+ * `key` is the STORAGE key and is minted from the label once, when the field is added. It is
+ * never recomputed, so renaming "Budget" to "Budget per year" keeps every value already
+ * collected under it. Values live in `ai_widget_visitors.custom` (20261002_001): a typed column
+ * with a cleaner in front of it, which is what 20261001_002 requires of anything the extractor
+ * writes — never a key in `meta`.
+ *
+ * The label is whitespace-collapsed, and that is not cosmetic: it rides the line-delimited
+ * profile block, where a pasted newline would break every bullet after it.
+ */
+export const CUSTOM_FIELD_MAX = 10;
+export const CustomFieldSchema = z.object({
+  key: z.string().trim().regex(/^[a-z0-9_]{1,40}$/, "A field key is lower-case letters, digits and underscores"),
+  label: z.string().trim().min(1).max(60).transform((v) => v.replace(/\s+/g, " ")),
+  /** The counsellor may raise it itself. Off means record it only when the visitor offers it. */
+  may_ask: z.boolean().default(false),
+});
+export type CustomField = z.infer<typeof CustomFieldSchema>;
+
+/** Last definition of a key wins, so a resend cannot produce two rows the extractor both fills. */
+const CustomList = z.array(CustomFieldSchema).max(CUSTOM_FIELD_MAX).transform((fields): CustomField[] => {
+  const byKey = new Map<string, CustomField>();
+  for (const f of fields) byKey.set(f.key, f);
+  return [...byKey.values()];
+});
 
 /**
  * A [min, max] message range, checked for ORDER as well as bounds.
@@ -91,14 +139,16 @@ const AskRange = z
 
 export const CollectionSchema = z.object({
   /** What the counsellor may record about a visitor. Anything absent is never persisted. */
-  allowed: z.array(Field).max(COLLECTABLE_FIELDS.length).default(DEFAULT_ALLOWED),
+  allowed: RecordList.default(DEFAULT_ALLOWED),
   /**
    * Allowed to be USED in the conversation, never written down. A visitor volunteering a
    * disability to ask about support should get an answer, not a record of it.
    */
-  sensitive: z.array(Field).max(COLLECTABLE_FIELDS.length).default([]),
+  sensitive: QualifierList.default([]),
   /** The counsellor may ask for these outright; everything else it only records if offered. */
-  may_ask_for: z.array(Field).max(COLLECTABLE_FIELDS.length).default(["study_preference"]),
+  may_ask_for: QualifierList.default(["study_preference"]),
+  /** Institution-defined subjects. Recorded like any allowed field; see CustomFieldSchema. */
+  custom: CustomList.default([]),
   contact_ask: z.object({
     enabled: z.boolean().default(true),
     /** Absolute message number for the first ask — matches visitor.service's FIRST_ASK_AT. */

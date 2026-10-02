@@ -255,6 +255,71 @@ console.log("\n14. withdrawing permission applies to details ALREADY stored");
     "no institution at all → unchanged, which is the built-in behaviour and not a lockout");
 }
 
+console.log("\n14b. custom fields — model output in, labelled guidance out");
+{
+  const FIELDS = [
+    { key: "preferred_intake", label: "Preferred intake", may_ask: true },
+    { key: "budget", label: "Budget", may_ask: false },
+  ];
+
+  // The cleaner is the trust boundary: configured keys only, whatever the model returned.
+  const kept = pe.cleanCustom({ custom: {
+    preferred_intake: "  September 2027  ",
+    budget: 15000,
+    religion: "none of your business",
+  } }, FIELDS);
+  assert(kept?.preferred_intake === "September 2027", "a configured key is trimmed and kept", kept);
+  assert(kept?.budget === "15000", "a number is stringified, like a score in cleanProfileEntry", kept);
+  assert(kept && !("religion" in kept), "a subject this institution never defined has nowhere to land", kept);
+  assert(pe.cleanCustom({ custom: { preferred_intake: "Sept" } }, []) === null,
+    "no configured fields → nothing is kept, so deleting a field stops the writes too");
+  assert(pe.cleanCustom({ custom: "Sept" }, FIELDS) === null, "a scalar where the object should be is not a value");
+  assert(pe.cleanCustom({}, FIELDS) === null, "and a turn that revealed none returns null, not {}");
+
+  // A message carrying ONLY a custom answer has no background keyword in it. Without the label
+  // hint the prefilter drops it, and a message it drops is never looked at again.
+  const ANSWER = "the autumn one";
+  const ASKED = "Which intake were you thinking of?";
+  assert(!pe.worthExtracting(ANSWER, ASKED),
+    "neither the answer nor the question carries a background keyword, so the fixed filter drops the turn");
+  assert(pe.worthExtracting(ANSWER, ASKED, FIELDS),
+    "the configured labels are what make it worth a call — without them this fact is lost for good");
+  assert(pe.worthExtracting("my budget is about 15k", undefined, FIELDS),
+    "and the visitor naming the subject themselves is enough on its own");
+
+  // The read-back end: labelled with the institution's words, and gated by the CURRENT list.
+  const v = visitor({});
+  const STORED = { preferred_intake: "September 2027", budget: "15000" };
+  const notes = vc.visitorCounsellingContext(v, FIELDS, STORED)?.notes ?? [];
+  assert(notes.includes("Preferred intake: September 2027"),
+    "the counsellor is told what it already knows, in the institution's own words", notes);
+  const dropped = vc.visitorCounsellingContext(v, [FIELDS[0]], STORED)?.notes ?? [];
+  assert(!dropped.some((n) => /Budget/.test(n)),
+    "a field the institution deleted stops being read back, though its row is still there", dropped);
+  assert(!vc.visitorCounsellingContext(v, [], STORED)?.notes?.some((n) => /2027/.test(n)),
+    "and an unreadable rule set (empty list) reads none of it back");
+}
+
+console.log("\n14c. the custom values table — one answer per visitor per field");
+{
+  // No connection: a knex query builder with a client and no pool renders SQL and talks to
+  // nothing. What is being checked is the conflict target, which is the whole reason this is a
+  // table — a typo there turns "the latest answer wins" into a duplicate row per turn.
+  const { default: knexFactory } = await import("knex");
+  const k = knexFactory({ client: "pg" });
+  const sql = k("ai_widget_visitor_custom_values")
+    .insert([{ visitor_id: 1, field_key: "budget", value: "15000" }])
+    .onConflict(["visitor_id", "field_key"])
+    .merge({ value: k.ref("excluded.value"), updated_at: k.fn.now() })
+    .toString();
+  assert(/on conflict \("visitor_id", "field_key"\) do update/.test(sql),
+    "upserted on the unique pair the migration creates", sql);
+  assert(/"value" = "excluded"\."value"/.test(sql), "the latest answer replaces the last one", sql);
+  assert(/"updated_at" = CURRENT_TIMESTAMP/.test(sql),
+    "and updated_at is said outright, not inherited from the proposed row's default", sql);
+  assert(!/created_at/.test(sql), "created_at is never touched, so it keeps saying when they first told us", sql);
+}
+
 console.log("\n15. askAt degrades to the minimum, never to NaN");
 {
   const vs = await import("../src/modules/ai-counsellor/services/visitor.service.js");

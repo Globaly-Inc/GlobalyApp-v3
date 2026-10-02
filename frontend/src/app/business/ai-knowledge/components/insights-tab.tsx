@@ -7,6 +7,7 @@ import { fetchConversionInsights } from "../store/ai-knowledge-insights-slice";
 import { TOPIC_LABEL } from "../const";
 import { InsightBars } from "./insight-bars";
 import { ConversionHero } from "./conversion-hero";
+import { TopicPatterns } from "./topic-patterns";
 
 const topic = (value: string) => TOPIC_LABEL[value] ?? value;
 
@@ -132,6 +133,11 @@ export function InsightsTab() {
           }))}
         />
       </div>
+
+      {/* `?? []` because the field is newer than the deployed backend: a response from one that
+          predates pattern mining has no `transitions` at all, and reading `.length` off that
+          undefined takes the whole tab down rather than hiding one panel. */}
+      <TopicPatterns transitions={insights.transitions ?? []} conversations={conversations} />
 
       <p className="text-xs text-muted-foreground">
         Counted per conversation, never per person: a visitor who clears their browser starts a new

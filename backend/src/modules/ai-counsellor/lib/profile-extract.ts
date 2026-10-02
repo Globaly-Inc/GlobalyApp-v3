@@ -5,6 +5,7 @@ import {
   type ContactField, type VisitorContact, type VisitorProfile,
 } from "./card-parser.js";
 import { resolveCountryName } from "../../superadmin/data-extraction/lib/lookup-catalog.js";
+import type { CustomField } from "../../institution-memory/schemas/profile.schema.js";
 import type { Turn } from "./conclusion-detect.js";
 import { createChildLogger } from "../../../shared/logger.js";
 
@@ -176,6 +177,63 @@ function contactClause(allowed: readonly ContactField[]): string {
 }
 
 /**
+ * The extra instructions for this institution's own subjects, keyed by the storage key.
+ *
+ * A separate "custom" object rather than top-level keys: the fixed shape above is what the
+ * cleaner recognises, and a model free to add keys beside `age` is a model that can shadow one.
+ */
+function customClause(fields: readonly CustomField[]): string {
+  if (!fields.length) return "";
+  return [
+    "",
+    `ALSO return a "custom" object for this institution's own subjects, when the STUDENT states one about THEMSELVES:`,
+    `  {"custom":{${fields.map((f) => `"${f.key}":""`).join(",")}}}`,
+    ...fields.map((f) => `  - ${f.key}: ${f.label}. Their own words, as stated.`),
+    "- Include a key only when the LATEST message states it. Never infer one, never repeat one from an earlier message.",
+  ].join("\n");
+}
+
+/**
+ * The institution's own subjects, cleaned — or null.
+ *
+ * Driven by the CONFIGURED fields, never by the keys the model returned: a subject the
+ * institution removed yesterday is not written today, and an invented key has nowhere to land.
+ * Values are strings because `ai_widget_visitors.custom` is one jsonb object of them and nothing
+ * downstream may treat one as a number.
+ */
+export function cleanCustom(
+  raw: Record<string, unknown>,
+  fields: readonly CustomField[],
+): Record<string, string> | null {
+  const bag = raw.custom;
+  if (!bag || typeof bag !== "object" || Array.isArray(bag)) return null;
+
+  const out: Record<string, string> = {};
+  for (const field of fields) {
+    const value = (bag as Record<string, unknown>)[field.key];
+    // A number where words were expected is the model being helpful, not wrong — the same
+    // allowance cleanProfileEntry makes for scores.
+    const text = typeof value === "number" ? String(value) : typeof value === "string" ? value : "";
+    const trimmed = text.trim().slice(0, MAX_CUSTOM_VALUE);
+    if (trimmed) out[field.key] = trimmed;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+/**
+ * The prefilter cannot know a vocabulary it was given at runtime, so the LABELS become one.
+ *
+ * Without this, an institution that collects "Preferred intake" loses every message that says
+ * only "September 2027" — LOOKS_LIKE_BACKGROUND has no reason to match it, and a message this
+ * rejects is never looked at again. Words of four characters or more only: "of", "us" and "the"
+ * would match everything.
+ */
+function customHint(fields: readonly CustomField[]): RegExp | null {
+  const words = [...new Set(fields.flatMap((f) => f.label.toLowerCase().match(/[a-z]{4,}/g) ?? []))];
+  return words.length ? new RegExp(`\\b(${words.join("|")})`, "i") : null;
+}
+
+/**
  * Whether this turn is worth a call. Exported because it is the only branch here that can lose
  * data silently — a message it rejects is never looked at again.
  *
@@ -184,9 +242,15 @@ function contactClause(allowed: readonly ContactField[]): string {
  * guarding against a cheap failure (one wasted call returning `{}`) at the price of an expensive
  * one, so it is gone.
  */
-export function worthExtracting(message: string, previousCounsellorTurn?: string): boolean {
+export function worthExtracting(
+  message: string,
+  previousCounsellorTurn?: string,
+  custom: readonly CustomField[] = [],
+): boolean {
   const text = message.trim();
   if (LOOKS_LIKE_BACKGROUND.test(text) || BARE_AGE.test(text) || DEMONYM.test(text)) return true;
+  const hint = customHint(custom);
+  if (hint && (hint.test(text) || (previousCounsellorTurn && hint.test(previousCounsellorTurn)))) return true;
   // Volunteered details carry none of the above — "I'm John" has no demonym suffix and
   // "send it to john@example.com" has no background keyword.
   if (LOOKS_LIKE_CONTACT.test(text)) return true;
@@ -209,6 +273,8 @@ const EMAIL_RE = /^[\w.+-]+@[\w-]+\.[\w.-]+$/;
 /** Loose on purpose — numbers are written a dozen ways and this only has to reject prose. */
 const PHONE_RE = /^\+?[\d\s().-]{7,20}$/;
 const MAX_CONTACT_VALUE = 200;
+/** One answer in the visitor's own words, not an essay. Matches the profile cleaner's ceiling. */
+const MAX_CUSTOM_VALUE = 200;
 
 /**
  * The contact keys the model returned, cleaned — or null.
@@ -290,22 +356,26 @@ export interface Extraction {
   profile: VisitorProfile | null;
   /** Details the visitor volunteered in prose. Routed to recordVolunteeredContact, not recordProfile. */
   contact: VisitorContact | null;
+  /** This institution's own subjects, keyed by storage key. Routed to recordCustom. */
+  custom: Record<string, string> | null;
 }
 
-const NOTHING: Extraction = { profile: null, contact: null };
+const NOTHING: Extraction = { profile: null, contact: null, custom: null };
 
 export async function extractProfile(
   history: Turn[],
   latestUserMessage: string,
   /** The institution's Rack collection rules. Anything absent is neither asked for nor kept. */
   allowed: readonly string[] = [...PROFILE_SCALARS, ...PROFILE_KEYS],
+  /** This institution's own subjects. Empty when it defined none, or when the rules are unknown. */
+  custom: readonly CustomField[] = [],
 ): Promise<Extraction> {
-  if (!worthExtracting(latestUserMessage, lastCounsellorTurn(history))) return NOTHING;
+  if (!worthExtracting(latestUserMessage, lastCounsellorTurn(history), custom)) return NOTHING;
   const contactAllowed = CONTACT_FIELDS.filter((f) => allowed.includes(f));
 
   try {
     const raw = await generateText({
-      system: SYSTEM + contactClause(contactAllowed),
+      system: SYSTEM + contactClause(contactAllowed) + customClause(custom),
       prompt: transcriptOf(history, latestUserMessage),
       maxTokens: 700,
       // Extraction, not writing. Any creativity here is a fabricated grade or an invented gender.
@@ -334,6 +404,7 @@ export async function extractProfile(
     const profile = applyCollectionRules(cleanProfile(value), allowed);
     if (profile) await resolveNationality(profile);
     const contact = cleanContact(value, contactAllowed, counsellorContacts(history));
+    const customValues = cleanCustom(value, custom);
 
     // Both key sets, because "the model only returned one key" and "the cleaner dropped one" are
     // the two ways this loses data and they are indistinguishable from the columns alone.
@@ -343,9 +414,10 @@ export async function extractProfile(
       returned: Object.keys(value),
       kept: profile ? Object.keys(profile) : null,
       contact: contact ? Object.keys(contact) : null,
+      custom: customValues ? Object.keys(customValues) : null,
       via,
     });
-    return { profile, contact };
+    return { profile, contact, custom: customValues };
   } catch (err) {
     logger.warn("Profile extraction failed", { err: err instanceof Error ? err.message : String(err) });
     return NOTHING;

@@ -39,20 +39,41 @@ console.log("\n1. renderProfileBlock — defaults emit the privacy floor and not
 {
   svc.clearProfileCache();
   const block = svc.renderProfileBlock(schema.DEFAULT_PROFILE);
-  // NOT empty, and deliberately so: the default allow-list withholds age, gender and phone, and
-  // a model that is not told to withhold them will ask. A privacy default that is stricter than
-  // the model's own behaviour has to be spent on; everything else is omitted until it changes.
-  assert(block.split("\n").length === 3, "defaults emit exactly two instructions", block);
-  assert(/Never ask for, and never repeat back, age, gender, their phone number/.test(block),
-    "the first is the privacy floor", block);
+  // NOT empty, and deliberately so: the default allow-list withholds age and gender, and a model
+  // that is not told to withhold them will ask. A privacy default that is stricter than the
+  // model's own behaviour has to be spent on; everything else is omitted until it changes. The
+  // reply language is the one other default worth a line — English is a choice, not an absence.
+  assert(block.split("\n").length === 4, "defaults emit exactly three instructions", block);
+  assert(/Reply in English unless they write in another language/.test(block),
+    "the default language is stated in words, not as a tag", block);
+  assert(/Never ask for, and never repeat back, age, gender\./.test(block),
+    "the privacy floor names only what is actually withheld", block);
   assert(/confirm it back to them once/.test(block),
-    "the second is the consent posture for volunteered details", block);
+    "and the consent posture for volunteered details is spelled out", block);
   assert(!/Warm and personable|Answer fully|Counsel:/.test(block), "no style line on an untouched profile");
   const d = schema.DEFAULT_PROFILE;
-  assert(d.collection.allowed.includes("name") && d.collection.allowed.includes("email"),
-    "defaults allow name and email");
+  assert(d.voice.language === "en", "English is the default reply language");
   assert(!d.collection.allowed.includes("gender") && !d.collection.allowed.includes("age"),
     "defaults do NOT allow gender or age");
+}
+
+console.log("\n1b. contact details are always recorded and never qualified");
+{
+  // The portal has no controls for these at all, so the schema is where the rule has to hold —
+  // an API caller that drops email, or marks a phone number sensitive, gets neither.
+  const parsed = schema.CollectionSchema.parse({
+    allowed: ["study_preference"],
+    sensitive: ["email", "work_experiences"],
+    may_ask_for: ["phone", "study_preference"],
+  });
+  for (const f of ["name", "email", "phone"] as const) {
+    assert(parsed.allowed.includes(f), `${f} is forced back into allowed`, parsed.allowed);
+    assert(!parsed.sensitive.includes(f), `${f} cannot be marked sensitive`, parsed.sensitive);
+    assert(!parsed.may_ask_for.includes(f), `${f} carries no may-ask choice`, parsed.may_ask_for);
+  }
+  assert(parsed.sensitive.includes("work_experiences") && parsed.may_ask_for.includes("study_preference"),
+    "every other field keeps the choice it was given", parsed);
+  assert(parsed.allowed.filter((f) => f === "email").length === 1, "and no field is duplicated", parsed.allowed);
 }
 
 console.log("\n2. renderProfileBlock — only what changed");
@@ -77,8 +98,10 @@ console.log("\n3. renderProfileBlock — collection rules");
       may_ask_for: ["study_preference", "nationality"],
     },
   }));
-  assert(/Never ask for, and never repeat back/.test(block), "dropped contact fields produce a never-ask line");
-  assert(/their name/.test(block) && /their email/.test(block), "names the fields in plain words");
+  assert(/Never ask for, and never repeat back, age, gender\./.test(block),
+    "dropped fields produce a never-ask line naming them in plain words", block);
+  assert(!/their name|their email/.test(block),
+    "contact details are never in it — they cannot be dropped", block);
   assert(/use it to answer, never record it/.test(block), "sensitive fields are usable but not stored");
   assert(/You may ask directly for: the course they want, nationality/.test(block),
     "a changed may_ask_for is rendered in plain words", block);
@@ -90,10 +113,55 @@ console.log("\n3. renderProfileBlock — collection rules");
   }));
   assert(/Never ask for contact details/.test(off), "contact_ask disabled is stated outright");
 
-  const noEmail = svc.renderProfileBlock(profile({
+  const narrowed = svc.renderProfileBlock(profile({
     collection: { ...schema.DEFAULT_PROFILE.collection, allowed: ["study_preference"], may_ask_for: ["study_preference"], sensitive: [] },
   }));
-  assert(!/confirm it back/.test(noEmail), "an institution that does not collect email is not told to confirm one");
+  assert(/confirm it back/.test(narrowed),
+    "email is collected whatever else is switched off, so the consent posture always applies", narrowed);
+}
+
+console.log("\n3c. custom fields — the institution's own subjects");
+{
+  const parse = (custom: unknown) => schema.CollectionSchema.parse({ ...schema.DEFAULT_PROFILE.collection, custom });
+
+  assert(schema.DEFAULT_PROFILE.collection.custom.length === 0, "none by default");
+
+  const ok = parse([{ key: "preferred_intake", label: "  Preferred\n intake ", may_ask: true }]);
+  assert(ok.custom[0].label === "Preferred intake",
+    "the label is whitespace-collapsed — it rides the line-delimited profile block, where a pasted newline breaks every bullet after it",
+    ok.custom[0].label);
+  assert(ok.custom[0].key === "preferred_intake" && ok.custom[0].may_ask === true, "key and may_ask survive", ok.custom[0]);
+
+  const deduped = parse([
+    { key: "budget", label: "Budget", may_ask: false },
+    { key: "budget", label: "Budget per year", may_ask: true },
+  ]);
+  assert(deduped.custom.length === 1 && deduped.custom[0].label === "Budget per year",
+    "one entry per key, last wins — two rows for one key would both be filled by the extractor", deduped.custom);
+
+  for (const bad of ["Preferred Intake", "preferred intake", "", "a".repeat(41)]) {
+    assert(!schema.CollectionSchema.safeParse({ custom: [{ key: bad, label: "x" }] }).success,
+      `a key the storage cannot use is rejected: ${JSON.stringify(bad)}`);
+  }
+  assert(!schema.CollectionSchema.safeParse({
+    custom: Array.from({ length: schema.CUSTOM_FIELD_MAX + 1 }, (_, i) => ({ key: `f${i}`, label: `F${i}` })),
+  }).success, "and the list has a ceiling");
+
+  // The prompt end. A subject the counsellor may raise rides the SAME bullet as the fixed
+  // fields — that line is paid on every turn, and two sentences would say one thing twice.
+  const asks = svc.renderProfileBlock(profile({
+    collection: { ...schema.DEFAULT_PROFILE.collection, custom: [
+      { key: "preferred_intake", label: "Preferred intake", may_ask: true },
+      { key: "budget", label: "Budget", may_ask: false },
+    ] },
+  }));
+  assert(/You may ask directly for: the course they want, Preferred intake\./.test(asks),
+    "a may-ask custom subject joins the existing bullet", asks);
+  assert(!/Budget/.test(asks),
+    "and one it may only record if offered costs no prompt line at all", asks);
+  assert(svc.renderProfileBlock(profile({
+    collection: { ...schema.DEFAULT_PROFILE.collection, custom: [{ key: "budget", label: "Budget", may_ask: false }] },
+  })).split("\n").length === 4, "so defining a record-only field changes the block not at all");
 }
 
 console.log("\n4. repo.get — a stored shape that fails its schema falls back to defaults");
@@ -184,8 +252,8 @@ console.log("\n6c. a failed read is degraded, so permissions are not read off it
     "the defaults it carries are still the real defaults — the flag is what callers branch on");
   // The hazard in one line: the default allow-list is WIDER than a narrowed one, so a caller
   // that trusted these would extract and store fields the institution had switched off.
-  assert(stored.profile.collection.allowed.includes("name")
-    && stored.profile.collection.allowed.includes("email"),
+  assert(stored.profile.collection.allowed.includes("nationality")
+    && stored.profile.collection.allowed.includes("work_experiences"),
     "which is why failing open here would widen what the widget may store");
 }
 

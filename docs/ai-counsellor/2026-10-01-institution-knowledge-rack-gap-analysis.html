@@ -885,13 +885,51 @@ CONFLICT RESOLUTION
       <li><strong>Tests.</strong> Paraphrase reinforces rather than inserting; a general-knowledge candidate never auto-promotes however many actors reinforce it.</li>
     </ul>
 
-    <h3>Phase 5 — Pattern mining <span class="pill ask">Future</span></h3>
+    <h3>Phase 5 — Pattern mining <span class="pill done">Built 2026-10-02</span></h3>
     <p>
       Topic labelling at conversation end, transition counting over
       <code>institution_conversation_signals.topic_sequence</code>, a portal panel showing mined
       sequences with support counts and a promote-to-memory button. Deliberately after MVP:
       it needs a corpus, and a pattern mined from twenty conversations is noise.
     </p>
+    <div class="gap good">
+      <strong>As built — no new endpoint, no new table, no new slice</strong>
+      <ul>
+        <li><strong>It rides <code>GET /institution/conversion-insights</code>.</strong> Transitions are
+          one more field on <code>ConversionInsights</code>, computed by one more query inside
+          <code>signalsRepo.insights()</code>. Same tenant, same read, same 4th tab, same Redux slice —
+          a separate route would have added a thunk, a slice and a second round trip to show four
+          rows beside figures the page already fetched.</li>
+        <li><strong>Support counts CONVERSATIONS, not occurrences.</strong>
+          <code>count(DISTINCT s.id)</code> over adjacent pairs from
+          <code>jsonb_array_elements_text(...) WITH ORDINALITY</code>, joined <code>b.i = a.i + 1</code>.
+          A journey that oscillates fees→visa→fees→visa contributes <em>one</em>; counting rows would
+          have made one restless visitor look like three. Verified against the real planner, and
+          against a synthetic <code>VALUES</code> corpus where the two numbers differ (3 vs 4).</li>
+        <li><strong>A floor, because the deferral reason is still true.</strong>
+          <code>MIN_TRANSITION_SUPPORT = 3</code> in SQL (<code>HAVING</code>), and the panel prints the
+          corpus size beside the list so the reader can discount the rest. Two visitors doing the same
+          thing is a coincidence, and inviting someone to teach it to their counsellor is worse than
+          showing nothing.</li>
+        <li><strong>The sentence is composed on the BACKEND</strong> (<code>transitionGuidance</code> in
+          <code>lib/conversation-topics.ts</code>, beside the vocabulary it names) and returned as
+          <code>suggestion</code>. Two reasons: the portal has no test runner, and
+          <code>CreateMemorySchema</code>'s 600-char <code>Content</code> ceiling is enforced on the same
+          side that must not exceed it. The test walks every ordered pair of the eight labels.</li>
+        <li><strong>"Teach this" is the existing create endpoint</strong>, pre-filled — a
+          <code>COUNSELLING_GUIDELINE</code> through <code>createMemory</code>, so it gets the same dedupe,
+          embedding, actor and history as anything typed by hand. No promotion path of its own.
+          A transition is advice about ORDER; it states nothing about fees or visas, so it never
+          reaches for a type that may carry a fact.</li>
+        <li><strong>No chart.</strong> Each row carries two numbers meaning different things (how many
+          visitors, and how many converted), and the tab's one-series <code>InsightBars</code> can only
+          honestly draw one. The conversion share gets the prominence; support is the sample size that
+          says whether to believe it.</li>
+        <li><strong>Tests.</strong> <code>npm run test:conversation-signals</code> — 185 assertions, no DB,
+          fail-first verified. SQL checked read-only against a real tenant schema.</li>
+      </ul>
+    </div>
+
   </section>
 
   <!-- ══════════════════════════════════════════════════════════════════ I -->

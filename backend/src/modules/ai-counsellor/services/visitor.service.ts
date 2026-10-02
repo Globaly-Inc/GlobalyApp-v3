@@ -789,3 +789,48 @@ export async function recordMeta(
       updated_at: db.fn.now(),
     });
 }
+
+/** Where this institution's own subjects are answered — one row per visitor per field. */
+const CUSTOM_TABLE = "ai_widget_visitor_custom_values";
+
+/**
+ * Write what the visitor said about this institution's own subjects (20261002_001).
+ *
+ * One statement, upserted on (visitor_id, field_key): the latest answer wins, and two turns
+ * landing together cannot lose each other's fields the way a read-modify-write over a bag would.
+ * `created_at` is left alone by the merge, so it keeps saying when they first told us.
+ *
+ * Deliberately NOT merged into recordMeta: that bag holds what the server observed, this holds
+ * what a model read out of the conversation, and one function writing both would be one rename
+ * away from crossing the line 20261001_002 draws. What may be in the patch is decided by
+ * profile-extract.cleanCustom, which keys off the institution's configured fields.
+ */
+export async function recordCustom(
+  db: Knex,
+  visitorId: number,
+  values: Record<string, string>,
+): Promise<void> {
+  const rows = Object.entries(values).map(([field_key, value]) => ({ visitor_id: visitorId, field_key, value }));
+  if (!rows.length) return;
+  await db(CUSTOM_TABLE)
+    .insert(rows)
+    .onConflict(["visitor_id", "field_key"])
+    // Spelled out rather than `.merge(["value","updated_at"])`: that form sets updated_at from
+    // `excluded`, i.e. the proposed row's column default, which is a round-trip through Postgres
+    // semantics to say "now". This says it.
+    .merge({ value: db.ref("excluded.value"), updated_at: db.fn.now() });
+}
+
+/**
+ * This visitor's answers, keyed by field. Empty when they have given none.
+ *
+ * Returns everything stored rather than filtering by the current field list: the caller holds
+ * that list and gates the READ with it (visitorCounsellingContext), which is the one place the
+ * rule belongs — a field the institution deleted stops being used while its row stays put.
+ */
+export async function customValuesFor(db: Knex, visitorId: number): Promise<Record<string, string>> {
+  const rows: Array<{ field_key: string; value: string }> = await db(CUSTOM_TABLE)
+    .where({ visitor_id: visitorId })
+    .select("field_key", "value");
+  return Object.fromEntries(rows.map((r) => [r.field_key, r.value]));
+}
