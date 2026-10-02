@@ -7,27 +7,27 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
-import { MEDIA_URL } from "../const/index";
-import { Reveal } from "../components/reveal";
-import { AutoplayVideo } from "../components/autoplay-video";
-import { UnifiedSearchBar } from "../components/unified-search-bar";
-import { useTypingEffect } from "../hooks/use-typing-effect";
-import { useParallax } from "../hooks/use-scroll-animation";
-import { useIsMobile } from "../hooks/use-is-mobile";
-import { usePlatformStats } from "../hooks/use-platform-stats";
-import { formatStatValue } from "../types";
-import type { Destination } from "../data/destinations";
-import { getFeaturedCountries } from "../data/countries-api";
-import { orderDestinationsForVisitor } from "../data/destination-order";
-import { getPosts } from "../blog/api";
-import type { PublicBlogPost } from "../blog/types";
+import { MEDIA_URL } from "./const/index";
+import { Reveal } from "./components/reveal";
+import { AutoplayVideo } from "./components/autoplay-video";
+import { UnifiedSearchBar } from "./components/unified-search-bar";
+import { useTypingEffect } from "./hooks/use-typing-effect";
+import { useParallax } from "./hooks/use-scroll-animation";
+import { useIsMobile } from "./hooks/use-is-mobile";
+import { usePlatformStats } from "./hooks/use-platform-stats";
+import { formatStatValue } from "./types";
+import type { Destination } from "./data/destinations";
+import { getFeaturedCountries } from "./data/countries-api";
+import { orderDestinationsForVisitor } from "./data/destination-order";
+import { getPosts } from "./blog/api";
+import type { PublicBlogPost } from "./blog/types";
 import {
   TYPING_PHRASES,
   STUDENT_FEATURES,
   PROVIDER_FEATURES,
   AGENT_FEATURES,
   STATS,
-} from "../static/home-content";
+} from "./static/home-content";
 
 export default function HomePage() {
   const { displayText, showCursor } = useTypingEffect(TYPING_PHRASES);
