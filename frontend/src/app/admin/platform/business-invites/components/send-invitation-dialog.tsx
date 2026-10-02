@@ -28,6 +28,7 @@ export function SendInvitationDialog({
   const categories = useMemo(() => allCategories.filter((c) => c.slug === INVITE_CATEGORY_SLUG), [allCategories]);
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
+  const [fullName, setFullName] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [sending, setSending] = useState(false);
   const [matches, setMatches] = useState<EmailMatch[]>([]);
@@ -56,11 +57,12 @@ export function SendInvitationDialog({
   const emailValid = emailSchema.safeParse(trimmedEmail).success;
   const nameLabel = category?.slug === "institutions" ? "Institution name" : "Business name";
   const emailInvalid = !!email.trim() && !emailValid;
-  const canSend = !sending && !!category && emailValid && !!name.trim() && matches.length === 0;
+  const canSend = !sending && !!category && emailValid && !!name.trim() && !!fullName.trim() && matches.length === 0;
 
   const close = () => {
     setEmail("");
     setName("");
+    setFullName("");
     setCategoryId("");
     setMatches([]);
     onOpenChange(false);
@@ -69,7 +71,7 @@ export function SendInvitationDialog({
   const handleSend = async () => {
     if (!category) return;
     setSending(true);
-    const outcome = await dispatch(sendInvite({ email: trimmedEmail, name: name.trim(), business_category_id: category.id }));
+    const outcome = await dispatch(sendInvite({ email: trimmedEmail, name: name.trim(), full_name: fullName.trim(), business_category_id: category.id }));
     setSending(false);
     if (sendInvite.rejected.match(outcome)) {
       if (outcome.payload?.matches.length) setMatches(outcome.payload.matches);
@@ -131,6 +133,10 @@ export function SendInvitationDialog({
           <div className="flex flex-col gap-2">
             <Label htmlFor="invite-name">{nameLabel}</Label>
             <Input id="invite-name" placeholder="University of Oxford" maxLength={240} autoComplete="off" value={name} onChange={(e) => setName(e.target.value)} />
+          </div>
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="invite-full-name">Full name</Label>
+            <Input id="invite-full-name" placeholder="Jane Smith" maxLength={200} autoComplete="off" value={fullName} onChange={(e) => setFullName(e.target.value)} />
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="invite-email">Email</Label>

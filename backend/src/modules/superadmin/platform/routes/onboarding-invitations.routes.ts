@@ -9,10 +9,10 @@ import {
 
 export function adminOnboardingInvitationRoutes(app: FastifyInstance) {
   app.post("/onboarding-invitations", async (req, reply) => {
-    const { email, name, business_category_id } = SendInvitationSchema.parse(req.body);
+    const { email, name, full_name, business_category_id } = SendInvitationSchema.parse(req.body);
     const adminId = Number(req.auth.sub);
-    const result = await service.sendInvitation(email, name, business_category_id, adminId);
-    await repo.logAdminAction(adminId, "ONBOARDING_INVITE_SENT", "onboarding_invitation", undefined, { business_category_id, email, name });
+    const result = await service.sendInvitation(email, name, business_category_id, adminId, full_name);
+    await repo.logAdminAction(adminId, "ONBOARDING_INVITE_SENT", "onboarding_invitation", undefined, { business_category_id, email, name, full_name });
     return reply.status(201).send(result);
   });
 

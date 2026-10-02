@@ -8,6 +8,7 @@ export interface OnboardingInvitationRow {
   email: string;
   type: "institution" | "business";
   org_name: string;
+  contact_name: string | null;
   business_category_id: number | null;
   token_hash: string;
   /** Links from before a resend/sweep, each valid only until its own `exp`. */
@@ -90,6 +91,7 @@ export async function insertInvitation(data: {
   email: string;
   type: OnboardingInvitationRow["type"];
   org_name: string;
+  contact_name: string | null;
   business_category_id: number | null;
   token_hash: string;
   invited_by: number | null;

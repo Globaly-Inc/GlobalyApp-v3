@@ -62,7 +62,7 @@ const EMAIL_MATCH_LABEL: Record<repo.EmailMatch["kind"], string> = {
 };
 
 /** `email` arrives trimmed and lower-cased (SendInvitationSchema). */
-export async function sendInvitation(email: string, orgName: string, businessCategoryId: number, invitedBy: number) {
+export async function sendInvitation(email: string, orgName: string, businessCategoryId: number, invitedBy: number, contactName?: string) {
   const category = await repo.findCategory(businessCategoryId);
   if (!category) throw new BadRequestError("Unknown business category");
   // Institutions are their own table and onboarding; every other category is a business.
@@ -76,7 +76,7 @@ export async function sendInvitation(email: string, orgName: string, businessCat
   const { token, token_hash, expires_at } = mintToken();
   let id: string;
   try {
-    ({ id } = await repo.insertInvitation({ email, type, org_name: orgName, business_category_id: category.id, token_hash, invited_by: invitedBy, expires_at }));
+    ({ id } = await repo.insertInvitation({ email, type, org_name: orgName, contact_name: contactName ?? null, business_category_id: category.id, token_hash, invited_by: invitedBy, expires_at }));
   } catch (err: any) {
     // Same address sent by two admins at once — the pending-email index lets only one through.
     if (err.code === "23505") throw new ConflictError("Already invited");
@@ -159,8 +159,8 @@ export async function acceptInvitation(token: string, type: InviteType) {
     }
 
     user = await userRepo.insert({
-      first_name: "",
-      last_name: "",
+      first_name: invite.contact_name?.split(/\s+/)[0] ?? "",
+      last_name: invite.contact_name?.split(/\s+/).slice(1).join(" ") ?? "",
       email: invite.email,
       account_status: 1,
       is_personal_account: true,

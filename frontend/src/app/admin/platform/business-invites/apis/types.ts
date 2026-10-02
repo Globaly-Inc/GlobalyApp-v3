@@ -41,7 +41,7 @@ export type PaginatedInvites = {
   counts: InviteCounts;
 };
 
-export type SendInviteParams = { email: string; name: string; business_category_id: number };
+export type SendInviteParams = { email: string; name: string; full_name: string; business_category_id: number };
 
 /** Where an address is already in use — a send to it is refused with a 409 carrying these. */
 export type EmailMatch = { kind: "user" | "institution" | "business" | "extraction" | "invite"; id: string | number; name: string | null };

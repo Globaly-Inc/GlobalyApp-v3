@@ -127,7 +127,7 @@ export function WelcomeTour({ orgName, show }: Readonly<{ orgName: string; show:
       aria-modal="true"
       aria-label="Welcome to GlobalyApp"
       style={iris ? css({ "--cx": `${iris.cx}px`, "--cy": `${iris.cy}px`, "--r0": `${iris.r0}px`, "--r1": `${iris.r1}px` }) : undefined}
-      className={cn(styles.root, closing && styles.leaving, "fixed inset-0 z-[100] flex flex-col overflow-hidden bg-[radial-gradient(120%_90%_at_50%_0%,#1a4fc4_0%,#012E8A_45%,#021a52_100%)] text-white")}
+      className={cn(styles.root, closing && styles.leaving, "fixed inset-0 z-[100] mb-0 flex flex-col overflow-hidden bg-[radial-gradient(120%_90%_at_50%_0%,#1a4fc4_0%,#012E8A_45%,#021a52_100%)] text-white")}
     >
       <div aria-hidden className="pointer-events-none absolute inset-0">
         <div className={cn(styles.aurora1, "absolute -left-32 -top-32 h-[30rem] w-[30rem] rounded-full bg-[#23DDF6]/20 blur-3xl")} />
