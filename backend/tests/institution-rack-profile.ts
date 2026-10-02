@@ -39,22 +39,20 @@ console.log("\n1. renderProfileBlock — defaults emit the privacy floor and not
 {
   svc.clearProfileCache();
   const block = svc.renderProfileBlock(schema.DEFAULT_PROFILE);
-  // NOT empty, and deliberately so: the default allow-list withholds age and gender, and a model
-  // that is not told to withhold them will ask. A privacy default that is stricter than the
-  // model's own behaviour has to be spent on; everything else is omitted until it changes. The
-  // reply language is the one other default worth a line — English is a choice, not an absence.
-  assert(block.split("\n").length === 4, "defaults emit exactly three instructions", block);
+  // Since age and gender joined the defaults (2026-10-02) nothing is withheld by default, so no
+  // privacy-floor line: just the reply language and the consent posture for volunteered details.
+  assert(block.split("\n").length === 3, "defaults emit exactly two instructions", block);
   assert(/Reply in English unless they write in another language/.test(block),
     "the default language is stated in words, not as a tag", block);
-  assert(/Never ask for, and never repeat back, age, gender\./.test(block),
-    "the privacy floor names only what is actually withheld", block);
+  assert(!/Never ask for/.test(block),
+    "no privacy floor when nothing is withheld", block);
   assert(/confirm it back to them once/.test(block),
     "and the consent posture for volunteered details is spelled out", block);
   assert(!/Warm and personable|Answer fully|Counsel:/.test(block), "no style line on an untouched profile");
   const d = schema.DEFAULT_PROFILE;
   assert(d.voice.language === "en", "English is the default reply language");
-  assert(!d.collection.allowed.includes("gender") && !d.collection.allowed.includes("age"),
-    "defaults do NOT allow gender or age");
+  assert(d.collection.allowed.includes("gender") && d.collection.allowed.includes("age"),
+    "defaults record gender and age");
 }
 
 console.log("\n1b. contact details are always recorded and carry no choice at all");
@@ -197,7 +195,7 @@ console.log("\n3c. custom fields — the institution's own subjects");
     "and one it may only record if offered costs no prompt line at all", asks);
   assert(svc.renderProfileBlock(profile({
     collection: { ...schema.DEFAULT_PROFILE.collection, custom: [{ key: "budget", label: "Budget", may_ask: false }] },
-  })).split("\n").length === 4, "so defining a record-only field changes the block not at all");
+  })).split("\n").length === 3, "so defining a record-only field changes the block not at all");
 }
 
 console.log("\n4. repo.get — a stored shape that fails its schema falls back to defaults");

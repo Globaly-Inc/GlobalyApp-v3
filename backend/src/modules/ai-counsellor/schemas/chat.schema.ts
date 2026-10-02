@@ -44,10 +44,12 @@ export const CreditGrantSchema = z.object({
 });
 
 export const GuestMessageSchema = z.object({
-  content: z.string().trim().min(1).max(5000),
+  content: z.string().trim().max(5000).default(""),
   fingerprint: z.string().min(1),
   embed_key: z.string().uuid().optional(),
-});
+  /** No new message: answer what the visitor asked while a person had the chat (see takeover.unansweredTail). */
+  resume: z.boolean().optional(),
+}).refine((v) => v.resume || v.content.length > 0, { message: "Message is required", path: ["content"] });
 
 const HexColour = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 

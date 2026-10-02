@@ -676,7 +676,10 @@ export async function recordContact(
       // Conditional on an address since 20261001_002 dropped the pair constraint. The card
       // always sends both, so this is a no-op here — it is stated because the constraint that
       // used to guarantee it is gone, and the summary worker has nowhere to send without one.
-      summary_status: db.raw("CASE WHEN ? IS NOT NULL THEN 'pending' ELSE summary_status END", [opts.email ?? null]),
+      // Decided here, not in SQL: `CASE WHEN ? IS NOT NULL` binds an untyped parameter, Postgres
+      // rejects it ("could not determine data type of parameter"), and `attempt` swallowed that —
+      // the card thanked the visitor while nothing was saved.
+      ...(opts.email ? { summary_status: "pending" } : {}),
       updated_at: db.fn.now(),
     })
     .returning("*");

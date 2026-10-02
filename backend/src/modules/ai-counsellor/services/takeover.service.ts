@@ -56,6 +56,17 @@ export function whoAnswers(
 }
 
 /**
+ * The visitor's messages at the end of the thread that nobody answered — sent while a person had
+ * the chat or while they waited for one. Those turns store no reply, so when the AI takes the chat
+ * back it must answer them, not just whatever the visitor says next. `cut` is where they start.
+ */
+export function unansweredTail<T extends { role: string; content: string }>(messages: T[]): { cut: number; questions: string[] } {
+  let cut = messages.length;
+  while (cut > 0 && messages[cut - 1].role === "user") cut--;
+  return { cut, questions: messages.slice(cut).map((m) => m.content) };
+}
+
+/**
  * Stale claims off. Called by the guest route before it decides who answers.
  *
  * Each clear re-checks staleness IN the UPDATE, not just from the row the route read: a staff

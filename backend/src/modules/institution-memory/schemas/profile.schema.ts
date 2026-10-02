@@ -66,9 +66,9 @@ export type CollectableField = (typeof COLLECTABLE_FIELDS)[number];
 const Field = z.enum(COLLECTABLE_FIELDS);
 
 /**
- * Defaults say no to the two the analysis flagged: `gender` and `age` are collected from every
- * visitor today with no stated purpose. An institution that wants them turns them on and owns
- * that choice.
+ * `gender` and `age` were once off by default (an analysis flagged them as collected with no
+ * stated purpose). They are on by default since 2026-10-02; an institution that does not want
+ * them switches them off.
  *
  * Name, email and phone are NOT among the choices. They are recorded for every visitor, the
  * portal offers no record/may-ask/sensitive control for them, and the transforms below hold that
@@ -86,8 +86,10 @@ const Field = z.enum(COLLECTABLE_FIELDS);
  * `mayKeepEmail` stays and still earns its place: its live branch is now the degraded one, where
  * we cannot read the rules and therefore keep nothing.
  */
+// age and gender joined the defaults on 2026-10-02 (product call: the visitor page should show
+// what the visitor said). An institution can still switch either off in AI knowledge.
 const DEFAULT_ALLOWED: CollectableField[] = [
-  "nationality", "study_preference", "qualifications", "language_tests", "academic_tests",
+  "age", "gender", "nationality", "study_preference", "qualifications", "language_tests", "academic_tests",
   "work_experiences", "name", "email", "phone",
 ];
 

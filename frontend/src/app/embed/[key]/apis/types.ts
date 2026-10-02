@@ -127,4 +127,6 @@ export type GuestMessageRequest = {
   content: string;
   fingerprint: string;
   embed_key: string;
+  /** No new message: have the AI answer what was asked while a person had the chat. */
+  resume?: boolean;
 };

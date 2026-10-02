@@ -118,21 +118,14 @@
   button.onfocus = function () { button.style.boxShadow = glow(true) + ",0 0 0 3px " + rgba(brand, 0.35); };
   button.onblur = function () { button.style.boxShadow = glow(false); };
 
-  // A neutral speech mark in the measured foreground, not the azure Globaly orb: on a customer's
-  // own website the launcher should read as THEIR assistant. Inline SVG rather than an <img>, so
-  // it recolours with the brand and costs no second request.
-  var orb = document.createElementNS("http://www.w3.org/2000/svg", "svg");
-  orb.setAttribute("viewBox", "0 0 24 24");
-  orb.setAttribute("width", "26");
-  orb.setAttribute("height", "26");
+  // Always the Aly orb, tinted to the brand by /aly-orb (the same mark as the panel header).
+  // The orb only fills the middle ~59% of its frame, so it is scaled up and nudged down to sit
+  // centred in the button — same correction the in-app AlyOrbIcon applies.
+  var orb = document.createElement("img");
+  orb.src = origin + "/aly-orb";
+  orb.alt = "";
   orb.setAttribute("aria-hidden", "true");
-  var bubble = document.createElementNS("http://www.w3.org/2000/svg", "path");
-  bubble.setAttribute("d", "M21 11.5a8.38 8.38 0 0 1-8.5 8.5 8.5 8.5 0 0 1-3.8-.9L3 21l1.9-5.7A8.5 8.5 0 0 1 12.5 3a8.38 8.38 0 0 1 8.5 8.5z");
-  bubble.setAttribute("fill", "none");
-  bubble.setAttribute("stroke-width", "2");
-  bubble.setAttribute("stroke-linecap", "round");
-  bubble.setAttribute("stroke-linejoin", "round");
-  orb.appendChild(bubble);
+  orb.style.cssText = "width:56px;height:56px;transform:translateY(3.1%) scale(1.75)";
 
   // Open state: a chevron in the brand colour, not an "×" — the same target closes it again.
   var chevron = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -195,7 +188,6 @@
     var fg = onBrand(brand);
     button.style.background = rgb(brand);
     button.style.boxShadow = glow(false);
-    bubble.setAttribute("stroke", fg);
     path.setAttribute("stroke", fg);
     teaser.style.borderColor = rgba(brand, 0.25);
   }

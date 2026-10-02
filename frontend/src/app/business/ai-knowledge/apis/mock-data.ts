@@ -23,7 +23,7 @@ let rackProfile: RackProfile = {
     lead_approach: "when_natural", initiative: "balanced",
   },
   collection: {
-    allowed: ["nationality", "study_preference", "qualifications", "language_tests", "academic_tests", "work_experiences", "name", "email", "phone"],
+    allowed: ["age", "gender", "nationality", "study_preference", "qualifications", "language_tests", "academic_tests", "work_experiences", "name", "email", "phone"],
     sensitive: [],
     may_ask_for: ["study_preference"],
     custom: [{ key: "preferred_intake", label: "Preferred intake", may_ask: true }],
