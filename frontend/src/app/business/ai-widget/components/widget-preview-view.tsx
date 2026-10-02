@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { WIDGET_SETTINGS_HREF } from "@/app/business/ai-widget/const";
 import { ArrowLeft } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { WidgetLauncherPreview } from "./widget-launcher-preview";
@@ -10,7 +11,7 @@ export function WidgetPreviewView({ embedKey }: Readonly<{ embedKey: string }>) 
   return (
     <div className="mx-auto flex max-w-3xl flex-col gap-4">
       <div className="flex items-center justify-between">
-        <Button variant="ghost" size="sm" render={<Link href="/business/ai-widget" />}>
+        <Button variant="ghost" size="sm" render={<Link href={WIDGET_SETTINGS_HREF} />}>
           <ArrowLeft className="size-4" /> Back to widgets
         </Button>
         <p className="text-xs text-muted-foreground">Sample page · the orb bottom-right is your live widget</p>

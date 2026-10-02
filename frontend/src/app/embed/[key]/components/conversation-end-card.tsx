@@ -3,11 +3,13 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import type { EmbedEndPrompt } from "../apis";
+import { RatingCard } from "./rating-card";
 
 type ConversationEndCardProps = {
   prompt: EmbedEndPrompt;
   onEnd: () => Promise<boolean>;
   onContinue: () => void;
+  onRate: (rating: number, comment?: string) => void;
 };
 
 /**
@@ -37,7 +39,7 @@ function asSentence(covered: string): string {
  * Nothing here blocks the chat: the composer stays live behind it, and sending another message
  * is treated as "continue" by the server without the visitor having to say so.
  */
-export function ConversationEndCard({ prompt, onEnd, onContinue }: ConversationEndCardProps) {
+export function ConversationEndCard({ prompt, onEnd, onContinue, onRate }: ConversationEndCardProps) {
   const [status, setStatus] = useState<"idle" | "ending" | "ended">("idle");
   const [queued, setQueued] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
@@ -56,6 +58,7 @@ export function ConversationEndCard({ prompt, onEnd, onContinue }: ConversationE
 
   if (status === "ended") {
     return (
+      <div className="flex flex-col gap-3">
       <div className="rounded-xl border bg-card p-4 shadow-sm">
         <p className="mb-0.5 text-sm font-semibold">Thanks for chatting!</p>
         <p className="text-xs text-muted-foreground">
@@ -71,6 +74,8 @@ export function ConversationEndCard({ prompt, onEnd, onContinue }: ConversationE
             <>Ask me anything else whenever you like.</>
           )}
         </p>
+      </div>
+      <RatingCard onRate={onRate} />
       </div>
     );
   }

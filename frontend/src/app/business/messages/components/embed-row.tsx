@@ -1,6 +1,6 @@
 "use client";
 
-import { Bot, Check, Hand, User } from "lucide-react";
+import { Bot, Check, Hand, User, UserRound } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { SIDEBAR_ROW, SIDEBAR_ROW_ACTIVE } from "@/components/chat/const";
@@ -14,6 +14,7 @@ import { embedChatState, handlerLabel, type EmbedChatState } from "../utils";
 /** The avatar's corner badge says who is answering, the way GlobalyOS's says which channel. */
 const OWNER_BADGE: Record<EmbedChatState, { icon: typeof Bot; className: string; title: string }> = {
   ai: { icon: Bot, className: "bg-primary", title: "AI is handling" },
+  waiting: { icon: UserRound, className: "bg-amber-500", title: "Wants a person" },
   human: { icon: Hand, className: "bg-cyan-600", title: "A team member is handling" },
   resolved: { icon: Check, className: "bg-emerald-600", title: "Resolved" },
 };
@@ -64,6 +65,9 @@ export function EmbedRow({ visitor, isActive, onOpen }: Readonly<{ visitor: Widg
             {visitor.email ?? visitor.study_preference ?? `${visitor.message_count} message${visitor.message_count === 1 ? "" : "s"}`}
           </span>
           <span className="ml-auto flex shrink-0 items-center gap-1">
+            {state === "waiting" && (
+              <span className="rounded bg-amber-500/15 px-1.5 text-[10px] font-medium text-amber-800">Wants a person</span>
+            )}
             {state === "human" && (
               <span className="rounded bg-cyan-500/10 px-1.5 text-[10px] font-medium text-cyan-800">{handlerLabel(visitor)}</span>
             )}

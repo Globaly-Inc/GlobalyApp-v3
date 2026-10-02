@@ -12,16 +12,18 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { AlyOrbIcon } from "@/components/aly-orb-icon";
 import type {
   CreateEmbedConfigInput,
   EmbedConfig,
   UpdateEmbedConfigInput,
+  WidgetPosition,
 } from "../apis/types";
 
 const EMPTY = {
   display_name: "",
-  logo_url: "",
   brand_color: "#4f46e5",
+  position: "right" as WidgetPosition,
   greeting: "",
   subtitle: "",
   custom_instructions: "",
@@ -31,8 +33,8 @@ type Form = typeof EMPTY;
 
 const fromConfig = (c: EmbedConfig): Form => ({
   display_name: c.display_name ?? "",
-  logo_url: c.logo_url ?? "",
   brand_color: c.brand_color ?? EMPTY.brand_color,
+  position: c.position ?? "right",
   greeting: c.greeting ?? "",
   subtitle: c.subtitle ?? "",
   custom_instructions: c.custom_instructions ?? "",
@@ -115,8 +117,8 @@ function WidgetForm({
         ? await onUpdate?.(initial.id, {
             // Edit: an emptied field is cleared, not left as it was.
             display_name: text(form.display_name) ?? null,
-            logo_url: text(form.logo_url) ?? null,
             brand_color: form.brand_color || null,
+            position: form.position,
             greeting: text(form.greeting) ?? null,
             subtitle: text(form.subtitle) ?? null,
             custom_instructions: text(form.custom_instructions) ?? null,
@@ -124,8 +126,8 @@ function WidgetForm({
           })
         : await onCreate?.({
             display_name: text(form.display_name),
-            logo_url: text(form.logo_url),
             brand_color: form.brand_color || undefined,
+            position: form.position,
             greeting: text(form.greeting),
             subtitle: text(form.subtitle),
             custom_instructions: text(form.custom_instructions),
@@ -173,26 +175,39 @@ function WidgetForm({
           />
         </div>
 
-        {/* ponytail: logo is a URL field — file upload rides Phase 4's attachment endpoint */}
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="widget-logo">Logo URL (optional)</Label>
-          <Input
-            id="widget-logo"
-            value={form.logo_url}
-            onChange={set("logo_url")}
-            placeholder="https://…/logo.png"
-          />
+          <Label htmlFor="widget-color">Brand colour</Label>
+          {/* No logo upload: every widget shows Aly, in this colour. */}
+          <div className="flex items-center gap-3">
+            <Input
+              id="widget-color"
+              type="color"
+              value={form.brand_color}
+              onChange={set("brand_color")}
+              className="h-10 w-20 p-1"
+            />
+            <AlyOrbIcon className="size-8" color={form.brand_color} />
+            <span className="text-xs text-muted-foreground">Aly takes on this colour in your widget.</span>
+          </div>
         </div>
 
         <div className="flex flex-col gap-1.5">
-          <Label htmlFor="widget-color">Brand colour</Label>
-          <Input
-            id="widget-color"
-            type="color"
-            value={form.brand_color}
-            onChange={set("brand_color")}
-            className="h-10 w-20 p-1"
-          />
+          <Label id="widget-position">Position on your website</Label>
+          <div role="radiogroup" aria-labelledby="widget-position" className="flex gap-2">
+            {(["left", "right"] as const).map((side) => (
+              <Button
+                key={side}
+                type="button"
+                role="radio"
+                aria-checked={form.position === side}
+                variant={form.position === side ? "default" : "outline"}
+                size="sm"
+                onClick={() => setForm((f) => ({ ...f, position: side }))}
+              >
+                Bottom {side}
+              </Button>
+            ))}
+          </div>
         </div>
 
         <div className="flex flex-col gap-1.5">

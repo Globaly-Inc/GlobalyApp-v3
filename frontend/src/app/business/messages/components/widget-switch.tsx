@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { WIDGET_SETTINGS_HREF } from "@/app/business/ai-widget/const";
 import Link from "next/link";
 import { MessageSquare } from "lucide-react";
 import { toast } from "sonner";
@@ -37,7 +38,7 @@ export function WidgetSwitch({ showLabel = true }: Readonly<{ showLabel?: boolea
   if (!config || configs.length !== 1) {
     const active = configs.filter((c) => c.is_active).length;
     return (
-      <Link href="/business/ai-widget" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")}>
+      <Link href={WIDGET_SETTINGS_HREF} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5")}>
         <MessageSquare className="size-3.5" aria-hidden />
         {configs.length === 0 ? "Set up the chat widget" : `Widgets · ${active} of ${configs.length} on`}
       </Link>

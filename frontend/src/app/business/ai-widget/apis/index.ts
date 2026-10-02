@@ -8,5 +8,5 @@ export type {
   CreateEmbedConfigInput, DeveloperContact, EmbedConfig, EnsureEmbedResult,
   SendSnippetInput, SendSnippetResult, UpdateEmbedConfigInput,
   VisitorCounts, VisitorListParams, VisitorListResult, VisitorProfileEntry,
-  VisitorMessage, VisitorStatus, VisitorStatusFilter, WidgetVisitor,
+  VisitorChat, VisitorMessage, VisitorNote, StaffSummary, VisitorStatus, VisitorStatusFilter, WidgetVisitor,
 } from "./types";

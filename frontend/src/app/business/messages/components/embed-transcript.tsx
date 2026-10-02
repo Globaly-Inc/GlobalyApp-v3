@@ -4,7 +4,9 @@ import { useLayoutEffect, useMemo, useRef } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { dateSeparatorLabel } from "@/components/chat/utils";
 import { visitorDisplayName, visitorInitials } from "@/app/business/ai-widget/utils";
-import type { VisitorMessage, WidgetVisitor } from "@/app/business/ai-widget/apis/types";
+import type { VisitorMessage, VisitorNote, WidgetVisitor } from "@/app/business/ai-widget/apis/types";
+import { chatTitle } from "@/app/business/ai-widget/components/visitor-activity";
+import { NoteBubble } from "./note-bubble";
 import { DatePill, isGroupedWith, TranscriptBubble } from "./transcript-bubble";
 
 /** Centred and narrower than the pane, so both sides' bubbles stay near each other. */
@@ -33,6 +35,15 @@ function handoverLines(messages: VisitorMessage[]): Map<number, string> {
   return lines;
 }
 
+type TimelineItem = { message: VisitorMessage; note?: never } | { note: VisitorNote; message?: never };
+
+/** Messages and notes in one time order. Sort is stable, so on a tie the message comes first. */
+function timeline(messages: VisitorMessage[], notes: VisitorNote[]): TimelineItem[] {
+  const items: TimelineItem[] = [...messages.map((message) => ({ message })), ...notes.map((note) => ({ note }))];
+  const at = (x: TimelineItem) => new Date((x.message ?? x.note).created_at).getTime();
+  return items.sort((x, y) => at(x) - at(y));
+}
+
 function HandoverLine({ label }: Readonly<{ label: string }>) {
   return (
     <div className="my-4 flex items-center gap-3 text-[11px] text-muted-foreground">
@@ -43,14 +54,28 @@ function HandoverLine({ label }: Readonly<{ label: string }>) {
   );
 }
 
+/** Where a new chat with this visitor begins: its topic and when it started. */
+function ChatDivider({ title, at, ended }: Readonly<{ title: string; at: string; ended: boolean }>) {
+  const when = new Date(at).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+  return (
+    <div className="my-5 flex items-center gap-3 text-[11px] font-semibold text-primary">
+      <span className="h-px flex-1 bg-primary/25" />
+      {title} · {when}{ended ? " · ended" : ""}
+      <span className="h-px flex-1 bg-primary/25" />
+    </div>
+  );
+}
+
 export function EmbedTranscript({
   visitor,
   messages,
+  notes,
   failed,
-}: Readonly<{ visitor: WidgetVisitor; messages: VisitorMessage[] | undefined; failed: boolean }>) {
+}: Readonly<{ visitor: WidgetVisitor; messages: VisitorMessage[] | undefined; notes?: VisitorNote[]; failed: boolean }>) {
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
   const lines = useMemo(() => handoverLines(messages ?? []), [messages]);
+  const items = useMemo(() => timeline(messages ?? [], notes ?? []), [messages, notes]);
   const name = visitorDisplayName(visitor);
   const initials = visitor.name ? visitorInitials(visitor) : null;
 
@@ -64,7 +89,7 @@ export function EmbedTranscript({
     }
     const el = scroller.current;
     if (el && pinned.current) el.scrollTop = el.scrollHeight;
-  }, [messages, visitor.id]);
+  }, [items, visitor.id]);
 
   const onScroll = () => {
     const el = scroller.current;
@@ -89,21 +114,34 @@ export function EmbedTranscript({
           </div>
         ) : !messages ? (
           <p className="px-4 py-8 text-center text-sm text-muted-foreground">Couldn&apos;t load this conversation.</p>
-        ) : messages.length === 0 ? (
+        ) : items.length === 0 ? (
           <p className="px-4 py-8 text-center text-sm text-muted-foreground">No messages in this chat.</p>
         ) : (
-          messages.map((m, i) => {
-            const prev = messages[i - 1];
-            const label = dateSeparatorLabel(m.created_at);
-            const showDate = !prev || dateSeparatorLabel(prev.created_at) !== label;
+          items.map((item, i) => {
+            const prev = items[i - 1];
+            const at = (item.message ?? item.note).created_at;
+            const label = dateSeparatorLabel(at);
+            const showDate = !prev || dateSeparatorLabel((prev.message ?? prev.note).created_at) !== label;
+            if (item.note) {
+              return (
+                <div key={`n${item.note.id}`}>
+                  {showDate && <DatePill label={label} />}
+                  <NoteBubble note={item.note} />
+                </div>
+              );
+            }
+            const m = item.message;
             const handover = lines.get(m.id);
+            // A divider only where the visitor has had more than one chat — a single chat needs none.
+            const chat = m.chat && messages.some((x) => x.session_id !== m.session_id) ? m.chat : null;
             return (
               <div key={m.id}>
+                {chat && <ChatDivider title={chatTitle(chat)} at={chat.started_at} ended={!!chat.ended_at} />}
                 {showDate && <DatePill label={label} />}
                 {handover && <HandoverLine label={handover} />}
                 <TranscriptBubble
                   message={m}
-                  grouped={!showDate && !handover && isGroupedWith(m, prev)}
+                  grouped={!showDate && !handover && !chat && isGroupedWith(m, prev?.message)}
                   visitorName={name}
                   visitorInitials={initials}
                 />

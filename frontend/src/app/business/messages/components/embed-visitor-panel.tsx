@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { visitorHref } from "@/app/business/ai-widget/const";
 import { MessageSquare, User } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { fullStamp } from "@/components/chat/utils";
@@ -94,7 +95,7 @@ export function EmbedVisitorPanel({ visitor, actions }: Readonly<{ visitor: Widg
             ["Work", count(visitor.work_experiences?.length, "role", "roles")],
           ]}
         />
-        <Link href={`/business/ai-widget/visitors/${visitor.id}`} className="text-xs font-medium text-primary hover:underline">
+        <Link href={visitorHref(visitor.id)} className="text-xs font-medium text-primary hover:underline">
           Open full visitor record →
         </Link>
       </Section>

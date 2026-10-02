@@ -51,7 +51,7 @@ function institutionsAsOrgs(institutions: AuthMeInstitution[]): SwitcherOrg[] {
   }));
 }
 
-const INSTITUTION_BUSINESS_ITEM_ORDER = ["Business Profile", "Branches", "Services", "Scholarships", "Team", "Visitors", "Site contents"];
+const INSTITUTION_BUSINESS_ITEM_ORDER = ["Business Profile", "Branches", "Services", "Scholarships", "Team", "Site contents"];
 
 const INSTITUTION_NAV_GROUPS = BUSINESS_NAV_GROUPS.map((group) => {
   if (group.label !== "Business") return group;

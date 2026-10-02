@@ -80,7 +80,7 @@ svg .el{font:500 12px "Inter",sans-serif}
 
 <div class="wrap">
 <header class="top">
-  <span class="eyebrow">AI widget · Inbox · plan v4 · 1 October 2026</span>
+  <span class="eyebrow">AI widget · Inbox · plan v5 · 1 October 2026</span>
   <h1>AI Conversations: takeover, contacts and the widget journey</h1>
   <p class="lede">The implementation plan, updated with every decision made on the mockups so far. The Inbox UI is built on mock data; everything else, including the whole backend, waits for this plan to be reviewed.</p>
   <nav class="toc" aria-label="Sections">
@@ -92,10 +92,10 @@ svg .el{font:500 12px "Inter",sans-serif}
 <section id="status">
   <header><h2>1 · Where things stand</h2></header>
   <div class="status">
-    <div class="panel"><span class="tag done">Built · mock data</span><b>Inbox takeover UI</b><p class="note">Branch <code>dev-feat-ai-embed-takeover-ui-rojan</code>, not committed. Composer, Take over / Resume AI / Resolve, staff bubbles, visitor panel, unread, filters, widget switch, Channels page. tsc and eslint pass.</p></div>
+    <div class="panel"><span class="tag done">Built</span><b>Inbox takeover UI</b><p class="note">Branch <code>dev-feat-ai-embed-takeover-ui-rojan</code>, committed (9564a6ae). Composer, Take over / Resume AI / Resolve, staff bubbles, visitor panel, unread, filters, widget switch, Channels page, plus the "Wants a person" state.</p></div>
     <div class="panel"><span class="tag new">Designed</span><b>End-to-end prototype</b><p class="note"><a href="https://claude.ai/artifact/FTcPTMpELpzDDkqwqmsW8W">AI Widget journey</a>: 19 clickable steps from creating a widget to the visitor record, plus all states and gaps. Source: <code>docs/mockups/ai-widget-end-to-end.html</code>.</p></div>
-    <div class="panel"><span class="tag no">Not started</span><b>Backend</b><p class="note">Migrations, the handoff check, agent replies, handover requests, ratings and the stored summary. Waiting on your review of sections 4–6.</p></div>
-    <div class="panel"><span class="tag no">Not started</span><b>Navigation and visitor-page changes</b><p class="note">Contacts menu, the widget page moving under Inbox, menu order, and the visitor detail layout. Frontend only.</p></div>
+    <div class="panel"><span class="tag done">Built · migrations not run</span><b>Backend</b><p class="note">Migrations, the handoff check, agent replies, handover requests, ratings and the stored summary. Backend tsc and the new pure test pass; you run the migrations and DB tests.</p></div>
+    <div class="panel"><span class="tag done">Built</span><b>Widget, navigation and visitor page</b><p class="note">Staff bubbles, waiting card and rating in the widget; Contacts menu; widget settings under the Inbox; new visitor detail layout; Aly as the bot logo in the brand colour.</p></div>
   </div>
 </section>
 
@@ -115,6 +115,9 @@ svg .el{font:500 12px "Inter",sans-serif}
       <tr><td>Widget settings</td><td>Reached only from the <strong>⚙ Widget</strong> button in the Inbox bar. "AI embed" leaves Settings.</td></tr>
       <tr><td>Visitors</td><td>Move out of Business into a new <strong>Contacts</strong> menu.</td></tr>
       <tr><td>Menu order</td><td>Home · Business · Marketing · Scribe · LMS · Contacts · Inbox · Settings.</td></tr>
+      <tr><td>Bot logo</td><td>Always <strong>Aly</strong>; there is no logo upload. Aly, the launcher glow and the widget accents take the widget's <code>brand_color</code> from <code>ai_embed_configs</code>. A new route, <code>/aly-orb?c=HEX</code>, serves the orb recoloured. The unused <code>logo_url</code> column stays (no migration).</td></tr>
+      <tr><td>Widget position</td><td>A setting: <strong>Bottom left / Bottom right</strong> in the widget dialog, stored in <code>ai_embed_configs.position</code> (default right). <code>embed.js</code> reads it with the branding, so the install code doesn't change. A <code>data-position</code> attribute on the tag still overrides it. Missed in v4; added in v5.</td></tr>
+      <tr><td>Chat summary on the visitor page</td><td>Written for staff, for <strong>every</strong> chat, not only visitors who gave an email. The first one comes after 30 quiet minutes. After that it refreshes at most every 24 hours, and only if there was activity since the last one; a chat with no activity keeps its summary. It's separate from the emailed recap, which stays as it was.</td></tr>
       <tr><td>Contact card wording</td><td>"Want a summary of this chat?", not "a copy".</td></tr>
       <tr><td>Visitor detail page</td><td>Header shows the email only. Add an Open conversation button. Conversation and Study Preference move left; the right column holds Chat summary and Activity timeline.</td></tr>
       <tr><td>Mockups</td><td>Light theme only, real app screens and routes; planned extras are folded away rather than lengthening a screen.</td></tr>
@@ -134,7 +137,7 @@ svg .el{font:500 12px "Inter",sans-serif}
     <tbody>
       <tr><td><b>Contacts menu</b>, holding Visitors</td><td>New nav group "Contacts" with one item, Visitors → new route <code>/business/contacts/visitors</code>, which renders the existing <code>&lt;VisitorsTab /&gt;</code>. Remove <code>"visitors"</code> from the Business profile tabs (<code>VALID_TABS</code> and the institution allow-list in <code>business-profile-detail-view.tsx</code>) and from the Business sub-menu.</td></tr>
       <tr><td>Back link on the visitor page</td><td>"← Visitors &amp; Leads" points at <code>/business/contacts/visitors</code>. This also removes the bare <code>/business/profile?tab=visitors</code> link, which loses the tab without an org id.</td></tr>
-      <tr><td><b>AI Widget only through the Inbox</b></td><td>Remove "AI embed" from the Settings group. <code>/business/settings/ai-embed</code> redirects to <code>/business/ai-widget</code> so old bookmarks keep working. The Inbox bar's right-hand button becomes <strong>⚙ Widget</strong> → <code>/business/ai-widget</code>. The page shows "← Inbox" and highlights Inbox in the menu.</td></tr>
+      <tr><td><b>AI Widget only through the Inbox</b></td><td>Remove "AI embed" from the Settings group. The page moves to <code>/business/messages/widget</code>, so Inbox stays highlighted in the menu. <code>/business/settings/ai-embed</code> and <code>/business/ai-widget</code> redirect there, so old bookmarks and the portal tile keep working. The Inbox bar's right-hand button becomes <strong>⚙ Widget</strong>. The page shows "← Inbox". The visitor page moves to <code>/business/contacts/visitors/:id</code> (the old URL redirects).</td></tr>
       <tr><td>Inbox bar</td><td>Widget · On/Off switch, Connect a channel (→ Channels page), ⚙ Widget (→ widget settings). Already built except the Widget button, which is still labelled Channels.</td></tr>
     </tbody>
   </table></div>
@@ -199,15 +202,23 @@ svg .el{font:500 12px "Inter",sans-serif}
 
 <!-- ================= DATABASE ================= -->
 <section id="db">
-  <header><h2>5 · Database changes</h2><p class="note">One <code>globalyapp</code> migration and one twin pair (<code>business/</code> + <code>institution/</code>). No new tables. You run the migrations; nothing here runs them.</p></header>
+  <header><h2>5 · Database changes</h2><p class="note">Two <code>globalyapp</code> migrations and one twin pair (<code>business/</code> + <code>institution/</code>). No new tables. You run the migrations; nothing here runs them.</p></header>
   <div class="tbl-title"><h3 style="font-size:14px">globalyapp.ai_counselor_messages</h3></div>
   <div class="tablebox"><table>
     <thead><tr><th>Column / constraint</th><th>Change</th><th>Definition</th><th>Why</th></tr></thead>
     <tbody>
       <tr><td class="col">ai_messages_role_check</td><td><span class="tag chg">changed</span></td><td><code>role IN ('user','assistant','agent')</code></td><td>Staff replies are never shown as AI.</td></tr>
       <tr><td class="col">sender_user_id, sender_name</td><td><span class="tag new">new</span></td><td><code>integer NULL</code>, <code>text NULL</code></td><td>Sender from the JWT; the name is saved so the widget never looks across schemas.</td></tr>
-      <tr><td class="col">ai_messages_agent_sender_check</td><td><span class="tag new">new</span></td><td><code>(role = 'agent') = (sender_user_id IS NOT NULL)</code></td><td>Every agent row has a sender.</td></tr>
+      <tr><td class="col">ai_messages_agent_sender_check</td><td><span class="tag new">new</span></td><td><code>(role = 'agent') = (sender_name IS NOT NULL)</code></td><td>Every agent row has a sender.</td></tr>
       <tr><td class="col">attachments</td><td>reused</td><td><code>jsonb</code> (exists, unused)</td><td>Staff attachments.</td></tr>
+    </tbody>
+  </table></div>
+  <div class="tbl-title"><h3 style="font-size:14px">globalyapp.ai_embed_configs</h3><span class="mono">20261001_002</span></div>
+  <div class="tablebox"><table>
+    <thead><tr><th>Column / constraint</th><th>Change</th><th>Definition</th><th>Why</th></tr></thead>
+    <tbody>
+      <tr><td class="col">position</td><td><span class="tag new">new</span></td><td><code>text NOT NULL DEFAULT 'right' CHECK (position IN ('left','right'))</code></td><td>Launcher corner as a widget setting. Returned by <code>/embed/resolve</code> and read by <code>embed.js</code>.</td></tr>
+      <tr><td class="col">logo_url</td><td>unused</td><td><code>text</code> (kept)</td><td>No longer written or shown: the bot is always Aly. Left in place to avoid a destructive migration.</td></tr>
     </tbody>
   </table></div>
   <div class="tbl-title"><h3 style="font-size:14px">&lt;tenant&gt;.ai_widget_visitors</h3><span class="mono">twin migrations</span></div>
@@ -216,10 +227,10 @@ svg .el{font:500 12px "Inter",sans-serif}
     <tbody>
       <tr><td class="col">handled_by_user_id, handled_by_name, handled_at</td><td><span class="tag new">new</span></td><td><code>integer</code>, <code>text</code>, <code>timestamptz</code>, all NULL; id and name set together (CHECK)</td><td>Who is answering, and the 15-minute idle clock.</td></tr>
       <tr><td class="col">handoff_requested_at</td><td><span class="tag new">new</span></td><td><code>timestamptz NULL</code></td><td>The visitor asked for a person; the AI is paused while it's set. Drives "Wants a person".</td></tr>
-      <tr><td class="col">resolved_at, resolved_by_user_id</td><td><span class="tag new">new</span></td><td><code>timestamptz NULL</code>, <code>integer NULL</code></td><td>Staff Resolve, kept apart from <code>conversation_state</code>.</td></tr>
+      <tr><td class="col">resolved_at, resolved_by_user_id, resolved_by_name</td><td><span class="tag new">new</span></td><td><code>timestamptz NULL</code>, <code>integer NULL</code>, <code>text NULL</code></td><td>Staff Resolve, kept apart from <code>conversation_state</code>.</td></tr>
       <tr><td class="col">unread_count</td><td><span class="tag new">new</span></td><td><code>integer NOT NULL DEFAULT 0</code></td><td>One counter per org.</td></tr>
       <tr><td class="col">rating, rating_comment, rated_at</td><td><span class="tag new">new</span></td><td><code>smallint NULL CHECK (rating BETWEEN 1 AND 5)</code>, <code>text NULL</code> (≤ 1000), <code>timestamptz NULL</code></td><td>End-of-chat rating. One per conversation; a later rating replaces it.</td></tr>
-      <tr><td class="col">summary</td><td><span class="tag new">new</span></td><td><code>jsonb NULL</code> → <code>{ text, topics[], next_step }</code></td><td>Today the worker generates the summary for the email and throws it away (only <code>summary_status</code> is kept). Storing it feeds the Chat summary card.</td></tr>
+      <tr><td class="col">summary</td><td><span class="tag new">new</span></td><td><code>jsonb NULL</code> → <code>{ text, topics[], generated_at }</code></td><td>Today the worker generates the summary for the email and throws it away (only <code>summary_status</code> is kept). Storing it feeds the Chat summary card.</td></tr>
     </tbody>
   </table></div>
   <p class="note">Every existing writer (<code>recordTurn</code>, <code>recordContact</code>, <code>recordProfile</code>, the summary worker) must leave the new columns alone, except that <code>recordTurn</code> increments <code>unread_count</code> and clears <code>resolved_at</code>. <code>status</code> stays GENERATED ALWAYS and out of every write. The activity timeline needs no table of its own: it is derived from these timestamps plus the transcript (see section 9 for the limit).</p>
@@ -267,10 +278,10 @@ if (humanActive(visitor) || waitingForHuman(visitor)) {
   <span class="cm">// store the user row, unread+1, SSE handoff/handover, [DONE] — no RAG, no LLM, no credits</span>
 }</pre>
     <ul>
-      <li><strong>Detecting "I want a person":</strong> the existing conclusion judge (<code>judgeConclusion</code>, already a separate call) gains a <code>wants_human</code> boolean. It's a separate call from the reply on purpose: a hidden instruction inside the reply gets dropped on busy turns and by the fallback model. Only when <code>wants_human</code> is true, and handover is on for the widget, does the server set <code>handoff_requested_at</code> and send the fixed "I've asked the team to join" line as its own message.</li>
+      <li><strong>Detecting "I want a person"</strong> (changed while building): a separate check, <code>judgeWantsHuman</code> in <code>lib/handover-detect.ts</code>, runs <em>before</em> RAG and the reply. A regex decides whether a message could be a request at all; only those messages cost a model call. The plan's version extended <code>judgeConclusion</code>, which runs only on some turns and only after the reply, so the AI would already have answered "can I talk to someone?" itself. When the check says yes, the server sets <code>handoff_requested_at</code>, streams the fixed "I've asked our admissions team to join" line as its own message, and sends no AI reply and uses no credits.</li>
       <li><strong>The AI never offers a person:</strong> the system prompt says not to suggest contacting the team, and no chip may offer it. Handover depends only on what the visitor writes.</li>
       <li>History sent to the model maps <code>agent → model</code>, so after Resume the AI treats staff replies as its own side.</li>
-      <li><code>chat-summary.worker</code> saves <code>{ text, topics, next_step }</code> into <code>summary</code> when it generates the email, and labels agent turns ("Advisor (Alex):") in the transcript it summarises.</li>
+      <li><code>chat-summary.worker</code> also refreshes the visitor page's summary on each sweep (<code>dueForSummaryQuery</code>: quiet 30 minutes for the first one, then every 24 hours with new activity only). It's a staff-facing, third-person prompt, at most 10 model calls per tenant per pass. A failed generation keeps the old text and waits for the next window. The emailed recap labels agent turns ("Alex Morgan (admissions team): …").</li>
       <li>Contact card heading in <code>guest.routes.ts:354</code>: "Want a copy of this conversation?" → "Want a summary of this conversation?".</li>
     </ul>
   </div>
@@ -283,14 +294,15 @@ if (humanActive(visitor) || waitingForHuman(visitor)) {
     <thead><tr><th>Area / files</th><th>Change</th></tr></thead>
     <tbody>
       <tr><td>business/messages/** <span class="tag done">built</span></td><td>Takeover UI: header controls, staff bubbles, handover lines, composer, visitor panel, unread, filters, polling, widget switch, Channels page. Inbox pinned to AI Conversations.</td></tr>
-      <tr><td>business/messages/components/inbox-channel-bar.tsx</td><td>Right-hand button: "Channels" → <strong>"⚙ Widget"</strong> linking to <code>/business/ai-widget</code>.</td></tr>
+      <tr><td>business/messages/components/inbox-channel-bar.tsx</td><td>Right-hand button: "Channels" → <strong>"⚙ Widget"</strong> linking to <code>/business/messages/widget</code>.</td></tr>
       <tr><td>business/messages (row, header, panel, utils)</td><td>Add the <strong>"Wants a person"</strong> state: amber pill, sorted first, header strip "Priya asked for a person", and a filter chip.</td></tr>
       <tr><td>business/const/index.ts</td><td>Menu order, the new Contacts group, removal of "AI embed" from Settings and of Visitors from Business.</td></tr>
       <tr><td>business/contacts/visitors/{page,layout}.tsx <span class="tag new">new</span></td><td>Renders the existing <code>VisitorsTab</code>.</td></tr>
-      <tr><td>business/settings/ai-embed/page.tsx</td><td>Redirects to <code>/business/ai-widget</code>.</td></tr>
-      <tr><td>business/ai-widget/components/ai-widget-view.tsx</td><td>"← Inbox" link; Inbox highlighted in the menu.</td></tr>
+      <tr><td>business/settings/ai-embed/page.tsx, business/ai-widget/page.tsx</td><td>Redirect to <code>/business/messages/widget</code>.</td></tr>
+      <tr><td>business/messages/widget/page.tsx <span class="tag new">new</span></td><td>The widget settings page with "← Inbox"; Inbox is highlighted in the menu.</td></tr>
+      <tr><td>business/ai-widget/components/create-widget-dialog.tsx, app/aly-orb/*, components/aly-orb-icon.tsx, public/embed.js</td><td>Logo URL field removed; the brand colour picker previews Aly in that colour. The widget header and the launcher draw Aly from <code>/aly-orb?c=HEX</code>.</td></tr>
       <tr><td>business/ai-widget/components/visitor-detail-view.tsx</td><td>Header shows the email only; <strong>Open conversation</strong> button (→ Inbox with this visitor open); new two-column layout.</td></tr>
-      <tr><td>business/ai-widget/components/visitor-detail-cards.tsx + 2 new cards</td><td>Conversation card gains Handled by and Chat rating. New <strong>ChatSummaryCard</strong> (text, topics, next step, emailed / owed) and <strong>ActivityTimeline</strong> (newest first, derived from timestamps and the transcript).</td></tr>
+      <tr><td>business/ai-widget/components/visitor-detail-cards.tsx + 2 new cards</td><td>Conversation card gains Handled by and Chat rating. New <strong>ChatSummaryCard</strong> (text, topics, emailed / owed) and <strong>ActivityTimeline</strong> (newest first, derived from timestamps and the transcript).</td></tr>
       <tr><td>embed/[key]/components/* (the visitor's widget)</td><td>Staff bubbles and "Alex is replying" header, a 5 s poll, the waiting card, the handover and handoff SSE events, no empty AI bubble, the rating card after the end card.</td></tr>
       <tr><td>ai/{apis/types.ts, components/chat-message.tsx}</td><td><code>MessageRole</code> gains <code>agent</code>, with an agent branch in the shared renderer.</td></tr>
     </tbody>
@@ -301,13 +313,13 @@ if (humanActive(visitor) || waitingForHuman(visitor)) {
 <section id="phases">
   <header><h2>8 · Phases, each shippable</h2></header>
   <ol class="steps">
-    <li class="built"><strong>Inbox takeover UI on mock data.</strong> Done; still to commit.</li>
-    <li><strong>Navigation (frontend only).</strong> Menu order, Contacts → Visitors, widget page via the Inbox Widget button, Settings item removed with a redirect. Can ship now; it needs no backend.</li>
-    <li><strong>Takeover backend.</strong> Migrations, <code>agent</code> role, the handoff check with 15-minute idle, the dashboard endpoints, history mapping. Switch the Inbox from mock to real.</li>
-    <li><strong>Widget receives staff replies.</strong> Agent bubbles, the poll, the handoff event, "Alex is replying".</li>
-    <li><strong>Visitor asks for a person.</strong> <code>wants_human</code> in the judge, <code>handoff_requested_at</code>, waiting card, "Wants a person" in the Inbox, 15-minute expiry, staff notification (see open questions).</li>
-    <li><strong>Ratings and summary.</strong> <code>POST /guest/rating</code>, the rating card, summary storage in the worker, contact card wording.</li>
-    <li><strong>Visitor detail page.</strong> New layout, Open conversation, email-only header, Chat summary and Activity timeline cards.</li>
+    <li class="built"><strong>Inbox takeover UI on mock data.</strong> Done and committed.</li>
+    <li class="built"><strong>Navigation (frontend only).</strong> Menu order, Contacts → Visitors, widget page via the Inbox Widget button, Settings item removed with a redirect. Can ship now; it needs no backend.</li>
+    <li class="built"><strong>Takeover backend.</strong> Migrations, <code>agent</code> role, the handoff check with 15-minute idle, the dashboard endpoints, history mapping. Switch the Inbox from mock to real.</li>
+    <li class="built"><strong>Widget receives staff replies.</strong> Agent bubbles, the poll, the handoff event, "Alex is replying".</li>
+    <li class="built"><strong>Visitor asks for a person.</strong> The pre-reply <code>judgeWantsHuman</code> check, <code>handoff_requested_at</code>, waiting card, "Wants a person" in the Inbox, 15-minute expiry, staff notification (see open questions).</li>
+    <li class="built"><strong>Ratings and summary.</strong> <code>POST /guest/rating</code>, the rating card, summary storage in the worker, contact card wording.</li>
+    <li class="built"><strong>Visitor detail page.</strong> New layout, Open conversation, email-only header, Chat summary and Activity timeline cards.</li>
   </ol>
   <p class="note">Checks for every phase: backend <code>tsc --noEmit</code>; frontend tsc and eslint; you run the migrations and DB tests locally. Backend tests to add: the handoff check skips the LLM and billing, a spoofed role is still stored as <code>agent</code>, the agent CHECK rejects a missing sender, both 15-minute expiries, a rating before the chat has ended is refused, and <code>wants_human</code> is false for "thanks, that's all".</p>
 </section>
@@ -318,11 +330,12 @@ if (humanActive(visitor) || waitingForHuman(visitor)) {
   <div class="tablebox"><table>
     <thead><tr><th>Item</th><th>Risk / question</th><th>Proposal</th></tr></thead>
     <tbody>
-      <tr><td><span class="tag q">question</span> Staff notification</td><td>When a visitor asks for a person, who hears about it and how? Today nothing outside the Inbox would show it.</td><td>v1: "Wants a person" flag and unread in the Inbox, plus an entry under the notification bell for every org member. Email or push later.</td></tr>
-      <tr><td><span class="tag q">question</span> Office hours</td><td>What should the visitor see when they ask for a person outside office hours?</td><td>The waiting card says when the team is back, and the AI keeps answering in the meantime.</td></tr>
+      <tr><td><span class="tag q">question</span> Staff notification</td><td>When a visitor asks for a person, who hears about it and how? Today nothing outside the Inbox would show it.</td><td>Built: the "Wants a person" flag, sorted to the top, plus a filter chip and unread. <strong>Not built:</strong> the notification-bell entry, which needs a notification type of its own. Say if v1 needs it.</td></tr>
+      <tr><td><span class="tag q">question</span> Office hours</td><td>What should the visitor see when they ask for a person outside office hours?</td><td>Not built: there are no office-hours settings, so the waiting card always says someone will reply shortly, and the 15-minute expiry hands the chat back to the AI. Needs office hours first.</td></tr>
       <tr><td><span class="tag q">question</span> Widget switch permission</td><td>Any member can pause the widget today; GlobalyOS limits it to admins and owners.</td><td>Your call. Takeover stays open to every member either way.</td></tr>
-      <tr><td><span class="tag q">question</span> Other routes to the widget page</td><td>The portal's "AI assistant" tile also links to <code>/business/ai-widget</code>, so the Inbox button isn't literally the only way in.</td><td>Keep the tile (it's a shortcut, not a menu item), or point it at the Inbox. Your call.</td></tr>
-      <tr><td><span class="tag q">question</span> Summaries without an email</td><td>Summaries are only generated for visitors who gave an email, so most cards would say "no summary".</td><td>Generate one for every ended chat (costs one model call each), or show "No summary — the visitor didn't ask for one".</td></tr>
+      <tr><td><span class="tag q">question</span> Other routes to the widget page</td><td>The portal's "AI assistant" tile also opens the widget page, so the Inbox button isn't literally the only way in.</td><td>Built: the tile now points at <code>/business/messages/widget</code>. Remove it if you want the Inbox to be the only way in.</td></tr>
+      
+      
       <tr><td>Judge misreads intent</td><td>"Is there a person I can email?" isn't a handover request, but it might be read as one.</td><td>Test phrases for the judge, both should-hand-over and shouldn't; the 15-minute expiry limits the damage either way.</td></tr>
       <tr><td>Takeover while the AI is streaming</td><td>That AI reply still lands after the takeover.</td><td>Accepted for v1; the "joined" line makes the order clear.</td></tr>
       <tr><td>Derived timeline</td><td>With single columns, an earlier takeover that was later handed back only survives in the transcript; repeated handover requests show only the latest.</td><td>Good enough for v1. Add an events table if the team needs a full audit trail.</td></tr>

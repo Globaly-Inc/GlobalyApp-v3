@@ -11,6 +11,8 @@ export type EmbedConfig = {
   display_name: string | null;
   logo_url: string | null;
   brand_color: string | null;
+  /** Bottom corner of the launcher on the customer's site. */
+  position: WidgetPosition;
   custom_instructions: string | null;
   /** Panel copy: what the counsellor opens with, and the line under its name. */
   greeting: string | null;
@@ -23,10 +25,13 @@ export type EmbedConfig = {
   updated_at: string;
 };
 
+export type WidgetPosition = "left" | "right";
+
 export type CreateEmbedConfigInput = {
   display_name?: string;
   logo_url?: string;
   brand_color?: string;
+  position?: WidgetPosition;
   custom_instructions?: string;
   greeting?: string;
   subtitle?: string;
@@ -38,6 +43,7 @@ export type UpdateEmbedConfigInput = {
   display_name?: string | null;
   logo_url?: string | null;
   brand_color?: string | null;
+  position?: WidgetPosition;
   custom_instructions?: string | null;
   greeting?: string | null;
   subtitle?: string | null;
@@ -127,7 +133,47 @@ export type WidgetVisitor = {
   study_preference: string | null;
   summary_status: "pending" | "processing" | "sent" | "failed" | null;
   summary_sent_at: string | null;
+  /** When the visitor ended the chat. Optional until every tenant has the column in the list. */
+  end_confirmed_at?: string | null;
+  /** End-of-chat faces, 1 (😞) to 5 (😍), and the optional "what could we do better". */
+  rating?: number | null;
+  rating_comment?: string | null;
+  rated_at?: string | null;
+  /**
+   * Written for staff by the summary worker, for every chat: first after 30 quiet minutes, then
+   * at most daily and only if there was activity since. `text` is null when the chat was too short.
+   */
+  /** The CONTACT summary: the whole person, from their profile and every chat's summary. */
+  summary?: StaffSummary | null;
 } & ConversationControl;
+
+/** A staff-facing summary — a visitor's contact summary, or one chat's own. */
+export type StaffSummary = {
+  /** Chat summaries only: a few words naming the topic ("Scholarships for the MEng"). */
+  title?: string | null;
+  /** One or two sentences; `**bold**` marks the key facts. */
+  text: string | null;
+  /** Topics the student raised that are still unanswered. */
+  open?: string[];
+  next_step?: string | null;
+  /** The course the chat (or the most recent chat) ended on. */
+  program?: { name: string; city?: string | null } | null;
+  topics?: string[];
+  /** Contact summaries only: what it was built from. */
+  chat_count?: number;
+  detail_count?: number;
+  generated_at?: string;
+};
+
+/** One chat with the widget. Ending it closes it; the visitor's next visit starts a new one. */
+export type VisitorChat = {
+  id: number;
+  started_at: string;
+  ended_at: string | null;
+  message_count: number;
+  /** Refreshed after every message. Null until the chat has a real exchange. */
+  summary: StaffSummary | null;
+};
 
 /** Tally per tab, honouring the current search — so a tab never promises rows it won't show. */
 export type VisitorCounts = Record<VisitorStatusFilter, number>;
@@ -190,6 +236,10 @@ export type VisitorMessage = {
   sender_name?: string | null;
   /** Agent turns only. Signed URLs, like enquiry chat attachments. */
   attachments?: MessageAttachment[];
+  /** Which chat this message belongs to. */
+  session_id?: number;
+  /** Set on a chat's first message in the transcript, so the Inbox can draw a divider there. */
+  chat?: VisitorChat;
 };
 
 /**
@@ -206,10 +256,25 @@ export type ConversationControl = {
   handled_by_me?: boolean;
   /** The handler's last activity. The server hands the chat back to the AI 15 minutes after it. */
   handled_at?: string | null;
+  /** The visitor asked for a person and nobody has joined yet. The AI is paused meanwhile. */
+  handoff_requested_at?: string | null;
   resolved_at?: string | null;
   resolved_by_name?: string | null;
   /** Visitor messages since staff last opened or answered. One counter per org. */
   unread_count?: number;
+};
+
+/**
+ * A staff-only note on a visitor. Never reaches the visitor or the AI — it lives in its own
+ * table, not in the transcript. Shown inline in the Inbox, interleaved by time.
+ */
+export type VisitorNote = {
+  id: number;
+  author_name: string;
+  content: string;
+  /** Signed URLs, like a staff reply's. Absent on a schema behind 20261002_002. */
+  attachments?: MessageAttachment[];
+  created_at: string;
 };
 
 export type SendVisitorMessageResult = { message: VisitorMessage; control: ConversationControl };

@@ -14,6 +14,8 @@ export const mockVisitors: WidgetVisitor[] = [
     qualifications: null, language_tests: null, academic_tests: null, work_experiences: null,
     age: null, gender: null, nationality: null, nationality_raw: null, study_preference: null,
     summary_status: null, summary_sent_at: null,
+    // Asked for a person a minute ago — the "Wants a person" case, sorted to the top.
+    handoff_requested_at: new Date(Date.now() - 60_000).toISOString(),
     unread_count: 1,
   },
   {
@@ -61,8 +63,18 @@ export const mockVisitors: WidgetVisitor[] = [
     age: "early 30s", gender: "female", nationality: null, nationality_raw: "Kashmiri",
     study_preference: "MBA",
     summary_status: "pending", summary_sent_at: null,
+    summary: {
+      text: "Career changer weighing an **MBA**, with a **GRE of 318** that meets the requirement and a **PTE booked for November**.",
+      open: ["Scholarships", "Fees"],
+      next_step: "Send scholarship options and the February application timeline.",
+      program: { name: "MBA", city: "Sydney" },
+      topics: ["MBA"],
+      chat_count: 2,
+      detail_count: 7,
+      generated_at: new Date(Date.now() - 20 * 60_000).toISOString(),
+    },
     // Taken over by a colleague — the "someone else has this" case.
     handled_by_user_id: 77, handled_by_name: "Manjil Shakya", handled_by_me: false,
-    handled_at: new Date(Date.now() - 26 * 3_600_000).toISOString(), unread_count: 2,
+    handled_at: new Date(Date.now() - 5 * 60_000).toISOString(), unread_count: 2,
   },
 ];

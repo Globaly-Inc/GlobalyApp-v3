@@ -1,5 +1,10 @@
+import type React from "react";
 import type { CourseCard, Message } from "@/app/ai/apis/types";
-import type { EmbedStoredMessage } from "../apis/types";
+import { uuid } from "@/lib/utils";
+import type { EmbedFile, EmbedStoredMessage } from "../apis/types";
+
+/** The widget's message: the shared one, plus the signed files a staff member sent. */
+export type WidgetMessage = Message & { files?: EmbedFile[] };
 
 /**
  * A stored turn from `/guest/session` in the shape the shared chat renderer wants.
@@ -9,8 +14,10 @@ import type { EmbedStoredMessage } from "../apis/types";
  * mapping. Cards come back in the backend's prompt format and are converted by the api
  * layer, which owns that mapping already.
  */
-export function toMessage(row: EmbedStoredMessage, cards: CourseCard[]): Message {
+export function toMessage(row: EmbedStoredMessage, cards: CourseCard[]): WidgetMessage {
   return {
+    sender_name: row.sender_name ?? null,
+    files: row.role === "agent" ? (row.attachments as EmbedFile[] | undefined)?.filter((f) => f?.url) : undefined,
     id: row.id,
     session_id: 0,
     role: row.role,
@@ -21,6 +28,18 @@ export function toMessage(row: EmbedStoredMessage, cards: CourseCard[]): Message
     feedback: null,
     created_at: row.created_at,
   };
+}
+
+/** "217 100% 62%" — the raw triplet shape globals.css keeps --gold in. */
+function hslTriplet([r, g, b]: readonly [number, number, number]): string {
+  const [R, G, B] = [r / 255, g / 255, b / 255];
+  const max = Math.max(R, G, B);
+  const min = Math.min(R, G, B);
+  const l = (max + min) / 2;
+  const d = max - min;
+  const s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+  const h = d === 0 ? 0 : max === R ? ((G - B) / d + 6) % 6 : max === G ? (B - R) / d + 2 : (R - G) / d + 4;
+  return `${Math.round(h * 60)} ${Math.round(s * 100)}% ${Math.round(l * 100)}%`;
 }
 
 /** WCAG relative luminance, for the readable-foreground test below. */
@@ -86,6 +105,44 @@ export function widgetTheme(brand?: string | null): {
       // every hover, so it gets the soft tint instead.
       "--accent": rgba(0.1),
       "--accent-foreground": "var(--foreground)",
+      // --gold is a raw "h s% l%" triplet (globals.css) and tints the starters' glow.
+      "--gold": hslTriplet(rgb),
     } as React.CSSProperties,
   };
+}
+
+/**
+ * Staff replies the widget hasn't shown yet, appended in order.
+ *
+ * Only agent rows: the visitor's own turns and the AI's replies already arrived through their own
+ * send (with temporary ids), so taking those from the poll too would show them twice.
+ */
+export function withNewAgentRows(
+  prev: WidgetMessage[],
+  stored: EmbedStoredMessage[],
+  toCards: (cards: EmbedStoredMessage["cards"]) => CourseCard[],
+): WidgetMessage[] {
+  const seen = new Set(prev.map((m) => m.id));
+  const fresh = stored.filter((row) => row.role === "agent" && !seen.has(row.id));
+  return fresh.length ? [...prev, ...fresh.map((row) => toMessage(row, toCards(row.cards)))] : prev;
+}
+
+const FINGERPRINT_KEY = "globaly_embed_fp";
+
+/** This browser's stable widget identity (never sent anywhere but this widget's own API). */
+export function getFingerprint(): string {
+  // The host page's iframe gets storage partitioned by top-level site, so the expanded tab
+  // has its own localStorage and would start a blank thread. The expand link hands the
+  // iframe's fingerprint over in the hash (never sent to a server); adopt it, then drop it.
+  const handed = new URLSearchParams(location.hash.slice(1)).get("fp");
+  if (handed) {
+    localStorage.setItem(FINGERPRINT_KEY, handed);
+    history.replaceState(null, "", location.pathname + location.search);
+  }
+  let fp = localStorage.getItem(FINGERPRINT_KEY);
+  if (!fp) {
+    fp = uuid();
+    localStorage.setItem(FINGERPRINT_KEY, fp);
+  }
+  return fp;
 }

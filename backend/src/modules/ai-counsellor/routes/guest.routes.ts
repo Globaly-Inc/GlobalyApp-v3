@@ -7,11 +7,16 @@ import {
   MessageIdParamSchema,
   GuestMessageSchema,
   GuestMigrateSchema,
+  GuestRatingSchema,
   GuestSessionQuerySchema,
 } from "../schemas/chat.schema.js";
 import * as guestService from "../services/guest.service.js";
 import * as embedService from "../services/embed.service.js";
 import * as visitorService from "../services/visitor.service.js";
+import * as takeover from "../services/takeover.service.js";
+import * as mediaService from "../../enquiries/services/message-media.service.js";
+import { judgeWantsHuman } from "../lib/handover-detect.js";
+import { refreshChatSummary } from "../services/chat-summaries.service.js";
 import * as embedRepo from "../repositories/embed.repository.js";
 import * as sessionsRepo from "../repositories/sessions.repository.js";
 import * as messagesRepo from "../repositories/messages.repository.js";
@@ -58,7 +63,10 @@ const SESSION_RATE = { max: 30, timeWindow: "1 minute", hook: "preHandler" } as 
 /** Tighter than the rest: a visitor answers a card once, maybe twice if they mistype. Shared
  *  with /guest/conversation-end, which is the same shape of one-off deliberate answer. */
 const CONTACT_RATE = { max: 6, timeWindow: "1 minute", hook: "preHandler" } as const;
-/** Leave beacons fire on every tab hide, which a visitor can do repeatedly without meaning anything. */
+
+/** Fixed copy, its own message — never appended to model text. */
+const HANDOVER_LINE =
+  "I've asked our admissions team to join this chat. Someone will reply here as soon as they can — you can keep typing in the meantime.";
 
 /**
  * `embed_key:ip`, falling back to IP for a plain (non-widget) guest.
@@ -87,7 +95,8 @@ async function persistVisitorTurn(
   sessionId: number,
   turn: {
     content: string;
-    answer: string;
+    /** Null while a person handles the chat or is being waited for: the visitor's row only. */
+    answer: string | null;
     sources: unknown[];
     cards: unknown[];
     chips: unknown[];
@@ -101,7 +110,7 @@ async function persistVisitorTurn(
   },
 ) {
   await messagesRepo.create({ session_id: sessionId, role: "user", content: turn.content });
-  await messagesRepo.create({
+  if (turn.answer !== null) await messagesRepo.create({
     session_id: sessionId,
     role: "assistant",
     content: turn.answer,
@@ -127,6 +136,8 @@ async function persistVisitorTurn(
         sessionId,
       }),
     );
+    // Its own statement: a schema behind 20261001_001 must not lose the turn count above.
+    await visitorService.attempt("bumpUnread", () => takeover.bumpUnread(v.db, v.id));
   }
 }
 
@@ -177,7 +188,7 @@ export async function guestRoutes(app: FastifyInstance) {
       ? await visitorService.attempt("tenantDbFor", () => visitorService.tenantDbFor(embed.config))
       : null;
 
-    const visitor = embed && tenantDb && session && visitorKey
+    let visitor = embed && tenantDb && session && visitorKey
       ? await visitorService.attempt("resolveVisitor", () =>
           visitorService.resolveVisitor(tenantDb, {
             visitorKey,
@@ -187,7 +198,59 @@ export async function guestRoutes(app: FastifyInstance) {
         )
       : null;
 
+    // A session other than the one the visitor row last recorded means their previous chat
+    // ended and this message opened a new one: reset the per-chat state before deciding anything.
+    if (visitor && tenantDb && session && visitor.session_id != null && visitor.session_id !== session.id) {
+      const v = visitor;
+      const fresh = await visitorService.attempt("startNewChat", () => visitorService.startNewChat(tenantDb, v.id));
+      if (fresh) visitor = fresh;
+    }
+
     const nextCount = (visitor?.message_count ?? 0) + 1;
+
+    // Who answers this message — the AI, a staff member, or nobody yet because the visitor is
+    // waiting for one. Stale claims go first, so a staff member who went quiet 15 minutes ago
+    // hands the chat straight back to the AI on this very message.
+    const control = visitor ? takeover.whoAnswers(visitor) : null;
+    if (control && visitor && tenantDb) {
+      await visitorService.attempt("expireTakeover", () =>
+        takeover.expire(tenantDb, visitor.id, { handler: control.expireHandler, request: control.expireRequest }),
+      );
+    }
+    // Before RAG and the reply, so the AI never answers "can I talk to someone?" itself. The regex
+    // inside keeps this to the few messages that could be asking.
+    const handedOver = !!(control?.answerer === "ai" && visitor && tenantDb && session &&
+      (await judgeWantsHuman(input.content)) &&
+      (await visitorService.attempt("requestHandover", () => takeover.requestHandover(tenantDb, visitor.id))));
+
+    if (control && visitor && tenantDb && session && (control.answerer !== "ai" || handedOver)) {
+      // No RAG, no model, no credits. The visitor's message is stored for the Inbox to show, and
+      // the widget is told who it is waiting on.
+      initSSE(reply);
+      try {
+        if (handedOver) {
+          writeData(reply, { choices: [{ delta: { content: HANDOVER_LINE } }] });
+          // Nobody watches the Inbox all day, and there is no in-app notification yet. Not
+          // awaited: the visitor's reply must not wait on a mail server.
+          takeover.notifyHandoverRequest(embed!.config, visitor, input.content)
+            .catch((err) => logger.warn("Handover email not sent", { visitorId: visitor.id, err: err instanceof Error ? err.message : String(err) }));
+        }
+        await persistVisitorTurn(session.id, {
+          content: input.content,
+          answer: handedOver ? HANDOVER_LINE : null,
+          sources: [], cards: [], chips: [], blocks: [],
+          visitor: { db: tenantDb, id: visitor.id, nextCount, prompted: null },
+        });
+        void refreshChatSummary(session.id, embed?.config.display_name ?? null, { db: tenantDb, visitorId: visitor.id });
+        if (control.answerer === "agent") writeEvent(reply, "handoff", { agent_name: visitor.handled_by_name ?? null });
+        else writeEvent(reply, "handover", {});
+      } catch (err) {
+        logger.error("Failed to persist a handed-over visitor message", { err: err instanceof Error ? err.message : String(err) });
+        writeData(reply, { choices: [{ delta: { content: "I'm sorry, something went wrong. Please try again." } }] });
+      }
+      writeDone(reply);
+      return;
+    }
 
     initSSE(reply);
 
@@ -196,7 +259,8 @@ export async function guestRoutes(app: FastifyInstance) {
       // question it is being asked — the same ordering chat.service relies on.
       const prevMessages = session ? await messagesRepo.findBySession(session.id, { limit: HISTORY_LIMIT }) : [];
       const history = prevMessages.map((m) => ({
-        role: m.role === "assistant" ? ("model" as const) : ("user" as const),
+        // Staff replies are the institution's side too, so after Resume AI the model reads them as its own.
+        role: m.role === "user" ? ("user" as const) : ("model" as const),
         parts: [{ text: m.content }],
       }));
 
@@ -454,7 +518,7 @@ export async function guestRoutes(app: FastifyInstance) {
       const org = embed?.config.display_name;
       if (prompted === "contact") {
         writeEvent(reply, "contact-prompt", {
-          heading: "Want a copy of this conversation?",
+          heading: "Want a summary of this conversation?",
           body: `Share your name and email and we'll send you a summary of everything we've covered${org ? ` about ${org}` : ""} — the programs, the details, and what to do next.`,
         });
       } else if (prompted === "ending") {
@@ -493,7 +557,12 @@ export async function guestRoutes(app: FastifyInstance) {
           ...(tenantDb && visitor
             ? { visitor: { db: tenantDb, id: visitor.id, nextCount, prompted } }
             : {}),
-        }).catch((err) => logger.error("Failed to persist visitor turn", { err: String(err) }));
+        })
+          // The chat's staff summary follows every turn, once the turn is stored.
+          .then(() => (embed
+            ? refreshChatSummary(session.id, embed.config.display_name, tenantDb && visitor ? { db: tenantDb, visitorId: visitor.id } : undefined)
+            : undefined))
+          .catch((err) => logger.error("Failed to persist visitor turn", { err: String(err) }));
       } else {
         guestService.createGuestSession({
           fingerprintHash,
@@ -531,10 +600,22 @@ export async function guestSessionRoutes(app: FastifyInstance) {
       guestService.visitorKey(query.fingerprint, query.embed_key),
       config.id,
     );
-    if (!session) return reply.send({ session_id: null, messages: [] });
+    if (!session) return reply.send({ session_id: null, messages: [], agent_name: null, waiting: false });
 
-    const messages = await messagesRepo.findBySession(session.id, { limit: HISTORY_LIMIT });
-    return reply.send({ session_id: session.id, messages });
+    const rows = await messagesRepo.findBySession(session.id, { limit: HISTORY_LIMIT });
+    // Staff attachments are private objects; sign them per read, like enquiry chat.
+    const messages = await Promise.all(rows.map(async (m) =>
+      m.role === "agent"
+        ? { ...m, attachments: await mediaService.withViewUrls(m.attachments as mediaService.MessageAttachment[]) }
+        : m,
+    ));
+    // Polled by the widget every few seconds, so the header and the waiting card follow the Inbox.
+    const db = await visitorService.attempt("tenantDbFor", () => visitorService.tenantDbFor(config));
+    const state = db
+      ? await visitorService.attempt("widgetState", () =>
+          takeover.widgetState(db, { visitorKey: guestService.visitorKey(query.fingerprint, query.embed_key), embedConfigId: config.id }))
+      : null;
+    return reply.send({ session_id: session.id, messages, agent_name: state?.agent_name ?? null, waiting: state?.waiting ?? false });
   });
 
   /**
@@ -619,6 +700,29 @@ export async function guestSessionRoutes(app: FastifyInstance) {
     return reply.send({ ok: true });
   });
 
+  /**
+   * The end-of-chat rating, after the visitor ended the chat. Public like the rest, so it takes
+   * the tight limit, and it is only accepted on an ended chat (see takeover.recordRating).
+   */
+  app.post("/guest/rating", {
+    config: { rateLimit: { ...CONTACT_RATE, keyGenerator: embedRateKey } },
+  }, async (req, reply) => {
+    const input = GuestRatingSchema.parse(req.body ?? {});
+    const config = await embedService.resolveActiveConfig(input.embed_key);
+    const db = await visitorService.attempt("tenantDbFor", () => visitorService.tenantDbFor(config));
+    if (db) {
+      await visitorService.attempt("recordRating", () =>
+        takeover.recordRating(db, {
+          visitorKey: guestService.visitorKey(input.fingerprint, input.embed_key),
+          embedConfigId: config.id,
+          rating: input.rating,
+          comment: input.comment,
+        }),
+      );
+    }
+    return reply.code(204).send();
+  });
+
   app.post("/guest/conversation-end", {
     config: { rateLimit: { ...CONTACT_RATE, keyGenerator: embedRateKey } },
   }, async (req, reply) => {
@@ -632,10 +736,13 @@ export async function guestSessionRoutes(app: FastifyInstance) {
       visitorService.recordConversationEnd(db, { visitorKey, embedConfigId: config.id, action: input.action }),
     );
 
-    // The finished chat is the third learning signal. Best-effort like everything above.
+    // The finished chat is the third learning signal, read BEFORE the chat is closed (it looks up
+    // the open chat). Then the chat closes, so the visitor's next visit starts a fresh one.
     if (input.action === "end") {
-      learningSignals.onConversationEnd(config, visitorKey)
+      await learningSignals.onConversationEnd(config, visitorKey)
         .catch((err) => logger.warn("Conversation-end learning not queued", { configId: config.id, err: String(err) }));
+      await sessionsRepo.endVisitorSession(visitorKey, config.id)
+        .catch((err) => logger.warn("Chat not closed", { configId: config.id, err: String(err) }));
     }
 
     // Tells the widget whether a summary is actually coming. A visitor who confirmed without

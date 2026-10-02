@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { WIDGET_SETTINGS_HREF } from "@/app/business/ai-widget/const";
 import { ArrowLeft, Globe } from "lucide-react";
 import { WidgetSwitch } from "../../components/widget-switch";
 import { UPCOMING_CHANNELS } from "../const";
@@ -40,7 +41,7 @@ export function ChannelsView() {
             <p className="text-sm text-muted-foreground">
               Live AI chat on your website. Your team can take over any conversation from the Inbox.
             </p>
-            <Link href="/business/ai-widget" className="text-xs font-medium text-primary hover:underline">
+            <Link href={WIDGET_SETTINGS_HREF} className="text-xs font-medium text-primary hover:underline">
               Widget settings →
             </Link>
           </div>

@@ -1,44 +1,39 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import Image from "next/image";
-import { Expand } from "lucide-react";
 import { ChatInput } from "@/app/ai/components/chat-input";
-import { ChatMessage, StreamingMessage } from "@/app/ai/components/chat-message";
+import { StreamingMessage } from "@/app/ai/components/chat-message";
 import { ThinkingIndicator } from "@/app/ai/components/thinking-indicator";
 import { SuggestedStarters } from "@/app/ai/components/suggested-starters";
-import { AlyOrbIcon } from "@/components/aly-orb-icon";
-import { Button } from "@/components/ui/button";
-import type { CourseCard, Message } from "@/app/ai/apis/types";
+import { CompareTray } from "@/app/(web)/search/components/compare-tray";
+import type { CourseCard } from "@/app/ai/apis/types";
 import { embedApi, type EmbedContactPrompt, type EmbedEndPrompt, type EmbedPublicConfig } from "../apis";
 import { ContactCaptureCard } from "./contact-capture-card";
 import { ConversationEndCard } from "./conversation-end-card";
+import { ThreadMessages } from "./thread-messages";
+import { WaitingCard } from "./waiting-card";
+import { WidgetHeader } from "./widget-header";
 // The backend streams the model's raw text, fences and all — it only strips them for the
 // copy it PERSISTS, so every client renders its own. The main chat does this at all three
 // of its render points (chat-messages.tsx, and both commits in ai-chat-slice); the widget
 // renders StreamingMessage directly and kept none of them, so the block JSON showed as code.
 import { stripStructuredBlocks } from "@/app/ai/utils";
-import { toMessage, widgetTheme } from "../utils";
-import { DEFAULT_WIDGET_NAME, embedStarters } from "../const";
-import { uuid } from "@/lib/utils";
+import { getFingerprint, toMessage, widgetTheme, withNewAgentRows, type WidgetMessage } from "../utils";
+import { DEFAULT_WIDGET_NAME, embedStarters, FP_MESSAGE, STARTED_MESSAGE } from "../const";
 
-const FINGERPRINT_KEY = "globaly_embed_fp";
+/** How often the open widget checks for staff replies. 12/min, inside the session route's 30/min. */
+const POLL_MS = 5_000;
 
-function getFingerprint(): string {
-  let fp = localStorage.getItem(FINGERPRINT_KEY);
-  if (!fp) {
-    fp = uuid();
-    localStorage.setItem(FINGERPRINT_KEY, fp);
-  }
-  return fp;
-}
 
 type EmbedChatViewProps = { embedKey: string };
 
 export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
   const [config, setConfig] = useState<EmbedPublicConfig | null>(null);
   const [configError, setConfigError] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<WidgetMessage[]>([]);
+  // Who is answering, from the server: a staff member's name, or waiting for one. Polled.
+  const [agentName, setAgentName] = useState<string | null>(null);
+  const [waiting, setWaiting] = useState(false);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [streamText, setStreamText] = useState("");
@@ -59,16 +54,47 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
   // false) so prerender and client agree; nothing to subscribe to, the value never changes.
   const framed = useSyncExternalStore(() => () => {}, () => window.self !== window.top, () => false);
 
+  // Once there is a conversation (resumed or just begun), the host's teaser card has done its
+  // job. "*" for the same reason as CLOSE_MESSAGE: the host origin is unknown, and the word leaks nothing.
+  const hasConversation = messages.length > 0;
+  useEffect(() => {
+    if (framed && hasConversation) window.parent.postMessage({ type: STARTED_MESSAGE }, "*");
+  }, [framed, hasConversation]);
+
   useEffect(() => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
     embedApi.resolveConfig(embedKey).then(setConfig, (e: Error) => setConfigError(e.message));
+    // Inside a host page: hand our visitor id to embed.js, which keeps it in first-party storage
+    // and gives it back next visit — iframe storage alone is partitioned or wiped by some browsers.
+    if (window.parent !== window) window.parent.postMessage({ type: FP_MESSAGE, fp: getFingerprint() }, "*");
     // Resume the visitor's thread with this widget. Reopening the launcher used to show
     // an empty panel even though the backend had the conversation.
-    embedApi.getThread(embedKey, getFingerprint()).then(({ messages: stored }) => {
-      if (!stored.length) return;
-      setMessages(stored.map((row) => toMessage(row, embedApi.toCourseCards(row.cards))));
+    embedApi.getThread(embedKey, getFingerprint()).then((thread) => {
+      setAgentName(thread.agent_name ?? null);
+      setWaiting(thread.waiting ?? false);
+      if (!thread.messages.length) return;
+      setMessages(thread.messages.map((row) => toMessage(row, embedApi.toCourseCards(row.cards))));
     });
+  }, [embedKey]);
+
+  // Staff replies arrive from the Inbox, not as the answer to anything the visitor sent, so the
+  // open widget polls for them. Paused while a send is streaming and while the tab is hidden.
+  const sendingRef = useRef(false);
+  useEffect(() => {
+    sendingRef.current = sending;
+  }, [sending]);
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (sendingRef.current || document.visibilityState !== "visible") return;
+      embedApi.getThread(embedKey, getFingerprint()).then((thread) => {
+        if (sendingRef.current) return;
+        setAgentName(thread.agent_name ?? null);
+        setWaiting(thread.waiting ?? false);
+        setMessages((prev) => withNewAgentRows(prev, thread.messages, embedApi.toCourseCards));
+      });
+    }, POLL_MS);
+    return () => window.clearInterval(id);
   }, [embedKey]);
 
   useEffect(() => {
@@ -107,8 +133,13 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
           else if (event.type === "trace") { setTraceSteps((prev) => [...prev, event.step]); }
           else if (event.type === "contact-prompt") { setContactPrompt(event.prompt); }
           else if (event.type === "end-prompt") { setEndPrompt(event.prompt); }
+          else if (event.type === "handoff") { setAgentName(event.agentName); setWaiting(false); }
+          else if (event.type === "handover") { setWaiting(true); }
         },
       );
+      // A person is handling the chat or being waited for: the message was delivered, and there
+      // is no AI reply to draw — an empty bubble here would read as the AI saying nothing.
+      if (!text && !cards.length && !chips.length) return;
       setMessages((prev) => [
         ...prev,
         { id: -prev.length - 1, session_id: 0, role: "assistant", content: stripStructuredBlocks(text), cards, chips, blocks: [], feedback: null, created_at: new Date().toISOString() },
@@ -153,6 +184,10 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
       .catch(() => {});
   };
 
+  const rate = (rating: number, comment?: string) => {
+    embedApi.submitRating({ embed_key: embedKey, fingerprint: getFingerprint(), rating, comment });
+  };
+
   const skipContact = () => {
     // Optimistic: the card goes now and the decline is recorded in the background. If the
     // post fails the visitor simply gets asked again later, which is the same thing a
@@ -172,44 +207,29 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
   const theme = widgetTheme(config?.brand_color);
 
   return (
-    // theme.vars retints the SHARED chat components through semantic tokens — none of them is
-    // modified here, so the in-app Ask Aly chat keeps its own look.
-    <div className="flex h-dvh flex-col bg-background" style={theme.vars}>
-      {/* The brand owns the header surface rather than a 3px hairline: on a tenant's own site
-          this panel should read as theirs from the first frame. The foreground is measured
-          against that colour (widgetTheme.onAccent), so a dark navy and a bright yellow are both
-          legible without either tenant configuring anything. */}
-      <header
-        className="flex shrink-0 items-center gap-2.5 px-4 py-3"
-        style={{ background: theme.accent, color: theme.onAccent }}
-      >
-        {config?.logo_url ? (
-          <Image src={config.logo_url} alt={name} width={28} height={28} className="size-7 rounded" unoptimized />
-        ) : (
-          <AlyOrbIcon className="size-7" />
-        )}
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold">{name}</p>
-          {/* Only before the conversation starts — once there are turns the thread is the
-              subject, and a standing strapline is chrome. */}
-          {!isChatting && (
-            <p className="truncate text-xs opacity-80">
-              {config?.subtitle ?? "AI counsellor · powered by Globaly"}
-            </p>
-          )}
-        </div>
-        {framed && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Open in a new tab"
-            title="Open in a new tab"
-            render={<a href={`/embed/${encodeURIComponent(embedKey)}`} target="_blank" rel="noreferrer" />}
-          >
-            <Expand className="h-4 w-4" />
-          </Button>
-        )}
-      </header>
+    // The brand colour replaces the app's primary for everything inside the panel — buttons,
+    // chips, the heading, focus rings — so the widget reads as the institution's, not Globaly's.
+    <div className="flex h-dvh flex-col bg-background" data-widget-brand style={theme.vars}>
+      <WidgetHeader
+        embedKey={embedKey}
+        name={name}
+        brandColor={config?.brand_color}
+        framed={framed}
+        fingerprint={framed ? getFingerprint() : ""}
+        subtitle={
+          agentName
+            ? `${agentName} from the admissions team is replying`
+            : waiting
+              ? "Waiting for the admissions team"
+              : config?.subtitle ?? "AI counsellor · powered by Globaly"
+        }
+      />
+
+      {agentName && (
+        <p className="shrink-0 border-b bg-primary/10 px-4 py-2 text-xs text-primary">
+          👋 You&apos;re chatting with a person from the admissions team.
+        </p>
+      )}
 
       {isChatting ? (
         <div className="flex-1 overflow-y-auto">
@@ -217,9 +237,7 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
               panel the max-width is inert; in the expanded tab it stops the thread from
               running the full screen width. */}
           <div className="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-6 sm:px-6">
-            {messages.map((m) => (
-              <ChatMessage key={m.id} message={m} onChipClick={send} />
-            ))}
+            <ThreadMessages messages={messages} onChipClick={send} joinedAgent={agentName} />
             {sending && !streamText && <ThinkingIndicator steps={traceSteps} />}
             {sending && streamText && (
               <StreamingMessage content={stripStructuredBlocks(streamText)} cards={streamCards} chips={streamChips} onChipClick={send} />
@@ -227,11 +245,13 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
             {contactPrompt && !sending && (
               <ContactCaptureCard prompt={contactPrompt} onSubmit={submitContact} onSkip={skipContact} />
             )}
+            {waiting && !agentName && !sending && <WaitingCard />}
             {endPrompt && !sending && (
               <ConversationEndCard
                 prompt={endPrompt}
                 onEnd={endConversation}
                 onContinue={continueConversation}
+                onRate={rate}
               />
             )}
             <div ref={bottomRef} className="h-2" />
@@ -263,6 +283,8 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
       )}
 
       <ChatInput value={input} onChange={setInput} onSend={send} disabled={sending} />
+      <p className="shrink-0 pb-2 text-center text-[11px] text-muted-foreground">Powered by Globaly · AI can make mistakes</p>
+      <CompareTray />
     </div>
   );
 }

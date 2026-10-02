@@ -55,6 +55,8 @@ export const EmbedConfigCreateSchema = z.object({
   display_name: z.string().trim().min(1).max(120).optional(),
   logo_url: z.string().url().max(500).optional(),
   brand_color: HexColour.optional(),
+  /** Bottom corner of the launcher on the customer's site. */
+  position: z.enum(["left", "right"]).optional(),
   custom_instructions: z.string().trim().max(2000).optional(),
   greeting: z.string().trim().min(1).max(300).optional(),
   subtitle: z.string().trim().min(1).max(120).optional(),
@@ -68,6 +70,7 @@ export const EmbedConfigUpdateSchema = z.object({
   display_name: z.string().trim().min(1).max(120).nullish(),
   logo_url: z.string().url().max(500).nullish(),
   brand_color: HexColour.nullish(),
+  position: z.enum(["left", "right"]).optional(),
   custom_instructions: z.string().trim().max(2000).nullish(),
   greeting: z.string().trim().min(1).max(300).nullish(),
   subtitle: z.string().trim().min(1).max(120).nullish(),
@@ -154,6 +157,14 @@ export const GuestConversationEndSchema = z.object({
   embed_key: z.string().uuid(),
   fingerprint: z.string().min(1),
   action: z.enum(["end", "continue"]),
+});
+
+/** The five-face end-of-chat rating. The comment is optional and capped like the DB CHECK. */
+export const GuestRatingSchema = z.object({
+  embed_key: z.string().uuid(),
+  fingerprint: z.string().min(1),
+  rating: z.number().int().min(1).max(5),
+  comment: z.string().trim().max(1000).optional(),
 });
 
 export type CreditGrantInput = z.infer<typeof CreditGrantSchema>;

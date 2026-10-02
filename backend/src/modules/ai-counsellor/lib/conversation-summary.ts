@@ -6,7 +6,7 @@
 // enough shape to get wrong — pairing, dedupe and truncation.
 
 import type { ParsedCard } from "./card-parser.js";
-import type { ChatSummaryTurn } from "../../../shared/mail/templates.js";
+import type { ChatSummaryProgram, ChatSummaryTurn } from "../../../shared/mail/templates.js";
 
 /** Longest transcript we mail. A visitor who asked 80 questions does not want all 80 back. */
 export const MAX_TURNS = 40;
@@ -16,11 +16,14 @@ export interface SummarisableMessage {
   role: string;
   content: string;
   cards?: unknown;
+  sender_name?: string | null;
 }
 
 export interface ConversationSummary {
   turns: ChatSummaryTurn[];
   courses: string[];
+  /** The course card shown LAST — where the chat ended up — for the email's program block. */
+  program?: ChatSummaryProgram | null;
 }
 
 /**
@@ -35,6 +38,7 @@ export interface ConversationSummary {
 export function summariseConversation(messages: SummarisableMessage[]): ConversationSummary {
   const turns: ChatSummaryTurn[] = [];
   const courses = new Map<string, string>();
+  let program: ChatSummaryProgram | null = null;
   let question: string | null = null;
 
   for (const m of messages) {
@@ -47,13 +51,19 @@ export function summariseConversation(messages: SummarisableMessage[]): Conversa
 
     // An assistant message with no question before it is an opening greeting, not an answer.
     if (question !== null) {
-      turns.push({ question, answer: m.content });
+      // A staff reply after a takeover is still an answer, but must not read as the AI's.
+      const answer = m.role === "agent" ? `${m.sender_name ?? "Our team"} (admissions team): ${m.content}` : m.content;
+      turns.push({ question, answer });
       question = null;
     }
 
     const cards = (Array.isArray(m.cards) ? m.cards : []) as ParsedCard[];
     for (const c of cards) {
       if (!c?.name) continue;
+      program = {
+        name: c.name, institution: c.institution, city: c.city, duration: c.duration,
+        study_modes: c.study_modes, intakes: c.intakes,
+      };
       // Keyed on name + institution so two universities' "MSc Data Science" both survive,
       // while the same course repeated across five answers appears once.
       const key = `${c.name}|${c.institution ?? ""}`;
@@ -65,7 +75,7 @@ export function summariseConversation(messages: SummarisableMessage[]): Conversa
 
   // Keep the most recent exchanges: the tail is where the conversation got specific. Courses
   // are NOT trimmed with it — a program mentioned early is still one they were interested in.
-  return { turns: turns.slice(-MAX_TURNS), courses: [...courses.values()] };
+  return { turns: turns.slice(-MAX_TURNS), courses: [...courses.values()], program };
 }
 
 /** Longest transcript we feed the model. Beyond this the tail is what matters anyway. */
@@ -83,9 +93,12 @@ const SUMMARY_SYSTEM = [
   "mention one only where it explains a point.",
   "Cover only what the conversation actually contained. Never invent a course, fee, date or requirement.",
   "If the chat was too short to recap, say so in one sentence rather than padding.",
-  "Structure: one short opening line naming what they were looking for, then '- ' bullets —",
-  "one per distinct thing that was covered, in the order it came up — and finally, only if the",
-  "conversation genuinely established them, a few '- ' bullets of concrete next steps.",
+  "Structure: '- ' bullets only, no opening line — one per distinct thing that was covered, in the",
+  "order it came up — and finally, only if the conversation genuinely established them, a few",
+  "'- ' bullets of concrete next steps.",
+  "Start a bullet with '✓ ' instead of '- ' ONLY when the counsellor explicitly confirmed in the chat",
+  "that the student meets a specific stated requirement (e.g. their IELTS score meets the English",
+  "requirement). Never use ✓ for anything inferred, likely, or not stated in the chat.",
   "A bullet is one self-contained sentence carrying the actual detail (the figure, the date, the",
   "requirement), not a topic label: '- The certificate runs 39 weeks and costs USD 8,400.' rather",
   "than '- Duration and fees.'",
@@ -176,4 +189,97 @@ export function trimToCompleteSentence(text: string): string {
 
   const salvaged = trimmed.slice(0, cut + 1).trim();
   return salvaged.length >= MIN_SALVAGE_CHARS ? salvaged : "";
+}
+
+/**
+ * The visitor page's summary, written for STAFF (not the visitor): a brief, what's still open, and
+ * one next step. JSON so the card can lay each part out; `**bold**` marks the key facts.
+ */
+export const STAFF_SUMMARY_SYSTEM = [
+  "You summarise a website chat between a prospective student and a university's assistant, for the university's staff.",
+  "Return ONLY a JSON object, no prose, no code fence:",
+  '{"title":"…","brief":"…","open":["…"],"next_step":"…"}',
+  "title: at most six words naming what this chat was about (e.g. \"Scholarships for the MEng\"). No date, no name.",
+  "brief: 1 to 2 sentences, third person, under 280 characters — who the student is and the facts that matter",
+  "(background, scores, what they want). Wrap the key facts in **double asterisks**, at most four of them.",
+  "open: up to 4 one- or two-word topics the student raised that are still unanswered (e.g. \"Fees\", \"Application\"). [] if none.",
+  "next_step: one sentence telling the team what to do next, or \"\" if nothing is needed.",
+  "Only facts from the chat. Never invent a score, fee, date or requirement. Say a requirement is met only if the chat said so.",
+].join("\n");
+
+export interface StaffSummary {
+  title: string | null;
+  brief: string;
+  open: string[];
+  next_step: string | null;
+}
+
+const clip = (v: unknown, max: number) => (typeof v === "string" ? v.trim().slice(0, max) : "");
+
+/** The model's JSON, bounded and cleaned; null when it isn't usable, so the old summary stays. */
+export function parseStaffSummary(raw: string): StaffSummary | null {
+  const cleaned = raw.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+  let value: Record<string, unknown>;
+  try {
+    value = JSON.parse(cleaned) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  const brief = clip(value?.brief, 400);
+  if (!brief) return null;
+  const open = (Array.isArray(value.open) ? value.open : [])
+    .map((t) => clip(t, 30))
+    .filter(Boolean)
+    .slice(0, 4);
+  return { title: clip(value.title, 60) || null, brief, open, next_step: clip(value.next_step, 240) || null };
+}
+
+/**
+ * The CONTACT summary: the whole person, written from their profile and the summary of every chat
+ * they've had — never the raw transcripts, so it stays one short call however many chats there are.
+ */
+export const CONTACT_SUMMARY_SYSTEM = [
+  "You summarise one prospective student for a university's staff, from their profile and the summaries of every chat they've had on the website.",
+  "Return ONLY a JSON object, no prose, no code fence:",
+  '{"brief":"…","open":["…"],"next_step":"…"}',
+  "brief: 1 to 2 sentences, third person, under 300 characters — who they are, what they want, and how that moved across chats.",
+  "Wrap the key facts in **double asterisks**, at most four of them.",
+  "open: up to 4 one- or two-word topics still unanswered across all chats. [] if none.",
+  "next_step: one sentence telling the team what to do next, or \"\" if nothing is needed.",
+  "Only facts from the input. Never invent a score, fee, date or requirement.",
+].join("\n");
+
+export interface ContactSummaryInput {
+  profile: Record<string, unknown>;
+  chats: { title: string | null; started: string; ended: boolean; text: string }[];
+}
+
+/** The contact-summary prompt: profile facts that are set, then each chat's summary in order. */
+export function buildContactPrompt(input: ContactSummaryInput): string {
+  const facts = Object.entries(input.profile)
+    .filter(([, v]) => v != null && v !== "" && !(Array.isArray(v) && !v.length))
+    .map(([k, v]) => `- ${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`);
+  const chats = input.chats.map(
+    (c, i) => `Chat ${i + 1} (${c.started}${c.ended ? ", ended" : ", in progress"})${c.title ? ` — ${c.title}` : ""}:\n${c.text}`,
+  );
+  return `Profile:\n${facts.join("\n") || "- nothing stated"}\n\nChats:\n\n${chats.join("\n\n")}`;
+}
+
+/** One summary email per chat: the visitor's id alone allowed only one, ever. */
+export function summaryDedupKey(schema: string, visitorId: number, sessionId: number | null): string {
+  return `chat_summary:${schema}:${visitorId}:${sessionId ?? "none"}`;
+}
+
+/**
+ * The chat a summary email is for: the most recent chat the visitor ended since the last email,
+ * or, when none (the quiet fallback for an unconfirmed chat), the chat they're in.
+ */
+export function pickSummaryChat(
+  chats: { id: number; ended_at: Date | string | null }[],
+  lastSentAt: Date | string | null,
+  currentSessionId: number,
+): number {
+  const since = lastSentAt ? new Date(lastSentAt).getTime() : -Infinity;
+  const ended = chats.filter((c) => c.ended_at && new Date(c.ended_at).getTime() > since);
+  return ended.at(-1)?.id ?? currentSessionId;
 }

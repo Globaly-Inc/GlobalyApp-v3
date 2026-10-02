@@ -7,7 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Field, SectionCard } from "@/app/personal/profile/section-card";
 import { relativeTime } from "@/components/feed/utils";
 import {
-  CONTACT_STATUS_LABELS, CONVERSATION_STATE_LABELS, SUMMARY_STATUS_LABELS, VISITOR_STATUS_BADGE,
+  CONTACT_STATUS_LABELS, CONVERSATION_STATE_LABELS, RATING_FACES, SUMMARY_STATUS_LABELS, VISITOR_STATUS_BADGE,
 } from "../const";
 import type { WidgetVisitor } from "../apis/types";
 import { visitorNationality } from "../utils";
@@ -97,6 +97,12 @@ export function VisitorActivityCard({ visitor }: Readonly<{ visitor: WidgetVisit
           label="Conversation"
           value={CONVERSATION_STATE_LABELS[visitor.conversation_state] ?? visitor.conversation_state}
         />
+        <Field label="Handled by" value={visitor.handled_by_name ?? "AI assistant"} />
+        <Field
+          label="Chat rating"
+          value={visitor.rating ? `${RATING_FACES[visitor.rating - 1]?.emoji} ${RATING_FACES[visitor.rating - 1]?.label}` : null}
+        />
+        {visitor.rating_comment && <Field label="Their comment" value={visitor.rating_comment} />}
         {visitor.summary_status && (
           <Field
             label="Chat summary"

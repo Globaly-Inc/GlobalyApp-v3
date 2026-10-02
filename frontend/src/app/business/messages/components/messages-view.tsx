@@ -12,6 +12,7 @@ import { InboxChannelBar } from "./inbox-channel-bar";
 import { InboxListSidebar } from "./inbox-list-sidebar";
 import type { InboxKind } from "./inbox-kind-tabs";
 import type { WidgetVisitor } from "@/app/business/ai-widget/apis/types";
+import { aiWidgetApi } from "@/app/business/ai-widget/apis";
 import { getDraftCount, getServerDraftCount, subscribeDrafts } from "@/components/chat/draft-store";
 import { ChatEmptyState } from "./chat-empty-state";
 import { ChatSidebar } from "@/components/chat/chat-sidebar";
@@ -99,7 +100,11 @@ export function MessagesView() {
     dispatch(fetchThreads());
     // At mount, not on first switch: the All tab (the default) and every tab's count need it.
     dispatch(fetchEmbedChats());
-  }, [dispatch]);
+    // ?visitor=ID — the visitor page's "Open conversation". Fetched on its own because that
+    // visitor may not be on the first page of the list.
+    const visitorId = Number(searchParams.get("visitor"));
+    if (visitorId > 0) aiWidgetApi.getVisitor(visitorId).then(setEmbedOpen, () => {});
+  }, [dispatch, searchParams]);
 
   // Only a server round-trip when the term really changed — the sidebar's debounce fires on
   // mount and on every remount (a tab switch), with the term the list already reflects.

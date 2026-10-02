@@ -1,9 +1,12 @@
 import { masterKnex } from "../../../core/db/master-pool.js";
 
+/** `agent` is a staff member who took a widget chat over (20261001_001); the server sets it. */
+export type MessageRole = "user" | "assistant" | "agent";
+
 export interface MessageRow {
   id: number;
   session_id: number;
-  role: "user" | "assistant";
+  role: MessageRole;
   content: string;
   sources: unknown[];
   cards: unknown[];
@@ -15,6 +18,8 @@ export interface MessageRow {
   completion_tokens: number | null;
   total_tokens: number | null;
   latency_ms: number | null;
+  /** Agent rows only — a snapshot of the staff member's name, so the public widget never joins. */
+  sender_name: string | null;
   created_at: Date;
 }
 
@@ -24,13 +29,16 @@ const TABLE = "ai_counselor_messages";
 // 20260925_001 are internal to the learning pipeline and never leave through this list.
 const STUDENT_COLUMNS = [
   "id", "session_id", "role", "content", "sources", "cards", "chips", "blocks", "attachments",
-  "feedback", "prompt_tokens", "completion_tokens", "total_tokens", "latency_ms", "created_at",
+  "feedback", "prompt_tokens", "completion_tokens", "total_tokens", "latency_ms", "sender_name", "created_at",
 ];
 
 export async function create(data: {
   session_id: number;
-  role: "user" | "assistant";
+  role: MessageRole;
   content: string;
+  /** Required for role "agent", forbidden otherwise — CHECK ai_messages_agent_sender_check. */
+  sender_user_id?: number;
+  sender_name?: string;
   sources?: unknown[];
   cards?: unknown[];
   chips?: unknown[];
@@ -59,6 +67,7 @@ export async function create(data: {
       completion_tokens: data.completion_tokens ?? null,
       total_tokens: data.total_tokens ?? null,
       latency_ms: data.latency_ms ?? null,
+      ...(data.sender_name ? { sender_user_id: data.sender_user_id ?? null, sender_name: data.sender_name } : {}),
       ...(data.memory_ids?.length ? { memory_ids: JSON.stringify(data.memory_ids) } : {}),
     })
     .returning("*");
@@ -87,6 +96,17 @@ export async function findBySession(
     .orderBy([{ column: "created_at", order: "desc" }, { column: "id", order: "desc" }]);
   if (opts.limit) q.limit(opts.limit);
   const rows = await q;
+  return rows.reverse();
+}
+
+/** The newest `limit` messages across several sessions (a visitor's chats), oldest first. */
+export async function findBySessions(sessionIds: number[], limit: number): Promise<MessageRow[]> {
+  if (!sessionIds.length) return [];
+  const rows = await masterKnex(TABLE)
+    .select(STUDENT_COLUMNS)
+    .whereIn("session_id", sessionIds)
+    .orderBy([{ column: "created_at", order: "desc" }, { column: "id", order: "desc" }])
+    .limit(limit);
   return rows.reverse();
 }
 

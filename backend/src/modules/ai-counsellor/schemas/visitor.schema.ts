@@ -129,3 +129,24 @@ export const VisitorPatchSchema = z
   .refine((v) => Object.keys(v).length > 0, { message: "Nothing to update" });
 
 export type VisitorPatch = z.infer<typeof VisitorPatchSchema>;
+
+/** A staff reply in the Inbox. Attachments are storage paths from the media upload, re-checked server-side. */
+export const VisitorReplySchema = z
+  .object({
+    body: z.string().trim().max(4000).default(""),
+    attachments: z.array(z.string().min(1)).max(5).default([]),
+  })
+  .strict()
+  .refine((v) => v.body.length > 0 || v.attachments.length > 0, { message: "Write a message or attach a file", path: ["body"] });
+
+/** A note: text, files (storage paths from the media upload, re-checked server-side), or both. */
+export const VisitorNoteSchema = z
+  .object({
+    body: z.string().trim().max(4000).default(""),
+    attachments: z.array(z.string().min(1)).max(5).default([]),
+  })
+  .strict()
+  .refine((v) => v.body.length > 0 || v.attachments.length > 0, { message: "Write a note or attach a file", path: ["body"] });
+
+export const VisitorHandoffSchema = z.object({ mode: z.enum(["human", "ai"]) }).strict();
+export const VisitorResolveSchema = z.object({ resolved: z.boolean() }).strict();

@@ -1,5 +1,11 @@
 import type { VisitorStatus, VisitorStatusFilter } from "../apis/types";
 
+/** Widget settings live under the Inbox — reached from its ⚙ Widget button, not from Settings. */
+export const WIDGET_SETTINGS_HREF = "/business/messages/widget";
+/** Visitors & Leads live in the Contacts menu. */
+export const VISITORS_HREF = "/business/contacts/visitors";
+export const visitorHref = (id: number) => `${VISITORS_HREF}/${id}`;
+
 /** The three tabs, in the order the brief asks for them. Counts are filled in from the API. */
 export const VISITOR_TABS: readonly { value: VisitorStatusFilter; label: string }[] = [
   { value: "all", label: "All" },
@@ -48,3 +54,12 @@ export const VISITOR_PROFILE_SECTIONS = [
 ] as const;
 
 export const VISITORS_PAGE_SIZE = 10;
+
+/** The widget's end-of-chat faces, by rating - 1. Same set the widget's rating card shows. */
+export const RATING_FACES = [
+  { emoji: "😞", label: "Very bad" },
+  { emoji: "🙁", label: "Bad" },
+  { emoji: "😐", label: "Okay" },
+  { emoji: "🙂", label: "Good" },
+  { emoji: "😍", label: "Great" },
+] as const;

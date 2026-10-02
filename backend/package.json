@@ -91,6 +91,7 @@
     "test:ai-tool-loop": "node --import tsx tests/ai-tool-loop.ts",
     "test:counselling-context": "node --import tsx tests/counselling-context.ts",
     "test:ai-counsellor-flow": "node --import tsx tests/ai-counsellor-flow.ts",
+    "test:ai-takeover": "node --import tsx tests/ai-takeover.ts",
     "test:ai-evals-checks": "node --import tsx tests/ai-evals-checks.ts",
     "test:subscribers": "node --import tsx tests/subscribers.ts",
     "test:blog-generation": "node --import tsx tests/blog-generation.ts",

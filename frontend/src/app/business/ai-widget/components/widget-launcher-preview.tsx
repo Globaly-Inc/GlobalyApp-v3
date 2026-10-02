@@ -1,7 +1,7 @@
 "use client";
 
 // Mounts the widget on THIS page the way a website would: the same script tag from
-// public/embed.js, with the given key. The orb renders bottom-right; the script and the
+// public/embed.js, with the given key. The orb sits in the corner the widget is set to; the script and the
 // launcher it created are removed on unmount so it never follows the user around the portal.
 
 import { useEffect } from "react";

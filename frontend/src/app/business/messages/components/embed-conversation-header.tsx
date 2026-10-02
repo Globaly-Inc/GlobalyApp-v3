@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { visitorHref } from "@/app/business/ai-widget/const";
 import { ArrowLeft, ExternalLink, MessageSquare, User } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -59,7 +60,7 @@ export function EmbedConversationHeader({
           <EmbedChatControls visitor={visitor} actions={actions} />
         </div>
         <Link
-          href={`/business/ai-widget/visitors/${visitor.id}`}
+          href={visitorHref(visitor.id)}
           className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "gap-1.5")}
         >
           <ExternalLink className="size-3.5" aria-hidden />

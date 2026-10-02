@@ -1258,21 +1258,106 @@ export interface ChatSummaryTurn {
   answer: string;
 }
 
-const BULLET_RE = /^[-*\u2022]\s+/;
+/** The course card the chat ended on — the facts the counsellor's course card carried. */
+export interface ChatSummaryProgram {
+  name: string;
+  institution?: string;
+  city?: string;
+  duration?: string;
+  study_modes?: string[];
+  intakes?: string[];
+}
+
+/** A bullet line: "- ", "* ", "• ", or "✓ " for a requirement the chat confirmed was met. */
+const BULLET_RE = /^([-*\u2022]|\u2713)\s+/;
+const CHECK_RE = /^\u2713\s+/;
 
 function bulletList(items: string[]): string {
   const rows = items
-    .map(
-      (l) =>
-        `<tr><td valign="top" style="padding:0 8px 6px 0;color:${BRAND.muted};font-size:14px;line-height:22px">&bull;</td>
-             <td style="padding:0 0 6px;color:${BRAND.body};font-size:14px;line-height:22px">${esc(l.replace(BULLET_RE, ""))}</td></tr>`,
-    )
+    .map((l) => {
+      // A ✓ only ever comes from the prompt's "explicitly confirmed in the chat" rule.
+      const mark = CHECK_RE.test(l)
+        ? `<span style="display:inline-block;width:20px;height:20px;border-radius:10px;background-color:#E6F6EC;color:#16A34A;font-size:12px;line-height:20px;text-align:center;font-weight:700">&#10003;</span>`
+        : `<span style="display:inline-block;width:8px;height:8px;border-radius:4px;background-color:${BRAND.primary};margin:0 6px">&bull;</span>`;
+      return `<tr><td valign="top" width="28" style="width:28px;padding:3px 8px 12px 0;font-size:0;line-height:0">${mark}</td>
+             <td style="padding:0 0 12px;color:${BRAND.ink};font-size:16px;line-height:26px">${esc(l.replace(BULLET_RE, ""))}</td></tr>`;
+    })
     .join("");
-  return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;margin:0 0 14px">${rows}</table>`;
+  return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;margin:0 0 12px">${rows}</table>`;
+}
+
+/** "Program discussed": the course card the chat ended on, as in the widget. */
+function programCard(p: ChatSummaryProgram, others: string[]): string {
+  const where = [p.institution, p.city ? `${p.city} campus` : null].filter(Boolean).join(" · ");
+  const pills = [
+    p.duration,
+    ...(p.study_modes ?? []).slice(0, 2),
+    p.intakes?.length ? `Intake ${p.intakes.slice(0, 3).join(", ")}` : null,
+  ].filter((x): x is string => !!x && !!x.trim());
+  const pillHtml = pills
+    .map((x) => `<span style="display:inline-block;margin:0 8px 8px 0;padding:6px 12px;border:1px solid ${BRAND.line};border-radius:8px;background-color:#ffffff;color:${BRAND.body};font-size:14px;line-height:18px">${esc(x)}</span>`)
+    .join("");
+  const also = others.length
+    ? `<p style="margin:8px 0 0;color:${BRAND.muted};font-size:13px;line-height:20px">Also discussed: ${others.map(esc).join(", ")}</p>`
+    : "";
+  return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;margin:4px 0 28px;border:1px solid ${BRAND.line};border-radius:14px;background-color:#F6F8FC">
+    <tr><td style="padding:22px 24px ${pills.length ? "16px" : "22px"}">
+      <p style="margin:0 0 8px;color:${BRAND.primary};font-size:12px;line-height:16px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em">Program discussed</p>
+      <p style="margin:0 0 4px;color:${BRAND.ink};font-size:19px;line-height:26px;font-weight:700">${esc(p.name)}</p>
+      ${where ? `<p style="margin:0 0 14px;color:${BRAND.muted};font-size:15px;line-height:22px">${esc(where)}</p>` : ""}
+      ${pillHtml ? `<div>${pillHtml}</div>` : ""}
+      ${also}
+    </td></tr>
+  </table>`;
+}
+
+/**
+ * The summary email's own shell: a left-aligned card with the navy rule, the logo and heading on
+ * the left, a squared button, and the copyright outside the card. Separate from emailLayout, which
+ * four other emails share and which keeps its centred look.
+ */
+function recapLayout(o: {
+  heading: string;
+  body: string;
+  cta: { label: string; href: string };
+  footnote: string;
+  /** Trusted HTML pill opposite the logo, e.g. "Waiting now". */
+  badge?: string;
+}): string {
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${o.heading}</title>
+</head>
+<body style="margin:0;padding:0;background-color:${BRAND.page};font-family:${FONT}">
+  <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background-color:${BRAND.page};padding:40px 16px">
+    <tr><td align="center">
+      <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;max-width:600px;background-color:#ffffff;border:1px solid ${BRAND.line};border-radius:16px;overflow:hidden">
+        <tr><td style="height:6px;background-color:${BRAND.primary};line-height:6px;font-size:0">&nbsp;</td></tr>
+        <tr><td style="padding:40px 44px 36px">
+          <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;margin:0 0 28px"><tr>
+            <td valign="middle"><img src="${logoUrl()}" alt="Globaly" width="44" height="44" style="display:block;border-radius:10px" /></td>
+            ${o.badge ? `<td valign="middle" align="right">${o.badge}</td>` : ""}
+          </tr></table>
+          <h1 style="margin:0 0 24px;color:${BRAND.ink};font-family:${FONT};font-size:28px;line-height:36px;font-weight:700">${o.heading}</h1>
+          <div style="color:${BRAND.ink};font-size:16px;line-height:26px">${o.body}</div>
+          <table cellpadding="0" cellspacing="0" role="presentation" style="margin:12px 0 28px"><tr><td style="border-radius:10px;background-color:${BRAND.primary}">
+            <a href="${o.cta.href}" style="display:inline-block;padding:15px 28px;color:#ffffff;font-size:16px;line-height:20px;font-weight:600;text-decoration:none;border-radius:10px">${o.cta.label}</a>
+          </td></tr></table>
+          <p style="margin:0;padding-top:20px;border-top:1px solid ${BRAND.line};color:${BRAND.muted};font-size:14px;line-height:21px">${o.footnote}</p>
+        </td></tr>
+      </table>
+      <p style="margin:24px 0 0;color:${BRAND.faint};font-size:13px;line-height:18px">© ${new Date().getFullYear()} GlobalyHub — World #1 AI Integrated Education Ecosystem</p>
+    </td></tr>
+  </table>
+</body>
+</html>`;
 }
 
 const proseParagraph = (lines: string[]): string =>
-  `<p style="margin:0 0 14px;color:${BRAND.body};font-size:15px;line-height:23px">${esc(lines.join(" "))}</p>`;
+  `<p style="margin:0 0 14px;color:${BRAND.ink};font-size:16px;line-height:26px">${esc(lines.join(" "))}</p>`;
 
 /**
  * The model's recap as mail HTML.
@@ -1328,6 +1413,8 @@ export function chatSummaryEmail(options: {
   name: string;
   orgName: string | null;
   courses: string[];
+  /** The course card the chat ended on. Null/absent on older rows: no program block. */
+  program?: ChatSummaryProgram | null;
   turns: ChatSummaryTurn[];
   conversationUrl: string;
   /** The written recap. Null when the model was unavailable or the chat was too short —
@@ -1345,11 +1432,16 @@ export function chatSummaryEmail(options: {
   confirmedEnd?: boolean;
 }): { subject: string; html: string; text: string } {
   const org = options.orgName ? esc(options.orgName) : null;
-  const subject = options.orgName
-    ? `Your conversation with ${options.orgName}`
-    : "Your conversation summary";
+  const subject = options.orgName ? `Your chat with ${options.orgName}` : "Your chat summary";
 
-  const courseList = options.courses.length
+  // The program card when we know which course the chat ended on; the plain list otherwise.
+  const program = options.program?.name ? options.program : null;
+  const others = program
+    ? options.courses.filter((c) => c.split(" — ")[0] !== program.name)
+    : [];
+  const courseList = program
+    ? programCard(program, others)
+    : options.courses.length
     ? `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;border-radius:12px;background-color:${BRAND.soft};margin:0 0 20px">
          <tr><td style="padding:16px 18px">
            <p style="margin:0 0 8px;color:${BRAND.muted};font-size:12px;line-height:16px;text-transform:uppercase;letter-spacing:0.06em">Programs we discussed</p>
@@ -1386,8 +1478,11 @@ export function chatSummaryEmail(options: {
     ? renderSummaryProse(options.summary.trim())
     : transcript;
 
+  // "Pick up where you left off" only when they didn't say they were done — see pickUp below.
   const intro = options.summary?.trim()
-    ? `Here's a recap of your chat with ${org ? `<strong>${org}</strong>` : "our AI counsellor"}, so you have it to hand whenever you need it.`
+    ? options.confirmedEnd
+      ? "Here's a quick recap of your chat, so you have it to hand."
+      : "Here's a quick recap, so you can pick up where you left off."
     : `Here's the conversation you had with ${org ? `the <strong>${org}</strong> AI counsellor` : "our AI counsellor"}, so you have the details to hand whenever you need them.`;
 
   /**
@@ -1398,17 +1493,20 @@ export function chatSummaryEmail(options: {
    * and simply closed the tab without pressing a button — and being told your question went
    * unanswered when it did not is worse than being told nothing. An invitation is true for both.
    */
-  const pickUp = options.confirmedEnd
+  // The recap's intro already carries the invitation; only the transcript fallback needs it said.
+  const pickUp = options.confirmedEnd || options.summary?.trim()
     ? ""
-    : `<p style="margin:0 0 20px">If anything's still unanswered, you can pick up where you left off.</p>`;
+    : `<p style="margin:0 0 24px;color:${BRAND.muted};font-size:16px;line-height:26px">If anything's still unanswered, you can pick up where you left off.</p>`;
 
   const body = `<p style="margin:0 0 16px">Hi ${esc(options.name)},</p>
-    <p style="margin:0 0 ${pickUp ? "8px" : "20px"}">${intro}</p>
+    <p style="margin:0 0 ${pickUp ? "8px" : "24px"};color:${BRAND.muted}">${intro}</p>
     ${pickUp}
     ${courseList}
     ${written}`;
 
-  const textCourses = options.courses.length
+  const textCourses = program
+    ? `\n\nProgram discussed: ${program.name}${program.institution ? ` — ${program.institution}` : ""}${others.length ? `\nAlso discussed: ${others.join(", ")}` : ""}`
+    : options.courses.length
     ? `\n\nPrograms we discussed:\n${options.courses.map((c) => `- ${c}`).join("\n")}`
     : "";
   const textTurns = options.turns
@@ -1421,7 +1519,7 @@ export function chatSummaryEmail(options: {
   // "a recap" over a raw transcript whenever the model was unavailable, and never invited an
   // abandoned visitor back. A plain-text part nobody reads is still a plain-text part that lies.
   const textIntro = options.summary?.trim()
-    ? `Here's a recap of your chat with ${options.orgName ?? "our"} AI counsellor.`
+    ? `Here's a quick recap of your chat with ${options.orgName ?? "our"} AI counsellor.`
     : `Here's the conversation you had with ${options.orgName ? `the ${options.orgName}` : "our"} AI counsellor.`;
   const textPickUp = options.confirmedEnd
     ? ""
@@ -1430,15 +1528,71 @@ export function chatSummaryEmail(options: {
   return {
     subject,
     text: `Hi ${options.name},\n\n${textIntro}${textPickUp}${textCourses}\n${textBody}\n\nContinue the conversation: ${options.conversationUrl}`,
-    html: emailLayout({
-      heading: "Your conversation",
+    html: recapLayout({
+      heading: org ? `Your chat with ${org}` : "Your chat summary",
       body,
       cta: { label: "Continue the conversation", href: options.conversationUrl },
       // Says plainly why this arrived. The visitor asked for it minutes ago, but they asked
       // inside someone else's website and may not connect this sender with that chat.
-      footnote: `You asked us to send you a copy of this chat${org ? ` on ${org}'s website` : ""}. We only email you when you ask us to.`,
-      size: "wide",
-      align: "left",
+      footnote: `You asked for a summary of this chat${org ? ` on ${org}'s website` : ""}.`,
+    }),
+  };
+}
+
+/**
+ * "A visitor is waiting for a person" — sent to the org's contact address when a website-chat
+ * visitor asks for a human, until there is an in-app notification system. Everything from the
+ * visitor is escaped: it is a stranger's words landing in someone's inbox.
+ */
+export function handoverRequestEmail(options: {
+  orgName: string | null;
+  visitorName: string | null;
+  message: string;
+  inboxUrl: string;
+}): { subject: string; html: string; text: string } {
+  const name = options.visitorName?.trim() || null;
+  const who = name ?? "A visitor";
+  const first = name?.split(/\s+/)[0] ?? null;
+  const initials = name
+    ? name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("")
+    : "?";
+  const message = options.message.length > 500 ? `${options.message.slice(0, 500)}…` : options.message;
+  const subject = `${who} is waiting for a person on your website chat`;
+  const site = options.orgName ? `${esc(options.orgName)}'s` : "your";
+
+  const badge = `<span style="display:inline-block;padding:7px 14px;border-radius:999px;background-color:#FDF3E1;color:#92560B;font-size:14px;line-height:18px;font-weight:600;white-space:nowrap"><span style="display:inline-block;width:10px;height:10px;border-radius:5px;background-color:#E08A0B;margin-right:6px;vertical-align:-1px"></span>Waiting now</span>`;
+
+  // The visitor's message as it reads in the chat: their initials, their name, their words.
+  // No timestamp — the server can't know the reader's time zone, and a wrong time is worse than none.
+  const card = `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;margin:8px 0 28px;border:1px solid ${BRAND.line};border-radius:14px;background-color:#F6F8FC">
+    <tr><td style="padding:20px 22px 18px">
+      <table cellpadding="0" cellspacing="0" role="presentation"><tr>
+        <td valign="top" style="padding-right:14px">
+          <div style="width:44px;height:44px;border-radius:22px;background-color:${BRAND.primary};color:#ffffff;font-size:16px;line-height:44px;font-weight:700;text-align:center">${esc(initials)}</div>
+        </td>
+        <td valign="top">
+          <p style="margin:0 0 8px;color:${BRAND.ink};font-size:16px;line-height:22px;font-weight:600">${esc(who)}</p>
+          <div style="display:inline-block;padding:10px 16px;border:1px solid ${BRAND.line};border-radius:14px;background-color:#ffffff;color:${BRAND.ink};font-size:16px;line-height:24px;white-space:pre-wrap">${esc(message)}</div>
+        </td>
+      </tr></table>
+    </td></tr>
+    <tr><td style="padding:14px 22px;border-top:1px solid ${BRAND.line};background-color:#ffffff;border-radius:0 0 14px 14px;color:${BRAND.body};font-size:15px;line-height:22px">
+      &#128339;&nbsp; AI assistant paused. Resumes in <strong style="color:${BRAND.ink}">15 min</strong> if no one replies.
+    </td></tr>
+  </table>`;
+
+  const body = `<p style="margin:0 0 16px;color:${BRAND.body}"><strong style="color:${BRAND.ink}">${esc(who)}</strong> asked to talk to someone from your team in the chat on ${site} website.</p>
+    ${card}`;
+
+  return {
+    subject,
+    text: `${who} asked to talk to someone from your team in your website chat.\n\n"${message}"\n\nAI assistant paused. It resumes in 15 minutes if no one replies.\n\nReply in the Inbox: ${options.inboxUrl}`,
+    html: recapLayout({
+      heading: "A visitor is waiting for you",
+      badge,
+      body,
+      cta: { label: first ? `Reply to ${esc(first)}` : "Open the conversation", href: options.inboxUrl },
+      footnote: `Your reply in the Inbox appears straight in ${first ? `${esc(first)}'s` : "their"} chat. You're getting this because a visitor asked for a person on your website chat.`,
     }),
   };
 }

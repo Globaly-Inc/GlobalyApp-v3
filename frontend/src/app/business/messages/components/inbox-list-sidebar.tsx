@@ -17,6 +17,7 @@ import { EmbedRow } from "./embed-row";
 /** The AI Conversations tab's quick filters, over the rows already loaded. */
 const EMBED_FILTERS = [
   { value: "all", label: "All" },
+  { value: "waiting", label: "Wants a person" },
   { value: "ai", label: "AI handling" },
   { value: "human", label: "With team" },
   { value: "unread", label: "Unread" },
@@ -114,7 +115,9 @@ export function InboxListSidebar({
         .map((visitor) => ({ kind: "embed" as const, at: new Date(visitor.last_activity_at).getTime(), visitor })),
     ];
     const unread = (i: Item) => Number(i.kind === "enquiry" ? i.thread.unread_count > 0 : (i.visitor.unread_count ?? 0) > 0);
-    return all.sort((a, b) => unread(b) - unread(a) || b.at - a.at);
+    // A visitor waiting for a person outranks everything: they were promised someone.
+    const waiting = (i: Item) => Number(i.kind === "embed" && embedChatState(i.visitor) === "waiting");
+    return all.sort((a, b) => waiting(b) - waiting(a) || unread(b) - unread(a) || b.at - a.at);
   }, [threads, visitors, messagesByThread, query, embedOnly, filter]);
 
   return (

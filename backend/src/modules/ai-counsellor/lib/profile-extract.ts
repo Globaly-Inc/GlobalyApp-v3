@@ -414,7 +414,11 @@ export async function extractProfile(
     const raw = await generateText({
       system: SYSTEM + contactClause(contactAllowed) + customClause(custom),
       prompt: transcriptOf(history, latestUserMessage),
-      maxTokens: 700,
+      // GEMINI_MODEL thinks, and the thinking comes out of this same budget. At 700 a full
+      // background message (degree, two jobs, GMAT + IELTS sub-scores) ran out mid-"nationality";
+      // the salvage parser kept age and gender and silently dropped the rest. The cap costs
+      // nothing unused — billing follows tokens generated.
+      maxTokens: 8000,
       // Extraction, not writing. Any creativity here is a fabricated grade or an invented gender.
       temperature: 0,
     });

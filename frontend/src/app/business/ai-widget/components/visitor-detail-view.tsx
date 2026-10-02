@@ -3,45 +3,25 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowLeft, Loader2, User } from "lucide-react";
+import { ArrowLeft, Loader2, MessageSquare, User } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { useAuthState } from "@/app/auth/store/auth-slice";
 import { geoApi, type Country } from "@/app/geo/apis";
 import { relativeTime } from "@/components/feed/utils";
 import { cn } from "@/lib/utils";
 import { fetchVisitor, saveVisitor } from "../store/ai-widget-visitor-detail-slice";
-import { VISITOR_STATUS_BADGE } from "../const";
+import { VISITOR_STATUS_BADGE, VISITORS_HREF } from "../const";
 import { visitorDisplayName, visitorInitials } from "../utils";
 import { VisitorActivityCard, VisitorDetailCards, VisitorPreferenceCard } from "./visitor-detail-cards";
+import { ContactSummaryCard } from "./visitor-insight-cards";
+import { ActivityTimeline } from "./visitor-activity";
+import { aiWidgetApi } from "../apis";
 import { VisitorEditDialog } from "./visitor-edit-dialog";
 import { VisitorRecordSections } from "./visitor-record-sections";
 import { VisitorRecordDialogs, type RecordDeletion, type RecordEditor } from "./visitor-record-dialogs";
 import { replaceEntry } from "../utils/visitor-records";
-import type { VisitorPatch, VisitorProfileEntry, VisitorRecordSection, WidgetVisitor } from "../apis/types";
-
-/**
- * Back to the list, which lives at `/business/profile/<id>?tab=visitors`.
- *
- * The id is not decoration. `/business/profile` with no id is a fallback page that resolves an
- * org itself and ignores `?tab` entirely, so a bare link looks like a redirect: you land on the
- * profile tab of whichever org it picked. `withBusinessId` in the sidebar consts exists for the
- * same reason — every profile link in the app carries the id.
- *
- * Both lists are searched by `orgId` BEFORE either falls back to its first entry. Taking
- * `businesses[0]` first, as the fallback page does, sends a user whose current context is an
- * institution to one of their businesses instead.
- */
-function backHrefFor(user: { orgId: string | null; businesses: { id: number; org_id: string }[]; institutions: { id: number; org_id: string }[] } | null): string {
-  const id = user
-    ? (user.businesses.find((b) => b.org_id === user.orgId)?.id
-      ?? user.institutions.find((i) => i.org_id === user.orgId)?.id
-      ?? user.businesses[0]?.id
-      ?? user.institutions[0]?.id)
-    : undefined;
-  return id == null ? "/business/profile?tab=visitors" : `/business/profile/${id}?tab=visitors`;
-}
+import type { VisitorChat, VisitorPatch, VisitorProfileEntry, VisitorRecordSection, WidgetVisitor } from "../apis/types";
 
 /**
  * The hero, mirroring the personal profile's — minus the cover and photo pickers, because a
@@ -79,14 +59,18 @@ function VisitorHero({ visitor }: Readonly<{ visitor: WidgetVisitor }>) {
               </h1>
               <Badge className={badge.className}>{badge.label}</Badge>
             </div>
-            <p className="text-sm text-muted-foreground">
-              {visitor.email ?? "No email shared"}
-              {visitor.nationality ? ` · ${visitor.nationality}` : ""}
-            </p>
+            <p className="text-sm text-muted-foreground">{visitor.email ?? "No email shared"}</p>
             <p className="text-xs text-muted-foreground">
               First seen {relativeTime(visitor.first_seen_at)} · Last active {relativeTime(visitor.last_activity_at)}
             </p>
           </div>
+          {/* The chat itself, open in the Inbox. */}
+          <Link
+            href={`/business/messages?visitor=${visitor.id}`}
+            className={cn(buttonVariants({ size: "sm" }), "gap-1.5 sm:mt-10")}
+          >
+            <MessageSquare className="size-3.5" aria-hidden /> Open conversation
+          </Link>
         </div>
       </div>
     </div>
@@ -104,18 +88,20 @@ function VisitorHero({ visitor }: Readonly<{ visitor: WidgetVisitor }>) {
 export function VisitorDetailView({ visitorId }: Readonly<{ visitorId: number }>) {
   const dispatch = useAppDispatch();
   const { visitor, status, savingStatus, error } = useAppSelector((s) => s.aiWidgetVisitorDetail);
-  const { user } = useAuthState();
-  const backHref = backHrefFor(user);
+  const backHref = VISITORS_HREF;
   const [countries, setCountries] = useState<Country[]>([]);
   const [editOpen, setEditOpen] = useState(false);
   const [editor, setEditor] = useState<RecordEditor>(null);
   const [deletion, setDeletion] = useState<RecordDeletion>(null);
+  // Every chat with its own summary, for Activity. Not in the slice: only this page reads it.
+  const [chats, setChats] = useState<VisitorChat[]>([]);
 
   const fetchedRef = useRef<number | null>(null);
   useEffect(() => {
     if (fetchedRef.current === visitorId) return;
     fetchedRef.current = visitorId;
     dispatch(fetchVisitor(visitorId));
+    aiWidgetApi.listVisitorChats(visitorId).then(setChats, () => setChats([]));
   }, [dispatch, visitorId]);
 
   useEffect(() => {
@@ -190,11 +176,13 @@ export function VisitorDetailView({ visitorId }: Readonly<{ visitorId: number }>
       <div className="grid gap-4 md:gap-6 lg:grid-cols-3">
         <div className="space-y-4 md:space-y-6 lg:col-span-2">
           <VisitorDetailCards visitor={visitor} onEdit={() => setEditOpen(true)} />
+          <VisitorActivityCard visitor={visitor} />
+          <VisitorPreferenceCard visitor={visitor} onEdit={() => setEditOpen(true)} />
           <VisitorRecordSections visitor={visitor} actions={recordActions} />
         </div>
         <div className="space-y-4 md:space-y-6">
-          <VisitorActivityCard visitor={visitor} />
-          <VisitorPreferenceCard visitor={visitor} onEdit={() => setEditOpen(true)} />
+          <ContactSummaryCard visitor={visitor} />
+          <ActivityTimeline visitor={visitor} chats={chats} />
         </div>
       </div>
 

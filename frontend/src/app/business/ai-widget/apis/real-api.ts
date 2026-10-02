@@ -4,7 +4,7 @@ import type {
   ConversationControlResult, CreateEmbedConfigInput, EmbedConfig, EmbedConfigListResponse, EnsureEmbedResult, HandoffMode,
   SendSnippetInput, SendSnippetResult, SendVisitorMessageResult,
   UpdateEmbedConfigInput,
-  VisitorCounts, VisitorListParams, VisitorListResult, VisitorMessage, VisitorPatch, WidgetVisitor,
+  VisitorCounts, VisitorListParams, VisitorListResult, VisitorChat, VisitorMessage, VisitorNote, VisitorPatch, WidgetVisitor,
 } from "./types";
 
 function toVisitorQuery(params: VisitorListParams): string {
@@ -83,6 +83,16 @@ export const aiWidgetRealApi = {
 
   /** 204 — the caller has already zeroed the count. */
   markVisitorChatRead: (id: number): Promise<void> => httpPostNoContent(`/ai-chat/embed/visitors/${id}/read`),
+
+  /** Every chat this visitor had, oldest first, each with its own summary. */
+  listVisitorChats: async (id: number): Promise<VisitorChat[]> =>
+    (await httpGet<{ chats: VisitorChat[] }>(`/ai-chat/embed/visitors/${id}/chats`)).chats,
+
+  listVisitorNotes: async (id: number): Promise<VisitorNote[]> =>
+    (await httpGet<{ notes: VisitorNote[] }>(`/ai-chat/embed/visitors/${id}/notes`)).notes,
+
+  addVisitorNote: async (id: number, body: string, attachments: string[] = []): Promise<VisitorNote> =>
+    (await httpPost<{ note: VisitorNote }>(`/ai-chat/embed/visitors/${id}/notes`, { body, attachments })).note,
 
   uploadVisitorAttachment: (file: File): Promise<MessageAttachment> => {
     const form = new FormData();

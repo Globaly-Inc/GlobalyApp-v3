@@ -5,10 +5,11 @@ import { RadioTower, Settings } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
 import { useAppSelector } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
+import { WIDGET_SETTINGS_HREF } from "@/app/business/ai-widget/const";
 import { CHANNELS_HREF } from "../const";
 import { WidgetSwitch } from "./widget-switch";
 
-/** Above the Inbox, as in GlobalyOS's Support Inbox: the widget switch and the way to channels. */
+/** Above the Inbox, as in GlobalyOS's Support Inbox: the widget switch, channels, and widget settings. */
 export function InboxChannelBar() {
   const widgetOff = useAppSelector((s) => s.aiWidget.configs.length === 1 && s.aiWidget.configs[0]?.is_active === false);
   return (
@@ -19,9 +20,10 @@ export function InboxChannelBar() {
           <RadioTower className="size-3.5" aria-hidden />
           Connect a channel
         </Link>
-        <Link href={CHANNELS_HREF} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "ml-auto gap-1.5")}>
+        {/* The only way to the widget's settings — "AI embed" left the Settings menu. */}
+        <Link href={WIDGET_SETTINGS_HREF} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "ml-auto gap-1.5")}>
           <Settings className="size-3.5" aria-hidden />
-          Channels
+          Widget
         </Link>
       </div>
       {widgetOff && (

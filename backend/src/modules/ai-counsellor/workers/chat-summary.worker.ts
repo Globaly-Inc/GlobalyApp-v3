@@ -24,10 +24,13 @@ import type { Knex } from "knex";
 import { masterKnex } from "../../../core/db/master-pool.js";
 import { createSchemaKnex, schemaName } from "../../../core/db/knex.js";
 import * as messagesRepo from "../repositories/messages.repository.js";
+import * as visitorsRepo from "../repositories/visitors.repository.js";
 import { enqueue } from "../../enquiries/services/email-queue.service.js";
 import {
-  buildSummaryPrompt, summariseConversation, trimToCompleteSentence, worthSummarising,
+  buildSummaryPrompt, pickSummaryChat, summariseConversation, summaryDedupKey, trimToCompleteSentence, worthSummarising,
 } from "../lib/conversation-summary.js";
+import * as sessionsRepo from "../repositories/sessions.repository.js";
+import { refreshContactSummary } from "../services/chat-summaries.service.js";
 import { generateText, isConfigured as isGeminiConfigured } from "../../../shared/ai/gemini.js";
 import type { VisitorRow } from "../services/visitor.service.js";
 import { config } from "../../../config.js";
@@ -185,6 +188,13 @@ async function processTenant(tenant: TenantSchema): Promise<number> {
       .where((q) =>
         q
           .where({ conversation_state: "end_confirmed" })
+          // Ended a chat that hasn't been emailed yet, even if they kept typing since: one message
+          // after "End chat" opens a new chat and moves the state back to active, and without this
+          // the summary they just asked for waited for the 30-minute fallback.
+          .orWhere((ended) =>
+            ended.whereNotNull("end_confirmed_at")
+              .where((q2) => q2.whereNull("summary_sent_at").orWhereRaw("end_confirmed_at > summary_sent_at")),
+          )
           // Measured from the visitor's last message, full stop.
           //
           // This used to be COALESCE(closed_at, last_activity_at), fed by a leave beacon on
@@ -230,22 +240,30 @@ async function processTenant(tenant: TenantSchema): Promise<number> {
           .where({ id: row.embed_config_id })
           .first("display_name", "embed_key");
 
-        // Oldest-first, the whole thread — the summary covers the ENTIRE conversation, not
-        // just what was said after the visitor handed over their email.
-        const conversation = summariseConversation(await messagesRepo.findBySession(row.session_id));
+        // Which chat: the latest one the visitor ENDED since the last email, if any — a message
+        // after "End chat" opens a new chat, and that one isn't what they asked to be sent.
+        // Otherwise (the quiet fallback) the chat they're in. Oldest-first, the whole chat.
+        const chatId = pickSummaryChat(
+          await sessionsRepo.findChatsByVisitor(row.visitor_key, row.embed_config_id),
+          row.summary_sent_at,
+          row.session_id,
+        );
+        const conversation = summariseConversation(await messagesRepo.findBySession(chatId));
         const { turns, courses } = conversation;
 
         const widgetName = widget?.display_name ?? null;
         const summary = await writeSummary(conversation, widgetName);
 
         await enqueue({
-          dedupKey: `chat_summary:${tenant.schema}:${row.id}`,
+          // One email per CHAT, not per visitor: a returning visitor who ends a second chat is owed its own.
+          dedupKey: summaryDedupKey(tenant.schema, row.id, chatId),
           template: "chat_summary",
           recipientEmail: row.email,
           payload: {
             name: row.name ?? "there",
             org_name: widgetName,
             courses,
+            program: conversation.program ?? null,
             // Both travel in the payload: the recap is the email, the transcript is what
             // renders if the recap came back null.
             summary,
@@ -290,6 +308,32 @@ async function processTenant(tenant: TenantSchema): Promise<number> {
   return sent;
 }
 
+// ── The visitor page's Contact summary: backfill ─────────────────────────────
+// Contact summaries are rewritten right after each chat summary and each profile edit (see
+// services/chat-summaries). This sweep only fills in visitors who have none yet, or one in an
+// older shape, so existing contacts pick one up without waiting for their next message.
+
+/** Model calls per tenant per pass — the refresh is a background nicety, never a backlog burst. */
+const refreshCap = () => Number(process.env.SUMMARY_REFRESH_CAP) || 10;
+
+
+async function refreshSummaries(tenant: TenantSchema): Promise<number> {
+  if (!isGeminiConfigured()) return 0;
+  const db = createSchemaKnex(schemaName(tenant.schema), { min: 0, max: 1 });
+  let written = 0;
+  try {
+    // Backfill only: visitors with no contact summary yet, or one in an older shape. Every other
+    // update happens right after a chat summary or a profile edit (services/chat-summaries).
+    const rows = (await visitorsRepo.dueForSummaryQuery(db, { limit: refreshCap() })) as { id: number }[];
+    for (const row of rows) {
+      if (await refreshContactSummary(db, row.id)) written += 1;
+    }
+  } finally {
+    await db.destroy();
+  }
+  return written;
+}
+
 let running = false;
 
 async function tick() {
@@ -301,6 +345,7 @@ async function tick() {
   try {
     const tenants = await widgetTenants();
     let total = 0;
+    let refreshed = 0;
     for (const t of tenants) {
       try {
         total += await processTenant(t);
@@ -311,8 +356,14 @@ async function tick() {
           err: err instanceof Error ? err.message : String(err),
         });
       }
+      // Its own try: a schema behind 20261001_001 (no `summary`) must not stop the emails above.
+      try {
+        refreshed += await refreshSummaries(t);
+      } catch (err) {
+        logger.warn("Visitor summary refresh failed for tenant", { tenant: t.label, err: err instanceof Error ? err.message : String(err) });
+      }
     }
-    logger.info(`Chat summary sweep: ${tenants.length} tenant(s), ${total} summary email(s)`);
+    logger.info(`Chat summary sweep: ${tenants.length} tenant(s), ${total} summary email(s), ${refreshed} visitor summary(ies)`);
   } catch (err) {
     logger.error("Chat summary sweep failed", { err: err instanceof Error ? err.message : String(err) });
   } finally {

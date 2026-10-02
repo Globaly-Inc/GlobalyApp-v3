@@ -8,7 +8,8 @@ export type ChatSession = {
   updated_at: string;
 };
 
-export type MessageRole = "user" | "assistant";
+/** `agent` only reaches the website widget: a staff member who took the chat over from the AI. */
+export type MessageRole = "user" | "assistant" | "agent";
 
 export type CourseCard = {
   /** Extraction course id — used as the compare-store key. */
@@ -63,6 +64,8 @@ export type Message = {
   feedback: "up" | "down" | null;
   /** Storage paths (or, for optimistic messages, filenames) of files sent with the message. */
   attachments?: string[];
+  /** Agent turns only — the staff member's name. */
+  sender_name?: string | null;
   created_at: string;
 };
 

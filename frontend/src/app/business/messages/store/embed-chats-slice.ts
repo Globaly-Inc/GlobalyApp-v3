@@ -7,7 +7,7 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { aiWidgetApi } from "@/app/business/ai-widget/apis";
 import { switchAccount } from "@/app/auth/store/auth-slice";
-import type { ConversationControl, HandoffMode, VisitorMessage, WidgetVisitor } from "@/app/business/ai-widget/apis/types";
+import type { ConversationControl, HandoffMode, VisitorMessage, VisitorNote, WidgetVisitor } from "@/app/business/ai-widget/apis/types";
 
 /** The API's max page size. "Load more" walks further pages. */
 const PAGE_SIZE = 100;
@@ -25,6 +25,15 @@ export const fetchEmbedChats = createAsyncThunk(
 
 export const fetchEmbedTranscript = createAsyncThunk("embedChats/transcript", (visitorId: number) =>
   aiWidgetApi.listVisitorMessages(visitorId),
+);
+
+/** Staff-only notes. Polled beside the transcript so a colleague's note shows up too. */
+export const fetchEmbedNotes = createAsyncThunk("embedChats/notes", (visitorId: number) =>
+  aiWidgetApi.listVisitorNotes(visitorId),
+);
+
+export const addEmbedNote = createAsyncThunk("embedChats/addNote", (arg: { visitorId: number; body: string; attachments: string[] }) =>
+  aiWidgetApi.addVisitorNote(arg.visitorId, arg.body, arg.attachments),
 );
 
 /** A staff reply. The server takes the chat over from the AI when it was handling it. */
@@ -65,6 +74,8 @@ type EmbedChatsState = {
   transcriptStatus: Record<number, "idle" | "loading" | "failed">;
   /** Per visitor, the in-flight transcript fetch — a response from before a reset is dropped. */
   transcriptRequest: Record<number, string>;
+  /** Keyed by visitor id, like transcripts — wiped with them on an account switch. */
+  notes: Record<number, VisitorNote[]>;
 };
 
 const initialState: EmbedChatsState = {
@@ -78,6 +89,7 @@ const initialState: EmbedChatsState = {
   transcripts: {},
   transcriptStatus: {},
   transcriptRequest: {},
+  notes: {},
 };
 
 /** The list row is where the header, panel and sidebar all read who is answering. */
@@ -139,6 +151,13 @@ const embedChatsSlice = createSlice({
         applyControl(state, visitorId, control);
         const visitor = state.visitors.find((v) => v.id === visitorId);
         if (visitor) visitor.last_activity_at = message.created_at;
+      })
+      .addCase(fetchEmbedNotes.fulfilled, (state, action) => {
+        state.notes[action.meta.arg] = action.payload;
+      })
+      .addCase(addEmbedNote.fulfilled, (state, action) => {
+        const list = (state.notes[action.meta.arg.visitorId] ??= []);
+        if (!list.some((n) => n.id === action.payload.id)) list.push(action.payload);
       })
       .addCase(setEmbedHandoff.fulfilled, (state, action) => {
         applyControl(state, action.meta.arg.visitorId, action.payload.control);

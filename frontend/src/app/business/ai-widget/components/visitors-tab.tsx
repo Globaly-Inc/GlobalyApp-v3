@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { visitorHref } from "@/app/business/ai-widget/const";
 import { useRouter } from "next/navigation";
 import { Download, Loader2, Search, Users, X } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -133,7 +134,7 @@ export function VisitorsTab() {
           onSelectedIdsChange={setSelectedIds}
           // The table stays routing-agnostic: it reports which row was picked, this decides
           // that picking one means opening that visitor's page.
-          onView={(v) => router.push(`/business/ai-widget/visitors/${v.id}`)}
+          onView={(v) => router.push(visitorHref(v.id))}
         />
       )}
 

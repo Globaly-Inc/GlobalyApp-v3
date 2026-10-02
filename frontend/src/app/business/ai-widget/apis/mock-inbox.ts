@@ -5,7 +5,7 @@
 import type { MessageAttachment } from "@/components/chat/types";
 import { mockVisitors } from "./mock-visitors";
 import type {
-  ConversationControl, ConversationControlResult, HandoffMode, SendVisitorMessageResult, VisitorMessage, WidgetVisitor,
+  ConversationControl, ConversationControlResult, HandoffMode, SendVisitorMessageResult, VisitorChat, VisitorMessage, VisitorNote, WidgetVisitor,
 } from "./types";
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -16,9 +16,45 @@ const MOCK_AGENT = { id: 1, name: "Alex Morgan" };
 
 let nextId = 1000;
 const transcripts: Record<number, VisitorMessage[]> = {};
+const notes: Record<number, VisitorNote[]> = {};
 const uploads = new Map<string, MessageAttachment>();
 /** One simulated visitor reply per chat, so the poll has something to pick up. */
 const replied = new Set<number>();
+
+/** Visitor 3 has an ended chat and an open one; everyone else one open chat, from the transcript. */
+function mockChats(id: number): VisitorChat[] {
+  const t = transcript(id);
+  const open: VisitorChat = {
+    id: id * 100 + 2,
+    started_at: t[0]?.created_at ?? new Date().toISOString(),
+    ended_at: null,
+    message_count: t.length,
+    summary: {
+      title: "Data science entry requirements",
+      text: "Asked whether we offer a **Masters in Data Science**; told it runs **18 months** with February and July intakes.",
+      open: ["Fees"],
+      next_step: null,
+      generated_at: new Date(Date.now() - 2 * 60_000).toISOString(),
+    },
+  };
+  if (id !== 3) return [open];
+  return [
+    {
+      id: id * 100 + 1,
+      started_at: new Date(Date.now() - 26 * 3_600_000).toISOString(),
+      ended_at: new Date(Date.now() - 25.5 * 3_600_000).toISOString(),
+      message_count: 8,
+      summary: {
+        title: "MBA entry requirements",
+        text: "Career changer asking about the **MBA**; told a **GRE of 318** meets the requirement. Ended the chat and asked for a summary.",
+        open: [],
+        next_step: null,
+        generated_at: new Date(Date.now() - 25 * 3_600_000).toISOString(),
+      },
+    },
+    open,
+  ];
+}
 
 function transcript(id: number): VisitorMessage[] {
   if (!transcripts[id]) {
@@ -51,6 +87,7 @@ const control = (v: WidgetVisitor): ConversationControl => ({
   handled_by_name: v.handled_by_name ?? null,
   handled_by_me: v.handled_by_me ?? false,
   handled_at: v.handled_at ?? null,
+  handoff_requested_at: v.handoff_requested_at ?? null,
   resolved_at: v.resolved_at ?? null,
   resolved_by_name: v.resolved_by_name ?? null,
   unread_count: v.unread_count ?? 0,
@@ -59,12 +96,12 @@ const control = (v: WidgetVisitor): ConversationControl => ({
 function takeOver(v: WidgetVisitor) {
   Object.assign(v, {
     handled_by_user_id: MOCK_AGENT.id, handled_by_name: MOCK_AGENT.name, handled_by_me: true,
-    handled_at: new Date().toISOString(), resolved_at: null, resolved_by_name: null,
+    handled_at: new Date().toISOString(), resolved_at: null, resolved_by_name: null, handoff_requested_at: null,
   });
 }
 
 function handBack(v: WidgetVisitor) {
-  Object.assign(v, { handled_by_user_id: null, handled_by_name: null, handled_by_me: false, handled_at: null });
+  Object.assign(v, { handled_by_user_id: null, handled_by_name: null, handled_by_me: false, handled_at: null, handoff_requested_at: null });
 }
 
 /** What the visitor would do next: answer the person who just joined. */
@@ -86,7 +123,15 @@ export const aiWidgetInboxMock = {
   listVisitorMessages: async (id: number): Promise<VisitorMessage[]> => {
     console.log("[mock] GET /ai-chat/embed/visitors/" + id + "/messages");
     await delay(250);
-    return transcript(id).map((m) => ({ ...m }));
+    // One chat per mock visitor: its first message carries the chat, like the real transcript.
+    const [chat] = mockChats(id);
+    return transcript(id).map((m, i) => ({ ...m, session_id: chat?.id, ...(i === 0 && chat ? { chat } : {}) }));
+  },
+
+  listVisitorChats: async (id: number): Promise<VisitorChat[]> => {
+    console.log("[mock] GET /ai-chat/embed/visitors/" + id + "/chats");
+    await delay(200);
+    return mockChats(id);
   },
 
   sendVisitorMessage: async (id: number, body: string, attachments: string[]): Promise<SendVisitorMessageResult> => {
@@ -137,6 +182,23 @@ export const aiWidgetInboxMock = {
     console.log("[mock] POST /ai-chat/embed/visitors/" + id + "/read");
     await delay(150);
     find(id).unread_count = 0;
+  },
+
+  listVisitorNotes: async (id: number): Promise<VisitorNote[]> => {
+    console.log("[mock] GET /ai-chat/embed/visitors/" + id + "/notes");
+    await delay(200);
+    return (notes[id] ?? []).map((n) => ({ ...n }));
+  },
+
+  addVisitorNote: async (id: number, body: string, attachments: string[] = []): Promise<VisitorNote> => {
+    console.log("[mock] POST /ai-chat/embed/visitors/" + id + "/notes", { body, attachments });
+    await delay(250);
+    const note = {
+      id: nextId++, author_name: MOCK_AGENT.name, content: body, created_at: new Date().toISOString(),
+      attachments: attachments.flatMap((path) => uploads.get(path) ?? []),
+    };
+    (notes[id] ??= []).push(note);
+    return { ...note };
   },
 
   uploadVisitorAttachment: async (file: File): Promise<MessageAttachment> => {

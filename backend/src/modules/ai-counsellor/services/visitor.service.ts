@@ -110,6 +110,11 @@ export interface VisitorRow {
   summary_attempts: number;
   summary_sent_at: Date | null;
   summary_error: string | null;
+  /** Takeover state (20261001_001). Optional because a lagging tenant schema returns them absent. */
+  handled_by_user_id?: number | null;
+  handled_by_name?: string | null;
+  handled_at?: Date | null;
+  handoff_requested_at?: Date | null;
   created_at: Date;
   updated_at: Date;
 }
@@ -548,6 +553,31 @@ export async function recordProfile(
     if (!Object.keys(patch).length) return;
     await trx(TABLE).where({ id: visitorId }).update({ ...patch, updated_at: trx.fn.now() });
   });
+}
+
+/**
+ * A returning visitor's first message after an ended chat started a new session: reset what is
+ * per CHAT, keep what is per PERSON.
+ *
+ * Per chat: the conversation state and the once-per-chat wrap-up offer, and a summary email that
+ * was already sent (or gave up) — so ending this chat can send its own. A summary still pending or
+ * mid-send is left alone; that's the previous chat's, and it's still owed. Per person (kept): name,
+ * email, profile, the contact card's history — a lead isn't asked for an email again.
+ */
+export async function startNewChat(db: Knex, visitorId: number): Promise<VisitorRow | undefined> {
+  const settled = "summary_status IN ('sent','failed')";
+  const [row] = await db<VisitorRow>(TABLE)
+    .where({ id: visitorId })
+    .update({
+      conversation_state: "active",
+      end_prompt_count: 0,
+      end_prompt_at_count: null,
+      summary_status: db.raw(`CASE WHEN ${settled} THEN NULL ELSE summary_status END`),
+      summary_attempts: db.raw(`CASE WHEN ${settled} THEN 0 ELSE summary_attempts END`),
+      updated_at: db.fn.now(),
+    })
+    .returning("*");
+  return row;
 }
 
 /**

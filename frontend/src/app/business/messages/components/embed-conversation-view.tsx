@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import type { WidgetVisitor } from "@/app/business/ai-widget/apis/types";
-import { fetchEmbedTranscript, markEmbedChatRead } from "../store/embed-chats-slice";
+import { fetchEmbedNotes, fetchEmbedTranscript, markEmbedChatRead } from "../store/embed-chats-slice";
 import { EmbedChatComposer } from "./embed-chat-composer";
 import { EmbedConversationHeader } from "./embed-conversation-header";
 import { EmbedTranscript } from "./embed-transcript";
@@ -25,6 +25,7 @@ const POLL_MS = 5_000;
 export function EmbedConversationView({ visitor, onBack }: Readonly<{ visitor: WidgetVisitor; onBack: () => void }>) {
   const dispatch = useAppDispatch();
   const messages = useAppSelector((s) => s.embedChats.transcripts[visitor.id]);
+  const notes = useAppSelector((s) => s.embedChats.notes[visitor.id]);
   const failed = useAppSelector((s) => s.embedChats.transcriptStatus[visitor.id] === "failed");
   const actions = useEmbedChatActions(visitor.id);
 
@@ -34,12 +35,15 @@ export function EmbedConversationView({ visitor, onBack }: Readonly<{ visitor: W
     if (fetchedFor.current === visitor.id) return;
     fetchedFor.current = visitor.id;
     dispatch(fetchEmbedTranscript(visitor.id));
+    dispatch(fetchEmbedNotes(visitor.id));
   }, [dispatch, visitor.id]);
 
   // Skipped while the tab is hidden — nobody is reading, and the next visible tick catches up.
   useEffect(() => {
     const timer = setInterval(() => {
-      if (document.visibilityState === "visible") dispatch(fetchEmbedTranscript(visitor.id));
+      if (document.visibilityState !== "visible") return;
+      dispatch(fetchEmbedTranscript(visitor.id));
+      dispatch(fetchEmbedNotes(visitor.id));
     }, POLL_MS);
     return () => clearInterval(timer);
   }, [dispatch, visitor.id]);
@@ -59,7 +63,7 @@ export function EmbedConversationView({ visitor, onBack }: Readonly<{ visitor: W
     <div className="flex h-full">
       <div className="flex min-w-0 flex-1 flex-col">
         <EmbedConversationHeader visitor={visitor} actions={actions} onBack={onBack} />
-        <EmbedTranscript visitor={visitor} messages={messages} failed={failed} />
+        <EmbedTranscript visitor={visitor} messages={messages} notes={notes} failed={failed} />
         <EmbedChatComposer visitor={visitor} />
       </div>
       {/* Hidden below lg, as the enquiry chat's info panel is: at md the transcript beside

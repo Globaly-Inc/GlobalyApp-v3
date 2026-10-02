@@ -212,6 +212,8 @@ button:focus-visible,a:focus-visible,input:focus-visible,textarea:focus-visible{
 .w-head{display:flex;align-items:center;gap:10px;padding:12px 12px 12px 14px;border-bottom:1px solid var(--border);position:relative}
 .w-head::before{content:"";position:absolute;inset:0 0 auto 0;height:3px;background:var(--brand)}
 .w-logo{width:34px;height:34px;border-radius:10px;background:var(--brand);color:#fff;display:grid;place-items:center;font:700 14px Georgia;flex:none;position:relative}
+/* The bot is always Aly, drawn in the widget's brand colour — no logo upload. */
+.w-logo.aly{background:radial-gradient(circle at 30% 30%,#fff 0,color-mix(in srgb,var(--brand) 55%,#fff) 28%,var(--brand) 70%);border-radius:50%;box-shadow:0 0 0 3px color-mix(in srgb,var(--brand) 15%,transparent)}
 .w-logo.agent{background:var(--sky);color:var(--sky-fg);font:600 12px "Inter";border-radius:50%}
 .w-logo .live{position:absolute;right:-2px;bottom:-2px;width:10px;height:10px;border-radius:50%;background:hsl(142 70% 45%);border:2px solid #fff}
 .w-head .t{min-width:0;flex:1}
@@ -443,7 +445,7 @@ function toast(t) { const el = $("#toast"); el.textContent = t; el.classList.add
 const CFG = {
   name: "Northfield Admissions", subtitle: "Usually replies in seconds",
   greeting: "Hi! I'm Northfield's admissions assistant. Ask me about courses, entry requirements, fees or scholarships.",
-  brand: "#7a1f2b", logo: "N", position: "right",
+  brand: "#7a1f2b", position: "right",
   instructions: "Always mention our February and July intakes. Recommend booking a campus tour for undergraduates.",
   limit: 1000, used: 184,
   starters: ["What Masters courses do you offer?", "What IELTS score do I need?", "Are there scholarships?"],
@@ -519,13 +521,13 @@ function ratingHTML() {
 function widgetHTML(opts = {}) {
   const human = W.mode === "human";
   const head = `<div class="w-head">
-    ${human ? `<div class="w-logo agent">${AGENT.ini}<span class="live"></span></div>` : `<div class="w-logo">${esc(CFG.logo)}</div>`}
+    ${human ? `<div class="w-logo agent">${AGENT.ini}<span class="live"></span></div>` : `<div class="w-logo aly" aria-label="Aly"></div>`}
     <div class="t"><b>${esc(CFG.name)}</b><small>${human ? `${AGENT.first} from the admissions team is replying` : W.mode === "waiting" ? "Waiting for a team member…" : esc(CFG.subtitle)}</small></div>
     ${opts.noFull ? "" : `<button class="w-ico" type="button" data-w="full" title="${W.full ? "Exit full screen" : "Full screen"}" aria-label="Toggle full screen">${W.full ? "⤡" : "⤢"}</button>`}
     <button class="w-ico" type="button" data-w="min" title="Minimise" aria-label="Minimise">—</button></div>`;
   const banner = W.offline ? `<div class="w-banner bad"><span class="spin" style="border-top-color:currentColor"></span>You're offline. Reconnecting… messages will send when you're back.</div>`
     : human ? `<div class="w-banner h">👋 You're chatting with a person from the admissions team.</div>` : "";
-  const welcome = `<div class="w-welcome"><div class="w-logo">${esc(CFG.logo)}</div><h5>${esc(CFG.name)}</h5><p>${esc(CFG.greeting)}</p></div>`;
+  const welcome = `<div class="w-welcome"><div class="w-logo aly" aria-label="Aly"></div><h5>${esc(CFG.name)}</h5><p>${esc(CFG.greeting)}</p></div>`;
   const starters = W.msgs.filter((m) => m.who === "u").length === 0 && !W.returning
     ? `<div class="chips" style="justify-content:center">${CFG.starters.map((s) => `<button class="chip" type="button" data-say="${esc(s)}">${esc(s)}</button>`).join("")}</div>` : "";
   const back = W.returning ? `<div class="sysline">Welcome back — here's your last conversation</div>` : "";
@@ -741,7 +743,6 @@ function dialogHTML() {
   const more = `<div style="border-top:1px solid var(--border);padding-top:10px"><button class="btn sm ghost" type="button" id="moreBtn" style="padding:0 4px">${moreOpen ? "▾" : "▸"} More settings <span class="planned">Planned</span></button>
     ${moreOpen ? `<div style="display:flex;flex-direction:column;gap:12px;margin-top:10px">
       ${f("fStart", "Suggested questions", `<div class="chipsedit">${CFG.starters.map((x) => `<span>${esc(x)} ✕</span>`).join("")}<span style="border-style:dashed;color:var(--muted-fg)">+ Add</span></div>`)}
-      ${f("fPos", "Launcher position", `<div class="radio" style="flex-direction:row">${["right", "left"].map((p) => `<label class="${CFG.position === p ? "on" : ""}" style="flex:1;padding:6px 10px"><input type="radio" name="pos" value="${p}" ${CFG.position === p ? "checked" : ""}> Bottom ${p}</label>`).join("")}</div>`)}
       ${f("fCa", "Ask for name &amp; email", `<select class="input" id="fCa" style="height:36px">${[[1, "After the first answer"], [2, "After 2 questions (recommended)"], [0, "Only when they ask for a summary"]].map(([v, l]) => `<option value="${v}" ${CFG.contactAfter === v ? "selected" : ""}>${l}</option>`).join("")}</select>`)}
       <label style="display:flex;justify-content:space-between;align-items:center;font-size:13px;font-weight:500">Let visitors ask for a person<button class="toggle" type="button" role="switch" id="fHand" aria-checked="${CFG.handoff}" aria-label="Let visitors ask for a person"></button></label>
     </div>` : ""}</div>`;
@@ -751,8 +752,8 @@ function dialogHTML() {
       ${f("fName", "Display name", `<input class="input" id="fName" value="${esc(CFG.name)}" placeholder="Acme University Counsellor">`)}
       ${f("fSub", "Subtitle (optional)", `<input class="input" id="fSub" value="${esc(CFG.subtitle)}" maxlength="120" placeholder="Usually replies in seconds">`)}
       ${f("fGreet", "Greeting (optional)", `<textarea class="textarea" id="fGreet" maxlength="300" rows="2" style="min-height:52px" placeholder="Hi! Ask me anything about studying with us.">${esc(CFG.greeting)}</textarea>`)}
-      ${f("fLogo", "Logo URL (optional)", `<input class="input" id="fLogo" placeholder="https://…/logo.png">`)}
-      ${f("fColor", "Brand colour", `<input class="input" id="fColor" type="color" value="${CFG.brand}" style="width:80px;height:40px;padding:4px">`)}
+      ${f("fColor", "Brand colour", `<div style="display:flex;align-items:center;gap:12px"><input class="input" id="fColor" type="color" value="${CFG.brand}" style="width:80px;height:40px;padding:4px"><span class="w-logo aly" style="width:30px;height:30px"></span><span style="font-size:12px;color:var(--muted-fg)">Aly takes on this colour in your widget.</span></div>`)}
+      ${f("fPos", "Position on your website", `<div class="radio" style="flex-direction:row">${["left", "right"].map((p) => `<label class="${CFG.position === p ? "on" : ""}" style="flex:1;padding:6px 10px"><input type="radio" name="pos" value="${p}" ${CFG.position === p ? "checked" : ""}> Bottom ${p}</label>`).join("")}</div>`)}
       ${f("fIns", "Custom instructions (optional)", `<textarea class="textarea" id="fIns" rows="2" style="min-height:52px" placeholder="e.g. Always mention our February and July intakes.">${esc(CFG.instructions)}</textarea>`, "Instructions that attempt to override the counsellor's behaviour are ignored.")}
       ${f("fLim", "Monthly message limit", `<input class="input" id="fLim" type="number" min="1" value="${CFG.limit}">`)}
       ${more}
@@ -800,7 +801,7 @@ function widgetsPage(empty, overlay = "", below = "") {
       <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><span style="width:10px;height:10px;border-radius:50%;background:var(--brand)"></span><b>${esc(CFG.name)}</b><span style="flex:1"></span><button class="w-ico" type="button" data-go="create" title="Appearance">🎨</button><button class="w-ico" type="button" data-go="preview" title="Preview on a sample page">👁</button><button class="w-ico" type="button" data-toast="Old snippet stops working. Continue?" title="Regenerate key">🔑</button><button class="w-ico" type="button" data-toast="Pause on your site?" title="Pause">⏻</button></div>
       <p style="font-size:12px;color:var(--muted-fg)">${esc(CFG.subtitle)} · “${esc(CFG.greeting)}”</p>
       <div><div style="display:flex;justify-content:space-between;font-size:12px;color:var(--muted-fg);margin-bottom:5px"><span>Messages this month</span><span>${CFG.used} / ${CFG.limit}</span></div><div class="progress"><i style="width:${CFG.used / CFG.limit * 100}%"></i></div></div>
-      <div><p style="font-size:12px;color:var(--muted-fg);font-weight:500;margin-bottom:6px">Embed on your website</p><div style="display:flex;gap:8px;align-items:flex-start"><code class="mono" style="flex:1;background:var(--muted);border-radius:8px;padding:8px;font-size:11.5px;overflow-x:auto;white-space:nowrap">&lt;script src="https://app.globaly.com/embed.js" data-key="8f3c2a91-4d7e-4b1a-9c55-2e6f0d81b7aa"${CFG.position === "left" ? ' data-position="left"' : ""} async&gt;&lt;/script&gt;</code><button class="btn sm" type="button" id="copy" title="Copy">${copied ? "✓" : "⧉"}</button></div></div>
+      <div><p style="font-size:12px;color:var(--muted-fg);font-weight:500;margin-bottom:6px">Embed on your website</p><div style="display:flex;gap:8px;align-items:flex-start"><code class="mono" style="flex:1;background:var(--muted);border-radius:8px;padding:8px;font-size:11.5px;overflow-x:auto;white-space:nowrap">&lt;script src="https://app.globaly.com/embed.js" data-key="8f3c2a91-4d7e-4b1a-9c55-2e6f0d81b7aa" async&gt;&lt;/script&gt;</code><button class="btn sm" type="button" id="copy" title="Copy">${copied ? "✓" : "⧉"}</button></div></div>
     </div>`;
   const emptyBox = `<div class="card" style="padding:40px 20px;text-align:center;border-style:dashed;color:var(--muted-fg);font-size:13px">No widgets yet. Create one to get your embed code.</div>`;
   return shell("Inbox", `<div class="page" style="max-width:768px;min-height:640px"><a data-go="takeover" style="color:var(--primary);cursor:pointer;font-size:13px">← Inbox</a><div class="pagehead" style="margin-top:-8px"><div><p style="font-size:12px;color:var(--muted-fg)">Inbox / Widget</p><h2 class="serif">🤖 AI Widget</h2><p>Embed a branded AI counsellor on your website, scoped to your courses.</p></div><span class="sp"></span><button class="btn pri" type="button" data-go="create">＋ New widget</button></div>
@@ -919,7 +920,7 @@ const SC = [
     tryit: "Click New widget.", render: () => widgetsPage(true), after: bindWizard },
   { id: "create", grp: "Setup", label: "New widget", title: "The New AI widget dialog",
     what: "The same dialog as the app, with the same fields in the same order. The brand colour you pick here colours the widget for the rest of the journey. The planned settings sit folded under “More settings”, so the dialog stays short.",
-    today: ["Display name, subtitle, greeting, logo URL, brand colour, custom instructions, monthly message limit"], planned: ["More settings: suggested questions, launcher position, when to ask for name & email, letting visitors ask for a person"],
+    today: ["Display name, subtitle, greeting, brand colour (Aly is the logo, in that colour), position (bottom left or right, read by embed.js, no snippet change), custom instructions, monthly message limit"], planned: ["More settings: suggested questions, when to ask for name & email, letting visitors ask for a person"],
     tryit: "Change the brand colour, open More settings, then click Create widget.", pre: () => wReset({ teaser: false }), render: () => widgetsPage(true, dialogHTML()), after: bindWizard },
   { id: "install", grp: "Setup", label: "Embed code", title: "Widget created: copy the embed code",
     what: "The real widget card: Appearance, Preview, Regenerate key and Pause, messages used this month, and the one-line embed code with a copy button. embed.js only loads the chat when a visitor opens it.",
@@ -1006,7 +1007,7 @@ let at = 0;
 const cur = () => SC[at];
 
 function statesGallery() {
-  const mini = (head, body, cls = "") => `<div class="mini ${cls}"><div class="w-head"><div class="w-logo">N</div><div class="t"><b style="font-size:12.5px">${esc(CFG.name)}</b><small>${head}</small></div></div>${body}</div>`;
+  const mini = (head, body, cls = "") => `<div class="mini ${cls}"><div class="w-head"><div class="w-logo aly"></div><div class="t"><b style="font-size:12.5px">${esc(CFG.name)}</b><small>${head}</small></div></div>${body}</div>`;
   const cards = [
     ["Widget paused", "p-mute", mini("Unavailable", `<div class="mb" style="align-items:center;text-align:center;justify-content:center"><div style="font-size:22px">⏸</div><b>This counsellor is currently unavailable</b><p style="color:var(--muted-fg);font-size:12px">Email admissions@northfield.edu and the team will reply within a working day.</p></div>`), "Server refuses a paused widget today. Planned: a friendly panel with a fallback contact, instead of an error."],
     ["Monthly limit reached", "p-warn", mini("Limit reached", `<div class="mb"><div class="w-banner off" style="border-radius:8px">We've answered a lot of questions this month! The assistant is resting until 1 November.</div><p style="font-size:12px;color:var(--muted-fg)">Leave your email and the team will get back to you.</p></div>`), "“Monthly message limit reached” today. Dashboard: warn at 80% and 100%."],
