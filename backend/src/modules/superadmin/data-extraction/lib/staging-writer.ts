@@ -27,6 +27,9 @@ export interface ExtractedCourse {
   name: string;
   short_name?: string | null;
   degree_level?: string | null;
+  /** degree_level was stated by a person (a spreadsheet column), not guessed by a model — it then
+   * wins over a level read from the course name. See resolveCourseLookups. */
+  degree_level_explicit?: boolean;
   /** LLM-classified per course, not inherited from the job's service_category_id — a job
    * scoped to "Academic Courses" still surfaces short courses on the same pages. */
   course_category?: string | null;
@@ -2025,7 +2028,10 @@ function statedDurationWeeks(course: ExtractedCourse): number | null {
 
 export async function resolveCourseLookups(course: ExtractedCourse): Promise<CourseLookupLink> {
   const lists = await loadLookupLists();
-  let level = resolveDegreeLevel(lists, course.degree_level, course.name);
+  // A level a person stated (a sheet column) is trusted first; the course name — which normally
+  // beats a model's guess ("…, B.S." → Bachelor) — is then only the fallback when it matches nothing.
+  let level = (course.degree_level_explicit ? resolveDegreeLevel(lists, course.degree_level, null) : null)
+    ?? resolveDegreeLevel(lists, course.degree_level, course.name);
 
   // Only a duration the SOURCE STATED for the course itself may demote it. resolveDurationWeeks
   // also falls back to the shortest study option and to description prose — fine for filling a

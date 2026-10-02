@@ -2,7 +2,7 @@
 
 import type { Knex } from "knex";
 import { masterKnex } from "../../../../core/db/master-pool.js";
-import { SELF_SERVICE_SOURCE_TYPES } from "../../consts.js";
+import { BUSINESS_PORTAL_SOURCE_TYPES } from "../../consts.js";
 
 import { jobUsageTotalsSubquery } from "../lib/llm-store.js";
 
@@ -242,10 +242,10 @@ export async function insertJob(data: Record<string, unknown>, db: Knex = master
  * Guarded on source_type: a crawled or AgentCIS job's institution_url is its provenance — the
  * address the pipeline actually fetched — and must never be rewritten from a display field.
  */
-/** Which of `ids` are business-portal (self-service) extraction jobs. */
+/** Which of `ids` are business-portal jobs (BUSINESS_PORTAL_SOURCE_TYPES — they skip course approval). */
 export async function selfServiceJobIds(ids: string[]): Promise<Set<string>> {
   if (ids.length === 0) return new Set();
-  const rows = await masterKnex(T).whereIn("id", ids).whereIn("source_type", [...SELF_SERVICE_SOURCE_TYPES]).select("id");
+  const rows = await masterKnex(T).whereIn("id", ids).whereIn("source_type", [...BUSINESS_PORTAL_SOURCE_TYPES]).select("id");
   return new Set(rows.map((r) => String(r.id)));
 }
 

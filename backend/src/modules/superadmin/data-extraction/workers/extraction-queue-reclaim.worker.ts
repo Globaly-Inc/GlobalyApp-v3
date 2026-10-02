@@ -33,6 +33,8 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { checkAllPagesDone, continueChain, pendingChain } from "../lib/queue-completion.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
+import { jobsWithPendingCampuses } from "../repositories/review.repository.js";
+import { convertCampusesToBranches } from "../../platform/business-branches/services/business-branches.service.js";
 
 const logger = createChildLogger("extraction-queue-reclaim-worker");
 
@@ -228,10 +230,28 @@ async function reclaimStaleQueueItems() {
 
 const POLL_MS = 5 * 60_000;
 
+/**
+ * Finishes campus → branch-org conversions that never completed — a claim fires the conversion
+ * without awaiting it, so an API restart mid-way would otherwise leave the owner without their
+ * branches until someone ran `job:convert-campuses`. convertCampusesToBranches never throws and
+ * its per-campus claims make it safe beside a run already in progress.
+ */
+async function resumeCampusConversions() {
+  for (const jobId of await jobsWithPendingCampuses()) {
+    const converted = await convertCampusesToBranches(jobId);
+    if (converted > 0) logger.info("Resumed campus conversion", { jobId, converted });
+  }
+}
+
+async function sweep() {
+  await reclaimStaleQueueItems();
+  await resumeCampusConversions();
+}
+
 if (process.argv[2] === "--once") {
   let ok = true;
   try {
-    await reclaimStaleQueueItems();
+    await sweep();
   } catch (err) {
     ok = false;
     logger.error("Reclaim sweep failed", { error: err instanceof Error ? err.message : String(err) });
@@ -241,8 +261,8 @@ if (process.argv[2] === "--once") {
   process.exit(ok ? 0 : 1);
 } else {
   logger.info(`Extraction queue reclaim worker started — sweeping every ${POLL_MS / 1000}s for items stale over ${STALE_MINUTES}min`);
-  await reclaimStaleQueueItems();
+  await sweep().catch((e) => logger.error("Reclaim sweep failed", { error: e instanceof Error ? e.message : String(e) }));
   setInterval(() => {
-    reclaimStaleQueueItems().catch((e) => logger.error("Reclaim sweep failed", { error: e instanceof Error ? e.message : String(e) }));
+    sweep().catch((e) => logger.error("Reclaim sweep failed", { error: e instanceof Error ? e.message : String(e) }));
   }, POLL_MS);
 }

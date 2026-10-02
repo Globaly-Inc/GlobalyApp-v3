@@ -108,6 +108,28 @@ async function writeOwnedBranchDetails(table: "businesses" | "institutions", org
   await masterKnex(table).where({ id: orgId }).update({ ...patch, updated_at: masterKnex.fn.now() });
 }
 
+/**
+ * An admin edit to a campus that was converted into a branch org (extraction Branches tab) — the
+ * org's own profile IS that branch now, so the edit goes there (branch-sync's
+ * syncBranchFromCampus). `parent` is the head office; `branchId` its business_branches row for the
+ * branch (extraction_campuses.converted_branch_id). Only the campus fields in `changed` are
+ * written, so an untouched (possibly stale) campus value never overwrites the branch owner's own.
+ */
+export async function syncConvertedCampusToBranch(
+  parent: { id: number; schema_name: string }, branchId: string, changed: Record<string, unknown>,
+) {
+  const data: BranchPatch = {};
+  for (const k of ["name", "country", "state", "city", "address", "phone", "email"] as const) {
+    if (k in changed) (data as Record<string, unknown>)[k] = k === "name" ? (String(changed[k] ?? "").trim() || "Unnamed campus") : changed[k];
+  }
+  if (Object.keys(data).length === 0) return;
+  const link = await repo.findBranchById(parent.id, parent.schema_name, branchId);
+  if (!link) return;
+  const table = link.linked_institution_id != null ? "institutions" : link.linked_business_id != null ? "businesses" : null;
+  if (!table) return;
+  await writeOwnedBranchDetails(table, Number(link.linked_institution_id ?? link.linked_business_id), data);
+}
+
 async function requireBusiness(id: number) {
   const biz = await platformRepo.findBusinessById(id);
   if (!biz) throw new NotFoundError("Business not found");
@@ -342,9 +364,10 @@ export async function convertCampusesToBranches(jobId: string): Promise<number> 
   try {
     // An unprovisioned (account_status 0) org has no tenant schema to link a branch into.
     const inst = await masterKnex("institutions").where({ source_job_id: jobId }).whereNull("deleted_at")
-      .whereNot({ account_status: 0 }).first("id");
+      .whereNot({ account_status: 0 }).first("id", "schema_name");
     const biz = inst ? null : await masterKnex("businesses").where({ source_job_id: jobId }).whereNull("deleted_at")
-      .whereNot({ account_status: 0 }).first("id");
+      .whereNot({ account_status: 0 }).first("id", "schema_name");
+    const org = (inst ?? biz)!;
     if (!inst && !biz) return 0;
 
     const campuses = await reviewRepo.listCampusesByJobPaged(jobId, 1000, 0, { unconverted: true });
@@ -352,6 +375,7 @@ export async function convertCampusesToBranches(jobId: string): Promise<number> 
     for (const c of campuses) {
       const claimId = await reviewRepo.claimCampus(c.id);
       if (!claimId) continue; // another run holds it
+      let retiredCopy = false;
       try {
         // Same website as the head office, so it shares the head office's catalog rather than
         // extracting its own: the courses linked to this campus, or all of them when none are.
@@ -361,10 +385,18 @@ export async function convertCampusesToBranches(jobId: string): Promise<number> 
           address: c.address, phone: c.phone, email: c.email,
           shared_services: courseIds.length > 0 ? courseIds : "all",
         });
+        // Listings claimed before this conversion existed got each campus copied in as a PLAIN
+        // branch row (uuid = the campus id — branch-sync's seedBranchesFromJob). Retire that copy
+        // FIRST: creating the branch records the campus as converted, after which no run revisits
+        // it — so a cleanup after that point that failed would leave the campus listed twice. If
+        // the create then fails, the copy is put back (catch below), so the owner never loses it.
+        retiredCopy = (await repo.deleteBranch(Number(org.id), org.schema_name, c.id)) > 0;
         if (inst) await createInstitutionBranch(Number(inst.id), data, { id: c.id, claimId });
         else await createBranch(Number(biz!.id), data, { id: c.id, claimId });
         converted += 1;
       } catch (err) {
+        // Only the copy THIS run retired — never one the owner deleted themselves.
+        if (retiredCopy) await repo.restoreBranch(Number(org.id), org.schema_name, c.id).catch(() => {});
         await reviewRepo.failCampus(c.id, claimId);
         logger.warn("Campus → branch conversion failed", { jobId, campusId: c.id, error: String(err) });
       }

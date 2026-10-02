@@ -9,7 +9,7 @@ import * as service from "../../superadmin/platform/business-services/services/b
 import * as coursesRepo from "../../superadmin/data-extraction/repositories/courses.repository.js";
 import { approveServices, getFeePricesForCourses } from "../../superadmin/platform/business-services/repositories/institution-courses.repository.js";
 import { findAdminByPlatformUserId } from "../../superadmin/admin-users/repositories/admin-users.repository.js";
-import { SELF_SERVICE_SOURCE_TYPES, isApprovedCourse } from "../../superadmin/consts.js";
+import { BUSINESS_PORTAL_SOURCE_TYPES, isApprovedCourse } from "../../superadmin/consts.js";
 import { masterKnex } from "../../../core/db/master-pool.js";
 import { selfServiceJobIds } from "../../superadmin/data-extraction/repositories/jobs.repository.js";
 import { isInstitutionCategory } from "../../superadmin/data-extraction/repositories/promote.repository.js";
@@ -76,7 +76,7 @@ function courseToBusinessService(c: {
 /** verification_status → what the owner sees. flagged/mismatch = an admin found a problem. */
 /** selfService: the course is from a business-portal extraction (see SELF_SERVICE_SKIPS_APPROVAL). */
 function approvalStatus(status: string | null | undefined, selfService: boolean): "approved" | "pending" | "needs_changes" {
-  if (isApprovedCourse(status, selfService ? SELF_SERVICE_SOURCE_TYPES[0] : null)) return "approved";
+  if (isApprovedCourse(status, selfService ? BUSINESS_PORTAL_SOURCE_TYPES[0] : null)) return "approved";
   return status === "flagged" || status === "mismatch" ? "needs_changes" : "pending";
 }
 
