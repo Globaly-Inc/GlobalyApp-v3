@@ -10,7 +10,7 @@ import { NoteBubble } from "./note-bubble";
 import { DatePill, isGroupedWith, TranscriptBubble } from "./transcript-bubble";
 
 /** Centred and narrower than the pane, so both sides' bubbles stay near each other. */
-const MESSAGE_COLUMN = "mx-auto w-full max-w-2xl px-4 sm:px-6";
+const MESSAGE_COLUMN = "mx-auto w-full max-w-[70rem] px-4 sm:px-6";
 
 /** Within this of the bottom counts as "reading the latest", so new messages keep it pinned. */
 const STICK_PX = 120;
