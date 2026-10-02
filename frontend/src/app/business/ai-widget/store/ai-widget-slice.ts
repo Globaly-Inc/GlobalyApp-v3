@@ -1,6 +1,8 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { aiWidgetApi } from "../apis";
-import type { CreateEmbedConfigInput, EmbedConfig, UpdateEmbedConfigInput } from "../apis/types";
+import type {
+  CreateEmbedConfigInput, EmbedConfig, EnsureEmbedResult, SendSnippetInput, UpdateEmbedConfigInput,
+} from "../apis/types";
 
 export const fetchEmbedConfigs = createAsyncThunk("aiWidget/fetchConfigs", () => aiWidgetApi.listConfigs());
 
@@ -25,11 +27,31 @@ export const reactivateEmbedConfig = createAsyncThunk("aiWidget/reactivateConfig
   return id;
 });
 
+/** The portal card's own load: mints the widget if the org has none, and reports who the snippet
+ *  would go to. Kept apart from `configs` — the card never lists widgets, it works on the one. */
+export const ensureEmbedConfig = createAsyncThunk("aiWidget/ensureConfig", () => aiWidgetApi.ensureConfig());
+
+export const sendEmbedSnippet = createAsyncThunk(
+  "aiWidget/sendSnippet",
+  async (input: SendSnippetInput, { rejectWithValue }) => {
+    try {
+      return await aiWidgetApi.sendSnippet(input);
+    } catch (e) {
+      // The backend's message names the real reason (no developer, duplicate member, pending
+      // invite); a generic "failed" would hide the one thing the owner can act on.
+      return rejectWithValue(e instanceof Error ? e.message : "Couldn't send the code.");
+    }
+  },
+);
+
 type AiWidgetState = {
   configs: EmbedConfig[];
   status: "idle" | "loading" | "failed";
   createStatus: "idle" | "loading" | "failed";
   error: string | null;
+  handoff: EnsureEmbedResult | null;
+  handoffStatus: "idle" | "loading" | "failed";
+  sendStatus: "idle" | "loading" | "failed";
 };
 
 const initialState: AiWidgetState = {
@@ -37,6 +59,9 @@ const initialState: AiWidgetState = {
   status: "idle",
   createStatus: "idle",
   error: null,
+  handoff: null,
+  handoffStatus: "idle",
+  sendStatus: "idle",
 };
 
 const aiWidgetSlice = createSlice({
@@ -84,6 +109,37 @@ const aiWidgetSlice = createSlice({
       .addCase(reactivateEmbedConfig.fulfilled, (state, action) => {
         const config = state.configs.find((c) => c.id === action.payload);
         if (config) config.is_active = true;
+      })
+      .addCase(ensureEmbedConfig.pending, (state) => {
+        state.handoffStatus = "loading";
+      })
+      .addCase(ensureEmbedConfig.fulfilled, (state, action) => {
+        state.handoffStatus = "idle";
+        state.handoff = action.payload;
+      })
+      .addCase(ensureEmbedConfig.rejected, (state, action) => {
+        state.handoffStatus = "failed";
+        state.error = action.error.message ?? "Couldn't load your widget.";
+      })
+      .addCase(sendEmbedSnippet.pending, (state) => {
+        state.sendStatus = "loading";
+      })
+      .addCase(sendEmbedSnippet.fulfilled, (state, action) => {
+        state.sendStatus = "idle";
+        // An invite just created the developer, so the card must stop asking for one. Pending
+        // until they accept — same shape findDeveloper would return on the next load. The name
+        // comes off the thunk arg, not the response: the card renders `name || email`, and the
+        // response carries only the address, so someone typed "Sam Taylor" and saw an email.
+        if (state.handoff && action.payload.invited) {
+          state.handoff.developer = {
+            email: action.payload.sent_to,
+            name: action.meta.arg.invitee?.name ?? null,
+            pending: true,
+          };
+        }
+      })
+      .addCase(sendEmbedSnippet.rejected, (state) => {
+        state.sendStatus = "failed";
       });
   },
 });

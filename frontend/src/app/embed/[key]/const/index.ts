@@ -4,6 +4,17 @@ import type { StarterCategory } from "@/app/ai/const";
 export type EmbedOwnerKind = "business" | "institution";
 
 /**
+ * What the assistant is called when a tenant has not named it — the app's own assistant, the same
+ * one the signed-in portal calls "Ask Aly".
+ *
+ * A FALLBACK, never written to `ai_embed_configs.display_name`: a stored value would mean every
+ * auto-created widget counts as customised, and the onboarding checklist's "Customise your AI
+ * assistant" step reads exactly that column. `public/embed.js` repeats the string because a static
+ * file served to third-party sites cannot import it — change both together.
+ */
+export const DEFAULT_WIDGET_NAME = "Aly";
+
+/**
  * Starter questions for the embedded panel, per owner kind.
  *
  * The shared `STARTER_CATEGORIES` are marketplace questions ("What MBA programs are

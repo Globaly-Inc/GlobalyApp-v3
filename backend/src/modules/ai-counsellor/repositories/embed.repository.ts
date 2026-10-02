@@ -1,3 +1,4 @@
+import type { Knex } from "knex";
 import { masterKnex } from "../../../core/db/master-pool.js";
 // A widget owner is a business or an institution — the same {kind, id} pair the enquiry lane
 // already models for two-master-table ownership, so the helpers are reused rather than retyped.
@@ -30,6 +31,8 @@ export interface EmbedConfigRow {
 
 const TABLE = "ai_embed_configs";
 
+type Db = Knex | Knex.Transaction;
+
 export interface EmbedConfigPatch {
   display_name?: string | null;
   logo_url?: string | null;
@@ -41,8 +44,8 @@ export interface EmbedConfigPatch {
   auto_learn?: boolean;
 }
 
-export async function create(owner: EmbedOwner, data: EmbedConfigPatch): Promise<EmbedConfigRow> {
-  const [row] = await masterKnex(TABLE)
+export async function create(owner: EmbedOwner, data: EmbedConfigPatch, db: Db = masterKnex): Promise<EmbedConfigRow> {
+  const [row] = await db(TABLE)
     .insert({ ...recipientFilter(owner), ...data })
     .returning("*");
   return row;
@@ -54,6 +57,27 @@ export async function findByEmbedKey(embedKey: string): Promise<EmbedConfigRow |
 
 export async function findByOwner(owner: EmbedOwner): Promise<EmbedConfigRow[]> {
   return masterKnex(TABLE).where(recipientFilter(owner)).orderBy("created_at", "desc");
+}
+
+async function oldestActive(owner: EmbedOwner, db: Db = masterKnex): Promise<EmbedConfigRow | undefined> {
+  return db(TABLE)
+    .where(recipientFilter(owner)).where({ is_active: true })
+    .orderBy([{ column: "created_at", order: "asc" }, { column: "id", order: "asc" }])
+    .first() as Promise<EmbedConfigRow | undefined>;
+}
+
+/** The org's one widget for the portal card, minted on first ask.
+ *
+ *  OLDEST active, where `findByOwner` lists newest first: this resolves the key a customer may
+ *  already have pasted into their site, so creating a second widget never silently points the card,
+ *  the snippet email and the install at a key that is not on their page. */
+export async function ensureForOwner(owner: EmbedOwner): Promise<EmbedConfigRow> {
+  const existing = await oldestActive(owner);
+  if (existing) return existing;
+  return masterKnex.transaction(async (trx) => {
+    await trx.raw("SELECT pg_advisory_xact_lock(hashtext(?))", [`embed_mint:${owner.kind}:${owner.id}`]);
+    return (await oldestActive(owner, trx)) ?? (await create(owner, {}, trx));
+  });
 }
 
 /** Owner-scoped edit. Undefined = unchanged, null = cleared. */

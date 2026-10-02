@@ -219,7 +219,7 @@ async function validateDegreeLevelCodes(codes: string[], serviceCategoryId?: num
   return kept;
 }
 
-export async function createJob(input: CreateJobInput, adminId: number) {
+export async function createJob(input: CreateJobInput, adminId: number, opts: { ignoreJobId?: string } = {}) {
   const host = repo.normaliseHost(input.institution_url);
   const degree_level_codes = input.degree_level_codes?.length
     ? await validateDegreeLevelCodes(input.degree_level_codes, input.service_category_id)
@@ -228,7 +228,7 @@ export async function createJob(input: CreateJobInput, adminId: number) {
   const row = await masterKnex.transaction(async (trx) => {
     if (host) await repo.lockInstitutionHost(host, trx);
 
-    const existing = await repo.findJobByInstitutionHost(input.institution_url, trx);
+    const existing = await repo.findJobByInstitutionHost(input.institution_url, trx, opts.ignoreJobId);
     if (existing) throw conflictFor(existing);
 
     // The signed-in admin owns the job — the list shows them as the extractor.

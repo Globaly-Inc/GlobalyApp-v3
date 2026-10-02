@@ -17,28 +17,23 @@ export function AgentAcceptInviteView() {
   const searchParams = useSearchParams();
   const token = searchParams.get("token");
   const orgId = searchParams.get("org_id");
-  const [status, setStatus] = useState<Status>("loading");
-  const [message, setMessage] = useState("");
+  const linkInvalid = !token || !orgId;
+  const [result, setResult] = useState<{ status: Status; message: string }>({ status: "loading", message: "" });
+  const { status, message } = linkInvalid
+    ? { status: "error" as const, message: "This invitation link is missing required information." }
+    : result;
 
   const requestedRef = useRef(false);
   useEffect(() => {
-    if (requestedRef.current) return;
+    if (requestedRef.current || !token || !orgId) return;
     requestedRef.current = true;
-
-    if (!token || !orgId) {
-      setStatus("error");
-      setMessage("This invitation link is missing required information.");
-      return;
-    }
     inviteApi
       .acceptAgentInvite({ token, org_id: orgId })
-      .then((result) => {
-        setStatus("success");
-        setMessage(result.message);
+      .then((res) => {
+        setResult({ status: "success", message: res.message });
       })
       .catch((err: Error) => {
-        setStatus("error");
-        setMessage(err.message || "This invitation link is invalid or has expired.");
+        setResult({ status: "error", message: err.message || "This invitation link is invalid or has expired." });
       });
   }, [token, orgId]);
 

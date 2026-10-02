@@ -214,6 +214,9 @@ export type OnboardingProgress = {
   steps: OnboardingStep[];
   completed: number;
   total: number;
+  /** Play the welcome splash? Due (an onboarding invite was accepted) and not yet seen. Not a step —
+   *  nothing to tick off. The server decides; no URL param is involved. */
+  showWelcome: boolean;
 };
 
 export type WidgetAnalyticsMonth = {

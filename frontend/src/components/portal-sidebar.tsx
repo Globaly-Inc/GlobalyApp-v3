@@ -60,6 +60,8 @@ function bestActiveItem(pathname: string | null, currentSearch: string | null, i
     && new URLSearchParams(item.href.split("?")[1] ?? "").get("tab") === new URLSearchParams(currentSearch ?? "").get("tab"));
   if (exact) return exact;
   if (!pathname) return null;
+  const samePage = items.find((item) => item.href === pathname);
+  if (samePage) return samePage;
   for (const item of items) {
     const [path = "", hrefQuery] = item.href.split("?");
     if (!pathname.startsWith(`${path}/`)) continue;

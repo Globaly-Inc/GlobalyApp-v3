@@ -210,15 +210,17 @@ export function normaliseHost(url: string): string | null {
   }
 }
 
-export async function findJobByInstitutionHost(institutionUrl: string, db: Knex = masterKnex) {
+export async function findJobByInstitutionHost(institutionUrl: string, db: Knex = masterKnex, ignoreJobId?: string) {
   const host = normaliseHost(institutionUrl);
   if (!host) return null;
 
-  const rows = await db(`${T} as j`)
+  const query = db(`${T} as j`)
     .leftJoin(`${T_OVERVIEW} as o`, "o.job_id", "j.id")
     .select("j.id", "j.institution_url", "o.website", "o.email", "o.phone")
     .select(db.raw("coalesce(j.institution_name, o.name) as institution_name"))
     .whereNot("j.status", "declined");
+  if (ignoreJobId) query.whereNot("j.id", ignoreJobId);
+  const rows = await query;
 
   return rows.find((r) => normaliseHost(r.institution_url) === host || (r.website && normaliseHost(r.website) === host)) ?? null;
 }
@@ -250,6 +252,26 @@ export async function selfServiceJobIds(ids: string[]): Promise<Set<string>> {
 export async function findJobSourceType(id: string): Promise<string | null> {
   const row = await masterKnex(T).where({ id }).first("source_type");
   return row?.source_type ?? null;
+}
+
+const PLACEHOLDER_DATA_TABLES = [
+  "extraction_courses",
+  "extraction_campuses",
+  "extraction_agents",
+  "extraction_scholarships",
+  "extraction_visa_services",
+  "extraction_institution_overview",
+] as const;
+
+export async function isPlaceholderJob(id: string, db: Knex = masterKnex): Promise<boolean> {
+  const row = await db(T).where({ id }).first("source_type");
+  if (row?.source_type === "self_service") return true;
+  if (row?.source_type !== "manual") return false;
+  const { rows } = await db.raw(
+    `select ${PLACEHOLDER_DATA_TABLES.map((t) => `exists (select 1 from superadmin.${t} where job_id = ?)`).join("\n            or ")} as has`,
+    PLACEHOLDER_DATA_TABLES.map(() => id),
+  );
+  return !rows[0].has;
 }
 
 export async function syncOwnedJobUrl(jobId: string, website: string) {

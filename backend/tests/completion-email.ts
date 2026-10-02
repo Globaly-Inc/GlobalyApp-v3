@@ -13,7 +13,7 @@ function eq(actual: unknown, expected: unknown, label: string) {
   else { failed++; console.error(`FAIL ${label}\n  expected ${e}\n  got      ${a}`); }
 }
 
-const base = { entityName: "Cleveland State University", entityEmail: "info@csuohio.edu", ownerEmail: "owner@csuohio.edu", ownerFirstName: "Dana", ownerDisplayName: "Dana W", claimStatus: "claimed" };
+const base = { entityName: "Cleveland State University", entityEmail: "info@csuohio.edu", ownerEmail: "owner@csuohio.edu", ownerFirstName: "Dana", ownerDisplayName: "Dana W", claimStatus: "claimed", starterIsMember: true, starterIsAdmin: false };
 eq(pickRecipient(base), { email: "owner@csuohio.edu", name: "Dana", kind: "owner" }, "the owner comes first");
 eq(pickRecipient({ ...base, ownerEmail: null }), { email: "info@csuohio.edu", name: null, kind: "entity" }, "no owner → the institution's own email");
 eq(pickRecipient({ ...base, ownerEmail: "not-an-email" }), { email: "info@csuohio.edu", name: null, kind: "entity" }, "an invalid owner email falls through to the entity's");
@@ -23,25 +23,43 @@ eq(pickRecipient({ ...base, claimStatus: "unclaimed" }), null, "an unclaimed pro
 eq(pickRecipient({ ...base, claimStatus: "claim_pending" }), null, "a pending claim is not an owner yet");
 eq(pickRecipient({ ...base, ownerEmail: "owner-1a2b3c4d@unclaimed.globalyhub.invalid" }), { email: "info@csuohio.edu", name: null, kind: "entity" }, "a synthetic .invalid owner is never mailed");
 eq(pickRecipient({ ...base, ownerEmail: "x@unclaimed.globalyhub.invalid", entityEmail: "y@a.globalyhub.INVALID" }), null, "…nor a .invalid entity address");
-eq(isOwnerRun({ source_type: "institution_self_service", updated_by_platform_user_id: null }), true, "an institution owner's own portal run is mailed");
-eq(isOwnerRun({ source_type: "business_self_service", updated_by_platform_user_id: null }), true, "…and a business owner's");
-eq(isOwnerRun({ source_type: "institution_self_service", updated_by_platform_user_id: 119 }), false, "an admin re-ran / resumed the owner's job → admin run, not mailed");
-eq(isOwnerRun({ source_type: "institution", updated_by_platform_user_id: null }), false, "an admin-created crawl is never mailed");
-eq(isOwnerRun({ source_type: "self_service", updated_by_platform_user_id: null }), false, "the sign-up placeholder job carries no crawl");
-eq(isOwnerRun({ source_type: null, updated_by_platform_user_id: null }), false, "no source type → not the owner's");
+const member = { starterIsMember: true, starterIsAdmin: false };
+eq(isOwnerRun({ updated_by_platform_user_id: null }, member), true, "a member of the listing started it, no admin touched it → mailed (any category)");
+eq(isOwnerRun({ updated_by_platform_user_id: 119 }, member), false, "an admin re-ran / resumed / ran a step on it → admin run, not mailed");
+eq(isOwnerRun({ updated_by_platform_user_id: null }, { starterIsMember: false, starterIsAdmin: true }), false, "an admin-created crawl is never mailed");
+eq(isOwnerRun({ updated_by_platform_user_id: null }, { starterIsMember: true, starterIsAdmin: true }), false, "an admin who is also a member ran it → still an admin run");
+eq(isOwnerRun({ updated_by_platform_user_id: null }, { starterIsMember: false, starterIsAdmin: false }), false, "someone outside the listing started it → not the owner's run");
 eq(maskEmail("owner@csuohio.edu"), "ow***@csuohio.edu", "masked for the timeline");
 
 const PORTAL = "https://app.globalyhub.com/business/portal";
 const mail = extractionCompleteEmail({
   recipientName: "Dana", entityName: "Cleveland <State> University", website: "www.csuohio.edu",
   itemLabel: "courses", itemCount: 795,
-  coverage: [{ label: "campuses", count: 3 }, { label: "courses with fees", count: 412 }, { label: "courses with intake dates", count: 0 }],
+  coverage: [
+    { label: "campuses", count: 3 },
+    { label: "courses with fees", count: 412, of: 795 },
+    { label: "courses with intake dates", count: 0, of: 795 },
+  ],
   portalUrl: PORTAL,
+  snippet: `<script src="https://app.globalyhub.com/embed.js" data-key="abc-123" async></script>`,
 });
 eq(mail.subject, "Your Cleveland <State> University profile is ready on GlobalyApp", "subject names the entity");
 eq(mail.html.includes("Cleveland &lt;State&gt; University") && !mail.html.includes("<State>"), true, "entity name is escaped in HTML");
 eq(mail.html.includes("795") && mail.html.includes("courses found"), true, "headline count");
-eq(mail.html.includes("412 courses with fees") && !mail.html.includes("0 courses with intake dates"), true, "coverage lists only what was found");
+eq(mail.html.includes("Courses with fees") && mail.html.includes("412") && !mail.html.includes("Courses with intake dates"), true,
+  "coverage lists only what was found");
+eq(mail.html.includes("/ 795") && !/Campuses[\s\S]{0,200}\/ 795/.test(mail.html), true,
+  "a share shows its denominator; a campus count is not a share of the course total");
+// The tag itself, not a link to go and find it. Escaped, because it is rendered inside the mail.
+eq(mail.html.includes("&lt;script src=&quot;https://app.globalyhub.com/embed.js&quot; data-key=&quot;abc-123&quot; async&gt;"), true,
+  "the embed script is printed in the mail, escaped");
+eq(mail.text.includes(`<script src="https://app.globalyhub.com/embed.js" data-key="abc-123" async></script>`), true,
+  "and verbatim in the plain-text part, where it must stay copy-pasteable");
+const noSnippet = extractionCompleteEmail({
+  recipientName: "Dana", entityName: "X", website: null, itemLabel: "courses", itemCount: 1, coverage: [], portalUrl: PORTAL,
+});
+eq(noSnippet.html.includes("Get the embed code") && !noSnippet.html.includes("Paste this one line"), true,
+  "no widget resolved → the panel links to the portal rather than printing a tag that is not theirs");
 // Exact link values, not substrings of the body — a substring match also passes for the URL
 // embedded in a longer, different one (CodeQL: incomplete URL substring sanitization).
 const hrefs = new Set([...mail.html.matchAll(/href="([^"]*)"/g)].map((m) => m[1]));

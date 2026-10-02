@@ -75,6 +75,11 @@ type LayoutOptions = {
   /** Inner HTML — paragraphs, lists, or an OTP block. Trusted markup. */
   body: string;
   cta?: { label: string; href: string };
+  /**
+   * Trusted markup placed BELOW the primary button — a secondary offer that must not compete
+   * with it. Its own `<tr>`, so a caller passing nothing changes nothing.
+   */
+  afterCta?: string;
   /** Small print above the divider. */
   footnote?: string;
   /**
@@ -92,7 +97,7 @@ type LayoutOptions = {
   align?: "center" | "left";
 };
 
-export function emailLayout({ heading, body, cta, footnote, size = "default", align = "center" }: LayoutOptions): string {
+export function emailLayout({ heading, body, cta, afterCta, footnote, size = "default", align = "center" }: LayoutOptions): string {
   const wide = size === "wide";
   const maxWidth = wide ? 600 : 480;
   // Narrower side padding on the wide layout: it already has the room, and on a 375px phone
@@ -140,6 +145,7 @@ export function emailLayout({ heading, body, cta, footnote, size = "default", al
                   <td align="${align}" style="color:${BRAND.body};font-size:15px;line-height:23px">${body}</td>
                 </tr>
                 ${button}
+                ${afterCta ? `<tr><td align="left">${afterCta}</td></tr>` : ""}
                 ${small}
                 <tr>
                   <td align="center" style="border-top:1px solid ${BRAND.line};padding-top:20px;margin-top:8px">
@@ -773,6 +779,387 @@ export function claimBusinessEmail(options: {
   };
 }
 
+/** One numbered row of the "what happens next" list: a navy disc beside a line of text. */
+const stepRow = (n: number, html: string) => `<tr>
+    <td width="40" valign="top" style="width:40px;padding:0 0 14px">
+      <table cellpadding="0" cellspacing="0" role="presentation" style="border-radius:14px;background-color:${BRAND.primary}">
+        <tr><td align="center" valign="middle" style="width:28px;height:28px;color:#ffffff;font-family:${FONT};font-size:13px;font-weight:700;line-height:28px">${n}</td></tr>
+      </table>
+    </td>
+    <td valign="top" style="padding:3px 0 14px;color:${BRAND.body};font-size:15px;line-height:22px">${html}</td>
+  </tr>`;
+
+export function onboardingInviteEmail(options: {
+  acceptUrl: string;
+  /** Which portal the one click sets up. */
+  kind: "institution" | "business";
+  orgName?: string | null;
+  /** The business category the admin picked, e.g. "Visa Services"; named for businesses only. */
+  categoryName?: string | null;
+}): { subject: string; html: string; text: string } {
+  const org = options.kind === "institution" ? "institution" : "business";
+  const orgName = options.orgName?.trim();
+  const what = options.kind === "business" && options.categoryName ? `your ${esc(options.categoryName)} business` : `your ${org}`;
+  const manage = options.kind === "institution"
+    ? "your listing, courses, and student enquiries"
+    : "your listing, services, and enquiries";
+
+  const card = orgName
+    ? `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 22px">
+         <tr><td align="center" style="padding:0 16px">
+           <table cellpadding="0" cellspacing="0" role="presentation" style="background-color:${BRAND.soft};border-radius:12px">
+             <tr><td align="center" style="padding:14px 32px">
+               <p style="margin:0 0 4px;color:${BRAND.primary};font-size:11px;line-height:14px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase">Invitation for</p>
+               <p style="margin:0;color:${BRAND.ink};font-family:${HEADING_FONT};font-size:19px;line-height:26px;font-weight:700">${esc(orgName)}</p>
+             </td></tr>
+           </table>
+         </td></tr>
+       </table>`
+    : "";
+
+  const body = `${card}<p style="margin:0 0 20px">You've been invited to join <strong>GlobalyApp</strong>, the platform connecting students with
+         verified institutions, agents, and education services worldwide. Set up ${what}'s portal to manage ${manage}.</p>
+         <p style="margin:0 0 14px;color:${BRAND.ink};font-size:14px;line-height:20px;font-weight:700">What happens next</p>
+         <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+           ${stepRow(1, `Click <strong>Set up my ${org}</strong> below. It takes one click.`)}
+           ${stepRow(2, `We create your account and ${what}'s portal.`)}
+           ${stepRow(3, "Sign in with a one-time code we email to this address. No password to remember.")}
+         </table>`;
+
+  const fallback = `Button not working? Paste this link into your browser:<br><span style="color:${BRAND.muted};word-break:break-all">${esc(options.acceptUrl)}</span>`;
+
+  return {
+    subject: orgName ? `Set up ${orgName} on GlobalyApp` : `You're invited to set up your ${org} on GlobalyApp`,
+    text: [
+      "Hi there,",
+      "",
+      `You've been invited to join GlobalyApp${orgName ? ` as ${orgName}` : ` as a${org === "institution" ? "n" : ""} ${org}`}.`,
+      "",
+      `Set up your account: ${options.acceptUrl}`,
+      "",
+      "What happens next:",
+      "1. Open the link above.",
+      `2. We create your account and ${options.kind === "business" && options.categoryName ? `your ${options.categoryName} business's` : `your ${org}'s`} portal.`,
+      "3. Sign in with a one-time code we email to this address.",
+      "",
+      "This link expires in 72 hours. If you weren't expecting this, you can safely ignore this email.",
+    ].join("\n"),
+    html: emailLayout({
+      heading: `You are invited to set up your ${org} on GlobalyApp`,
+      body,
+      align: "left",
+      size: "wide",
+      cta: { label: `Set up my ${org}`, href: options.acceptUrl },
+      footnote: `${fallback}<br><br>This link expires in 72 hours. If you weren't expecting this, you can safely ignore this email.`,
+    }),
+  };
+}
+
+/**
+ * To the admin who sent an onboarding invite (support when that admin is gone): the invitee opened
+ * an expired or revoked link and asked for a new one. An expired invite is resent from the Invites
+ * tab; a revoked one can't be, so the admin sends a fresh invitation instead.
+ */
+export function onboardingLinkRequestEmail(options: {
+  email: string;
+  orgName: string;
+  reason: "expired" | "revoked";
+  invitesUrl: string;
+  /** Where the button goes: for an expired invite, the Invites tab primed to resend it. */
+  actionUrl: string;
+}): { subject: string; html: string; text: string } {
+  const expired = options.reason === "expired";
+  const org = esc(options.orgName);
+  const email = esc(options.email);
+  const pill = expired
+    ? { label: "Link expired", fg: "#92400E", bg: "#FEF3C7" }
+    : { label: "Invite revoked", fg: "#991B1B", bg: "#FEE2E2" };
+  const steps = expired
+    ? [
+        "Click <strong>Resend the invite</strong> below, and sign in to the admin if asked.",
+        `We email <strong>${email}</strong> a fresh link, valid for 72 hours.`,
+      ]
+    : [
+        "Open the <strong>Invites</strong> tab on the Businesses page.",
+        `Revoked invites can't be resent, so click <strong>Invite Business</strong> and send a new one to <strong>${email}</strong>.`,
+      ];
+
+  const card = `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 24px;background-color:${BRAND.soft};border-radius:12px">
+       <tr><td style="padding:16px 18px">
+         <table cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 10px;border-radius:9999px;background-color:${pill.bg}">
+           <tr><td style="padding:3px 10px;color:${pill.fg};font-size:11px;line-height:16px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase">${pill.label}</td></tr>
+         </table>
+         <p style="margin:0 0 4px;color:${BRAND.ink};font-family:${HEADING_FONT};font-size:19px;line-height:26px;font-weight:700">${org}</p>
+         <p style="margin:0;color:${BRAND.muted};font-size:14px;line-height:20px"><a href="mailto:${email}" style="color:${BRAND.primary};text-decoration:none">${email}</a></p>
+       </td></tr>
+     </table>`;
+
+  const body = `<p style="margin:0 0 20px">${expired
+      ? `<strong>${org}</strong> opened their onboarding link after it expired and asked for a new one.`
+      : `<strong>${org}</strong> opened an onboarding link that was revoked and asked to be invited again.`}</p>
+     ${card}
+     <p style="margin:0 0 14px;color:${BRAND.ink};font-size:14px;line-height:20px;font-weight:700">What to do</p>
+     <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+       ${steps.map((step, i) => stepRow(i + 1, step)).join("")}
+     </table>`;
+
+  return {
+    subject: expired ? `${options.orgName} needs a new invite link` : `${options.orgName} asked to be invited again`,
+    text: [
+      expired
+        ? `${options.orgName} (${options.email}) opened their onboarding link after it expired and asked for a new one.`
+        : `${options.orgName} (${options.email}) opened an onboarding link that was revoked and asked to be invited again.`,
+      "",
+      "What to do:",
+      ...(expired
+        ? ["1. Open the link below, and sign in to the admin if asked.", `2. We email ${options.email} a fresh link, valid for 72 hours.`]
+        : ["1. Open the Invites tab on the Businesses page.", `2. Revoked invites can't be resent, so send a new invitation to ${options.email}.`]),
+      "",
+      expired ? `Resend it: ${options.actionUrl}` : `Invites: ${options.invitesUrl}`,
+      "",
+      "Each invite can send this request at most once a day.",
+    ].join("\n"),
+    html: emailLayout({
+      heading: expired ? "An invite link needs resending" : "Someone asked to be re-invited",
+      body,
+      align: "left",
+      size: "wide",
+      cta: { label: expired ? "Resend the invite" : "Send a new invite", href: options.actionUrl },
+      footnote: "Each invite can send this request at most once a day.",
+    }),
+  };
+}
+
+/**
+ * The embed snippet, mailed to the org's developer from the portal's AI-embed card.
+ *
+ * Written for a developer reading on a phone: the tag is the payload and comes first, as selectable
+ * monospace on an ink surface — some clients strip the CTA button, none strip text.
+ *
+ * The install guidance is "add it once, in the file every page already shares", NOT the usual
+ * "paste on every page": every platform these recipients actually use has a single site-wide slot
+ * (theme.liquid, Code Injection → Footer, footer.php, root layout), and per-page pasting is how a
+ * widget ends up on three pages out of forty. Verified against current platform docs 2026-10-02.
+ *
+ * `invited` adds the line explaining why they can now sign in.
+ */
+export function embedSnippetEmail(options: {
+  recipientName: string | null;
+  orgName: string;
+  snippet: string;
+  widgetUrl: string;
+  /** This email follows an invitation sent moments ago by the same action. */
+  invited: boolean;
+}): { subject: string; html: string; text: string } {
+  const org = esc(options.orgName);
+  const firstName = options.recipientName?.split(" ")[0];
+  const greeting = firstName ? `Hi ${esc(firstName)},` : "Hi there,";
+  const mono = "ui-monospace,SFMono-Regular,Menlo,Consolas,monospace";
+
+  /** Where "once" actually is, per platform. Ordered by how likely this reader is to be on it. */
+  const PLACES: Array<[string, string]> = [
+    ["Custom site, React, Vue, Next", "<code style=\"font-family:" + mono + ";font-size:13px\">index.html</code>, or your root layout"],
+    ["WordPress", "Your theme's <code style=\"font-family:" + mono + ";font-size:13px\">footer.php</code>, or a header-and-footer plugin"],
+    ["Shopify", "Online Store → Themes → Edit code → <code style=\"font-family:" + mono + ";font-size:13px\">theme.liquid</code>"],
+    ["Squarespace", "Settings → Code Injection → Footer"],
+    ["Webflow", "Project Settings → Custom Code → Footer"],
+  ];
+
+  const placeRows = PLACES.map(([platform, where], i) => `<tr>
+       <td valign="top" style="padding:10px 14px 10px 0;${i ? `border-top:1px solid ${BRAND.line};` : ""}color:${BRAND.ink};font-size:14px;line-height:21px;font-weight:600;white-space:nowrap">${esc(platform)}</td>
+       <td valign="top" style="padding:10px 0;${i ? `border-top:1px solid ${BRAND.line};` : ""}color:${BRAND.body};font-size:14px;line-height:21px">${where}</td>
+     </tr>`).join("");
+
+  // Ink surface, light text: reads as code to a developer, and renders identically in light and
+  // dark clients because both colours are stated rather than inherited.
+  const snippetBlock = `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 10px">
+       <tr><td style="padding:16px;background-color:${BRAND.ink};border-radius:12px">
+         <code style="display:block;color:#E8EEFB;font-family:${mono};font-size:13px;line-height:21px;word-break:break-all">${esc(options.snippet)}</code>
+       </td></tr>
+     </table>`;
+
+  const invitedLine = options.invited
+    ? `<p style="margin:0 0 20px;padding:14px 16px;background-color:${BRAND.soft};border-radius:10px;font-size:14px;line-height:22px">${org} has also added you to their GlobalyApp team as a <strong>Developer</strong>, so you can sign in and check the widget once it is live. A separate email has your sign-in link.</p>`
+    : "";
+
+  const body = `<p style="margin:0 0 18px;line-height:24px">${greeting}</p>
+     <p style="margin:0 0 18px;line-height:24px"><strong>${org}</strong> asked us to send you the code for their GlobalyApp chat assistant.
+       It is one script tag — nothing to install, no stylesheet to load.</p>
+     ${snippetBlock}
+     <p style="margin:0 0 24px;color:${BRAND.muted};font-size:13px;line-height:20px">Pasting it more than once is harmless; the second tag does nothing.</p>
+
+     <p style="margin:0 0 6px;color:${BRAND.ink};font-size:15px;line-height:22px;font-weight:700">Add it once, not to every page</p>
+     <p style="margin:0 0 14px;line-height:24px">Put it in the one file or setting every page already shares, anywhere before the closing
+       <code style="font-family:${mono};font-size:13px">&lt;/body&gt;</code> tag, and the assistant appears across the whole site.</p>
+     <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 24px;border-collapse:collapse">${placeRows}</table>
+
+     <p style="margin:0 0 20px;line-height:24px"><strong style="color:${BRAND.ink}">What happens then:</strong> a chat button appears in the
+       bottom-right corner of the site. Visitors can ask about courses, fees, intakes and entry requirements, and
+       ${org} sees every conversation in their portal.</p>
+     ${invitedLine}`;
+
+  return {
+    subject: `Chat widget code for ${options.orgName}`,
+    text: [
+      firstName ? `Hi ${firstName},` : "Hi there,",
+      "",
+      `${options.orgName} asked us to send you the code for their GlobalyApp chat assistant.`,
+      "It is one script tag — nothing to install, no stylesheet to load.",
+      "",
+      options.snippet,
+      "",
+      "ADD IT ONCE, NOT TO EVERY PAGE",
+      "Put it in the one file or setting every page already shares, anywhere before the closing </body> tag:",
+      "",
+      "  Custom site, React, Vue, Next — index.html, or your root layout",
+      "  WordPress — your theme's footer.php, or a header-and-footer plugin",
+      "  Shopify — Online Store > Themes > Edit code > theme.liquid",
+      "  Squarespace — Settings > Code Injection > Footer",
+      "  Webflow — Project Settings > Custom Code > Footer",
+      "",
+      "Pasting it more than once is harmless; the second tag does nothing.",
+      "",
+      `What happens then: a chat button appears in the bottom-right corner. Visitors can ask about courses, fees, intakes and entry requirements, and ${options.orgName} sees every conversation in their portal.`,
+      ...(options.invited
+        ? ["", `${options.orgName} has also added you to their GlobalyApp team as a Developer. A separate email has your sign-in link.`]
+        : []),
+      "",
+      `Widget settings: ${options.widgetUrl}`,
+    ].join("\n"),
+    html: emailLayout({
+      heading: "Your chat widget code",
+      body,
+      align: "left",
+      size: "wide",
+      cta: { label: "Open widget settings", href: options.widgetUrl },
+      footnote: "Sent because someone at this organisation asked us to share their widget code with you.",
+    }),
+  };
+}
+
+/**
+ * What the crawl found: the headline count, then one row per coverage figure.
+ *
+ * Its own helper rather than `countBlock` + `benefitList` (which the acquisition mail shares and
+ * must keep): a tick list cannot show "97 of 184", and the denominator is the whole point — 97
+ * courses with fees reads as good news until you see how many courses there are.
+ *
+ * `of` is per row because not every figure is a share of the total: campuses are a count in their
+ * own right, and "16 / 184 campuses" would be nonsense.
+ */
+function coverageBlock(
+  count: number,
+  label: string,
+  rows: Array<{ label: string; count: number; of?: number }>,
+): string {
+  const cells = rows.map((r, i) => {
+    const edge = i ? `border-top:1px solid ${BRAND.line};` : "";
+    const denominator = r.of ? `<span style="color:${BRAND.faint};font-weight:400"> / ${r.of}</span>` : "";
+    return `<tr>
+      <td style="${edge}padding:11px 20px;color:${BRAND.body};font-size:15px;line-height:21px">${esc(r.label.charAt(0).toUpperCase() + r.label.slice(1))}</td>
+      <td align="right" style="${edge}padding:11px 20px;color:${BRAND.ink};font-size:15px;line-height:21px;font-weight:700;white-space:nowrap">${r.count}${denominator}</td>
+    </tr>`;
+  }).join("");
+
+  return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;border:1px solid ${BRAND.line};border-radius:12px">
+    <tr><td colspan="2" style="padding:18px 20px;background-color:${BRAND.soft};border-radius:12px 12px 0 0">
+      <span style="color:${BRAND.primary};font-size:34px;line-height:38px;font-weight:700">${count}</span>
+      <span style="color:${BRAND.body};font-size:15px;line-height:21px">&nbsp;${esc(label)}</span>
+    </td></tr>
+    ${cells}
+  </table>`;
+}
+
+/**
+ * "Also included" — the AI-assistant offer under the completion mail's primary button.
+ *
+ * A text link, never a second pill: this mail exists to get the profile reviewed, and two buttons
+ * of equal weight make the reader choose instead of act. Position carries the hierarchy — below
+ * the CTA, inside its own bordered box, so it reads as an extra rather than a competing errand.
+ *
+ * Two fluid columns with NO media query, because this file's premise is that clients strip
+ * `<style>`: each column is `width:100%` capped by `max-width`, so they sit side by side when the
+ * card has the room and wrap to a stack when it does not. Outlook's Word engine ignores
+ * `display:inline-block` and simply stacks them — the same acceptable outcome, not a broken one.
+ * The wrapper is `font-size:0` so the newline between the two blocks cannot render as a gap.
+ *
+ * The preview shows the assistant answering the thing this org was just crawled for, so the offer
+ * lands as "your catalogue, on your site" rather than as a generic feature ad. The reply says what
+ * it can do rather than inventing a specific course — a mock must not state a fact we never read.
+ */
+function aiWidgetPromo(options: {
+  /** Pre-escaped. */
+  entityName: string;
+  /** Pre-escaped, protocol already stripped by the caller. */
+  website: string | null;
+  itemLabel: "courses" | "services";
+  href: string;
+  /** The real tag, resolved from the org's own widget. Null when it could not be resolved — the
+   *  panel then sends them to the portal for it rather than printing a tag that is not theirs. */
+  snippet: string | null;
+}): string {
+  const courses = options.itemLabel === "courses";
+  const where = options.website ? `on <strong>${options.website}</strong>` : "on your own website";
+  const blurb = courses
+    ? `Let students ask about your courses, fees and intakes ${where}.`
+    : `Let visitors ask about your services, costs and processing times ${where}.`;
+  const question = courses ? "Which courses start in September?" : "Do you help with student visas?";
+  const answer = courses
+    ? "I can list the September intakes with their fees and entry requirements."
+    : "I can take you through the documents, costs and timelines.";
+
+  const mono = "ui-monospace,SFMono-Regular,Menlo,Consolas,monospace";
+  // The tag itself, full width under both columns — a 248px column cannot show a line this long,
+  // and a developer copying it needs the whole thing selectable rather than wrapped mid-attribute.
+  // Ink surface with both colours stated, so it reads as code in light and dark clients alike.
+  const codeRow = options.snippet
+    ? `<tr><td style="padding:0 20px 20px">
+        <p style="margin:0 0 8px;color:${BRAND.ink};font-size:13px;line-height:19px;font-weight:700">Paste this one line into your site</p>
+        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 8px">
+          <tr><td style="padding:14px;background-color:${BRAND.ink};border-radius:10px">
+            <code style="display:block;color:#E8EEFB;font-family:${mono};font-size:12px;line-height:19px;word-break:break-all">${esc(options.snippet)}</code>
+          </td></tr>
+        </table>
+        <p style="margin:0;color:${BRAND.muted};font-size:12px;line-height:18px">Add it <strong style="color:${BRAND.body}">once</strong>, in the file every page already shares — your root layout, theme footer, or your platform's site-wide code setting. <a href="${options.href}" style="color:${BRAND.primary};text-decoration:none;font-weight:600">Where to put it &rarr;</a></p>
+      </td></tr>`
+    : `<tr><td style="padding:0 20px 20px">
+        <a href="${options.href}" style="color:${BRAND.primary};font-size:14px;line-height:21px;font-weight:600;text-decoration:none">Get the embed code &rarr;</a>
+      </td></tr>`;
+
+  const bubble = (text: string, mine: boolean) => `
+    <div style="${mine ? "text-align:right" : "padding-top:8px"}">
+      <span style="display:inline-block;max-width:94%;text-align:left;font-size:12px;line-height:17px;padding:8px 10px;${
+        mine
+          ? `background-color:${BRAND.primary};color:#ffffff;border-radius:12px 12px 4px 12px`
+          : `background-color:${BRAND.page};color:${BRAND.body};border-radius:12px 12px 12px 4px`
+      }">${text}</span>
+    </div>`;
+
+  return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin-top:28px;border:1px solid ${BRAND.line};border-radius:14px">
+    <tr><td style="padding:20px;font-size:0">
+      <div style="display:inline-block;width:100%;max-width:248px;vertical-align:top">
+        <div style="padding:0 16px 0 0">
+          <p style="margin:0 0 6px;color:${BRAND.primary};font-size:12px;line-height:16px;font-weight:700;letter-spacing:.08em;text-transform:uppercase">Also included</p>
+          <p style="margin:0 0 8px;color:${BRAND.ink};font-size:17px;line-height:23px;font-weight:700">Add the AI assistant to your website</p>
+          <p style="margin:0;color:${BRAND.body};font-size:14px;line-height:21px">${blurb}</p>
+        </div>
+      </div><div style="display:inline-block;width:100%;max-width:248px;vertical-align:top;padding-top:4px">
+        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="border:1px solid ${BRAND.line};border-radius:12px;background-color:#ffffff">
+          <tr><td style="padding:10px 12px;border-bottom:1px solid ${BRAND.line}">
+            <table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr>
+              <td width="20" style="width:20px;padding-right:8px"><img src="${logoUrl()}" alt="" width="20" height="20" style="display:block;border-radius:5px" /></td>
+              <td style="color:${BRAND.ink};font-size:13px;line-height:18px;font-weight:700">Ask ${options.entityName}</td>
+              <td width="8" align="right" style="width:8px"><span style="display:inline-block;width:7px;height:7px;border-radius:9999px;background-color:#16A34A">&nbsp;</span></td>
+            </tr></table>
+          </td></tr>
+          <tr><td style="padding:12px">${bubble(question, true)}${bubble(answer, false)}</td></tr>
+        </table>
+      </div>
+    </td></tr>
+    ${codeRow}
+  </table>`;
+}
+
 /**
  * "Your profile is ready" — sent by the data-extraction completion step to the institution's or
  * business's owner (or the entity's own address) once a crawl finishes verification. Counts are
@@ -785,13 +1172,21 @@ export function extractionCompleteEmail(options: {
   /** "courses" for an institution, "services" for a visa/migration provider. */
   itemLabel: "courses" | "services";
   itemCount: number;
-  coverage: Array<{ label: string; count: number }>;
+  /** `of` renders the denominator ("97 / 184"); omit it for a figure that is not a share. */
+  coverage: Array<{ label: string; count: number; of?: number }>;
   portalUrl: string;
+  /** The org's real embed tag. Null falls back to a link — never a tag that is not theirs. */
+  snippet?: string | null;
 }): { subject: string; html: string; text: string } {
   const entityName = esc(options.entityName);
   const greeting = options.recipientName ? `Hi ${esc(options.recipientName)},` : `Hi ${entityName} team,`;
   const site = options.website ? ` from <strong>${esc(options.website)}</strong>` : "";
-  const coverage = options.coverage.filter((c) => c.count > 0).map((c) => `${c.count} ${c.label}`);
+  const found = options.coverage.filter((c) => c.count > 0);
+  const coverage = found.map((c) => `${c.count} ${c.label}`);
+  // Internal, like the other deep links in this file (see `web`): the caller already builds
+  // portalUrl from the same WEB_APP_URL, so a second parameter would only be a way to disagree.
+  const widgetUrl = web("/business/ai-widget");
+  const askWhere = options.website ? `on ${options.website}` : "on your own website";
 
   return {
     subject: `Your ${options.entityName} profile is ready on GlobalyApp`,
@@ -800,6 +1195,17 @@ export function extractionCompleteEmail(options: {
       `We've finished collecting ${options.entityName}'s details${options.website ? ` from ${options.website}` : ""} on GlobalyApp.`,
       `${options.itemCount} ${options.itemLabel} found${coverage.length ? ` — ${coverage.join(", ")}` : ""}.`,
       `Review your profile: ${options.portalUrl}`,
+      "ALSO INCLUDED — Add the AI assistant to your website",
+      options.itemLabel === "courses"
+        ? `Let students ask about your courses, fees and intakes ${askWhere}.`
+        : `Let visitors ask about your services, costs and processing times ${askWhere}.`,
+      ...(options.snippet
+        ? [
+            "Paste this one line into your site:",
+            options.snippet,
+            "Add it ONCE, in the file every page already shares — your root layout, theme footer, or your platform's site-wide code setting.",
+          ]
+        : [`Get the embed code: ${widgetUrl}`]),
       "Some details may need your review before students see them. You can edit anything from your portal.",
     ].join("\n\n"),
     html: emailLayout({
@@ -808,11 +1214,19 @@ export function extractionCompleteEmail(options: {
              <p style="margin:0 0 20px">We've finished collecting <strong>${entityName}</strong>'s details${site} on
              <strong>GlobalyApp</strong> — the platform connecting students with verified institutions, agents, and
              education services worldwide.</p>
-             ${countBlock(options.itemCount, `${options.itemLabel} found`)}
-             ${coverage.length ? `<div style="margin:20px 0 0;text-align:left">${benefitList(coverage)}</div>` : ""}
+             ${coverageBlock(options.itemCount, `${options.itemLabel} found`, found)}
              <p style="margin:20px 0 0">Take a look and make sure everything is right, so students find accurate
              information about ${entityName}.</p>`,
+      size: "wide",
+      align: "left",
       cta: { label: "Review your profile", href: options.portalUrl },
+      afterCta: aiWidgetPromo({
+        entityName,
+        website: options.website ? esc(options.website) : null,
+        itemLabel: options.itemLabel,
+        href: widgetUrl,
+        snippet: options.snippet ?? null,
+      }),
       footnote: "Some details may need your review before students see them. You can edit anything from your portal.",
     }),
   };

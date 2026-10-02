@@ -6,7 +6,7 @@ import * as repo from "../repositories/platform-users.repository.js";
 import * as jobsRepo from "../../superadmin/data-extraction/repositories/jobs.repository.js";
 import { createJob, getSelfServiceStatus } from "../../superadmin/data-extraction/services/jobs.service.js";
 import { listSiteUrls, getSnapshotMarkdownByUrl, updateSnapshotMarkdown, refreshSiteUrls } from "../../superadmin/data-extraction/services/site-urls.service.js";
-import { getInstitutionOnboardingProgress, markCoursesReviewedForInstitution } from "../../businesses/services/onboarding-progress.service.js";
+import { getInstitutionOnboardingProgress, markCoursesReviewedForInstitution, clearWelcomePendingForInstitution } from "../../businesses/services/onboarding-progress.service.js";
 import { parentExtraction } from "../../businesses/services/parent-extraction.service.js";
 import * as coursesRepo from "../../superadmin/data-extraction/repositories/courses.repository.js";
 import { resolveSharedCourses } from "../../superadmin/platform/business-branches/repositories/business-branches.repository.js";
@@ -49,8 +49,7 @@ async function withImagePreviews<
  */
 async function withPublicSourceJobId<T extends { source_job_id: string | null }>(inst: T): Promise<T> {
   if (!inst.source_job_id) return inst;
-  const sourceType = await jobsRepo.findJobSourceType(inst.source_job_id);
-  return sourceType === "self_service" ? { ...inst, source_job_id: null } : inst;
+  return (await jobsRepo.isPlaceholderJob(inst.source_job_id)) ? { ...inst, source_job_id: null } : inst;
 }
 
 /** Own real job, else the head office's when this branch shares its website (parentExtraction). */
@@ -99,6 +98,7 @@ export async function startExtraction(institution: InstitutionRecord, platformUs
     const website = input.website ?? locked.website;
     if (!website) throw new BadRequestError("A website is required to start extraction");
 
+    const placeholderId = locked.source_job_id ?? undefined;
     let job: { id: string };
     try {
       job = await createJob(
@@ -110,6 +110,7 @@ export async function startExtraction(institution: InstitutionRecord, platformUs
           business_category_id: (await findCategoryIdBySlug("institutions")) ?? undefined,
         },
         platformUserId,
+        { ignoreJobId: placeholderId },
       );
     } catch (err) {
       // createJob's own conflict means another job already covers this host — not a status this
@@ -125,6 +126,9 @@ export async function startExtraction(institution: InstitutionRecord, platformUs
       .where({ id: institution.id })
       .update({ website, source_job_id: job.id, updated_at: trx.fn.now() })
       .returning("*");
+    if (placeholderId && (await jobsRepo.findJobSourceType(placeholderId)) === "manual") {
+      await trx("superadmin.extraction_jobs").where({ id: placeholderId }).update({ status: "declined", updated_at: trx.fn.now() });
+    }
     return withImagePreviews(updated);
   });
 }
@@ -186,6 +190,11 @@ export async function getOnboardingProgress(institution: InstitutionRecord) {
 export async function markOnboardingCoursesReviewed(institution: InstitutionRecord) {
   await markCoursesReviewedForInstitution(institution.id);
   return { reviewed: true };
+}
+
+export async function markOnboardingWelcomeSeen(institution: InstitutionRecord) {
+  await clearWelcomePendingForInstitution(institution.id);
+  return { seen: true };
 }
 
 export async function getMyWidgetAnalytics(institution: InstitutionRecord) {

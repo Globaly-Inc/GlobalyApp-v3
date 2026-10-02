@@ -1,0 +1,250 @@
+/*
+ * Welcome splash motion. Every animated element uses `both`/`backwards` fill with its hidden state
+ * living in the keyframes' `from`, so with reduced motion (animation: none) the element simply
+ * shows in its final state. Elements that only make sense animated (ripples, confetti) start at
+ * opacity 0 and stay hidden instead.
+ */
+
+/* One animated value drives the whole exit: the iris radius. The clip and the glow both read it, so they
+   can never drift apart. (Registered so it can be transitioned; unregistered it would jump.) */
+@property --iris-r {
+  syntax: "<length>";
+  inherits: true;
+  initial-value: 4000px;
+}
+
+.root {
+  animation: fadeIn 0.5s ease both;
+  /* Full-size until the exit: the iris centre (--cx/--cy) and farthest-corner radius (--r0) are set in
+     JS from the logo's position just before .leaving is added. */
+  --iris-r: var(--r0, 4000px);
+  clip-path: circle(var(--iris-r) at var(--cx, 50%) var(--cy, 50%));
+}
+
+.leaving {
+  --iris-r: var(--r1, 0px);
+  pointer-events: none;
+  transition: --iris-r 1.5s cubic-bezier(0.7, 0, 0.3, 1) 0.4s;
+  animation: exitFade 0.3s ease 1.9s both;
+}
+@keyframes exitFade {
+  to { opacity: 0; }
+}
+
+/* Content converges on the logo (the iris centre) on the same curve as the iris. */
+.stage {
+  transform-origin: var(--cx, 50%) var(--cy, 50%);
+  transition: scale 1.5s cubic-bezier(0.7, 0, 0.3, 1) 0.4s, opacity 0.6s ease 1.3s;
+}
+.leaving .stage {
+  scale: 0.35;
+  opacity: 0;
+}
+/* The "taking you to your dashboard" hint has no job once leaving, so it goes first. */
+.footerFade { transition: opacity 0.3s ease; }
+.leaving .footerFade { opacity: 0; }
+/* Skip enters with an animation, so it leaves with one. */
+.leaving .skip { animation: exitFade 0.4s ease both; }
+
+/* The glowing rim: a full-screen gradient whose ring sits at --iris-r, so it hugs the closing edge from inside. */
+.iris {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  pointer-events: none;
+  opacity: 0;
+  background: radial-gradient(
+    circle at var(--cx, 50%) var(--cy, 50%),
+    transparent max(0px, calc(var(--iris-r) - 120px)),
+    rgba(35, 221, 246, 0.38) max(0px, calc(var(--iris-r) - 14px)),
+    rgba(255, 255, 255, 0.75) max(0px, calc(var(--iris-r) - 1px)),
+    transparent var(--iris-r)
+  );
+}
+.leaving .iris { animation: irisGlow 1.5s linear 0.4s both; }
+@keyframes irisGlow {
+  0% { opacity: 0; }
+  12%, 80% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+}
+
+/* Background */
+.aurora1 { animation: drift1 16s ease-in-out infinite alternate; }
+.aurora2 { animation: drift2 19s ease-in-out infinite alternate; }
+@keyframes drift1 { to { transform: translate3d(9vw, 7vh, 0) scale(1.18); } }
+@keyframes drift2 { to { transform: translate3d(-8vw, -9vh, 0) scale(1.12); } }
+
+.star {
+  animation: twinkle var(--d) ease-in-out infinite;
+  animation-delay: var(--s);
+}
+@keyframes twinkle {
+  0%, 100% { opacity: 0.12; transform: scale(0.8); }
+  50% { opacity: 0.85; transform: scale(1.2); }
+}
+
+/* Stage: logo, rings, orbit, confetti */
+.ring { animation: ringIn 1.2s cubic-bezier(0.2, 0.8, 0.2, 1) 0.5s both; }
+@keyframes ringIn { from { opacity: 0; transform: scale(0.6); } }
+
+.logo { animation: logoIn 0.95s cubic-bezier(0.34, 1.56, 0.64, 1) 0.15s both; }
+@keyframes logoIn { from { opacity: 0; transform: scale(0.25) rotate(-20deg); } }
+
+.ripple {
+  opacity: 0;
+  animation: ripple 3.2s ease-out infinite;
+  animation-delay: calc(0.9s + var(--i) * 1.3s);
+}
+@keyframes ripple {
+  0% { opacity: 0.45; transform: scale(0.85); }
+  100% { opacity: 0; transform: scale(2.6); }
+}
+
+.orbitIn { animation: orbitIn 1s cubic-bezier(0.2, 0.8, 0.2, 1) 0.9s both; }
+@keyframes orbitIn { from { opacity: 0; transform: scale(0.35); } }
+.orbit { animation: spin 28s linear infinite; }
+.counter { animation: spin 28s linear infinite reverse; }
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.bob { animation: bob 3.4s ease-in-out infinite; animation-delay: var(--s); }
+@keyframes bob {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -5px; }
+}
+
+.particle {
+  opacity: 0;
+  animation: burst 1.6s cubic-bezier(0.1, 0.7, 0.3, 1) 0.85s forwards;
+}
+@keyframes burst {
+  0% { opacity: 1; transform: translate(0, 0) rotate(0) scale(1); }
+  75% { opacity: 1; }
+  100% { opacity: 0; transform: translate(var(--x), var(--y)) rotate(var(--r)) scale(0.55); }
+}
+
+/* Copy */
+.word {
+  display: inline-block;
+  animation: wordIn 0.85s cubic-bezier(0.2, 0.8, 0.2, 1) calc(1.1s + var(--i) * 0.09s) both;
+}
+@keyframes wordIn {
+  from { opacity: 0; transform: translateY(26px); filter: blur(10px); }
+}
+
+.shimmer {
+  background: linear-gradient(90deg, #23ddf6 0%, #ffffff 45%, #23ddf6 90%);
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: sweep 4.5s linear 2.2s infinite;
+}
+@keyframes sweep { to { background-position: -200% 0; } }
+
+.rise { animation: rise 0.75s cubic-bezier(0.2, 0.8, 0.2, 1) var(--delay) both; }
+@keyframes rise { from { opacity: 0; transform: translateY(18px); } }
+
+/* Call to action: a soft light sweep across the button, and the arrow nudging forward */
+.cta { position: relative; overflow: hidden; }
+.cta::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(110deg, transparent 30%, rgba(1, 46, 138, 0.18) 50%, transparent 70%);
+  transform: translateX(-120%);
+  animation: sweepBtn 3.4s ease-in-out 3.2s infinite;
+}
+@keyframes sweepBtn {
+  0% { transform: translateX(-120%); }
+  45%, 100% { transform: translateX(120%); }
+}
+.arrow { animation: nudge 1.6s ease-in-out 3.2s infinite; }
+@keyframes nudge {
+  0%, 100% { transform: translateX(0); }
+  50% { transform: translateX(4px); }
+}
+
+/*
+ * Feature-card demos: an 8s loop each, started after the card has risen in (--cycle-delay). The
+ * element's own style is its finished state, so animation: none (reduced motion) shows that.
+ * `translate`/`scale` are used rather than `transform` so the loops never fight an entrance.
+ */
+.fillBar,
+.tick,
+.msg,
+.reply,
+.typing,
+.visitorBadge,
+.leadBadge {
+  animation-duration: 8s;
+  animation-iteration-count: infinite;
+  animation-fill-mode: both;
+  animation-timing-function: ease-in-out;
+  animation-delay: calc(var(--cycle-delay, 0s) + var(--r, 0) * 0.45s + var(--m, 0s));
+}
+.fillBar { animation-name: fillBar; }
+.tick { animation-name: tick; }
+.msg { animation-name: msg; }
+.reply { animation-name: reply; }
+.typing { opacity: 0; animation-name: typing; }
+.visitorBadge { opacity: 0; animation-name: visitorBadge; }
+.leadBadge { animation-name: leadBadge; }
+
+@keyframes fillBar {
+  0% { transform: scaleX(0); }
+  22%, 88% { transform: scaleX(1); }
+  96%, 100% { transform: scaleX(0); }
+}
+@keyframes tick {
+  0%, 20% { transform: scale(0); opacity: 0; }
+  28% { transform: scale(1.3); opacity: 1; }
+  34%, 88% { transform: scale(1); opacity: 1; }
+  96%, 100% { transform: scale(0); opacity: 0; }
+}
+@keyframes msg {
+  0%, 3% { opacity: 0; translate: 0 8px; }
+  10%, 86% { opacity: 1; translate: 0 0; }
+  94%, 100% { opacity: 0; translate: 0 8px; }
+}
+@keyframes typing {
+  0%, 18% { opacity: 0; }
+  22%, 38% { opacity: 1; }
+  42%, 100% { opacity: 0; }
+}
+@keyframes reply {
+  0%, 40% { opacity: 0; translate: 0 6px; }
+  48%, 86% { opacity: 1; translate: 0 0; }
+  94%, 100% { opacity: 0; translate: 0 6px; }
+}
+.dot { animation: dot 0.9s ease-in-out infinite; animation-delay: var(--d); }
+@keyframes dot {
+  0%, 60%, 100% { translate: 0 0; }
+  30% { translate: 0 -3px; }
+}
+@keyframes visitorBadge {
+  0%, 50% { opacity: 1; }
+  56%, 92% { opacity: 0; }
+  98%, 100% { opacity: 1; }
+}
+@keyframes leadBadge {
+  0%, 50% { opacity: 0; scale: 0.6; }
+  58% { opacity: 1; scale: 1.18; }
+  64%, 92% { opacity: 1; scale: 1; }
+  98%, 100% { opacity: 0; scale: 0.6; }
+}
+
+/* Auto-close progress: fills over the same 5s the component waits before leaving. */
+.countdown { animation: countdown var(--auto) linear both; }
+@keyframes countdown { from { transform: scaleX(0); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .root,
+  .root * {
+    animation: none !important;
+    transition: none !important;
+  }
+}

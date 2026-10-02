@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Building2, Loader2, Plus } from "lucide-react";
+import { Building2, Loader2, Plus, Send } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -26,6 +26,11 @@ import { BulkDeleteDialog } from "./shared/bulk-delete-dialog";
 import { ClaimRequestDialog, type ClaimRequestTarget } from "./shared/claim-request-dialog";
 import { BusinessFiltersBar } from "./shared/business-filters-bar";
 import { BusinessSelectionBar } from "./shared/business-selection-bar";
+import { SendInvitationDialog } from "@/app/admin/platform/business-invites/components/send-invitation-dialog";
+import { INVITE_ROLES } from "@/app/admin/platform/business-invites/const";
+import { BusinessInvitesView } from "@/app/admin/platform/business-invites/components/business-invites-view";
+
+type Tab = "businesses" | "invites" | "services" | "claims";
 
 export function BusinessesView() {
   const router = useRouter();
@@ -34,10 +39,9 @@ export function BusinessesView() {
   const dispatch = useAppDispatch();
   const { businesses, total, status } = useAppSelector((state) => state.platformBusinesses);
   const categories = useAppSelector((state) => state.platformCategories.businessCategoryOptions);
+  const canInvite = INVITE_ROLES.includes(useAppSelector((state) => state.admin.me?.role) ?? "");
 
-  const [tab, setTabState] = useState<"businesses" | "services" | "claims">(
-    () => (searchParams.get("tab") as "businesses" | "services" | "claims") || "businesses",
-  );
+  const [tab, setTabState] = useState<Tab>(() => (searchParams.get("tab") as Tab) || "businesses");
   const [search, setSearchState] = useState(() => searchParams.get("q") ?? "");
   const [debouncedSearch, setDebouncedSearch] = useState(() => searchParams.get("q") ?? "");
   const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -70,9 +74,9 @@ export function BusinessesView() {
   };
 
   // Server-side filters change the result set, so a stale page would fall off the end.
-  const resetPage = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPage(1); };
+  const resetPage = <T,>(set: (v: T) => void, v: T) => { set(v); setPage(1); };
 
-  const setTab = (next: "businesses" | "services" | "claims") => {
+  const setTab = (next: Tab) => {
     setTabState(next);
     updateParam("tab", next === "businesses" ? null : next);
   };
@@ -138,6 +142,8 @@ export function BusinessesView() {
   const [deleting, setDeleting] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [invitesReloadKey, setInvitesReloadKey] = useState(0);
 
   const fetchedCategoriesRef = useRef(false);
   useEffect(() => {
@@ -393,17 +399,31 @@ export function BusinessesView() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Business Management</h1>
-          <p className="mt-1 text-muted-foreground">Verify, manage, and pre-seed business accounts.</p>
+          <p className="mt-1 text-muted-foreground">Verify, Manage, and Invite Business Accounts.</p>
         </div>
-        <Button className="cursor-pointer gap-1" onClick={() => router.push("/admin/platform/businesses/add")}>
-          <Plus className="h-4 w-4" />
-          Add Business
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {canInvite && (
+            <Button
+              variant="outline"
+              className="cursor-pointer gap-1 border-2 border-primary font-semibold text-primary hover:bg-primary/10 hover:text-primary"
+              onClick={() => setInviteOpen(true)}
+            >
+              <Send className="h-4 w-4" />
+              Invite Business
+            </Button>
+          )}
+          <Button className="cursor-pointer gap-1" onClick={() => router.push("/admin/platform/businesses/add")}>
+            <Plus className="h-4 w-4" />
+            Add Business
+          </Button>
+        </div>
       </div>
+      {canInvite && <SendInvitationDialog open={inviteOpen} onOpenChange={setInviteOpen} onSent={() => setInvitesReloadKey((k) => k + 1)} />}
 
       <AdminSegmentedTabs
         options={[
           { value: "businesses", label: "Businesses" },
+          ...(canInvite ? [{ value: "invites" as const, label: "Invites" }] : []),
           { value: "services", label: "Services" },
           { value: "claims", label: "Claim Requests" },
         ]}
@@ -411,7 +431,9 @@ export function BusinessesView() {
         onChange={setTab}
       />
 
-      {tab === "services" ? (
+      {tab === "invites" && canInvite ? (
+        <BusinessInvitesView reloadKey={invitesReloadKey} />
+      ) : tab === "services" ? (
         <div className="py-12 text-center text-muted-foreground">
           <p>Services management is coming soon.</p>
         </div>
@@ -423,16 +445,16 @@ export function BusinessesView() {
         search={search}
         onSearchChange={handleSearchChange}
         statusFilter={statusFilter}
-        onStatusChange={resetPage(setStatusFilter)}
+        onStatusChange={(v) => resetPage(setStatusFilter, v)}
         categoryFilter={categoryFilter}
-        onCategoryChange={resetPage(setCategoryFilter)}
+        onCategoryChange={(v) => resetPage(setCategoryFilter, v)}
         categoryOptions={categoryOptions}
         sourceFilter={sourceFilter}
-        onSourceChange={resetPage(setSourceFilter)}
+        onSourceChange={(v) => resetPage(setSourceFilter, v)}
         ownershipFilter={ownershipFilter}
-        onOwnershipChange={resetPage(setOwnershipFilter)}
+        onOwnershipChange={(v) => resetPage(setOwnershipFilter, v)}
         sort={sort}
-        onSortChange={resetPage(setSort)}
+        onSortChange={(v) => resetPage(setSort, v)}
         hasActiveFilters={hasActiveFilters}
         onClearFilters={clearFilters}
       />
@@ -454,7 +476,7 @@ export function BusinessesView() {
           limit={limit}
           total={total}
           onPageChange={setPage}
-          onPageSizeChange={resetPage(setLimit)}
+          onPageSizeChange={(v) => resetPage(setLimit, v)}
           align="end"
         />
       )}

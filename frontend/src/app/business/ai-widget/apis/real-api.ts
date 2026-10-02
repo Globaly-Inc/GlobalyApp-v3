@@ -1,7 +1,7 @@
 import { httpDelete, httpGet, httpPatch, httpPost } from "@/lib/api/http";
 import type {
-  CreateEmbedConfigInput, EmbedConfig, EmbedConfigListResponse,
-  UpdateEmbedConfigInput,
+  CreateEmbedConfigInput, EmbedConfig, EmbedConfigListResponse, EnsureEmbedResult,
+  SendSnippetInput, SendSnippetResult, UpdateEmbedConfigInput,
   VisitorCounts, VisitorListParams, VisitorListResult, VisitorMessage, VisitorPatch, WidgetVisitor,
 } from "./types";
 
@@ -24,6 +24,13 @@ export const aiWidgetRealApi = {
 
   createConfig: (input: CreateEmbedConfigInput): Promise<EmbedConfig> =>
     httpPost<EmbedConfig>("/ai-chat/embed/configs", input),
+
+  /** POST, not GET: the first call for an org mints its widget. Idempotent after that. */
+  ensureConfig: (): Promise<EnsureEmbedResult> =>
+    httpPost<EnsureEmbedResult>("/ai-chat/embed/ensure", {}),
+
+  sendSnippet: (input: SendSnippetInput): Promise<SendSnippetResult> =>
+    httpPost<SendSnippetResult>("/ai-chat/embed/send-snippet", input),
 
   updateConfig: (id: number, input: UpdateEmbedConfigInput): Promise<EmbedConfig> =>
     httpPatch<EmbedConfig>(`/ai-chat/embed/configs/${id}`, input),

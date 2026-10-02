@@ -7,9 +7,11 @@ import { fetchOnboardingProgress } from "../../store/business-onboarding-slice";
 import { PortalHero } from "./portal-hero";
 import { BusinessQuickActions } from "./business-quick-actions";
 import { StartExtractionCard } from "./start-extraction-card";
+import { AiEmbedCard } from "./ai-embed-card";
 import { DashboardPreview } from "./dashboard-preview";
 import { GetSetUpChecklist } from "./get-set-up-checklist";
 import { NeedAHandCard } from "./need-a-hand-card";
+import { WelcomeTour } from "./welcome-tour";
 
 /**
  * fetchCredits() below stays even without a credits card here — BusinessShell's header pill still
@@ -32,11 +34,20 @@ export function BusinessPortalView() {
 
   return (
     <div className="space-y-4 md:space-y-6">
+      {/* Only once the onboarding row has loaded: the server decides whether this plays, and rendering
+          before it arrives would flash the splash at someone who has already dismissed it. */}
+      {onboardingProgress && (
+        <WelcomeTour orgName={profile?.business_name ?? ""} show={onboardingProgress.showWelcome} />
+      )}
       <PortalHero orgName={profile?.business_name ?? ""} progress={onboardingProgress} />
 
       <div className="flex flex-col gap-4 md:gap-6 lg:grid lg:grid-cols-3 lg:items-start">
         <div className="order-1 space-y-4 lg:col-span-2">
           {profile && <StartExtractionCard profile={profile} />}
+          <AiEmbedCard
+            orgName={profile?.business_name ?? ""}
+            installed={!!onboardingProgress?.steps.find((s) => s.key === "add_chat_widget")?.done}
+          />
           <DashboardPreview />
           {/* Recent enquiries card hidden for the short release — <BusinessRecentEnquiries items={enquiries} />,
               fed by fetchDistributions() and state.businessEnquiries.items. */}
