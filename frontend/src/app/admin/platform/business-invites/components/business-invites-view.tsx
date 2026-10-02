@@ -84,6 +84,12 @@ export function BusinessInvitesView({ reloadKey = 0 }: Readonly<{ reloadKey?: nu
     searchTimer.current = setTimeout(() => load(1, filter, limit, value.trim()), 300);
   };
 
+  const reloadAfterChange = async () => {
+    const outcome = await load(page);
+    if (page > 1 && fetchInvites.fulfilled.match(outcome) && outcome.payload.data.length === 0) {
+      load(page - 1);
+    }
+  };
 
   const runAction = async (invite: OnboardingInvite, action: "resend" | "revoke") => {
     setBusyId(invite.id);
@@ -95,7 +101,7 @@ export function BusinessInvitesView({ reloadKey = 0 }: Readonly<{ reloadKey?: nu
       toast.error(`Couldn't ${action} invite`, { description: outcome.error.message ?? "Please try again." });
       return;
     }
-    load(page);
+    await reloadAfterChange();
     if (typeof outcome.payload === "object" && outcome.payload.email_status === "failed") {
       toast.error(`Couldn't email ${invite.email}`, { description: "The invite is still open — try Resend again." });
       return;

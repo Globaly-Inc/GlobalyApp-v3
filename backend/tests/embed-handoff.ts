@@ -5,6 +5,8 @@
  * Run: node --import tsx tests/embed-handoff.ts   (npm run test:embed-handoff)
  * Fake wire: tests/institution-memory.harness.ts. No DB needed.
  */
+export {};
+
 process.env.DB_USERNAME = process.env.DB_USERNAME || "x";
 process.env.DB_PASSWORD = process.env.DB_PASSWORD || "x";
 process.env.DB_NAME = process.env.DB_NAME || "x";
@@ -113,6 +115,17 @@ console.log("\n7. a withdrawn invitation is not the developer");
   const invite = find(/from "agent_invitations"/i);
   assert(/"deleted_at" is null/i.test(invite.text),
     "revoked invites are excluded, or the card keeps mailing someone the org removed", invite.text);
+}
+
+console.log("\n8. only an invite needs team rights");
+{
+  const { invitesSomeone } = await import("../src/modules/ai-counsellor/routes/embed.routes.js");
+  assert(invitesSomeone({ invitee: { name: "Sam Taylor", email: "sam@acme.edu" } }) === true,
+    "a request carrying an invitee is gated");
+  assert(invitesSomeone({}) === false, "mailing the existing developer is not");
+  assert(invitesSomeone(undefined) === false, "a missing body is not an invite");
+  assert(invitesSomeone({ invitee: { name: "", email: "nope" } }) === false,
+    "invalid input is left to the handler's 400 rather than answered with a 403");
 }
 
 console.log("\n6. send-snippet input");

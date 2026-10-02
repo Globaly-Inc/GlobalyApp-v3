@@ -87,22 +87,16 @@ function summarize(steps: OnboardingStep[], row: repo.OnboardingProgressRow | un
   };
 }
 
-/**
- * `installed` needs a real visitor, not just an active config — an owner can flip a config active
- * without ever pasting the embed snippet on their site.
- *
- * `customised` needs a name or greeting, not merely a row: the portal's AI-embed card mints a
- * default widget for every org the first time it loads, so existence alone would tick "Customise
- * your AI assistant" for people who have never opened it.
- */
 async function aiWidgetState(
   db: Knex, column: "business_id" | "institution_id", id: number,
 ): Promise<{ customised: boolean; installed: boolean }> {
-  const row = await masterKnex("ai_embed_configs").where({ [column]: id })
-    .orderBy("created_at", "asc").first("id", "display_name", "greeting");
-  if (!row) return { customised: false, installed: false };
-  const visitor = await db("ai_widget_visitors").where({ embed_config_id: row.id }).first("id");
-  return { customised: !!(row.display_name || row.greeting), installed: !!visitor };
+  const rows = await masterKnex("ai_embed_configs").where({ [column]: id }).select("id", "display_name", "greeting");
+  if (!rows.length) return { customised: false, installed: false };
+  const visitor = await db("ai_widget_visitors").whereIn("embed_config_id", rows.map((r) => r.id)).first("id");
+  return {
+    customised: rows.some((r) => r.display_name || r.greeting),
+    installed: !!visitor,
+  };
 }
 
 async function extractionHasData(sourceJobId: string | null): Promise<boolean> {

@@ -105,7 +105,10 @@ export async function resendInvitation(id: string, { ifRequested = false } = {})
   if (!invite) throw new NotFoundError("Only a pending invite can be resent");
   if (ifRequested && !invite.link_requested_at) throw new ConflictError("This invite was already resent.");
   const { token, token_hash, expires_at } = mintToken();
-  await repo.refreshToken(id, token_hash, expires_at);
+
+  if (!(await repo.refreshToken(id, token_hash, expires_at, { onlyIfRequested: ifRequested }))) {
+    throw new ConflictError("This invite changed just now — reload the list and try again.");
+  }
   const category = invite.business_category_id ? await repo.findCategory(invite.business_category_id) : undefined;
   const email_status = await sendInviteEmail({ id: invite.id, email: invite.email, type: invite.type, orgName: invite.org_name, categoryName: category?.name ?? null, token });
   return { expires_at, email_status };
@@ -168,7 +171,9 @@ export async function acceptInvitation(token: string, type: InviteType) {
         business_category_id: invite.business_category_id ?? undefined,
         email: invite.email,
       });
-      await repo.recordAccepted(invite.id, user.id, { businessId: Number(org.id) });
+      if (!(await repo.recordAccepted(invite.id, user.id, { businessId: Number(org.id) }))) {
+        logger.warn("Invite vanished during setup; account kept without its invite row", { invitationId: invite.id, userId: user.id, businessId: org.id });
+      }
       // Accepting an invitation is the one moment that earns the portal's welcome splash. Recorded
       // here, not carried in the URL, so it survives the OTP hop and cannot be replayed by a link.
       await markWelcomePendingForBusiness(Number(org.id));
@@ -178,7 +183,9 @@ export async function acceptInvitation(token: string, type: InviteType) {
         institution_name: invite.org_name,
         email: invite.email,
       });
-      await repo.recordAccepted(invite.id, user.id, { institutionId: Number(institution.id) });
+      if (!(await repo.recordAccepted(invite.id, user.id, { institutionId: Number(institution.id) }))) {
+        logger.warn("Invite vanished during setup; account kept without its invite row", { invitationId: invite.id, userId: user.id, institutionId: institution.id });
+      }
       await markWelcomePendingForInstitution(Number(institution.id));
       logger.info("Onboarding invite accepted", { invitationId: invite.id, userId: user.id, institutionId: institution.id });
     }
@@ -216,12 +223,10 @@ export async function requestNewLink(token: string, type: InviteType) {
   // Already asked today: the admin has it, so report success without a second email.
   if (!(await repo.markLinkRequested(invite.id))) return { requested: true };
 
-  const to = (await repo.findInviterEmail(invite.invited_by)) ?? SUPPORT_EMAIL;
-  const invitesUrl = `${config.WEB_APP_URL}/admin/platform/businesses?tab=invites`;
-  // An expired invite can be resent straight from the email (the page does it once signed in);
-  // a revoked one can't, so that button just opens the tab.
-  const actionUrl = reason === "expired" ? `${invitesUrl}&resend=${invite.id}` : invitesUrl;
   try {
+    const to = (await repo.findInviterEmail(invite.invited_by)) ?? SUPPORT_EMAIL;
+    const invitesUrl = `${config.WEB_APP_URL}/admin/platform/businesses?tab=invites`;
+    const actionUrl = reason === "expired" ? `${invitesUrl}&resend=${invite.id}` : invitesUrl;
     await queueEmail({ to, ...onboardingLinkRequestEmail({ email: invite.email, orgName: invite.org_name, reason, invitesUrl, actionUrl }) });
   } catch (err: any) {
     logger.warn("New-link request email failed", { invitationId: invite.id, err: err.message });

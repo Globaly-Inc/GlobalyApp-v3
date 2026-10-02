@@ -1,5 +1,7 @@
-import type { FastifyInstance } from "fastify";
-import { requireBusinessOrInstitutionContext } from "../../../core/plugins/auth.plugin.js";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import {
+  requireBusinessOrInstitutionContext, requireInstitutionRole, requirePermission,
+} from "../../../core/plugins/auth.plugin.js";
 import { recipientFromRequest } from "../../enquiries/shared/recipient.js";
 import {
   EmbedConfigCreateSchema,
@@ -32,6 +34,19 @@ function startSiteIndex(owner: ReturnType<typeof recipientFromRequest>) {
   embedRepo.ownerWebsite(owner)
     .then((website) => ensureOwnerSiteIndex(owner, website))
     .catch((err) => logger.error("Owner site index failed to start", { owner, err: String(err) }));
+}
+
+const businessTeamWrite = requirePermission("agents:write");
+const institutionTeamWrite = requireInstitutionRole("admin");
+
+export function invitesSomeone(body: unknown): boolean {
+  const parsed = SendSnippetSchema.safeParse(body ?? {});
+  return parsed.success && !!parsed.data.invitee;
+}
+
+async function requireTeamWriteWhenInviting(req: FastifyRequest, reply: FastifyReply) {
+  if (!invitesSomeone(req.body)) return;
+  return req.auth.orgType === "institution" ? institutionTeamWrite(req, reply) : businessTeamWrite(req, reply);
 }
 
 /** Embed-config management — served to both org kinds; the owner comes from the token's
@@ -82,7 +97,7 @@ export async function embedRoutes(app: FastifyInstance) {
    * No config id: the card works on the one widget `ensureForOwner` resolves, which is owner-scoped
    * by construction, so there is no id here to tamper with.
    */
-  app.post("/embed/send-snippet", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
+  app.post("/embed/send-snippet", { preHandler: [requireBusinessOrInstitutionContext, requireTeamWriteWhenInviting] }, async (req, reply) => {
     const { invitee } = SendSnippetSchema.parse(req.body ?? {});
     const owner = recipientFromRequest(req);
     const config = await embedRepo.ensureForOwner(owner);

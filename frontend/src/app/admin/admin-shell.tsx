@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { ChevronDown, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -28,6 +28,7 @@ import { SIGN_IN_HREF } from "@/app/auth/const";
 export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const dispatch = useAppDispatch();
   const { me, status, error } = useAppSelector((state) => state.admin);
   const { user: authUser, initializing } = useAuthState();
@@ -36,10 +37,14 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
   useEffect(() => setMounted(true), []);
 
   useEffect(() => {
-    if (!initializing && !isAdmin) {
+    if (initializing || isAdmin) return;
+    if (authUser) {
       router.replace("/");
+      return;
     }
-  }, [initializing, isAdmin, router]);
+    const qs = searchParams.toString();
+    router.replace(`${SIGN_IN_HREF}?redirect=${encodeURIComponent(qs ? `${pathname}?${qs}` : pathname)}`);
+  }, [initializing, isAdmin, authUser, pathname, searchParams, router]);
 
   const fetchedMeRef = useRef(false);
   useEffect(() => {

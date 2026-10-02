@@ -60,6 +60,8 @@ const rotateTo = (tokenHash: string, expiresAt: Date) => ({
   updated_at: masterKnex.fn.now(),
 });
 
+const ABANDONED_JOB_STATUSES = ["declined", "failed"] as const;
+
 /** Why this address can't be invited, or null. An invite is only for someone not on the platform yet. */
 export type EmailMatch = { kind: "user" | "institution" | "business" | "extraction" | "invite"; id: string | number; name: string | null };
 
@@ -72,7 +74,8 @@ export async function findEmailMatches(email: string): Promise<EmailMatch[]> {
     masterKnex("institutions").whereRaw(...sameEmail("email")).whereNull("deleted_at").select("id", "institution_name as name"),
     masterKnex("businesses").whereRaw(...sameEmail("email")).whereNull("deleted_at").select("id", "business_name as name"),
     masterKnex("superadmin.extraction_institution_overview as o").join("superadmin.extraction_jobs as j", "j.id", "o.job_id")
-      .whereRaw(...sameEmail("o.email")).distinct("j.id", "j.institution_name as name"),
+      .whereRaw(...sameEmail("o.email")).whereNotIn("j.status", ABANDONED_JOB_STATUSES)
+      .distinct("j.id", "j.institution_name as name"),
     masterKnex(T).whereRaw(...sameEmail("email")).where({ status: "pending" }).select("id", "org_name as name"),
   ]);
   const tag = (kind: EmailMatch["kind"], rows: { id: string | number; name: string | null }[]) =>
@@ -96,8 +99,15 @@ export async function insertInvitation(data: {
   return row;
 }
 
+const likeLiteral = (value: string) => value.replace(/[\\%_]/g, "\\$&");
+
 const searchClause = (search?: string) => (q: Knex.QueryBuilder) => {
-  if (search) q.where((b) => b.whereILike("oi.org_name", `%${search}%`).orWhereILike("oi.email", `%${search}%`));
+  if (!search) return;
+  const pattern = `%${likeLiteral(search)}%`;
+  q.where((b) =>
+    b.whereRaw("oi.org_name ILIKE ? ESCAPE '\\'", [pattern])
+      .orWhereRaw("oi.email ILIKE ? ESCAPE '\\'", [pattern]),
+  );
 };
 
 /** Per effective status, honouring the search but not the status filter, so the filter cards stay put as one is picked. */
@@ -144,9 +154,13 @@ export async function findPendingById(id: string) {
   return masterKnex<OnboardingInvitationRow>(T).where({ id, status: "pending" }).first();
 }
 
-export async function refreshToken(id: string, tokenHash: string, expiresAt: Date) {
-  await masterKnex(T).where({ id, status: "pending" })
+export async function refreshToken(
+  id: string, tokenHash: string, expiresAt: Date, { onlyIfRequested = false } = {},
+): Promise<boolean> {
+  const count = await masterKnex(T).where({ id, status: "pending" })
+    .modify((q) => { if (onlyIfRequested) q.whereNotNull("link_requested_at"); })
     .update({ ...rotateTo(tokenHash, expiresAt), email_status: "queued", email_error: null, link_requested_at: null });
+  return count > 0;
 }
 
 const LINK_REQUEST_EVERY = "24 hours";
@@ -219,13 +233,16 @@ export async function revertToPending(id: string) {
     .update({ status: "pending", accepted_at: null, updated_at: masterKnex.fn.now() });
 }
 
-export async function recordAccepted(id: string, userId: number, org: { institutionId?: number; businessId?: number }) {
-  await masterKnex(T).where({ id }).update({
+export async function recordAccepted(
+  id: string, userId: number, org: { institutionId?: number; businessId?: number },
+): Promise<boolean> {
+  const count = await masterKnex(T).where({ id }).update({
     accepted_user_id: userId,
     accepted_institution_id: org.institutionId ?? null,
     accepted_business_id: org.businessId ?? null,
     updated_at: masterKnex.fn.now(),
   });
+  return count > 0;
 }
 
 export async function findCategory(id: number): Promise<{ id: number; slug: string; name: string } | undefined> {

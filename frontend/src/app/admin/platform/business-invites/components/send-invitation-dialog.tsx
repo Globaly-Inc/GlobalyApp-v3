@@ -36,6 +36,7 @@ export function SendInvitationDialog({
   const [categoriesFailed, setCategoriesFailed] = useState(false);
   const loadCategories = () => {
     fetchedRef.current = true;
+    setCategoriesFailed(false);
     dispatch(fetchBusinessCategoryOptions()).then((outcome) => {
       if (!fetchBusinessCategoryOptions.rejected.match(outcome)) return;
       fetchedRef.current = false;

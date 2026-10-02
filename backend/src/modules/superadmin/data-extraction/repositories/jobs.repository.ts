@@ -254,20 +254,24 @@ export async function findJobSourceType(id: string): Promise<string | null> {
   return row?.source_type ?? null;
 }
 
-/**
- * A listing's job that holds no extraction of its own, so the owner may start a real one over it:
- * sign-up's `self_service` placeholder, or an invited (admin-created) institution's `manual` job the
- * admin never put a course or branch on. A manual job WITH data is the listing's hand-built
- * catalogue — replacing it would detach those rows, so it does not count.
- */
+const PLACEHOLDER_DATA_TABLES = [
+  "extraction_courses",
+  "extraction_campuses",
+  "extraction_agents",
+  "extraction_scholarships",
+  "extraction_visa_services",
+  "extraction_institution_overview",
+] as const;
+
 export async function isPlaceholderJob(id: string, db: Knex = masterKnex): Promise<boolean> {
   const row = await db(T).where({ id }).first("source_type");
   if (row?.source_type === "self_service") return true;
   if (row?.source_type !== "manual") return false;
-  const hasData = await db.raw(
-    `select exists (select 1 from superadmin.extraction_courses where job_id = ?)
-         or exists (select 1 from superadmin.extraction_campuses where job_id = ?) as has`, [id, id]);
-  return !hasData.rows[0].has;
+  const { rows } = await db.raw(
+    `select ${PLACEHOLDER_DATA_TABLES.map((t) => `exists (select 1 from superadmin.${t} where job_id = ?)`).join("\n            or ")} as has`,
+    PLACEHOLDER_DATA_TABLES.map(() => id),
+  );
+  return !rows[0].has;
 }
 
 export async function syncOwnedJobUrl(jobId: string, website: string) {
