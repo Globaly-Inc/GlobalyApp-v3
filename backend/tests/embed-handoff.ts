@@ -34,10 +34,8 @@ console.log("\n1. an org that already has an active widget keeps it — nothing 
   const s = find(SEL);
   assert(/"institution_id" = \$\d/.test(s.text) && s.values.includes(49), "lookup scoped to the institution", s.text);
   assert(/"is_active"/.test(s.text), "only an ACTIVE widget counts — a paused key would 403 for the developer", s.text);
-  // The whole defence against two racing first visits. Each re-reads after its own insert commits,
-  // so both see both rows; this ordering is what makes them agree on which one is the org's widget.
   assert(/order by "created_at" asc, "id" asc/i.test(s.text),
-    "oldest first, id breaking a same-millisecond tie — a race must not hand out two different keys", s.text);
+    "OLDEST active, so the card follows the key a customer may already have pasted into their site", s.text);
 }
 
 console.log("\n2. an org with none gets one, owned by them and nobody else");
@@ -45,6 +43,9 @@ console.log("\n2. an org with none gets one, owned by them and nobody else");
   reset([[SEL, () => []], [INS, () => [{ id: 11, embed_key: "fresh" }]]]);
   const config = await repo.ensureForOwner({ kind: "business", id: 7 });
   assert(config.id === 11, "returned the new widget", config);
+  const lock = find(/pg_advisory_xact_lock/i);
+  assert(!!lock && lock.values.includes("embed_mint:business:7"),
+    "the mint is serialized per owner, so two first visits can't each create a widget", lock?.values);
   const s = find(INS);
   assert(/"business_id"/.test(s.text) && s.values.includes(7), "INSERT carries the business id", s.text);
   assert(!/"institution_id"/.test(s.text), "and not the other owner column — the CHECK allows exactly one", s.text);
