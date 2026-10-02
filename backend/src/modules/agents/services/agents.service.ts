@@ -209,6 +209,7 @@ async function createInvitation(
         email: input.email, user_details: userDetails, invite_token: token,
         invited_by: invitedByAgentId, status: "pending", expired_at: expiredAt,
       });
+  if (!invitation) throw new ConflictError("This invitation was just updated by someone else — refresh and try again");
 
   // Points to frontend confirmation page — the page renders a button that POSTs to the API
   const acceptUrl = `${config.WEB_APP_URL}/invite/agent/accept?token=${token}&org_id=${business.schema_name}`;

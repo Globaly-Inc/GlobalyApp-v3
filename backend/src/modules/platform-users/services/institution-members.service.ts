@@ -510,6 +510,7 @@ async function createInvitation(
         email: input.email, user_details: userDetails, invite_token: token,
         invited_by: invitedByMemberId, status: "pending", expired_at: expiredAt,
       });
+  if (!invitation) throw new ConflictError("This invitation was just updated by someone else — refresh and try again");
 
   const acceptUrl = `${config.WEB_APP_URL}/invite/institution-member/accept?token=${token}&org_id=${institutionSchemaName}`;
   // ponytail: fire-and-forget — invitation must not fail because email is down

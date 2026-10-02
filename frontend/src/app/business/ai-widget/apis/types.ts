@@ -62,7 +62,7 @@ export type EnsureEmbedResult = {
  *  the org, so the card states that consequence before it lets you send. */
 export type SendSnippetInput = { invitee?: { name: string; email: string } };
 
-export type SendSnippetResult = { sent_to: string; invited: boolean };
+export type SendSnippetResult = { sent_to: string; invited: boolean; pending: boolean };
 
 // ── Widget visitors and leads ────────────────────────────────────────────────
 // The people who talked to the widget. Rows come from the OWNING tenant's schema

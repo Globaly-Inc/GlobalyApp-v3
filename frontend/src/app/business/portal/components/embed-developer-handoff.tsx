@@ -55,7 +55,9 @@ export function EmbedDeveloperHandoff({
         description: result.invited
           ? `${result.sent_to} is on your team as a Developer and has the code.`
           : alreadyOnTeam
-            ? `${result.sent_to} is already on your team, so we sent the code without a new invitation.`
+            ? result.pending
+              ? `${result.sent_to} already has an open invitation and hasn't accepted yet, so we sent the code without a new one.`
+              : `${result.sent_to} is already on your team, so we sent the code without a new invitation.`
             : `We emailed the code to ${result.sent_to}.`,
       });
       setName("");

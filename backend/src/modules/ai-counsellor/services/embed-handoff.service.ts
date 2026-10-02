@@ -78,7 +78,7 @@ async function findInvitedDeveloper(db: Knex, kind: EmbedOwner["kind"]): Promise
   const row = await db(table).where({ status: "pending" }).whereNull("deleted_at")
     .where("expired_at", ">", db.fn.now())
     .whereRaw("user_details->>'role' = ?", [DEVELOPER_ROLE])
-    .orderBy("created_at", "desc")
+    .orderBy("expired_at", "desc")
     .first("email", "user_details");
   if (!row) return null;
   const details = row.user_details ?? {};
@@ -103,6 +103,11 @@ async function findTeamMemberByEmail(
     ? await institutionInvitesRepo.findMemberByPlatformUserId(db, user.id)
     : await agentsRepo.findAgentByPlatformUserId(db, user.id);
   if (!member || member.is_contact_only) return null;
+  // Suspended teammates can't open the portal, so "you can sign in" would be false — refuse here
+  // rather than mail them; the invite path then reports the conflict.
+  if (member.account_status !== 1) {
+    throw new BadRequestError("That teammate's access is suspended — reactivate them before sending the code.");
+  }
   return {
     email: user.email,
     name: fullName(member.first_name, member.last_name) ?? fullName(user.first_name, user.last_name),
@@ -148,6 +153,8 @@ export interface SendSnippetResult {
   sent_to: string;
   /** True when this call also added them to the team — the UI says so explicitly. */
   invited: boolean;
+  /** Recipient was already invited but hasn't accepted — they are not on the team yet. */
+  pending: boolean;
 }
 
 /**
@@ -210,5 +217,5 @@ export async function sendSnippetToDeveloper(args: {
   }).catch((err) => logger.warn("Embed snippet email failed", { to: recipient.email, err: err.message }));
 
   logger.info("Embed snippet sent to developer", { kind: owner.kind, id: owner.id, invited });
-  return { sent_to: recipient.email, invited };
+  return { sent_to: recipient.email, invited, pending: recipient.pending && !invited };
 }

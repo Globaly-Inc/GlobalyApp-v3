@@ -407,7 +407,12 @@ export async function reviveInvitation(db: Knex, id: string, data: {
   invited_by: number;
   expired_at: Date;
 }) {
-  const [row] = await db<InvitationRow>("agent_invitations").where({ id }).update(data).returning("*");
+  const [row] = await db<InvitationRow>("agent_invitations")
+    .where({ id, status: "pending" })
+    .whereNull("deleted_at")
+    .where("expired_at", "<=", db.fn.now())
+    .update(data)
+    .returning("*");
   return row;
 }
 
