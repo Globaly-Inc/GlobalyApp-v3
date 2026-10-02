@@ -4,7 +4,7 @@
 // backend/src/modules/institution-memory/services/memory.service.ts, so if those move, the UI
 // starts offering actions the API refuses. Cover it the day a frontend runner lands.
 
-import { PROMOTION_MIN_ACTORS, SOURCE_LABEL, SUMMARY_LIMIT } from "../const";
+import { PROMOTION_MIN_ACTORS, SOURCE_LABEL } from "../const";
 import type { Memory, MemoryListParams } from "../apis/types";
 import type { KnowledgeTab, MemoryActions, MemoryFilter, MemorySummary } from "../types";
 
@@ -109,31 +109,10 @@ export function needsDecision(memory: Memory): boolean {
   return memory.status === "candidate" || !!memory.conflicts_with_id || !!memory.flagged_at;
 }
 
-/**
- * Counts for the header, in one pass.
- *
- * Conflicting and flagged are counted across every status rather than within candidates, because
- * the header's job is "is anything wrong", and a flagged ACTIVE rule — one visitors have pushed
- * back on while it is in use — is the most urgent thing on this page, not the least.
- */
-export function summarise(memories: Memory[]): MemorySummary {
-  const summary: MemorySummary = {
-    active: 0, candidate: 0, conflicting: 0, flagged: 0, alwaysOn: 0, needsYou: 0,
-    saturated: memories.length >= SUMMARY_LIMIT,
-  };
-  for (const m of memories) {
-    if (m.status === "active") summary.active++;
-    if (m.status === "candidate") summary.candidate++;
-    if (m.conflicts_with_id) summary.conflicting++;
-    if (m.flagged_at) summary.flagged++;
-    if (isAlwaysOn(m)) summary.alwaysOn++;
-    if (needsDecision(m)) summary.needsYou++;
-  }
-  return summary;
-}
-
-/** A count that may have hit the read ceiling. 200 rows back means "200+", never "200". */
-export const countLabel = (n: number, saturated: boolean): string => (saturated ? `${n}+` : String(n));
+// `summarise()` and `countLabel()` lived here and are gone: the header's figures are counted by
+// GET /institution/memories/summary now. Reducing a 200-row page could not see an older flagged
+// rule, and "200+" was an honest label on a dishonest number. `isAlwaysOn` and `needsDecision`
+// stay — the cards use them, and the mock API counts with them.
 
 /**
  * What the header says, and the one thing it offers to do about it.

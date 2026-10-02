@@ -54,6 +54,17 @@ export async function institutionMemoryRoutes(app: FastifyInstance) {
     return reply.send({ memories: await withCreatorNames(await memoryRepo.list(req.institutionId, query)) });
   });
 
+  // Counted in the database, not reduced from a list: the memories read is capped at 200 rows
+  // and the conversations read at 50 sessions, and the one question a capped list cannot answer
+  // is "how many are there". Both of the header's outstanding-work figures come from here.
+  app.get("/institution/memories/summary", async (req, reply) => {
+    const [counts, unreviewedReplies] = await Promise.all([
+      memoryRepo.counts(req.institutionId),
+      learnRepo.countUnreviewedReplies(await configIdsOf(req.institutionId)),
+    ]);
+    return reply.send({ ...counts, unreviewedReplies });
+  });
+
   app.post("/institution/memories", async (req, reply) => {
     const input = CreateMemorySchema.parse(req.body ?? {});
     const out = await memories.createMemory({

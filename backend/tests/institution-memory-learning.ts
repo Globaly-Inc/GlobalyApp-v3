@@ -357,6 +357,34 @@ console.log("\n2d. A contradicted CANDIDATE is never merged into — the gap bet
   jevOverride = {};
 }
 
+console.log("\n2e. Agreeing with a candidate does not bury a conflict with an ACTIVE rule");
+{
+  // Both neighbours are near, and the statement does two things at once: it RESTATES an
+  // unreviewed candidate and CONTRADICTS a rule the institution follows. Settling the merge
+  // first reinforced the candidate and returned — the active disagreement was never flagged,
+  // and the reinforced pair could then promote into use against the live rule with nobody asked.
+  modelCalls = []; jevCalls = [];
+  modelReply = { candidates: [cand({ type: "INSTITUTION_POLICY", content: "Discuss refunds before the student has an offer.", metadata: {} })] };
+  const active = { id: ID, type: "INSTITUTION_POLICY", content: "Refunds are discussed only after an offer.", metadata: {}, source: "admin", confidence: 1, importance: 3, status: "active", reinforce_count: 0, use_count: 0, similarity: 0.88 };
+  const nearCandidate = { ...active, id: ID2, content: "Refunds should come up before any offer is made.", source: "extracted", confidence: 0.7, status: "candidate", similarity: 0.95 };
+  // nearest = [active, candidate] in that order, so c0 is the active rule: disagrees with it,
+  // agrees with the candidate (c1 falls through to the neutral 0).
+  jevOverride = { c0: 0.9 };
+  reset([
+    [h.MATCH_FN, (stmt) => (JSON.stringify(stmt.values).includes("candidate") ? [active, nearCandidate] : [active])],
+    [UPDATE_MEMORY, (st) => [h.row({ id: uuidIn(st) })]],
+    ...baseRoutes(),
+  ]);
+  const r = await learn.learnFromCorrection({ kind: "correction", institution_id: INST, message_id: 77 });
+
+  assert(r.reinforced === 0 && r.conflicting === 1,
+    "the active conflict wins: nothing reinforced, the statement is flagged", r);
+  const linked = all(INSERT_MEMORY).find((st) => st.values.includes("INSTITUTION_POLICY") && !st.values.includes("COUNSELLOR_CORRECTION"));
+  assert(!!linked && linked.values.includes(ID) && linked.values.includes("candidate"),
+    "and lands as a candidate linked to the ACTIVE rule it contradicts", linked?.values);
+  jevOverride = {};
+}
+
 console.log("\n3. Ownership: a job claiming the wrong institution writes nothing");
 {
   modelCalls = [];

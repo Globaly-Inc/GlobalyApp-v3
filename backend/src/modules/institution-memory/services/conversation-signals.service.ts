@@ -21,7 +21,6 @@ import type { EmbedConfigRow } from "../../ai-counsellor/repositories/embed.repo
 import * as learnRepo from "../repositories/learning.repository.js";
 import * as signalsRepo from "../repositories/signals.repository.js";
 import * as memoryRepo from "../repositories/memory.repository.js";
-import { enqueueLearning } from "./learning.service.js";
 import { topicOf, topicSequence, type Topic } from "../lib/conversation-topics.js";
 import { ConversationSignalsSchema } from "../schemas/signals.schema.js";
 
@@ -67,19 +66,20 @@ function topicBeforeConversion(
  * Record the journey for one finished conversation.
  *
  * Never throws: this runs beside learning on a job whose failure must cost an insight, never a
- * reply that has already been sent.
+ * reply that has already been sent. Returns whether a row actually landed — the recovery sweep
+ * below counts on that being the truth rather than "we tried".
  */
 export async function recordConversationSignals(opts: {
   institutionId: number;
   session: learnRepo.LearnSession;
   config: EmbedConfigRow;
-}): Promise<void> {
+}): Promise<boolean> {
   const { institutionId, session, config } = opts;
-  if (!session.visitor_key || !session.embed_config_id) return; // a platform chat, not a widget one
+  if (!session.visitor_key || !session.embed_config_id) return false; // a platform chat, not a widget one
 
   try {
     const turns = await learnRepo.findTranscript(session.id);
-    if (!turns.length) return;
+    if (!turns.length) return false;
 
     // The visitor row holds the conversion facts. Best-effort: a tenant schema that cannot be
     // reached costs the conversion half of the journey, not the journey.
@@ -133,8 +133,10 @@ export async function recordConversationSignals(opts: {
     logger.info("Journey recorded", {
       institutionId, sessionId: session.id, converted, path: signals.topic_sequence.join(">"),
     });
+    return true;
   } catch (err) {
     logger.warn("Conversation signals not recorded", { institutionId, sessionId: session.id, err: String(err) });
+    return false;
   }
 }
 
@@ -156,26 +158,37 @@ const SIGNALS_RECOVERY_BATCH = 200;
  * No new marker column is needed. Both tables are in the SAME tenant schema, so "ended, with no
  * journey recorded" is a left join — and `record()` upserts on session_id, so replaying one that
  * did land is harmless.
+ *
+ * It records the journey DIRECTLY rather than re-publishing the conversation job, because only
+ * the signals half is idempotent. The learning half is not: `reinforce` raises reinforce_count
+ * and confidence unconditionally, so a session whose signals write failed AFTER learning
+ * succeeded would have one visitor's single conversation count twice toward the confidence of
+ * every memory it touched. The left join cannot tell "the job never ran" from "the job ran and
+ * only the insert failed", so it must assume the half that is safe to repeat. Learning lost to a
+ * dropped job stays unrecovered — a missed opportunity, which is what it always was.
  */
-export async function sweepMissingSignals(): Promise<{ found: number; requeued: number }> {
+export async function sweepMissingSignals(): Promise<{ found: number; recorded: number }> {
   const cutoff = new Date(Date.now() - SIGNALS_RECOVERY_GRACE_MIN * 60_000);
   let found = 0;
-  let requeued = 0;
+  let recorded = 0;
 
   for (const institutionId of await memoryRepo.provisionedInstitutionIds()) {
     try {
       const rows = await signalsRepo.endedWithoutSignals(institutionId, cutoff, SIGNALS_RECOVERY_BATCH);
       found += rows.length;
       for (const row of rows) {
-        if (await enqueueLearning({ kind: "conversation", institution_id: institutionId, session_id: row.session_id })) {
-          requeued++;
-        }
+        const session = await learnRepo.findSession(row.session_id);
+        const owner = session && await learnRepo.institutionForSession(session);
+        // Same ownership guard the job itself applies: the left join found the row inside this
+        // tenant's schema, but the session is master-schema and answers for itself.
+        if (!session || !owner || owner.institutionId !== institutionId) continue;
+        if (await recordConversationSignals({ institutionId, session, config: owner.config })) recorded++;
       }
     } catch (err) {
       // An un-migrated tenant schema is the usual cause; the others still get swept.
       logger.warn("Signals recovery failed for institution", { institutionId, err: String(err) });
     }
   }
-  if (found) logger.info("Conversation signals recovery", { found, requeued });
-  return { found, requeued };
+  if (found) logger.info("Conversation signals recovery", { found, recorded });
+  return { found, recorded };
 }

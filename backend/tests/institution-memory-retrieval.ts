@@ -24,7 +24,9 @@ const m = (o: Partial<Match>): Match => ({
   source: "admin", confidence: 1, importance: 3, status: "active", reinforce_count: 0, use_count: 0, similarity: 0.8, ...o,
 });
 const COUNT = /count\(\*\)/i;
-const PINNED = /"type" = \$\d/;
+// pinned() carries the always-on predicate as raw SQL (shared with counts()), so there are no
+// type/importance bindings left to key on — the predicate itself is the distinctive text.
+const PINNED = /AVOIDANCE_RULE/;
 
 console.log("\n1. rankMemories (pure)");
 {

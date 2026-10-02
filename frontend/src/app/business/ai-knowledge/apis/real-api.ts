@@ -1,6 +1,6 @@
 import { httpDelete, httpGet, httpPatch, httpPost } from "@/lib/api/http";
 import type {
-  CreateMemoryInput, CreateMemoryOutcome, Memory, MemoryListParams, PatchMemoryInput,
+  CreateMemoryInput, CreateMemoryOutcome, Memory, MemoryCounts, MemoryListParams, PatchMemoryInput,
   ConversionInsights, PatchRackProfileInput, ReviewInput, ReviewMessage, ReviewSession, StoredRackProfile,
 } from "./types";
 
@@ -33,6 +33,8 @@ export const aiKnowledgeRealApi = {
     const res = await httpGet<{ memories: Memory[] }>(`${BASE}/memories${toMemoryQuery(params)}`);
     return res.memories;
   },
+
+  getMemorySummary: (): Promise<MemoryCounts> => httpGet(`${BASE}/memories/summary`),
 
   getMemory: (id: string): Promise<Memory> => httpGet(`${BASE}/memories/${id}`),
 

@@ -11,8 +11,7 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { aiKnowledgeApi } from "../apis";
 import type { CreateMemoryInput, Memory, MemoryListParams, PatchMemoryInput } from "../apis/types";
-import { MEMORY_PAGE_SIZE, SUMMARY_LIMIT } from "../const";
-import { summarise } from "../utils";
+import { MEMORY_PAGE_SIZE } from "../const";
 import type { MemorySummary } from "../types";
 
 export const fetchMemories = createAsyncThunk("aiKnowledge/fetch", (params: MemoryListParams) =>
@@ -20,19 +19,20 @@ export const fetchMemories = createAsyncThunk("aiKnowledge/fetch", (params: Memo
 );
 
 /**
- * Every memory in one read, for the header's figures.
+ * The header's figures, counted by the API.
  *
  * Deliberately NOT derived from `items`: that list is whatever filter the user has open, so
  * counting it would make the header's numbers change when someone presses "Retired". This is its
- * own unfiltered read into its own field, and the two never interfere.
+ * own read into its own field, and the two never interfere.
  *
- * One request rather than four count queries, because there is no count endpoint and the honest
- * alternative — adding one — is a backend change for a figure a client-side reduce already has.
- * `SUMMARY_LIMIT` is the API's own ceiling; a saturated read is reported as "200+", never as a
- * wrong number.
+ * It used to reduce one unfiltered `listMemories` capped at the API's own 200-row ceiling, which
+ * is wrong in the way that matters: past 200 memories an older flagged rule falls outside the
+ * window, so the header would say nothing needs attention while a rule in use is being pushed
+ * back on. "How many are there" is the one question a capped list cannot answer, so the count
+ * moved into SQL.
  */
 export const fetchMemorySummary = createAsyncThunk("aiKnowledge/summary", () =>
-  aiKnowledgeApi.listMemories({ limit: SUMMARY_LIMIT }),
+  aiKnowledgeApi.getMemorySummary(),
 );
 
 export const createMemory = createAsyncThunk("aiKnowledge/create", (input: CreateMemoryInput) =>
@@ -118,7 +118,7 @@ const aiKnowledgeSlice = createSlice({
       // whose numbers flicker to zero on a dropped request is worse than one that is a moment
       // stale. The matchers below skip it for the same reason.
       .addCase(fetchMemorySummary.fulfilled, (state, action) => {
-        state.summary = summarise(action.payload);
+        state.summary = action.payload;
       })
 
       .addCase(createMemory.fulfilled, (state, action) => {

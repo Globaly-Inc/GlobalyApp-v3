@@ -3,7 +3,7 @@
 import { ArrowRight, Brain } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
-import { countLabel, headlineFor } from "../utils";
+import { headlineFor } from "../utils";
 import type { KnowledgeTab, MemorySummary } from "../types";
 
 /**
@@ -71,7 +71,7 @@ export function KnowledgeHeader({
         <div className="grid grid-cols-3 overflow-hidden rounded-lg bg-white/[0.04] ring-1 ring-inset ring-white/10">
           <Figure
             label="Rules in use"
-            value={summary ? countLabel(summary.active, summary.saturated) : "—"}
+            value={summary ? String(summary.active) : "—"}
             hint={summary?.alwaysOn ? `${summary.alwaysOn} on every reply` : "Followed when they fit the question"}
             onClick={() => onJump("memories")}
           />

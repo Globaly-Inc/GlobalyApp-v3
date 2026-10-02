@@ -5,7 +5,6 @@ import { Lock } from "lucide-react";
 import { isInstitutionContext } from "@/lib/api/http";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchMemorySummary } from "../store/ai-knowledge-slice";
-import { fetchConversations } from "../store/ai-knowledge-reviews-slice";
 import { fetchConversionInsights } from "../store/ai-knowledge-insights-slice";
 import type { KnowledgeTab } from "../types";
 import { KnowledgeHeader } from "./knowledge-header";
@@ -30,23 +29,25 @@ export function AiKnowledgeView() {
   const [tab, setTab] = useState<KnowledgeTab>("style");
 
   const summary = useAppSelector((s) => s.aiKnowledge.summary);
-  const sessions = useAppSelector((s) => s.aiKnowledgeReviews.sessions);
   const insights = useAppSelector((s) => s.aiKnowledgeInsights.insights);
 
   /**
-   * The header's three reads, fired once on mount rather than when their tab is opened — the
-   * whole point of the panel is to tell you what needs you BEFORE you go looking for it, so
-   * these cannot wait for the click they exist to save.
+   * The header's two reads, fired once on mount rather than when their tab is opened — the whole
+   * point of the panel is to tell you what needs you BEFORE you go looking for it, so these
+   * cannot wait for the click they exist to save.
    *
-   * Ref-guarded per frontend/AGENTS.md: Strict Mode double-invokes this in dev, and three
-   * duplicated requests on every mount is the bug that guard exists for.
+   * The conversations list used to be fetched here as well, purely to sum its `unreviewed`
+   * column for the header. The summary counts that server-side now, so the tab is left to fetch
+   * its own page when it is opened.
+   *
+   * Ref-guarded per frontend/AGENTS.md: Strict Mode double-invokes this in dev, and duplicated
+   * requests on every mount is the bug that guard exists for.
    */
   const fetchedRef = useRef(false);
   useEffect(() => {
     if (fetchedRef.current || !isInstitutionContext()) return;
     fetchedRef.current = true;
     dispatch(fetchMemorySummary());
-    dispatch(fetchConversations({ unreviewed: true }));
     dispatch(fetchConversionInsights());
   }, [dispatch]);
 
@@ -64,10 +65,10 @@ export function AiKnowledgeView() {
     );
   }
 
-  // Replies awaiting a look, from the unreviewed queue the header already fetched. Summed over
-  // sessions rather than counted as sessions: two unreviewed replies in one conversation are two
-  // decisions, and the header's figure is a count of decisions.
-  const unreviewedReplies = sessions.reduce((n, s) => n + s.unreviewed, 0);
+  // Counted by the API over every conversation, NOT summed over `sessions`: that list is one
+  // page of at most 50 and is replaced whenever the tab's filter changes, so a page of recently
+  // reviewed chats used to push older outstanding replies out of the figure and the tab badge.
+  const unreviewedReplies = summary?.unreviewedReplies ?? 0;
 
   const conversionRate = insights && insights.conversations > 0
     ? Math.round((insights.converted / insights.conversations) * 100)

@@ -341,17 +341,74 @@ export async function match(
   return rows as MemoryMatch[];
 }
 
-/** Rules fetched by index, not similarity: every AVOIDANCE_RULE, every RESPONSE_PREFERENCE (style
- *  applies to every reply and has no similarity to any question), plus importance-5 guidelines. */
+/**
+ * "Always on": carried into every reply regardless of what was asked — every AVOIDANCE_RULE,
+ * every RESPONSE_PREFERENCE (style applies to every answer and has no similarity to any
+ * question), plus importance-5 guidelines, and none of them expired.
+ *
+ * ONE definition, used by `pinned()` (which fetches them) and `counts()` (which tells the portal
+ * header how many there are). Written twice, they drift, and this module's whole defect history
+ * is a rule enforced at one end and not the other.
+ */
+const ALWAYS_ON_SQL = `(type IN ('AVOIDANCE_RULE', 'RESPONSE_PREFERENCE')
+   OR (type = 'COUNSELLING_GUIDELINE' AND importance = 5))
+  AND (expires_at IS NULL OR expires_at > now())`;
+
+/** Rules fetched by index, not similarity. */
 export async function pinned(institutionId: number): Promise<MemoryRow[]> {
   const k = await dbOrNull(institutionId);
   if (!k) return [];
   const rows = await k(TABLE).select(select(k))
     .where({ status: "active" })
-    .where((b) => b.whereIn("type", ["AVOIDANCE_RULE", "RESPONSE_PREFERENCE"]).orWhere({ type: "COUNSELLING_GUIDELINE", importance: 5 }))
-    .where((b) => b.whereNull("expires_at").orWhere("expires_at", ">", k.fn.now()))
+    .whereRaw(ALWAYS_ON_SQL)
     .orderBy([{ column: "importance", order: "desc" }, { column: "created_at", order: "asc" }]);
   return rows.map(parse(institutionId));
+}
+
+export interface MemoryCounts {
+  active: number;
+  candidate: number;
+  conflicting: number;
+  flagged: number;
+  alwaysOn: number;
+  /** Rows wanting a human decision, counted PER ROW — a candidate that also contradicts
+   *  something is one piece of work, not two. Mirrors `needsDecision()` in the portal's utils. */
+  needsYou: number;
+}
+
+/**
+ * The portal header's figures, counted in the database.
+ *
+ * The header used to reduce one unfiltered 200-row read client-side, which is the API's own
+ * ceiling: past 200 memories an older flagged rule simply fell outside the window, so the header
+ * could say nothing needed attention while something in use was being pushed back on. A count is
+ * the one thing a capped list cannot answer.
+ */
+export async function counts(institutionId: number): Promise<MemoryCounts> {
+  const k = await dbOrNull(institutionId);
+  if (!k) return { active: 0, candidate: 0, conflicting: 0, flagged: 0, alwaysOn: 0, needsYou: 0 };
+  const { rows } = await k.raw(
+    `SELECT
+       count(*) FILTER (WHERE status = 'active')                 AS active,
+       count(*) FILTER (WHERE status = 'candidate')              AS candidate,
+       count(*) FILTER (WHERE conflicts_with_id IS NOT NULL)     AS conflicting,
+       count(*) FILTER (WHERE flagged_at IS NOT NULL)            AS flagged,
+       count(*) FILTER (WHERE status = 'active' AND ${ALWAYS_ON_SQL}) AS always_on,
+       count(*) FILTER (WHERE status = 'candidate'
+                           OR conflicts_with_id IS NOT NULL
+                           OR flagged_at IS NOT NULL)            AS needs_you
+     FROM ?? WHERE status <> 'deleted'`,
+    [TABLE],
+  );
+  const r = rows[0] ?? {};
+  return {
+    active: Number(r.active ?? 0),
+    candidate: Number(r.candidate ?? 0),
+    conflicting: Number(r.conflicting ?? 0),
+    flagged: Number(r.flagged ?? 0),
+    alwaysOn: Number(r.always_on ?? 0),
+    needsYou: Number(r.needs_you ?? 0),
+  };
 }
 
 /** Active, retrievable memories. Zero lets retrieval skip the embedding call. */

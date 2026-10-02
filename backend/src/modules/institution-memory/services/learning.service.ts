@@ -288,6 +288,26 @@ async function storeCandidates(
     // caught exactly that, with exactly that pair.
     const disagrees = embedding ? await contradictions(verdict.input.content, nearest) : new Set<string>();
 
+    // THE ACTIVE CONFLICT IS SETTLED BEFORE THE MERGE. A statement can restate a nearby
+    // CANDIDATE and contradict an ACTIVE rule at the same time; merging first would reinforce
+    // the candidate, drop the conflict on the floor, and let the pair promote into use against
+    // a rule the institution actually follows, with nobody ever asked.
+    //
+    // FLAGGING is narrower than asking. A conflict link blocks auto-promotion until a human
+    // clears it, which only makes sense against something the institution actually follows —
+    // linking two unreviewed candidates would block both behind a decision nobody can make. So a
+    // contradicted CANDIDATE is simply not merged into (below) and lands as its own candidate
+    // row; the pair then sit side by side awaiting review, which is the honest outcome.
+    const conflictsWith = activeNearest.find((m) => disagrees.has(m.id))?.id ?? null;
+    if (conflictsWith) {
+      const flagged = await flagConflict({
+        institutionId: ctx.institutionId, input: verdict.input, conflictsWithId: conflictsWith, confidence: verdict.confidence,
+        actor: WORKER, evidenceActor: ctx.evidenceActor, sourceReference: ctx.sourceReference, embedding,
+      });
+      if (flagged) { r.conflicting++; stored++; }
+      continue;
+    }
+
     // A restatement is evidence; a disagreement never is. Every neighbour this could merge into
     // has been asked, so a contradicted one is excluded here whatever its status.
     const duplicate = mergeNearest.find((m) =>
@@ -302,21 +322,6 @@ async function storeCandidates(
         });
         continue;
       }
-    }
-
-    // FLAGGING is narrower than asking. A conflict link blocks auto-promotion until a human
-    // clears it, which only makes sense against something the institution actually follows —
-    // linking two unreviewed candidates would block both behind a decision nobody can make. So a
-    // contradicted CANDIDATE is simply not merged into (above) and lands as its own candidate
-    // row; the pair then sit side by side awaiting review, which is the honest outcome.
-    const conflictsWith = activeNearest.find((m) => disagrees.has(m.id))?.id ?? null;
-    if (conflictsWith) {
-      const flagged = await flagConflict({
-        institutionId: ctx.institutionId, input: verdict.input, conflictsWithId: conflictsWith, confidence: verdict.confidence,
-        actor: WORKER, evidenceActor: ctx.evidenceActor, sourceReference: ctx.sourceReference, embedding,
-      });
-      if (flagged) { r.conflicting++; stored++; }
-      continue;
     }
 
     const out = await createMemory({

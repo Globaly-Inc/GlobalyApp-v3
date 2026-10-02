@@ -7,6 +7,7 @@ import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs"
 import { relativeTime } from "@/components/feed/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchConversations, fetchThread } from "../store/ai-knowledge-reviews-slice";
+import { fetchMemorySummary } from "../store/ai-knowledge-slice";
 import type { ReviewSession } from "../apis/types";
 import { ReviewThreadSheet } from "./review-thread-sheet";
 
@@ -33,11 +34,14 @@ export function ConversationsTab() {
   }, [dispatch, queue]);
 
   /** Re-read the queue after a review session, so a thread that is now fully reviewed leaves
-   *  the "Needs a look" list instead of sitting there with an empty badge. */
+   *  the "Needs a look" list instead of sitting there with an empty badge. The header's figure
+   *  is counted server-side and does not come from this list, so it has to be re-read too —
+   *  same reason the memories tab refetches it after a row changes. */
   const closeThread = () => {
     setSelected(null);
     fetchedQueue.current = null;
     dispatch(fetchConversations({ unreviewed: queue === "unreviewed" }));
+    dispatch(fetchMemorySummary());
   };
 
   const open = (session: ReviewSession) => {

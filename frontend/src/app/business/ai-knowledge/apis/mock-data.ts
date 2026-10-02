@@ -1,10 +1,11 @@
 import type {
-  CreateMemoryInput, CreateMemoryOutcome, Memory, MemoryListParams, PatchMemoryInput,
+  CreateMemoryInput, CreateMemoryOutcome, Memory, MemoryCounts, MemoryListParams, PatchMemoryInput,
   ConversionInsights, PatchRackProfileInput, RackProfile, ReviewInput, ReviewMessage, ReviewSession,
   StoredRackProfile,
 } from "./types";
 
 import { base, memories, sessions, setMemories, threads } from "./mock-fixtures";
+import { isAlwaysOn, needsDecision } from "../utils";
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -106,6 +107,23 @@ export const aiKnowledgeMockApi = {
       && (params.conflicting === undefined || (params.conflicting ? !!m.conflicts_with_id : !m.conflicts_with_id))
       && (!q || m.content.toLowerCase().includes(q)),
     );
+  },
+
+  // Counted over every fixture row, the way the endpoint counts over every stored row — a mock
+  // that reduced a truncated list would hide the very bug this endpoint exists to fix.
+  getMemorySummary: async (): Promise<MemoryCounts> => {
+    console.log("[mock] getMemorySummary");
+    await delay(200);
+    const live = memories.filter((m) => m.status !== "deleted");
+    return {
+      active: live.filter((m) => m.status === "active").length,
+      candidate: live.filter((m) => m.status === "candidate").length,
+      conflicting: live.filter((m) => !!m.conflicts_with_id).length,
+      flagged: live.filter((m) => !!m.flagged_at).length,
+      alwaysOn: live.filter(isAlwaysOn).length,
+      needsYou: live.filter(needsDecision).length,
+      unreviewedReplies: sessions.reduce((n, x) => n + x.unreviewed, 0),
+    };
   },
 
   getMemory: async (id: string): Promise<Memory> => {

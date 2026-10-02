@@ -1,4 +1,4 @@
-import type { MemoryStatus } from "../apis/types";
+import type { MemoryCounts, MemoryStatus } from "../apis/types";
 
 /**
  * The list's one filter control. Four of these map to `status`, two to the boolean flags —
@@ -26,14 +26,9 @@ export interface MemoryActions {
  * past that would otherwise be told it has exactly 200 rules. When it is true the header says
  * "200+" — a number that stops being exact should look like it, rather than quietly lying.
  */
-export interface MemorySummary {
-  active: number;
-  candidate: number;
-  conflicting: number;
-  flagged: number;
-  alwaysOn: number;
-  /** Rows wanting a decision, counted per row by `needsDecision` — never candidate + flagged +
-   *  conflicting, which counts a candidate that also contradicts something twice. */
-  needsYou: number;
-  saturated: boolean;
-}
+/**
+ * The header's figures. Counted by the API over every stored row, not reduced from a list here:
+ * the list endpoint caps at 200, so an older flagged rule used to fall outside the window and
+ * the header would say nothing needed attention while something in use was being pushed back on.
+ */
+export type MemorySummary = MemoryCounts;

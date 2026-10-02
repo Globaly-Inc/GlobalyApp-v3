@@ -72,6 +72,20 @@ export interface Memory {
   expires_at: string | null;
 }
 
+/** The header's figures, counted server-side. See GET /institution/memories/summary. */
+export interface MemoryCounts {
+  active: number;
+  candidate: number;
+  conflicting: number;
+  flagged: number;
+  alwaysOn: number;
+  /** Counted per row, so a candidate that also contradicts something is one piece of work. */
+  needsYou: number;
+  /** Assistant replies nobody has reviewed, over EVERY conversation — not the 50 the
+   *  conversations tab happens to be showing. */
+  unreviewedReplies: number;
+}
+
 export interface MemoryListParams {
   status?: MemoryStatus;
   type?: MemoryType;
