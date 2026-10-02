@@ -34,7 +34,7 @@ export async function withInstitutionMedia(cards: ParsedCard[]): Promise<ParsedC
       if (!m) return card;
       return {
         ...card,
-        institution_logo_url: m.logo_url,
+        institution_logo_url: await storage.resolvePreviewUrl(m.logo_url),
         institution_cover_url: await storage.resolvePreviewUrl(m.cover_url),
         institution_website: m.website,
         city: card.city ?? m.city ?? undefined,

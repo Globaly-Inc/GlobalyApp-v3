@@ -3,10 +3,10 @@
  * the request contracts and how staff turns land in the summary. Pure — no database, no model.
  *   node --import tsx tests/ai-takeover.ts
  */
-import { IDLE_MS, whoAnswers, withMe } from "../src/modules/ai-counsellor/services/takeover.service.js";
+import { IDLE_MS, unansweredTail, whoAnswers, withMe } from "../src/modules/ai-counsellor/services/takeover.service.js";
 import { MIGHT_WANT_HUMAN } from "../src/modules/ai-counsellor/lib/handover-detect.js";
 import { VisitorNoteSchema, VisitorReplySchema } from "../src/modules/ai-counsellor/schemas/visitor.schema.js";
-import { GuestRatingSchema } from "../src/modules/ai-counsellor/schemas/chat.schema.js";
+import { GuestMessageSchema, GuestRatingSchema } from "../src/modules/ai-counsellor/schemas/chat.schema.js";
 import { buildContactPrompt, parseStaffSummary, pickSummaryChats, summariseConversation, summaryDedupKey } from "../src/modules/ai-counsellor/lib/conversation-summary.js";
 import { dueForSummaryQuery } from "../src/modules/ai-counsellor/repositories/visitors.repository.js";
 import knexFactory from "knex";
@@ -118,6 +118,24 @@ ok(pickSummaryChats(chatsSeen, "2026-10-01T11:05:00Z", 43), [{ id: 42, ended: tr
 ok(pickSummaryChats(chatsSeen, null, 43), [{ id: 41, ended: true }, { id: 42, ended: true }], "two chats ended before the worker ran: both are owed, oldest first");
 ok(pickSummaryChats(chatsSeen, "2026-10-02T15:00:00Z", 43), [{ id: 43, ended: false }], "nothing ended since the last email: the current chat (quiet fallback)");
 ok(pickSummaryChats([], null, 7), [{ id: 7, ended: false }], "no chats on record (adopted or pre-migration): the visitor's session");
+
+// Questions left unanswered while a person had the chat
+let mid = 0;
+const u = (role: string, content: string) => ({ id: ++mid, role, content });
+ok(unansweredTail([u("user", "hi"), u("assistant", "hello"), u("user", "fees?"), u("user", "hello??")]),
+  { cut: 2, questions: ["fees?", "hello??"], lastId: 4 }, "trailing visitor messages with no reply are owed an answer");
+ok(unansweredTail([u("user", "fees?"), u("agent", "£20k")]), { cut: 2, questions: [], lastId: null }, "a staff reply answers them");
+mid = 0;
+ok(unansweredTail([u("user", "a person please"), u("assistant", "I've asked our team"), u("user", "still there?")]),
+  { cut: 2, questions: ["still there?"], lastId: 3 }, "after the handover line, only what came later");
+ok(unansweredTail([]), { cut: 0, questions: [], lastId: null }, "empty thread");
+mid = 0;
+const claimed = [u("assistant", "hi"), u("user", "q1"), u("user", "q2"), u("user", "q3")];
+ok(unansweredTail(claimed, 3), { cut: 3, questions: ["q3"], lastId: 4 }, "questions a resume already claimed are not asked again");
+ok(unansweredTail(claimed, 4).questions, [], "all claimed: nothing owed, so a second resume stops");
+ok(GuestMessageSchema.safeParse({ fingerprint: "f", resume: true }).success, true, "a resume needs no content");
+ok(GuestMessageSchema.safeParse({ fingerprint: "f", resume: true, content: "hi" }).success, false, "and refuses text it would drop");
+ok(GuestMessageSchema.safeParse({ fingerprint: "f" }).success, false, "a normal message still needs content");
 
 console.log(`ai-takeover: ${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

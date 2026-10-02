@@ -25,6 +25,7 @@ import { streamChat } from "../lib/gemini-stream.js";
 import { buildSystemPrompt } from "../services/prompt.service.js";
 import * as rag from "../services/rag.service.js";
 import { parseBlocks, parseCards, parseChips, stripBlocks } from "../lib/card-parser.js";
+import { withInstitutionMedia } from "../services/chat.service.js";
 import { judgeConclusion } from "../lib/conclusion-detect.js";
 import { extractProfile } from "../lib/profile-extract.js";
 import { getProfile, mayKeepEmail, profileBlockFor, retrieveMemories } from "../../institution-memory/index.js";
@@ -94,7 +95,8 @@ function embedRateKey(req: FastifyRequest): string {
 async function persistVisitorTurn(
   sessionId: number,
   turn: {
-    content: string;
+    /** Null on a resume turn: the questions it answers are already stored. */
+    content: string | null;
     /** Null while a person handles the chat or is being waited for: the visitor's row only. */
     answer: string | null;
     sources: unknown[];
@@ -109,7 +111,7 @@ async function persistVisitorTurn(
     visitor?: { db: Knex; id: number; nextCount: number; prompted: visitorService.PromptKind | null };
   },
 ) {
-  await messagesRepo.create({ session_id: sessionId, role: "user", content: turn.content });
+  if (turn.content !== null) await messagesRepo.create({ session_id: sessionId, role: "user", content: turn.content });
   if (turn.answer !== null) await messagesRepo.create({
     session_id: sessionId,
     role: "assistant",
@@ -206,7 +208,8 @@ export async function guestRoutes(app: FastifyInstance) {
       if (fresh) visitor = fresh;
     }
 
-    const nextCount = (visitor?.message_count ?? 0) + 1;
+    // A resume carries no new visitor message, so it doesn't count as one.
+    const nextCount = (visitor?.message_count ?? 0) + (input.resume ? 0 : 1);
 
     // Who answers this message — the AI, a staff member, or nobody yet because the visitor is
     // waiting for one. Stale claims go first, so a staff member who went quiet 15 minutes ago
@@ -217,9 +220,17 @@ export async function guestRoutes(app: FastifyInstance) {
         takeover.expire(tenantDb, visitor.id, { handler: control.expireHandler, request: control.expireRequest }),
       );
     }
+    // The widget asks for a resume when it sees the chat back with the AI after a person had it.
+    // Only the AI answers one; while someone still holds the chat there is nothing to do.
+    if (input.resume && control?.answerer !== "ai") {
+      initSSE(reply);
+      writeDone(reply);
+      return;
+    }
+
     // Before RAG and the reply, so the AI never answers "can I talk to someone?" itself. The regex
     // inside keeps this to the few messages that could be asking.
-    const handedOver = !!(control?.answerer === "ai" && visitor && tenantDb && session &&
+    const handedOver = !!(!input.resume && control?.answerer === "ai" && visitor && tenantDb && session &&
       (await judgeWantsHuman(input.content)) &&
       (await visitorService.attempt("requestHandover", () => takeover.requestHandover(tenantDb, visitor.id))));
 
@@ -254,11 +265,41 @@ export async function guestRoutes(app: FastifyInstance) {
 
     initSSE(reply);
 
+    // Set when this resume claims questions; released if no reply ends up saved for them.
+    let claim: { sessionId: number; through: number; previous: number | null } | null = null;
+    const releaseClaim = () => claim
+      ? sessionsRepo.releaseAnsweredThrough(claim.sessionId, claim.through, claim.previous)
+      : Promise.resolve();
+
     try {
       // Read history BEFORE persisting this turn, so the model isn't handed the very
       // question it is being asked — the same ordering chat.service relies on.
       const prevMessages = session ? await messagesRepo.findBySession(session.id, { limit: HISTORY_LIMIT }) : [];
-      const history = prevMessages.map((m) => ({
+      // Questions left unanswered while a person had the chat are answered with this turn: they
+      // leave the history and join the question, so the AI addresses them instead of only the
+      // newest message. A resume turn is exactly those questions and nothing else.
+      const answeredThrough = session?.answered_through_message_id ?? null;
+      let pending = takeover.unansweredTail(prevMessages, answeredThrough);
+      // The whole window is unanswered: the visitor sent more than it holds while a person had the
+      // chat. Read further back for the questions (only); the model's history stays the window.
+      // ponytail: 200 messages, the transcript endpoint's own cap.
+      if (session && pending.cut === 0 && prevMessages.length === HISTORY_LIMIT) {
+        const { questions, lastId } = takeover.unansweredTail(await messagesRepo.findBySession(session.id, { limit: 200 }), answeredThrough);
+        pending = { cut: 0, questions, lastId };
+      }
+      // A resume claims the questions before answering, so a second tab or a reload mid-reply
+      // finds them taken and stops here.
+      if (input.resume && (!session || pending.lastId == null || !(await sessionsRepo.claimAnsweredThrough(session.id, pending.lastId)))) {
+        writeDone(reply);
+        return;
+      }
+      if (input.resume && session && pending.lastId != null) {
+        claim = { sessionId: session.id, through: pending.lastId, previous: answeredThrough };
+      }
+      const asked = pending.questions.length
+        ? [...pending.questions, ...(input.resume ? [] : [input.content])].join("\n\n")
+        : input.content;
+      const history = prevMessages.slice(0, pending.cut).map((m) => ({
         // Staff replies are the institution's side too, so after Resume AI the model reads them as its own.
         role: m.role === "user" ? ("user" as const) : ("model" as const),
         parts: [{ text: m.content }],
@@ -326,7 +367,7 @@ export async function guestRoutes(app: FastifyInstance) {
       const situation = rag.situationText(visitorProfile, visitorContext);
       const [ragOutput, memory, rackProfile] = await Promise.all([
         rag.searchAll({
-          query: input.content,
+          query: asked,
           userId: 0, // ponytail: guests have no userId, profile context will be empty
           jobIds: embed?.jobIds,
           rackInstitutionId: embed?.rackInstitutionId,
@@ -337,7 +378,7 @@ export async function guestRoutes(app: FastifyInstance) {
           ? retrieveMemories({
               institutionId: embed.rackInstitutionId,
               institutionName: embed.config.display_name,
-              query: input.content,
+              query: asked,
               // Situation-bound guidance could never match before: the query carried the
               // message and nothing about who was asking.
               situation,
@@ -354,8 +395,8 @@ export async function guestRoutes(app: FastifyInstance) {
       }
 
       // Same money guard as chat.service: widget visitors are the audience it exists for.
-      const noMoneyData = rag.shouldWithholdMoney(input.content, ragOutput.moneyTopics);
-      if (noMoneyData) trace(`Money question, no evidence for ${rag.moneyTopicsOf(input.content).join("/")}: answer withheld`);
+      const noMoneyData = rag.shouldWithholdMoney(asked, ragOutput.moneyTopics);
+      if (noMoneyData) trace(`Money question, no evidence for ${rag.moneyTopicsOf(asked).join("/")}: answer withheld`);
 
       const system = buildSystemPrompt({
         profile: visitorProfile,
@@ -372,13 +413,14 @@ export async function guestRoutes(app: FastifyInstance) {
       const result = await streamChat({
         system,
         history,
-        userMessage: input.content,
+        userMessage: asked,
         onChunk: (chunk) => {
           writeData(reply, { choices: [{ delta: { content: chunk } }] });
         },
       });
 
-      const cards = parseCards(result.fullText);
+      // Same logo/cover/city enrichment as the app chat, so widget cards show the institution's logo.
+      const cards = await withInstitutionMedia(parseCards(result.fullText));
       const chips = parseChips(result.fullText);
       const blocks = parseBlocks(result.fullText);
       const cleanText = stripBlocks(result.fullText);
@@ -413,7 +455,7 @@ export async function guestRoutes(app: FastifyInstance) {
         // while an unreadable rule set means "we do not know what we may keep" — so keep nothing.
         : rulesUnknown ? [] : undefined;
       const { profile, contact, custom } = visitor && tenantDb
-        ? await extractProfile(history, input.content, keepable, customFields)
+        ? await extractProfile(history, asked, keepable, customFields)
         : { profile: null, contact: null, custom: null };
 
       if (profile && visitor && tenantDb) {
@@ -476,7 +518,7 @@ export async function guestRoutes(app: FastifyInstance) {
       // Asked as its own call, over the transcript, rather than as a block the counsellor was
       // supposed to append to its own reply. See conclusion-detect for why that never fired.
       const concluded = judgementMatters && current
-        ? await judgeConclusion(history, input.content, cleanText)
+        ? await judgeConclusion(history, asked, cleanText)
         : null;
 
       const prompted = embed && current
@@ -546,7 +588,7 @@ export async function guestRoutes(app: FastifyInstance) {
       // Persist the turn (fire-and-forget — the reply has already been streamed).
       if (session) {
         persistVisitorTurn(session.id, {
-          content: input.content,
+          content: input.resume ? null : input.content,
           answer: cleanText,
           sources: ragOutput.sources,
           cards,
@@ -559,10 +601,17 @@ export async function guestRoutes(app: FastifyInstance) {
             : {}),
         })
           // The chat's staff summary follows every turn, once the turn is stored.
-          .then(() => (embed
-            ? refreshChatSummary(session.id, embed.config.display_name, tenantDb && visitor ? { db: tenantDb, visitorId: visitor.id } : undefined)
-            : undefined))
-          .catch((err) => logger.error("Failed to persist visitor turn", { err: String(err) }));
+          .then(
+            () => (embed
+              ? refreshChatSummary(session.id, embed.config.display_name, tenantDb && visitor ? { db: tenantDb, visitorId: visitor.id } : undefined)
+              : undefined),
+            // The reply never got stored, so its questions are still owed.
+            async (err) => {
+              await releaseClaim();
+              logger.error("Failed to persist visitor turn", { err: String(err) });
+            },
+          )
+          .catch((err) => logger.error("Chat summary refresh failed", { err: String(err) }));
       } else {
         guestService.createGuestSession({
           fingerprintHash,
@@ -575,6 +624,7 @@ export async function guestRoutes(app: FastifyInstance) {
       }
     } catch (err) {
       logger.error("Guest stream error", { err: err instanceof Error ? err.message : String(err) });
+      await releaseClaim();
       if (!reply.raw.destroyed) {
         writeData(reply, {
           choices: [{ delta: { content: "I'm sorry, something went wrong. Please try again." } }],
@@ -604,11 +654,18 @@ export async function guestSessionRoutes(app: FastifyInstance) {
 
     const rows = await messagesRepo.findBySession(session.id, { limit: HISTORY_LIMIT });
     // Staff attachments are private objects; sign them per read, like enquiry chat.
-    const messages = await Promise.all(rows.map(async (m) =>
-      m.role === "agent"
-        ? { ...m, attachments: await mediaService.withViewUrls(m.attachments as mediaService.MessageAttachment[]) }
-        : m,
-    ));
+    // Cards re-enriched on read, like the app chat: logos are signed URLs that expire, and cards
+    // saved before enrichment carried none. One batch for the whole thread, since this is polled.
+    type Card = Parameters<typeof withInstitutionMedia>[0][number];
+    const stored = rows.map((m) => (Array.isArray(m.cards) ? (m.cards as Card[]) : []));
+    const enriched = await withInstitutionMedia(stored.flat());
+    let at = 0;
+    const messages = await Promise.all(rows.map(async (m, i) => {
+      const cards = stored[i].length ? enriched.slice(at, (at += stored[i].length)) : m.cards;
+      return m.role === "agent"
+        ? { ...m, cards, attachments: await mediaService.withViewUrls(m.attachments as mediaService.MessageAttachment[]) }
+        : { ...m, cards };
+    }));
     // Polled by the widget every few seconds, so the header and the waiting card follow the Inbox.
     const db = await visitorService.attempt("tenantDbFor", () => visitorService.tenantDbFor(config));
     const state = db

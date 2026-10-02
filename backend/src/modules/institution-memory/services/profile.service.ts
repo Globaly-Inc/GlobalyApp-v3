@@ -8,8 +8,8 @@
 // Rendering only emits what DIFFERS from the defaults, so an institution that changed one thing
 // pays for one line and every byte in the block corresponds to a choice someone made.
 //
-// One exception, and it is deliberate: the default allow-list withholds age, gender and phone,
-// and a model that is NOT told to withhold them will ask for them. A privacy default stricter
+// One exception, and it is deliberate: the default allow-list withholds phone,
+// and a model that is NOT told to withhold it will ask for it. A privacy default stricter
 // than the model's own behaviour has to be spent on, so an untouched profile still emits that
 // single line. Everything else stays silent until someone changes it.
 

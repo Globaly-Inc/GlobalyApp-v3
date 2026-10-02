@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
 import { ChatInput } from "@/app/ai/components/chat-input";
 import { StreamingMessage } from "@/app/ai/components/chat-message";
 import { ThinkingIndicator } from "@/app/ai/components/thinking-indicator";
@@ -61,49 +61,9 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
     if (framed && hasConversation) window.parent.postMessage({ type: STARTED_MESSAGE }, "*");
   }, [framed, hasConversation]);
 
-  useEffect(() => {
-    if (fetchedRef.current) return;
-    fetchedRef.current = true;
-    embedApi.resolveConfig(embedKey).then(setConfig, (e: Error) => setConfigError(e.message));
-    // Inside a host page: hand our visitor id to embed.js, which keeps it in first-party storage
-    // and gives it back next visit — iframe storage alone is partitioned or wiped by some browsers.
-    if (window.parent !== window) window.parent.postMessage({ type: FP_MESSAGE, fp: getFingerprint() }, "*");
-    // Resume the visitor's thread with this widget. Reopening the launcher used to show
-    // an empty panel even though the backend had the conversation.
-    embedApi.getThread(embedKey, getFingerprint()).then((thread) => {
-      setAgentName(thread.agent_name ?? null);
-      setWaiting(thread.waiting ?? false);
-      if (!thread.messages.length) return;
-      setMessages(thread.messages.map((row) => toMessage(row, embedApi.toCourseCards(row.cards))));
-    });
-  }, [embedKey]);
-
-  // Staff replies arrive from the Inbox, not as the answer to anything the visitor sent, so the
-  // open widget polls for them. Paused while a send is streaming and while the tab is hidden.
-  const sendingRef = useRef(false);
-  useEffect(() => {
-    sendingRef.current = sending;
-  }, [sending]);
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      if (sendingRef.current || document.visibilityState !== "visible") return;
-      embedApi.getThread(embedKey, getFingerprint()).then((thread) => {
-        if (sendingRef.current) return;
-        setAgentName(thread.agent_name ?? null);
-        setWaiting(thread.waiting ?? false);
-        setMessages((prev) => withNewAgentRows(prev, thread.messages, embedApi.toCourseCards));
-      });
-    }, POLL_MS);
-    return () => window.clearInterval(id);
-  }, [embedKey]);
-
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length, streamText, contactPrompt, endPrompt]);
-
-  const send = async (content: string) => {
+  const run = async (content: string, resume: boolean) => {
     if (sending) return;
-    setInput("");
+    if (!resume) setInput("");
     setError(null);
     setSending(true);
     setStreamText("");
@@ -115,7 +75,7 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
     setContactPrompt(null);
     setEndPrompt(null);
     // ponytail: negative temp ids — the widget has no persisted messages, feedback stays hidden
-    setMessages((prev) => [
+    if (!resume) setMessages((prev) => [
       ...prev,
       { id: -prev.length - 1, session_id: 0, role: "user", content, cards: [], chips: [], blocks: [], feedback: null, created_at: new Date().toISOString() },
     ]);
@@ -125,7 +85,7 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
     let chips: string[] = [];
     try {
       await embedApi.sendMessage(
-        { content, fingerprint: getFingerprint(), embed_key: embedKey },
+        { content, fingerprint: getFingerprint(), embed_key: embedKey, ...(resume ? { resume: true } : {}) },
         (event) => {
           if (event.type === "delta") { text += event.text; setStreamText(text); }
           else if (event.type === "cards") { cards = event.cards; setStreamCards(cards); }
@@ -153,6 +113,61 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
       setStreamChips([]);
     }
   };
+  const send = (content: string) => run(content, false);
+  // Called by the thread reads above; the reply streams like any other, minus a visitor bubble.
+  const resume = useEffectEvent(() => void run("", true));
+
+  useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+    embedApi.resolveConfig(embedKey).then(setConfig, (e: Error) => setConfigError(e.message));
+    // Inside a host page: hand our visitor id to embed.js, which keeps it in first-party storage
+    // and gives it back next visit — iframe storage alone is partitioned or wiped by some browsers.
+    if (window.parent !== window) window.parent.postMessage({ type: FP_MESSAGE, fp: getFingerprint() }, "*");
+    // Resume the visitor's thread with this widget. Reopening the launcher used to show
+    // an empty panel even though the backend had the conversation.
+    embedApi.getThread(embedKey, getFingerprint()).then((thread) => {
+      setAgentName(thread.agent_name ?? null);
+      setWaiting(thread.waiting ?? false);
+      // So the first poll can tell if a hold seen here lifts before it runs.
+      heldRef.current = !!thread.agent_name || !!thread.waiting;
+      if (!thread.messages.length) return;
+      setMessages(thread.messages.map((row) => toMessage(row, embedApi.toCourseCards(row.cards))));
+      // Back after a person had the chat and left a question unanswered: the AI answers it now.
+      if (!thread.agent_name && !thread.waiting && thread.messages.at(-1)?.role === "user") resume();
+    });
+  }, [embedKey]);
+
+  // Staff replies arrive from the Inbox, not as the answer to anything the visitor sent, so the
+  // open widget polls for them. Paused while a send is streaming and while the tab is hidden.
+  const sendingRef = useRef(false);
+  const heldRef = useRef(false);
+  useEffect(() => {
+    sendingRef.current = sending;
+  }, [sending]);
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (sendingRef.current || document.visibilityState !== "visible") return;
+      embedApi.getThread(embedKey, getFingerprint()).then((thread) => {
+        if (sendingRef.current) return;
+        setAgentName(thread.agent_name ?? null);
+        setWaiting(thread.waiting ?? false);
+        setMessages((prev) => withNewAgentRows(prev, thread.messages, embedApi.toCourseCards));
+        // The person's 15 minutes ran out (the hold just lifted) with the visitor's question
+        // unanswered: the AI picks it up without waiting for them to type again. Only on the
+        // transition, so a normal turn's not-yet-stored reply never looks unanswered.
+        const held = heldRef.current;
+        heldRef.current = !!thread.agent_name || !!thread.waiting;
+        if (held && !heldRef.current && thread.messages.at(-1)?.role === "user") resume();
+      });
+    }, POLL_MS);
+    return () => window.clearInterval(id);
+  }, [embedKey]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages.length, streamText, contactPrompt, endPrompt]);
+
 
   const submitContact = async (contactName: string, email: string) => {
     await embedApi.submitContact({

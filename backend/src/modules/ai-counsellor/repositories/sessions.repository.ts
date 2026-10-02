@@ -92,6 +92,8 @@ export interface SessionRow {
   ended_at?: Date | null;
   /** That chat's staff-facing summary. */
   summary?: ChatSummaryJson | null;
+  /** Newest visitor message a resume has claimed (20261002_004). Absent on a database behind it. */
+  answered_through_message_id?: number | null;
   counselling_context: CounsellingContext;
   created_at: Date;
   updated_at: Date;
@@ -261,6 +263,32 @@ export async function mergeContext(
     .where({ id })
     .update({ counselling_context: JSON.stringify(merged), updated_at: masterKnex.fn.now() });
   return merged;
+}
+
+/**
+ * Claim the visitor's unanswered questions up to `lastMessageId` for one resume. A single UPDATE,
+ * so of two concurrent resumes exactly one gets `true`; the claim stays after the request ends.
+ */
+export async function claimAnsweredThrough(id: number, lastMessageId: number): Promise<boolean> {
+  try {
+    const n = await masterKnex(TABLE)
+      .where({ id })
+      .where((q) => q.whereNull("answered_through_message_id").orWhere("answered_through_message_id", "<", lastMessageId))
+      .update({ answered_through_message_id: lastMessageId });
+    return n > 0;
+  } catch {
+    // A database behind 20261002_004: answer unclaimed rather than fail the visitor's reply.
+    return true;
+  }
+}
+
+/** Undo a claim whose reply never got saved, so the next resume answers those questions. Only
+ *  while the claim is still this one — a later resume's claim is left alone. */
+export async function releaseAnsweredThrough(id: number, claimed: number, previous: number | null): Promise<void> {
+  await masterKnex(TABLE)
+    .where({ id, answered_through_message_id: claimed })
+    .update({ answered_through_message_id: previous })
+    .catch(() => {}); // a database behind 20261002_004 never claimed anything
 }
 
 export async function incrementMessageCount(id: number): Promise<void> {

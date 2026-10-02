@@ -374,7 +374,8 @@ export async function institutionMediaByCourseIds(courseIds: string[]): Promise<
     .join(`${SA}.extraction_institution_overview as i`, "c.job_id", "i.job_id")
     .leftJoin("institutions as inst", "inst.source_job_id", "c.job_id")
     .whereIn("c.id", ids)
-    .select("c.id as course_id", "i.name as institution_name", "i.logo_url", "inst.cover_url", "i.city", "i.website");
+    // The institution's own uploaded logo wins over the one scraped at extraction.
+    .select("c.id as course_id", "i.name as institution_name", masterKnex.raw("coalesce(inst.logo_url, i.logo_url) as logo_url"), "inst.cover_url", "i.city", "i.website");
 }
 
 export async function searchInstitutions(opts: {
