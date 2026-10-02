@@ -28,7 +28,7 @@ The seed writes, for AIT:
 The widget is not on any GlobalyHub page. It is a script tag the institution pastes on its
 **own** website, and AIT has no website in the dev DB. Two ways to show it:
 
-- **As a website visitor sees it:** open `docs/ai-counsellor/2026-09-28-demo-site.html` in a
+- **As a website visitor sees it:** open `/ai-counsellor/2026-09-28-demo-site.html` (served from `frontend/public/`) in a
   browser (a stand-in for AIT's site with the script tag). The orb appears bottom-right.
 - **Just the chat panel:** `http://localhost:3001/embed/d472fa3f-1a1f-43e5-b369-7547ab6b4688`.
 - **Inside the portal:** log in as AIT, open AI assistant (`/business/ai-widget`) and press the eye
