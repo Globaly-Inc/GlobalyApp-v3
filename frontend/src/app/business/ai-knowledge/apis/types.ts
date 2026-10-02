@@ -187,6 +187,10 @@ export const COLLECTABLE_FIELDS = [
 ] as const;
 export type CollectableField = (typeof COLLECTABLE_FIELDS)[number];
 
+/** Always recorded, never qualified — the backend forces these into `allowed` on every read. */
+export const CONTACT_FIELDS = ["name", "email", "phone"] as const;
+
+
 export interface VoiceProfile {
   tone: (typeof TONES)[number];
   formality: number;
@@ -205,12 +209,28 @@ export interface BehaviourProfile {
   initiative: (typeof INITIATIVE_MODES)[number];
 }
 
+/**
+ * An institution-defined subject. `key` is minted once, when the field is added, and never
+ * recomputed or reissued: it carries a random tail precisely so that removing a field and adding
+ * the same name back starts empty rather than resurrecting the answers it used to hold.
+ */
+export interface CustomField {
+  key: string;
+  label: string;
+  /** The counsellor may raise it itself; off means record it only when the visitor offers. */
+  may_ask: boolean;
+}
+
+/** Matches CUSTOM_FIELD_MAX on the backend — a longer list is a 400, not a silent truncation. */
+export const CUSTOM_FIELD_MAX = 10;
+
 export interface CollectionRules {
   allowed: CollectableField[];
   /** Usable in the conversation, never written down. */
   sensitive: CollectableField[];
   /** The counsellor may ask outright; everything else is recorded only if offered. */
   may_ask_for: CollectableField[];
+  custom: CustomField[];
   contact_ask: { enabled: boolean; first_at: [number, number]; gap: [number, number] };
 }
 
@@ -260,6 +280,20 @@ export const JOURNEY_TOPICS = [
 ] as const;
 export type JourneyTopic = (typeof JOURNEY_TOPICS)[number];
 
+/**
+ * One mined step. `support` counts CONVERSATIONS containing it, not occurrences, so a journey
+ * that loops back through the same pair contributes one.
+ */
+export interface TopicTransition {
+  from: string;
+  to: string;
+  support: number;
+  converted: number;
+  /** The step already phrased as a guideline — composed by the backend, which owns the
+   *  vocabulary and validates the 600-char Content ceiling this is POSTed back into. */
+  suggestion: string;
+}
+
 export interface ConversionInsights {
   conversations: number;
   converted: number;
@@ -273,4 +307,6 @@ export interface ConversionInsights {
   top_paths: Array<{ path: string[]; count: number }>;
   topic_before_conversion: Array<{ value: string; count: number }>;
   first_topic: Array<{ value: string; count: number }>;
+  /** Empty until a step appears in enough conversations to be more than coincidence. */
+  transitions: TopicTransition[];
 }

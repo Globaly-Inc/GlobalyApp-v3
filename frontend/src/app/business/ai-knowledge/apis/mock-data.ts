@@ -16,16 +16,17 @@ const patch = (id: string, changes: Partial<Memory>): Memory => {
 
 /** Starts on the real defaults, so the mock shows what an institution actually sees on day one. */
 let rackProfile: RackProfile = {
-  voice: { tone: "warm", formality: 3, warmth: 3, response_length: "standard", language: "", use_cards: true },
+  voice: { tone: "warm", formality: 3, warmth: 3, response_length: "standard", language: "en", use_cards: true },
   behaviour: {
     counselling_style: "consultative", ask_follow_ups: "when_unclear",
     explain_recommendations: "brief_reason", uncertainty: "say_unknown",
     lead_approach: "when_natural", initiative: "balanced",
   },
   collection: {
-    allowed: ["nationality", "study_preference", "qualifications", "language_tests", "academic_tests", "work_experiences", "name", "email"],
+    allowed: ["nationality", "study_preference", "qualifications", "language_tests", "academic_tests", "work_experiences", "name", "email", "phone"],
     sensitive: [],
     may_ask_for: ["study_preference"],
+    custom: [{ key: "preferred_intake", label: "Preferred intake", may_ask: true }],
     contact_ask: { enabled: true, first_at: [3, 5], gap: [5, 10] },
   },
   learning: { auto_learn: false, learn_general_knowledge: false },
@@ -59,6 +60,18 @@ const insights: ConversionInsights = {
   first_topic: [
     { value: "course", count: 96 }, { value: "fees", count: 48 }, { value: "eligibility", count: 31 },
     { value: "visa", count: 19 }, { value: "scholarship", count: 12 }, { value: "other", count: 8 },
+  ],
+  // Mixed on purpose: a step that converts well, one that converts badly, and one in between.
+  // A mock where every pattern looks good hides the only judgement this panel asks for.
+  transitions: [
+    { from: "course", to: "fees", support: 61, converted: 12,
+      suggestion: "Visitors who ask about courses often go on to ask about fees. Bring fees up while courses is still being discussed, rather than waiting to be asked." },
+    { from: "fees", to: "scholarship", support: 24, converted: 11,
+      suggestion: "Visitors who ask about fees often go on to ask about scholarships. Bring scholarships up while fees is still being discussed, rather than waiting to be asked." },
+    { from: "eligibility", to: "application", support: 18, converted: 9,
+      suggestion: "Visitors who ask about whether they qualify often go on to ask about applying. Bring applying up while whether they qualify is still being discussed, rather than waiting to be asked." },
+    { from: "fees", to: "visa", support: 9, converted: 1,
+      suggestion: "Visitors who ask about fees often go on to ask about visas. Bring visas up while fees is still being discussed, rather than waiting to be asked." },
   ],
 };
 

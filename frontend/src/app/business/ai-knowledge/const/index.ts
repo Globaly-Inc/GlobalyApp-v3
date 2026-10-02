@@ -79,6 +79,10 @@ export const REVIEW_META: Record<ReviewStatus, { label: string }> = {
   flagged: { label: "Flagged" },
 };
 
+/** Matches TRANSITION_SCAN_LIMIT in institution-memory/repositories/signals.repository.ts —
+ *  how many of the most recent conversations the pattern mining actually reads. */
+export const TRANSITION_SCAN_LIMIT = 5000;
+
 /** Matches PROMOTION_MIN_ACTORS in institution-memory/services/memory.service.ts. */
 export const PROMOTION_MIN_ACTORS = 3;
 /** Matches CANDIDATE_TTL_DAYS. A candidate nobody reviews is retired automatically. */
@@ -150,6 +154,33 @@ export const SCALE_CHOICES: Choice<string>[] = [
   { value: "4", label: "4" }, { value: "5", label: "5" },
 ];
 
+/**
+ * Reply languages. Codes are ISO 639-1; the names come from `Intl.DisplayNames`, so there is no
+ * second table of language names here to translate and keep current. English is the default and
+ * matches `VoiceSchema.language` on the backend.
+ */
+const LANGUAGE_CODES = (
+  "en es fr de it pt nl sv da nb fi is pl ru uk tr ar fa he hi ne bn ur pa gu mr ta te kn ml si "
+  + "th vi id ms tl my km lo zh ja ko el cs sk hu ro bg sr hr sl et lv lt sq mk ka hy az kk uz "
+  + "ps am sw ha yo ig zu af"
+).split(" ");
+
+/** Exported so a stored tag the list does not carry can still be labelled with a real name. */
+export const languageName = (code: string): string => {
+  try {
+    return new Intl.DisplayNames(["en"], { type: "language" }).of(code) ?? code;
+  } catch {
+    return code;
+  }
+};
+
+export const LANGUAGE_CHOICES: Choice<string>[] = [
+  { value: "", label: "Match the visitor's language" },
+  ...LANGUAGE_CODES
+    .map((value) => ({ value, label: languageName(value) }))
+    .sort((a, b) => a.label.localeCompare(b.label)),
+];
+
 /** What each collectable field is, in a visitor's terms rather than a column's. */
 export const FIELD_LABEL: Record<string, string> = {
   age: "Age", gender: "Gender", nationality: "Nationality",
@@ -163,7 +194,6 @@ export const FIELD_LABEL: Record<string, string> = {
 export const FIELD_CAUTION: Record<string, string> = {
   age: "Collected from every visitor today with no stated purpose — off unless you need it.",
   gender: "Collected from every visitor today with no stated purpose — off unless you need it.",
-  phone: "More than a counsellor needs to answer a question.",
 };
 
 /** The journey vocabulary, in a visitor's terms rather than the classifier's. */

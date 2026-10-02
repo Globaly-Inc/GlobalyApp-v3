@@ -36,6 +36,23 @@ export const ConversationSignalsSchema = z.object({
 });
 export type ConversationSignals = z.infer<typeof ConversationSignalsSchema>;
 
+/**
+ * One mined step: visitors on this journey went from `from` to `to` next.
+ *
+ * `support` counts CONVERSATIONS, not occurrences — a journey that loops back through the same
+ * pair contributes one, because the question is how many visitors do this and not how restless
+ * one of them was.
+ */
+export interface TopicTransition {
+  from: string;
+  to: string;
+  support: number;
+  /** Of those conversations, how many ended with a lead. */
+  converted: number;
+  /** The same step phrased as a guideline, ready to store as a memory. */
+  suggestion: string;
+}
+
 export interface ConversionInsights {
   conversations: number;
   converted: number;
@@ -49,4 +66,6 @@ export interface ConversionInsights {
   top_paths: Array<{ path: string[]; count: number }>;
   topic_before_conversion: Array<{ value: string; count: number }>;
   first_topic: Array<{ value: string; count: number }>;
+  /** Phase 5 pattern mining. Empty below MIN_TRANSITION_SUPPORT — a step seen twice is noise. */
+  transitions: TopicTransition[];
 }

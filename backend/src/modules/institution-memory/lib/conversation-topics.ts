@@ -72,3 +72,41 @@ export function topicSequence(turns: ReadonlyArray<{ role: string; content: stri
   }
   return out;
 }
+
+// ── Pattern mining (Phase 5) ─────────────────────────────────────────────────
+
+/**
+ * Each label as it reads inside a sentence. Backend-side because the vocabulary is defined here:
+ * a label the portal can render but the guidance sentence cannot name would be a split source.
+ */
+const PHRASE: Record<Topic, string> = {
+  course: "courses",
+  eligibility: "whether they qualify",
+  fees: "fees",
+  scholarship: "scholarships",
+  application: "applying",
+  visa: "visas",
+  accommodation: "accommodation",
+  contact: "speaking to someone",
+  other: "something else",
+};
+
+/**
+ * A mined transition as a sentence an institution can store as a memory.
+ *
+ * Phrased as guidance about SEQUENCE — "raise B while A is on the table" — and never as a fact,
+ * because a COUNSELLING_GUIDELINE may not state one. The transition is evidence about what
+ * visitors here do next; it says nothing about fees or scholarships themselves.
+ *
+ * `from` and `to` are always different: topicSequence collapses consecutive repeats, so no
+ * conversation can produce a self-transition for this to describe.
+ */
+export function transitionGuidance(from: string, to: string): string {
+  // Takes strings, not Topic: the labels come back out of a jsonb column, and a row written
+  // before a label was renamed must still produce a readable sentence rather than "about
+  // undefined" — this text is stored as a memory the counsellor will read out.
+  const a = PHRASE[from as Topic] ?? from;
+  const b = PHRASE[to as Topic] ?? to;
+  return `Visitors who ask about ${a} often go on to ask about ${b}. `
+    + `Bring ${b} up while ${a} is still being discussed, rather than waiting to be asked.`;
+}

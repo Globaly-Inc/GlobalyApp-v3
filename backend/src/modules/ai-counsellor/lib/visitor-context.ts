@@ -20,6 +20,7 @@
 import type { ProfileContext } from "../repositories/knowledge.repository.js";
 import type { CounsellingContext } from "../repositories/sessions.repository.js";
 import type { VisitorRow } from "../services/visitor.service.js";
+import type { CustomField } from "../../institution-memory/schemas/profile.schema.js";
 
 /** The jsonb arrays, which are already the right shape, plus whatever scalars map cleanly. */
 type VisitorLike = Pick<
@@ -125,13 +126,27 @@ export function visitorProfileContext(v: VisitorLike | null | undefined): Profil
  * behaviour those rules exist to prevent — if it was collected, the profile block above carries
  * it for eligibility purposes and that is enough.
  */
-export function visitorCounsellingContext(v: VisitorLike | null | undefined): CounsellingContext | null {
+export function visitorCounsellingContext(
+  v: VisitorLike | null | undefined,
+  /** The institution's custom fields. A subject it has deleted is not read back. */
+  custom: readonly CustomField[] = [],
+  /** Their answers, from ai_widget_visitor_custom_values — keyed by field_key. */
+  values: Readonly<Record<string, string>> = {},
+): CounsellingContext | null {
   if (!v) return null;
   const ctx: CounsellingContext = {};
   if (v.study_preference) ctx.interests = [v.study_preference];
   const notes: string[] = [];
   if (v.age) notes.push(`age ${v.age}`);
   if (v.name) notes.push(`their name is ${v.name}`);
+  // Labelled, because the storage key is ours and the label is the institution's own words —
+  // "Preferred intake: September 2027" is readable guidance, "preferred_intake" is a column.
+  // Driven by the field list rather than the bag's keys, so a deleted subject stops being read
+  // back even though the value is still on the row.
+  for (const f of custom) {
+    const value = values[f.key];
+    if (typeof value === "string" && value) notes.push(`${f.label}: ${value}`);
+  }
   if (notes.length) ctx.notes = notes;
   return Object.keys(ctx).length ? ctx : null;
 }

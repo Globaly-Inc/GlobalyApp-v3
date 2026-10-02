@@ -17,9 +17,9 @@ export {
   createMemory, flagConflict, approve, deprecate, reactivate, unflag, remove, edit, voteOnMemory, runSweep,
   hashActor, hashContent,
 } from "./services/memory.service.js";
-export { getProfile, patchProfile, parsePatch, profileBlockFor, renderProfileBlock, clearProfileCache } from "./services/profile.service.js";
+export { getProfile, patchProfile, parsePatch, profileBlockFor, renderProfileBlock, clearProfileCache, mayKeepEmail } from "./services/profile.service.js";
 export { recordConversationSignals, sweepMissingSignals, journeyEndedAt } from "./services/conversation-signals.service.js";
-export { topicOf, topicSequence, TOPICS } from "./lib/conversation-topics.js";
+export { topicOf, topicSequence, transitionGuidance, TOPICS } from "./lib/conversation-topics.js";
 export type { Topic } from "./lib/conversation-topics.js";
 export * from "./schemas/signals.schema.js";
 export * from "./schemas/profile.schema.js";

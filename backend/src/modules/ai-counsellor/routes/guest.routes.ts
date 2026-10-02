@@ -22,7 +22,7 @@ import * as rag from "../services/rag.service.js";
 import { parseBlocks, parseCards, parseChips, stripBlocks } from "../lib/card-parser.js";
 import { judgeConclusion } from "../lib/conclusion-detect.js";
 import { extractProfile } from "../lib/profile-extract.js";
-import { getProfile, profileBlockFor, retrieveMemories } from "../../institution-memory/index.js";
+import { getProfile, mayKeepEmail, profileBlockFor, retrieveMemories } from "../../institution-memory/index.js";
 import {
   applyCollectionRules as applyVisitorCollectionRules,
   visitorCounsellingContext, visitorProfileContext,
@@ -226,7 +226,15 @@ export async function guestRoutes(app: FastifyInstance) {
       const collection = rack && !rack.degraded ? rack.profile.collection : null;
       const rulesUnknown = !!rack?.degraded;
       const contactAsk = collection
-        ? { enabled: collection.contact_ask.enabled, first_at: collection.contact_ask.first_at, gap: collection.contact_ask.gap }
+        ? {
+            // AND `email` being keepable, not just the card being switched on. The card asks for
+            // an address; an institution that has turned `email` off has said not to keep one,
+            // and showing a form whose answer must then be discarded is worse than not asking.
+            // Same predicate the submit endpoint uses — see mayKeepEmail.
+            enabled: collection.contact_ask.enabled && mayKeepEmail(rack),
+            first_at: collection.contact_ask.first_at,
+            gap: collection.contact_ask.gap,
+          }
         // Do not ask for details we could not store lawfully this turn.
         : rulesUnknown
           ? { ...visitorService.DEFAULT_CONTACT_ASK, enabled: false }
@@ -237,8 +245,20 @@ export async function guestRoutes(app: FastifyInstance) {
       // read back from rows written while it was still on — "stop collecting this" has to cover
       // what is already held, not just what arrives next.
       const visible = applyVisitorCollectionRules(visitor, collection ? collection.allowed : rulesUnknown ? [] : undefined);
+      // Empty whenever the rules could not be read, by the same reasoning as `keepable` below:
+      // an institution's own subjects are neither asked for, kept, nor read back on a turn where
+      // we cannot tell which subjects it still has.
+      const customFields = collection?.custom ?? [];
+      // One indexed read, and only when this institution has defined a subject at all. Its own
+      // table rather than a column on the row above, so it is its own query — and its own
+      // failure: `attempt` keeps a lagging tenant schema costing the counsellor this memory
+      // rather than the turn.
+      const customValues = customFields.length && visitor && tenantDb
+        ? await visitorService.attempt("customValues", () =>
+            visitorService.customValuesFor(tenantDb, visitor.id)) ?? {}
+        : {};
       const visitorProfile = visitorProfileContext(visible);
-      const visitorContext = visitorCounsellingContext(visible);
+      const visitorContext = visitorCounsellingContext(visible, customFields, customValues);
       const situation = rag.situationText(visitorProfile, visitorContext);
       const [ragOutput, memory, rackProfile] = await Promise.all([
         rag.searchAll({
@@ -328,13 +348,21 @@ export async function guestRoutes(app: FastifyInstance) {
         // Empty list, not `undefined`: undefined means "no institution, use the built-in set",
         // while an unreadable rule set means "we do not know what we may keep" — so keep nothing.
         : rulesUnknown ? [] : undefined;
-      const { profile, contact } = visitor && tenantDb
-        ? await extractProfile(history, input.content, keepable)
-        : { profile: null, contact: null };
+      const { profile, contact, custom } = visitor && tenantDb
+        ? await extractProfile(history, input.content, keepable, customFields)
+        : { profile: null, contact: null, custom: null };
 
       if (profile && visitor && tenantDb) {
         await visitorService.attempt("recordProfile", () =>
           visitorService.recordProfile(tenantDb, visitor.id, profile),
+        );
+      }
+
+      // The institution's own subjects. Its own statement for the same reason as the two around
+      // it: one jsonb column, one cleaner, and a lagging tenant schema costs this write alone.
+      if (custom && visitor && tenantDb) {
+        await visitorService.attempt("recordCustom", () =>
+          visitorService.recordCustom(tenantDb, visitor.id, custom),
         );
       }
 
@@ -528,6 +556,28 @@ export async function guestSessionRoutes(app: FastifyInstance) {
     const config = await embedService.resolveActiveConfig(input.embed_key);
     const db = await visitorService.attempt("tenantDbFor", () => visitorService.tenantDbFor(config));
     if (!db) return reply.send({ ok: true });
+
+    // The WRITE end of the same rule. Suppressing the card stops us asking; it does not stop a
+    // POST arriving anyway — a stale page still showing the form, or anyone with the embed key.
+    // A privacy guarantee enforced only where we ask is the defect this module keeps making, so
+    // the storage checks for itself.
+    //
+    // Unreadable rules (`degraded`) store nothing either, matching the message path: "we do not
+    // know what we may keep" is not permission. Still `{ ok: true }` — the visitor gets no
+    // signal about another tenant's settings.
+    //
+    // SKIP IS EXEMPT, and the exemption is the whole point of the gate being here rather than
+    // around the endpoint. A skip stores no contact details at all: recordContact's skip branch
+    // writes `contact_status` and the cooldown anchor only, ignoring name/email even when a
+    // client sends them. Gating it dropped the dismissal, so `contact_prompted_at_count` never
+    // advanced and the card came back — a visitor left unable to get rid of a form, caused by a
+    // privacy check applied to the one action that stores nothing.
+    // Guarded by tests/widget-visitor-list §8: if the skip branch ever starts writing a contact
+    // column, this exemption becomes a hole and that assertion goes red first.
+    if (input.action !== "skip") {
+      const rack = config.institution_id != null ? await getProfile(Number(config.institution_id)) : null;
+      if (!mayKeepEmail(rack)) return reply.send({ ok: true });
+    }
 
     await visitorService.attempt("recordContact", () =>
       visitorService.recordContact(db, {

@@ -178,6 +178,23 @@ console.log("\n8. default is visitor, and the contact form is what promotes them
   await recordContact(skip.db, { visitorKey: "k", embedConfigId: 1, action: "skip" });
   const skipped = skip.captured.updated ?? {};
   assert(!("name" in skipped) && !("email" in skipped), "declining the card leaves name/email alone — they stay a visitor", skipped);
+
+  // LOAD-BEARING, not belt-and-braces. guest.routes exempts `skip` from the collection-rules
+  // gate on POST /guest/contact — an institution that does not keep email addresses must still
+  // let a visitor dismiss a card, or they are stuck with a form that keeps coming back. That
+  // exemption is only safe because the skip branch writes no contact column EVEN WHEN THE
+  // REQUEST CARRIES ONE: the payload is attacker-controlled, and `skip` needs neither field to
+  // pass GuestContactSchema's refine. The moment the skip branch starts honouring them, the
+  // exemption becomes a way to store an address the rules forbid — so assert it here, where it
+  // goes red before anyone reaches the route.
+  const sneaky = fakeDb(undefined);
+  await recordContact(sneaky.db, {
+    visitorKey: "k", embedConfigId: 1, action: "skip", name: "John Doe", email: "john@example.com",
+  });
+  const ignored = sneaky.captured.updated ?? {};
+  assert(!("name" in ignored) && !("email" in ignored),
+    "a skip carrying name/email writes neither — the privacy gate may safely let skips through", ignored);
+  assert(ignored.contact_status === "skipped", "…and still records the dismissal, which is what the cooldown reads", ignored);
 }
 
 console.log("\n9. what an owner may edit");

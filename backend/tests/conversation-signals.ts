@@ -186,5 +186,30 @@ console.log("\n8. topic rules — anchors, stems, and the overlap that mattered"
   assert(t.topicOf("do you have scholarships?") === "scholarship", "'scholarships'");
 }
 
+console.log("\n9. transitionGuidance — a mined step as something storable");
+{
+  const g = t.transitionGuidance("fees", "scholarship");
+  assert(g.includes("fees") && g.includes("scholarships"), "names both ends in the institution's words", g);
+  // CreateMemorySchema's Content is trim().min(3).max(600). A sentence this endpoint composes
+  // and the portal POSTs straight back must sit inside that, for EVERY pair — a 600-char
+  // overflow would be a 400 the user sees only on the longest pair, months later.
+  for (const from of t.TOPICS) {
+    for (const to of t.TOPICS) {
+      if (from === to) continue;
+      const text = t.transitionGuidance(from, to);
+      assert(text.length >= 3 && text.length <= 600, `${from}→${to} fits CreateMemorySchema`, text.length);
+      assert(!text.includes("undefined"), `${from}→${to} names every label`, text);
+    }
+  }
+  // Labels come out of a jsonb column, so a value the enum no longer carries must still read.
+  assert(t.transitionGuidance("widgets", "fees").includes("widgets"),
+    "an unknown label falls back to itself rather than printing 'undefined'");
+
+  // The pair can never be equal: topicSequence collapses consecutive repeats, which is what
+  // makes "often go on to ask about X" true of a transition rather than of a pause.
+  const seq = t.topicSequence([user("cost?"), user("how much?"), user("do I qualify?")]);
+  assert(seq.every((step, i) => i === 0 || step !== seq[i - 1]), "no journey yields a self-transition", seq);
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
