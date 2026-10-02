@@ -2535,15 +2535,32 @@ export async function replaceCampuses(
 /**
  * Upsert an agent by (job_id, external_id).
  * Returns the agent row ID.
+ *
+ * `legacyExternalId` is for the one case this lookup cannot survive on its own: the caller
+ * changed how it SYNTHESISES an id, so the same agency now hashes to a different string and the
+ * row saved last time is invisible. Re-running the agents step would then insert a second copy
+ * of every agent it had already saved. When a legacy id is given and the current one matches
+ * nothing, the old row is adopted and re-keyed to the new id — once, after which the first
+ * lookup finds it and this costs nothing.
+ *
+ * Never pass a provider's own id here. Those are stable by definition; only ids we make up can
+ * change out from under their rows.
  */
 export async function upsertAgent(
   jobId: string,
   agent: Record<string, unknown>,
   externalId: string,
+  legacyExternalId?: string | null,
 ): Promise<string> {
-  const existing = await masterKnex(`${S}.extraction_agents`)
-    .where({ job_id: jobId, external_id: externalId })
+  const byId = (id: string) => masterKnex(`${S}.extraction_agents`)
+    .where({ job_id: jobId, external_id: id })
     .first();
+
+  let existing = await byId(externalId);
+  // Only when the current id found nothing: a row already keyed the new way must never be
+  // re-keyed, and the two ids are equal whenever the caller has nothing to migrate.
+  const adopted = !existing && !!legacyExternalId && legacyExternalId !== externalId;
+  if (adopted) existing = await byId(legacyExternalId!);
 
   if (existing) {
     // Merge: only overwrite nulls
@@ -2554,6 +2571,10 @@ export async function upsertAgent(
         updates[key] = val;
       }
     }
+    // Re-key an adopted row even when nothing else changed — that is the whole point of finding
+    // it. Safe against the (job_id, external_id) unique index: the lookup above proved no row
+    // holds this id.
+    if (adopted) updates.external_id = externalId;
     if (Object.keys(updates).length > 0) {
       updates.updated_at = masterKnex.fn.now();
       await masterKnex(`${S}.extraction_agents`).where({ id: existing.id }).update(updates);

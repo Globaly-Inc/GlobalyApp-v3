@@ -16,6 +16,7 @@
     "test:site-snapshot-path": "node --import tsx tests/site-snapshot-path.ts",
     "backfill:widget-site-index": "node --import tsx scripts/backfill-widget-site-index.ts",
     "chunk:backfill": "node --import tsx scripts/chunk-backfill.ts",
+    "agents:legacy-ids": "node --import tsx scripts/count-legacy-agent-ids.ts",
     "fees:normalise": "node --import tsx scripts/normalise-course-fees.ts",
     "institutions:backfill-jobs": "node --import tsx scripts/backfill-institution-jobs.ts",
     "institutions:backfill-category": "node --import tsx scripts/backfill-institution-category.ts",

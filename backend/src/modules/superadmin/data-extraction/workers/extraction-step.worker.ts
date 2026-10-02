@@ -344,7 +344,33 @@ function mergeInstitutionFields(merged: Record<string, unknown>, data: Record<st
   }
 }
 
-function sha1(...parts: (string | null | undefined)[]): string {
+/**
+ * A stable identity key for a scraped row that carries no id of its own — NOT a security hash.
+ *
+ * SHA-256 rather than SHA-1 because a collision here silently merges two different agencies into
+ * one staged row, and because a function named for its algorithm invites both a scanner finding
+ * and the assumption that it is protecting something. It is not: the inputs go on to be stored
+ * in the clear beside it, so the digest conceals nothing, and swapping the algorithm changes no
+ * privacy property. It is `external_id` for dedup, scoped to one job by
+ * `extraction_agents_job_external_uniq`.
+ */
+function identityKey(...parts: (string | null | undefined)[]): string {
+  return createHash("sha256").update(parts.map(p => p ?? "").join("|")).digest("hex");
+}
+
+/**
+ * The key this row WOULD have had before the switch to SHA-256.
+ *
+ * Compatibility only. `external_id` is how a re-run finds the row it wrote last time, so
+ * changing the algorithm orphaned every agent saved under the old one: upsertAgent looks up by
+ * (job_id, external_id), misses, and inserts a duplicate of an agency it already has. Passing
+ * this lets it adopt and re-key the old row instead, once.
+ *
+ * Deletable when no `extraction_agents` row is still keyed the old way — a 40-character hex
+ * `external_id` is the shape to count. (This database had none at the time of the change; the
+ * AscentOne `ao:` ids, which are not distinguishable by shape, all were.)
+ */
+function legacyIdentityKey(...parts: (string | null | undefined)[]): string {
   return createHash("sha1").update(parts.map(p => p ?? "").join("|")).digest("hex");
 }
 
@@ -895,7 +921,12 @@ async function handleAgentsStep(jobId: string) {
   for (const agent of allRawAgents) {
     if (!agent.name?.trim()) continue;
     const normalized = normalizeAgentRow(agent as any);
-    const externalId = agent.external_id || sha1(agent.name, normalized.country, normalized.email, agent.website);
+    const externalId = agent.external_id || identityKey(agent.name, normalized.country, normalized.email, agent.website);
+    // A provider's own id never changed, so there is nothing to migrate for one; a source that
+    // changed how it synthesises an id says so by carrying `legacy_external_id`.
+    const legacyExternalId = agent.external_id
+      ? agent.legacy_external_id ?? null
+      : legacyIdentityKey(agent.name, normalized.country, normalized.email, agent.website);
 
     const agentData: Record<string, unknown> = {
       name: agent.name, country: normalized.country, state: normalized.state,
@@ -905,7 +936,7 @@ async function handleAgentsStep(jobId: string) {
       source_url: agentUrls[0],
     };
 
-    const agentId = await upsertAgent(jobId, agentData, externalId);
+    const agentId = await upsertAgent(jobId, agentData, externalId, legacyExternalId);
 
     // Write locations — from provider data or single location
     const locs = agent.locations?.length

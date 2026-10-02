@@ -1,5 +1,14 @@
 "use client";
 
+// Business descriptions are authored by the business and rendered here as HTML (`prose`), so
+// they are an untrusted HTML sink: a business owner storing `<img src=x onerror=...>` would run
+// it in the session of whichever platform admin opens their listing. `description` is only
+// `z.string().max(5000)` on write, so nothing upstream removes it.
+// `isomorphic-dompurify`, not `dompurify`: this is a "use client" component, which Next still
+// renders on the SERVER first, and plain dompurify has no DOM there — `sanitize` is not even a
+// function, so it throws rather than sanitising.
+import DOMPurify from "isomorphic-dompurify";
+
 import { useEffect, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
@@ -216,7 +225,7 @@ export function BusinessDetailView({ id }: Readonly<{ id: number }>) {
                         ? "prose prose-sm dark:prose-invert max-w-none text-foreground"
                         : "prose prose-sm dark:prose-invert line-clamp-3 max-w-none text-foreground"
                     }
-                    dangerouslySetInnerHTML={{ __html: business.description }}
+                    dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(business.description) }}
                   />
                   <button type="button" className="mt-1 text-xs font-medium text-primary" onClick={() => setDescExpanded((v) => !v)}>
                     {descExpanded ? "Show less" : "Show more"}
