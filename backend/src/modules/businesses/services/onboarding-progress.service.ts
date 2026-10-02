@@ -90,7 +90,9 @@ function summarize(steps: OnboardingStep[], row: repo.OnboardingProgressRow | un
 async function aiWidgetState(
   db: Knex, column: "business_id" | "institution_id", id: number,
 ): Promise<{ customised: boolean; installed: boolean }> {
-  const rows = await masterKnex("ai_embed_configs").where({ [column]: id }).select("id", "display_name", "greeting");
+  const rows = await masterKnex("ai_embed_configs")
+    .where({ [column]: id, is_active: true })
+    .select("id", "display_name", "greeting");
   if (!rows.length) return { customised: false, installed: false };
   const visitor = await db("ai_widget_visitors").whereIn("embed_config_id", rows.map((r) => r.id)).first("id");
   return {

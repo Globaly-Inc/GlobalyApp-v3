@@ -24,7 +24,17 @@ export function BusinessInvitesView({ reloadKey = 0 }: Readonly<{ reloadKey?: nu
   const { confirm, dialog: confirmDialog } = useConfirmDelete();
   const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
-  const load = (nextPage = 1, nextFilter = filter, nextLimit = limit, nextSearch = search.trim()) =>
+  const latest = useRef({ filter, search, page, limit, count: invites.length });
+  useEffect(() => {
+    latest.current = { filter, search, page, limit, count: invites.length };
+  });
+
+  const load = (
+    nextPage = 1,
+    nextFilter = latest.current.filter,
+    nextLimit = latest.current.limit,
+    nextSearch = latest.current.search.trim(),
+  ) =>
     dispatch(fetchInvites({
       page: nextPage,
       limit: nextLimit,
@@ -67,7 +77,7 @@ export function BusinessInvitesView({ reloadKey = 0 }: Readonly<{ reloadKey?: nu
       } else {
         toast.success("Invite resent", { description: "They'll get a fresh link, valid for 72 hours." });
       }
-      load(page);
+      load(latest.current.page);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [resendId]);
@@ -85,10 +95,10 @@ export function BusinessInvitesView({ reloadKey = 0 }: Readonly<{ reloadKey?: nu
   };
 
   const reloadAfterChange = async () => {
-    const outcome = await load(page);
-    if (page > 1 && fetchInvites.fulfilled.match(outcome) && outcome.payload.data.length === 0) {
-      load(page - 1);
-    }
+    const { filter: wanted, search: searched, page: at } = latest.current;
+    const outcome = await load(at);
+    if (latest.current.filter !== wanted || latest.current.search !== searched) return;
+    if (at > 1 && fetchInvites.fulfilled.match(outcome) && outcome.payload.data.length === 0) load(at - 1);
   };
 
   const runAction = async (invite: OnboardingInvite, action: "resend" | "revoke") => {
@@ -119,7 +129,8 @@ export function BusinessInvitesView({ reloadKey = 0 }: Readonly<{ reloadKey?: nu
       return;
     }
     toast.success(`Invitation to ${invite.email} deleted`);
-    load(invites.length === 1 && page > 1 ? page - 1 : page);
+    const { page: at, count } = latest.current;
+    load(count === 1 && at > 1 ? at - 1 : at);
   };
 
   return (
