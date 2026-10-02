@@ -27,6 +27,13 @@ const nextConfig: NextConfig = {
       },
     ];
   },
+  // The launch countdown at `/` is parked (see src/app/page.tsx), so `/` and `/home` are the same
+  // page. Done here rather than with `redirect()` in the page: a redirect thrown during render
+  // lands after the shell has streamed, and Next falls back to a visible `<meta refresh>` — this
+  // is a real 307 before any rendering. Temporary on purpose, so no browser caches it for good.
+  async redirects() {
+    return [{ source: "/", destination: "/home", permanent: false }];
+  },
   images: {
     // The brand marks and mockup imagery live in the public GCS bucket (see lib/public-assets.ts).
     // next/image refuses a remote src whose host isn't listed here.
