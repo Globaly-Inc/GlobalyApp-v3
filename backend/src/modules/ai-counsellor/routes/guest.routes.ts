@@ -22,7 +22,7 @@ import * as rag from "../services/rag.service.js";
 import { parseBlocks, parseCards, parseChips, stripBlocks } from "../lib/card-parser.js";
 import { judgeConclusion } from "../lib/conclusion-detect.js";
 import { extractProfile } from "../lib/profile-extract.js";
-import { getProfile, profileBlockFor, retrieveMemories } from "../../institution-memory/index.js";
+import { getProfile, mayKeepEmail, profileBlockFor, retrieveMemories } from "../../institution-memory/index.js";
 import {
   applyCollectionRules as applyVisitorCollectionRules,
   visitorCounsellingContext, visitorProfileContext,
@@ -226,7 +226,15 @@ export async function guestRoutes(app: FastifyInstance) {
       const collection = rack && !rack.degraded ? rack.profile.collection : null;
       const rulesUnknown = !!rack?.degraded;
       const contactAsk = collection
-        ? { enabled: collection.contact_ask.enabled, first_at: collection.contact_ask.first_at, gap: collection.contact_ask.gap }
+        ? {
+            // AND `email` being keepable, not just the card being switched on. The card asks for
+            // an address; an institution that has turned `email` off has said not to keep one,
+            // and showing a form whose answer must then be discarded is worse than not asking.
+            // Same predicate the submit endpoint uses — see mayKeepEmail.
+            enabled: collection.contact_ask.enabled && mayKeepEmail(rack),
+            first_at: collection.contact_ask.first_at,
+            gap: collection.contact_ask.gap,
+          }
         // Do not ask for details we could not store lawfully this turn.
         : rulesUnknown
           ? { ...visitorService.DEFAULT_CONTACT_ASK, enabled: false }
@@ -548,6 +556,17 @@ export async function guestSessionRoutes(app: FastifyInstance) {
     const config = await embedService.resolveActiveConfig(input.embed_key);
     const db = await visitorService.attempt("tenantDbFor", () => visitorService.tenantDbFor(config));
     if (!db) return reply.send({ ok: true });
+
+    // The WRITE end of the same rule. Suppressing the card stops us asking; it does not stop a
+    // POST arriving anyway — a stale page still showing the form, or anyone with the embed key.
+    // A privacy guarantee enforced only where we ask is the defect this module keeps making, so
+    // the storage checks for itself.
+    //
+    // Unreadable rules (`degraded`) store nothing either, matching the message path: "we do not
+    // know what we may keep" is not permission. Still `{ ok: true }` — the visitor gets no
+    // signal about another tenant's settings, and the form must not be left undismissable.
+    const rack = config.institution_id != null ? await getProfile(Number(config.institution_id)) : null;
+    if (!mayKeepEmail(rack)) return reply.send({ ok: true });
 
     await visitorService.attempt("recordContact", () =>
       visitorService.recordContact(db, {

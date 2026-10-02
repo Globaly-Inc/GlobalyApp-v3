@@ -57,23 +57,34 @@ console.log("\n1. renderProfileBlock — defaults emit the privacy floor and not
     "defaults do NOT allow gender or age");
 }
 
-console.log("\n1b. contact details are always recorded and never qualified");
+console.log("\n1b. contact details are always recorded and carry no choice at all");
 {
-  // The portal has no controls for these at all, so the schema is where the rule has to hold —
-  // an API caller that drops email, or marks a phone number sensitive, gets neither.
+  // The portal offers no control for these, so the SCHEMA is where the rule has to hold: an API
+  // caller that drops email, or marks a phone number sensitive, must not leave storage and the
+  // prompt disagreeing about whether the field exists.
   const parsed = schema.CollectionSchema.parse({
     allowed: ["study_preference"],
     sensitive: ["email", "work_experiences"],
     may_ask_for: ["phone", "study_preference"],
   });
-  for (const f of ["name", "email", "phone"] as const) {
+  for (const f of schema.CONTACT_FIELDS) {
     assert(parsed.allowed.includes(f), `${f} is forced back into allowed`, parsed.allowed);
     assert(!parsed.sensitive.includes(f), `${f} cannot be marked sensitive`, parsed.sensitive);
     assert(!parsed.may_ask_for.includes(f), `${f} carries no may-ask choice`, parsed.may_ask_for);
   }
+  assert(parsed.allowed.filter((f) => f === "email").length === 1, "and no field is duplicated", parsed.allowed);
   assert(parsed.sensitive.includes("work_experiences") && parsed.may_ask_for.includes("study_preference"),
     "every other field keeps the choice it was given", parsed);
-  assert(parsed.allowed.filter((f) => f === "email").length === 1, "and no field is duplicated", parsed.allowed);
+
+  const d = schema.DEFAULT_PROFILE.collection;
+  for (const f of schema.CONTACT_FIELDS) {
+    assert(d.allowed.includes(f), `${f} is recorded by default too`, d.allowed);
+  }
+
+  // The prompt end of the same rule: the never-ask line can only ever name age and gender now.
+  const withheld = svc.renderProfileBlock(schema.DEFAULT_PROFILE);
+  assert(!/their phone number|their name|their email/.test(withheld),
+    "so no contact field is ever named as off-limits", withheld);
 }
 
 console.log("\n2. renderProfileBlock — only what changed");
@@ -88,6 +99,22 @@ console.log("\n2. renderProfileBlock — only what changed");
   assert(/outranks any style the system has learned/.test(block), "says it beats learned style");
 }
 
+console.log("\n2b. mayKeepEmail — the one predicate both contact gates use");
+{
+  const rack = (allowed: string[], degraded = false) => ({
+    profile: { ...schema.DEFAULT_PROFILE, collection: { ...schema.DEFAULT_PROFILE.collection, allowed } },
+    version: 1, updated_at: null, configured: true, degraded,
+  } as never);
+
+  assert(svc.mayKeepEmail(null), "no Rack at all → the built-in behaviour, which keeps email");
+  assert(svc.mayKeepEmail(rack(["email", "nationality"])), "email allowed → yes");
+  assert(!svc.mayKeepEmail(rack(["nationality"])), "email switched off → no");
+  // Degraded means the stored rules would not parse. Defaults are WIDER than a narrowed set, so
+  // falling back to them would quietly re-enable collection a database blip had nothing to say
+  // about. "We do not know what we may keep" is not permission.
+  assert(!svc.mayKeepEmail(rack(["email"], true)), "rules unreadable → no, even though email is listed");
+}
+
 console.log("\n3. renderProfileBlock — collection rules");
 {
   const block = svc.renderProfileBlock(profile({
@@ -100,7 +127,7 @@ console.log("\n3. renderProfileBlock — collection rules");
   }));
   assert(/Never ask for, and never repeat back, age, gender\./.test(block),
     "dropped fields produce a never-ask line naming them in plain words", block);
-  assert(!/their name|their email/.test(block),
+  assert(!/their name|their email|their phone number/.test(block),
     "contact details are never in it — they cannot be dropped", block);
   assert(/use it to answer, never record it/.test(block), "sensitive fields are usable but not stored");
   assert(/You may ask directly for: the course they want, nationality/.test(block),
@@ -112,6 +139,15 @@ console.log("\n3. renderProfileBlock — collection rules");
     collection: { ...schema.DEFAULT_PROFILE.collection, contact_ask: { enabled: false, first_at: [3, 5], gap: [5, 10] } },
   }));
   assert(/Never ask for contact details/.test(off), "contact_ask disabled is stated outright");
+
+  // The consent posture is spent only when email is actually collectable. Rendering
+  // "confirm the address back" for an institution that does not keep addresses would be an
+  // instruction about something that never happens.
+  const withEmail = svc.renderProfileBlock(profile({
+    collection: { ...schema.DEFAULT_PROFILE.collection, allowed: ["study_preference", "email"], may_ask_for: ["study_preference"], sensitive: [] },
+  }));
+  assert(/confirm it back/.test(withEmail),
+    "email collectable → the confirm-don't-harvest line is spent", withEmail);
 
   const narrowed = svc.renderProfileBlock(profile({
     collection: { ...schema.DEFAULT_PROFILE.collection, allowed: ["study_preference"], may_ask_for: ["study_preference"], sensitive: [] },

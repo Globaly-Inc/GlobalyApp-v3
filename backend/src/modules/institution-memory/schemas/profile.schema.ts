@@ -66,29 +66,41 @@ export type CollectableField = (typeof COLLECTABLE_FIELDS)[number];
 const Field = z.enum(COLLECTABLE_FIELDS);
 
 /**
- * Name, email and phone are how a counsellor follows anything up, so they are recorded for every
- * visitor and carry no record/may-ask/sensitive choice at all — see CONTACT_FIELDS below.
+ * Defaults say no to the two the analysis flagged: `gender` and `age` are collected from every
+ * visitor today with no stated purpose. An institution that wants them turns them on and owns
+ * that choice.
  *
- * Defaults still say no to the two the analysis flagged: `gender` and `age` are collected from
- * every visitor today with no stated purpose. An institution that wants them turns them on and
- * owns that choice.
+ * Name, email and phone are NOT among the choices. They are recorded for every visitor, the
+ * portal offers no record/may-ask/sensitive control for them, and the transforms below hold that
+ * line on every parse — a product decision, taken twice, not an oversight.
+ *
+ * What it costs, stated plainly because a later reader will meet it as a surprise: an
+ * institution whose stored `allowed` omits `phone` starts recording phone numbers on the next
+ * read. That list is also what an institution gets by never touching this page — `phone` was off
+ * BY DEFAULT before, so an absent `phone` is not evidence that anyone chose to withhold it, and
+ * nothing in the row can tell the two apart. The states that DO prove a deliberate act, because
+ * they differ from the old defaults, are `name`/`email` removed from `allowed` and any contact
+ * field in `sensitive`; count those before deploying, and tell those institutions rather than
+ * flipping it silently.
+ *
+ * `mayKeepEmail` stays and still earns its place: its live branch is now the degraded one, where
+ * we cannot read the rules and therefore keep nothing.
  */
 const DEFAULT_ALLOWED: CollectableField[] = [
   "nationality", "study_preference", "qualifications", "language_tests", "academic_tests",
   "work_experiences", "name", "email", "phone",
 ];
 
-/**
- * Contact details: always recorded, never qualified.
- *
- * Enforced on the FIELD rather than in the portal, because the portal is one of two writers. A
- * PATCH that omits them still reads back with them, and one that marks email sensitive does not
- * leave storage and the prompt disagreeing about whether it exists.
- */
+/** Always recorded, never qualified. */
 export const CONTACT_FIELDS = ["name", "email", "phone"] as const;
 const isContact = (f: CollectableField) => (CONTACT_FIELDS as readonly string[]).includes(f);
 
 const FieldList = z.array(Field).max(COLLECTABLE_FIELDS.length);
+/**
+ * Enforced on the FIELD, not in the portal, because the portal is one of two writers: an API
+ * caller that PATCHes a list without `email`, or marks a phone number sensitive, must not end up
+ * with storage and the prompt disagreeing about whether that field exists.
+ */
 const RecordList = FieldList.transform((f): CollectableField[] => [...new Set([...f, ...CONTACT_FIELDS])]);
 const QualifierList = FieldList.transform((f): CollectableField[] => f.filter((x) => !isContact(x)));
 

@@ -65,6 +65,25 @@ export async function patchProfile(
   return saved;
 }
 
+/**
+ * May this tenant's counsellor KEEP an email address?
+ *
+ * One predicate, two callers, deliberately: the contact card must not be shown when the answer
+ * is no, and the submit endpoint must not store when the answer is no. Those were inline copies
+ * of the same rule, and a rule enforced at one end and not the other is this module's whole
+ * defect history — the force-add in profile.schema that silently overrode saved opt-outs existed
+ * precisely to avoid having to answer this question in two places.
+ *
+ * No Rack at all → yes: a widget with no institution behind it keeps the built-in behaviour.
+ * Rules we could not READ → no: "we do not know what we may keep" is not permission, and the
+ * defaults are wider than a narrowed set, so a database blip must not quietly widen them.
+ */
+export function mayKeepEmail(rack: repo.StoredProfile | null): boolean {
+  if (!rack) return true;
+  if (rack.degraded) return false;
+  return rack.profile.collection.allowed.includes("email");
+}
+
 export const parsePatch = (body: unknown): PatchRackProfileInput => PatchRackProfileSchema.parse(body);
 
 // ── Rendering ────────────────────────────────────────────────────────────────

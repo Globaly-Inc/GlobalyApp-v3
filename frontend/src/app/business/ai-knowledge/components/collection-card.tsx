@@ -7,7 +7,7 @@ import { COLLECTABLE_FIELDS, CONTACT_FIELDS } from "../apis/types";
 import { FIELD_CAUTION, FIELD_LABEL } from "../const";
 import type { CollectableField, CollectionRules } from "../apis/types";
 
-/** Everything except the contact fields, which are fixed and rendered on their own above. */
+/** Everything except the contact fields, which are fixed and stated on their own above. */
 const OPTIONAL_FIELDS = COLLECTABLE_FIELDS.filter(
   (f) => !(CONTACT_FIELDS as readonly string[]).includes(f),
 );
@@ -23,9 +23,11 @@ const OPTIONAL_FIELDS = COLLECTABLE_FIELDS.filter(
  * Sensitive is the fourth state and sits apart: usable to answer the question in front of it,
  * never persisted.
  *
- * Name, email and phone are the exception and have no states at all: they are always recorded,
- * so they lead the list as a statement rather than as three checkboxes nobody should be weighing.
- * WHEN the counsellor asks for them is still a setting — "Asking for contact details" above.
+ * Contact details are states like everything else. They were briefly a fixed statement here,
+ * backed by a transform that forced them into `allowed` on every parse — which silently
+ * overrode saved opt-outs and left no way to turn a phone number off. Switching `email` off now
+ * also suppresses the contact card, since asking for an address we may not keep is worse than
+ * not asking.
  */
 export function CollectionCard({
   collection, onChange, disabled,

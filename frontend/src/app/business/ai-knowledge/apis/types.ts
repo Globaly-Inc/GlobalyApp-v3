@@ -187,8 +187,9 @@ export const COLLECTABLE_FIELDS = [
 ] as const;
 export type CollectableField = (typeof COLLECTABLE_FIELDS)[number];
 
-/** Always recorded, never qualified — the backend forces these into `allowed` on every write. */
+/** Always recorded, never qualified — the backend forces these into `allowed` on every read. */
 export const CONTACT_FIELDS = ["name", "email", "phone"] as const;
+
 
 export interface VoiceProfile {
   tone: (typeof TONES)[number];
