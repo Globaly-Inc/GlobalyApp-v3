@@ -1,9 +1,22 @@
 <!doctype html>
 <!-- Stand-in for AIT's own website: the widget is a script tag an institution pastes on its site.
-     Open this file in a browser with the frontend (:3001) and backend (:3000) running. -->
+
+     Served from frontend/public/, so Next publishes it at the web root — no route, no build step:
+       local    http://localhost:3001/ai-counsellor/2026-09-28-demo-site.html
+       staging  https://staging.globalyapp.com/ai-counsellor/2026-09-28-demo-site.html
+
+     The src is RELATIVE on purpose. embed.js derives the panel origin from its own src, so a
+     hardcoded host points the panel at that host wherever the page is served from — fine on
+     staging, wrong locally. Relative is correct in both. Precedent: public/widget-demo.html.
+
+     ponytail: same-origin, so this does NOT exercise the cross-origin path a real institution's
+     site takes (CORS on /api/embed/<key>, third-party cookie rules). For THAT, serve this file
+     from somewhere else — `python3 -m http.server` — and hardcode
+     src="https://staging.globalyapp.com/embed.js". -->
 <html lang="en">
 <head>
   <meta charset="utf-8" />
+  <meta name="robots" content="noindex" />
   <title>AIT — Australian Institute of Technology (demo site)</title>
   <style>
     body { margin: 0; font-family: system-ui, sans-serif; color: #1f2937; background: #f8fafc; }
@@ -27,6 +40,16 @@
     </div>
     <p style="margin-top:40px">Questions? Use the chat in the corner — it is the AI counsellor from the widget page, with AIT's own rules applied.</p>
   </main>
-  <script src="http://localhost:3001/embed.js" data-key="d472fa3f-1a1f-43e5-b369-7547ab6b4688" async></script>
+  <!-- The key is the one thing that varies between widgets, so take it from the URL:
+       ?key=<uuid> demos any widget; with none, the seeded AIT one. `npm run demo:institution-memory`
+       prints the current key. ponytail: no DB lookup here — a public institution -> key endpoint
+       would let anyone enumerate widget keys, and a real institution pastes a literal key anyway. -->
+  <script>
+    var s = document.createElement("script");
+    s.src = "/embed.js";
+    s.async = true;
+    s.setAttribute("data-key", new URLSearchParams(location.search).get("key") || "d472fa3f-1a1f-43e5-b369-7547ab6b4688");
+    document.body.appendChild(s);
+  </script>
 </body>
 </html>
