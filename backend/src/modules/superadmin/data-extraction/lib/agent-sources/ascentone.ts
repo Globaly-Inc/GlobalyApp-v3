@@ -47,6 +47,22 @@ function stableHash(input: string): string {
   return createHash("sha256").update(input).digest("hex");
 }
 
+/**
+ * The id this agent WOULD have had before the switch to SHA-256.
+ *
+ * Compatibility only, and it has to stay: `ao:` ids are not shaped differently from the new ones
+ * — same prefix, same 32 hex characters — so a row written by the old code can only be found by
+ * recomputing its old id. upsertAgent adopts and re-keys such a row instead of inserting a
+ * second copy of the same agency; without it, every re-run of the agents step duplicates every
+ * agent it previously saved. Measured on this database when the change landed: all 239 stored
+ * `ao:` rows were keyed by the SHA-1 form.
+ *
+ * Deletable once no `ao:` row anywhere is still keyed the old way — not before.
+ */
+function legacyStableHash(input: string): string {
+  return createHash("sha1").update(input).digest("hex");
+}
+
 function dedupKey(name: string | null, country: string | null): string {
   return `${(name || "").toLowerCase().trim()}|${(country || "").toLowerCase().trim()}`;
 }
@@ -163,6 +179,7 @@ async function fetchAgents(iframeUrl: string): Promise<ProviderResult | null> {
       postcode: s(chosen.post_code) || head?.postcode || null,
       address: composeAddress(street1, street2) || head?.address || null,
       external_id: `ao:${synth.slice(0, 32)}`,
+      legacy_external_id: `ao:${legacyStableHash(`${(name || "").toLowerCase().trim()}|${(country || "").toLowerCase().trim()}`).slice(0, 32)}`,
       location_count: locations.length,
       locations,
     });
