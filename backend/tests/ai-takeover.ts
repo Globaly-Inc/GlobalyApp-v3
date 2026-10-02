@@ -120,15 +120,22 @@ ok(pickSummaryChats(chatsSeen, "2026-10-02T15:00:00Z", 43), [{ id: 43, ended: fa
 ok(pickSummaryChats([], null, 7), [{ id: 7, ended: false }], "no chats on record (adopted or pre-migration): the visitor's session");
 
 // Questions left unanswered while a person had the chat
-const u = (role: string, content: string) => ({ role, content });
+let mid = 0;
+const u = (role: string, content: string) => ({ id: ++mid, role, content });
 ok(unansweredTail([u("user", "hi"), u("assistant", "hello"), u("user", "fees?"), u("user", "hello??")]),
-  { cut: 2, questions: ["fees?", "hello??"] }, "trailing visitor messages with no reply are owed an answer");
-ok(unansweredTail([u("user", "fees?"), u("agent", "£20k")]), { cut: 2, questions: [] }, "a staff reply answers them");
+  { cut: 2, questions: ["fees?", "hello??"], lastId: 4 }, "trailing visitor messages with no reply are owed an answer");
+ok(unansweredTail([u("user", "fees?"), u("agent", "£20k")]), { cut: 2, questions: [], lastId: null }, "a staff reply answers them");
+mid = 0;
 ok(unansweredTail([u("user", "a person please"), u("assistant", "I've asked our team"), u("user", "still there?")]),
-  { cut: 2, questions: ["still there?"] }, "after the handover line, only what came later");
-ok(unansweredTail([]), { cut: 0, questions: [] }, "empty thread");
+  { cut: 2, questions: ["still there?"], lastId: 3 }, "after the handover line, only what came later");
+ok(unansweredTail([]), { cut: 0, questions: [], lastId: null }, "empty thread");
+mid = 0;
+const claimed = [u("assistant", "hi"), u("user", "q1"), u("user", "q2"), u("user", "q3")];
+ok(unansweredTail(claimed, 3), { cut: 3, questions: ["q3"], lastId: 4 }, "questions a resume already claimed are not asked again");
+ok(unansweredTail(claimed, 4).questions, [], "all claimed: nothing owed, so a second resume stops");
 ok(GuestMessageSchema.safeParse({ fingerprint: "f", resume: true }).success, true, "a resume needs no content");
-ok(GuestMessageSchema.safeParse({ fingerprint: "f" }).success, false, "a normal message still does");
+ok(GuestMessageSchema.safeParse({ fingerprint: "f", resume: true, content: "hi" }).success, false, "and refuses text it would drop");
+ok(GuestMessageSchema.safeParse({ fingerprint: "f" }).success, false, "a normal message still needs content");
 
 console.log(`ai-takeover: ${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

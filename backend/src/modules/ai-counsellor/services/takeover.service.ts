@@ -60,10 +60,17 @@ export function whoAnswers(
  * the chat or while they waited for one. Those turns store no reply, so when the AI takes the chat
  * back it must answer them, not just whatever the visitor says next. `cut` is where they start.
  */
-export function unansweredTail<T extends { role: string; content: string }>(messages: T[]): { cut: number; questions: string[] } {
+export function unansweredTail<T extends { id: number; role: string; content: string }>(
+  messages: T[],
+  /** Already claimed by a resume (in flight or done): never answered twice. */
+  answeredThrough: number | null = null,
+): { cut: number; questions: string[]; lastId: number | null } {
   let cut = messages.length;
   while (cut > 0 && messages[cut - 1].role === "user") cut--;
-  return { cut, questions: messages.slice(cut).map((m) => m.content) };
+  const owed = messages.slice(cut).filter((m) => answeredThrough == null || m.id > answeredThrough);
+  // Ids only grow, so `owed` is a suffix: claimed-but-unanswered questions stay before `cut`, in
+  // the history the model reads, and only the owed ones move into the question.
+  return { cut: messages.length - owed.length, questions: owed.map((m) => m.content), lastId: owed.at(-1)?.id ?? null };
 }
 
 /**

@@ -272,8 +272,18 @@ export async function guestRoutes(app: FastifyInstance) {
       // Questions left unanswered while a person had the chat are answered with this turn: they
       // leave the history and join the question, so the AI addresses them instead of only the
       // newest message. A resume turn is exactly those questions and nothing else.
-      const pending = takeover.unansweredTail(prevMessages);
-      if (input.resume && !pending.questions.length) {
+      const answeredThrough = session?.answered_through_message_id ?? null;
+      let pending = takeover.unansweredTail(prevMessages, answeredThrough);
+      // The whole window is unanswered: the visitor sent more than it holds while a person had the
+      // chat. Read further back for the questions (only); the model's history stays the window.
+      // ponytail: 200 messages, the transcript endpoint's own cap.
+      if (session && pending.cut === 0 && prevMessages.length === HISTORY_LIMIT) {
+        const { questions, lastId } = takeover.unansweredTail(await messagesRepo.findBySession(session.id, { limit: 200 }), answeredThrough);
+        pending = { cut: 0, questions, lastId };
+      }
+      // A resume claims the questions before answering, so a second tab or a reload mid-reply
+      // finds them taken and stops here.
+      if (input.resume && (!session || pending.lastId == null || !(await sessionsRepo.claimAnsweredThrough(session.id, pending.lastId)))) {
         writeDone(reply);
         return;
       }

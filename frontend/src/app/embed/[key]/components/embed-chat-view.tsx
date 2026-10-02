@@ -129,6 +129,8 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
     embedApi.getThread(embedKey, getFingerprint()).then((thread) => {
       setAgentName(thread.agent_name ?? null);
       setWaiting(thread.waiting ?? false);
+      // So the first poll can tell if a hold seen here lifts before it runs.
+      heldRef.current = !!thread.agent_name || !!thread.waiting;
       if (!thread.messages.length) return;
       setMessages(thread.messages.map((row) => toMessage(row, embedApi.toCourseCards(row.cards))));
       // Back after a person had the chat and left a question unanswered: the AI answers it now.
