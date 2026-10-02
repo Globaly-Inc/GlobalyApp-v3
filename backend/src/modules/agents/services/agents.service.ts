@@ -181,32 +181,34 @@ async function createInvitation(
     }
   }
 
-  // Check for pending invitation with same email
-  const pendingInvite = await repo.findPendingInvitationByEmail(db, input.email);
-  if (pendingInvite) throw new ConflictError("Invitation already pending for this email");
+  const existing = await repo.findPendingInvitationByEmail(db, input.email);
+  if (existing && new Date(existing.expired_at).getTime() > Date.now()) {
+    throw new ConflictError("Invitation already pending for this email");
+  }
 
   const role = await repo.findRoleByName(db, input.role);
   if (!role) throw new NotFoundError(`Role "${input.role}" not found`);
 
   const token = randomBytes(32).toString("hex");
   const expiredAt = new Date(Date.now() + 72 * 60 * 60 * 1000);
+  const userDetails = {
+    first_name: input.first_name,
+    last_name: input.last_name,
+    phone: input.phone ?? null,
+    role: input.role,
+    admin_point_of_contact: input.admin_point_of_contact ?? false,
+    position: input.position ?? null,
+    addedby_admin_id: addedbyAdminId,
+  };
 
-  const invitation = await repo.insertInvitation(db, {
-    email: input.email,
-    user_details: {
-      first_name: input.first_name,
-      last_name: input.last_name,
-      phone: input.phone ?? null,
-      role: input.role,
-      admin_point_of_contact: input.admin_point_of_contact ?? false,
-      position: input.position ?? null,
-      addedby_admin_id: addedbyAdminId,
-    },
-    invite_token: token,
-    invited_by: invitedByAgentId,
-    status: "pending",
-    expired_at: expiredAt,
-  });
+  const invitation = existing
+    ? await repo.reviveInvitation(db, existing.id, {
+        user_details: userDetails, invite_token: token, invited_by: invitedByAgentId, expired_at: expiredAt,
+      })
+    : await repo.insertInvitation(db, {
+        email: input.email, user_details: userDetails, invite_token: token,
+        invited_by: invitedByAgentId, status: "pending", expired_at: expiredAt,
+      });
 
   // Points to frontend confirmation page — the page renders a button that POSTs to the API
   const acceptUrl = `${config.WEB_APP_URL}/invite/agent/accept?token=${token}&org_id=${business.schema_name}`;
@@ -219,7 +221,7 @@ async function createInvitation(
     acceptUrl,
   }).catch((err) => logger.warn("Invitation email failed (invitation created)", { email: input.email, err: err.message }));
 
-  logger.info("Agent invitation sent", { email: input.email, invitedByAgentId, addedbyAdminId, orgId });
+  logger.info("Agent invitation sent", { email: input.email, invitedByAgentId, addedbyAdminId, orgId, renewed: !!existing });
   return invitation;
 }
 

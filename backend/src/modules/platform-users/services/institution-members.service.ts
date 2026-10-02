@@ -491,19 +491,25 @@ async function createInvitation(
     }
   }
 
-  const pending = await invitesRepo.findPendingInvitationByEmail(tenantDb, input.email);
-  if (pending) throw new ConflictError("Invitation already pending for this email");
+  const existing = await invitesRepo.findPendingInvitationByEmail(tenantDb, input.email);
+  if (existing && new Date(existing.expired_at).getTime() > Date.now()) {
+    throw new ConflictError("Invitation already pending for this email");
+  }
 
   const token = randomBytes(32).toString("hex");
   const expiredAt = new Date(Date.now() + INVITE_TOKEN_TTL_MS);
-  const invitation = await invitesRepo.insertInvitation(tenantDb, {
-    email: input.email,
-    user_details: { first_name: input.first_name, last_name: input.last_name, phone: input.phone ?? null, role: input.role, position: input.position ?? null },
-    invite_token: token,
-    invited_by: invitedByMemberId,
-    status: "pending",
-    expired_at: expiredAt,
-  });
+  const userDetails = {
+    first_name: input.first_name, last_name: input.last_name, phone: input.phone ?? null,
+    role: input.role, position: input.position ?? null,
+  };
+  const invitation = existing
+    ? await invitesRepo.reviveInvitation(tenantDb, existing.id, {
+        user_details: userDetails, invite_token: token, invited_by: invitedByMemberId, expired_at: expiredAt,
+      })
+    : await invitesRepo.insertInvitation(tenantDb, {
+        email: input.email, user_details: userDetails, invite_token: token,
+        invited_by: invitedByMemberId, status: "pending", expired_at: expiredAt,
+      });
 
   const acceptUrl = `${config.WEB_APP_URL}/invite/institution-member/accept?token=${token}&org_id=${institutionSchemaName}`;
   // ponytail: fire-and-forget — invitation must not fail because email is down

@@ -43,6 +43,16 @@ export async function findPendingInvitationByEmail(db: Knex, email: string) {
     .first();
 }
 
+export async function reviveInvitation(db: Knex, id: string, data: {
+  user_details: Record<string, unknown>;
+  invite_token: string;
+  invited_by: number | null;
+  expired_at: Date;
+}) {
+  const [row] = await db<InstitutionInvitationRow>("member_invitations").where({ id }).update(data).returning("*");
+  return row;
+}
+
 export async function findInvitationByToken(db: Knex, token: string) {
   return db<InstitutionInvitationRow>("member_invitations")
     .where({ invite_token: token, status: "pending" })
