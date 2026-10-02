@@ -2,7 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import { BookOpen, Brain, Building2, Contact, GraduationCap, Globe, Handshake, Home, Inbox, MapPin, Settings, UserSearch, Users } from "lucide-react";
 
 export type BusinessNavItem = { icon: LucideIcon; label: string; href: string };
-export type BusinessNavGroup = { icon: LucideIcon; label: string; items: BusinessNavItem[]; pinBottom?: boolean };
+export type BusinessNavGroup = { icon: LucideIcon; label: string; items: BusinessNavItem[]; pinBottom?: boolean; alwaysShowSubmenu?: boolean };
 
 // Ported from V1's group-tab header (BusinessLayout.tsx's allBusinessNavGroups): the Business
 // group is exactly Business Profile, Branches, Team, Services, Scholarships — no Partners or
@@ -48,6 +48,7 @@ export const BUSINESS_NAV_GROUPS: BusinessNavGroup[] = [
     icon: Settings,
     label: "Settings",
     pinBottom: true, // bottom of the rail
+    alwaysShowSubmenu: true,
     items: [
       // Hidden for the short release:
       // { icon: CreditCard, label: "Subscription", href: "/business/settings/subscription" },

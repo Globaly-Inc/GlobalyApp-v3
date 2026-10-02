@@ -31,6 +31,7 @@ export type PortalNavGroup = {
   items?: PortalNavItem[];
   /** Pinned to the bottom of the rail (e.g. Settings) instead of following the list. */
   pinBottom?: boolean;
+  alwaysShowSubmenu?: boolean;
 };
 
 export function isPortalNavActive(pathname: string | null, href: string, currentSearch?: string | null): boolean {
@@ -86,7 +87,7 @@ export function PortalSidebar({ groups }: Readonly<{ groups: PortalNavGroup[] }>
   const search = useSearchParams().toString();
   const activeGroup = groups.find((group) => isGroupActive(pathname, search, group));
   // One item needs no column of its own — the rail tile already goes there.
-  const submenuItems = (activeGroup?.items?.length ?? 0) > 1 ? activeGroup!.items! : [];
+  const submenuItems = (activeGroup?.items?.length ?? 0) > (activeGroup?.alwaysShowSubmenu ? 0 : 1) ? activeGroup!.items! : [];
   const activeItem = activeGroup?.items ? bestActiveItem(pathname, search, activeGroup.items) : null;
 
   return (
