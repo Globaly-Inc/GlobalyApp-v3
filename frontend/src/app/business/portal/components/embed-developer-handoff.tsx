@@ -48,10 +48,17 @@ export function EmbedDeveloperHandoff({
     try {
       const result = await dispatch(sendEmbedSnippet(invitee ? { invitee } : {})).unwrap();
       setSentTo(result.sent_to);
+      // Asked to invite someone but nobody was invited ⇒ they were already on the team. Say so, or
+      // the admin is left expecting the invitation the note above the button promised.
+      const alreadyOnTeam = !!invitee && !result.invited;
       toast.success(result.invited ? "Invited and sent" : "Code sent", {
         description: result.invited
           ? `${result.sent_to} is on your team as a Developer and has the code.`
-          : `We emailed the code to ${result.sent_to}.`,
+          : alreadyOnTeam
+            ? result.pending
+              ? `${result.sent_to} already has an open invitation and hasn't accepted yet, so we sent the code without a new one.`
+              : `${result.sent_to} is already on your team, so we sent the code without a new invitation.`
+            : `We emailed the code to ${result.sent_to}.`,
       });
       setName("");
       setEmail("");
@@ -152,9 +159,10 @@ export function EmbedDeveloperHandoff({
           <p className="flex gap-2 rounded-md bg-background/60 p-2.5 text-xs leading-5 text-muted-foreground">
             <Info className="mt-0.5 h-3.5 w-3.5 shrink-0" aria-hidden />
             <span>
-              They&apos;ll join {orgName || "your team"} as a{" "}
+              If they&apos;re new, they&apos;ll join {orgName || "your team"} as a{" "}
               <strong className="font-medium text-foreground">Developer</strong> and can sign in to your
-              portal. Two emails go out — an invitation, and the code. They won&apos;t see your enquiries.
+              portal — two emails go out, an invitation and the code. They won&apos;t see your enquiries.
+              Already on your team? We just send the code and leave their role alone.
             </span>
           </p>
 

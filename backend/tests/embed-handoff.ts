@@ -113,13 +113,15 @@ console.log("\n5c. a Developer role the tenant once deleted is revived, not dupl
   assert(!!undelete && undelete.values.includes(4), "the existing row is undeleted instead", undelete?.text);
 }
 
-console.log("\n7. a withdrawn invitation is not the developer");
+console.log("\n7. a withdrawn or lapsed invitation is not the developer");
 {
   reset([[/from "agents"/i, () => []], [/from "agent_invitations"/i, () => []]]);
   await handoff.findDeveloper(masterKnex, "business");
   const invite = find(/from "agent_invitations"/i);
   assert(/"deleted_at" is null/i.test(invite.text),
     "revoked invites are excluded, or the card keeps mailing someone the org removed", invite.text);
+  assert(/"expired_at" >/i.test(invite.text),
+    "lapsed invites are excluded, so the card offers to invite a replacement", invite.text);
 }
 
 console.log("\n8. only an invite needs team rights");
@@ -131,6 +133,59 @@ console.log("\n8. only an invite needs team rights");
   assert(invitesSomeone(undefined) === false, "a missing body is not an invite");
   assert(invitesSomeone({ invitee: { name: "", email: "nope" } }) === false,
     "invalid input is left to the handler's 400 rather than answered with a 403");
+}
+
+console.log("\n9. an invitee already on the team is mailed the code, never invited twice");
+{
+  // Regression: the invite path refuses an existing teammate outright ("User is already an agent in
+  // this business"), so typing a colleague's address used to fail the whole send.
+  reset([
+    [/from "agents" as "a"/i, () => []],
+    [/from "agent_invitations"/i, () => []],
+    [/from "platform_users"/i, () => [{ id: 42, email: "sam@acme.edu", first_name: "Sam", last_name: "Taylor" }]],
+    [/from "agents"/i, () => [{ id: 7, platform_user_id: 42, is_contact_only: false, account_status: 1, first_name: "Sam", last_name: "Taylor" }]],
+  ]);
+  const result = await handoff.sendSnippetToDeveloper({
+    db: masterKnex, owner: { kind: "business", id: 7 }, orgSchemaName: "s", orgName: "Acme",
+    embedKey: "abc-123", inviterPlatformUserId: 1, invitee: { name: "Sam Taylor", email: "sam@acme.edu" },
+  });
+  assert(result.sent_to === "sam@acme.edu", "the code goes to them", result);
+  assert(result.invited === false, "and nobody was invited", result);
+  assert(count(/insert into "agent_invitations"/i) === 0, "no invitation row was written");
+  assert(count(/insert into "roles"/i) === 0, "and the Developer role was not minted for a team that gains nobody");
+}
+
+console.log("\n9a. a suspended teammate is refused, not mailed a sign-in promise");
+{
+  reset([
+    [/from "agents" as "a"/i, () => []],
+    [/from "agent_invitations"/i, () => []],
+    [/from "platform_users"/i, () => [{ id: 42, email: "sam@acme.edu", first_name: "Sam", last_name: "Taylor" }]],
+    [/from "agents"/i, () => [{ id: 7, platform_user_id: 42, is_contact_only: false, account_status: 0, first_name: "Sam", last_name: "Taylor" }]],
+  ]);
+  let refused = false;
+  try {
+    await handoff.sendSnippetToDeveloper({
+      db: masterKnex, owner: { kind: "business", id: 7 }, orgSchemaName: "s", orgName: "Acme",
+      embedKey: "abc-123", inviterPlatformUserId: 1, invitee: { name: "Sam Taylor", email: "sam@acme.edu" },
+    });
+  } catch { refused = true; }
+  assert(refused, "suspended access throws instead of sending");
+}
+
+console.log("\n9b. the mail says how each reader reaches the portal");
+{
+  const { embedSnippetEmail } = await import("../src/shared/mail/templates.js");
+  const mail = (access: "invited" | "pending" | "member") =>
+    embedSnippetEmail({ recipientName: "Sam", orgName: "Acme", snippet: "<script></script>", widgetUrl: "u", access });
+  assert(mail("invited").text.includes("A separate email has your sign-in link"),
+    "someone invited by this very action is told the second email is coming");
+  assert(mail("pending").text.includes("invitation to join Acme on GlobalyApp is still open"),
+    "someone who never accepted is pointed at that invitation, not at a login they do not have");
+  assert(mail("member").text.includes("already on Acme's GlobalyApp team"),
+    "an existing teammate is told they can just sign in");
+  assert(!mail("member").text.includes("sign-in link") && !mail("member").text.includes("still open"),
+    "and is promised no invitation, because none was sent", mail("member").text.slice(-300));
 }
 
 console.log("\n6. send-snippet input");

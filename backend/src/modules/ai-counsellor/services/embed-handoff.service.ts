@@ -13,7 +13,10 @@ import { createChildLogger } from "../../../shared/logger.js";
 import { queueEmail } from "../../auth/auth.service.js";
 import { embedSnippetEmail } from "../../../shared/mail/templates.js";
 import * as agentsService from "../../agents/services/agents.service.js";
+import * as agentsRepo from "../../agents/repositories/agents.repository.js";
 import * as institutionMembers from "../../platform-users/services/institution-members.service.js";
+import * as institutionInvitesRepo from "../../platform-users/repositories/institution-invitations.repository.js";
+import * as platformUserRepo from "../../platform-users/repositories/platform-users.repository.js";
 import type { EmbedOwner } from "../repositories/embed.repository.js";
 
 const logger = createChildLogger("embed-handoff");
@@ -70,13 +73,12 @@ async function findAcceptedDeveloper(db: Knex, kind: EmbedOwner["kind"]): Promis
   return email ? { email, name: fullName(row.first_name, row.last_name), pending: false } : null;
 }
 
-/** An invite that has gone out but not been accepted still names a real address to send to.
- *  A revoked one does not: both invitation tables soft-delete, so without the `deleted_at` guard a
- *  withdrawn invite keeps answering as the developer and the card never offers to invite anyone else. */
 async function findInvitedDeveloper(db: Knex, kind: EmbedOwner["kind"]): Promise<DeveloperContact | null> {
   const table = kind === "institution" ? "member_invitations" : "agent_invitations";
   const row = await db(table).where({ status: "pending" }).whereNull("deleted_at")
+    .where("expired_at", ">", db.fn.now())
     .whereRaw("user_details->>'role' = ?", [DEVELOPER_ROLE])
+    .orderBy("expired_at", "desc")
     .first("email", "user_details");
   if (!row) return null;
   const details = row.user_details ?? {};
@@ -86,6 +88,31 @@ async function findInvitedDeveloper(db: Knex, kind: EmbedOwner["kind"]): Promise
 /** Whoever the snippet should go to today, accepted member first. Null when nobody holds the role. */
 export async function findDeveloper(db: Knex, kind: EmbedOwner["kind"]): Promise<DeveloperContact | null> {
   return (await findAcceptedDeveloper(db, kind)) ?? (await findInvitedDeveloper(db, kind));
+}
+
+/** Already on the team under some other role. Mirrors the check that would otherwise refuse the
+ *  invite outright ("User is already an agent in this business"), so the card mails them the code
+ *  instead of failing. A dormant "Add Contact" row is not on the team yet — inviting one is how
+ *  they join — so it is left for the invite path to promote. */
+async function findTeamMemberByEmail(
+  db: Knex, kind: EmbedOwner["kind"], email: string,
+): Promise<DeveloperContact | null> {
+  const user = await platformUserRepo.findByEmail(email);
+  if (!user) return null;
+  const member = kind === "institution"
+    ? await institutionInvitesRepo.findMemberByPlatformUserId(db, user.id)
+    : await agentsRepo.findAgentByPlatformUserId(db, user.id);
+  if (!member || member.is_contact_only) return null;
+  // Suspended teammates can't open the portal, so "you can sign in" would be false — refuse here
+  // rather than mail them; the invite path then reports the conflict.
+  if (member.account_status !== 1) {
+    throw new BadRequestError("That teammate's access is suspended — reactivate them before sending the code.");
+  }
+  return {
+    email: user.email,
+    name: fullName(member.first_name, member.last_name) ?? fullName(user.first_name, user.last_name),
+    pending: false,
+  };
 }
 
 /** The business invite path rejects a role the tenant does not have, so the role must exist before
@@ -126,6 +153,8 @@ export interface SendSnippetResult {
   sent_to: string;
   /** True when this call also added them to the team — the UI says so explicitly. */
   invited: boolean;
+  /** Recipient was already invited but hasn't accepted — they are not on the team yet. */
+  pending: boolean;
 }
 
 /**
@@ -152,17 +181,24 @@ export async function sendSnippetToDeveloper(args: {
     if (!invitee) {
       throw new BadRequestError("Nobody on your team has the Developer role yet — send a name and email to invite one.");
     }
-    await ensureDeveloperRole(db, owner.kind);
-    const { first_name, last_name } = splitName(invitee.name);
-    const input = { first_name, last_name, email: invitee.email, role: DEVELOPER_ROLE };
-    if (owner.kind === "institution") {
-      await institutionMembers.inviteMemberAsAdmin(db, owner.id, orgSchemaName, input);
-    } else {
-      // Never the admin point of contact: this person installs a tag, they don't field enquiries.
-      await agentsService.inviteAgent(db, { ...input, admin_point_of_contact: false }, inviterPlatformUserId, orgSchemaName);
+    // They may already be on the team under another role. Mail them the code rather than inviting
+    // them again: the invite path refuses an existing teammate outright, which would leave the
+    // owner unable to send the snippet to their own colleague. Their role is left alone — changing
+    // it here could silently strip permissions they hold for everything else.
+    developer = await findTeamMemberByEmail(db, owner.kind, invitee.email);
+    if (!developer) {
+      await ensureDeveloperRole(db, owner.kind);
+      const { first_name, last_name } = splitName(invitee.name);
+      const input = { first_name, last_name, email: invitee.email, role: DEVELOPER_ROLE };
+      if (owner.kind === "institution") {
+        await institutionMembers.inviteMemberAsAdmin(db, owner.id, orgSchemaName, input);
+      } else {
+        // Never the admin point of contact: this person installs a tag, they don't field enquiries.
+        await agentsService.inviteAgent(db, { ...input, admin_point_of_contact: false }, inviterPlatformUserId, orgSchemaName);
+      }
+      developer = { email: invitee.email, name: fullName(first_name, last_name), pending: true };
+      invited = true;
     }
-    developer = { email: invitee.email, name: fullName(first_name, last_name), pending: true };
-    invited = true;
   }
 
   // The invite, when there was one, is its own email and carries the sign-in link; this one carries
@@ -176,10 +212,10 @@ export async function sendSnippetToDeveloper(args: {
       orgName,
       snippet: embedSnippet(embedKey),
       widgetUrl: `${config.WEB_APP_URL.replace(/\/$/, "")}/business/ai-widget`,
-      invited,
+      access: invited ? "invited" : recipient.pending ? "pending" : "member",
     }),
   }).catch((err) => logger.warn("Embed snippet email failed", { to: recipient.email, err: err.message }));
 
   logger.info("Embed snippet sent to developer", { kind: owner.kind, id: owner.id, invited });
-  return { sent_to: recipient.email, invited };
+  return { sent_to: recipient.email, invited, pending: recipient.pending && !invited };
 }

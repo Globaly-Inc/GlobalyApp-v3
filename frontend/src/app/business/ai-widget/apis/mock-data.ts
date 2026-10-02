@@ -107,11 +107,11 @@ export const aiWidgetMockApi = {
   sendSnippet: async (input: SendSnippetInput): Promise<SendSnippetResult> => {
     console.log("[mock] sendSnippet", input);
     await delay(500);
-    if (mockDeveloper) return { sent_to: mockDeveloper.email, invited: false };
+    if (mockDeveloper) return { sent_to: mockDeveloper.email, invited: false, pending: mockDeveloper.pending };
     if (!input.invitee) throw new Error("Nobody on your team has the Developer role yet — send a name and email to invite one.");
     // Mirrors the real thing: the invite lands first, so a second send goes to them, not a new person.
     mockDeveloper = { email: input.invitee.email, name: input.invitee.name, pending: true };
-    return { sent_to: input.invitee.email, invited: true };
+    return { sent_to: input.invitee.email, invited: true, pending: false };
   },
 
   createConfig: async (input: CreateEmbedConfigInput): Promise<EmbedConfig> => {

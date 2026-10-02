@@ -948,8 +948,13 @@ export function embedSnippetEmail(options: {
   orgName: string;
   snippet: string;
   widgetUrl: string;
-  /** This email follows an invitation sent moments ago by the same action. */
-  invited: boolean;
+  /**
+   * How this reader reaches the portal — the only part of the mail that differs by recipient.
+   * "invited": added to the team by the same action, so a sign-in email is right behind this one.
+   * "pending": invited earlier and has not accepted, so the way in is that invitation, not a login.
+   * "member": already on the team and can sign in now.
+   */
+  access: "invited" | "pending" | "member";
 }): { subject: string; html: string; text: string } {
   const org = esc(options.orgName);
   const firstName = options.recipientName?.split(" ")[0];
@@ -978,9 +983,12 @@ export function embedSnippetEmail(options: {
        </td></tr>
      </table>`;
 
-  const invitedLine = options.invited
-    ? `<p style="margin:0 0 20px;padding:14px 16px;background-color:${BRAND.soft};border-radius:10px;font-size:14px;line-height:22px">${org} has also added you to their GlobalyApp team as a <strong>Developer</strong>, so you can sign in and check the widget once it is live. A separate email has your sign-in link.</p>`
-    : "";
+  const ACCESS: Record<typeof options.access, string> = {
+    invited: `${org} has also added you to their GlobalyApp team as a <strong>Developer</strong>, so you can sign in and check the widget once it is live. A separate email has your sign-in link.`,
+    pending: `Your invitation to join <strong>${org}</strong> on GlobalyApp is still open. Accept it and you can sign in to watch the first conversations come in — the code above works either way.`,
+    member: `You are already on <strong>${org}</strong>'s GlobalyApp team, so you can sign in whenever you like and watch the first conversations come in.`,
+  };
+  const accessLine = `<p style="margin:0 0 20px;padding:14px 16px;background-color:${BRAND.soft};border-radius:10px;font-size:14px;line-height:22px">${ACCESS[options.access]}</p>`;
 
   const body = `<p style="margin:0 0 18px;line-height:24px">${greeting}</p>
      <p style="margin:0 0 18px;line-height:24px"><strong>${org}</strong> asked us to send you the code for their GlobalyApp chat assistant.
@@ -996,7 +1004,7 @@ export function embedSnippetEmail(options: {
      <p style="margin:0 0 20px;line-height:24px"><strong style="color:${BRAND.ink}">What happens then:</strong> a chat button appears in the
        bottom-right corner of the site. Visitors can ask about courses, fees, intakes and entry requirements, and
        ${org} sees every conversation in their portal.</p>
-     ${invitedLine}`;
+     ${accessLine}`;
 
   return {
     subject: `Chat widget code for ${options.orgName}`,
@@ -1020,9 +1028,12 @@ export function embedSnippetEmail(options: {
       "Pasting it more than once is harmless; the second tag does nothing.",
       "",
       `What happens then: a chat button appears in the bottom-right corner. Visitors can ask about courses, fees, intakes and entry requirements, and ${options.orgName} sees every conversation in their portal.`,
-      ...(options.invited
-        ? ["", `${options.orgName} has also added you to their GlobalyApp team as a Developer. A separate email has your sign-in link.`]
-        : []),
+      "",
+      {
+        invited: `${options.orgName} has also added you to their GlobalyApp team as a Developer. A separate email has your sign-in link.`,
+        pending: `Your invitation to join ${options.orgName} on GlobalyApp is still open. Accept it and you can sign in to watch the first conversations come in — the code above works either way.`,
+        member: `You are already on ${options.orgName}'s GlobalyApp team, so you can sign in whenever you like and watch the first conversations come in.`,
+      }[options.access],
       "",
       `Widget settings: ${options.widgetUrl}`,
     ].join("\n"),
