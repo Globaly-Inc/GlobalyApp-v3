@@ -5,7 +5,7 @@ import { Check, Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAppDispatch } from "@/lib/hooks";
 import { createMemory } from "../store/ai-knowledge-slice";
-import { TOPIC_LABEL } from "../const";
+import { TOPIC_LABEL, TRANSITION_SCAN_LIMIT } from "../const";
 import type { TopicTransition } from "../apis/types";
 
 const topic = (value: string) => TOPIC_LABEL[value] ?? value;
@@ -47,9 +47,11 @@ export function TopicPatterns({
     <div className="rounded-xl border bg-card p-5">
       <h2 className="text-sm font-semibold">What they ask next</h2>
       <p className="mt-0.5 mb-4 text-xs text-muted-foreground">
-        Steps that showed up across enough conversations to be more than coincidence, from{" "}
-        {conversations} in total. Teaching one tells your counsellor to raise the second subject
-        while the first is still on the table.
+        Steps that showed up across enough conversations to be more than coincidence, mined from{" "}
+        {conversations > TRANSITION_SCAN_LIMIT
+          ? `your ${TRANSITION_SCAN_LIMIT.toLocaleString()} most recent conversations`
+          : `all ${conversations.toLocaleString()} of your conversations`}. Teaching one tells your
+        counsellor to raise the second subject while the first is still on the table.
       </p>
 
       {!transitions.length ? (

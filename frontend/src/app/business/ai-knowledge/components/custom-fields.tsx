@@ -15,11 +15,22 @@ import { CUSTOM_FIELD_MAX, type CustomField } from "../apis/types";
  * whether the counsellor may raise it itself. "Sensitive" means use it but never store it, which
  * would leave a field that collects nothing.
  *
- * The storage key is minted from the label ONCE, here, and travels with the field from then on,
- * so renaming "Budget" to "Budget per year" keeps every value already collected under it.
+ * The storage key is minted ONCE, here, and travels with the field from then on. The random tail
+ * is the load-bearing part: without it, removing "Budget" and later adding it again would mint
+ * `budget` a second time, and every answer stored under the first one would walk back into the
+ * counsellor's notes for a visitor who gave it months ago. A removed field's key is never
+ * reissued, so its rows are orphaned rather than resurrected.
+ *
+ * The slug is only there to make a key readable in a prompt and a query; `field` stands in when a
+ * label has no a-z to slug, which a label in another script legitimately may not.
  */
-const toKey = (label: string) =>
-  label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 40);
+const mintKey = (label: string) => {
+  const slug = label.toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 34);
+  // padEnd before slice: Math.random() occasionally renders short ("0.i"), and a one-character
+  // tail is a tail that can collide.
+  const tail = Math.random().toString(36).slice(2).padEnd(4, "0").slice(0, 4);
+  return `${slug || "field"}_${tail}`;
+};
 
 export function CustomFields({
   fields, onChange, disabled,
@@ -30,14 +41,17 @@ export function CustomFields({
 }>) {
   const [label, setLabel] = useState("");
 
-  const key = toKey(label);
-  // An all-punctuation label slugs to "" and a repeat would shadow the field already there —
-  // both are a disabled button rather than an error, because the input says what is wrong.
-  const canAdd = !!key && !fields.some((f) => f.key === key) && fields.length < CUSTOM_FIELD_MAX;
+  const name = label.trim().replace(/\s+/g, " ");
+  // Keys are unique by construction now, so what is checked here is the LABEL: two fields called
+  // "Budget" would be two prompts for one thing. A disabled button rather than an error, because
+  // the field already on screen says what is wrong.
+  const canAdd = !!name
+    && !fields.some((f) => f.label.toLowerCase() === name.toLowerCase())
+    && fields.length < CUSTOM_FIELD_MAX;
 
   const add = () => {
     if (!canAdd) return;
-    onChange([...fields, { key, label: label.trim().replace(/\s+/g, " "), may_ask: false }]);
+    onChange([...fields, { key: mintKey(name), label: name, may_ask: false }]);
     setLabel("");
   };
 
@@ -71,7 +85,7 @@ export function CustomFields({
                 <Button
                   size="icon" variant="ghost" className="size-7" disabled={disabled}
                   aria-label={`Remove ${f.label}`}
-                  title="Remove. Anything already recorded stays on the visitor's record but is no longer used."
+                  title="Remove. Answers already given stay on those visitors' records but are never used again — adding this field back starts it empty."
                   onClick={() => onChange(fields.filter((x) => x.key !== f.key))}
                 >
                   <X className="size-3.5" />

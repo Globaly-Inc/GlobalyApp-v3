@@ -79,6 +79,10 @@ export const REVIEW_META: Record<ReviewStatus, { label: string }> = {
   flagged: { label: "Flagged" },
 };
 
+/** Matches TRANSITION_SCAN_LIMIT in institution-memory/repositories/signals.repository.ts —
+ *  how many of the most recent conversations the pattern mining actually reads. */
+export const TRANSITION_SCAN_LIMIT = 5000;
+
 /** Matches PROMOTION_MIN_ACTORS in institution-memory/services/memory.service.ts. */
 export const PROMOTION_MIN_ACTORS = 3;
 /** Matches CANDIDATE_TTL_DAYS. A candidate nobody reviews is retired automatically. */
@@ -161,7 +165,8 @@ const LANGUAGE_CODES = (
   + "ps am sw ha yo ig zu af"
 ).split(" ");
 
-const languageName = (code: string): string => {
+/** Exported so a stored tag the list does not carry can still be labelled with a real name. */
+export const languageName = (code: string): string => {
   try {
     return new Intl.DisplayNames(["en"], { type: "language" }).of(code) ?? code;
   } catch {

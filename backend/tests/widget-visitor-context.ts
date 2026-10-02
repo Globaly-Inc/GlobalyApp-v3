@@ -287,6 +287,23 @@ console.log("\n14b. custom fields — model output in, labelled guidance out");
   assert(pe.worthExtracting("my budget is about 15k", undefined, FIELDS),
     "and the visitor naming the subject themselves is enough on its own");
 
+  // A short label is the case a length floor silently swallows: no hint at all, so the answer
+  // to the counsellor's own question is dropped and lost for good.
+  const SHORT = [{ key: "zip", label: "ZIP", may_ask: true }];
+  assert(pe.worthExtracting("90210", "What is your ZIP?", SHORT),
+    "a three-letter label still makes its own answers eligible");
+  assert(!pe.worthExtracting("90210", "What is your ZIP?"),
+    "and it is the configured label doing it — nothing else in that exchange says background");
+
+  // Two more shapes the label vocabulary has to survive.
+  assert(pe.worthExtracting("सेप्टेम्बर", "कुन सत्र?", [{ key: "satra", label: "कुन सत्र", may_ask: true }]),
+    "a label in a script [a-z] cannot spell still produces a hint");
+  const COMMON = [{ key: "why_us", label: "Why us", may_ask: true }];
+  assert(pe.worthExtracting("because of the ranking", "Why us?", COMMON),
+    "a label of nothing but common words falls back to the whole phrase rather than to no hint");
+  assert(pe.worthExtracting("hello", undefined, FIELDS) === false,
+    "and none of this makes an empty pleasantry worth a call");
+
   // The read-back end: labelled with the institution's words, and gated by the CURRENT list.
   const v = visitor({});
   const STORED = { preferred_intake: "September 2027", budget: "15000" };

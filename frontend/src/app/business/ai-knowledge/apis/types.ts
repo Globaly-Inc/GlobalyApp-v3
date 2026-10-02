@@ -209,8 +209,9 @@ export interface BehaviourProfile {
 }
 
 /**
- * An institution-defined subject. `key` is minted from the label once, when the field is added,
- * and never recomputed — renaming the label keeps the values already collected under it.
+ * An institution-defined subject. `key` is minted once, when the field is added, and never
+ * recomputed or reissued: it carries a random tail precisely so that removing a field and adding
+ * the same name back starts empty rather than resurrecting the answers it used to hold.
  */
 export interface CustomField {
   key: string;

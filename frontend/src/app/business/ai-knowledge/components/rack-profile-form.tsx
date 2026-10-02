@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import {
   FOLLOW_UP_CHOICES, INITIATIVE_CHOICES, LANGUAGE_CHOICES, LEAD_CHOICES, LENGTH_CHOICES,
   RECOMMENDATION_CHOICES, SCALE_CHOICES, STYLE_CHOICES, TONE_CHOICES, UNCERTAINTY_CHOICES,
+  languageName,
 } from "../const";
 import type {
   BehaviourProfile, CollectionRules, LearningRules, PatchRackProfileInput, RackProfile, VoiceProfile,
@@ -30,6 +31,16 @@ export function RackProfileForm({
   const [behaviour, setBehaviour] = useState<BehaviourProfile>(profile.behaviour);
   const [collection, setCollection] = useState<CollectionRules>(profile.collection);
   const [learning, setLearning] = useState<LearningRules>(profile.learning);
+
+  // This field used to be free text, and the backend still takes any tag up to 10 characters, so
+  // a stored "pt-BR" is a real value the list does not carry. Without this it renders as an
+  // unselected picker and the next save quietly replaces it with whatever gets chosen instead.
+  // Built from the SERVER's value rather than the draft, so it stays offered for the whole
+  // session — including after switching away and back.
+  const stored = profile.voice.language;
+  const languageOptions = !stored || LANGUAGE_CHOICES.some((o) => o.value === stored)
+    ? LANGUAGE_CHOICES
+    : [...LANGUAGE_CHOICES, { value: stored, label: languageName(stored) }];
 
   const dirty = JSON.stringify({ voice, behaviour, collection, learning })
     !== JSON.stringify({ voice: profile.voice, behaviour: profile.behaviour, collection: profile.collection, learning: profile.learning });
@@ -69,7 +80,7 @@ export function RackProfileForm({
         <ChoiceRow
           label="Reply language"
           hint="English unless you change it. Pick “Match the visitor’s language” to answer in whatever they write in."
-          options={LANGUAGE_CHOICES} value={voice.language} disabled={saving}
+          options={languageOptions} value={voice.language} disabled={saving}
           onChange={(language) => setVoice({ ...voice, language })}
         />
       </div>

@@ -21,6 +21,21 @@ const MIN_TRANSITION_SUPPORT = 3;
 const TRANSITION_LIMIT = 12;
 
 /**
+ * How many of the most recent conversations the mining reads.
+ *
+ * Every other panel here is one GROUP BY over the table. This one unnests each journey and joins
+ * the steps to themselves, so it is the only query whose cost is a MULTIPLE of the row count,
+ * and no LIMIT can help it — the grouping has to finish first. The cap turns it into constant
+ * work, and takes the recent end of the corpus, which is the end a "what do they ask next" panel
+ * should be answering from anyway.
+ *
+ * ponytail: a cap, not a rollup. A precomputed count per transition is the real answer if an
+ * institution ever outgrows this, and it is a writer, a backfill and a consistency story — none
+ * of which is worth building before one institution has this many finished conversations.
+ */
+const TRANSITION_SCAN_LIMIT = 5000;
+
+/**
  * Record one journey.
  *
  * ON CONFLICT (session_id) DO UPDATE, not DO NOTHING: the queue is at-least-once and the hourly
@@ -123,10 +138,15 @@ export async function insights(institutionId: number): Promise<ConversionInsight
     // GROUP BY rather than the corpus scan a mining pipeline would have been.
     const transitionRows = await k
       .raw<{ rows: Array<{ from_topic: string; to_topic: string; support: string; converted: string }> }>(
-        `WITH steps AS (
-           SELECT s.id, s.converted, t.topic, t.i
-             FROM ?? s,
-                  LATERAL jsonb_array_elements_text(s.topic_sequence) WITH ORDINALITY AS t(topic, i)
+        `WITH recent AS (
+           SELECT id, converted, topic_sequence
+             FROM ??
+            ORDER BY id DESC
+            LIMIT ?
+         ), steps AS (
+           SELECT r.id, r.converted, t.topic, t.i
+             FROM recent r,
+                  LATERAL jsonb_array_elements_text(r.topic_sequence) WITH ORDINALITY AS t(topic, i)
          )
          SELECT a.topic AS from_topic,
                 b.topic AS to_topic,
@@ -138,7 +158,7 @@ export async function insights(institutionId: number): Promise<ConversionInsight
          HAVING count(DISTINCT a.id) >= ?
           ORDER BY support DESC, converted DESC
           LIMIT ?`,
-        [TABLE, MIN_TRANSITION_SUPPORT, TRANSITION_LIMIT],
+        [TABLE, TRANSITION_SCAN_LIMIT, MIN_TRANSITION_SUPPORT, TRANSITION_LIMIT],
       );
 
     return {

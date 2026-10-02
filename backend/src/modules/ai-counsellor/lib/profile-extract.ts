@@ -198,7 +198,7 @@ function customClause(fields: readonly CustomField[]): string {
  *
  * Driven by the CONFIGURED fields, never by the keys the model returned: a subject the
  * institution removed yesterday is not written today, and an invented key has nowhere to land.
- * Values are strings because `ai_widget_visitors.custom` is one jsonb object of them and nothing
+ * Values are strings because `ai_widget_visitor_custom_values.value` is text and nothing
  * downstream may treat one as a number.
  */
 export function cleanCustom(
@@ -221,16 +221,53 @@ export function cleanCustom(
 }
 
 /**
+ * Label words too common to carry a signal.
+ *
+ * Deliberately short, and the asymmetry says why: a word wrongly ON this list loses data for
+ * good, while a word wrongly OFF it costs one cheap extraction call that returns {}. When in
+ * doubt, leave it off.
+ */
+const LABEL_STOPWORDS = new Set([
+  "the", "and", "for", "you", "your", "their", "they", "them", "our", "with", "from", "about",
+  "what", "which", "who", "whom", "how", "when", "where", "why", "any", "all", "please",
+  "are", "is", "was", "do", "does", "did", "have", "has", "that", "this",
+]);
+
+/**
  * The prefilter cannot know a vocabulary it was given at runtime, so the LABELS become one.
  *
  * Without this, an institution that collects "Preferred intake" loses every message that says
  * only "September 2027" — LOOKS_LIKE_BACKGROUND has no reason to match it, and a message this
- * rejects is never looked at again. Words of four characters or more only: "of", "us" and "the"
- * would match everything.
+ * rejects is never looked at again.
+ *
+ * Two characters, not four, and a stopword list instead of a length floor. The floor was the
+ * cheap way to keep "of", "us" and "the" out, and it took every short label with it silently: a
+ * field named "ZIP" produced no hint at all, so "90210" answering "What is your ZIP?" was
+ * dropped and that answer was lost for good. The same hole, wider, swallowed any label in a
+ * script `[a-z]` cannot spell — hence \p{L} and the `u` flag.
+ *
+ * Every atom is letters and single spaces by construction, so nothing a label can carry reaches
+ * the RegExp as a metacharacter.
  */
 function customHint(fields: readonly CustomField[]): RegExp | null {
-  const words = [...new Set(fields.flatMap((f) => f.label.toLowerCase().match(/[a-z]{4,}/g) ?? []))];
-  return words.length ? new RegExp(`\\b(${words.join("|")})`, "i") : null;
+  const atoms = new Set<string>();
+  for (const f of fields) {
+    const words = (f.label.toLowerCase().match(/\p{L}{2,}/gu) ?? []).filter((w) => !LABEL_STOPWORDS.has(w));
+    if (words.length) {
+      for (const w of words) atoms.add(w);
+    } else {
+      // A label made only of common words ("Why us") would contribute nothing and take its own
+      // field's answers down with it. The whole label as a phrase is a weaker signal than a word
+      // and a far better one than none.
+      const phrase = f.label.toLowerCase().match(/\p{L}+/gu)?.join(" ");
+      if (phrase) atoms.add(phrase);
+    }
+  }
+  if (!atoms.size) return null;
+  // `\b` only where it means what it says: it is an ASCII word boundary, and prefixing it to a
+  // Devanagari or Han atom would stop that atom matching at all.
+  const source = [...atoms].map((a) => (/^[a-z ]+$/.test(a) ? `\\b${a}` : a)).join("|");
+  return new RegExp(`(${source})`, "iu");
 }
 
 /**

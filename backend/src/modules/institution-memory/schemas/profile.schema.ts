@@ -98,9 +98,11 @@ const QualifierList = FieldList.transform((f): CollectableField[] => f.filter((x
  * A subject this institution collects that the fixed vocabulary has no name for — "Preferred
  * intake", "Budget", "Where they heard about us".
  *
- * `key` is the STORAGE key and is minted from the label once, when the field is added. It is
- * never recomputed, so renaming "Budget" to "Budget per year" keeps every value already
- * collected under it. Values live in `ai_widget_visitors.custom` (20261002_001): a typed column
+ * `key` is the STORAGE key: the portal mints it once, when the field is added, from the label
+ * plus a random tail, and nothing ever recomputes it. The tail is what makes removal mean
+ * removal — a second "Budget" field mints a new key, so answers stored under the old one are
+ * orphaned instead of walking back into the counsellor's notes. Values live in
+ * `ai_widget_visitor_custom_values` (20261002_001), one row per visitor per field: a typed home
  * with a cleaner in front of it, which is what 20261001_002 requires of anything the extractor
  * writes — never a key in `meta`.
  *
