@@ -167,8 +167,99 @@ export function classifierDistrusted(
   return classifierCount < heuristicCount * floor;
 }
 
+/**
+ * Paths that are university INFRASTRUCTURE, never a programme a student can apply to.
+ *
+ * Measured over every page this pipeline has crawled: these markers appear on 250+ queued pages
+ * and produced ONE course between them. They are here because a catalogue HOST short-circuits
+ * `looksLikeCourseUrl` to true before any path is examined — so `catalog.yale.edu/departmental_
+ * academic_support/appxtender` (a help page for a document-management product) was queued,
+ * scraped at 325,703 characters and sent to Gemini, as were 146 of its siblings. One institution
+ * spent roughly $2 of its $6.55 on pages of this kind.
+ *
+ * The bar for entry is deliberately high: observed with ZERO courses AND administrative at any
+ * institution, not merely unproductive on one site. Things kept OUT despite low yield, because
+ * they are genuinely academic somewhere: `/search` (explorecourses.stanford.edu/search IS a
+ * course search), `/people/` (20 pages, 43 courses), `/registrar`, `/alumni`, `tuition-and-fees`,
+ * and every institution-specific slug (`arts-science`,
+ * `global-affairs`) that happened to yield nothing on a single job.
+ * `financial-aid` and `scholarship` WERE on that kept list until 2026-09-24: their 2 courses from
+ * 32 pages turned out to be fabrications (the award's eligible-degree list staged as courses).
+ *
+ * `courseleaf` and `/wen/` are the CourseLeaf (Leepfrog) CMS's own admin surface, which much of
+ * the US sector runs — so those two generalise well beyond the site they were found on.
+ *
+ * Deliberately NOT applied to guided URLs: the job worker unions those in AFTER this filter, so
+ * an academic calendar an operator adds under Context → Intakes still reaches the crawl even
+ * though `/calendar` is denied here.
+ */
+const NON_COURSE_PATH_MARKERS = [
+  // CMS / vendor admin surfaces
+  "courseleaf", "/wen/", "appxtender",
+  // Student-services and staff infrastructure
+  "academic_support", "academic-support", "resources-services",
+  "faculty-staff", "handbook-instructor",
+  // Registry process pages (the act of enrolling, not a thing to enrol in)
+  "registration_", "add_drop", "add-drop",
+  // Institutional boilerplate. EVERY marker here is a compound phrase, never a bare word, and
+  // that is not stylistic. A first cut of this list carried "library", "privacy", "accessibility",
+  // "calendar" and "/directory" — 26 pages of real benefit — and substring-matched
+  // `/library-and-information-science`, `/privacy-law-llm`, `/web-accessibility-certificate` and
+  // `/calendar-and-event-management`: eight of eleven real degree shapes, thrown away to save
+  // 10% of the list's value. Bare "policy" is the same trap, matching 76 pages that carry 20
+  // courses because "public-policy" and "policy-studies" are subjects people enrol in.
+  // A denied page costs a few cents; a denied PROGRAMME costs a course that will never appear.
+  "/policies", "policy-statements",
+  // Scholarship / funding pages. They list the degrees an award can be held with, and the course
+  // prompt staged one course per listed degree even when told not to (seen live: Curtin's Global
+  // Scholars Program page became 30 courses whose only "entry requirement" was the award's own
+  // criteria). Compound or slash-anchored, per the rule above.
+  "/scholarship", "-scholarship", "scholars-program", "scholars-programme", "/bursar", "/bursaries", "/financial-aid",
+];
+
+/** Is this URL university infrastructure rather than a programme page? Path-only, like the
+ *  positive signals — a marker matching a HOSTNAME by coincidence is the bug that turned a whole
+ *  admissions subdomain into "course pages". */
+export function looksLikeNonCourseUrl(url: string): boolean {
+  let path: string;
+  try {
+    path = new URL(url).pathname.toLowerCase();
+  } catch {
+    path = url.toLowerCase();
+  }
+  return NON_COURSE_PATH_MARKERS.some((m) => path.includes(m));
+}
+
+const CATALOGUE_HOST = /^(explorecourses|bulletin|catalog(?:ue)?s?|courses|programs|handbook|study|so[a-z]|school|faculty)\./i;
+
+/** Hosts that are never a course page, whatever their paths say. csuohio.edu: 345 of 500 queued
+ *  pages were researchguides.csuohio.edu LibGuides named after courses ("NUR 334 - …"), all 0 yield. */
+const NON_CONTENT_HOST = /^(researchguides|libguides|guides\.lib|library|libraries|lib|specialcollections|stories|news|newsroom|events|calendar|alumni|giving|athletics|magazine|blogs?)\./i;
+
+/** 0 = the admin or the site pointed at it, 1 = catalogue host, 2 = course-looking path, 3 = rest. */
+export function crawlRank(url: string, source?: string | null): number {
+  if (source === "admin" || source === "guided" || source === "homepage") return 0;
+  try { if (CATALOGUE_HOST.test(new URL(url).hostname) && !looksLikeNonCourseUrl(url)) return 1; } catch { /* rank below */ }
+  return looksLikeCourseUrl(url) ? 2 : 3;
+}
+
+/** Stable, so discovery order still decides within a rank. page_cap and the snapshot keep the
+ *  FIRST N of this list, which used to be discovery order: CSU's 247 capped-out course URLs were
+ *  whichever the sitemap happened to list last. */
+export function rankForCrawl<T extends { url: string; source?: string | null; category_source?: string | null }>(rows: T[]): T[] {
+  return rows
+    .map((r, i) => ({ r, i, k: crawlRank(r.url, r.category_source === "admin" ? "admin" : r.source) }))
+    .sort((a, b) => a.k - b.k || a.i - b.i)
+    .map((x) => x.r);
+}
+
 /** Heuristic: does this URL look like a course detail or listing page? */
 export function looksLikeCourseUrl(url: string): boolean {
+  // Checked BEFORE everything else, including the catalogue-host short-circuit below — that
+  // short-circuit returning true on the hostname alone is precisely how a catalogue's admin
+  // documentation got queued as course pages.
+  if (looksLikeNonCourseUrl(url)) return false;
+
   const signals = [
     "/course", "/program", "/degree", "/bachelor", "/master",
     "/diploma", "/certificate", "/undergraduate",
@@ -189,12 +280,10 @@ export function looksLikeCourseUrl(url: string): boolean {
   // "catalog(ue)" needs the plural too — seen live on catalogs.uky.edu, which the
   // singular-only form silently excluded even though it's exactly the kind of catalogue
   // host this exists for.
-  const catalogueHost = /^(explorecourses|bulletin|catalog(?:ue)?s?|courses|programs|handbook|study|so[a-z]|school|faculty)\./i;
-
   let path: string;
   try {
     const u = new URL(url);
-    if (catalogueHost.test(u.hostname)) return true;
+    if (CATALOGUE_HOST.test(u.hostname)) return true;
     // Path only, never the full href: matching the whole URL string let a signal
     // like "/admission" match by pure string coincidence against a HOSTNAME
     // ("https://admission.example.edu/..." contains "/admission" right after
@@ -310,7 +399,7 @@ export function filterUrls(urls: string[], base: string): string[] {
   for (const raw of urls) {
     try {
       const u = new URL(raw);
-      if (!isSameSite(u.hostname, site)) continue;
+      if (!isSameSite(u.hostname, site) || NON_CONTENT_HOST.test(u.hostname)) continue;
       // Skip assets
       const ext = u.pathname.slice(u.pathname.lastIndexOf(".")).toLowerCase();
       if (ASSET_EXTS.has(ext)) continue;
@@ -342,6 +431,21 @@ export function filterUrls(urls: string[], base: string): string[] {
  * bucket silently dropping out is how a job goes from 97 courses to 4.
  * A bare array (legacy shape) is returned as-is.
  */
+/**
+ * `url_blocklist_patterns` as regexes, case-insensitive. An entry that is not a valid regex is
+ * reported, not thrown: the list is optional admin input with no validation at its write path, and
+ * one bad entry must neither fail the site_map step nor (as the page worker's single try/catch did)
+ * silently disable every OTHER pattern for that page.
+ */
+export function compileBlocklist(patterns: string[]): { patterns: RegExp[]; invalid: string[] } {
+  const out: RegExp[] = [];
+  const invalid: string[] = [];
+  for (const p of patterns) {
+    try { out.push(new RegExp(p, "i")); } catch { invalid.push(p); }
+  }
+  return { patterns: out, invalid };
+}
+
 export function collectGuidedUrls(guided: unknown): string[] {
   if (Array.isArray(guided)) return guided.filter((u): u is string => typeof u === "string");
   if (!guided || typeof guided !== "object") return [];
@@ -361,7 +465,7 @@ export function collectGuidedUrls(guided: unknown): string[] {
  * that carries information is rewritten or shortened. Every stripped byte is a billed
  * input token the model could never use.
  */
-function stripMarkdownJunk(md: string): string {
+export function stripMarkdownJunk(md: string): string {
   let out = md
     // base64 data URIs: thousands of chars of pure noise (inline images, favicons)
     .replace(/data:[a-zA-Z0-9/+.-]+;base64,[A-Za-z0-9+/=]{64,}/g, "data:omitted")
@@ -380,6 +484,15 @@ function stripMarkdownJunk(md: string): string {
 
 /** Truncate markdown to a max character length, breaking at line boundaries */
 // ponytail: 120K chars — Gemini 2.5 Flash handles ~1M tokens, 60K was leaving data on the table
+/**
+ * Text budget for the per-course data step (extraction-step.worker handleCourseDataStep). Was
+ * 24,000 chars: a UEL course page is ~100k and its "Academic requirements" section sits past that
+ * mark, so the eligibility re-extraction saw only the page's header and returned nothing (Flash) or
+ * a placeholder row (the fallback model). Pages appended for the data type land after the course
+ * page, so they need the course page to fit first.
+ */
+export const COURSE_DATA_TEXT_CAP = 60_000;
+
 export function truncateMarkdown(md: string, maxLength = 120_000): string {
   // Junk removal runs before the cut, so stripped noise buys back budget for real content
   // instead of the tail of the page being lost to it.

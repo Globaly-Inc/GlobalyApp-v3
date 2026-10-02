@@ -21,7 +21,11 @@ type ChatMessageProps = {
 
 /** Cards size themselves to the container, not the viewport — the same grid has to
  * work in the 380px widget popover and on the full-width chat page. */
-const CARD_GRID = "grid w-full grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-3";
+// Inside a `@container/cards`: two per row while the chat column is narrow (the website widget,
+// the Ask Aly popover); from 30rem up, the original auto-fit grid, so wide views are unchanged.
+const CARD_GRID = "grid w-full grid-cols-2 gap-2.5 @min-[30rem]/cards:grid-cols-[repeat(auto-fit,minmax(240px,1fr))] @min-[30rem]/cards:gap-3";
+/** One card: half the row while narrow, so it matches a pair; capped at 300px when wide. */
+const SINGLE_CARD = "grid w-full grid-cols-2 gap-2.5 @min-[30rem]/cards:block @min-[30rem]/cards:max-w-[300px]";
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -151,10 +155,12 @@ function CourseCardList({ cards }: { cards: CourseCardType[] }) {
   const visible = expanded ? cards : cards.slice(0, CARD_PAGE);
   return (
     <div className="flex flex-col gap-3">
-      <div className={CARD_GRID}>
-        {visible.map((card, i) => (
-          <CourseCard key={card.id ?? i} card={card} />
-        ))}
+      <div className="@container/cards w-full">
+        <div className={CARD_GRID}>
+          {visible.map((card, i) => (
+            <CourseCard key={card.id ?? i} card={card} />
+          ))}
+        </div>
       </div>
       {cards.length > CARD_PAGE && (
         <button
@@ -203,10 +209,13 @@ function AssistantTurn({
         {content && <MessageMarkdown text={content} />}
         {blocks.length > 0 && <MessageBlocks blocks={blocks} onAction={onChipClick} onSend={onSend} />}
         {cards.length > 0 && (
-          <div className={cards.length === 1 ? "w-full max-w-[300px]" : CARD_GRID}>
-            {cards.map((card, i) => (
-              <CourseCard key={card.id ?? i} card={card} />
-            ))}
+          // The container is the chat column, not the screen: a narrow column gets compact pairs.
+          <div className="@container/cards w-full">
+            <div className={cards.length === 1 ? SINGLE_CARD : CARD_GRID}>
+              {cards.map((card, i) => (
+                <CourseCard key={card.id ?? i} card={card} />
+              ))}
+            </div>
           </div>
         )}
         {chips.length > 0 && !hasQuickReplies && <Chips chips={chips} onChipClick={onChipClick} />}

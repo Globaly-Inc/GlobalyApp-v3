@@ -60,6 +60,9 @@ async function detectCountryCode(query: string): Promise<string | null> {
 // that was scraped row-by-row from crowding the context out.
 const MAX_FEE_LINES = 4;
 
+/** Courses rendered into CONTEXT per turn: the search's own limit, plus room for the pinned ones. */
+const MAX_HYDRATED = 10;
+
 const TIER_RANK: Record<string, number> = { gov: 0, verified_institution: 1, other: 2 };
 const TIER_LABEL: Record<string, string> = {
   gov: "official government source",
@@ -94,6 +97,52 @@ export interface RagOutput {
   contextText: string;
   sources: Array<{ type: string; id: string; title: string }>;
   traceSteps: string[];
+  /** Which money topics the CONTEXT can actually ground an answer in. The gate compares this
+   *  with the topics the QUESTION asks about: a course fee row is evidence for "fees", never
+   *  for "refund". Empty = nothing in context an unapproximatable money claim can rest on. */
+  moneyTopics: MoneyTopic[];
+}
+
+// Fees, refunds, funding — the claims a counsellor must never approximate. Split by topic
+// because a single regex over every source answered the wrong question: it asked "is there
+// money anywhere in the context", when the gate needs "is there evidence for what was ASKED".
+// A retrieved course fee used to clear the guard for a refund-policy question with no refund
+// source anywhere (Greptile). There is no structured refund or scholarship field in any source
+// here, so those two topics are groundable ONLY by prose that actually discusses them — which
+// is exactly the distinction the old single boolean could not make.
+const MONEY_TOPIC_RE = {
+  fees: /\b(fees?|tuition|costs?|price|pricing|deposits?|instal+ments?|payments?|pay|expenses|afford(?:able)?|budget|cheap(?:er|est)?|financial|finance)\b/i,
+  refund: /\b(refunds?|refundable|withdraw(?:al|ing|n)?|cancel(?:lation|ling|led)?|deferr?(?:al|ing)?)\b/i,
+  scholarship: /\b(scholarships?|bursar(?:y|ies)|funding|funds?|grants?|waivers?|discounts?|stipends?|loans?|financial aid)\b/i,
+  living: /\b(cost of living|living costs?|accommodation|rent|groceries|homestay)\b/i,
+} as const;
+
+export type MoneyTopic = keyof typeof MONEY_TOPIC_RE;
+const MONEY_TOPICS = Object.keys(MONEY_TOPIC_RE) as MoneyTopic[];
+
+/** Every money topic a piece of text touches. Empty = not about money at all. */
+export function moneyTopicsOf(text: string): MoneyTopic[] {
+  return MONEY_TOPICS.filter((topic) => MONEY_TOPIC_RE[topic].test(text));
+}
+
+export const isMoneyQuestion = (query: string): boolean => moneyTopicsOf(query).length > 0;
+
+/** The courses the counsellor last put in front of the student (oldest-first history), so a
+ *  follow-up like "this course" resolves. Shared by the signed-in and widget-visitor paths. */
+export function pinnedCourseIdsFrom(messages: Array<{ role: string; cards: unknown[] }>): string[] {
+  const lastCards = [...messages].reverse().find((m) => m.role === "assistant" && m.cards?.length)?.cards ?? [];
+  return lastCards
+    .map((c) => (c as { id?: unknown }).id)
+    .filter((id): id is string => typeof id === "string")
+    .slice(0, 3);
+}
+
+/** The gate: a money question with no context evidence on ANY topic it asks about.
+ *  Overlap, not equality — "what are the fees and is there a scholarship" is answerable
+ *  the moment either one is grounded, and the model still only says what its context holds. */
+export function shouldWithholdMoney(query: string, contextTopics: MoneyTopic[]): boolean {
+  const asked = moneyTopicsOf(query);
+  return asked.length > 0 && !asked.some((topic) => contextTopics.includes(topic));
 }
 
 export async function searchAll(opts: {
@@ -109,30 +158,40 @@ export async function searchAll(opts: {
   /** Embed mode: read THIS institution's own crawled website instead of the global rack.
    *  Unset for a business widget, which keeps the rack switched off entirely. */
   rackInstitutionId?: number | null;
+  /** Courses the counsellor already showed this conversation (the last reply's cards). A follow-up
+   *  — "is online study an option for this course?" — keyword-matches nothing useful, and without
+   *  the course in CONTEXT the model disowned what it had said one message earlier. */
+  pinnedCourseIds?: string[];
   onTrace?: (step: string) => void;
 }): Promise<RagOutput> {
   const embedScoped = opts.jobIds != null;
   const keywords = extractKeywords(opts.query);
   const searchQuery = keywords.join(" ");
+  const pinned = opts.pinnedCourseIds ?? [];
   const trace = (step: string) => {
     traceSteps.push(step);
     opts.onTrace?.(step);
   };
   const traceSteps: string[] = [];
 
-  if (!searchQuery) {
+  if (!searchQuery && !pinned.length) {
     trace("No searchable keywords extracted");
-    return { contextText: "", sources: [], traceSteps };
+    return { contextText: "", sources: [], traceSteps, moneyTopics: [] };
   }
 
-  trace(`Keywords: ${keywords.join(", ")}`);
+  if (searchQuery) trace(`Keywords: ${keywords.join(", ")}`);
+  else trace("No searchable keywords; answering from the courses already shown");
 
   const countryCode = await detectCountryCode(opts.query);
   if (countryCode) trace(`Country detected: ${countryCode}`);
 
   // ── Parallel searches — each wrapped so one failure doesn't kill the rest ──
   const none = Promise.resolve([]);
-  const [courses, visas, institutions, ownerProfile, agents, maraAgents, knowledgeVisas, faqs, guides, rackHits] = await Promise.all([
+  const noOwner = { overview: [], campuses: [], accreditations: [] };
+  const [courses, visas, institutions, ownerProfile, agents, maraAgents, knowledgeVisas, faqs, guides, rackHits] = !searchQuery
+    ? [[], [], [], noOwner, [], [], [], [], [], []] as Awaited<ReturnType<typeof runSearches>>
+    : await runSearches();
+  async function runSearches() { return Promise.all([
     opts.skipCourses ? none.then(r => { trace("Courses: skipped (discovery turn)"); return r; })
       : knowledge.searchCourses({ query: searchQuery, limit: 8, jobIds: opts.jobIds })
         .then(r => { trace(`Courses: ${r.length} found`); return r; })
@@ -182,16 +241,17 @@ export async function searchAll(opts: {
     !embeddingConfigured() || (embedScoped && !opts.rackInstitutionId) ? none : embed(opts.query)
       .then(v => matchRack(v, countryCode, trace, opts.rackInstitutionId))
       .catch(err => { logger.warn("Knowledge rack search failed", { err: String(err) }); trace("Knowledge rack search failed"); return []; }),
-  ]);
+  ]); }
 
   // ── Hydrate course details for found courses ──
+  // Pinned first: the course under discussion must survive the cap whatever else matched.
   let hydratedCourses: knowledge.CourseDetailResult[] = [];
-  if (courses.length > 0) {
-    const courseIds = courses.map(c => c.id);
+  const courseIds = [...new Set([...pinned, ...courses.map(c => c.id)])].slice(0, MAX_HYDRATED);
+  if (courseIds.length > 0) {
     trace(`Hydrating ${courseIds.length} courses`);
     const details = await Promise.all(
       courseIds.map(id =>
-        knowledge.getCourseDetails(id).catch(err => {
+        knowledge.getCourseDetails(id, { jobIds: opts.jobIds }).catch(err => {
           logger.warn("Course detail fetch failed", { id, err: String(err) });
           return undefined;
         }),
@@ -394,8 +454,23 @@ export async function searchAll(opts: {
   }
 
   const contextText = parts.join("\n\n");
-  trace(`Context: ${contextText.length} chars, ${sources.length} sources`);
-  return { contextText, sources, traceSteps };
+  const moneyTopics = new Set<MoneyTopic>();
+  // Structured fields name their own topic — unambiguous, so no regex over the rendered text
+  // (CARD_FIELDS JSON carries a "fees" key for every course, which would make the text look
+  // money-bearing when it is not). Every rendered money field must appear here, or the model is
+  // told to withhold what its own context contains: knowledgeVisas renders "Fee: USD x" above.
+  if (hydratedCourses.some(c => c.fees.length > 0)) moneyTopics.add("fees");
+  if (visas.some(v => v.application_fee_amount != null)
+    || knowledgeVisas.some(v => v.application_fee_usd != null)) moneyTopics.add("fees");
+  if (guides.some(g => !!g.cost_of_living_monthly_usd)) moneyTopics.add("living");
+  // Prose grounds whichever topics it actually discusses — this is the only way refund and
+  // scholarship questions ever become answerable, since no source here has a field for them.
+  for (const f of faqs) for (const topic of moneyTopicsOf(`${f.question} ${f.answer}`)) moneyTopics.add(topic);
+  for (const d of rackHits) for (const topic of moneyTopicsOf(d.content)) moneyTopics.add(topic);
+
+  const topics = [...moneyTopics];
+  trace(`Context: ${contextText.length} chars, ${sources.length} sources${topics.length ? `, money evidence: ${topics.join(", ")}` : ""}`);
+  return { contextText, sources, traceSteps, moneyTopics: topics };
 }
 
 /** Rack chunks as prompt text + deduped sources — one format for every retrieval path. */

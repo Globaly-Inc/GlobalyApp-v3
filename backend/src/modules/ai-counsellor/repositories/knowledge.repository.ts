@@ -2,6 +2,7 @@
 
 import type { Knex } from "knex";
 import { masterKnex } from "../../../core/db/master-pool.js";
+import { approvedCourseSql, publicJobSql } from "../../superadmin/consts.js";
 
 // ── Result interfaces ──
 
@@ -300,12 +301,21 @@ export async function searchCourses(opts: {
       "i.name as institution_name", "i.country as institution_country",
     )
     .where(anyKeywordILike(["c.name", "c.subject_area", "c.description"], cleanQuery))
-    // Any course status is fine — the gate is the institution being published
-    // (job exported, same definition as the search module).
-    .whereRaw(
-      `exists (select 1 from ${SA}.extraction_jobs ej where ej.id = c.job_id and ej.status = 'exported')`,
-    )
+    // An owner's draft course isn't public yet, and an unapproved one isn't vetted — the
+    // counsellor must recommend neither. Unlike the export gate below, both stay unconditional:
+    // they apply to the embed widget's own catalogue too (extracted courses default to
+    // is_published = true, so that one only hides a service the owner left unpublished).
+    .where("c.is_published", true)
+    .whereRaw(approvedCourseSql("c"))
     .modify((q) => {
+      // The institution must be published (job exported,
+      // same definition as the search module). An explicit job scope is the widget owner's OWN
+      // catalogue (embed mode), which its counsellor must answer from whether or not a
+      // superadmin has published it yet: a self-service institution's job sits in 'review'
+      // until then, and its widget was returning "we don't offer that" for its own courses.
+      if (!opts.jobIds) {
+        q.whereRaw(`exists (select 1 from ${SA}.extraction_jobs ej where ej.id = c.job_id and ${publicJobSql("ej")})`);
+      }
       // Empty query = browse mode (filters only): rankSql would be empty SQL.
       if (words.length) q.orderByRaw(`${rankSql} DESC`, rankBindings);
       else q.orderBy("c.name", "asc");
@@ -364,7 +374,8 @@ export async function institutionMediaByCourseIds(courseIds: string[]): Promise<
     .join(`${SA}.extraction_institution_overview as i`, "c.job_id", "i.job_id")
     .leftJoin("institutions as inst", "inst.source_job_id", "c.job_id")
     .whereIn("c.id", ids)
-    .select("c.id as course_id", "i.name as institution_name", "i.logo_url", "inst.cover_url", "i.city", "i.website");
+    // The institution's own uploaded logo wins over the one scraped at extraction.
+    .select("c.id as course_id", "i.name as institution_name", masterKnex.raw("coalesce(inst.logo_url, i.logo_url) as logo_url"), "inst.cover_url", "i.city", "i.website");
 }
 
 export async function searchInstitutions(opts: {
@@ -606,7 +617,10 @@ export async function listCountryNames(): Promise<Array<{ name: string; iso2: st
 
 // ── Course detail (single course with all related data) ──
 
-export async function getCourseDetails(courseId: string): Promise<CourseDetailResult | undefined> {
+/** `jobIds`: the embed widget owner's OWN jobs — as in searchCourses, their courses are answerable
+ *  before a superadmin exports the job. Without it only exported jobs are, so a self-service
+ *  institution's widget found its own course in search and then got NO details for it. */
+export async function getCourseDetails(courseId: string, opts: { jobIds?: string[] } = {}): Promise<CourseDetailResult | undefined> {
   const course = await masterKnex(`${SA}.extraction_courses as c`)
     .join(`${SA}.extraction_institution_overview as i`, "c.job_id", "i.job_id")
     .select(
@@ -617,6 +631,13 @@ export async function getCourseDetails(courseId: string): Promise<CourseDetailRe
       "i.name as institution_name", "i.country as institution_country",
     )
     .where("c.id", courseId)
+    // A model-supplied id must not surface a draft or unapproved course's details either.
+    .where("c.is_published", true)
+    .whereRaw(approvedCourseSql("c"))
+    .where((q) => {
+      q.whereRaw(`exists (select 1 from ${SA}.extraction_jobs ej where ej.id = c.job_id and ${publicJobSql("ej")})`);
+      if (opts.jobIds?.length) q.orWhereIn("c.job_id", opts.jobIds);
+    })
     .first();
 
   if (!course) return undefined;

@@ -28,13 +28,18 @@ export function InviteInstitutionMemberDialog({
   open,
   onOpenChange,
   institutionId,
-}: Readonly<{ open: boolean; onOpenChange: (open: boolean) => void; institutionId: number }>) {
+  prefill,
+}: Readonly<{
+  open: boolean; onOpenChange: (open: boolean) => void; institutionId: number;
+  /** Pre-fills the form from a Contact record — e.g. "Invite to platform" on the Contacts tab. */
+  prefill?: { first_name: string; last_name: string; email: string; phone: string };
+}>) {
   const dispatch = useAppDispatch();
   const { form, setForm, errors, reset, validate } = useValidatedForm(schema, () => EMPTY_FORM);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (open) reset(EMPTY_FORM);
+    if (open) reset(prefill ? { ...EMPTY_FORM, ...prefill } : EMPTY_FORM);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 
@@ -69,7 +74,7 @@ export function InviteInstitutionMemberDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add Member</DialogTitle>
+          <DialogTitle>Add User</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div className="grid grid-cols-2 gap-3">

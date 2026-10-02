@@ -58,6 +58,17 @@ export function buildSystemPrompt(opts: {
   proactiveKnowledge?: string;
   /** Embed mode: brand the counsellor and scope it to this business. */
   embedConfig?: { display_name: string | null; custom_instructions: string | null };
+  /** Embed mode: the institution's own counselling memories, already rendered and sanitised
+   * by institution-memory's retrieveMemories. Sits after BOUNDARIES so its own hard-limits
+   * line is the last rule the model reads before the student data. */
+  institutionGuidance?: string;
+  /** Embed mode: the institution's own voice/behaviour/collection settings, already rendered by
+   *  institution-memory's renderProfileBlock. Sits BEFORE the memory block so that block's
+   *  hard-limits line stays the last rule read before the student data. Empty when the
+   *  institution has changed nothing from the defaults. */
+  rackProfile?: string;
+  /** This turn asked about money and retrieval found nothing to ground it: withhold, don't guess. */
+  noMoneyData?: boolean;
 }): string {
   const sections: string[] = [];
   // Every instruction that pointed at the pasted CONTEXT block has to point at tool
@@ -79,6 +90,26 @@ export function buildSystemPrompt(opts: {
     sections.push(
       `Only recommend courses from ${name}. If the user asks about courses from other institutions, ` +
       `politely explain that you can only help with ${name}'s offerings and suggest they visit globalyhub.com for broader search.`,
+    );
+    // The visitor is already on the institution's own website. Without this the model wrote
+    // like the platform chat does — "a master's program offered by AIT in Thailand" — introducing
+    // the institution to someone standing inside it, and spending the reply on that instead of
+    // the course.
+    sections.push(
+      `VOICE: You speak AS ${name}, in the first person plural — "we offer", "our campus", "our fees". ` +
+      `Never describe ${name} in the third person, never say a course is "offered by ${name}" or where ` +
+      `${name} is located unless the visitor asks: they are on ${name}'s own website and already know. ` +
+      "Lead with what the visitor asked about the course itself — level, study mode, duration, fees, " +
+      "intakes, entry requirements, who it is for — and mention a campus or city only when it " +
+      "distinguishes between our own options.",
+    );
+    // Handover to staff is visitor-initiated only (see lib/handover-detect). The model offering it
+    // would promise a person on a widget whose team may not be watching. This overrides the
+    // "offer a human counsellor" wording in the money rule below for the widget.
+    sections.push(
+      "Never suggest talking to a person, an advisor or the admissions team in this chat, and never offer " +
+      "to connect the visitor to one. If they ask for a person themselves, the system handles it. When you " +
+      "lack information, point them to our published contact details instead.",
     );
     const custom = sanitizeCustomInstructions(opts.embedConfig.custom_instructions);
     if (custom) sections.push(`Additional guidance from ${name}: ${custom}`);
@@ -189,6 +220,11 @@ export function buildSystemPrompt(opts: {
     "strong fit because...' rather than 'this will work for you'.\n" +
     `- If sources in ${srcShort} conflict, prefer official government sources and tell the student the ` +
     "sources differ — never silently pick one.\n" +
+    "- MONEY IS THE EXCEPTION to guidance. Fees, tuition, refunds, deposits, scholarships, funding, " +
+    `payment plans and living costs come ONLY from ${srcShort}, quoted as written. No 'typically', no ` +
+    "estimates, no ranges from general knowledge, no other institutions' practice. If it is not in " +
+    `${srcShort}, say plainly that you do not have that information and offer a human counsellor or the ` +
+    "published contact details instead. A wrong number here costs a student real money.\n" +
     "- Fees, financial requirements and processing times change. When a retrieved passage carries a " +
     "verification date, say when it was last confirmed ('as last verified in June 2026') and point the " +
     "student at the official source to check. If a figure is past its stated validity date, say so " +
@@ -202,6 +238,15 @@ export function buildSystemPrompt(opts: {
     "set aside course recommendations, and encourage them to speak with a qualified professional or " +
     "local support service.",
   );
+
+  // ── Institution Knowledge Rack configuration (embed) ──
+  // Configuration outranks anything the system learned about style, and says so itself. It is
+  // placed before the memory block deliberately: that block closes with HARD LIMITS STILL
+  // APPLY, which must remain the last instruction before the student's own data.
+  if (opts.rackProfile) sections.push(opts.rackProfile);
+
+  // ── Institution counselling memory (embed) ──
+  if (opts.institutionGuidance) sections.push(opts.institutionGuidance);
 
   // ── Profile ──
   if (opts.profile?.profile) {
@@ -370,8 +415,10 @@ export function buildSystemPrompt(opts: {
     '```block\n{"type":"image","url":"https://...","title":"...","caption":"..."}\n```\n' +
     "Rules: use blocks to make counselling interactive — comparisons when the student weighs options, " +
     "a timeline when explaining a path, quick_replies instead of leaving your questions open-ended. " +
-    "Max 3 blocks per reply. Prose stays primary: never send blocks without a conversational message around them.",
+    "Max 3 blocks per reply — that counts ONLY the types listed above; the conclusion block described further down is never shown to the student and never counts towards this limit. " +
+    "Prose stays primary: never send blocks without a conversational message around them.",
   );
+
 
   // ── How to use retrieved material ──
   // Unconditional: applies to the CONTEXT block below and to tool results alike. Without
@@ -408,6 +455,17 @@ export function buildSystemPrompt(opts: {
       "- Never surface profile facts or briefing material irrelevant to the current topic just because you have them.\n" +
       "- Specific claims from the briefing follow the same rules as your tool results: qualify by " +
       "authority and verification date, and search for fresher data when the briefing looks stale or thin.",
+    );
+  }
+
+  // ── Money guard (decided by retrieval, not by the model) ──
+  if (opts.noMoneyData) {
+    sections.push(
+      "NO MONEY DATA THIS TURN: the visitor asked about fees, refunds, scholarships, funding or costs, and " +
+      `${srcShort} holds nothing on it. Do NOT answer the money part — no figure, no policy, no 'usually', ` +
+      "no comparison. Say you do not have that information, then offer to connect them with a counsellor " +
+      "(use the published contact details if present) or ask what else you can help with. Institution " +
+      "guidance about where to direct such questions still applies.",
     );
   }
 

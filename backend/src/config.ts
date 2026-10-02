@@ -81,6 +81,10 @@ const envSchema = z.object({
   // time, and vectors from two different spaces in the same column. Point this at "openrouter"
   // to use the fallback key directly, and re-embed after switching either way.
   EMBEDDING_PROVIDER: z.enum(["gemini", "openrouter"]).default("gemini"),
+  // TypeSafe Jev — typed yes/no decisions for the institution-memory learning pipeline (candidate
+  // gate, contradiction check, feedback attribution). Optional: unset falls back to the
+  // extractor's own flags and the regex filters. See modules/institution-memory/lib/jev.ts.
+  TYPESAFE_API_KEY: z.string().optional(),
 
   // Scrapers
   SCRAPLING_BASE_URL: z.string().optional(),  // base URL of Scrapling's own MCP server (e.g. http://localhost:8123) — /mcp is appended by scraper.ts

@@ -2,6 +2,7 @@
 
 import { masterKnex } from "../../../core/db/master-pool.js";
 import type { BusinessRecord } from "../../../core/types.js";
+import { withCountryCurrency } from "../../../shared/country-currency.js";
 
 export async function findBusinessBySubdomain(subdomain: string): Promise<BusinessRecord | undefined> {
   return masterKnex<BusinessRecord>("businesses").where({ subdomain }).whereNull("deleted_at").first();
@@ -13,6 +14,20 @@ export async function findBusinessById(id: string): Promise<BusinessRecord | und
 
 export async function findBusinessByDbName(dbName: string): Promise<BusinessRecord | undefined> {
   return masterKnex<BusinessRecord>("businesses").where({ schema_name: dbName }).whereNull("deleted_at").first();
+}
+
+export type BusinessCategoryRef = { id: number; name: string; icon: string | null };
+
+/**
+ * The profile badge shows the owner-chosen category, not the coarse `business_type`, so the /me
+ * response has to carry its label. Kept out of `findBusinessByDbName` because that finder also
+ * backs `searchBusinesses`, which has no use for the join.
+ */
+export async function findBusinessCategoryById(id: number): Promise<BusinessCategoryRef | undefined> {
+  return masterKnex("business_categories")
+    .where({ id })
+    .whereNull("deleted_at")
+    .first("id", "name", "icon");
 }
 
 
@@ -106,6 +121,7 @@ export async function insertBusiness(data: {
   business_type?: string | null;
   business_category_id?: number | null;
   description?: string | null;
+  email?: string | null;
   phone?: string | null;
   country_id?: number | null;
   state?: string | null;
@@ -114,6 +130,7 @@ export async function insertBusiness(data: {
   postcode?: string | null;
   registration_licenses?: Record<string, unknown> | null;
   claim_status?: string;
+  origin?: string;
 }): Promise<BusinessRecord> {
   const [row] = await masterKnex<BusinessRecord>("businesses").insert(data).returning("*");
   return row;
@@ -130,7 +147,7 @@ export async function updateBusinessStatus(id: string, accountStatus: number): P
 export async function updateBusinessProfile(id: string, data: Record<string, unknown>): Promise<BusinessRecord> {
   const [row] = await masterKnex<BusinessRecord>("businesses")
     .where({ id })
-    .update({ ...data, updated_at: masterKnex.fn.now() })
+    .update({ ...withCountryCurrency(data), updated_at: masterKnex.fn.now() })
     .returning("*");
   return row;
 }

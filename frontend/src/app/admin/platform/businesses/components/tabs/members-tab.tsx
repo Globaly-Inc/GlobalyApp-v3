@@ -106,12 +106,12 @@ export function MembersTab({
       <div className="mb-3 flex items-center justify-between">
         <div className="flex items-center gap-2">
           <Users className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-semibold">Members</span>
+          <span className="text-sm font-semibold">Users</span>
           <Badge variant="secondary">{total}</Badge>
         </div>
         {!readOnly && (
           <Button className="h-10" onClick={() => { setEditingMember(null); setDrawerOpen(true); }}>
-            <Plus className="mr-1.5 h-3.5 w-3.5" /> Add member
+            <Plus className="mr-1.5 h-3.5 w-3.5" /> Add User
           </Button>
         )}
       </div>

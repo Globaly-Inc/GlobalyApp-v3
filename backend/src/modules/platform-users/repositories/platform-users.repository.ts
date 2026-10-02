@@ -3,6 +3,7 @@
 
 import type { Knex } from "knex";
 import { masterKnex } from "../../../core/db/master-pool.js";
+import { withCountryCurrency } from "../../../shared/country-currency.js";
 
 export interface AccountCategory {
   type: "personal" | "business" | "institution";
@@ -67,6 +68,9 @@ export async function insert(data: {
   const { meta, ...rest } = data;
   const [row] = await db<PlatformUserRow>("platform_users")
     .insert({
+      // Every user has a personal account — an invited org member or an org owner too — so the
+      // personal portal and profile always work for them (existing rows: scripts/backfill-personal-accounts.ts).
+      is_personal_account: true,
       ...rest,
       // Only set when provided, so the column default ('{}') still applies otherwise. pg serialises a
       // plain object into jsonb, so no manual JSON.stringify.
@@ -101,11 +105,26 @@ export async function addAccountCategory(userId: number, category: AccountCatego
 
 // ── Business Index (master DB) ──
 
+/** True if this user currently has a suspended (not removed) membership on at least one
+ * business — distinct from "has zero accessible businesses", which also happens for reasons
+ * that aren't suspension at all (removed from the business, the business itself deactivated,
+ * or they were simply never a member) and must never block login. */
+export async function hasSuspendedBusinessMembership(platformUserId: number): Promise<boolean> {
+  const row = await masterKnex("user_business_index")
+    .where({ platform_user_id: platformUserId, account_status: 0 })
+    .whereNull("deleted_at")
+    .first("platform_user_id");
+  return Boolean(row);
+}
+
 export async function listUserBusinesses(platformUserId: number) {
   return masterKnex("user_business_index")
     .join("businesses", "user_business_index.business_id", "businesses.id")
     .where("user_business_index.platform_user_id", platformUserId)
     .where("businesses.account_status", 1)
+    // The business being active doesn't mean THIS agent is — a suspended agent must not still
+    // show that business in their login scope.
+    .where("user_business_index.account_status", 1)
     .whereNull("user_business_index.deleted_at")
     .whereNull("businesses.deleted_at")
     .select(
@@ -114,6 +133,7 @@ export async function listUserBusinesses(platformUserId: number) {
       "businesses.business_name",
       "businesses.subdomain",
       "businesses.logo_url",
+      "businesses.parent_business_id",
       "user_business_index.role",
       "user_business_index.is_owner",
     );
@@ -137,6 +157,14 @@ export async function insertUserBusinessIndex(data: {
     .insert({ ...data, created_at: masterKnex.fn.now() })
     .onConflict(["platform_user_id", "business_id"])
     .merge({ role: data.role, is_owner: data.is_owner, deleted_at: null });
+}
+
+/** Mirrors a suspend/reinstate onto the login-path index row — see the account_status migration's
+ * comment for why this has to happen for a suspension to actually block login. */
+export async function setUserBusinessIndexStatus(platformUserId: number, businessId: number, accountStatus: number) {
+  await masterKnex("user_business_index")
+    .where({ platform_user_id: platformUserId, business_id: businessId })
+    .update({ account_status: accountStatus });
 }
 
 /** Mirrors softDeleteAgent — a removed member must stop appearing in their business list. */
@@ -314,11 +342,24 @@ export async function deleteUser(id: number) {
  * Institutions this user can enter — the same gate listUserBusinesses applies:
  * account_status 1, plus a schema to actually connect to.
  */
+/** True if this user currently has a suspended (not removed) membership on at least one
+ * institution — see hasSuspendedBusinessMembership's comment. */
+export async function hasSuspendedInstitutionMembership(platformUserId: number): Promise<boolean> {
+  const row = await masterKnex("user_institution_index")
+    .where({ platform_user_id: platformUserId, account_status: 0 })
+    .whereNull("deleted_at")
+    .first("platform_user_id");
+  return Boolean(row);
+}
+
 export async function listUserInstitutions(platformUserId: number) {
   return masterKnex("user_institution_index")
     .join("institutions", "user_institution_index.institution_id", "institutions.id")
     .where("user_institution_index.platform_user_id", platformUserId)
     .where("institutions.account_status", 1)
+    // The institution being active doesn't mean THIS member is — a suspended member must not
+    // still show that institution in their login scope (see setUserInstitutionIndexStatus).
+    .where("user_institution_index.account_status", 1)
     .whereNotNull("institutions.schema_provisioned_at")
     .whereNull("user_institution_index.deleted_at")
     .whereNull("institutions.deleted_at")
@@ -328,9 +369,19 @@ export async function listUserInstitutions(platformUserId: number) {
       "institutions.institution_name",
       "institutions.subdomain",
       "institutions.logo_url",
+      // Lets the org switcher nest a branch under its parent (see createInstitutionBranch).
+      "institutions.parent_institution_id",
       "user_institution_index.role",
       "user_institution_index.is_owner",
     );
+}
+
+export async function ownsAnyOrg(platformUserId: number): Promise<boolean> {
+  const [businesses, institutions] = await Promise.all([
+    listUserBusinesses(platformUserId),
+    listUserInstitutions(platformUserId),
+  ]);
+  return businesses.length > 0 || institutions.length > 0;
 }
 
 /** See insertUserBusinessIndex for why the merge clears deleted_at. */
@@ -344,6 +395,13 @@ export async function insertUserInstitutionIndex(data: {
     .insert({ ...data, created_at: masterKnex.fn.now() })
     .onConflict(["platform_user_id", "institution_id"])
     .merge({ role: data.role, is_owner: data.is_owner, deleted_at: null });
+}
+
+/** Mirrors a suspend/reinstate onto the login-path index row — see setMemberStatus. */
+export async function setUserInstitutionIndexStatus(platformUserId: number, institutionId: number, accountStatus: number) {
+  await masterKnex("user_institution_index")
+    .where({ platform_user_id: platformUserId, institution_id: institutionId })
+    .update({ account_status: accountStatus });
 }
 
 export async function softDeleteUserInstitutionIndex(platformUserId: number, institutionId: number) {
@@ -424,7 +482,7 @@ export async function clearInstitutionClaim(id: number) {
 export async function updateInstitution(id: number, data: Record<string, unknown>) {
   const [row] = await masterKnex("institutions")
     .where({ id })
-    .update({ ...data, updated_at: masterKnex.fn.now() })
+    .update({ ...withCountryCurrency(data), updated_at: masterKnex.fn.now() })
     .returning("*");
   return row;
 }

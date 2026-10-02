@@ -13,6 +13,9 @@ import * as messagesRepo from "../repositories/messages.repository.js";
 import * as sessionsRepo from "../repositories/sessions.repository.js";
 import * as creditService from "../services/credit.service.js";
 import * as embedService from "../services/embed.service.js";
+import * as learningSignals from "../services/learning-signals.service.js";
+import { ReviewMessageSchema } from "../../institution-memory/index.js";
+import { requireInstitutionContext } from "../../../core/plugins/auth.plugin.js";
 import * as storage from "../../../shared/storage/storageService.js";
 import { NotFoundError, ForbiddenError, PaymentRequiredError, BadRequestError } from "../../../shared/errors.js";
 
@@ -106,11 +109,20 @@ export async function chatRoutes(app: FastifyInstance) {
     return reply.send(updated);
   });
 
-  // PATCH /messages/:id/feedback — thumbs up/down
+  // PATCH /messages/:id/feedback — thumbs up/down, on the caller's own message only
   app.patch("/messages/:id/feedback", async (req, reply) => {
     const { id } = MessageIdParamSchema.parse(req.params);
     const { feedback } = FeedbackSchema.parse(req.body ?? {});
-    await messagesRepo.updateFeedback(id, feedback);
+    await learningSignals.recordStudentFeedback(id, feedback, { userId: Number(req.auth.sub) });
+    return reply.send({ ok: true });
+  });
+
+  // POST /messages/:id/review — an institution member approves, corrects or flags one of
+  // its widget's replies. A correction is what the counsellor learns from.
+  app.post("/messages/:id/review", { preHandler: requireInstitutionContext }, async (req, reply) => {
+    const { id } = MessageIdParamSchema.parse(req.params);
+    const review = ReviewMessageSchema.parse(req.body ?? {});
+    await learningSignals.recordCounsellorReview(id, review, { userId: Number(req.auth.sub), institutionId: req.institutionId });
     return reply.send({ ok: true });
   });
 }

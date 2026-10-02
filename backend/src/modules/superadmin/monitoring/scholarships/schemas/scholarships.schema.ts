@@ -50,6 +50,13 @@ export const BusinessScholarshipListQuery = PaginationSchema.extend({
   search: z.string().trim().min(1).optional(),
 });
 
+/** The portal's institution Scholarships tab (extraction_scholarships) — adds its filters. */
+export const ExtractedScholarshipListQuery = BusinessScholarshipListQuery.extend({
+  applicable_to: z.enum(["domestic", "international", "both"]).optional(),
+  coverage_type: z.string().trim().min(1).optional(),
+  origin: z.enum(["extracted", "manual"]).optional(),
+});
+
 export const ScholarshipListQuery = PaginationSchema.extend({
   limit: z.coerce.number().int().min(1).max(100).default(10),
   search: z.string().trim().min(1).optional(),
@@ -75,6 +82,12 @@ export const PublicScholarshipListQuery = z.object({
 
 export const ImportRowsSchema = z.object({
   rows: z.array(ScholarshipInputSchema).min(1).max(2000),
+});
+
+// Business self-service bulk import — same shape as admin's, minus is_featured (businesses can't
+// set it, forced false server-side — see createForBusiness).
+export const BusinessImportRowsSchema = z.object({
+  rows: z.array(BusinessScholarshipInputSchema).min(1).max(2000),
 });
 
 export const BulkDeleteSchema = z.object({

@@ -40,10 +40,14 @@ import { masterKnex } from "../../../core/db/master-pool.js";
 import { config } from "../../../config.js";
 import { mailerService } from "../../../shared/mail/mailerService.js";
 import {
+  chatSummaryEmail,
+  handoverRequestEmail,
   emailLayout,
   enquiryClaimEmail,
   enquiryLeadEmail,
   enquiryUnlockedEmail,
+  type ChatSummaryProgram,
+  type ChatSummaryTurn,
   type DigestItem,
 } from "../../../shared/mail/templates.js";
 import { mintInstitutionClaimUrl } from "../../platform-users/services/institution-claim.service.js";
@@ -216,6 +220,37 @@ function renderEmail(
         enquiryId: str("enquiry_id"),
         sharedContact: payload.shared_contact === true,
         messagePreview: str("message_preview"),
+      });
+    // The AI widget's conversation summary. Not an enquiry at all — it rides this outbox for
+    // the dedup key, the retry ladder and the worker that already drains it, and every
+    // enquiry-shaped FK on the row is left null, which the schema allows.
+    //
+    // Rendered entirely from `payload`: the sweep snapshots the transcript at enqueue time so
+    // this stays a pure function of the row, the same way message_preview is snapshotted.
+    // A website-chat visitor asked for a person (ai-counsellor takeover.service). Not an enquiry
+    // either — it rides this outbox for the dedup key and the retry ladder, like chat_summary.
+    case "handover_request":
+      return handoverRequestEmail({
+        orgName: str("org_name"),
+        visitorName: str("visitor_name"),
+        message: str("message") ?? "",
+        inboxUrl: str("inbox_url") ?? `${config.WEB_APP_URL.replace(/\/$/, "")}/business/messages`,
+      });
+    case "chat_summary":
+      return chatSummaryEmail({
+        name: str("name") ?? "there",
+        orgName: str("org_name"),
+        courses: Array.isArray(payload.courses) ? (payload.courses as string[]) : [],
+        // Absent on rows queued before the program block existed — the card is just left out.
+        program: payload.program && typeof payload.program === "object" ? (payload.program as ChatSummaryProgram) : null,
+        turns: Array.isArray(payload.turns) ? (payload.turns as ChatSummaryTurn[]) : [],
+        // Null on an older row queued before summaries existed, or when the model was
+        // unavailable — either way the template falls back to the transcript.
+        summary: str("summary"),
+        // Absent on a row queued before this existed, which reads as false — the template's
+        // unconfirmed branch only adds an invitation, so it is the safe way round to be wrong.
+        confirmedEnd: payload.confirmed_end === true,
+        conversationUrl: str("conversation_url") ?? config.WEB_APP_URL,
       });
     default: {
       // WEB_APP_URL, not APP_URL: the latter is this API's own origin, so a recipient
@@ -451,7 +486,7 @@ export async function sweepDigests(): Promise<void> {
  * so a second enquiry mints a fresh link rather than flipping the recipient to the claimed mail
  * because we happened to mail it once already.
  */
-async function resolveBusinessRecipients(businessId: number): Promise<{
+export async function resolveBusinessRecipients(businessId: number): Promise<{
   recipients: { userId: number | null; email: string }[];
   businessName: string | null;
   isClaimed: boolean;

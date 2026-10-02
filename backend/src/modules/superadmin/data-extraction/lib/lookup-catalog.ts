@@ -62,6 +62,8 @@ export async function loadLookupLists(): Promise<LookupLists> {
 // ponytail: per-process cache, same reasoning as the lists above — the country table is reference
 // data that changes on a deploy.
 let countryIndex: Map<string, string> | null = null;
+/** iso2 → the table's own spelling of the name. Filled by the same load as countryIndex. */
+let countryNames: Map<string, string> | null = null;
 
 /**
  * Colloquial forms the countries table cannot supply. Site intelligence returns whatever the
@@ -79,9 +81,12 @@ async function loadCountryIndex(): Promise<Map<string, string>> {
   const rows: Array<{ name: string; iso2: string; iso3: string }> =
     await masterKnex("countries").select("name", "iso2", "iso3");
   const idx = new Map<string, string>();
+  const names = new Map<string, string>();
   for (const r of rows) {
     for (const key of [r.iso2, r.iso3, r.name]) if (key) idx.set(key.trim().toLowerCase(), r.iso2);
+    if (r.iso2 && r.name) names.set(r.iso2, r.name);
   }
+  countryNames = names;
   for (const [alias, iso2] of Object.entries(COUNTRY_ALIASES)) if (!idx.has(alias)) idx.set(alias, iso2);
   if (!rows.length) logger.warn("public.countries is empty — courses will not link to a country");
   countryIndex = idx;
@@ -95,6 +100,23 @@ async function loadCountryIndex(): Promise<Map<string, string>> {
 export async function resolveCountryCode(value: unknown): Promise<string | null> {
   if (typeof value !== "string" || !value.trim()) return null;
   return (await loadCountryIndex()).get(value.trim().toLowerCase()) ?? null;
+}
+
+/**
+ * The table's own spelling of a country, or null when the value matches none.
+ *
+ * Same index, same aliases as resolveCountryCode — so "UK", "GBR" and "great britain" all resolve
+ * to whatever `countries.name` actually says, rather than to three different stored strings.
+ * Returning the TABLE's spelling is the point: a caller storing this gets a value that groups
+ * with every other row, which a verbatim echo of the input would not.
+ *
+ * Null is a real answer and must not be papered over by the caller. A visitor saying "Kashmiri"
+ * or "Yugoslavia" matches no country, and recording either as one would assert something they
+ * did not say.
+ */
+export async function resolveCountryName(value: unknown): Promise<string | null> {
+  const iso2 = await resolveCountryCode(value);
+  return iso2 ? (countryNames?.get(iso2) ?? null) : null;
 }
 
 export interface LookupListsHealth {

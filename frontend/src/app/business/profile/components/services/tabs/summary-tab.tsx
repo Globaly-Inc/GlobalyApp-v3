@@ -1,8 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Award, BookOpen, CalendarDays, DollarSign, FileText, GraduationCap, Image as ImageIcon, ShieldCheck, Sparkles } from "lucide-react";
-import { toast } from "sonner";
+import { Award, BookOpen, CalendarDays, DollarSign, FileText, GraduationCap, Image as ImageIcon, Loader2, ShieldCheck, Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -31,6 +30,8 @@ export function SummaryTab({
   courseFieldOptions,
   debouncedSearchCourseField,
   courseSearchLoading,
+  onWriteWithAi,
+  generatingDescription,
 }: Readonly<{
   serviceId: string | null;
   onNavigateTab: (tab: DetailTab) => void;
@@ -42,6 +43,8 @@ export function SummaryTab({
   courseFieldOptions: (key: string, value: string) => { value: string; label: string }[];
   debouncedSearchCourseField: (key: string, query: string) => void;
   courseSearchLoading: Record<string, boolean>;
+  onWriteWithAi: () => void;
+  generatingDescription: boolean;
 }>) {
   const [counts, setCounts] = useState({ fees: 0, intakes: 0, eligibility: 0, studyUnits: 0, accreditations: 0 });
 
@@ -72,9 +75,11 @@ export function SummaryTab({
                 variant="ghost"
                 size="sm"
                 className="gap-1.5 text-primary"
-                onClick={() => toast("Coming soon", { description: "AI-generated descriptions aren't available yet." })}
+                disabled={generatingDescription}
+                onClick={onWriteWithAi}
               >
-                <Sparkles className="h-3.5 w-3.5" /> Write with AI
+                {generatingDescription ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                Write with AI
               </Button>
             </CardAction>
           </CardHeader>

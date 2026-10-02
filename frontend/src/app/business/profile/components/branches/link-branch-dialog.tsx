@@ -43,7 +43,7 @@ export function LinkBranchDialog({
   useEffect(() => {
     if (!open) return;
     if (editBranch) {
-      setSelectedBizId(String(editBranch.linked_business_id));
+      setSelectedBizId(String(editBranch.linked_business_id ?? editBranch.linked_institution_id));
       setBranchType(editBranch.branch_type);
       setSharedServices(editBranch.shared_services);
     } else {
@@ -108,7 +108,7 @@ export function LinkBranchDialog({
         <div className="flex flex-col gap-5 px-4">
           <div className="flex flex-col gap-2">
             <Label>
-              Business <span className="text-destructive">*</span>
+              {editBranch?.linked_institution_id != null ? "Institution" : "Business"} <span className="text-destructive">*</span>
             </Label>
             {isEdit ? (
               <p className="rounded-md border bg-muted/40 px-3 py-2 text-sm">{editBranch?.name}</p>

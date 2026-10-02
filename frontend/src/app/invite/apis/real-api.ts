@@ -6,6 +6,8 @@ import type {
   AcceptClaimParams,
   AcceptInstitutionClaimResult,
   AcceptInstitutionMemberInviteResult,
+  AcceptOnboardingInviteParams,
+  AcceptOnboardingInviteResult,
 } from "./types";
 
 export const inviteRealApi = {
@@ -18,4 +20,8 @@ export const inviteRealApi = {
     httpPost("/institutions/claim/accept", params),
   acceptInstitutionMemberInvite: ({ token, org_id }: AcceptAgentInviteParams): Promise<AcceptInstitutionMemberInviteResult> =>
     httpPost("/institutions/members/invite/accept", { token, org_id }),
+  acceptOnboardingInvite: (params: AcceptOnboardingInviteParams): Promise<AcceptOnboardingInviteResult> =>
+    httpPost("/onboarding-invitations/accept", params),
+  requestOnboardingLink: (params: AcceptOnboardingInviteParams): Promise<{ requested: true }> =>
+    httpPost("/onboarding-invitations/request-link", params),
 };

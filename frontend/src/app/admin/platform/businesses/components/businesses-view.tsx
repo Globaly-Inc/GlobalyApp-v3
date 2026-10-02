@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Building2, Loader2, Plus } from "lucide-react";
+import { Building2, Loader2, Plus, Send } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -19,7 +19,6 @@ import {
   updateBusinessPublished,
   updateBusinessStatus,
 } from "../store/businesses-slice";
-import { filterBusinessesBySourceAndOwnership } from "../utils";
 import type { Business, BusinessSort, ListingRef } from "../apis/types";
 import { BusinessCard } from "./shared/business-card";
 import { DeleteBusinessDialog } from "./shared/delete-business-dialog";
@@ -27,6 +26,11 @@ import { BulkDeleteDialog } from "./shared/bulk-delete-dialog";
 import { ClaimRequestDialog, type ClaimRequestTarget } from "./shared/claim-request-dialog";
 import { BusinessFiltersBar } from "./shared/business-filters-bar";
 import { BusinessSelectionBar } from "./shared/business-selection-bar";
+import { SendInvitationDialog } from "@/app/admin/platform/business-invites/components/send-invitation-dialog";
+import { INVITE_ROLES } from "@/app/admin/platform/business-invites/const";
+import { BusinessInvitesView } from "@/app/admin/platform/business-invites/components/business-invites-view";
+
+type Tab = "businesses" | "invites" | "services" | "claims";
 
 export function BusinessesView() {
   const router = useRouter();
@@ -35,10 +39,9 @@ export function BusinessesView() {
   const dispatch = useAppDispatch();
   const { businesses, total, status } = useAppSelector((state) => state.platformBusinesses);
   const categories = useAppSelector((state) => state.platformCategories.businessCategoryOptions);
+  const canInvite = INVITE_ROLES.includes(useAppSelector((state) => state.admin.me?.role) ?? "");
 
-  const [tab, setTabState] = useState<"businesses" | "services" | "claims">(
-    () => (searchParams.get("tab") as "businesses" | "services" | "claims") || "businesses",
-  );
+  const [tab, setTabState] = useState<Tab>(() => (searchParams.get("tab") as Tab) || "businesses");
   const [search, setSearchState] = useState(() => searchParams.get("q") ?? "");
   const [debouncedSearch, setDebouncedSearch] = useState(() => searchParams.get("q") ?? "");
   const searchTimer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
@@ -71,9 +74,9 @@ export function BusinessesView() {
   };
 
   // Server-side filters change the result set, so a stale page would fall off the end.
-  const resetPage = <T,>(set: (v: T) => void) => (v: T) => { set(v); setPage(1); };
+  const resetPage = <T,>(set: (v: T) => void, v: T) => { set(v); setPage(1); };
 
-  const setTab = (next: "businesses" | "services" | "claims") => {
+  const setTab = (next: Tab) => {
     setTabState(next);
     updateParam("tab", next === "businesses" ? null : next);
   };
@@ -139,6 +142,8 @@ export function BusinessesView() {
   const [deleting, setDeleting] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
+  const [invitesReloadKey, setInvitesReloadKey] = useState(0);
 
   const fetchedCategoriesRef = useRef(false);
   useEffect(() => {
@@ -153,6 +158,8 @@ export function BusinessesView() {
     search: debouncedSearch || undefined,
     status: statusFilter !== "all" ? statusFilter : undefined,
     category: categoryFilter !== "all" ? Number(categoryFilter) : undefined,
+    origin: sourceFilter !== "all" ? (sourceFilter as Business["origin"]) : undefined,
+    ownership: ownershipFilter !== "all" ? (ownershipFilter as "owned" | "unclaimed") : undefined,
     sort: sort as BusinessSort,
     page,
     limit,
@@ -166,7 +173,7 @@ export function BusinessesView() {
     lastBusinessesFetchKey.current = key;
     dispatch(fetchBusinesses(params));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch, debouncedSearch, statusFilter, categoryFilter, sort, page, limit]);
+  }, [dispatch, debouncedSearch, statusFilter, categoryFilter, sourceFilter, ownershipFilter, sort, page, limit]);
 
   const categoryOptions = useMemo(
     () => [
@@ -180,18 +187,13 @@ export function BusinessesView() {
     [categories],
   );
 
-  const filteredBusinesses = useMemo(
-    () => filterBusinessesBySourceAndOwnership(businesses, sourceFilter, ownershipFilter),
-    [businesses, sourceFilter, ownershipFilter],
-  );
-
   // The claims tab is the same list, pre-filtered: anything an admin has sent a claim
   // request for and nobody has accepted yet. Accepted ones flip to "claimed" and drop out.
   const displayed = tab === "claims"
     ? businesses.filter((b) => b.claim_status === "claim_pending")
-    : filteredBusinesses;
+    : businesses;
 
-  const visibleKeys = filteredBusinesses.map(keyOf);
+  const visibleKeys = businesses.map(keyOf);
   const allVisibleSelected = visibleKeys.length > 0 && visibleKeys.every((k) => selected.has(k));
   const someSelected = selected.size > 0;
 
@@ -201,6 +203,37 @@ export function BusinessesView() {
       const [kind, id] = k.split("-");
       return { kind: kind as ListingRef["kind"], id: Number(id) };
     });
+
+  // Selection survives pagination/filter changes, but `businesses` only ever holds whatever
+  // page is currently loaded — a selected row from another page has no entry here. Eligibility
+  // filtering below only EXCLUDES a ref when we can positively confirm (from loaded data) that
+  // it's ineligible; an off-page ref we know nothing about is kept rather than silently dropped
+  // from the bulk action, which was the actual bug (not just an inaccurate displayed count).
+  const businessByKey = () => new Map(businesses.map((b) => [keyOf(b), b]));
+
+  /** Same eligibility rule as the per-card button (business-card.tsx): every status except
+   *  "claimed" — a pending request can be resent, only an already-claimed listing is excluded. */
+  const selectedUnclaimedRefs = (): ListingRef[] => {
+    const byKey = businessByKey();
+    return selectedRefs().filter((r) => {
+      const b = byKey.get(`${r.kind}-${r.id}`);
+      return !b || b.claim_status !== "claimed";
+    });
+  };
+
+  /** How many of the current selection are actually eligible for a given bulk status change —
+   *  e.g. Verify shouldn't count/re-touch a business that's already verified. Off-page rows
+   *  (unknown status) count as eligible, matching selectedEligibleRefs below. */
+  const selectedEligibleCount = (targetStatus: Business["status"]): number =>
+    selectedEligibleRefs(targetStatus).length;
+
+  const selectedEligibleRefs = (targetStatus: Business["status"]): ListingRef[] => {
+    const byKey = businessByKey();
+    return selectedRefs().filter((r) => {
+      const b = byKey.get(`${r.kind}-${r.id}`);
+      return !b || b.status !== targetStatus;
+    });
+  };
 
   const toggleOne = (key: string) => {
     setSelected((s) => {
@@ -251,7 +284,7 @@ export function BusinessesView() {
         // sendClaimRequest / sendInstitutionClaimRequest on the backend.
         toast.success(`Claim request sent to ${b.owner_email ?? b.email ?? "the listed contact"}`);
       } else {
-        const refs = selectedRefs();
+        const refs = selectedUnclaimedRefs();
         await dispatch(sendBulkClaimRequests(refs)).unwrap();
         toast.success(`Queued claim requests for ${refs.length} businesses`);
         clearSelection();
@@ -292,7 +325,7 @@ export function BusinessesView() {
   };
 
   const bulkUpdateStatus = async (target: "verified" | "suspended") => {
-    const refs = selectedRefs();
+    const refs = selectedEligibleRefs(target);
     if (refs.length === 0) return;
     setBulkBusy(true);
     const results = await Promise.all(
@@ -366,17 +399,31 @@ export function BusinessesView() {
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold text-foreground">Business Management</h1>
-          <p className="mt-1 text-muted-foreground">Verify, manage, and pre-seed business accounts.</p>
+          <p className="mt-1 text-muted-foreground">Verify, Manage, and Invite Business Accounts.</p>
         </div>
-        <Button className="cursor-pointer gap-1" onClick={() => router.push("/admin/platform/businesses/add")}>
-          <Plus className="h-4 w-4" />
-          Add Business
-        </Button>
+        <div className="flex flex-wrap gap-2">
+          {canInvite && (
+            <Button
+              variant="outline"
+              className="cursor-pointer gap-1 border-2 border-primary font-semibold text-primary hover:bg-primary/10 hover:text-primary"
+              onClick={() => setInviteOpen(true)}
+            >
+              <Send className="h-4 w-4" />
+              Invite Business
+            </Button>
+          )}
+          <Button className="cursor-pointer gap-1" onClick={() => router.push("/admin/platform/businesses/add")}>
+            <Plus className="h-4 w-4" />
+            Add Business
+          </Button>
+        </div>
       </div>
+      {canInvite && <SendInvitationDialog open={inviteOpen} onOpenChange={setInviteOpen} onSent={() => setInvitesReloadKey((k) => k + 1)} />}
 
       <AdminSegmentedTabs
         options={[
           { value: "businesses", label: "Businesses" },
+          ...(canInvite ? [{ value: "invites" as const, label: "Invites" }] : []),
           { value: "services", label: "Services" },
           { value: "claims", label: "Claim Requests" },
         ]}
@@ -384,7 +431,9 @@ export function BusinessesView() {
         onChange={setTab}
       />
 
-      {tab === "services" ? (
+      {tab === "invites" && canInvite ? (
+        <BusinessInvitesView reloadKey={invitesReloadKey} />
+      ) : tab === "services" ? (
         <div className="py-12 text-center text-muted-foreground">
           <p>Services management is coming soon.</p>
         </div>
@@ -396,21 +445,21 @@ export function BusinessesView() {
         search={search}
         onSearchChange={handleSearchChange}
         statusFilter={statusFilter}
-        onStatusChange={resetPage(setStatusFilter)}
+        onStatusChange={(v) => resetPage(setStatusFilter, v)}
         categoryFilter={categoryFilter}
-        onCategoryChange={resetPage(setCategoryFilter)}
+        onCategoryChange={(v) => resetPage(setCategoryFilter, v)}
         categoryOptions={categoryOptions}
         sourceFilter={sourceFilter}
-        onSourceChange={setSourceFilter}
+        onSourceChange={(v) => resetPage(setSourceFilter, v)}
         ownershipFilter={ownershipFilter}
-        onOwnershipChange={setOwnershipFilter}
+        onOwnershipChange={(v) => resetPage(setOwnershipFilter, v)}
         sort={sort}
-        onSortChange={resetPage(setSort)}
+        onSortChange={(v) => resetPage(setSort, v)}
         hasActiveFilters={hasActiveFilters}
         onClearFilters={clearFilters}
       />
 
-      {status !== "loading" && filteredBusinesses.length > 0 && (
+      {status !== "loading" && displayed.length > 0 && (
         <div className="flex items-center gap-3 px-1">
           <Checkbox checked={allVisibleSelected} onCheckedChange={toggleAllVisible} aria-label="Select all visible" />
           <span className="text-xs text-muted-foreground">
@@ -427,7 +476,7 @@ export function BusinessesView() {
           limit={limit}
           total={total}
           onPageChange={setPage}
-          onPageSizeChange={resetPage(setLimit)}
+          onPageSizeChange={(v) => resetPage(setLimit, v)}
           align="end"
         />
       )}
@@ -435,12 +484,15 @@ export function BusinessesView() {
       {someSelected && (
         <BusinessSelectionBar
           count={selected.size}
+          verifiableCount={selectedEligibleCount("verified")}
+          suspendableCount={selectedEligibleCount("suspended")}
+          unclaimedCount={selectedUnclaimedRefs().length}
           bulkBusy={bulkBusy}
           onClear={clearSelection}
           onVerify={() => bulkUpdateStatus("verified")}
           onSuspend={() => bulkUpdateStatus("suspended")}
           onDeleteClick={() => setBulkDeleteOpen(true)}
-          onSendClaimRequestsClick={() => setClaimRequestTarget({ kind: "bulk", count: selected.size })}
+          onSendClaimRequestsClick={() => setClaimRequestTarget({ kind: "bulk", count: selectedUnclaimedRefs().length })}
         />
       )}
         </>

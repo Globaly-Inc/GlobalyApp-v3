@@ -6,7 +6,7 @@
  * plus the property that lossiness would otherwise destroy: two different pages never share an
  * object path, because an upload overwrites and one page's snapshot would be silently lost.
  */
-import { fileLinksOf, snapshotPathFor, snapshotVerdict, tallySnapshotEvents } from "../src/modules/superadmin/data-extraction/lib/site-snapshot.js";
+import { deadReasonOf, fileLinksOf, snapshotPathFor, snapshotVerdict, tallySnapshotEvents } from "../src/modules/superadmin/data-extraction/lib/site-snapshot.js";
 import type { SnapshotEventRow } from "../src/modules/superadmin/data-extraction/lib/site-snapshot.js";
 
 let failed = 0;
@@ -80,6 +80,11 @@ const tallies: [string, { reported: number; errored: number }, { reported: numbe
   ["three distinct batches", tallySnapshotEvents([ev("a", "site_snapshot_uploaded", 1), ev("b", "site_snapshot_uploaded", 2), ev("c", "site_snapshot_uploaded", 3)], RUN), { reported: 3, errored: 0 }],
   ["redelivered batch 2 counts once", tallySnapshotEvents([ev("a", "site_snapshot_uploaded", 1), ev("b", "site_snapshot_uploaded", 2), ev("c", "site_snapshot_uploaded", 2)], RUN), { reported: 2, errored: 0 }],
   ["batch that errored then succeeded is one batch, still errored", tallySnapshotEvents([ev("a", "step_error", 1), ev("b", "site_snapshot_uploaded", 1)], RUN), { reported: 1, errored: 1 }],
+  // A batch that saw the job paused/stopped exits early and still writes its event (so the admin
+  // sees where it stopped) — but it did NOT finish its pages, so it must not read as a success.
+  ["a halted batch counts as errored, not done", tallySnapshotEvents([
+    ev("a", "site_snapshot_uploaded", 1), { id: "b", kind: "site_snapshot_uploaded", phase: "site_snapshot", data: { runId: RUN, index: 2, total: 8, halted: true } },
+  ], RUN), { reported: 2, errored: 1 }],
   ["another step's error is not ours", tallySnapshotEvents([ev("a", "site_snapshot_uploaded", 1), ev("b", "step_error", 2, "courses")], RUN), { reported: 1, errored: 0 }],
   ["indexless events do not collapse onto one key", tallySnapshotEvents([ev("a", "site_snapshot_uploaded"), ev("b", "site_snapshot_uploaded")], RUN), { reported: 2, errored: 0 }],
   // Two dispatches for one job overlap (the job worker tolerates a second message for a job
@@ -109,5 +114,20 @@ for (const [label, got, want] of tallies) {
   }
 }
 
+
+// ── deadReasonOf: what the Site Context tab counts as Inactive ──
+for (const [label, page, want] of [
+  ["404 is not_found", { notFound: true, markdown: "x".repeat(500) }, "not_found"],
+  ["blocked wins over a thin body", { blocked: true, markdown: "" }, "blocked"],
+  ["under 50 chars is empty", { markdown: "Loading…" }, "empty"],
+  ["a readable page is live", { markdown: "x".repeat(50) }, null],
+  ["our scraper down is not the page dead", { blocked: true, markdown: "", error: "Insufficient credits to perform this request." }, "scraper_down"],
+  ["an unreachable Scrapling with no fallback", { markdown: "", error: "No scraper configured (set CRAWL4AI_BASE_URL or FIRECRAWL_API_KEY)" }, "scraper_down"],
+  ["the site's own wall is still blocked", { blocked: true, markdown: "", error: "stealthy_fetch: challenge page" }, "blocked"],
+  ["a real 404 stays not_found whatever the fallback said", { notFound: true, markdown: "", error: "Insufficient credits" }, "not_found"],
+] as const) {
+  const got = deadReasonOf(page);
+  if (got !== want) fail(`deadReasonOf ${label}: expected ${want}, got ${got}`);
+}
 if (failed) process.exit(1);
 console.log("site-snapshot-path: all passed");

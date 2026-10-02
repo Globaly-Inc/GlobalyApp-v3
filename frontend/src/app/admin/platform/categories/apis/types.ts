@@ -97,6 +97,7 @@ export type Accreditation = {
   issuing_organization_id: number | null;
   issuing_organization_name: string | null;
   issuing_organization_logo_url: string | null;
+  issuing_organization_status?: ModerationStatus | null;
   website: string | null;
   description: string | null;
   business_id: number | null;
@@ -126,4 +127,29 @@ export type CityOption = {
   id: number;
   name: string;
   stateName: string | null;
+};
+
+/**
+ * A country's business registration identifier. `code` is what a business stores on its profile
+ * ("ABN"); `label` is what its picker shows ("ABN (11 digits)").
+ *
+ * `country_id: null` is the generic fallback row — offered to any country with none of its own —
+ * not a missing value, which is why the list sorts those first.
+ */
+export type RegistrationType = {
+  id: number;
+  country_id: number | null;
+  country_name: string | null;
+  code: string;
+  label: string;
+  sort_order: number;
+  is_active: boolean;
+};
+
+export type RegistrationTypeInput = {
+  country_id: number | null;
+  code: string;
+  label: string;
+  sort_order: number;
+  is_active: boolean;
 };

@@ -29,7 +29,7 @@ export async function listCourses(
 // The entity tables carry created_by ids; the *_assignments rows don't. Names are attached
 // here so the Fees/Intakes/Units tabs and the course panel can say who added a row — without
 // this every fee read as "Extracted automatically", admin-added or not.
-const ACTOR_KEYS = ["course_fees", "intakes", "study_options", "study_units", "eligibility_requirements"] as const;
+const ACTOR_KEYS = ["course_fees", "intakes", "study_options", "study_units", "eligibility_requirements", "scholarships"] as const;
 
 export async function getCourseLinks(jobId: string) {
   const links = await repo.getCourseLinks(jobId);
@@ -75,6 +75,20 @@ export async function listEligibility(
   const [rows, total] = await Promise.all([
     repo.listEligibilityByJob(jobId, limit, offset, filters),
     repo.countEligibilityByJob(jobId, filters),
+  ]);
+  return buildPaginatedResponse(await withActorNames(rows), total, pagination);
+}
+
+export async function listScholarships(
+  jobId: string,
+  limit: number,
+  offset: number,
+  pagination: PaginationInput,
+  filters: { search?: string },
+) {
+  const [rows, total] = await Promise.all([
+    repo.listScholarshipsByJob(jobId, limit, offset, filters),
+    repo.countScholarshipsByJob(jobId, filters),
   ]);
   return buildPaginatedResponse(await withActorNames(rows), total, pagination);
 }
@@ -178,6 +192,17 @@ export async function bulkVerifyCourses(ids: string[], approve: boolean, adminId
   await logAudit(adminId, approve ? "COURSE_APPROVE" : "COURSE_REJECT", {
     entityType: "extraction_courses",
     details: { ids, count: updated },
+  });
+  return { updated };
+}
+
+/** Approves every not-yet-approved course of a job. Flagged ones stay flagged — "approve all" must
+ * not silently undo a rejection an admin made course by course. */
+export async function approveAllCourses(jobId: string, adminId: number) {
+  const updated = await repo.approveAllCoursesForJob(jobId, adminId);
+  await logAudit(adminId, "COURSE_APPROVE", {
+    entityType: "extraction_courses",
+    details: { job_id: jobId, all: true, count: updated },
   });
   return { updated };
 }

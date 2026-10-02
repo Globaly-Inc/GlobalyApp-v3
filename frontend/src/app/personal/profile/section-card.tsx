@@ -77,7 +77,7 @@ export function OneToManySection({
               size="sm"
               onClick={onAdd}
               aria-label={`Add ${title}`}
-              className="gap-1.5 opacity-100 transition-opacity group-focus-within/card:opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/card:opacity-100"
+              className="gap-1.5"
             >
               <Plus className="h-3.5 w-3.5" />
               Add

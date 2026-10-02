@@ -5,8 +5,8 @@ import { NotFoundError } from "../../../../../shared/errors.js";
 import * as repo from "../repositories/categories.repository.js";
 import type { LookupTable } from "../repositories/categories.repository.js";
 import type {
-  AccreditationInput, CategoryInput, FeeTypeInput, IssuingOrgInput, LookupInput, SchemaFieldInput,
-  SchemaFieldEntityType, TestInput,
+  AccreditationInput, CategoryInput, FeeTypeInput, IssuingOrgInput, LookupInput, RegistrationTypeInput,
+  SchemaFieldInput, SchemaFieldEntityType, TestInput,
 } from "../schemas/categories.schema.js";
 
 export function listSchemaFields(entityType: SchemaFieldEntityType, entityId: number) {
@@ -56,8 +56,23 @@ export const replaceDefaultServices = repo.replaceDefaultServices;
 export const listServiceCategories = repo.listServiceCategories;
 export const countServiceCategories = repo.countServiceCategories;
 
-export function createServiceCategory(data: CategoryInput) {
-  return repo.insertServiceCategory(data);
+// Standard "Course details" fields every service category gets on creation — the service form
+// writes/reads values keyed by a real schema_fields id, and silently drops the selection when
+// none exists for the category. Also reused (not duplicated) by
+// service_category_course_fields_seeder.ts to backfill this onto every category that existed
+// before this field set did.
+export const STANDARD_COURSE_FIELDS: SchemaFieldInput[] = [
+  { key: "degree_level", label: "Degree level", type: "text" },
+  { key: "area_of_study", label: "Area of study", type: "text" },
+  { key: "awarded_by", label: "Awarded by", type: "text" },
+];
+
+export async function createServiceCategory(data: CategoryInput) {
+  const category = await repo.insertServiceCategory(data);
+  await Promise.all(
+    STANDARD_COURSE_FIELDS.map((f) => repo.insertSchemaField("service_categories", category.id, { ...f, is_default: true })),
+  );
+  return category;
 }
 
 export function updateServiceCategory(id: number, data: Partial<CategoryInput>) {
@@ -135,16 +150,25 @@ export async function deleteFeeType(id: number) {
 
 // ── Issuing Organizations ──
 
-export function listIssuingOrganizations(limit: number, offset: number, search?: string) {
-  return repo.listIssuingOrganizations(limit, offset, search);
+export function listIssuingOrganizations(limit: number, offset: number, search?: string, approvedOnly?: boolean) {
+  return repo.listIssuingOrganizations(limit, offset, search, approvedOnly);
 }
 
-export function countIssuingOrganizations(search?: string) {
-  return repo.countIssuingOrganizations(search);
+export function countIssuingOrganizations(search?: string, approvedOnly?: boolean) {
+  return repo.countIssuingOrganizations(search, approvedOnly);
 }
 
 export function createIssuingOrganization(data: IssuingOrgInput) {
-  return repo.insertIssuingOrganization(data);
+  return repo.insertIssuingOrganization({ ...data, status: "approved" });
+}
+
+/**
+ * Self-service submission (business/institution) — starts pending, same as proposeAccreditation,
+ * so another org can't select and rely on an unreviewed issuing organization before an admin
+ * vets it.
+ */
+export function proposeIssuingOrganization(data: IssuingOrgInput) {
+  return repo.insertIssuingOrganization({ ...data, status: "pending" });
 }
 
 export async function updateIssuingOrganization(id: number, data: Partial<IssuingOrgInput>) {
@@ -153,10 +177,21 @@ export async function updateIssuingOrganization(id: number, data: Partial<Issuin
   return row;
 }
 
+export async function reviewIssuingOrganization(id: number, decision: "approved" | "rejected", reviewedBy: number) {
+  const existing = await repo.findIssuingOrganizationById(id);
+  if (!existing) throw new NotFoundError("Issuing organization not found");
+  return repo.updateIssuingOrganization(id, { status: decision, reviewed_by: reviewedBy, reviewed_at: new Date() });
+}
+
 // ── Accreditations ──
 
-export const listAccreditations = repo.listAccreditations;
-export const countAccreditations = repo.countAccreditations;
+export function listAccreditations(limit: number, offset: number, approvedOnly?: boolean) {
+  return repo.listAccreditations(limit, offset, approvedOnly);
+}
+
+export function countAccreditations(approvedOnly?: boolean) {
+  return repo.countAccreditations(approvedOnly);
+}
 
 export function createAccreditation(data: AccreditationInput) {
   const { scope_country_ids = [], ...rest } = data;
@@ -167,6 +202,17 @@ export function createAccreditation(data: AccreditationInput) {
     // "no countries selected" means the accreditation applies everywhere.
     is_global: scope_country_ids.length === 0,
   }, scope_country_ids);
+}
+
+/**
+ * Same insert as createAccreditation, for a self-service submitter (business/institution)
+ * instead of an admin — starts unapproved and non-global (the `accreditations` table's own
+ * default) so it needs an admin's reviewAccreditation before it counts as a vetted, global
+ * catalog entry other organizations can be assumed to trust.
+ */
+export function proposeAccreditation(data: AccreditationInput) {
+  const { scope_country_ids: _ignored, ...rest } = data;
+  return repo.insertAccreditation({ ...rest, business_id: null, status: "pending", is_global: false }, []);
 }
 
 async function requireAccreditation(id: number) {
@@ -195,4 +241,30 @@ export async function reviewAccreditation(id: number, decision: "approved" | "re
 export async function deleteAccreditation(id: number) {
   await requireAccreditation(id);
   await repo.deleteAccreditation(id);
+}
+
+// ── Registration Types ──
+
+export const listRegistrationTypes = repo.listRegistrationTypes;
+export const countRegistrationTypes = repo.countRegistrationTypes;
+export const listActiveRegistrationTypes = repo.listActiveRegistrationTypes;
+
+export function createRegistrationType(data: RegistrationTypeInput) {
+  return repo.insertRegistrationType({ ...data, country_id: data.country_id ?? null });
+}
+
+async function requireRegistrationType(id: number) {
+  const row = await repo.findRegistrationTypeById(id);
+  if (!row) throw new NotFoundError("Registration type not found");
+  return row;
+}
+
+export async function updateRegistrationType(id: number, data: Partial<RegistrationTypeInput>) {
+  await requireRegistrationType(id);
+  return repo.updateRegistrationType(id, data);
+}
+
+export async function deleteRegistrationType(id: number) {
+  await requireRegistrationType(id);
+  await repo.deleteRegistrationType(id);
 }

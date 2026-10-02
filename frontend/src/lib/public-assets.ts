@@ -42,6 +42,8 @@ export const ICON = {
   height: 283,
 } as const;
 
+export const APP_ICON_ATTR = "data-app-icon";
+
 const PHOTOS = `${BUCKET}/photos`;
 
 /**

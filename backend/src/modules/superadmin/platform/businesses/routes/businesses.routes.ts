@@ -14,6 +14,8 @@ import {
   InstitutionPatchSchema, InstitutionRoleParamsSchema, ListQuerySchema, MemberInviteSchema, MemberListQuerySchema,
   MemberParamsSchema, MemberPatchSchema, PublishedPatchSchema, RoleCreateSchema, RolePatchSchema, StatusPatchSchema,
 } from "../schemas/businesses.schema.js";
+import { ContactInputSchema, ContactPatchSchema } from "../../../../agents/schemas/agents.schema.js";
+import { issuePreviewTokenForOrg } from "../../../../auth/auth.service.js";
 
 const logger = createChildLogger("admin-businesses");
 
@@ -49,9 +51,13 @@ export async function adminBusinessRoutes(app: FastifyInstance) {
   // dropdown), by category_slug (e.g. partner-pairing lookups that only know a slug), or by
   // `kind` (a consultancy/partner picker that wants one table, no category restriction).
   app.get("/businesses", async (req, reply) => {
-    const { search, status, category, category_slug, sort, kind, business_type, ...pagination } = ListQuerySchema.parse(req.query);
+    const {
+      search, status, category, category_slug, sort, kind, business_type, origin, ownership, ...pagination
+    } = ListQuerySchema.parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
-    const { rows, total } = await service.listBusinesses(limit, offset, search, status, category, category_slug, kind, sort, business_type);
+    const { rows, total } = await service.listBusinesses(
+      limit, offset, search, status, category, category_slug, kind, sort, business_type, origin, ownership,
+    );
     return reply.send(buildPaginatedResponse(rows, total, pagination));
   });
 
@@ -138,6 +144,16 @@ export async function adminBusinessRoutes(app: FastifyInstance) {
   app.get("/institutions/:id", async (req, reply) => {
     const { id } = IdParamSchema.parse(req.params);
     return reply.send(await service.getInstitutionDetail(id));
+  });
+
+  // Mints the superadmin editor's "Preview" button a short-lived preview_token for this
+  // institution (see issuePreviewTokenForOrg) — never a reusable admin session credential,
+  // since this ends up in a public page's URL (browser history, logs, referrer).
+  app.post("/institutions/:id/preview-token", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    const institution = await platformRepo.findInstitutionById(id);
+    if (!institution) throw new NotFoundError("Institution not found");
+    return reply.send({ preview_token: issuePreviewTokenForOrg(institution.schema_name, "institution") });
   });
 
   // PATCH /institutions/:id — the institution twin of PATCH /businesses/:id.
@@ -353,6 +369,75 @@ export async function adminBusinessRoutes(app: FastifyInstance) {
     const { id, memberId } = MemberParamsSchema.parse(req.params);
     await service.removeMember(id, memberId);
     await platformRepo.logAdminAction(Number(req.auth.sub), "BUSINESS_MEMBER_REMOVED", "business", undefined, { business_id: id, member_id: memberId });
+    return reply.status(204).send();
+  });
+
+  // ── Contacts (Contacts tab) — same `agents` table as Users, viewed/created via a CRM form.
+  // "Add Contact" creates a real dormant agent row, no invite email is sent.
+
+  app.get("/businesses/:id/contacts", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    const { search, ...pagination } = MemberListQuerySchema.parse(req.query);
+    const { limit, offset } = paginationToOffset(pagination);
+    const { rows, total } = await service.listContacts(id, limit, offset, search);
+    return reply.send(buildPaginatedResponse(rows, total, pagination));
+  });
+
+  app.post("/businesses/:id/contacts", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    const data = ContactInputSchema.parse(req.body);
+    const contact = await service.createContact(id, data);
+    await platformRepo.logAdminAction(Number(req.auth.sub), "BUSINESS_CONTACT_CREATED", "business", undefined, { business_id: id });
+    return reply.status(201).send(contact);
+  });
+
+  app.patch("/businesses/:id/contacts/:contactId", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    const subId = Number((req.params as { contactId: string }).contactId);
+    const data = ContactPatchSchema.parse(req.body);
+    const contact = await service.updateContact(id, subId, data);
+    await platformRepo.logAdminAction(Number(req.auth.sub), "BUSINESS_CONTACT_UPDATED", "business", undefined, { business_id: id, contact_id: subId });
+    return reply.send(contact);
+  });
+
+  app.delete("/businesses/:id/contacts/:contactId", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    const subId = Number((req.params as { contactId: string }).contactId);
+    await service.deleteContact(id, subId);
+    await platformRepo.logAdminAction(Number(req.auth.sub), "BUSINESS_CONTACT_DELETED", "business", undefined, { business_id: id });
+    return reply.status(204).send();
+  });
+
+  app.get("/institutions/:id/contacts", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    const { search, ...pagination } = MemberListQuerySchema.parse(req.query);
+    const { limit, offset } = paginationToOffset(pagination);
+    const { rows, total } = await service.listInstitutionContacts(id, limit, offset, search);
+    return reply.send(buildPaginatedResponse(rows, total, pagination));
+  });
+
+  app.post("/institutions/:id/contacts", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    const data = ContactInputSchema.parse(req.body);
+    const contact = await service.createInstitutionContact(id, data);
+    await platformRepo.logAdminAction(Number(req.auth.sub), "INSTITUTION_CONTACT_CREATED", "institution", undefined, { institution_id: id });
+    return reply.status(201).send(contact);
+  });
+
+  app.patch("/institutions/:id/contacts/:contactId", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    const subId = Number((req.params as { contactId: string }).contactId);
+    const data = ContactPatchSchema.parse(req.body);
+    const contact = await service.updateInstitutionContact(id, subId, data);
+    await platformRepo.logAdminAction(Number(req.auth.sub), "INSTITUTION_CONTACT_UPDATED", "institution", undefined, { institution_id: id, contact_id: subId });
+    return reply.send(contact);
+  });
+
+  app.delete("/institutions/:id/contacts/:contactId", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    const subId = Number((req.params as { contactId: string }).contactId);
+    await service.deleteInstitutionContact(id, subId);
+    await platformRepo.logAdminAction(Number(req.auth.sub), "INSTITUTION_CONTACT_DELETED", "institution", undefined, { institution_id: id });
     return reply.status(204).send();
   });
 

@@ -9,9 +9,9 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { deleteServiceThunk, fetchServices, toggleServicePublished, updateService } from "../../store/businesses-slice";
+import { deleteServiceThunk, fetchServices, toggleServicePublished } from "../../store/businesses-slice";
 import type { BusinessService } from "../../apis/types";
-import { PriceEditPopover } from "../services/price-edit-popover";
+import { CourseDetailsLinkButton } from "../services/course-details-link-button";
 import { DeleteServiceDialog } from "../services/delete-service-dialog";
 
 const PAGE_SIZE = 10;
@@ -64,15 +64,6 @@ export function ServicesTab({
       toast.error("Couldn't delete service", { description: (e as Error).message });
     } finally {
       setDeleting(false);
-    }
-  };
-
-  const handlePriceSave = async (serviceId: string, price: number) => {
-    try {
-      await dispatch(updateService({ id: businessId, serviceId, patch: { price } })).unwrap();
-      toast.success("Price updated");
-    } catch (e) {
-      toast.error("Couldn't update price", { description: (e as Error).message });
     }
   };
 
@@ -131,7 +122,7 @@ export function ServicesTab({
                   >
                     <Pencil className="h-4 w-4" />
                   </Button>
-                  <PriceEditPopover price={s.price} onSave={(next) => handlePriceSave(s.id, next)} />
+                  <CourseDetailsLinkButton onClick={() => router.push(`/admin/platform/businesses/${businessId}/services/${s.id}/edit`)} />
                   <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => setDeletingService(s)} aria-label="Delete service">
                     <Trash2 className="h-4 w-4" />
                   </Button>

@@ -130,17 +130,20 @@ const SELF_SERVICE_JOB_URL_DOMAIN = "self-service.globalyhub.invalid";
  * create path mints one. No claim flow is involved: onboardInstitution already marks these
  * claim_status 'claimed'.
  *
- * status "done" keeps the pipeline workers off it (they claim on pending/processing/stalled);
- * source_type names the origin instead. institution_url is a per-institution placeholder —
- * updateInstitutionProfile syncs the real website onto it when one is supplied, which is what
- * the AI embed widget scopes courses on.
+ * status "exported" keeps the pipeline workers off it (they claim on pending/processing/stalled)
+ * while also making the institution's courses pass the public/preview visibility check
+ * (courses.repository.ts's PUBLICLY_VISIBLE requires status = 'exported' — without it, the
+ * owner's own "Preview" button 404s, since a self-registered institution never goes through
+ * the admin promote step that would otherwise set this). source_type names the origin instead.
+ * institution_url is a per-institution placeholder — updateInstitutionProfile syncs the real
+ * website onto it when one is supplied, which is what the AI embed widget scopes courses on.
  */
 async function mintSelfServiceJob(institutionName: string, subdomain: string): Promise<string> {
   const row = await jobsRepo.insertJob({
     institution_name: institutionName,
     institution_url: `https://${SELF_SERVICE_JOB_URL_DOMAIN}/${subdomain}`,
     source_type: "self_service",
-    status: "done",
+    status: "exported",
     // Promote routes by category; keep it resolvable by slug rather than a hardcoded id.
     business_category_id: await promoteRepo.findCategoryIdBySlug("institutions"),
   });
@@ -152,6 +155,10 @@ export async function onboardInstitution(userId: number, data: OnboardingInstitu
   const user = await repo.findByIdFull(userId);
   if (!user) throw new NotFoundError("User not found");
 
+  if (!data.email && (await repo.ownsAnyOrg(userId))) {
+    throw new BadRequestError("Institution email is required when you already have a business or institution");
+  }
+
   // Auto-generate subdomain from institution name, unique across businesses + institutions.
   const subdomain = await generateSubdomain(data.institution_name, async (candidate) => {
     const [inst, biz] = await Promise.all([
@@ -162,6 +169,7 @@ export async function onboardInstitution(userId: number, data: OnboardingInstitu
   });
 
   const sourceJobId = await mintSelfServiceJob(data.institution_name, subdomain);
+  const institutionsCategoryId = await promoteRepo.findCategoryIdBySlug("institutions");
 
   const institution = await repo.insertInstitution({
     platform_user_id: userId,
@@ -173,12 +181,14 @@ export async function onboardInstitution(userId: number, data: OnboardingInstitu
     subdomain,
     institution_name: data.institution_name,
     institution_type: data.institution_type,
+    business_category_id: institutionsCategoryId,
     country_id: data.country_id,
     state: data.state,
     city: data.city,
     address: data.address,
     postcode: data.postcode,
     claim_status: "claimed",
+    origin: "signup",
   });
 
   try {

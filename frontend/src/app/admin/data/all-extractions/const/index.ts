@@ -14,7 +14,7 @@ import {
   XCircle,
   Pause,
 } from "lucide-react";
-import type { ExtractionStatus } from "../apis/types";
+import type { ExtractionStatus, SiteUrlCategory } from "../apis/types";
 
 export type StatusConfig = { label: string; icon: LucideIcon; className: string; spin?: boolean; accent: string };
 
@@ -67,6 +67,13 @@ export function statusesForFilterValue(value: string): ExtractionStatus[] {
   return STATUS_FILTER_OPTIONS.find((o) => o.value === value)?.statuses ?? [];
 }
 
+/** Site tab: what kind of page a site URL is. Keys = backend lib/url-categories.ts SITE_URL_CATEGORIES. */
+export const SITE_URL_CATEGORY_LABELS: Record<SiteUrlCategory, string> = {
+  overview: "Overview", about_us: "About us", contact_us: "Contact us", course: "Courses", branches: "Branches",
+  agents: "Agents", fees: "Fees", study_units: "Study units", study_options: "Study options", intake: "Intake",
+  eligibility: "Eligibility", accreditations: "Accreditations", scholarships: "Scholarships", other: "Other",
+};
+
 // Every guided-URL bucket the backend actually reads. Keys must stay `*_urls` — the job
 // worker seeds the crawl from every key with that suffix, and the per-course data steps
 // look up `<data_type>_urls`. Adding a category here is enough to make it work end to end.
@@ -80,6 +87,7 @@ export const GUIDED_URL_CATEGORIES = [
   { key: "eligibility_urls", label: "Entry Requirements" },
   { key: "units_urls", label: "Study Units / Curriculum" },
   { key: "accreditations_urls", label: "Accreditations" },
+  { key: "scholarships_urls", label: "Scholarships / Bursaries" },
 ] as const;
 
 // Same `*_urls` suffix contract as GUIDED_URL_CATEGORIES, just pointed at a visa/migration
@@ -261,9 +269,6 @@ export const APPLICABLE_TO_OPTIONS = [
   { value: "both", label: "Both" },
 ];
 
-/** guided_urls keys a pipeline step can require before it will run. */
-export type ContextKey = "branches_urls" | "agents_urls" | "course_list_urls" | "extract_fields";
-
 export type SortOrder = "newest" | "oldest" | "name_asc" | "name_desc";
 
 export const SORT_OPTIONS: { value: SortOrder; label: string }[] = [
@@ -273,5 +278,3 @@ export const SORT_OPTIONS: { value: SortOrder; label: string }[] = [
   { value: "name_desc", label: "Name Z → A" },
 ];
 
-/** The durations courses are actually advertised in, in weeks — the column's unit. */
-export const DURATION_WEEK_OPTIONS = [4, 8, 12, 16, 24, 26, 39, 52, 78, 104, 130, 156, 208, 260];

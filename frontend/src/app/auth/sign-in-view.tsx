@@ -15,6 +15,7 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { sendSignInOtp, resendSignInOtp, verifySignInOtp, resetSignInError, fetchMe } from "./store/auth-slice";
 import { LOGO } from "@/lib/public-assets";
+import { SIGN_UP_ENABLED } from "@/app/auth/const";
 
 const emailSchema = z.string().trim().max(255).pipe(z.email("Invalid email address"));
 const otpSchema = z.string().trim().length(6, "Please enter the 6-digit code").regex(/^\d+$/, "Code must be numeric");
@@ -179,12 +180,14 @@ export function SignInView() {
                     "Send Verification Code"
                   )}
                 </Button>
-                <p className="text-center text-sm text-muted-foreground pt-2">
-                  Don&apos;t have an account?{" "}
-                  <Link href={signUpHref} className="text-primary font-medium hover:underline">
-                    Sign up
-                  </Link>
-                </p>
+                {SIGN_UP_ENABLED && (
+                  <p className="text-center text-sm text-muted-foreground pt-2">
+                    Don&apos;t have an account?{" "}
+                    <Link href={signUpHref} className="text-primary font-medium hover:underline">
+                      Sign up
+                    </Link>
+                  </p>
+                )}
               </form>
             )}
 

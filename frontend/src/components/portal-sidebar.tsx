@@ -29,6 +29,9 @@ export type PortalNavGroup = {
   /** Where the rail tile points. Defaults to the first item's href. */
   href?: string;
   items?: PortalNavItem[];
+  /** Pinned to the bottom of the rail (e.g. Settings) instead of following the list. */
+  pinBottom?: boolean;
+  alwaysShowSubmenu?: boolean;
 };
 
 export function isPortalNavActive(pathname: string | null, href: string, currentSearch?: string | null): boolean {
@@ -43,16 +46,49 @@ export function isPortalNavActive(pathname: string | null, href: string, current
 
 const groupHref = (group: PortalNavGroup) => group.href ?? group.items?.[0]?.href ?? "#";
 
+/**
+ * Which item (if any) among a group's own `?tab=` links is active — the exact-path+tab match
+ * `isPortalNavActive` already handles, PLUS a route one level deeper than the tabbed page itself
+ * (e.g. `/business/profile/49/services/:id/edit`, a real sub-route, not a `?tab=` page): the
+ * first extra path segment ("services") is matched against each item's own tab value first, so
+ * Services highlights there instead of always falling back to whichever item has no tab at all.
+ */
+function bestActiveItem(pathname: string | null, currentSearch: string | null, items: PortalNavItem[]): PortalNavItem | null {
+  // A TRUE exact-path match (the tabbed page itself) — checked directly rather than through
+  // isPortalNavActive, whose own nested-route fallback would otherwise let the tab-less item
+  // win this pass too and never reach the segment-matching logic below.
+  const exact = items.find((item) => pathname === item.href.split("?")[0]
+    && new URLSearchParams(item.href.split("?")[1] ?? "").get("tab") === new URLSearchParams(currentSearch ?? "").get("tab"));
+  if (exact) return exact;
+  if (!pathname) return null;
+  const samePage = items.find((item) => item.href === pathname);
+  if (samePage) return samePage;
+  for (const item of items) {
+    const [path = "", hrefQuery] = item.href.split("?");
+    if (!pathname.startsWith(`${path}/`)) continue;
+    const hrefTab = new URLSearchParams(hrefQuery ?? "").get("tab");
+    const extraSegment = pathname.slice(path.length + 1).split("/")[0];
+    if (hrefTab === extraSegment) return item;
+  }
+  // No sibling's tab matches the extra segment — fall back to the tab-less item, same as
+  // isPortalNavActive's own nested-route behavior (a group whose page has no tab query at all).
+  return items.find((item) => {
+    const [path, hrefQuery] = item.href.split("?");
+    return pathname.startsWith(`${path}/`) && new URLSearchParams(hrefQuery ?? "").get("tab") === null;
+  }) ?? null;
+}
+
 const isGroupActive = (pathname: string | null, search: string | null, group: PortalNavGroup) =>
   (!!group.href && isPortalNavActive(pathname, group.href, search)) ||
-  !!group.items?.some((item) => isPortalNavActive(pathname, item.href, search));
+  !!(group.items && bestActiveItem(pathname, search, group.items));
 
 export function PortalSidebar({ groups }: Readonly<{ groups: PortalNavGroup[] }>) {
   const pathname = usePathname();
   const search = useSearchParams().toString();
   const activeGroup = groups.find((group) => isGroupActive(pathname, search, group));
   // One item needs no column of its own — the rail tile already goes there.
-  const submenuItems = (activeGroup?.items?.length ?? 0) > 1 ? activeGroup!.items! : [];
+  const submenuItems = (activeGroup?.items?.length ?? 0) > (activeGroup?.alwaysShowSubmenu ? 0 : 1) ? activeGroup!.items! : [];
+  const activeItem = activeGroup?.items ? bestActiveItem(pathname, search, activeGroup.items) : null;
 
   return (
     <aside className="hidden md:flex sticky top-16 z-30 h-[calc(100vh-4rem)] shrink-0 border-r border-border bg-card/95 backdrop-blur">
@@ -63,26 +99,30 @@ export function PortalSidebar({ groups }: Readonly<{ groups: PortalNavGroup[] }>
           submenuItems.length > 0 && "border-r border-border",
         )}
       >
-        <nav className="flex flex-col items-center gap-1">
-          {groups.map((group) => (
-            <Link
-              key={group.label}
-              href={groupHref(group)}
-              aria-label={group.label}
-              className={cn(
-                "flex h-14 w-16 flex-col items-center justify-center gap-1 rounded-lg px-1 transition-colors",
-                activeGroup?.label === group.label
-                  ? "bg-primary/10 text-primary"
-                  : "text-muted-foreground hover:bg-muted hover:text-foreground",
-              )}
-            >
-              <group.icon className="h-5 w-5" />
-              <span className="max-w-full truncate text-center text-[10px] font-medium leading-tight">
-                {group.label}
-              </span>
-            </Link>
-          ))}
-        </nav>
+        {[groups.filter((g) => !g.pinBottom), groups.filter((g) => g.pinBottom)].map((list, i) =>
+          list.length === 0 ? null : (
+            <nav key={i} className={cn("flex flex-col items-center gap-1", i === 1 && "mt-auto pt-2")}>
+              {list.map((group) => (
+                <Link
+                  key={group.label}
+                  href={groupHref(group)}
+                  aria-label={group.label}
+                  className={cn(
+                    "flex h-14 w-16 flex-col items-center justify-center gap-1 rounded-lg px-1 transition-colors",
+                    activeGroup?.label === group.label
+                      ? "bg-primary/10 text-primary"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  )}
+                >
+                  <group.icon className="h-5 w-5" />
+                  <span className="max-w-full truncate text-center text-[10px] font-medium leading-tight">
+                    {group.label}
+                  </span>
+                </Link>
+              ))}
+            </nav>
+          ),
+        )}
       </div>
 
       {submenuItems.length > 0 && activeGroup && (
@@ -92,7 +132,7 @@ export function PortalSidebar({ groups }: Readonly<{ groups: PortalNavGroup[] }>
           </div>
           <nav className="flex flex-col gap-0.5 px-2">
             {submenuItems.map((item) => {
-              const active = isPortalNavActive(pathname, item.href, search);
+              const active = activeItem?.href === item.href;
               return (
                 <Link
                   key={item.href}

@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Mail, Pencil, Phone } from "lucide-react";
+import { Building2, Mail, Pencil, Phone } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -71,7 +71,11 @@ export function InstitutionHeaderCard({
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-2">
             <h1 className="text-lg font-bold text-foreground">{institution.business_name}</h1>
-            <Badge variant="outline" className="border-sky-200 text-sky-700">Institution</Badge>
+            {institution.category_name && (
+              <Badge variant="secondary" className="gap-1">
+                <Building2 className="h-3 w-3" /> {institution.category_name}
+              </Badge>
+            )}
             <Badge className={STATUS_COLORS[institution.status]}>{STATUS_LABELS[institution.status]}</Badge>
           </div>
           {location && <p className="mt-1 text-sm text-muted-foreground">{location}</p>}

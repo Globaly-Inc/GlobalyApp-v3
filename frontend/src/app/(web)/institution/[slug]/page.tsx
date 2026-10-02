@@ -1,14 +1,14 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Info } from "lucide-react";
+import { Info, ShieldCheck } from "lucide-react";
 import { getInstitutionBySlug, getInstitutionCourses } from "../../search/api";
 import { ProfileHero } from "../../components/profile/profile-hero";
 import { ProfileSection } from "../../components/profile/profile-section";
 import { ProfileContactCard } from "../../components/profile/profile-contact-card";
 import { ProfileLocationsCard } from "../../components/profile/profile-locations-card";
 import {
-  joinParts, toGalleryItems, toProfileSocials, type ProfileData, type ProfileLocation,
+  joinParts, toGalleryItems, toProfileRegistration, toProfileSocials, type ProfileData, type ProfileLocation,
 } from "../../components/profile/profile-data";
 import type { InstitutionDetail } from "../../search/types";
 import { InstitutionStats } from "./components/institution-stats";
@@ -21,12 +21,13 @@ import { PageViews } from "../../components/page-views";
 
 type InstitutionPageProps = Readonly<{
   params: Promise<{ slug: string }>;
-  searchParams: Promise<{ page?: string; search?: string; level?: string }>;
+  searchParams: Promise<{ page?: string; search?: string; level?: string; preview_token?: string }>;
 }>;
 
-export async function generateMetadata({ params }: InstitutionPageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: InstitutionPageProps): Promise<Metadata> {
   const { slug } = await params;
-  const institution = await getInstitutionBySlug(slug);
+  const { preview_token } = await searchParams;
+  const institution = await getInstitutionBySlug(slug, preview_token);
   if (!institution) return { title: "Institution — Globaly" };
   return {
     title: `${institution.business_name} — Globaly`,
@@ -39,6 +40,10 @@ export async function generateMetadata({ params }: InstitutionPageProps): Promis
  * so its own address stands in as the single campus rather than leaving the map card empty.
  */
 function toLocations(institution: InstitutionDetail): ProfileLocation[] {
+  // `show_locations` false means the owner set the Locations card to Private. The server already
+  // withheld the campuses; the own-address fallback below is built here, so it stops here too.
+  if (institution.show_locations === false) return [];
+
   if (institution.campuses.length > 0) {
     return institution.campuses.map((campus) => ({
       id: campus.id,
@@ -86,23 +91,22 @@ function toProfileData(institution: InstitutionDetail): ProfileData {
     ),
     socials: toProfileSocials(institution),
     locations: toLocations(institution),
-    // The profile no longer surfaces a Registration & Licenses card.
-    registration: [],
+    registration: toProfileRegistration(institution.registration_number, institution.registration_licenses),
     gallery: toGalleryItems(institution.gallery_image_urls, institution.video_urls),
   };
 }
 
 export default async function InstitutionPage({ params, searchParams }: InstitutionPageProps) {
   const { slug } = await params;
-  const { page: pageParam, search, level } = await searchParams;
+  const { page: pageParam, search, level, preview_token } = await searchParams;
   const page = Math.max(1, Number(pageParam) || 1);
 
-  const institution = await getInstitutionBySlug(slug);
+  const institution = await getInstitutionBySlug(slug, preview_token);
   if (!institution) notFound();
 
   // The catalog scrolls inside its card rather than paging, so ask for the whole first page of
   // it — 100 is the API cap. Past that the section falls back to showing its pager.
-  const { data: courses, meta } = await getInstitutionCourses(slug, { page, search, degree_level: level, limit: 100 });
+  const { data: courses, meta } = await getInstitutionCourses(slug, { page, search, degree_level: level, limit: 100 }, preview_token);
   const profile = toProfileData(institution);
   // The stats and the subject grid count the whole catalog; `meta.total` counts only the
   // level/search currently shown.
@@ -159,6 +163,20 @@ export default async function InstitutionPage({ params, searchParams }: Institut
 
         <div className="space-y-4 md:space-y-6">
           <ProfileContactCard data={profile} />
+
+          {profile.registration.length > 0 && (
+            <ProfileSection icon={ShieldCheck} title="Registration & Licenses">
+              <div className="space-y-3">
+                {profile.registration.map((row) => (
+                  <div key={`${row.label}-${row.value}`} className="flex justify-between gap-3 text-sm">
+                    <span className="text-muted-foreground">{row.label}</span>
+                    <span className="font-medium text-foreground">{row.value}</span>
+                  </div>
+                ))}
+              </div>
+            </ProfileSection>
+          )}
+
           <InstitutionTeamCard members={institution.members} />
         </div>
       </div>

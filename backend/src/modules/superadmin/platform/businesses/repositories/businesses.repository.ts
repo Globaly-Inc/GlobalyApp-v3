@@ -3,7 +3,8 @@
 import type { Knex } from "knex";
 import { masterKnex } from "../../../../../core/db/master-pool.js";
 import { getKnex } from "../../../../../core/db/pool-manager.js";
-import { SUPERADMIN_SCHEMA as S } from "../../../consts.js";
+// Services counts are approved courses only — the same set the public pages show.
+import { APPROVED_COURSE_STATUSES, SUPERADMIN_SCHEMA as S } from "../../../consts.js";
 
 const now = () => masterKnex.fn.now();
 
@@ -49,6 +50,11 @@ function businessListQuery() {
     .whereNull("b.deleted_at");
 }
 
+// Same "owner has actually logged in" rule as the is_unclaimed SELECT below — kept as one
+// string so the WHERE (ownership filter) and the SELECT (is_unclaimed column) can't drift apart.
+const BUSINESS_UNCLAIMED_SQL = "(b.owner_id IS NULL OR (owner.is_email_verified IS NOT TRUE AND b.claim_status != 'claimed'))";
+const INSTITUTION_UNCLAIMED_SQL = "(i.platform_user_id IS NULL OR (owner.is_email_verified IS NOT TRUE AND i.claim_status != 'claimed'))";
+
 function applyBusinessFilters<T extends ReturnType<typeof businessListQuery>>(
   q: T,
   search?: string,
@@ -56,6 +62,8 @@ function applyBusinessFilters<T extends ReturnType<typeof businessListQuery>>(
   category?: number,
   categorySlug?: string,
   businessType?: string,
+  origin?: string,
+  ownership?: string,
 ) {
   if (search) {
     q.where((b) =>
@@ -68,19 +76,22 @@ function applyBusinessFilters<T extends ReturnType<typeof businessListQuery>>(
   if (category) q.where({ "b.business_category_id": category });
   if (businessType) q.where({ "b.business_type": businessType });
   if (categorySlug) q.where({ "cat.slug": categorySlug });
+  if (origin) q.where({ "b.origin": origin });
+  if (ownership === "unclaimed") q.whereRaw(BUSINESS_UNCLAIMED_SQL);
+  if (ownership === "owned") q.whereRaw(`NOT ${BUSINESS_UNCLAIMED_SQL}`);
   return q;
 }
 
 export async function listBusinesses(
   limit: number, offset: number, search?: string, status?: string, category?: number, categorySlug?: string,
-  sort: BusinessSort = "name_asc", businessType?: string,
+  sort: BusinessSort = "name_asc", businessType?: string, origin?: string, ownership?: string,
 ) {
   const q = applySort(
-    applyBusinessFilters(businessListQuery(), search, status, category, categorySlug, businessType).select(
+    applyBusinessFilters(businessListQuery(), search, status, category, categorySlug, businessType, origin, ownership).select(
       "b.id", "b.business_name", "b.subdomain", "b.business_type", "b.business_category_id",
       "b.email", "b.phone", "b.status", "b.claim_status", "b.is_published", "b.country_id", "b.city",
       "b.logo_url", "b.account_status", "b.created_at",
-      "b.owner_id", "b.schema_name", "b.profile_views", "b.source_job_id",
+      "b.owner_id", "b.schema_name", "b.profile_views", "b.source_job_id", "b.origin",
       // Unclaimed means no one has actually signed in as this business's owner yet — an
       // owner_id assigned at creation (e.g. superadmin's "Add Business" placeholder account)
       // doesn't count until that owner verifies via OTP, which is the only thing that flips
@@ -111,7 +122,7 @@ export async function listBusinesses(
   // courses would otherwise always read as 0.
   const [courseCounts, campusCounts] = borrowedJobIds.length
     ? await Promise.all([
-        masterKnex(`${S}.extraction_courses`).whereIn("job_id", borrowedJobIds).groupBy("job_id").select("job_id").count("id as count"),
+        masterKnex(`${S}.extraction_courses`).whereIn("job_id", borrowedJobIds).whereIn("verification_status", [...APPROVED_COURSE_STATUSES]).groupBy("job_id").select("job_id").count("id as count"),
         masterKnex(`${S}.extraction_campuses`).whereIn("job_id", borrowedJobIds).groupBy("job_id").select("job_id").count("id as count"),
       ])
     : [[], []];
@@ -144,8 +155,12 @@ export async function listBusinesses(
   return rows.map((row: any) => ({ ...row, kind: "business" as const }));
 }
 
-export async function countBusinesses(search?: string, status?: string, category?: number, categorySlug?: string, businessType?: string) {
-  const q = applyBusinessFilters(businessListQuery(), search, status, category, categorySlug, businessType).count("b.id as count");
+export async function countBusinesses(
+  search?: string, status?: string, category?: number, categorySlug?: string, businessType?: string,
+  origin?: string, ownership?: string,
+) {
+  const q = applyBusinessFilters(businessListQuery(), search, status, category, categorySlug, businessType, origin, ownership)
+    .count("b.id as count");
   const [row] = await q;
   return Number(row.count);
 }
@@ -156,14 +171,11 @@ export async function countBusinesses(search?: string, status?: string, category
 // the same card. `kind` is what tells them apart — every row carries it, so a caller can route
 // a click to the right detail screen.
 
-/** The 'institutions' business category. Institutions have no category column of their own — they
- *  ARE that category — so it is reported as a constant to keep the row shape identical. */
-const INSTITUTION_CATEGORY_SLUG = "institutions";
-
 function institutionListQuery() {
   return masterKnex("institutions as i")
     .leftJoin("platform_users as owner", "owner.id", "i.platform_user_id")
     .leftJoin("countries as c", "c.id", "i.country_id")
+    .leftJoin("business_categories as cat", "cat.id", "i.business_category_id")
     .whereNull("i.deleted_at");
 }
 
@@ -171,6 +183,8 @@ function applyInstitutionFilters<T extends ReturnType<typeof institutionListQuer
   q: T,
   search?: string,
   status?: string,
+  origin?: string,
+  ownership?: string,
 ) {
   if (search) {
     q.where((b) =>
@@ -180,18 +194,18 @@ function applyInstitutionFilters<T extends ReturnType<typeof institutionListQuer
     );
   }
   if (status) q.where({ "i.status": status });
+  if (origin) q.where({ "i.origin": origin });
+  if (ownership === "unclaimed") q.whereRaw(INSTITUTION_UNCLAIMED_SQL);
+  if (ownership === "owned") q.whereRaw(`NOT ${INSTITUTION_UNCLAIMED_SQL}`);
   return q;
 }
 
 export async function listInstitutions(
   limit: number, offset: number, search?: string, status?: string, sort: BusinessSort = "name_asc",
+  origin?: string, ownership?: string,
 ) {
-  const category = await masterKnex("business_categories")
-    .where({ slug: INSTITUTION_CATEGORY_SLUG })
-    .first("id", "name");
-
   const rows = await applySort(
-    applyInstitutionFilters(institutionListQuery(), search, status).select(
+    applyInstitutionFilters(institutionListQuery(), search, status, origin, ownership).select(
       "i.id",
       // Aliased into the business column names so one row type and one card serve both.
       "i.institution_name as business_name",
@@ -199,11 +213,11 @@ export async function listInstitutions(
       "i.institution_type as business_type",
       "i.email", "i.phone", "i.status", "i.claim_status", "i.is_published", "i.country_id", "i.city",
       "i.logo_url", "i.account_status", "i.created_at",
-      "i.platform_user_id as owner_id", "i.schema_name", "i.source_job_id",
+      "i.platform_user_id as owner_id", "i.schema_name", "i.source_job_id", "i.origin",
       // See listBusinesses' matching comment — same "owner has actually logged in" rule.
       masterKnex.raw("(i.platform_user_id IS NULL OR (owner.is_email_verified IS NOT TRUE AND i.claim_status != 'claimed')) as is_unclaimed"),
-      masterKnex.raw("?::int as business_category_id", [category?.id ?? null]),
-      masterKnex.raw("?::text as category_name", [category?.name ?? "Institutions"]),
+      "i.business_category_id",
+      "cat.name as category_name",
       "c.name as country_name",
       "owner.first_name as owner_first_name", "owner.last_name as owner_last_name", "owner.email as owner_email",
     ),
@@ -218,7 +232,7 @@ export async function listInstitutions(
   const jobIds = rows.map((r: any) => r.source_job_id).filter(Boolean);
   const [courseCounts, campusCounts] = jobIds.length
     ? await Promise.all([
-        masterKnex(`${S}.extraction_courses`).whereIn("job_id", jobIds).groupBy("job_id").select("job_id").count("id as count"),
+        masterKnex(`${S}.extraction_courses`).whereIn("job_id", jobIds).whereIn("verification_status", [...APPROVED_COURSE_STATUSES]).groupBy("job_id").select("job_id").count("id as count"),
         masterKnex(`${S}.extraction_campuses`).whereIn("job_id", jobIds).groupBy("job_id").select("job_id").count("id as count"),
       ])
     : [[], []];
@@ -241,13 +255,12 @@ export async function listInstitutions(
   }));
 }
 
-export async function countInstitutions(search?: string, status?: string) {
-  const [row] = await applyInstitutionFilters(institutionListQuery(), search, status).count("i.id as count");
+export async function countInstitutions(search?: string, status?: string, origin?: string, ownership?: string) {
+  const [row] = await applyInstitutionFilters(institutionListQuery(), search, status, origin, ownership).count("i.id as count");
   return Number(row.count);
 }
 
 export async function findInstitutionDetail(id: number) {
-  const category = await masterKnex("business_categories").where({ slug: INSTITUTION_CATEGORY_SLUG }).first("id", "name");
   const row = await institutionListQuery()
     .where("i.id", id)
     .select(
@@ -264,11 +277,11 @@ export async function findInstitutionDetail(id: number) {
       "i.linkedin_url", "i.facebook_url", "i.instagram_url", "i.twitter_url", "i.youtube_url", "i.whatsapp_url",
       "i.gallery_images", "i.video_urls",
       "i.account_status", "i.created_at", "i.updated_at", "i.verified_at",
-      "i.platform_user_id as owner_id", "i.schema_name", "i.source_job_id",
+      "i.platform_user_id as owner_id", "i.schema_name", "i.source_job_id", "i.origin",
       // See listBusinesses' matching comment — same "owner has actually logged in" rule.
       masterKnex.raw("(i.platform_user_id IS NULL OR (owner.is_email_verified IS NOT TRUE AND i.claim_status != 'claimed')) as is_unclaimed"),
-      masterKnex.raw("?::int as business_category_id", [category?.id ?? null]),
-      masterKnex.raw("?::text as category_name", [category?.name ?? "Institutions"]),
+      "i.business_category_id",
+      "cat.name as category_name",
       "c.name as country_name",
       "owner.first_name as owner_first_name", "owner.last_name as owner_last_name", "owner.email as owner_email",
     )
@@ -281,7 +294,7 @@ export async function findInstitutionDetail(id: number) {
   let service_count = 0;
   if (row.source_job_id) {
     const [[{ count: courseCount }], [{ count: campusCount }]] = await Promise.all([
-      masterKnex(`${S}.extraction_courses`).where({ job_id: row.source_job_id }).count("id as count"),
+      masterKnex(`${S}.extraction_courses`).where({ job_id: row.source_job_id }).whereIn("verification_status", [...APPROVED_COURSE_STATUSES]).count("id as count"),
       masterKnex(`${S}.extraction_campuses`).where({ job_id: row.source_job_id }).count("id as count"),
     ]);
     service_count = Number(courseCount) || 0;
@@ -298,7 +311,10 @@ export async function listInstitutionMembers(
 ) {
   const db = await getKnex(institutionId, schemaName);
   const base = () => {
-    const q = db("members as m").whereNull("m.deleted_at");
+    // Excludes rows that have never been through a real invite-accept (is_contact_only) — a
+    // dormant "Add Contact" row. A row that HAS accepted an invite shows here even if it's also
+    // flagged admin_point_of_contact — Contacts and Users aren't mutually exclusive.
+    const q = db("members as m").whereNull("m.deleted_at").where({ "m.is_contact_only": false });
     if (opts.search) {
       q.where((qb) => {
         qb.whereILike("m.first_name", `%${opts.search}%`)
@@ -310,7 +326,7 @@ export async function listInstitutionMembers(
   };
   const [{ count }] = await base().count<{ count: string }[]>("m.id as count");
   const rows = await base()
-    .select("m.id", "m.platform_user_id", "m.is_owner", "m.account_status", "m.role", "m.created_at")
+    .select("m.id", "m.platform_user_id", "m.is_owner", "m.account_status", "m.admin_point_of_contact", "m.role", "m.created_at")
     .orderBy("m.is_owner", "desc")
     .orderBy("m.created_at")
     .limit(opts.limit)
@@ -326,7 +342,7 @@ export async function listInstitutionMembers(
       platform_user_id: r.platform_user_id,
       is_owner: r.is_owner,
       account_status: r.account_status,
-      admin_point_of_contact: false,
+      admin_point_of_contact: r.admin_point_of_contact,
       created_at: r.created_at,
       role_name: r.role,
       role_display_name: null,
@@ -368,7 +384,7 @@ export async function findBusinessDetail(id: number) {
   // Same rule as listBusinesses — see readsCountsFromJob.
   if (readsCountsFromJob(row)) {
     const [[{ count: courseCount }], [{ count: campusCount }]] = await Promise.all([
-      masterKnex(`${S}.extraction_courses`).where({ job_id: row.source_job_id }).count("id as count"),
+      masterKnex(`${S}.extraction_courses`).where({ job_id: row.source_job_id }).whereIn("verification_status", [...APPROVED_COURSE_STATUSES]).count("id as count"),
       masterKnex(`${S}.extraction_campuses`).where({ job_id: row.source_job_id }).count("id as count"),
     ]);
     row.branch_count = Number(campusCount) || 0;
@@ -411,8 +427,13 @@ export async function listBusinessMembers(
 ) {
   const db = await getKnex(businessId, schemaName);
   const base = () => {
-    const q = db("agents as a").whereNull("a.deleted_at");
-    if (opts.pointOfContact) q.where("a.admin_point_of_contact", true);
+    // point_of_contact=true (the Contacts tab) shows only POC-flagged rows, whether or not
+    // they're also a real accepted agent. Otherwise (the Users tab), only rows that have never
+    // been through a real invite-accept (is_contact_only) are excluded — a real agent stays
+    // visible here even if they're also flagged as a point of contact.
+    const q = db("agents as a").whereNull("a.deleted_at").where(
+      opts.pointOfContact ? { "a.admin_point_of_contact": true } : { "a.is_contact_only": false },
+    );
     if (opts.search) {
       q.where((qb) => {
         qb.whereILike("a.first_name", `%${opts.search}%`)

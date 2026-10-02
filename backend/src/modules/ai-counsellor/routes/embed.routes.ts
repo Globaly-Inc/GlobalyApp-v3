@@ -1,14 +1,23 @@
-import type { FastifyInstance } from "fastify";
-import { requireBusinessOrInstitutionContext } from "../../../core/plugins/auth.plugin.js";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import {
+  requireBusinessOrInstitutionContext, requireInstitutionRole, requirePermission,
+} from "../../../core/plugins/auth.plugin.js";
 import { recipientFromRequest } from "../../enquiries/shared/recipient.js";
 import {
   EmbedConfigCreateSchema,
   EmbedConfigIdParamSchema,
+  EmbedConfigUpdateSchema,
   EmbedKeyQuerySchema,
+  SendSnippetSchema,
+  VisitorListQuerySchema,
 } from "../schemas/chat.schema.js";
+import { embedSnippet, findDeveloper, sendSnippetToDeveloper } from "../services/embed-handoff.service.js";
+import { buildPaginatedResponse } from "../../../shared/pagination.js";
 import * as embedRepo from "../repositories/embed.repository.js";
+import * as visitorsRepo from "../repositories/visitors.repository.js";
+import * as takeover from "../services/takeover.service.js";
 import { ensureOwnerSiteIndex } from "../services/site-index.service.js";
-import { NotFoundError } from "../../../shared/errors.js";
+import { ConflictError, NotFoundError } from "../../../shared/errors.js";
 import { createChildLogger } from "../../../shared/logger.js";
 
 const logger = createChildLogger("embed-routes");
@@ -28,12 +37,32 @@ function startSiteIndex(owner: ReturnType<typeof recipientFromRequest>) {
     .catch((err) => logger.error("Owner site index failed to start", { owner, err: String(err) }));
 }
 
+const businessTeamWrite = requirePermission("agents:write");
+const institutionTeamWrite = requireInstitutionRole("admin");
+
+export function invitesSomeone(body: unknown): boolean {
+  const parsed = SendSnippetSchema.safeParse(body ?? {});
+  return parsed.success && !!parsed.data.invitee;
+}
+
+async function requireTeamWriteWhenInviting(req: FastifyRequest, reply: FastifyReply) {
+  if (!invitesSomeone(req.body)) return;
+  return req.auth.orgType === "institution" ? institutionTeamWrite(req, reply) : businessTeamWrite(req, reply);
+}
+
 /** Embed-config management — served to both org kinds; the owner comes from the token's
  *  orgType, so an institution's widgets are scoped to the institution, never to a business. */
 export async function embedRoutes(app: FastifyInstance) {
   app.post("/embed/configs", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
     const data = EmbedConfigCreateSchema.parse(req.body ?? {});
     const owner = recipientFromRequest(req);
+    // One widget per business or institution. The Inbox, the widget switch and the visitor list
+    // all assume a single widget, and a second one would split one org's visitors across two keys.
+    // ponytail: a check, not a unique index — two simultaneous creates could both pass; add a
+    // partial unique index on the owner columns if that ever happens.
+    if ((await embedRepo.findByOwner(owner)).length) {
+      throw new ConflictError("This organisation already has a widget. Edit it instead.");
+    }
     const config = await embedRepo.create(owner, data);
 
     // Index the owner's own website so the widget can answer from anything published on
@@ -46,6 +75,68 @@ export async function embedRoutes(app: FastifyInstance) {
   app.get("/embed/configs", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
     const configs = await embedRepo.findByOwner(recipientFromRequest(req));
     return reply.send({ configs });
+  });
+
+  /**
+   * What the portal's AI-embed card opens with: the org's widget — minted on the spot if they have
+   * none — plus whoever the snippet would be mailed to, so the card knows whether to ask for one.
+   *
+   * POST, not GET, because the first call writes. Idempotent after that.
+   */
+  app.post("/embed/ensure", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
+    const owner = recipientFromRequest(req);
+    const existing = await embedRepo.findByOwner(owner);
+    const config = await embedRepo.ensureForOwner(owner);
+
+    // Only a genuinely new widget needs its owner's site crawled; re-indexing on every card view
+    // would re-crawl the whole site each time the portal home loads. Matched on id rather than
+    // `existing.length`: findByOwner counts INACTIVE rows too, so an org whose only widget was
+    // deactivated would be handed a brand-new one with no site index behind it.
+    if (!existing.some((c) => c.id === config.id)) startSiteIndex(owner);
+
+    const developer = await findDeveloper(req.db, owner.kind);
+    return reply.send({ config, snippet: embedSnippet(config.embed_key), developer });
+  });
+
+  /**
+   * Mail the snippet to the org's developer. With no developer on the team, `invitee` both invites
+   * one and addresses the mail — the card states that consequence before this is called.
+   *
+   * No config id: the card works on the one widget `ensureForOwner` resolves, which is owner-scoped
+   * by construction, so there is no id here to tamper with.
+   */
+  app.post("/embed/send-snippet", { preHandler: [requireBusinessOrInstitutionContext, requireTeamWriteWhenInviting] }, async (req, reply) => {
+    const { invitee } = SendSnippetSchema.parse(req.body ?? {});
+    const owner = recipientFromRequest(req);
+    const config = await embedRepo.ensureForOwner(owner);
+    const result = await sendSnippetToDeveloper({
+      db: req.db,
+      owner,
+      orgSchemaName: req.auth.orgId as string,
+      orgName: req.institution?.institution_name ?? req.business?.business_name ?? "Your organisation",
+      embedKey: config.embed_key,
+      inviterPlatformUserId: Number(req.auth.sub),
+      invitee,
+    });
+    return reply.send(result);
+  });
+
+  // Appearance + limits after creation. The key and the owner never change here.
+  app.patch("/embed/configs/:id", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
+    const { id } = EmbedConfigIdParamSchema.parse(req.params);
+    const patch = EmbedConfigUpdateSchema.parse(req.body ?? {});
+    const config = await embedRepo.update(id, recipientFromRequest(req), patch);
+    if (!config) throw new NotFoundError("Embed config not found");
+    return reply.send(config);
+  });
+
+  // A leaked or copied key is retired by minting a new one; the owner re-pastes the snippet.
+  // Visitor threads are keyed on the embed key too, so they start fresh — by design.
+  app.post("/embed/configs/:id/rotate-key", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
+    const { id } = EmbedConfigIdParamSchema.parse(req.params);
+    const config = await embedRepo.rotateKey(id, recipientFromRequest(req));
+    if (!config) throw new NotFoundError("Embed config not found");
+    return reply.send(config);
   });
 
   app.delete("/embed/configs/:id", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
@@ -66,6 +157,25 @@ export async function embedRoutes(app: FastifyInstance) {
 
     return reply.send({ ok: true });
   });
+
+  /**
+   * The org's own widget visitors and leads.
+   *
+   * Scoped by `req.db` alone, and that is the whole isolation story: ai_widget_visitors lives
+   * in the tenant schema, so the connection the tenant plugin resolved from this token is the
+   * only rowset reachable. No `recipientFilter` here — unlike ai_embed_configs, which is a
+   * central table and therefore needs one.
+   *
+   * `counts` rides along with the page so the All/Visitors/Leads tabs can show tallies without
+   * three more requests, and `meta.total` is the count for the filter actually applied.
+   */
+  app.get("/embed/visitors", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
+    const { status, search, ...pagination } = VisitorListQuerySchema.parse(req.query ?? {});
+    const counts = await visitorsRepo.visitorCounts(req.db, { search });
+    const rows = await visitorsRepo.listQuery(req.db, { ...pagination, status, search });
+    const data = rows.map((r: Record<string, unknown>) => takeover.withMe(r, Number(req.auth.sub)));
+    return reply.send({ ...buildPaginatedResponse(data, counts[status], pagination), counts });
+  });
 }
 
 /** Public branding resolve for the /embed/:key page — never exposes usage or instructions. */
@@ -78,6 +188,9 @@ export async function embedPublicRoutes(app: FastifyInstance) {
       display_name: config.display_name,
       logo_url: config.logo_url,
       brand_color: config.brand_color,
+      position: config.position ?? "right",
+      greeting: config.greeting,
+      subtitle: config.subtitle,
       // The panel's starter questions differ by owner: an institution's widget answers
       // about its own campus and catalog, a business's counsels on studying abroad.
       // Kind only — never the owner's id.

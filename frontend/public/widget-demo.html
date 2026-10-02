@@ -1,0 +1,65 @@
+<!doctype html>
+<!-- Stand-in for an institution's own website, served from our own origin so it deploys with
+     the frontend and needs no separate host. Open it with the widget's embed key:
+
+       https://staging.globalyapp.com/widget-demo.html?key=<embed key>
+
+     ponytail: same-origin, so it does NOT exercise the cross-origin path a real institution's
+     site takes (CORS on /api/embed/<key>, third-party cookie rules). For that, serve this file
+     from somewhere else — `python3 -m http.server` locally — and point the script at
+     https://staging.globalyapp.com/embed.js. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="robots" content="noindex" />
+  <title>Northbridge Institute — widget demo</title>
+  <style>
+    body { margin: 0; font-family: system-ui, sans-serif; color: #1f2937; background: #f8fafc; }
+    header { background: #111827; color: #fff; padding: 20px 40px; font-size: 20px; font-weight: 600; }
+    main { max-width: 860px; margin: 48px auto; padding: 0 24px; line-height: 1.6; }
+    h1 { font-size: 34px; margin-bottom: 8px; }
+    .muted { color: #6b7280; }
+    .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 32px; }
+    .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 18px; }
+    .notice { margin-top: 40px; padding: 16px 18px; border-radius: 10px; background: #fef3c7;
+              border: 1px solid #fcd34d; font-size: 15px; }
+    code { background: #fff7ed; padding: 1px 5px; border-radius: 4px; }
+    @media (max-width: 700px) { .cards { grid-template-columns: 1fr; } }
+  </style>
+</head>
+<body>
+  <header>Northbridge Institute</header>
+  <main>
+    <h1>Study at Northbridge</h1>
+    <p class="muted">Diplomas and bachelor degrees in IT, design and business. Intakes in February, June and October.</p>
+    <div class="cards">
+      <div class="card"><strong>Diploma pathways</strong><br />Start with a diploma and articulate into a bachelor.</div>
+      <div class="card"><strong>Scholarships</strong><br />Merit and regional scholarships for international students.</div>
+      <div class="card"><strong>Student support</strong><br />Orientation week, counselling and career services.</div>
+    </div>
+    <p style="margin-top:40px">Questions? Use the chat in the corner — the AI counsellor with this institution's own rules applied.</p>
+    <div class="notice" id="hint" hidden>
+      No widget loaded. Add the embed key to the URL:
+      <code id="hint-url"></code> — copy the key from <code>/business/ai-widget</code>.
+    </div>
+  </main>
+  <script>
+    // The key is a query param, not baked in: this page is deployed once and points at whatever
+    // widget you are testing. `data-position=left` is passed through the same way.
+    var params = new URLSearchParams(location.search);
+    var key = params.get("key");
+    if (!key) {
+      document.getElementById("hint-url").textContent = location.pathname + "?key=<embed key>";
+      document.getElementById("hint").hidden = false;
+    } else {
+      var s = document.createElement("script");
+      s.src = "/embed.js"; // same origin as this page — embed.js derives the panel origin from its own src
+      s.async = true;
+      s.setAttribute("data-key", key);
+      if (params.get("position") === "left") s.setAttribute("data-position", "left");
+      document.body.appendChild(s);
+    }
+  </script>
+</body>
+</html>

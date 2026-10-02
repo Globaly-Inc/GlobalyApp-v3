@@ -24,12 +24,10 @@ export function CoursesTab({
   jobId,
   job,
   onReload,
-  onJumpToContext,
 }: Readonly<{
   jobId: string;
   job: ExtractionJob;
   onReload: () => void;
-  onJumpToContext: () => void;
 }>) {
   const [courses, setCourses] = useState<CourseFull[]>([]);
   const [total, setTotal] = useState(0);
@@ -50,11 +48,7 @@ export function CoursesTab({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const fetchedRef = useRef(false);
 
-  // Accepts overrides so callers that also reset page/search/statusFilter (e.g. after a
-  // delete) can force this fetch to use the new values immediately — setState is async,
-  // so reading the state variables here right after calling their setters would still
-  // see the pre-reset values from this render's closure.
-  const load = useCallback(async (overrides?: { page?: number; limit?: number; search?: string; status?: string; sort?: SortOrder }) => {
+  const load = useCallback(async (overrides?: { page?: number; limit?: number; search?: string; status?: string; sort?: SortOrder }): Promise<boolean> => {
     try {
       const [coursesRes, courseLinks, campusRows, queue] = await Promise.all([
         allExtractionsApi.getCourses(jobId, {
@@ -74,8 +68,10 @@ export function CoursesTab({
       setLinks(courseLinks);
       setCampuses(campusRows);
       setQueuedCourseUrls(queue.filter((q) => q.kind === "course").length);
+      return true;
     } catch (e) {
       toast.error("Failed to load courses", { description: (e as Error).message });
+      return false;
     } finally {
       setLoading(false);
     }
@@ -214,6 +210,26 @@ export function CoursesTab({
     }
   };
 
+  const approveAll = async (count: number) => {
+    if (!(await confirm(
+      `Approve all ${count} unapproved course${count === 1 ? "" : "s"}?`,
+      "Every course in this extraction that isn't approved yet becomes approved and visible on public pages, search, the AI counsellor and the embed widget. Flagged courses stay flagged.",
+      { confirmLabel: "Approve all", variant: "default" },
+    ))) return;
+    setSaving(true);
+    try {
+      const { updated } = await allExtractionsApi.approveAllCourses(jobId);
+      toast.success(`${updated} course${updated === 1 ? "" : "s"} approved`);
+      setSelectedIds([]);
+      await load();
+      onReload();
+    } catch (e) {
+      toast.error("Action failed", { description: (e as Error).message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const bulkVerify = async (approve: boolean) => {
     setSaving(true);
     try {
@@ -239,11 +255,7 @@ export function CoursesTab({
         progress={(job.pipeline_progress as Record<string, unknown> | null)?.discovery}
         lastUpdated={latestTimestamp(courses)}
         hasData={total > 0}
-        guidedUrls={job.guided_urls}
-        contextKey="course_list_urls"
-        contextLabel="course list URLs"
         onChanged={onReload}
-        onAddContext={onJumpToContext}
       />
 
       {!loading && queuedCourseUrls === 0 && (
@@ -297,6 +309,7 @@ export function CoursesTab({
             onAdd={() => setAdding(true)}
             saving={saving}
             onBulkVerify={bulkVerify}
+            onApproveAll={approveAll}
             onBulkUpdate={() => setBulkUpdating(true)}
             onDelete={deleteCourse}
             onBulkDelete={bulkDelete}
@@ -312,8 +325,11 @@ export function CoursesTab({
               campuses={campuses}
               jobId={jobId}
               onClose={() => setSelectedId(null)}
-              // onReload too — the header's "Courses Verified" card reads the job-level course list.
-              onChanged={() => { load(); onReload(); }}
+              onChanged={async () => {
+                const ok = await load();
+                onReload();
+                if (!ok) throw new Error("The list failed to refresh — reopen the panel to see the update.");
+              }}
             />
           )}
         </div>

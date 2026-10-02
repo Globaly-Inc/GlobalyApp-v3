@@ -198,6 +198,15 @@ Invitations use POST (not GET) to prevent side effects from link scanners:
 
 Email links point to frontend pages (`/invite/admin/accept`, `/invite/agent/accept`) which render a confirmation button that POSTs to the API.
 
+**Onboarding invites are the one exception to "invited users verify by OTP".** An admin sends
+`/invite/onboarding?token=…&type=institution` to an email with no account;
+`POST /api/v3/onboarding-invitations/accept` (public module, not `publicPaths`) creates the
+personal account + institution as soon as the link opens, but returns **no session** — the page
+then sends them to sign-in with their email pre-filled, and the OTP to their own inbox is the proof.
+A mail scanner that opens the link first can only use it up, never get in; the recipient then sees
+"already set up" and signs in. An accepted token never works again. See
+`platform-users/services/onboarding-invitations.service.ts`.
+
 On agent invitation acceptance:
 - `is_business_account` set to `true` on the platform_user
 - Category appended to `account_categories` (e.g. `{"type": "business", "role": "member"}`)

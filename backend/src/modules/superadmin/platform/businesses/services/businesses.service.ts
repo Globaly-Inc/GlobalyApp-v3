@@ -32,6 +32,7 @@ import type {
   BusinessCreateInput, BusinessPatchInput, BusinessStatus, EnquirySettingsPatchInput, InstitutionPartnerInput, InstitutionPartnerPatch,
   InstitutionPatchInput, MemberInviteInput, MemberPatchInput, RoleCreateInput, RolePatchInput,
 } from "../schemas/businesses.schema.js";
+import type { ContactInput, ContactPatch } from "../../../../agents/schemas/agents.schema.js";
 
 const logger = createChildLogger("superadmin-businesses-service");
 
@@ -84,11 +85,14 @@ function withScheme(url: string): string {
  * own before it has anywhere to put a course — same shape as an AI or AgentCIS job, minus
  * the crawl.
  *
- * `status: "done"` is what keeps the crawl off it: the pipeline workers claim through the
- * partial index on status IN ('pending','processing','stalled'), so a job created as pending
- * would go and scrape the institution's website. The source is named by `source_type`
- * instead — never by a new status string, which would render as undefined against the
- * frontend's fixed STATUS_CONFIG record.
+ * `status: "exported"` keeps the crawl off it (the pipeline workers only claim through the
+ * partial index on status IN ('pending','processing','stalled')) while also making it publicly
+ * visible immediately — a manually-created institution never goes through the admin
+ * promote step that would otherwise set this, and without it its courses fail the public/
+ * preview visibility check (courses.repository.ts's PUBLICLY_VISIBLE requires status =
+ * 'exported') and 404 even for the owner previewing their own listing. The source is named by
+ * `source_type` instead — never by a new status string, which would render as undefined
+ * against the frontend's fixed STATUS_CONFIG record.
  */
 async function mintManualInstitutionJob(
   input: BusinessCreateInput,
@@ -120,7 +124,7 @@ async function mintManualInstitutionJob(
     institution_name: input.business_name,
     institution_url: url,
     source_type: "manual",
-    status: "done",
+    status: "exported",
     // Promote routes by category, and refuses an uncategorised job from a non-agentcis source.
     business_category_id: input.business_category_id,
   }, trx);
@@ -157,7 +161,7 @@ export async function createBusiness(input: BusinessCreateInput) {
           account_status: 1,
         }, trx);
         const trxBusiness = await repo.insertBusiness(
-          { ...businessInput, subdomain, owner_id: trxOwner.id, source_job_id: null },
+          { ...businessInput, subdomain, owner_id: trxOwner.id, source_job_id: null, origin: "admin" },
           trx,
         );
         return { owner: trxOwner, business: trxBusiness };
@@ -240,6 +244,7 @@ async function createInstitution(input: BusinessCreateInput) {
           phone: input.phone ?? null,
           subdomain,
           institution_name: input.business_name,
+          business_category_id: input.business_category_id,
           description: input.description ?? null,
           website: input.website ?? null,
           country_id: input.country_id ?? null,
@@ -253,6 +258,7 @@ async function createInstitution(input: BusinessCreateInput) {
           facebook_url: input.facebook_url ?? null,
           instagram_url: input.instagram_url ?? null,
           twitter_url: input.twitter_url ?? null,
+          origin: "admin",
           // Left at its default ("unclaimed") — same as admin-created businesses. The owner
           // account is synthesized from the form, not logged in, so `is_unclaimed` should stay
           // true until they actually verify/log in, matching createBusiness's behavior.
@@ -333,31 +339,33 @@ export async function listBusinesses(
   kind?: "business" | "institution",
   sort: BusinessSort = "name_asc",
   businessType?: string,
+  origin?: string,
+  ownership?: string,
 ) {
   const scope = kind ? (kind === "institution" ? "institutions" : "businesses") : await resolveListScope(category, categorySlug);
 
   if (scope === "institutions") {
     const [rawRows, total] = await Promise.all([
-      repo.listInstitutions(limit, offset, search, status, sort),
-      repo.countInstitutions(search, status),
+      repo.listInstitutions(limit, offset, search, status, sort, origin, ownership),
+      repo.countInstitutions(search, status, origin, ownership),
     ]);
     return { rows: await Promise.all(rawRows.map(withImagePreviews)), total };
   }
 
   if (scope === "businesses") {
     const [rawRows, total] = await Promise.all([
-      repo.listBusinesses(limit, offset, search, status, category, categorySlug, sort, businessType),
-      repo.countBusinesses(search, status, category, categorySlug, businessType),
+      repo.listBusinesses(limit, offset, search, status, category, categorySlug, sort, businessType, origin, ownership),
+      repo.countBusinesses(search, status, category, categorySlug, businessType, origin, ownership),
     ]);
     return { rows: await Promise.all(rawRows.map(withImagePreviews)), total };
   }
 
   const depth = limit + offset;
   const [bizRows, instRows, bizTotal, instTotal] = await Promise.all([
-    repo.listBusinesses(depth, 0, search, status, undefined, undefined, sort),
-    repo.listInstitutions(depth, 0, search, status, sort),
-    repo.countBusinesses(search, status),
-    repo.countInstitutions(search, status),
+    repo.listBusinesses(depth, 0, search, status, undefined, undefined, sort, undefined, origin, ownership),
+    repo.listInstitutions(depth, 0, search, status, sort, origin, ownership),
+    repo.countBusinesses(search, status, undefined, undefined, undefined, origin, ownership),
+    repo.countInstitutions(search, status, origin, ownership),
   ]);
 
   const merged = [...bizRows, ...instRows].sort(sortComparator(sort)).slice(offset, offset + limit);
@@ -395,6 +403,9 @@ export async function updateBusiness(id: number, data: BusinessPatchInput) {
   if (updated?.source_job_id && data.website?.trim()) {
     await jobsRepo.syncOwnedJobUrl(updated.source_job_id, data.website.trim());
   }
+  if (updated?.source_job_id && !updated.source_agent_id && data.business_category_id !== undefined) {
+    await jobsRepo.syncOwnedJobCategory(updated.source_job_id, data.business_category_id);
+  }
   return withImagePreviews(updated);
 }
 
@@ -411,6 +422,12 @@ export async function updateStatus(id: number, status: BusinessStatus) {
 export async function sendClaimRequest(id: number) {
   const biz = await repo.findBusinessDetail(id);
   if (!biz) throw new NotFoundError("Business not found");
+  // Guards every caller (single send, the bulk inline fallback, and the queue worker below) —
+  // without it, an already-claimed business reachable only through a stale/off-page selection
+  // gets silently flipped back to claim_status "claim_pending" and re-emailed, reopening it.
+  if (biz.claim_status === "claimed") {
+    throw new ConflictError("This business is already claimed");
+  }
 
   // MUST match the address acceptClaim resolves the claimant against, or the link would be
   // mailed to one person and the account created for another. An owner-bearing listing resolves
@@ -456,6 +473,10 @@ export async function sendClaimRequest(id: number) {
 export async function sendInstitutionClaimRequest(id: number) {
   const inst = await repo.findInstitutionById(id);
   if (!inst) throw new NotFoundError("Institution not found");
+  // See sendClaimRequest's matching guard above — same reason.
+  if (inst.claim_status === "claimed") {
+    throw new ConflictError("This institution is already claimed");
+  }
 
   // Exactly the business rule, and it MUST match acceptInstitutionClaim's resolveClaimant:
   // an institution with an owner (promote sets one when the job has a named agent) resolves by
@@ -562,12 +583,15 @@ export async function getInstitutionDetail(id: number) {
 }
 
 export async function updateInstitutionDetail(id: number, patch: InstitutionPatchInput) {
-  await requireInstitution(id);
+  const inst = await requireInstitution(id);
   // Wire field is `business_name` (matching the shared row shape); the column is `institution_name`.
   const { business_name, ...rest } = patch;
   const data: Record<string, unknown> = { ...rest };
   if (business_name !== undefined) data.institution_name = business_name;
   await userRepo.updateInstitution(id, data);
+  if (inst.source_job_id && rest.business_category_id !== undefined) {
+    await jobsRepo.syncOwnedJobCategory(inst.source_job_id, rest.business_category_id);
+  }
   // Re-fetch rather than trust the raw update() return: institutions.* alone is missing the
   // country_name/owner_* joins findInstitutionDetail adds, which the frontend detail shape needs.
   return getInstitutionDetail(id);
@@ -587,7 +611,8 @@ export async function listInstitutionMembers(id: number, opts: { search?: string
 export async function listInstitutionCourses(id: number, opts: { search?: string; limit: number; offset: number }) {
   const inst = await requireInstitution(id);
   if (!inst.source_job_id) return { rows: [], total: 0 };
-  const filters = { search: opts.search };
+  // Approved only — this is the Services list on the business pages, not the review screen.
+  const filters = { search: opts.search, approvedOnly: true };
   const [rows, total] = await Promise.all([
     coursesRepo.listCoursesByJob(inst.source_job_id, opts.limit, opts.offset, filters),
     coursesRepo.countCoursesByJob(inst.source_job_id, filters),
@@ -687,8 +712,17 @@ export async function updateEnquirySettings(id: number, data: EnquirySettingsPat
 
 export async function inviteInstitutionMember(id: number, input: InstitutionInviteInput) {
   const inst = await requireProvisionedInstitution(id);
+  // Institutions created directly by admin/scraping (never self-onboarded or claimed) can have
+  // schema_provisioned_at set without account_status ever being flipped to 1 — createInstitution's
+  // own admin-create path sets both together (see its own account_status: 1 call above), but an
+  // institution promoted straight from extraction data skips that. findInstitutionBySchemaName,
+  // which the invite-accept page relies on, filters on account_status: 1, so an invite sent before
+  // this is set would generate an accept link that always 404s ("Organization not found") even
+  // though the invitation itself was created successfully. Sending an invite is exactly the
+  // "this institution's workspace is now real" moment, so activate it here if it isn't already.
+  if (inst.account_status !== 1) await userRepo.updateInstitution(inst.id, { account_status: 1 });
   const tenantDb = await getKnex(inst.id, inst.schema_name);
-  return institutionMembersService.inviteMemberAsAdmin(tenantDb, inst.id, inst.schema_name, input);
+  return institutionMembersService.inviteMemberAsSuperadmin(tenantDb, inst.id, inst.schema_name, input);
 }
 
 export async function listInstitutionInvitations(id: number, pagination: PaginationInput) {
@@ -712,7 +746,7 @@ export async function resendInstitutionInvitation(id: number, invitationId: stri
 export async function setInstitutionMemberStatus(id: number, platformUserId: number, accountStatus: number) {
   const inst = await requireProvisionedInstitution(id);
   const tenantDb = await getKnex(inst.id, inst.schema_name);
-  await institutionMembersService.setMemberStatus(tenantDb, platformUserId, accountStatus);
+  await institutionMembersService.setMemberStatus(tenantDb, inst.id, platformUserId, accountStatus);
 }
 
 export async function listMembers(
@@ -745,6 +779,57 @@ export async function removeMember(id: number, memberId: number) {
   const biz = await requireBusiness(id);
   const tenantDb = await getKnex(biz.id, schemaName(biz.schema_name));
   await agentsService.removeAgent(tenantDb, Number(biz.id), memberId);
+}
+
+// ── Contacts ("Add Contact" — a dormant agent/member row, not a separate table) ──
+
+export async function listContacts(id: number, limit: number, offset: number, search?: string) {
+  const biz = await requireBusiness(id);
+  const tenantDb = await getKnex(biz.id, schemaName(biz.schema_name));
+  return agentsService.listContacts(tenantDb, limit, offset, search);
+}
+
+export async function createContact(id: number, input: ContactInput) {
+  const biz = await requireBusiness(id);
+  const tenantDb = await getKnex(biz.id, schemaName(biz.schema_name));
+  return agentsService.createContact(tenantDb, Number(biz.id), input);
+}
+
+export async function updateContact(id: number, contactId: number, patch: ContactPatch) {
+  const biz = await requireBusiness(id);
+  const tenantDb = await getKnex(biz.id, schemaName(biz.schema_name));
+  return agentsService.updateContact(tenantDb, contactId, patch);
+}
+
+export async function deleteContact(id: number, contactId: number) {
+  const biz = await requireBusiness(id);
+  const tenantDb = await getKnex(biz.id, schemaName(biz.schema_name));
+  await agentsService.removeAgent(tenantDb, Number(biz.id), contactId);
+}
+
+export async function listInstitutionContacts(id: number, limit: number, offset: number, search?: string) {
+  const inst = await requireProvisionedInstitution(id);
+  const tenantDb = await getKnex(inst.id, inst.schema_name);
+  return institutionMembersService.listContacts(tenantDb, limit, offset, search);
+}
+
+export async function createInstitutionContact(id: number, input: ContactInput) {
+  const inst = await requireProvisionedInstitution(id);
+  const tenantDb = await getKnex(inst.id, inst.schema_name);
+  return institutionMembersService.createContact(tenantDb, Number(inst.id), input);
+}
+
+export async function updateInstitutionContact(id: number, contactId: number, patch: ContactPatch) {
+  const inst = await requireProvisionedInstitution(id);
+  const tenantDb = await getKnex(inst.id, inst.schema_name);
+  return institutionMembersService.updateContact(tenantDb, contactId, patch);
+}
+
+export async function deleteInstitutionContact(id: number, contactId: number) {
+  const inst = await requireProvisionedInstitution(id);
+  const tenantDb = await getKnex(inst.id, inst.schema_name);
+  const contact = await institutionMembersService.getMember(tenantDb, contactId);
+  await institutionMembersService.removeMember(tenantDb, Number(inst.id), contact.platform_user_id);
 }
 
 export async function listActivity(id: number, limit: number, offset: number) {

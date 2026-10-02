@@ -8,6 +8,10 @@ import { queueService } from "../../../../shared/queue/queueService.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
+import { verifyFieldCoverage } from "../lib/field-coverage.js";
+import { sendCompletionEmail } from "../lib/completion-email.js";
+import { convertCampusesToBranches } from "../../platform/business-branches/services/business-branches.service.js";
+import { _linkerDeps } from "../lib/jev-linker.js";
 import { getPage } from "../lib/page-store.js";
 import { truncateMarkdown } from "../lib/html-utils.js";
 import { extractJson, setLlmContext } from "../lib/llm-client.js";
@@ -183,15 +187,27 @@ await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
     let verifiedCount = 0;
     let totalChecks = 0;
     let matchCount = 0;
+    let unchanged = 0;
 
     for (const course of courses) {
       // Check still active
       const current = await masterKnex(`${S}.extraction_jobs`).select("status", "stop_requested").where({ id: jobId }).first();
       if (!current || current.stop_requested || current.status === "paused") return;
+      await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({ processing_heartbeat_at: masterKnex.fn.now() });
 
       try {
         // Verification compares against the LIVE page by definition — fresh, never a snapshot.
         const page = await getPage(course.source_url, { onlyMainContent: true, fresh: true });
+
+        // The live page is byte-identical to the snapshot this course was already verified against,
+        // so the model would be asked the same question about the same text. Stamp the course so
+        // the incremental filter stops re-selecting it, and move on. A never-verified course is
+        // still verified — that pass is a QA of the extraction, not a freshness check.
+        if (course.last_verified_at && page.previousHash && page.contentHash === page.previousHash) {
+          await masterKnex(`${S}.extraction_courses`).where({ id: course.id }).update({ last_verified_at: masterKnex.fn.now() });
+          unchanged++;
+          continue;
+        }
 
         if (page.blocked || page.markdown.length < 50) {
           for (const field of FIELDS_TO_VERIFY) {
@@ -253,16 +269,28 @@ await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
       // instead of clobbering it with this pass's partial count. A forced full pass owns it.
       verification_score: force ? matchCount : masterKnex.raw("COALESCE(verification_score, 0) + ?", [matchCount]),
       verification_total: force ? totalChecks : masterKnex.raw("COALESCE(verification_total, 0) + ?", [totalChecks]),
-      pipeline_progress: JSON.stringify({ site_mapping: "done", course_discovery: "done", data_extraction: "done", verification: "done" }),
+      // Merge, don't replace: the per-step keys (site_map … queue_pages) must survive.
+      pipeline_progress: masterKnex.raw("coalesce(pipeline_progress, '{}'::jsonb) || ?::jsonb",
+        [JSON.stringify({ site_mapping: "done", course_discovery: "done", data_extraction: "done", verification: "done" })]),
       updated_at: masterKnex.fn.now(),
     });
 
     await verifyLookupLinks(jobId);
+    await verifyFieldCoverage(jobId).catch((err) => logger.warn("Field coverage report failed", { jobId, error: String(err) }));
+    // Linking reads every course's page and is Jev-only; the link step reports coverage again when done.
+    // The completion email reports linked counts, so it goes out after linking when linking runs.
+    const linking = _linkerDeps.minLink() != null && await queueService.publish(EXTRACTION_QUEUES.STEPS, { jobId, step: "link_entities" })
+      .then(() => true, (err) => { logger.warn("link_entities dispatch failed; sending the completion email now", { jobId, error: String(err) }); return false; });
+    if (!linking) {
+      await sendCompletionEmail(jobId);
+      await convertCampusesToBranches(jobId); // else the link step converts them when it finishes
+    }
 
     await writeJobEvent(jobId, "verification_complete", {
       phase: "verification",
-      message: `Verification complete: ${matchCount}/${totalChecks} matched across ${verifiedCount} courses`,
-      data: { verified: verifiedCount, total_checks: totalChecks, matches: matchCount },
+      message: `Verification complete: ${matchCount}/${totalChecks} matched across ${verifiedCount} courses`
+        + (unchanged > 0 ? `; ${unchanged} skipped — live page unchanged since last verification` : ""),
+      data: { verified: verifiedCount, total_checks: totalChecks, matches: matchCount, unchanged },
     });
 
     logger.info("Verification complete", { jobId, verifiedCount, totalChecks, matchCount });

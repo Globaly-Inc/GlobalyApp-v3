@@ -25,6 +25,11 @@ export async function businessBranchesRoutes(app: FastifyInstance) {
     return reply.status(201).send(branch);
   });
 
+  app.get("/branches/:subId", { preHandler: requireBusinessContext }, async (req, reply) => {
+    const { subId } = SubIdSchema.parse(req.params);
+    return reply.send(await service.getBranch(Number(req.business!.id), subId));
+  });
+
   app.post("/branches/link-existing", { preHandler: requireBusinessContext }, async (req, reply) => {
     const data = LinkExistingBranchInputSchema.parse(req.body);
     const result = await service.linkExistingBranch(Number(req.business!.id), data);

@@ -1,7 +1,7 @@
 import { masterKnex } from "../../../core/db/master-pool.js";
 import { getKnex } from "../../../core/db/pool-manager.js";
 import { SUPERADMIN_SCHEMA as S } from "../../superadmin/consts.js";
-import { COURSE_INTAKES, NOT_REJECTED } from "./courses.repository.js";
+import { COURSE_INTAKES, PUBLIC_COURSE } from "./courses.repository.js";
 import { courseSlug, parseCourseIdFragment } from "../utils/slug.js";
 
 // The public catalog row shape the institution detail page expects — `job_id` (from
@@ -28,6 +28,10 @@ const INSTITUTION_COLUMNS = [
   "i.status", "i.institution_type as category_name", "i.registration_number", "i.registration_licenses",
   // Profile-page extras: the media strips and the "Other Information" sidebar rows.
   "i.gallery_images", "i.video_urls", "i.company_size", "i.created_at",
+  // Read to decide which sections go out; stripped from the response before sending.
+  "i.public_visibility",
+  // Read to authorize the owner-preview bypass in findPublicInstitutionBySlug; stripped before sending.
+  "i.schema_name",
 ];
 
 /**
@@ -129,13 +133,13 @@ const courseStudyModes = (courseScope: string) => `
     join ${S}.extraction_course_study_option_assignments a on a.course_id = ec.id
     join ${S}.extraction_study_options so on so.id = a.study_option_id
    where ${courseScope}
-     and ${NOT_REJECTED}
+     and ${PUBLIC_COURSE}
      and so.study_mode in (${STUDY_MODES.map((m) => `'${m}'`).join(", ")})`;
 
 function catalogMatch(condition: string, bindings: unknown[]) {
   return {
     sql: `exists (select 1 from ${S}.extraction_courses ec
-                  where ec.job_id = i.source_job_id and ${NOT_REJECTED} and ${condition})`,
+                  where ec.job_id = i.source_job_id and ${PUBLIC_COURSE} and ${condition})`,
     bindings,
   };
 }
@@ -173,7 +177,7 @@ function institutionsQuery({
         select 1 from ${COURSE_INTAKES}
           join ${S}.extraction_courses ec on ec.id = ia.course_id
          where ec.job_id = i.source_job_id
-           and ${NOT_REJECTED}
+           and ${PUBLIC_COURSE}
            and ei.intake_year is not null
            and (ei.intake_year > ? or (ei.intake_year = ? and coalesce(ei.intake_month, 1) >= ?))
       )`,
@@ -230,7 +234,7 @@ export async function listInstitutionCatalogFacets() {
     masterKnex.raw(
       `select distinct ec.subject_area, ec.degree_level
          from ${S}.extraction_courses ec
-        where ${published} and ${NOT_REJECTED}`,
+        where ${published} and ${PUBLIC_COURSE}`,
     ),
     masterKnex.raw(`${courseStudyModes(published)} order by so.study_mode`),
   ]);
@@ -253,7 +257,7 @@ export async function listInstitutionIntakeMonths() {
        from ${COURSE_INTAKES}
        join ${S}.extraction_courses ec on ec.id = ia.course_id
       where ei.intake_year is not null
-        and ${NOT_REJECTED}
+        and ${PUBLIC_COURSE}
         and exists (select 1 from institutions i
                      where i.source_job_id = ei.job_id and i.is_published = true and i.deleted_at is null)
       order by 1, 2`,
@@ -265,13 +269,13 @@ export async function listInstitutionIntakeMonths() {
 
 /**
  * Courses of a promoted institution, via its source job — the same set the profile's course tab
- * lists (countPublicCourses). Not gated on `verification_status`: the public catalog isn't
- * either, so counting only 'confirmed' rows put a 0 on the card beside a profile full of courses.
+ * lists (countPublicCourses). Same APPROVED gate as that list, so the card's count can't disagree
+ * with the courses the profile actually shows.
  */
 function institutionCourseCount() {
   return masterKnex.raw(
     `(select count(*) from ${S}.extraction_courses ec
-      where ec.job_id = i.source_job_id and ${NOT_REJECTED}) as course_count`,
+      where ec.job_id = i.source_job_id and ${PUBLIC_COURSE}) as course_count`,
   );
 }
 
@@ -281,7 +285,7 @@ const INSTITUTION_CARD_COLUMNS = [
   masterKnex.raw(
     `(select count(distinct ec.subject_area) from ${S}.extraction_courses ec
        where ec.job_id = i.source_job_id and ec.subject_area is not null
-         and ${NOT_REJECTED}) as subject_area_count`,
+         and ${PUBLIC_COURSE}) as subject_area_count`,
   ),
   masterKnex.raw(
     `(select array_agg(study_mode order by study_mode)
@@ -493,18 +497,32 @@ export async function countPublicVisaServiceProviders(filters: VisaServiceFilter
   return Number(row.count) + real.length;
 }
 
-export async function findPublicInstitutionBySlug(slug: string) {
+/**
+ * `previewSchemaName` lets the route bypass the `is_published` gate for exactly one caller: the
+ * institution's own owner/member, previewing their own unpublished profile (see the "Preview"
+ * button in the self-service portal). It's verified by the route from the caller's JWT — never
+ * take it from an unauthenticated source.
+ */
+export async function findPublicInstitutionBySlug(slug: string, previewSchemaName?: string) {
   const fragment = parseCourseIdFragment(slug);
   if (!fragment) return null;
 
   // The fragment is the institution's integer id, zero-padded to the 6 chars the slug scheme expects.
-  const institution = await institutionsQuery({})
+  const q = masterKnex("institutions as i")
+    .leftJoin("countries as c", "c.id", "i.country_id")
+    .whereNull("i.deleted_at")
     .whereRaw("lpad(i.id::text, 6, '0') = ?", [fragment])
-    .select(...INSTITUTION_COLUMNS)
-    .first();
+    .select(...INSTITUTION_COLUMNS);
+  if (previewSchemaName) {
+    q.where((b) => b.where("i.is_published", true).orWhere("i.schema_name", previewSchemaName));
+  } else {
+    q.where("i.is_published", true);
+  }
+  const institution = await q.first();
   if (!institution) return null;
 
-  return withSlug({ ...institution, id: businessIdFragment(institution.id) });
+  const { schema_name: _schemaName, ...rest } = institution;
+  return withSlug({ ...rest, id: businessIdFragment(institution.id) });
 }
 
 /**

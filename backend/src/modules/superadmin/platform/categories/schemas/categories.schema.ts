@@ -99,3 +99,23 @@ export type FeeTypeInput = z.infer<typeof FeeTypeInputSchema>;
 export type IssuingOrgInput = z.infer<typeof IssuingOrgInputSchema>;
 export type AccreditationInput = z.infer<typeof AccreditationInputSchema>;
 export type ReviewInput = z.infer<typeof ReviewInputSchema>;
+
+/**
+ * A country's business registration identifier — `code` is what the business stores ("ABN"),
+ * `label` is what its picker shows ("ABN (11 digits)"). A null `country_id` is the generic
+ * fallback row, offered wherever a country has none of its own.
+ */
+export const RegistrationTypeInputSchema = z.object({
+  country_id: z.number().int().positive().nullable().optional(),
+  code: z.string().trim().min(1).max(100),
+  label: z.string().trim().min(1).max(200),
+  sort_order: z.number().int().min(0).optional(),
+  is_active: z.boolean().optional(),
+});
+
+export const RegistrationTypeListQuerySchema = z.object({
+  country_id: z.coerce.number().int().positive().optional(),
+  search: z.string().trim().min(1).optional(),
+});
+
+export type RegistrationTypeInput = z.infer<typeof RegistrationTypeInputSchema>;

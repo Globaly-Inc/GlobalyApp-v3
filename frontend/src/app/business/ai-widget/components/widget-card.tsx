@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Check, Copy, Power, PowerOff } from "lucide-react";
+import { Check, Copy, KeyRound, Palette } from "lucide-react";
+import { WidgetSwitch } from "@/app/business/messages/components/widget-switch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,18 +12,34 @@ import type { EmbedConfig } from "../apis/types";
 // One script tag, not a raw iframe: public/embed.js renders the floating orb and only
 // loads the chat panel once a visitor opens it, so the host page doesn't have to find room
 // for a 420x640 block — or pay for a session nobody asked for.
-function embedSnippet(embedKey: string): string {
+export function embedSnippet(embedKey: string): string {
   const origin = typeof window !== "undefined" ? window.location.origin : "";
   return `<script src="${origin}/embed.js" data-key="${embedKey}" async></script>`;
 }
 
+/** Yes/No inline confirm, used for the two actions that break a live embed. */
+function Confirm({ label, onYes, onNo }: Readonly<{ label: string; onYes: () => void; onNo: () => void }>) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="text-xs text-muted-foreground">{label}</span>
+      <Button size="sm" variant="destructive" onClick={onYes}>Yes</Button>
+      <Button size="sm" variant="outline" onClick={onNo}>No</Button>
+    </div>
+  );
+}
+
 export function WidgetCard({
   config,
-  onDeactivate,
-  onReactivate,
-}: Readonly<{ config: EmbedConfig; onDeactivate: (id: number) => void; onReactivate: (id: number) => void }>) {
+  onEdit,
+  onRotateKey,
+}: Readonly<{
+  config: EmbedConfig;
+  /** Absent when the editor is on the same page. */
+  onEdit?: (config: EmbedConfig) => void;
+  onRotateKey: (id: number) => void;
+}>) {
   const [copied, setCopied] = useState(false);
-  const [confirming, setConfirming] = useState(false);
+  const [confirming, setConfirming] = useState<"rotate" | null>(null);
 
   const copy = async () => {
     await navigator.clipboard.writeText(embedSnippet(config.embed_key));
@@ -40,27 +57,31 @@ export function WidgetCard({
             <span className="inline-block size-3 rounded-full" style={{ backgroundColor: config.brand_color }} />
           )}
           {config.display_name ?? "Untitled widget"}
-          {!config.is_active && <Badge variant="secondary">Inactive</Badge>}
+          {!config.is_active && <Badge variant="secondary">Paused</Badge>}
         </CardTitle>
-        {config.is_active ? (
-          confirming ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">Deactivate?</span>
-              <Button size="sm" variant="destructive" onClick={() => { onDeactivate(config.id); setConfirming(false); }}>Yes</Button>
-              <Button size="sm" variant="outline" onClick={() => setConfirming(false)}>No</Button>
-            </div>
-          ) : (
-            <Button size="sm" variant="ghost" onClick={() => setConfirming(true)} title="Deactivate">
-              <Power className="size-4" />
-            </Button>
-          )
+        {confirming === "rotate" ? (
+          <Confirm label="Old snippet stops working. Continue?" onYes={() => { onRotateKey(config.id); setConfirming(null); }} onNo={() => setConfirming(null)} />
         ) : (
-          <Button size="sm" variant="ghost" onClick={() => onReactivate(config.id)} title="Reactivate">
-            <PowerOff className="size-4" />
-          </Button>
+          <div className="flex items-center gap-1">
+            {onEdit && (
+              <Button size="sm" variant="ghost" onClick={() => onEdit(config)} title="Appearance">
+                <Palette className="size-4" />
+              </Button>
+            )}
+            <Button size="sm" variant="ghost" onClick={() => setConfirming("rotate")} title="Regenerate key">
+              <KeyRound className="size-4" />
+            </Button>
+            {/* The same switch as above the Inbox: off asks nothing, and offers Undo instead. */}
+            <WidgetSwitch />
+          </div>
         )}
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
+        {(config.subtitle || config.greeting) && (
+          <p className="text-xs text-muted-foreground">
+            {config.subtitle}{config.subtitle && config.greeting ? " · " : ""}{config.greeting && `“${config.greeting}”`}
+          </p>
+        )}
         <div>
           <div className="mb-1 flex justify-between text-xs text-muted-foreground">
             <span>Messages this month</span>

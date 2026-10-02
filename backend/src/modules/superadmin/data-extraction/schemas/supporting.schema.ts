@@ -36,6 +36,7 @@ const SAVE_AND_LEARN_TABLES = [
   "extraction_intakes",
   "extraction_course_fees",
   "extraction_eligibility_requirements",
+  "extraction_scholarships",
   "extraction_study_units",
   "extraction_accreditations",
   "extraction_study_options",

@@ -177,6 +177,25 @@ services:
     networks:
       - globalyapp
 
+  site-refresh-worker:
+    container_name: globalyapp-site-refresh-worker
+    image: globalyapp-backend:local
+    command: npm run job:site-refresh
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dragonfly:
+        condition: service_started
+      lavinmq:
+        condition: service_started
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
   business-claim-requests-worker:
     container_name: globalyapp-business-claim-requests-worker
     image: globalyapp-backend:local
@@ -336,6 +355,26 @@ services:
     networks:
       - globalyapp
 
+  institution-memory-worker:
+    container_name: globalyapp-institution-memory-worker
+    image: globalyapp-backend:local
+    profiles: ["globalyapp-institution-memory"]
+    command: npm run job:institution-memory
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dragonfly:
+        condition: service_started
+      lavinmq:
+        condition: service_started
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
   ai-knowledge-recrawl-worker:
     container_name: globalyapp-ai-knowledge-recrawl-worker
     image: globalyapp-backend:local
@@ -361,6 +400,26 @@ services:
     image: globalyapp-backend:local
     profiles: ["globalyapp-extraction-agentcis"]
     command: npm run job:extraction-agentcis
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dragonfly:
+        condition: service_started
+      lavinmq:
+        condition: service_started
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
+  extraction-spreadsheet-worker:
+    container_name: globalyapp-extraction-spreadsheet-worker
+    image: globalyapp-backend:local
+    profiles: ["globalyapp-extraction-spreadsheet"]
+    command: npm run job:extraction-spreadsheet
     env_file:
       - ./backend/.env
     depends_on:
@@ -460,6 +519,77 @@ services:
         condition: service_healthy
       lavinmq:
         condition: service_started
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
+  # Long-running poller (60s): emails widget visitors their conversation summary.
+  chat-summary-worker:
+    container_name: globalyapp-chat-summary-worker
+    image: globalyapp-backend:local
+    profiles: ["globalyapp-chat-summary"]
+    command: npm run job:chat-summary
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dragonfly:
+        condition: service_started
+      lavinmq:
+        condition: service_started
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
+  # One-shot sweeps below: each runs once and exits (cron jobs in production).
+  # Run manually with e.g. `docker compose --profile globalyapp-guide-email up guide-email-worker`.
+  guide-email-worker:
+    container_name: globalyapp-guide-email-worker
+    image: globalyapp-backend:local
+    profiles: ["globalyapp-guide-email"]
+    command: npm run job:guide-email
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
+  seo-snapshot-worker:
+    container_name: globalyapp-seo-snapshot-worker
+    image: globalyapp-backend:local
+    profiles: ["globalyapp-seo-snapshot"]
+    command: npm run job:seo-snapshot
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
+  referral-codes-worker:
+    container_name: globalyapp-referral-codes-worker
+    image: globalyapp-backend:local
+    profiles: ["globalyapp-referral-codes"]
+    command: npm run job:referral-codes
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
     volumes:
       - ./backend:/globalyapp/backend
       - /globalyapp/backend/node_modules

@@ -9,9 +9,29 @@ import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
-import { SORT_OPTIONS, VERIFICATION_DOT, type SortOrder } from "../const";
-import { courseDuration } from "../utils";
+import { SORT_OPTIONS, STUDY_MODE_OPTIONS, VERIFICATION_DOT, type SortOrder } from "../const";
 import type { CourseFull } from "../apis/types";
+
+// Extractors write "on_campus", "on-campus" and "On Campus" alike — match on the normalised form.
+const studyModeLabel = (mode: string) => {
+  const key = mode.trim().toLowerCase().replace(/[\s-]+/g, "_");
+  return STUDY_MODE_OPTIONS.find((o) => o.value === key)?.label
+    ?? mode.replace(/[_-]+/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
+};
+
+/** Mirrors the backend's APPROVED_COURSE_STATUSES: only these reach public pages and the AI. */
+const APPROVED = ["confirmed", "manual"];
+
+function ApprovalBadge({ status }: Readonly<{ status: string | null }>) {
+  const s = status ?? "unverified";
+  if (APPROVED.includes(s)) {
+    return <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700">Approved</span>;
+  }
+  if (s === "flagged") {
+    return <span className="rounded bg-red-50 px-1.5 py-0.5 text-[11px] font-medium text-red-700">Flagged</span>;
+  }
+  return <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700">Awaiting approval</span>;
+}
 
 export function CourseListPanel({
   courses,
@@ -36,6 +56,7 @@ export function CourseListPanel({
   onAdd,
   saving,
   onBulkVerify,
+  onApproveAll,
   onBulkUpdate,
   onDelete,
   onBulkDelete,
@@ -63,6 +84,8 @@ export function CourseListPanel({
   onAdd: () => void;
   saving: boolean;
   onBulkVerify: (approve: boolean) => void;
+  /** Whole job, every page — the checkboxes only ever select the page on screen. */
+  onApproveAll: (count: number) => void;
   onBulkUpdate: () => void;
   onDelete: (id: string) => void;
   onBulkDelete: () => void;
@@ -71,6 +94,10 @@ export function CourseListPanel({
   const filtering = search.trim() !== "" || statusFilter !== "all";
   const allSelected = courses?.length > 0 && selectedIds?.length === courses?.length;
   const overallTotal = statusCounts.reduce((sum, s) => sum + s.count, 0);
+  // What "Approve all" will actually touch — mirrors the backend: approved, flagged and mismatch stay put.
+  const awaitingApproval = statusCounts
+    .filter((s) => !["confirmed", "manual", "flagged", "mismatch"].includes(s.status))
+    .reduce((sum, s) => sum + s.count, 0);
 
   const statusItems = [
     <SelectItem key="all" value="all">All statuses ({overallTotal})</SelectItem>,
@@ -127,9 +154,22 @@ export function CourseListPanel({
       <div className="flex flex-wrap items-center gap-3 rounded-lg border-b bg-primary/5 px-3 py-2">
         <label className="flex cursor-pointer items-center gap-2 text-xs text-muted-foreground">
           <Checkbox checked={allSelected} onCheckedChange={onToggleSelectAll} disabled={courses?.length === 0} />
-          {total} course{total === 1 ? "" : "s"}
-          {filtering && ` · ${courses.length} on this page`}
+          {selectedIds.length > 0 ? `${selectedIds.length} selected on this page` : `Select page · ${total} course${total === 1 ? "" : "s"}`}
         </label>
+
+        {awaitingApproval > 0 && (
+          <Button
+            variant="outline"
+            size="sm"
+            className="ml-auto h-7 gap-1.5 text-xs cursor-pointer"
+            disabled={saving}
+            onClick={() => onApproveAll(awaitingApproval)}
+            title="Approve every course in this extraction, on all pages"
+          >
+            <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+            {compact ? `All ${awaitingApproval}` : `Approve all ${awaitingApproval}`}
+          </Button>
+        )}
 
         {selectedIds.length > 0 && (
           <div className="flex items-center gap-1.5">
@@ -181,49 +221,61 @@ export function CourseListPanel({
         )}
       </div>
 
-      <div className={cn("space-y-2 overflow-y-auto pr-1", compact ? "max-h-[70vh]" : "max-h-[calc(100vh-22rem)]")}>
-        {courses?.map((course) => (
-          <div
-            key={course.id}
-            className={cn(
-              "group flex w-full items-center gap-2 rounded-lg border border-border bg-card px-3 py-2.5 transition-colors hover:bg-accent",
-              selectedId === course.id && "border-primary ring-1 ring-primary",
-            )}
-          >
-            <Checkbox checked={selectedIds.includes(course.id)} onCheckedChange={() => onToggleSelect(course.id)} />
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-              <BookOpen className="h-3.5 w-3.5" />
-            </div>
-            <button
-              type="button"
-              onClick={() => onSelect(course.id)}
-              className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left text-sm cursor-pointer"
+      <div className={cn("space-y-2 overflow-x-hidden overflow-y-auto px-1.5 py-1", compact ? "max-h-[70vh]" : "max-h-[calc(100vh-22rem)]")}>
+        {courses?.map((course) => {
+          const selected = selectedId === course.id;
+          return (
+            <div
+              key={course.id}
+              className={cn(
+                "flex w-full items-center gap-3 rounded-lg border bg-card px-3 py-3 transition-[translate,box-shadow,border-color] duration-300 ease-out hover:-translate-y-0.5 hover:border-primary hover:shadow-md",
+                selected ? "border-primary bg-primary/5" : "border-border",
+              )}
             >
-              <span className="flex min-w-0 items-center gap-2">
-                <span
-                  title={course.verification_status ?? "unverified"}
-                  className={cn("h-1.5 w-1.5 shrink-0 rounded-full", VERIFICATION_DOT[course.verification_status ?? "unverified"] ?? "bg-muted-foreground/30")}
-                />
-                <span className="truncate">{course.name}</span>
-                {courseDuration(course.duration_weeks) && (
-                  <span className="shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                    {courseDuration(course.duration_weeks)}
+              <Checkbox checked={selectedIds.includes(course.id)} onCheckedChange={() => onToggleSelect(course.id)} />
+              <button
+                type="button"
+                onClick={() => onSelect(course.id)}
+                className="flex min-w-0 flex-1 flex-col gap-1 text-left cursor-pointer"
+              >
+                <span className={cn("truncate text-sm font-semibold", selected ? "text-primary" : "text-foreground")}>
+                  {course.name}
+                </span>
+                {/* Degree + mode under the name, like the institution's own course listing —
+                    tells "Aerospace Engineering BEng" from "…BEng(Hons)" at a glance. */}
+                {(course.degree_level || course.study_mode) && (
+                  <span className="flex items-center gap-2 text-xs">
+                    {course.degree_level && (
+                      <span className="rounded bg-primary/10 px-1.5 py-0.5 font-semibold text-primary">{course.degree_level}</span>
+                    )}
+                    {course.study_mode && <span className="text-muted-foreground">{studyModeLabel(course.study_mode)}</span>}
                   </span>
                 )}
-              </span>
-              {course.source_url && <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />}
-            </button>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              className="shrink-0 cursor-pointer text-destructive opacity-0 transition-opacity hover:text-destructive group-hover:opacity-100"
-              title="Delete course"
-              onClick={() => onDelete(course.id)}
-            >
-              <Trash2 className="h-3.5 w-3.5" />
-            </Button>
-          </div>
-        ))}
+              </button>
+              <ApprovalBadge status={course.verification_status ?? null} />
+              {course.source_url && (
+                <a
+                  href={course.source_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="shrink-0 rounded p-1 text-muted-foreground"
+                  title="Open source page"
+                >
+                  <ExternalLink className="h-3.5 w-3.5" />
+                </a>
+              )}
+              {/* Plain button, not <Button>: the design-system one carries hover + transition styles. */}
+              <button
+                type="button"
+                className="shrink-0 cursor-pointer rounded p-1 text-muted-foreground"
+                title="Delete course"
+                onClick={() => onDelete(course.id)}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+              </button>
+            </div>
+          );
+        })}
         {courses?.length === 0 && (
           <Card className="border-dashed">
             <CardContent className="py-10 text-center text-muted-foreground">

@@ -70,7 +70,7 @@ async function crawlSource(sourceId: string, maxPagesOverride?: number): Promise
   };
 
   try {
-    const discovery = await discoverUrlsForCrawl(source.url, { limit: maxPages });
+    const discovery = await discoverUrlsForCrawl(source.url, { limit: maxPages, preferMap: true });
     summary.discovery_method = discovery.method;
     summary.discovery_error = discovery.error ?? null;
 

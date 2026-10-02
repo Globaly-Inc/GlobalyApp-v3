@@ -1,19 +1,21 @@
-import { httpDelete, httpGet, httpPatch, httpPost, httpPut } from "@/lib/api/http";
+import { httpDelete, httpGet, httpPatch, httpPost, httpPostForm, httpPut } from "@/lib/api/http";
 import type {
-  Accreditation, Category, Lookup, LookupKind, Paginated, SearchListParams,
+  Accreditation, AccreditationInput, Category, FeeType, IssuingOrganization, Lookup, LookupKind, Paginated,
+  RegistrationType, SearchListParams,
 } from "@/app/admin/platform/categories/apis/types";
 import type {
   ActivityListParams, ActivityListResult, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchListResult, BranchPatch,
-  BusinessRelation, BusinessSearchParams, BusinessSearchResult, BusinessService, InvitationListResult, LinkExistingBranchInput, LinkExistingBranchResult,
+  BusinessRelation, BusinessSearchParams, BusinessSearchResult, BusinessService, ImportJob, InvitationListResult, LinkExistingBranchInput, LinkExistingBranchResult,
   Member, MemberInviteInput, MemberListParams, MemberListResult, MemberPatch, MemberRole,
   PartnerInstitutionCourse, PartnerInstitutionCourseListParams, PartnerInstitutionCourseListResult, PartnerInstitutionDetail, Permission,
   RelationInput, RelationListParams, RelationListResult, RelationPatch, Role, RoleCreateInput, RolePatch,
-  SchemaFieldValue, Scholarship, ScholarshipInput,
+  SchemaFieldValue, Scholarship, ScholarshipInput, ServiceAiAssistInput, ServiceAiAssistResult,
+  ExtractedScholarship, ExtractedScholarshipInput,
   ScholarshipListParams, ScholarshipListResult, ScholarshipPatch, ServiceAccreditationLink, ServiceEligibility,
   ServiceEligibilityInput, ServiceEligibilityPatch, ServiceFee, ServiceFeeInput, ServiceFeePatch, ServiceInput,
   ServiceIntake, ServiceIntakeInput, ServiceIntakePatch, ServicePatch, ServiceSearchParams, ServiceSearchResult,
   ServiceStudyOption, ServiceStudyOptionInput, ServiceStudyOptionPatch, ServiceStudyUnit, ServiceStudyUnitInput,
-  ServiceStudyUnitPatch,
+  ServiceStudyUnitPatch, ServiceMediaFile,
 } from "./types";
 
 /** Generic list/create/update/delete client for one service child resource — same shape for
@@ -62,6 +64,10 @@ function toServiceSearchQuery(params: ServiceSearchParams): string {
   if (params.page) q.set("page", String(params.page));
   if (params.limit) q.set("limit", String(params.limit));
   if (params.search) q.set("search", params.search);
+  if (params.course_category) q.set("course_category", params.course_category);
+  if (params.published) q.set("published", params.published);
+  if (params.origin) q.set("origin", params.origin);
+  if (params.degree_level) q.set("degree_level", params.degree_level);
   const qs = q.toString();
   return qs ? `?${qs}` : "";
 }
@@ -102,6 +108,9 @@ function toScholarshipQuery(params: ScholarshipListParams): string {
   if (params.page) q.set("page", String(params.page));
   if (params.limit) q.set("limit", String(params.limit));
   if (params.search) q.set("search", params.search);
+  if (params.applicable_to) q.set("applicable_to", params.applicable_to);
+  if (params.coverage_type) q.set("coverage_type", params.coverage_type);
+  if (params.origin) q.set("origin", params.origin);
   const qs = q.toString();
   return qs ? `?${qs}` : "";
 }
@@ -123,6 +132,7 @@ export const businessProfileDetailRealApi = {
     const { data, meta } = await httpGet<{ data: Branch[]; meta: { total: number } }>(`${orgBase}/branches${toBranchQuery(params)}`);
     return { data, total: meta.total };
   },
+  getBranch: (branchId: string, orgBase = BASE): Promise<Branch> => httpGet(`${orgBase}/branches/${branchId}`),
   createBranch: (input: BranchInput, orgBase = BASE): Promise<Branch> => httpPost(`${orgBase}/branches`, input),
   updateBranch: (branchId: string, patch: BranchPatch, orgBase = BASE): Promise<Branch> => httpPatch(`${orgBase}/branches/${branchId}`, patch),
   // No institution twin — linking another registered org as a branch is business-to-business only.
@@ -134,14 +144,19 @@ export const businessProfileDetailRealApi = {
     const { data, meta } = await httpGet<{ data: BusinessService[]; meta: { total: number } }>(`${BASE}/services/search${toServiceSearchQuery(params)}`);
     return { data, total: meta.total };
   },
+  getService: (serviceId: string): Promise<BusinessService> => httpGet(`${BASE}/services/${serviceId}`),
   createService: (input: ServiceInput): Promise<BusinessService> => httpPost(`${BASE}/services`, input),
   updateService: (serviceId: string, patch: ServicePatch): Promise<BusinessService> =>
     httpPatch(`${BASE}/services/${serviceId}`, patch),
   deleteService: (serviceId: string): Promise<void> => httpDelete(`${BASE}/services/${serviceId}`),
+  /** Owner/admin only. Approved courses can then be published. */
+  approveServices: (ids: string[]): Promise<{ approved: number }> => httpPost(`${BASE}/services/approve`, { ids }),
   getServiceFieldValues: (serviceId: string): Promise<SchemaFieldValue[]> =>
     httpGet(`${BASE}/services/${serviceId}/field-values`),
   updateServiceFieldValues: (serviceId: string, values: SchemaFieldValue[]): Promise<SchemaFieldValue[]> =>
     httpPut(`${BASE}/services/${serviceId}/field-values`, { values }),
+  generateServiceDescription: (input: ServiceAiAssistInput): Promise<ServiceAiAssistResult> =>
+    httpPost(`${BASE}/services/ai-assist`, input),
 
   getMembers: async (params: MemberListParams = {}): Promise<MemberListResult> => {
     const { data, meta } = await httpGet<{ data: Member[]; meta: { total: number } }>(`${BASE}/members${toMemberQuery(params)}`);
@@ -200,6 +215,17 @@ export const businessProfileDetailRealApi = {
   updateScholarship: (scholarshipId: number, patch: ScholarshipPatch): Promise<Scholarship> =>
     httpPatch(`${BASE}/scholarships/${scholarshipId}`, patch),
   deleteScholarship: (scholarshipId: number): Promise<void> => httpDelete(`${BASE}/scholarships/${scholarshipId}`),
+  getExtractedScholarships: async (params: ScholarshipListParams = {}): Promise<{ data: ExtractedScholarship[]; total: number }> => {
+    const { data, meta } = await httpGet<{ data: ExtractedScholarship[]; meta: { total: number } }>(`${BASE}/extracted-scholarships${toScholarshipQuery(params)}`);
+    return { data, total: meta.total };
+  },
+  createExtractedScholarship: (input: ExtractedScholarshipInput): Promise<{ id: string }> => httpPost(`${BASE}/extracted-scholarships`, input),
+  updateExtractedScholarship: (id: string, patch: ExtractedScholarshipInput): Promise<void> => httpPatch(`${BASE}/extracted-scholarships/${id}`, patch),
+  deleteExtractedScholarship: (id: string): Promise<void> => httpDelete(`${BASE}/extracted-scholarships/${id}`),
+  // Bulk import — mirrors the superadmin editor's flow (client parses/maps the spreadsheet,
+  // only clean rows go over the wire), scoped to this business by the backend.
+  startScholarshipImport: (rows: ScholarshipInput[]): Promise<ImportJob> => httpPost(`${BASE}/scholarships/import`, { rows }),
+  getScholarshipImportJob: (id: number): Promise<ImportJob> => httpGet(`${BASE}/scholarships/import/${id}`),
 
   serviceFees: childResourceApi<ServiceFee, ServiceFeeInput, ServiceFeePatch>("fees"),
   serviceIntakes: childResourceApi<ServiceIntake, ServiceIntakeInput, ServiceIntakePatch>("intakes"),
@@ -214,10 +240,31 @@ export const businessProfileDetailRealApi = {
   unlinkServiceAccreditation: (serviceId: string, id: number): Promise<void> =>
     httpDelete(`${BASE}/services/${serviceId}/accreditations/${id}`),
 
+  getServiceMedia: (serviceId: string): Promise<{ files: ServiceMediaFile[] }> =>
+    httpGet(`${BASE}/services/${serviceId}/media`),
+  uploadServiceMedia: (serviceId: string, file: File): Promise<ServiceMediaFile> => {
+    const form = new FormData();
+    form.append("file", file);
+    return httpPostForm(`${BASE}/services/${serviceId}/media`, form);
+  },
+  deleteServiceMedia: (serviceId: string, fileId: number): Promise<void> =>
+    httpDelete(`${BASE}/services/${serviceId}/media/${fileId}`),
+
   getServiceCategories: (params: SearchListParams = {}): Promise<Paginated<Category>> =>
     httpGet(`${BASE}/service-categories${toSearchListQuery({ limit: 10, ...params })}`),
   getLookups: (kind: LookupKind, params: SearchListParams = {}): Promise<Paginated<Lookup>> =>
     httpGet(`${BASE}/${kind}${toSearchListQuery(params)}`),
   getAccreditations: (params: SearchListParams = {}): Promise<Paginated<Accreditation>> =>
     httpGet(`${BASE}/accreditations${toSearchListQuery(params)}`),
+  createAccreditation: (input: AccreditationInput): Promise<Accreditation> =>
+    httpPost(`${BASE}/accreditations`, input),
+  getIssuingOrganizations: (params: SearchListParams = {}): Promise<Paginated<IssuingOrganization>> =>
+    httpGet(`${BASE}/issuing-organizations${toSearchListQuery(params)}`),
+  createIssuingOrganization: (name: string): Promise<IssuingOrganization> =>
+    httpPost(`${BASE}/issuing-organizations`, { name }),
+  getFeeTypes: (params: SearchListParams = {}): Promise<Paginated<FeeType>> =>
+    httpGet(`${BASE}/fee-types${toSearchListQuery(params)}`),
+  /** Unpaginated: the server returns one country's handful, already falling back to the generic set. */
+  getRegistrationTypes: (countryId?: number | null): Promise<{ data: RegistrationType[] }> =>
+    httpGet(`${BASE}/registration-types${countryId ? `?country_id=${countryId}` : ""}`),
 };

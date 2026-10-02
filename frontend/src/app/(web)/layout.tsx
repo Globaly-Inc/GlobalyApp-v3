@@ -6,6 +6,7 @@ import { CookieConsent } from "./components/cookie-consent";
 import { BackToTop } from "./components/back-to-top";
 import { LOGO } from "@/lib/public-assets";
 import { CompareTray } from "./search/components/compare-tray";
+import { PreviewLock } from "./components/preview-lock";
 
 const TITLE = "Globaly — World #1 AI Integrated Education Ecosystem";
 const OG_DESCRIPTION =
@@ -65,6 +66,7 @@ const WEBSITE_JSON_LD = {
 
 export default function WebLayout({ children }: Readonly<{ children: ReactNode }>) {
   return (
+    <PreviewLock>
     <div className="flex min-h-screen flex-col">
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(ORGANIZATION_JSON_LD) }} />
       <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(WEBSITE_JSON_LD) }} />
@@ -75,5 +77,6 @@ export default function WebLayout({ children }: Readonly<{ children: ReactNode }
       <BackToTop />
       <CompareTray />
     </div>
+    </PreviewLock>
   );
 }

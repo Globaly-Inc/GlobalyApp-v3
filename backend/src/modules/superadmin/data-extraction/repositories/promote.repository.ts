@@ -21,6 +21,7 @@ export interface OverviewRow {
   city: string | null;
   state: string | null;
   country: string | null;
+  ownership_type: string | null;
   description: string | null;
   logo_url: string | null;
   source_url: string | null;

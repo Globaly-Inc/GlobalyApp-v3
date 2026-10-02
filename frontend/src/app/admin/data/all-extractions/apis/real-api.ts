@@ -18,6 +18,8 @@ import type {
   CreateJobParams,
   EligibilityParams,
   EligibilityRequirement,
+  Scholarship,
+  ScholarshipParams,
   EditableTable,
   ExtractionJob,
   ExtractionStatus,
@@ -35,6 +37,11 @@ import type {
   MissingDetailCandidate,
   Paginated,
   QueueItem,
+  GetSiteUrlsParams,
+  SiteUrlCategory,
+  SiteUrlsPage,
+  SnapshotMarkdown,
+  SnapshotRow,
   StudyOption,
   StudyOptionParams,
   StudyUnit,
@@ -193,6 +200,11 @@ export const allExtractionsRealApi = {
     await httpPost(`/admin/data-extraction/courses/bulk-verify`, { ids, approve });
   },
 
+  /** Every not-yet-approved course of the job (flagged ones stay flagged). */
+  approveAllCourses: async (jobId: string): Promise<{ updated: number }> => {
+    return httpPost(`/admin/data-extraction/jobs/${jobId}/courses/approve-all`, {});
+  },
+
   rejectCourse: async (id: string): Promise<void> => {
     await httpPost(`/admin/data-extraction/courses/${id}/reject`, {});
   },
@@ -288,6 +300,41 @@ export const allExtractionsRealApi = {
   updateContext: async (id: string, params: UpdateContextParams): Promise<void> => {
     await httpPatch(`/admin/data-extraction/jobs/${id}/context`, params);
   },
+
+  // ── Site tab (one-step-at-a-time chain) ──────────────
+
+  getSiteUrls: (jobId: string, params: GetSiteUrlsParams = {}): Promise<SiteUrlsPage> => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.category) query.set("category", params.category);
+    if (params.excluded !== undefined) query.set("excluded", String(params.excluded));
+    if (params.q) query.set("q", params.q);
+    return httpGet<SiteUrlsPage>(`/admin/data-extraction/jobs/${jobId}/site-urls?${query}`);
+  },
+
+  addSiteUrl: async (jobId: string, url: string, category: SiteUrlCategory): Promise<void> => {
+    await httpPost(`/admin/data-extraction/jobs/${jobId}/site-urls`, { url, category });
+  },
+
+  patchSiteUrl: async (id: string, patch: { excluded?: boolean; category?: SiteUrlCategory | null }): Promise<void> => {
+    await httpPatch(`/admin/data-extraction/site-urls/${id}`, patch);
+  },
+
+  bulkExcludeSiteUrls: async (jobId: string, ids: string[], excluded: boolean): Promise<void> => {
+    await httpPost(`/admin/data-extraction/jobs/${jobId}/site-urls/bulk-exclude`, { ids, excluded });
+  },
+
+  getSnapshots: (jobId: string, params: { page?: number; limit?: number; q?: string } = {}): Promise<Paginated<SnapshotRow>> => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.q) query.set("q", params.q);
+    return httpGet<Paginated<SnapshotRow>>(`/admin/data-extraction/jobs/${jobId}/snapshots?${query}`);
+  },
+
+  getSnapshotMarkdown: (jobId: string, pageId: string): Promise<SnapshotMarkdown> =>
+    httpGet<SnapshotMarkdown>(`/admin/data-extraction/jobs/${jobId}/snapshots/${pageId}`),
 
   getQueue: async (jobId: string): Promise<QueueItem[]> => {
     const { queue } = await httpGet<{ queue: QueueItem[] }>(`/admin/data-extraction/jobs/${jobId}/queue`);
@@ -407,6 +454,26 @@ export const allExtractionsRealApi = {
 
   deleteEligibilityRequirement: async (id: string): Promise<void> => {
     await httpDelete(`/admin/data-extraction/eligibility-requirements/${id}`);
+  },
+
+  // ── Scholarships ────────────────────────────────────────────────
+
+  getScholarships: (
+    jobId: string,
+    params: { page?: number; limit?: number; search?: string } = {},
+  ): Promise<Paginated<Scholarship>> => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("page", String(params.page));
+    if (params.limit) query.set("limit", String(params.limit));
+    if (params.search) query.set("search", params.search);
+    return httpGet<Paginated<Scholarship>>(`/admin/data-extraction/jobs/${jobId}/scholarships?${query}`);
+  },
+
+  createScholarship: async (params: { job_id: string } & ScholarshipParams): Promise<{ id: string }> =>
+    httpPost<{ id: string }>("/admin/data-extraction/scholarships", params),
+
+  deleteScholarship: async (id: string): Promise<void> => {
+    await httpDelete(`/admin/data-extraction/scholarships/${id}`);
   },
 
   // ── Study Units ──────────────────────────────────────────────────

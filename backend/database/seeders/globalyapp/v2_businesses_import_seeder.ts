@@ -48,17 +48,20 @@ function sharedFields(r: V2Row, countryId: number | null) {
 
 /** Everything V2 tracked that has no v3 column — preserved rather than dropped. */
 function metaFrom(r: V2Row) {
+  // "created_via" is NOT in this list: the dump's own created_via (e.g. "admin_manual") would
+  // otherwise spread over and clobber our "v2_import" provenance tag below, silently losing it
+  // for any row V2 already tagged. Preserved instead under its own key, v2_created_via.
   const keep = [
     "default_currency",
     "total_services",
     "total_students",
     "total_agents",
     "profile_views",
-    "created_via",
     "source_reference",
   ] as const;
   return {
     created_via: "v2_import",
+    v2_created_via: r.created_via ?? null,
     v2_id: r.id,
     v2_business_category_id: r.business_category_id ?? null,
     ...Object.fromEntries(keep.filter((k) => r[k]).map((k) => [k, r[k]])),
@@ -94,6 +97,7 @@ export async function seed(knex: Knex): Promise<void> {
         video_urls: gallery.videos.length ? gallery.videos : null,
         status: r.status === "verified" ? "verified" : "pending",
         claim_status: "unclaimed",
+        origin: "seeded",
         meta: JSON.stringify({ ...metaFrom(r), ...(emailTaken ? { contact_email: email } : {}) }),
         // platform_user_id / first_name / last_name stay NULL, account_status stays 0,
         // schema_provisioned_at stays NULL — provisioned on claim accept.
@@ -112,6 +116,7 @@ export async function seed(knex: Knex): Promise<void> {
         video_urls: gallery.videos.length ? gallery.videos : null,
         status: r.status === "verified" ? "verified" : "unverified",
         claim_status: "unclaimed",
+        origin: "seeded",
         enquiry_enabled: r.enquiry_enabled !== "false",
         enquiry_coin_cost: Number(r.enquiry_coin_cost ?? 30),
         enquiry_max_distributions: Number(r.enquiry_max_distributions ?? 5),
@@ -123,5 +128,19 @@ export async function seed(knex: Knex): Promise<void> {
         // owner_id stays NULL (unclaimed), account_status stays 0.
       });
     }
+  }
+
+  // Correction for rows imported by an OLDER copy of this seeder, before it stamped origin:
+  // "seeded" directly (see fix-v2-import-origin.ts's history for why). Those rows were backfilled
+  // to the wrong "signup" by migration 20260923_003, since they carried no source_job_id to
+  // classify them by. That correction used to live in migrations 20260923_004/005, which were
+  // converted to a standalone script — but a script only runs when someone remembers to invoke it
+  // manually, so an environment that never re-runs seeders after pulling this change stays wrong
+  // forever. `knex seed:run` is already how V2 data enters an environment (and is safe to
+  // re-run — see the idempotent-on-subdomain note above), so the correction runs here too:
+  // meta.v2_id is set unconditionally on every V2-imported row and is never overwritten, unlike
+  // meta.created_via (which collides with the V2 dump's own field of the same name).
+  for (const table of ["businesses", "institutions"] as const) {
+    await knex(table).whereRaw("jsonb_exists(meta, 'v2_id')").whereNot("origin", "seeded").update({ origin: "seeded" });
   }
 }

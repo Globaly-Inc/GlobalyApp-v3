@@ -26,9 +26,10 @@ import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { logout, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchFullProfile } from "./store/profile-slice";
 import { PortalSidebar } from "@/components/portal-sidebar";
-import { NAV_ITEMS, PERSONAL_PORTAL_HOME } from "./const";
+import { NAV_ITEMS, PERSONAL_PORTAL_HOME, SHOW_HEADER_EXTRAS, SHOW_PERSONAL_PORTAL } from "./const";
 import { PersonalMobileNav } from "./components/personal-mobile-nav";
 import { ICON } from "@/lib/public-assets";
+import { SIGN_IN_HREF } from "@/app/auth/const";
 
 const SHELL_WIDTH = "mx-auto w-full max-w-7xl px-3 sm:px-4 md:px-6";
 
@@ -74,7 +75,7 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
 
   const handleSignOut = () => {
     dispatch(logout());
-    router.push("/auth/sign-in");
+    router.push(SIGN_IN_HREF);
   };
 
   if (mounted && status === "loading" && !profile) {
@@ -110,20 +111,24 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
           </span>
 
           <div className="flex items-center gap-2 ml-auto pr-3 sm:pr-4 md:pr-6">
-            <Link
-              href="/personal/notifications"
-              className="hidden md:inline-flex relative items-center justify-center rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
-              aria-label="Notifications"
-            >
-              <Bell className="h-4.5 w-4.5" />
-            </Link>
-            <Link
-              href="/personal/credits"
-              className="hidden md:inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 h-8 text-xs font-medium text-muted-foreground hover:bg-muted"
-            >
-              <Coins className="h-3.5 w-3.5" />
-              Credits
-            </Link>
+            {SHOW_HEADER_EXTRAS && (
+              <>
+                <Link
+                  href="/personal/notifications"
+                  className="hidden md:inline-flex relative items-center justify-center rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
+                  aria-label="Notifications"
+                >
+                  <Bell className="h-4.5 w-4.5" />
+                </Link>
+                <Link
+                  href="/personal/credits"
+                  className="hidden md:inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 h-8 text-xs font-medium text-muted-foreground hover:bg-muted"
+                >
+                  <Coins className="h-3.5 w-3.5" />
+                  Credits
+                </Link>
+              </>
+            )}
 
             <DropdownMenu>
               <DropdownMenuTrigger
@@ -166,9 +171,11 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
                     </DropdownMenuItem>
                   </>
                 )} */}
-                <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push(PERSONAL_PORTAL_HOME)}>
-                  Personal Portal
-                </DropdownMenuItem>
+                {SHOW_PERSONAL_PORTAL && (
+                  <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push(PERSONAL_PORTAL_HOME)}>
+                    Personal Portal
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/business/portal")}>
                   Business Portal
                 </DropdownMenuItem>
@@ -191,7 +198,8 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
       </header>
 
       <div className="flex flex-1">
-        <PortalSidebar groups={NAV_ITEMS} />
+        {/* Personal Portal hidden for the short release — only the profile is reachable (from the menu). */}
+        {SHOW_PERSONAL_PORTAL && <PortalSidebar groups={NAV_ITEMS} />}
         <main
           className={cn(
             "min-w-0 flex-1 overflow-x-clip",
@@ -202,7 +210,9 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
         </main>
       </div>
 
-      <PersonalMobileNav portalTarget={portalTarget} myProfileHref={myProfileHref} onSignOut={handleSignOut} />
+      {SHOW_PERSONAL_PORTAL && (
+        <PersonalMobileNav portalTarget={portalTarget} myProfileHref={myProfileHref} onSignOut={handleSignOut} />
+      )}
       {/* Ask Aly floating orb — parked for now. */}
       {/* <AiLauncher /> */}
     </div>

@@ -2,7 +2,8 @@ import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { businessesApi } from "../apis";
 import type {
   ActivityListParams, ActivityLogEntry, Branch, BranchInput, BranchListParams, BranchPatch, Business, BusinessCreateInput,
-  BusinessDetail, BusinessListParams, BusinessPatch, BusinessRelation, BusinessService, BusinessStatus, ListingRef,
+  BusinessDetail, BusinessListParams, BusinessPatch, BusinessRelation, BusinessService, BusinessStatus, Contact, ContactInput,
+  ContactListParams, ContactPatch, ListingRef,
   EnquirySettingsPatch, LinkExistingBranchInput, Member, MemberInviteInput, MemberListParams, MemberPatch, MemberRole,
   RelationInput, RelationListParams, RelationPatch,
   SchemaFieldValue, ServiceInput, ServicePatch, ServiceSearchParams,
@@ -132,8 +133,23 @@ export const fetchMembers = createAsyncThunk(
 );
 export const fetchContacts = createAsyncThunk(
   "platformBusinesses/fetchContacts",
-  ({ id, params }: { id: number; params?: Omit<MemberListParams, "point_of_contact"> }) =>
-    businessesApi.getMembers(id, { ...params, point_of_contact: true }),
+  ({ id, params }: { id: number; params?: ContactListParams }) => businessesApi.getContacts(id, params),
+);
+export const createContact = createAsyncThunk(
+  "platformBusinesses/createContact",
+  ({ id, input }: { id: number; input: ContactInput }) => businessesApi.createContact(id, input),
+);
+export const updateContact = createAsyncThunk(
+  "platformBusinesses/updateContact",
+  ({ id, contactId, patch }: { id: number; contactId: string; patch: ContactPatch }) =>
+    businessesApi.updateContact(id, contactId, patch),
+);
+export const deleteContactThunk = createAsyncThunk(
+  "platformBusinesses/deleteContact",
+  async ({ id, contactId }: { id: number; contactId: string }) => {
+    await businessesApi.deleteContact(id, contactId);
+    return contactId;
+  },
 );
 export const fetchMemberRoles = createAsyncThunk("platformBusinesses/fetchMemberRoles", (id: number) => businessesApi.getMemberRoles(id));
 export const inviteMember = createAsyncThunk(
@@ -204,7 +220,7 @@ type BusinessesState = {
   branches: BranchesState;
   services: RelationsState<BusinessService> & { total: number };
   members: RelationsState<Member> & { total: number };
-  contacts: RelationsState<Member> & { total: number };
+  contacts: RelationsState<Contact> & { total: number };
   memberRoles: MemberRole[];
   relations: PartnersState;
   activity: RelationsState<ActivityLogEntry> & { total: number };
@@ -350,26 +366,30 @@ const businessesSlice = createSlice({
         state.contacts = { items: action.payload.data, status: "idle", error: null, total: action.payload.total };
       })
       .addCase(fetchContacts.rejected, (state, action) => { state.contacts.status = "failed"; state.contacts.error = action.error.message ?? "Failed to load contacts."; })
+      .addCase(createContact.fulfilled, (state, action) => {
+        if (action.payload.is_primary) for (const c of state.contacts.items) c.is_primary = false;
+        state.contacts.items.unshift(action.payload);
+        state.contacts.total += 1;
+      })
+      .addCase(updateContact.fulfilled, (state, action) => {
+        if (action.payload.is_primary) for (const c of state.contacts.items) c.is_primary = false;
+        const i = state.contacts.items.findIndex((c) => c.id === action.payload.id);
+        if (i >= 0) state.contacts.items[i] = action.payload;
+      })
+      .addCase(deleteContactThunk.fulfilled, (state, action) => {
+        const wasPresent = state.contacts.items.some((c) => c.id === action.payload);
+        state.contacts.items = state.contacts.items.filter((c) => c.id !== action.payload);
+        if (wasPresent) state.contacts.total = Math.max(0, state.contacts.total - 1);
+      })
       .addCase(fetchMemberRoles.fulfilled, (state, action) => { state.memberRoles = action.payload; })
       .addCase(updateMember.fulfilled, (state, action) => {
         const i = state.members.items.findIndex((m) => m.id === action.payload.id);
         if (i >= 0) state.members.items[i] = action.payload;
-        const j = state.contacts.items.findIndex((m) => m.id === action.payload.id);
-        if (action.payload.admin_point_of_contact) {
-          if (j >= 0) state.contacts.items[j] = action.payload;
-          else { state.contacts.items.push(action.payload); state.contacts.total += 1; }
-        } else if (j >= 0) {
-          state.contacts.items.splice(j, 1);
-          state.contacts.total = Math.max(0, state.contacts.total - 1);
-        }
       })
       .addCase(removeMember.fulfilled, (state, action) => {
         const wasMember = state.members.items.some((m) => m.id === action.payload);
-        const wasContact = state.contacts.items.some((m) => m.id === action.payload);
         state.members.items = state.members.items.filter((m) => m.id !== action.payload);
-        state.contacts.items = state.contacts.items.filter((m) => m.id !== action.payload);
         if (wasMember) state.members.total = Math.max(0, state.members.total - 1);
-        if (wasContact) state.contacts.total = Math.max(0, state.contacts.total - 1);
       })
 
       .addCase(fetchRelations.pending, (state) => { state.relations.status = "loading"; })

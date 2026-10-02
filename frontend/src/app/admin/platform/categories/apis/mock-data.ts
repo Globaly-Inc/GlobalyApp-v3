@@ -1,7 +1,8 @@
 import type {
   Accreditation, AccreditationInput, Category, CategoryInput, CityOption, CountryOption,
   FeeType, FeeTypeInput, IssuingOrganization, ListParams, Lookup, LookupInput, LookupKind,
-  ModerationStatus, Paginated, SchemaField, SchemaFieldInput, SearchListParams, Test, TestInput,
+  ModerationStatus, Paginated, RegistrationType, RegistrationTypeInput, SchemaField, SchemaFieldInput,
+  SearchListParams, Test, TestInput,
 } from "./types";
 
 function delay(ms: number) {
@@ -89,8 +90,8 @@ const issuingOrganizations: IssuingOrganization[] = [
 ];
 
 const accreditations: Accreditation[] = [
-  { id: 1, name: "AACSB Accreditation", issuing_organization_id: 1, issuing_organization_name: "AACSB International", issuing_organization_logo_url: null, website: null, description: "Business school accreditation.", business_id: null, is_global: true, status: "approved", sort_order: 0, scope_country_ids: [] },
-  { id: 2, name: "TEQSA Registration", issuing_organization_id: 2, issuing_organization_name: "TEQSA", issuing_organization_logo_url: null, website: null, description: null, business_id: 42, is_global: false, status: "pending", sort_order: 1, scope_country_ids: [1] },
+  { id: 1, name: "AACSB Accreditation", issuing_organization_id: 1, issuing_organization_name: "AACSB International", issuing_organization_logo_url: null, issuing_organization_status: "approved", website: null, description: "Business school accreditation.", business_id: null, is_global: true, status: "approved", sort_order: 0, scope_country_ids: [] },
+  { id: 2, name: "TEQSA Registration", issuing_organization_id: 2, issuing_organization_name: "TEQSA", issuing_organization_logo_url: null, issuing_organization_status: "pending", website: null, description: null, business_id: 42, is_global: false, status: "pending", sort_order: 1, scope_country_ids: [1] },
 ];
 
 const countries: CountryOption[] = [
@@ -99,6 +100,16 @@ const countries: CountryOption[] = [
   { id: 3, name: "Canada", iso2: "CA", phoneCode: "+1" },
   { id: 4, name: "New Zealand", iso2: "NZ", phoneCode: "+64" },
   { id: 5, name: "Nepal", iso2: "NP", phoneCode: "+977" },
+];
+
+// country_id null is the generic fallback row — what a country with none of its own is offered.
+const registrationTypes: RegistrationType[] = [
+  { id: 901, country_id: null, country_name: null, code: "Business Registration Number", label: "Business Registration Number", sort_order: 1, is_active: true },
+  { id: 902, country_id: 1, country_name: "Australia", code: "ABN", label: "ABN (11 digits)", sort_order: 1, is_active: true },
+  { id: 903, country_id: 1, country_name: "Australia", code: "ACN", label: "ACN (9 digits)", sort_order: 2, is_active: true },
+  { id: 904, country_id: 2, country_name: "United Kingdom", code: "Company Number", label: "Company Number (8 characters)", sort_order: 1, is_active: true },
+  { id: 905, country_id: 3, country_name: "Canada", code: "BN", label: "Business Number (BN)", sort_order: 1, is_active: true },
+  { id: 906, country_id: 4, country_name: "New Zealand", code: "NZBN", label: "NZBN (13 digits)", sort_order: 1, is_active: true },
 ];
 
 const citiesByCountry: Record<number, CityOption[]> = {
@@ -280,6 +291,7 @@ export const categoriesMockApi = {
       is_global: input.scope_country_ids.length === 0,
       issuing_organization_name: org?.name ?? null,
       issuing_organization_logo_url: org?.logo_url ?? null,
+      issuing_organization_status: org ? "approved" : null,
     };
     accreditations.push(row);
     return row;
@@ -293,6 +305,16 @@ export const categoriesMockApi = {
       ...(input.scope_country_ids ? { is_global: input.scope_country_ids.length === 0 } : {}),
       ...(org ? { issuing_organization_name: org.name } : {}),
     });
+  },
+  reviewIssuingOrganization: async (id: number, decision: ModerationStatus): Promise<unknown> => {
+    console.log("[mock] reviewIssuingOrganization", id, decision);
+    await delay(300);
+    // The real API reports issuer status on each accreditation row (issuing_organization_status),
+    // so that's what the mock updates — the list the Approve/Reject issuer buttons live on.
+    for (const a of accreditations) {
+      if (a.issuing_organization_id === id) a.issuing_organization_status = decision;
+    }
+    return { id, status: decision };
   },
   reviewAccreditation: async (id: number, decision: ModerationStatus): Promise<Accreditation> => {
     console.log("[mock] reviewAccreditation", id, decision);
@@ -328,5 +350,40 @@ export const categoriesMockApi = {
     console.log("[mock] getCitiesByCountry", countryId);
     await delay(300);
     return citiesByCountry[countryId] ?? [];
+  },
+
+  getRegistrationTypes: async ({ search, ...params }: SearchListParams = {}): Promise<Paginated<RegistrationType>> => {
+    console.log("[mock] getRegistrationTypes", search, params);
+    await delay(300);
+    const rows = search
+      ? registrationTypes.filter((r) => `${r.code} ${r.label}`.toLowerCase().includes(search.toLowerCase()))
+      : registrationTypes;
+    return paginate(rows, params);
+  },
+  createRegistrationType: async (input: RegistrationTypeInput): Promise<RegistrationType> => {
+    console.log("[mock] createRegistrationType", input);
+    await delay(300);
+    const row: RegistrationType = {
+      ...input,
+      id: newId(),
+      country_name: countries.find((c) => c.id === input.country_id)?.name ?? null,
+    };
+    registrationTypes.push(row);
+    return row;
+  },
+  updateRegistrationType: async (id: number, input: Partial<RegistrationTypeInput>): Promise<RegistrationType> => {
+    console.log("[mock] updateRegistrationType", id, input);
+    await delay(300);
+    // country_name is derived, so it has to move with country_id or the row would keep the old label.
+    const patch = "country_id" in input
+      ? { ...input, country_name: countries.find((c) => c.id === input.country_id)?.name ?? null }
+      : input;
+    return patchRow(registrationTypes, id, patch);
+  },
+  deleteRegistrationType: async (id: number): Promise<void> => {
+    console.log("[mock] deleteRegistrationType", id);
+    await delay(300);
+    const i = registrationTypes.findIndex((r) => r.id === id);
+    if (i >= 0) registrationTypes.splice(i, 1);
   },
 };

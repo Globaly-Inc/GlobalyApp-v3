@@ -358,12 +358,10 @@ export function AgentsTab({
   jobId,
   job,
   onReload,
-  onJumpToContext,
 }: Readonly<{
   jobId: string;
   job: ExtractionJob;
   onReload: () => void;
-  onJumpToContext: () => void;
 }>) {
   const [agents, setAgents] = useState<AgentFull[]>([]);
   const [total, setTotal] = useState(0);
@@ -488,11 +486,7 @@ export function AgentsTab({
         progress={(job.pipeline_progress as Record<string, unknown> | null)?.agents}
         lastUpdated={latestTimestamp(agents)}
         hasData={total > 0}
-        guidedUrls={job.guided_urls}
-        contextKey="agents_urls"
-        contextLabel="agents URLs"
         onChanged={onReload}
-        onAddContext={onJumpToContext}
       />
 
       <div className="space-y-3">
@@ -556,7 +550,7 @@ export function AgentsTab({
               <Users className="mx-auto mb-3 h-8 w-8 opacity-40" />
               <p className="text-sm">{search.trim() ? "No agents match your search" : "No agents yet"}</p>
               {!search.trim() && (
-                <p className="mt-1 text-xs">Add agent directory URLs in the Context tab, then run the extraction.</p>
+                <p className="mt-1 text-xs">Run the extraction to find agents.</p>
               )}
               {search.trim() && (
                 <Button variant="ghost" size="sm" className="mt-2 gap-1.5 cursor-pointer" onClick={() => setSearch("")}>

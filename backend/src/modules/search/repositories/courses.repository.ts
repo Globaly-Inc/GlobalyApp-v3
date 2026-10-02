@@ -3,8 +3,12 @@
 // catalog exists yet (see business-services promote.service.ts stub).
 
 import { masterKnex } from "../../../core/db/master-pool.js";
-import { SUPERADMIN_SCHEMA as S } from "../../superadmin/consts.js";
+import { applyCourseScope, type SharedCourses } from "../../superadmin/data-extraction/repositories/courses.repository.js";
+import { resolveSharedCourses } from "../../superadmin/platform/business-branches/repositories/business-branches.repository.js";
+import { SUPERADMIN_SCHEMA as S, approvedCourseSql, publicJobSql } from "../../superadmin/consts.js";
 import { courseSlug, parseCourseIdFragment } from "../utils/slug.js";
+import * as filesRepo from "../../../shared/storage/files.repository.js";
+import * as storage from "../../../shared/storage/storageService.js";
 
 export type CourseSearchFilters = {
   country?: string;
@@ -24,6 +28,11 @@ export type CourseSearchFilters = {
   jobId?: string;
   /** Restricts to specific courses — how the saved-courses list reuses this query. */
   courseIds?: string[];
+  /** With `jobId`: also the courses a parent institution shares with this branch. */
+  shared?: SharedCourses | null;
+  /** The owner's verified preview schema (resolvePreviewSchemaName) — lets the profile's own
+   *  course list, count and facets show what its preview detail page already opens. */
+  previewSchemaNames?: string[];
 };
 
 export type CourseSort = "best_match" | "fee_asc" | "fee_desc" | "duration_asc";
@@ -87,17 +96,22 @@ const campusFilter = (course: string) => `(
 
 /**
  * Public visibility = the course's job was promoted to a business (promote.service.ts sets status
- * 'exported'), and an admin hasn't rejected the course.
+ * 'exported'), and the course is approved (approvedCourseSql — by a platform admin or the org's
+ * owner, or a business-portal extraction) — unapproved imports, unapproved owner-added courses and
+ * rejected ones never reach students.
  *
- * 'flagged' is what reject/bulk-reject write (courses.service.ts) — showing a rejected course to
- * students is the one verification state that must not leak. The other states stay visible:
- * requiring 'confirmed' would empty the catalog, since an extracted course starts 'unverified'
- * and most are never hand-approved.
+ * NOT_REJECTED is the looser rule kept only for the owner's own Preview (courseQuery): an owner
+ * must still be able to see a course of theirs that is awaiting approval.
  */
 export const NOT_REJECTED = "coalesce(ec.verification_status, 'unverified') <> 'flagged'";
+/** Approved (approvedCourseSql). */
+export const APPROVED = approvedCourseSql("ec");
+/** Approved AND not an owner's draft (is_published) — what any public reader of a course must
+ * require. courseQuery applies is_published separately so its preview token can bypass it. */
+export const PUBLIC_COURSE = `${APPROVED} and ec.is_published`;
 
-const PUBLICLY_VISIBLE = `exists (select 1 from ${S}.extraction_jobs ej where ej.id = ec.job_id and ej.status = 'exported')
-  and ${NOT_REJECTED}`;
+const PUBLICLY_VISIBLE = `exists (select 1 from ${S}.extraction_jobs ej where ej.id = ec.job_id and ${publicJobSql("ej")})
+  and ${APPROVED}`;
 
 /**
  * The institution's crest. Promote copies the scraped logo into `institutions.logo_url`, but a
@@ -215,22 +229,46 @@ const CARD_COLUMNS = [CAMPUS_LOCATIONS, installmentColumn("domestic"), installme
  * rows out): a left join would leave an unpublished institution's course reachable by direct link
  * even though search excludes it.
  */
-function courseQuery() {
+/**
+ * `previewSchemaName` lets the owning institution's own member bypass the `is_published` gate
+ * for their own courses — the self-service "Preview" button. Verified by the route from the
+ * caller's JWT (see utils/preview-auth.ts); never take it from an unauthenticated source.
+ */
+function courseQuery(previewSchemaNames?: string[]) {
   return masterKnex(`${S}.extraction_courses as ec`)
     .leftJoin("countries as c", (j) => j.on(masterKnex.raw("upper(c.iso2) = upper(ec.country_code)")))
-    .join("institutions as inst", (j) => j.on("inst.source_job_id", "ec.job_id").andOnVal("inst.is_published", true))
+    .join("institutions as inst", (j) => {
+      j.on("inst.source_job_id", "ec.job_id");
+      if (previewSchemaNames?.length) {
+        j.andOn((sub) => sub.onVal("inst.is_published", true).orOnIn("inst.schema_name", previewSchemaNames));
+      } else {
+        j.andOnVal("inst.is_published", true);
+      }
+    })
     .joinRaw(topFee("domestic", "dfee"))
     .joinRaw(topFee("international", "ifee"))
-    .whereRaw(PUBLICLY_VISIBLE);
+    .where((b) => {
+      b.whereRaw(PUBLICLY_VISIBLE);
+      // A manually-created institution's job is created with status "done", never "exported"
+      // (see businesses.service.ts) — its own owner previewing a course would otherwise always
+      // 404 even with a valid preview token, since that token only bypassed inst.is_published.
+      if (previewSchemaNames?.length) b.orWhereRaw(`${NOT_REJECTED} and inst.schema_name = any(?)`, [previewSchemaNames]);
+    })
+    // A course's own draft/publish state (migration 20260925_003) — same preview bypass as the
+    // institution's is_published above, so the owner's own "Preview" button still shows a draft.
+    .where((b) => {
+      b.where("ec.is_published", true);
+      if (previewSchemaNames?.length) b.orWhereIn("inst.schema_name", previewSchemaNames);
+    });
 }
 
 function baseQuery({
   country, city, degreeLevel, subjectArea, search, feeMin, feeMax, currency, intakeYear,
-  institution, duration, jobId, courseIds,
+  institution, duration, jobId, courseIds, shared, previewSchemaNames,
 }: CourseSearchFilters) {
-  const q = courseQuery();
+  const q = courseQuery(previewSchemaNames);
 
-  if (jobId) q.where("ec.job_id", jobId);
+  if (jobId) q.where((b) => applyCourseScope(b, "ec.", jobId, shared));
   if (courseIds) q.whereIn("ec.id", courseIds);
   if (country) {
     q.where((b) =>
@@ -337,12 +375,26 @@ export async function listPublicCourses(
     .select(
       ...LIST_COLUMNS,
       ...CARD_COLUMNS,
+      "ec.public_visibility",
       masterKnex.raw(`${nextIntake("intake_year")} as next_intake_year`),
       masterKnex.raw(`${nextIntake("intake_month")} as next_intake_month`),
     )
     .limit(limit)
     .offset(offset);
-  return rows.map((r: PublicCourseRow) => ({ ...r, slug: courseSlug(r.name, r.id) }));
+  // Same Hidden-section redaction as findPublicCourseBySlug — the listing carries the description
+  // and fee amounts too, so it must not bypass the owner's visibility choice.
+  return rows.map(({ public_visibility, ...r }: PublicCourseRow & { public_visibility: Record<string, boolean> | null }) => {
+    const hidden = (section: string) => public_visibility?.[section] === false;
+    return {
+      ...r,
+      ...(hidden("description") ? { description: null } : {}),
+      ...(hidden("fees") ? {
+        domestic_fee_total: null, domestic_currency: null, domestic_fee_period: null, domestic_fee_installment: null,
+        international_fee_total: null, international_currency: null, international_fee_period: null, international_fee_installment: null,
+      } : {}),
+      slug: courseSlug(r.name, r.id),
+    };
+  });
 }
 
 export async function countPublicCourses(filters: CourseSearchFilters) {
@@ -371,10 +423,11 @@ type AreaRow = { area: string; level: string | null; count: string; fee_min: str
  * degree-level spread and fee range) plus the flat level counts the course tabs use. Both go
  * through `baseQuery`, so the numbers can't disagree with the list those tabs then load.
  */
-export async function listCourseFacets(jobId: string) {
+/** `shared` — a branch's facets cover the courses its parent shares too, same as its count/list. */
+export async function listCourseFacets(jobId: string, shared?: SharedCourses | null, previewSchemaNames?: string[]) {
   const [areaRows, degreeLevels] = await Promise.all([
     // Grouped by (area, level) — one pass gives both the per-area totals and their degree spread.
-    baseQuery({ jobId }).whereNotNull("ec.subject_area")
+    baseQuery({ jobId, shared, previewSchemaNames }).whereNotNull("ec.subject_area")
       .select("ec.subject_area as area", "ec.degree_level as level")
       .count("ec.id as count")
       // A zero fee means "not captured", not "free" — nullif keeps it out of the range.
@@ -386,7 +439,7 @@ export async function listCourseFacets(jobId: string) {
         `min(case when nullif(${EFFECTIVE_FEE}, 0) is not null then ${EFFECTIVE_CURRENCY} end) as currency`,
       ))
       .groupBy("ec.subject_area", "ec.degree_level"),
-    baseQuery({ jobId }).whereNotNull("ec.degree_level")
+    baseQuery({ jobId, shared, previewSchemaNames }).whereNotNull("ec.degree_level")
       .select("ec.degree_level as name").count("ec.id as count")
       .groupBy("ec.degree_level").orderBy([{ column: "count", order: "desc" }, { column: "name" }]),
   ]);
@@ -453,7 +506,7 @@ export async function listCourseFilterOptions() {
 // The provider and place columns the detail page needs on top of the card: the awarding
 // institution (its own hero/link) and the destination country's seasonal weather.
 const DETAIL_COLUMNS = [
-  "ec.job_id",
+  "ec.job_id", "ec.public_visibility",
   "inst.id as institution_id", "inst.institution_name", "inst.cover_url as institution_cover_url",
   "inst.website as institution_website", "inst.city as institution_city",
   "inst.gallery_images as institution_gallery_images",
@@ -496,18 +549,75 @@ export async function listCourseCampuses(courseId: string, jobId: string) {
     .orderBy("cam.name");
 }
 
-export async function findPublicCourseBySlug(slug: string) {
+/**
+ * A branch lists courses its parent shares (see resolveSharedCourses), and those belong to the
+ * PARENT's job — so a branch member's preview must also get past the publish gate for the parent
+ * chain, or previewing a shared course from an unpublished parent 404s. Only ever used together
+ * with that branch's shared scope (previewSharedCourseScope), never on its own: the chain alone
+ * would expose every unpublished course of the parent, not just the shared ones.
+ */
+async function previewSchemasWithAncestors(schemaName: string): Promise<string[]> {
+  const schemas = [schemaName];
+  let row = await masterKnex("institutions").where({ schema_name: schemaName }).first("parent_institution_id");
+  // ponytail: depth cap guards a parent cycle; real chains are 1–2 deep.
+  for (let depth = 0; row?.parent_institution_id && depth < 5; depth++) {
+    const parent = await masterKnex("institutions").where({ id: row.parent_institution_id }).first("schema_name", "parent_institution_id");
+    if (!parent) break;
+    schemas.push(parent.schema_name);
+    row = parent;
+  }
+  return schemas;
+}
+
+/** The previewing branch's own job + what its parent chain shares with it; null if nothing is shared. */
+async function previewSharedCourseScope(schemaName: string) {
+  const inst = await masterKnex("institutions").where({ schema_name: schemaName }).first("id", "source_job_id");
+  if (!inst?.source_job_id) return null;
+  const shared = await resolveSharedCourses(Number(inst.id));
+  return shared ? { jobId: String(inst.source_job_id), shared } : null;
+}
+
+export async function findPublicCourseBySlug(slug: string, previewSchemaName?: string) {
   const fragment = parseCourseIdFragment(slug);
   if (!fragment) return null;
 
-  const course = await courseQuery()
+  const lookup = (previewSchemas?: string[]) => courseQuery(previewSchemas)
     .whereRaw("left(replace(ec.id::text, '-', ''), 6) = ?", [fragment])
-    .select(...LIST_COLUMNS, ...CARD_COLUMNS, ...DETAIL_COLUMNS)
-    .first();
-  if (!course) return null;
+    .select(...LIST_COLUMNS, ...CARD_COLUMNS, ...DETAIL_COLUMNS);
+
+  // The token's own institution first. Only if that misses does the preview widen to the parent
+  // chain — and then strictly to the courses shared with this branch.
+  let course = await lookup(previewSchemaName ? [previewSchemaName] : undefined).first();
+  if (!course && previewSchemaName) {
+    const scope = await previewSharedCourseScope(previewSchemaName);
+    if (scope) {
+      course = await lookup(await previewSchemasWithAncestors(previewSchemaName))
+        .where((b) => applyCourseScope(b, "ec.", scope.jobId, scope.shared))
+        .first();
+    }
+  }
+  if (!course) {
+    // ponytail: temporary diagnostic for the preview-404 report, gated to the authenticated
+    // preview path only — an ordinary public miss (a stale link, someone guessing a slug) is
+    // unauthenticated and hits this on every request, so it must not pay for an extra query/log
+    // it never asked for. Remove once the preview flow is confirmed working end to end.
+    if (previewSchemaName) {
+      const diag = await masterKnex(`${S}.extraction_courses as ec`)
+        .leftJoin(`${S}.extraction_jobs as ej`, "ej.id", "ec.job_id")
+        .leftJoin("institutions as inst", "inst.source_job_id", "ec.job_id")
+        .whereRaw("left(replace(ec.id::text, '-', ''), 6) = ?", [fragment])
+        .select(
+          "ec.id as course_id", "ec.job_id", "ec.verification_status",
+          "ej.status as job_status", "inst.id as institution_id", "inst.schema_name", "inst.is_published",
+        )
+        .first();
+      console.warn("[course-preview-404]", { slug, fragment, previewSchemaName, diag: diag ?? "no matching extraction_courses row at all" });
+    }
+    return null;
+  }
 
   // Every junction below carries a unique (course_id, entity_id), so none of these joins fan out.
-  const [intakes, eligibility, englishRequirements, studyUnits, studyOptions] = await Promise.all([
+  const [intakes, eligibility, englishRequirements, studyUnits, studyOptions, media] = await Promise.all([
     masterKnex(`${S}.extraction_intakes as ei`)
       .join(`${S}.extraction_course_intake_assignments as ia`, "ia.intake_id", "ei.id")
       .where("ia.course_id", course.id)
@@ -528,13 +638,40 @@ export async function findPublicCourseBySlug(slug: string) {
       .where("oa.course_id", course.id)
       .select("o.id", "o.name", "o.study_mode", "o.study_load", "o.duration_value", "o.duration_unit", "o.applicable_to")
       .orderBy("o.created_at"),
+    // Files an admin uploaded through the service editor's Media tab (uploaded_files, entity_type
+    // "service", entity_id = this course's own id) — never wired to any public page before, so a
+    // course with real uploaded photos only ever showed its single scraped image_url.
+    filesRepo.listFilesByEntity("service", course.id, "media"),
   ]);
+
+  // A section the owner marked Hidden must not leak through the API response either — the
+  // frontend page only skips rendering the card, but the raw JSON (signed media URLs, fee
+  // amounts, description text) would otherwise still be there for anyone to read directly.
+  const visibility = (course.public_visibility ?? {}) as Record<string, boolean>;
+  const isVisible = (section: string) => visibility[section] !== false;
+
+  const mediaVisible = isVisible("media");
+  const mediaUrls = mediaVisible
+    ? await Promise.all(media.map((f) => storage.getSignedViewUrl(f.storage_path).catch(() => null)))
+    : [];
+
+  const feesVisible = isVisible("fees");
+  const feeRedaction = feesVisible ? {} : {
+    domestic_fee_total: null, domestic_currency: null, domestic_fee_period: null, domestic_fee_installment: null,
+    international_fee_total: null, international_currency: null, international_fee_period: null, international_fee_installment: null,
+    domestic_fee_installments: null, international_fee_installments: null,
+  };
 
   return {
     ...course,
+    ...feeRedaction,
     slug: courseSlug(course.name, course.id),
-    intakes, eligibility, englishRequirements,
-    study_units: studyUnits,
-    study_options: studyOptions,
+    description: isVisible("description") ? course.description : null,
+    intakes: isVisible("intakes") ? intakes : [],
+    eligibility: isVisible("eligibility") ? eligibility : [],
+    englishRequirements: isVisible("eligibility") ? englishRequirements : [],
+    study_units: isVisible("study_units") ? studyUnits : [],
+    study_options: isVisible("study_options") ? studyOptions : [],
+    media: mediaVisible ? media.map((f, i) => ({ id: f.id, url: mediaUrls[i], mime_type: f.mime_type })).filter((m) => m.url) : [],
   };
 }

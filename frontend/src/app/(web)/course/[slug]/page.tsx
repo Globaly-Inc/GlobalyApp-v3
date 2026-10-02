@@ -17,11 +17,15 @@ import { CourseAwardedByCard, CourseConnectCard } from "./components/course-side
 import { CourseEntryRequirementsCard } from "./components/course-entry-requirements-card";
 import { PageViews } from "../../components/page-views";
 
-type CoursePageProps = Readonly<{ params: Promise<{ slug: string }> }>;
+type CoursePageProps = Readonly<{
+  params: Promise<{ slug: string }>;
+  searchParams: Promise<{ preview_token?: string }>;
+}>;
 
-export async function generateMetadata({ params }: CoursePageProps): Promise<Metadata> {
+export async function generateMetadata({ params, searchParams }: CoursePageProps): Promise<Metadata> {
   const { slug } = await params;
-  const course = await getCourseBySlug(slug);
+  const { preview_token } = await searchParams;
+  const course = await getCourseBySlug(slug, preview_token);
   if (!course) return { title: "Course — Globaly" };
   return {
     title: `${course.name} — Globaly`,
@@ -45,15 +49,27 @@ function toLocations(course: CourseDetail): ProfileLocation[] {
   }));
 }
 
-/** The course's own image first, then the awarding institution's photos. */
+/** The course's own scraped image first, then photos an admin uploaded through the service
+ * editor's Media tab, then the awarding institution's photos. */
 function courseGallery(course: CourseDetail) {
-  return toGalleryItems([course.image_url, ...(course.institution?.gallery_image_urls ?? [])], null);
+  const uploadedImages = course.media.filter((m) => m.mime_type.startsWith("image/")).map((m) => m.url);
+  const uploadedVideos = course.media.filter((m) => m.mime_type.startsWith("video/")).map((m) => m.url);
+  return toGalleryItems(
+    [course.image_url, ...uploadedImages, ...(course.institution?.gallery_image_urls ?? [])],
+    uploadedVideos,
+  );
 }
 
-export default async function CoursePage({ params }: CoursePageProps) {
+export default async function CoursePage({ params, searchParams }: CoursePageProps) {
   const { slug } = await params;
-  const [course, tests] = await Promise.all([getCourseBySlug(slug), getTests()]);
+  const { preview_token } = await searchParams;
+  const [course, tests] = await Promise.all([getCourseBySlug(slug, preview_token), getTests()]);
   if (!course) notFound();
+
+  // Per-section owner control (set in the self-service editor's "Public" toggles) — a section
+  // absent from the map, or the map itself absent, means public (same "unset means public" rule
+  // as the profile pages' own public_visibility).
+  const isVisible = (section: string) => course.public_visibility?.[section] !== false;
 
   return (
     <div className="container mx-auto max-w-6xl space-y-4 px-4 py-6 md:space-y-6">
@@ -70,23 +86,25 @@ export default async function CoursePage({ params }: CoursePageProps) {
 
       <div className="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-3">
         <div className="space-y-4 md:space-y-6 lg:col-span-2">
-          <CourseDescription description={course.description} />
-          <CourseFeeCard course={course} />
-          <CourseIntakesCard intakes={course.intakes} />
-          <CourseStudyOptionsCard options={course.study_options} />
-          <CourseStudyUnitsCard units={course.study_units} />
+          {isVisible("description") && <CourseDescription description={course.description} />}
+          {isVisible("fees") && <CourseFeeCard course={course} />}
+          {isVisible("intakes") && <CourseIntakesCard intakes={course.intakes} />}
+          {isVisible("study_options") && <CourseStudyOptionsCard options={course.study_options} />}
+          {isVisible("study_units") && <CourseStudyUnitsCard units={course.study_units} />}
           <ProfileLocationsCard locations={toLocations(course)} cityLink={course.city_link} />
           <CourseWeatherCard weather={course.weather} countryName={course.country_name} />
-          <ProfileGallery items={courseGallery(course)} />
+          {isVisible("media") && <ProfileGallery items={courseGallery(course)} />}
         </div>
 
         <div className="space-y-4 md:space-y-6">
           <CourseAwardedByCard course={course} />
           <CourseConnectCard institution={course.institution} />
           {/* Anchor target for the hero CTA and the search card's Eligibility button. */}
-          <div id="eligibility" className="scroll-mt-24">
-            <CourseEntryRequirementsCard eligibility={course.eligibility} englishRequirements={course.englishRequirements} tests={tests} />
-          </div>
+          {isVisible("eligibility") && (
+            <div id="eligibility" className="scroll-mt-24">
+              <CourseEntryRequirementsCard eligibility={course.eligibility} englishRequirements={course.englishRequirements} tests={tests} />
+            </div>
+          )}
         </div>
       </div>
     </div>

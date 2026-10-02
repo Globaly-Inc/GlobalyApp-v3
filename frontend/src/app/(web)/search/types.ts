@@ -197,14 +197,20 @@ export type CourseDetail = SearchCourse & {
   englishRequirements: CourseEnglishRequirement[];
   study_units: CourseStudyUnit[];
   study_options: CourseStudyOption[];
+  /** Photos an admin uploaded through the service editor's Media tab — separate from the single
+   * scraped `image_url`. */
+  media: { id: number; url: string; mime_type: string }[];
   institution: CourseInstitution | null;
   campuses: InstitutionCampus[];
   weather: CourseWeather | null;
   /** Full payment schedule, when the fee splits — `[{ name?, amount }]`. */
-  domestic_fee_installments: FeeInstallment[] | null;
+domestic_fee_installments: FeeInstallment[] | null;
   international_fee_installments: FeeInstallment[] | null;
   /** The platform's city page for the campus city, when one is published. */
   city_link: { name: string; href: string } | null;
+  /** Per-section public/private control set in the owner's editor — a section absent or not
+   * explicitly `false` here is public (same "unset means public" rule as the profile pages). */
+  public_visibility: Record<string, boolean> | null;
 };
 
 export type SearchBusiness = {
@@ -303,6 +309,8 @@ export type InstitutionDetail = SearchBusiness & {
   video_urls: string[] | null;
   /** Signed preview URLs for `gallery_images`, resolved server-side. */
   gallery_image_urls?: (string | null)[];
+  /** False when the owner set the Locations card to Private — `campuses` also arrives empty. */
+  show_locations?: boolean;
   campuses: InstitutionCampus[];
   representatives: InstitutionRepresentative[];
   members: InstitutionMember[];
@@ -423,6 +431,8 @@ export type BusinessDetail = SearchBusiness & {
   twitter_url: string | null;
   linkedin_url: string | null;
   youtube_url: string | null;
+  /** False when the owner set the Locations card to Private — `branches` also arrives empty. */
+  show_locations?: boolean;
   branches: BusinessBranch[];
   members: BusinessMember[];
   services: BusinessService[];
@@ -449,7 +459,8 @@ export type SearchJob = {
 };
 
 export type SearchScholarship = {
-  id: number;
+  /** A number for platform scholarships, a uuid for an institution's own. */
+  id: number | string;
   title: string;
   slug: string;
   provider_name: string | null;

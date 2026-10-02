@@ -1,13 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Users } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAppSelector } from "@/lib/hooks";
 import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs";
 import type { Member, Role } from "../../apis/types";
 import { AddMemberDrawer } from "../members/add-member-drawer";
+import { InviteMemberDialog } from "../members/invite-member-dialog";
 import { AcceptedMembersList } from "../members/accepted-members-list";
 import { InvitedMembersList } from "../members/invited-members-list";
 import { RolesList } from "../members/roles-list";
@@ -22,28 +22,28 @@ const SUB_TABS = [
 type SubTab = (typeof SUB_TABS)[number]["value"];
 
 export function MembersTab({ businessId }: Readonly<{ businessId: number }>) {
-  const { members, invitations } = useAppSelector((state) => state.businessProfileDetail);
+  const { invitations } = useAppSelector((state) => state.businessProfileDetail);
   const [subTab, setSubTab] = useState<SubTab>("users");
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [roleDrawerOpen, setRoleDrawerOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
 
   return (
     <div>
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <Users className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-semibold">Members</span>
-          <Badge variant="secondary">{members.total}</Badge>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">Team Management</h1>
+          <p className="text-muted-foreground">Manage your business team members and roles.</p>
         </div>
         {subTab === "roles" ? (
           <Button className="h-10" onClick={() => { setEditingRole(null); setRoleDrawerOpen(true); }}>
             <Plus className="mr-1.5 h-3.5 w-3.5" /> Add role
           </Button>
         ) : (
-          <Button className="h-10" onClick={() => { setEditingMember(null); setDrawerOpen(true); }}>
-            <Plus className="mr-1.5 h-3.5 w-3.5" /> Add member
+          <Button className="h-10" onClick={() => setInviteOpen(true)}>
+            <Plus className="mr-1.5 h-3.5 w-3.5" /> Invite Member
           </Button>
         )}
       </div>
@@ -60,6 +60,7 @@ export function MembersTab({ businessId }: Readonly<{ businessId: number }>) {
       {subTab === "invited" && <InvitedMembersList businessId={businessId} />}
       {subTab === "roles" && <RolesList businessId={businessId} onEdit={(r) => { setEditingRole(r); setRoleDrawerOpen(true); }} />}
 
+      <InviteMemberDialog open={inviteOpen} onOpenChange={setInviteOpen} businessId={businessId} />
       <AddMemberDrawer open={drawerOpen} onOpenChange={setDrawerOpen} businessId={businessId} editingMember={editingMember} />
       <RoleDrawer open={roleDrawerOpen} onOpenChange={setRoleDrawerOpen} businessId={businessId} editingRole={editingRole} />
     </div>

@@ -55,36 +55,56 @@ Admin → POST /jobs { institution_url: "https://unimelb.edu.au" }
 
 The API returns immediately with `{ id: "..." }`. The actual work happens asynchronously in the workers.
 
-### Step 2: Job Worker — Site Analysis + URL Discovery
+### Step 2: Job Worker — Admission
 
 **Process:** `npm run job:extraction`
 **Queue:** `extraction_jobs`
 
+The job worker no longer scrapes or discovers anything. It marks the job `processing` and publishes
+the first step of the chain, `site_map`, to the `extraction_steps` queue. Everything below runs on the
+step worker (`npm run job:extraction-step`), one step at a time.
+
+### Step 2b: Step Worker — The Chain (one step at a time)
+
+Design: `docs/data-extraction/2026-09-18-one-step-at-a-time-scraping-plan.md`. Code: `lib/pipeline-steps.ts`.
+
+Each step **runs to completion, writes its result to a table, and stops**. The next step reads only
+that table. The gate between steps is one column, `extraction_jobs.step_mode`:
+
+- `auto` (default) — each step publishes its successor, as the pipeline always has.
+- `manual` — the pipeline stops after every step with the next one marked `waiting` in
+  `pipeline_progress`; the admin presses **Run** on it (`POST /jobs/:id/run-step`).
+
 ```
-extraction-job.worker.ts
-  │
-  ├── 1. Scrape homepage
-  │      Scrapling → Crawl4AI /md (fit) → Crawl4AI /md (raw) → Firecrawl
-  │      Returns: markdown (not HTML)
-  │
-  ├── 2. Send markdown to Gemini
-  │      Prompt: "Analyze this institution, extract name/address/contact"
-  │      Writes: extraction_institution_overview
-  │              extraction_site_intelligence
-  │
-  ├── 3. Discover course page URLs
-  │      Firecrawl /map → sitemap.xml → robots.txt → seed page links
-  │      Filter: heuristic (looksLikeCourseUrl) + LLM re-ranking
-  │
-  ├── 4. Queue each URL for extraction
-  │      For each course URL:
-  │        INSERT extraction_queue (status: "pending")
-  │        Publish to LavinMQ "extraction_pages" queue
-  │
-  └── 5. Update job
-         total_pages_found = N
-         pipeline_progress = { site_mapping: "done", course_discovery: "done", data_extraction: "processing" }
+site_map        discoverUrlsForCrawl → related domains → blocklist → guided URLs + homepage
+                writes: extraction_site_urls (source per URL). Network: discovery only.
+   │
+site_snapshot   N concurrent batches of 100 (STEPS queue). For every non-excluded site URL:
+                getPage() → extraction_pages row (+ one .md per page in GCS when configured).
+                ★ THE ONLY STEP THAT SCRAPES PAGES. The last batch of a run hands off (once).
+   │
+site_analysis   homepage (full mode, a cache hit after step 2 or one fetch) → Gemini →
+                extraction_institution_overview + extraction_site_intelligence.
+                Also publishes the "institution" side step (or marks it waiting in manual mode).
+   │
+url_classify    heuristic (looksLikeCourseUrl) first; the model only NARROWS a list over 500 or
+                CLASSIFIES when the heuristic found nothing — in batches of 200, each URL shown
+                with the first 300 chars of its snapshot. Guided URLs are always `course`.
+                writes: extraction_site_urls.role / role_source ('heuristic' | 'llm'; 'admin' is never overwritten)
+   │
+queue_pages     every non-excluded `role = 'course'` URL → extraction_queue + one PAGES message.
+                Dedupes on (job_id, url); reports duplicates and page_cap discards apart.
 ```
+
+Preconditions are enforced in `services/step.service.ts` and return a 400 naming the step to run:
+`site_snapshot` needs the site list; `url_classify` needs `site_map` and `site_analysis` done;
+`queue_pages` needs `url_classify` done. Any step can be re-run from its tab: `site_map` upserts
+(admin exclusions survive), `url_classify` never overwrites an admin-set role, `queue_pages` dedupes.
+
+Admin surfaces: **Site URLs** tab (`GET /jobs/:id/site-urls`, `PATCH /site-urls/:id`,
+`POST /jobs/:id/site-urls/bulk-exclude`) to prune or re-role URLs before scraping or Gemini;
+**Snapshots** tab (`GET /jobs/:id/snapshots`, `GET /jobs/:id/snapshots/:pageId`) to read what was
+fetched. Step mode is set with `PATCH /jobs/:id/context { step_mode }`.
 
 ### Step 3: Page Worker — Course Extraction
 
@@ -97,8 +117,11 @@ extraction-page.worker.ts (runs N times in parallel)
   │
   ├── 1. Check job is still active (not paused/stopped)
   │
-  ├── 2. Scrape the page to markdown
-  │      Same cascade: Scrapling → Crawl4AI → Firecrawl
+  ├── 2. Read the page from its snapshot .md file in GCS (page-store.getPage)
+  │      ★ The file is the source of truth. No file (never snapshotted, or gone from the bucket),
+  │        or a file that no longer hashes to its extraction_pages row → scrape live through
+  │        Scrapling → Crawl4AI → Firecrawl and write the file. The retry ladder (forceFirecrawl)
+  │        and an explicit admin Retry always fetch live.
   │
   ├── 3. Send markdown to Gemini
   │      Prompt: "Extract all courses from this page with fees, intakes, study options..."

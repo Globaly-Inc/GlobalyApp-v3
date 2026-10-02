@@ -34,6 +34,7 @@ export interface InstitutionRecord {
   subdomain: string;
   institution_name: string;
   institution_type: string | null;
+  business_category_id: number | null;
   description: string | null;
   logo_url: string | null;
   cover_url: string | null;
@@ -43,6 +44,14 @@ export interface InstitutionRecord {
   city: string | null;
   address: string | null;
   postcode: string | null;
+  currency: string | null;
+  registration_licenses: Record<string, unknown> | null;
+  linkedin_url: string | null;
+  facebook_url: string | null;
+  instagram_url: string | null;
+  twitter_url: string | null;
+  youtube_url: string | null;
+  whatsapp_url: string | null;
   status: string;
   /** 0 = not activated, 1 = activated. Same contract as businesses.account_status. */
   account_status: number;
@@ -53,6 +62,8 @@ export interface InstitutionRecord {
   claim_token_expires_at: Date | null;
   /** Extraction provenance — the catalog is read through this, never copied. */
   source_job_id: string | null;
+  /** Set on a branch created from another institution's Branches tab — see createInstitutionBranch. */
+  parent_institution_id?: number | null;
   /** NULL until the tenant schema exists; promoted listings get one on claim. */
   schema_provisioned_at: Date | null;
   meta: Record<string, unknown>;
@@ -64,6 +75,8 @@ export interface InstitutionRecord {
 export interface BusinessRecord {
   id: string;
   owner_id: number;
+  /** Set on a branch created from another business's Branches tab. */
+  parent_business_id?: number | null;
   email: string | null;
   phone: string | null;
   subdomain: string;

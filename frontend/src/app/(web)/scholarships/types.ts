@@ -1,5 +1,6 @@
 export type PublicScholarship = {
-  id: number;
+  /** A number for platform scholarships, a uuid for an institution's own. */
+  id: number | string;
   title: string;
   slug: string;
   description: string | null;
@@ -21,6 +22,8 @@ export type PublicScholarship = {
   source_url: string | null;
   is_featured: boolean;
   view_count: number;
+  /** Set when this is an institution's own scholarship (provider_name is that institution). */
+  institution_id?: number | null;
 };
 
 export type Paginated<T> = { data: T[]; meta: { page: number; limit: number; total: number; totalPages: number } };

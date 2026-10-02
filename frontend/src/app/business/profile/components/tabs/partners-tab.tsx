@@ -58,11 +58,11 @@ export function PartnersTab({
     list = (
       <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-12 text-center">
         <Handshake className="h-10 w-10 text-muted-foreground/40" />
-        <p className="text-sm font-medium">No {isInstitution ? "education agencies" : "institutions"} linked yet</p>
+        <p className="text-sm font-medium">No {isInstitution ? "counsellors" : "institutions"} linked yet</p>
         <p className="text-xs text-muted-foreground">
           {isInstitution
-            ? "Link a verified education agency authorised to represent this institution."
-            : "Link a verified institution this education agency represents."}
+            ? "Link a verified counsellor authorised to represent this institution."
+            : "Link a verified institution this counsellor represents."}
         </p>
       </div>
     );
@@ -114,12 +114,12 @@ export function PartnersTab({
           </div>
           <p className="text-xs text-muted-foreground">
             {isInstitution
-              ? "Verified education agencies authorised to represent this institution."
-              : "Verified institutions this education agency represents."}
+              ? "Verified counsellors authorised to represent this institution."
+              : "Verified institutions this counsellor represents."}
           </p>
         </div>
         <Button className="h-10" onClick={() => setAddOpen(true)}>
-          <Plus className="mr-1.5 h-3.5 w-3.5" /> {isInstitution ? "Link education agency" : "Link institution"}
+          <Plus className="mr-1.5 h-3.5 w-3.5" /> {isInstitution ? "Link counsellor" : "Link institution"}
         </Button>
       </div>
 

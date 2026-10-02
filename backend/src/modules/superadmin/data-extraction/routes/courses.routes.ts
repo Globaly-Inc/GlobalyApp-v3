@@ -64,6 +64,15 @@ export async function coursesRoutes(app: FastifyInstance) {
     return reply.send(await service.listEligibility(id, limit, offset, pagination, { search }));
   });
 
+  // GET /jobs/:id/scholarships — paginated + searchable, unlike course-links' full dump
+  app.get("/jobs/:id/scholarships", async (req, reply) => {
+    const { id } = UuidParamSchema.parse(req.params);
+    const pagination = PaginationSchema.parse(req.query);
+    const { search } = z.object({ search: z.string().optional() }).parse(req.query);
+    const { limit, offset } = paginationToOffset(pagination);
+    return reply.send(await service.listScholarships(id, limit, offset, pagination, { search }));
+  });
+
   // GET /jobs/:id/intakes — paginated + searchable, unlike course-links' full dump
   app.get("/jobs/:id/intakes", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
@@ -100,6 +109,12 @@ export async function coursesRoutes(app: FastifyInstance) {
   app.post("/courses/bulk-verify", async (req, reply) => {
     const { ids, approve } = BulkVerifyCoursesSchema.parse(req.body);
     return reply.send(await service.bulkVerifyCourses(ids, approve, adminId(req)));
+  });
+
+  // POST /jobs/:id/courses/approve-all — every course of the job, not just the loaded page
+  app.post("/jobs/:id/courses/approve-all", async (req, reply) => {
+    const { id } = UuidParamSchema.parse(req.params);
+    return reply.send(await service.approveAllCourses(id, adminId(req)));
   });
 
   // RC4: POST /courses/:id/approve

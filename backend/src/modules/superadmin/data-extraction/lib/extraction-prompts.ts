@@ -5,6 +5,7 @@
 // database/seeders/globalyapp/*_seeder.ts), so a prompt can never offer a value a course cannot
 // actually be linked to, and editing a seed file changes the prompt with no code change.
 import type { LookupLists } from "./lookup-catalog.js";
+import { SITE_URL_CATEGORY_DESCRIPTIONS, type SiteUrlCategory } from "./url-categories.js";
 
 // Every fee prompt carries this. Two kinds are in scope and nothing else: tuition and the
 // application fee. The model reliably reports the headline tuition figure and drops the
@@ -85,7 +86,53 @@ Rules:
 - If unsure, include it — false positives are better than missing courses`;
 }
 
+/**
+ * Category pass for URLs neither the course classifier nor the path heuristic could place. One
+ * label per URL, chosen from the pipeline's own category set. Lite tier — cheap by design.
+ */
+export function urlCategoryPrompt(lines: string[], categories: readonly string[]) {
+  return `Categorise each of these URLs from an educational institution (or visa/migration provider) website. Where shown, the line under a URL is the first words of the page itself.
+
+Categories (use exactly these keys):
+${categories.map((c) => `- ${c}: ${SITE_URL_CATEGORY_DESCRIPTIONS[c as SiteUrlCategory]}`).join("\n")}
+
+URLs (${lines.length}):
+${lines.join("\n")}
+
+Return JSON — every URL appears under exactly one key, copied verbatim:
+{
+  "categories": {
+${categories.map((c) => `    "${c}": []`).join(",\n")}
+  }
+}`;
+}
+
 // ── Phase 2: Course extraction (page worker) ──
+
+/**
+ * What an eligibility requirement IS, shared by the course prompt and the per-course eligibility
+ * prompt so the two paths cannot drift (CLAUDE.md (h)). Written after a review of staged rows:
+ * scholarship criteria ("Global Scholars Program Eligibility — must be new-to-Curtin"), document
+ * checklists, portfolios, interviews, visa restrictions and "inherent requirements" were all being
+ * stored as entry requirements because the model read the word "requirement"/"eligible" and had
+ * nowhere else to put the content. The eligibility engine compares a real student against every row,
+ * so an off-topic row is not clutter — it is a criterion nobody can meet.
+ */
+export const ELIGIBILITY_SCOPE_RULE = `- ELIGIBILITY IS ADMISSION TO THE COURSE, decided by section MEANING, never by the words "eligible"/"eligibility"/"requirement". A requirement row states one of exactly three things: (1) PRIOR STUDY — the qualification, degree level, subject or grade/GPA/percentage/ATAR/UCAS points the applicant must already hold, including subject prerequisites; (2) LANGUAGE — the English (or other language) proficiency the course requires, with the tests it accepts; (3) ADMISSION TESTS — GRE/GMAT/SAT/ACT and similar, only where the course itself requires or considers them. Nothing else is a requirement row.
+- NEVER record as eligibility: a SCHOLARSHIP, bursary, grant, fee waiver or funding scheme and its criteria, amounts or deadlines (a "Scholarship Eligibility" heading is about the scholarship, not the course — even when it states a GPA); application PAPERWORK and process (personal statement, statement of purpose, CV/résumé, references or referee reports, transcripts, document checklists, interviews, auditions, portfolios, application fees, forms, deadlines, "how to apply"); visa, immigration, accommodation or living-cost information; "inherent requirements", fitness-to-practise, police/working-with-children checks, immunisation or first-aid; age, nationality, residency or citizenship unless the page states it as a condition of admission to THIS course; work experience unless the course states it as an admission condition; and general marketing. Leave all of that out — if a page offers only such content, return an empty requirements array rather than filling it with what the page happens to call "eligibility".
+- Two lists on one page: "Bachelor's degree in a relevant field, GPA 3.0, IELTS 6.5" under Entry Requirements is eligibility; "minimum GPA 3.5, international students only, worth £5,000, apply by 30 June" under Scholarships is NOT — the GPA there is the scholarship's bar, not the course's.`;
+
+const SCHOLARSHIP_ITEM_SCHEMA = `        {
+          "name": "the scholarship/bursary/grant's own name as the page states it",
+          "applicable_to": "domestic|international|both",
+          "coverage_type": "full_tuition|partial_tuition|stipend|living_allowance|other|null",
+          "amount": "the numeric value or percentage stated (e.g. 5000 for '£5,000', 25 for '25% fee reduction'), else null",
+          "currency": "ISO 4217 code when a money amount is stated, else null",
+          "deadline": "YYYY-MM-DD when the page states a day, YYYY-MM when only a month — never invent a day. null if unstated",
+          "application_url": "link to the scholarship's own page or application if this page carries one, else null",
+          "description": "the scholarship's own criteria and terms in the page's words — who qualifies (GPA, nationality, level, new students), what it covers, renewal conditions"
+        }
+`;
 
 export const COURSE_EXTRACTION_SYSTEM = `You are a data extraction specialist. Extract structured course data from educational institution web pages.
 Always respond in valid JSON. Extract everything you can find — fees, intakes, campuses, entry requirements.
@@ -97,6 +144,7 @@ export function courseExtractionPrompt(
   siteHints?: { fee_structure?: unknown; extraction_hints?: string[] } | null,
   lookups?: LookupLists,
   wantedLevels?: string[],
+  pageTitle?: string | null,
 ) {
   const enumOf = (rows?: { name: string }[]) => (rows?.length ? rows.map((r) => r.name).join("|") : "null");
   // Full list even when the job wants a subset — narrowing it would force a course onto a wrong
@@ -116,7 +164,7 @@ export function courseExtractionPrompt(
 
   return `Extract all courses/programs from this educational institution page.
 
-URL: ${url}
+URL: ${url}${pageTitle ? `\nPage title: ${pageTitle}` : ""}
 ${hints.length ? "\n" + hints.join("\n") : ""}
 
 Page content:
@@ -128,6 +176,9 @@ Extract this JSON:
     {
       "name": "full course name, including its own qualification — e.g. 'Aerospace Engineering BEng(Hons)', not just 'Aerospace Engineering'",
       "short_name": "abbreviated name or null",
+      "entity_type": "course|short_course|module|specialization|other — what this item IS. 'course' is a programme the institution enrols students in on its own (a degree, diploma, certificate); 'short_course' a standalone non-award offering; 'module' a unit/subject/paper/curriculum component that exists only inside a programme; 'specialization' a major, concentration, track or pathway offered under one programme; 'other' anything that is none of these (a department, a scholarship, a page heading)",
+      "parent_program": "when entity_type is module or specialization: the programme it belongs to, exactly as the page names it (from the nearest heading, breadcrumb or title) — else null",
+      "evidence": ["zero or more of: own_detail_page (this page is about this item alone), award_in_name (its name states a qualification), fees_stated, duration_stated, unit_code (it carries a subject code like COMP101), credit_points (it lists credits/units/ECTS), listed_under_program_heading (it sits under a heading such as Program Courses, Course Structure, Modules, Core, Electives, Year 1)"],
       "degree_level": "${levelEnum} — ONLY one of these exact values, taken from the qualification in the course's own name or heading (BSc/BA/MBBS → Bachelor; MSc/MA/MBA → Master; MRes/MPhil → a research master; PhD/EdD/JD/MD → the doctoral level; Grad Cert/PGCert → the graduate level; a minor, exchange, summer school, short course or foundation year → the non-award level). null if the page names no qualification — never invent a level, and never answer with a value that is not in the list above",
       "course_category": "academic|short_course — 'academic' is a formal qualification requiring sustained enrolment (any degree_level above); 'short_course' is a standalone, non-award offering — a workshop, single-topic training, professional development, or language course with no degree_level qualification",
       "subject_area": "the shared subject/program name this qualification belongs to, WITHOUT the qualification suffix — e.g. 'Aerospace Engineering', 'Computer Science', 'Medicine', 'Business'",
@@ -199,6 +250,8 @@ Extract this JSON:
           "speaking_score": null
         }
       ],
+      "scholarships": [
+${SCHOLARSHIP_ITEM_SCHEMA}      ],
       "campus_names": ["campus names where this course is offered"],
       "study_units": [
         {
@@ -230,9 +283,10 @@ Rules:
 - Extract ALL courses visible on this page${levelFocus}
 - If the page is a single course detail page, return exactly 1 course
 - If it's a listing page with multiple courses, extract all of them
-- Do NOT extract a page as a course if it describes a single SUBJECT/UNIT/MODULE that sits inside a larger qualification — e.g. a page titled "Introduction to Databases" or "COMP101 — Introduction to Databases", with a short code (2-4 letters + 2-3 digits) and content describing one subject rather than an entire degree/diploma/certificate. These belong in study_units under their parent course, never as a standalone course. If this page IS such a unit/subject page, return an empty courses array.
+- A study unit, module, subject, paper or curriculum component that belongs to a larger academic program must NOT be returned as a course. Return it inside its parent's study_units when the parent is on this page; otherwise return it as its own item with entity_type "module" and parent_program set to the program named in the nearest heading, breadcrumb or page title. Signs it is a unit: a short code (2-4 letters + 3-4 digits, e.g. "COMP101"), credit points or ECTS, a prerequisite list, "offered in semester X", or a place under a heading such as "Program Courses", "Course Units", "Modules", "Curriculum", "Course Structure", "Core", "Electives", "Year 1". Treat it as a standalone course ONLY when the page shows the institution offers it on its own: its own award or qualification in the name, its own fees or duration, or its own detail page — and then give that as evidence. If this whole page IS one such unit page, return exactly one item with entity_type "module". Never invent a degree_level for a module.
 - Classify EVERY course's course_category yourself from what the page shows about it — never copy one value onto every course just because the page is generally about "programs" or "courses". A page mixing both (e.g. a Bachelor's degree next to a 6-week professional certificate with no admission/degree structure) must return each with its own correct course_category.
-- If a page presents ONE subject area offered as MULTIPLE qualification variants — e.g. "Aerospace Engineering" offered as BEng(Hons), MEng, and BSc — extract ONE COURSE OBJECT PER VARIANT, never a single course for the subject as a whole. Each variant's "name" is its full specific title as shown (e.g. "Aerospace Engineering BEng(Hons)"), its "subject_area" is the shared subject name without the qualification (e.g. "Aerospace Engineering"), and its "degree_level" is that variant's own qualification, expressed as one of the degree_level values listed above. Never emit a course for the bare subject heading with no qualification attached.
+- If a page presents ONE subject area offered as MULTIPLE qualification variants — e.g. "Aerospace Engineering" offered as BEng(Hons), MEng, and BSc — extract ONE COURSE OBJECT PER VARIANT, never a single course for the subject as a whole. Each variant's "name" is its full specific title as shown (e.g. "Aerospace Engineering BEng(Hons)"), its "subject_area" is the shared subject name without the qualification (e.g. "Aerospace Engineering"), and its "degree_level" is that variant's own qualification, expressed as one of the degree_level values listed above. Never emit a course for the bare subject heading with no qualification attached. Conversely, when ONE award is offered with several majors, concentrations or tracks (e.g. an MBA with General Management, Finance and Marketing tracks), return the award once as a course AND each track as its own item with entity_type "specialization" and parent_program naming the award — never as unrelated courses.
+- Do NOT extract a page as a course if it is a SCHOLARSHIP, bursary, funding or financial-support page. Such a page commonly lists the degrees the award can be held with ("eligible courses: Bachelor of Commerce, Bachelor of Engineering…") — that list is the scholarship's scope, not a set of courses this page describes, and staging one course per listed degree fabricates courses whose only "entry requirement" is the scholarship's criteria. Return an empty courses array for a page like this.
 - Do NOT extract a page as a course if it describes the ADMISSIONS PROCESS in general — e.g. "How to Apply as a First-Year Student", "Transfer Pathways", "Application Requirements", "Dates and Deadlines" — rather than one specific named qualification. These pages talk about applying, deadlines, or eligibility across many/all programs at once, and never name one degree with its own curriculum. Never invent a degree_level (e.g. "Bachelor") for a page like this just because it mentions undergraduate/first-year admission — if the page does not name one specific qualification, return an empty courses array.
 - Do NOT extract a course from a NEWS ARTICLE, PRESS RELEASE, or RANKINGS ANNOUNCEMENT that merely mentions subject areas or program names in passing (e.g. "our graduate programs in nursing, law, and engineering all ranked in the top 10") — this is not a course listing page, and inventing one "course" per subject area mentioned is fabrication, not extraction. Only extract from a page whose actual purpose is to describe/detail specific qualifications.
 - Never invent fees or dates — only extract what's explicitly stated
@@ -241,6 +295,8 @@ Rules:
 - NEVER INVENT A DAY. Every intake date takes either YYYY-MM-DD or YYYY-MM, and which one you use is decided by the page, not by convenience. A page that says "applications close in January 2027" states a MONTH: return "2027-01", never "2027-01-01". A page that says "Winter Quarter begins January 5, 2027" states a DAY: return "2027-01-05". Guessing the first of the month produces a deadline the institution never published, which a student can then miss by weeks. The same rule applies to every entry in custom_dates.
 - AN INTAKE IS A TERM YOU ENROL IN, not any other dated thing on the page. A semester, quarter, trimester, session or named start ("Semester 1 2027", "Fall 2027", "January 2027 intake") is an intake. A row from an orientation timetable ("Day 1", "Day 2", "Week 1"), a single event, an exam sitting, a payment due date or a public holiday is NOT — those belong in that intake's custom_dates if they are dated, and are otherwise left out entirely. A stored example of getting this wrong: three intakes named "Day 1", "Day 2" and "Day 3", scraped from an orientation schedule, carrying no year and so invisible to every intake feature on the site.
 - An ACADEMIC-YEAR label is not a date. "Autumn 2026-2027" or "Academic Year 2026-27" names a year span, not a start date — put it in intake_name and set intake_month/intake_year, and leave start_date null unless the page separately states when the term actually begins.
+${ELIGIBILITY_SCOPE_RULE}
+- Scholarships, bursaries and fee discounts stated on a course page go in that course's scholarships array — with their own criteria, amount and deadline — and NEVER into eligibility or fees. A page stating none returns an empty scholarships array.
 - NAME vs DESCRIPTION for an eligibility requirement, same split as fees: name is the short label a student scans ("Academic Entry", "Undergraduate Degree", "Honours Program GPA"); description is the page's own wording carrying every figure, condition, exception, subject prerequisite and accepted equivalent. NEVER return a requirement that has a name and NOTHING else — no description, no min_score, no min_degree_level, no academic_tests. A bare heading ("Entry Requirements", "Target Audience Requirements", "Admission Criteria") is a section title, not a requirement: fill it in from the text under that heading, or leave it out of the array entirely. A row carrying only a label tells a student nothing and states no bar anyone can be measured against.
 - For eligibility requirements, always populate score_type + min_score when a specific numeric threshold is stated, not just in the free-text description: "percentage" for a % figure, "gpa_4" for a GPA (the default scale when no scale is named — most common convention), "gpa_10" only when the page explicitly says the GPA is out of 10, "cgpa" when the page uses that term specifically. Leave both null if no number is stated.
 - Always fill duration_text verbatim when the page states a duration anywhere, even if you also converted it to duration_weeks
@@ -788,8 +844,12 @@ export function courseDataPrompt(
   pageText: string,
   dataType: string,
   guidanceNotes?: string | null,
+  courseName?: string | null,
 ) {
   const guidance = guidanceNotes ? `\nOperator guidance: ${guidanceNotes}` : "";
+  const targeting = courseName
+    ? `\nThis page may describe more than one course or program. Extract ${dataType} for ONLY the course named "${courseName}" — ignore every other course/program mentioned on the page. If that course isn't described here, return an empty/null result rather than another course's data.`
+    : "";
 
   const schemas: Record<string, string> = {
     fees: `{
@@ -819,6 +879,8 @@ ${FEE_SCOPE_RULE}`,
 }
 
 Rules for requirements:
+${ELIGIBILITY_SCOPE_RULE}
+- Content below a "--- Source: <url>" divider is a separate, institution-wide page appended for context (an entry-requirements or English-language page). Take from it only a requirement that plainly applies to THIS course or its level — never a requirement for a different course, a pathway/enabling programme, a research degree, or a scholarship described there.
 - NAME vs DESCRIPTION: name is the short label a student scans; description is the page's own wording with every figure, condition, exception, subject prerequisite and accepted equivalent. NEVER return a requirement with a name and nothing else — no description, no min_score, no min_degree_level, no academic_tests. A bare heading ("Entry Requirements", "Target Audience Requirements") is a section title, not a requirement: fill it in from the text beneath it, or leave it out of the array.
 - Every English test the course accepts is its OWN english_requirements entry ("IELTS 6.5, TOEFL 79 or PTE 58" is three entries), with the per-component minimums when the page states them — including a blanket floor ("no band below 6.0" -> 6.0 in all four). Never derive a component score from the overall one.
 - score_type / min_score / min_degree_level describe the applicant's PRIOR QUALIFICATION GRADE only. A standardised test score (GRE, GMAT, SAT, …) goes in that requirement's academic_tests array, NEVER as a requirement row named after the test with its score in min_score.
@@ -833,7 +895,7 @@ Rules for requirements:
 }`,
   };
 
-  return `Extract ${dataType} information for this course page.
+  return `Extract ${dataType} information for this course page.${targeting}
 Source URL: ${url}${guidance}
 
 Page content:
@@ -882,4 +944,30 @@ Rules:
 - "not_found": the field genuinely does not appear anywhere on the page (fees behind external links count as not_found, not mismatch)
 - Search the ENTIRE page content, not just headers — data may be in tables, sidebars, or accordion sections
 - For null extracted values, mark as "match" if the page also doesn't show this info`;
+}
+
+export const SCHOLARSHIPS_PAGE_SYSTEM = `You are a strict data extraction assistant for an education platform.
+Return ONLY valid JSON. Copy names, amounts and conditions from the page; never invent a scholarship, figure or date.`;
+
+/** A scholarship / bursary / funding page, which the course prompt deliberately refuses to stage as
+ *  courses — so until this, every scholarship it listed was dropped. */
+export function scholarshipsPagePrompt(url: string, pageText: string) {
+  return `List every scholarship, bursary, grant or fee waiver this institution page offers.
+
+URL: ${url}
+
+Rules:
+- One entry per named award. A page describing ONE award gives one entry.
+- "applicable_to" is who may hold it: domestic, international or both.
+- Leave out loans, general "financial aid" advice with no named award, and awards from other organisations the page only links to.
+- Return {"scholarships": []} when the page offers none.
+
+Page content:
+${pageText}
+
+Extract this JSON:
+{
+  "scholarships": [
+${SCHOLARSHIP_ITEM_SCHEMA}  ]
+}`;
 }

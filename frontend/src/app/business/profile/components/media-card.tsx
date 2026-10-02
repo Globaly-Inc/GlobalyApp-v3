@@ -2,9 +2,10 @@
 
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Plus, X } from "lucide-react";
+import { ImageIcon, Loader2, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ProfileSection } from "@/app/(web)/components/profile/profile-section";
+import { PrivacyBadge } from "@/components/privacy-badge";
 import { useAppDispatch } from "@/lib/hooks";
 import { businessApi } from "@/app/business/apis";
 import { fetchMyProfile } from "@/app/business/store/business-onboarding-slice";
@@ -27,7 +28,8 @@ export function MediaCard({ profile, readOnly }: Readonly<{ profile: BusinessPro
     setUploading(true);
     try {
       await businessApi.uploadImage("gallery", file);
-      await dispatch(fetchMyProfile());
+      await dispatch(fetchMyProfile()).unwrap();
+      toast.success(`${file.name} added`);
     } catch (err) {
       toast.error("Upload failed", { description: err instanceof Error ? err.message : "Please try again." });
     } finally {
@@ -47,11 +49,14 @@ export function MediaCard({ profile, readOnly }: Readonly<{ profile: BusinessPro
     }
   };
 
+  // Fixed "Public", as in V1 — a gallery only exists to be shown on the public profile.
   return (
-    <Card>
-      <CardHeader className="flex flex-row items-center justify-between">
-        <CardTitle className="text-base">Media</CardTitle>
-        {!readOnly && (
+    <ProfileSection
+      icon={ImageIcon}
+      title="Media"
+      badge={<PrivacyBadge isPublic />}
+      action={
+        readOnly ? null : (
           <>
             <Button size="sm" variant="outline" className="gap-1.5" disabled={uploading} onClick={() => inputRef.current?.click()}>
               {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
@@ -65,9 +70,10 @@ export function MediaCard({ profile, readOnly }: Readonly<{ profile: BusinessPro
               onChange={handleFile}
             />
           </>
-        )}
-      </CardHeader>
-      <CardContent>
+        )
+      }
+    >
+      <div>
         {gallery.length === 0 && videos.length === 0 ? (
           <p className="text-sm italic text-muted-foreground">No media added yet.</p>
         ) : (
@@ -107,7 +113,7 @@ export function MediaCard({ profile, readOnly }: Readonly<{ profile: BusinessPro
             ))}
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </ProfileSection>
   );
 }

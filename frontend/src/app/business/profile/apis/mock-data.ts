@@ -2,17 +2,18 @@ import { categoriesMockApi } from "@/app/admin/platform/categories/apis/mock-dat
 import { uuid } from "@/lib/utils";
 import type {
   ActivityListParams, ActivityListResult, Branch, BranchInput, BranchListParams, BranchListResult, BranchPatch,
-  BusinessRelation, BusinessSearchParams, BusinessSearchResult, BusinessService, InvitationListResult, InvitedMember,
+  BusinessRelation, BusinessSearchParams, BusinessSearchResult, BusinessService, ImportJob, InvitationListResult, InvitedMember,
   LinkExistingBranchInput, LinkExistingBranchResult,
   Member, MemberInviteInput, MemberListParams, MemberListResult, MemberPatch, MemberRole,
   PartnerInstitutionCourse, PartnerInstitutionCourseListParams, PartnerInstitutionCourseListResult, PartnerInstitutionDetail, Permission,
   Role, RoleCreateInput, RolePatch,
-  RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, Scholarship, ScholarshipInput,
+  RelationInput, RelationListParams, RelationListResult, RelationPatch, SchemaFieldValue, Scholarship, ScholarshipInput, ServiceAiAssistInput, ServiceAiAssistResult,
+  ExtractedScholarship, ExtractedScholarshipInput,
   ScholarshipListParams, ScholarshipListResult, ScholarshipPatch, ServiceAccreditationLink, ServiceEligibility,
   ServiceEligibilityInput, ServiceEligibilityPatch, ServiceFee, ServiceFeeInput, ServiceFeePatch, ServiceInput,
   ServiceIntake, ServiceIntakeInput, ServiceIntakePatch, ServicePatch, ServiceSearchParams, ServiceSearchResult,
   ServiceStudyOption, ServiceStudyOptionInput, ServiceStudyOptionPatch, ServiceStudyUnit, ServiceStudyUnitInput,
-  ServiceStudyUnitPatch,
+  ServiceStudyUnitPatch, ServiceMediaFile,
 } from "./types";
 
 let mockChildSeq = 1;
@@ -51,7 +52,7 @@ function delay(ms: number) {
 let mockBranches: Branch[] = [
   {
     id: "b1", name: "Head Office", country: "Australia", state: "NSW", city: "Sydney", address: "1 Main St",
-    phone: null, email: null, is_primary: true, linked_business_id: null, branch_type: "same_company",
+    phone: null, email: null, is_primary: true, linked_business_id: null, linked_institution_id: null, branch_type: "same_company",
     share_description: false, shared_services: "all", created_at: new Date(2026, 0, 1).toISOString(),
   },
 ];
@@ -105,6 +106,7 @@ const mockSearchableInstitutions: BusinessSearchResult[] = [
 const mockActivity: { id: string; action: string; details: Record<string, unknown>; created_at: string; admin_first_name: string | null; admin_last_name: string | null }[] = [];
 let mockScholarships: Scholarship[] = [];
 let mockScholarshipSeq = 1;
+let mockExtracted: ExtractedScholarship[] = [];
 
 export const businessProfileDetailMockApi = {
   searchBusinesses: async (params: BusinessSearchParams = {}): Promise<BusinessSearchResult[]> => {
@@ -124,12 +126,18 @@ export const businessProfileDetailMockApi = {
     await delay(300);
     return { data: mockBranches, total: mockBranches.length };
   },
+  getBranch: async (branchId: string, _orgBase?: string): Promise<Branch> => {
+    await delay(300);
+    const branch = mockBranches.find((b) => b.id === branchId);
+    if (!branch) throw new Error("Branch not found");
+    return branch;
+  },
   createBranch: async (input: BranchInput, _orgBase?: string): Promise<Branch> => {
     await delay(300);
     const branch: Branch = {
       id: uuid(), name: input.name, country: input.country ?? null, state: input.state ?? null,
       city: input.city ?? null, address: input.address ?? null, phone: input.phone ?? null, email: input.email ?? null,
-      is_primary: false, linked_business_id: null, branch_type: input.branch_type ?? "same_company",
+      is_primary: false, linked_business_id: null, linked_institution_id: null, branch_type: input.branch_type ?? "same_company",
       share_description: input.share_description ?? false, shared_services: input.shared_services ?? "all",
       created_at: new Date().toISOString(),
     };
@@ -145,7 +153,7 @@ export const businessProfileDetailMockApi = {
     await delay(300);
     const branch: Branch = {
       id: uuid(), name: "Linked business", country: null, state: null, city: null, address: null,
-      phone: null, email: null, is_primary: false, linked_business_id: input.business_id, branch_type: input.branch_type,
+      phone: null, email: null, is_primary: false, linked_business_id: input.business_id, linked_institution_id: null, branch_type: input.branch_type,
       share_description: false, shared_services: input.shared_services, created_at: new Date().toISOString(),
     };
     mockBranches = [...mockBranches, branch];
@@ -160,6 +168,12 @@ export const businessProfileDetailMockApi = {
     console.log("[mock] GET /businesses/services/search", params);
     await delay(300);
     return { data: mockServices, total: mockServices.length };
+  },
+  getService: async (serviceId: string): Promise<BusinessService> => {
+    await delay(200);
+    const found = mockServices.find((s) => s.id === serviceId);
+    if (!found) throw new Error("Service not found");
+    return found;
   },
   createService: async (input: ServiceInput): Promise<BusinessService> => {
     await delay(300);
@@ -177,6 +191,11 @@ export const businessProfileDetailMockApi = {
     mockServices = mockServices.map((s) => (s.id === serviceId ? { ...s, ...patch, price: patch.price != null ? String(patch.price) : s.price } : s));
     return mockServices.find((s) => s.id === serviceId)!;
   },
+  approveServices: async (ids: string[]): Promise<{ approved: number }> => {
+    await delay(300);
+    mockServices = mockServices.map((s) => (ids.includes(s.id) ? { ...s, approval_status: "approved" } : s));
+    return { approved: ids.length };
+  },
   deleteService: async (serviceId: string): Promise<void> => {
     await delay(300);
     mockServices = mockServices.filter((s) => s.id !== serviceId);
@@ -188,6 +207,12 @@ export const businessProfileDetailMockApi = {
   updateServiceFieldValues: async (_serviceId: string, values: SchemaFieldValue[]): Promise<SchemaFieldValue[]> => {
     await delay(150);
     return values;
+  },
+  generateServiceDescription: async (input: ServiceAiAssistInput): Promise<ServiceAiAssistResult> => {
+    await delay(600);
+    return {
+      text: `${input.name} is a ${input.category_name?.toLowerCase() ?? "program"} designed to give students practical, industry-relevant skills and a clear pathway toward their career goals.`,
+    };
   },
 
   getMembers: async (params: MemberListParams = {}): Promise<MemberListResult> => {
@@ -243,7 +268,7 @@ export const businessProfileDetailMockApi = {
   inviteMember: async (input: MemberInviteInput): Promise<{ id: string; email: string; status: string }> => {
     await delay(300);
     const invitation: InvitedMember = {
-      id: uuid(), first_name: input.first_name, last_name: input.last_name, email: input.email,
+      id: uuid(), first_name: input.first_name ?? null, last_name: input.last_name ?? null, email: input.email,
       phone: input.phone ?? null, role: input.role, admin_point_of_contact: input.admin_point_of_contact ?? false,
       invited_at: new Date().toISOString(), expires_at: new Date(Date.now() + 72 * 60 * 60 * 1000).toISOString(),
     };
@@ -365,6 +390,50 @@ export const businessProfileDetailMockApi = {
     await delay(300);
     mockScholarships = mockScholarships.filter((s) => s.id !== scholarshipId);
   },
+  getExtractedScholarships: async (params: ScholarshipListParams = {}): Promise<{ data: ExtractedScholarship[]; total: number }> => {
+    console.log("[mock] GET /businesses/extracted-scholarships", params);
+    await delay(300);
+    const q = params.search?.toLowerCase() ?? "";
+    const filtered = q ? mockExtracted.filter((s) => s.name.toLowerCase().includes(q)) : mockExtracted;
+    return { data: filtered, total: filtered.length };
+  },
+  createExtractedScholarship: async (input: ExtractedScholarshipInput): Promise<{ id: string }> => {
+    await delay(300);
+    const row: ExtractedScholarship = {
+      id: crypto.randomUUID(), name: input.name ?? "", applicable_to: input.applicable_to ?? "both",
+      coverage_type: input.coverage_type ?? null, amount: input.amount ?? null, currency: input.currency ?? null,
+      deadline: input.deadline ?? null, application_url: input.application_url ?? null,
+      description: input.description ?? null, created_at: new Date().toISOString(),
+    };
+    mockExtracted = [row, ...mockExtracted];
+    return { id: row.id };
+  },
+  updateExtractedScholarship: async (id: string, patch: ExtractedScholarshipInput): Promise<void> => {
+    await delay(300);
+    mockExtracted = mockExtracted.map((s) => (s.id === id ? { ...s, ...patch } as ExtractedScholarship : s));
+  },
+  deleteExtractedScholarship: async (id: string): Promise<void> => {
+    await delay(300);
+    mockExtracted = mockExtracted.filter((s) => s.id !== id);
+  },
+  startScholarshipImport: async (rows: ScholarshipInput[]): Promise<ImportJob> => {
+    console.log("[mock] POST /businesses/scholarships/import", { rows: rows.length });
+    await delay(300);
+    let nextId = mockScholarships.length + 1;
+    const results = rows.map((r) => {
+      mockScholarships = [...mockScholarships, { ...r, id: nextId++, view_count: 0, created_at: new Date().toISOString() } as Scholarship];
+      return { title: r.title, status: "ok" as const };
+    });
+    return {
+      id: 1, status: "completed", total_rows: rows.length, processed_rows: rows.length,
+      created_count: rows.length, error_count: 0, results, failure_reason: null,
+    };
+  },
+  getScholarshipImportJob: async (id: number): Promise<ImportJob> => {
+    console.log("[mock] GET /businesses/scholarships/import/:id", id);
+    await delay(100);
+    return { id, status: "completed", total_rows: 0, processed_rows: 0, created_count: 0, error_count: 0, results: [], failure_reason: null };
+  },
 
   serviceFees: makeChildMockApi<ServiceFee, ServiceFeeInput, ServiceFeePatch>("fees"),
   serviceIntakes: makeChildMockApi<ServiceIntake, ServiceIntakeInput, ServiceIntakePatch>("intakes"),
@@ -387,7 +456,31 @@ export const businessProfileDetailMockApi = {
     mockServiceAccreditations = mockServiceAccreditations.filter((a) => !(a.id === id && a.__serviceId === serviceId));
   },
 
+  getServiceMedia: async (_serviceId: string): Promise<{ files: ServiceMediaFile[] }> => {
+    await delay(200);
+    return { files: [] };
+  },
+  uploadServiceMedia: async (_serviceId: string, file: File): Promise<ServiceMediaFile> => {
+    await delay(300);
+    return { id: mockChildSeq++, original_name: file.name, mime_type: file.type, size_bytes: file.size, url: "" };
+  },
+  deleteServiceMedia: async (_serviceId: string, _fileId: number): Promise<void> => {
+    await delay(200);
+  },
+
   getServiceCategories: categoriesMockApi.getServiceCategories,
   getLookups: categoriesMockApi.getLookups,
   getAccreditations: categoriesMockApi.getAccreditations,
+  createAccreditation: categoriesMockApi.createAccreditation,
+  getIssuingOrganizations: categoriesMockApi.getIssuingOrganizations,
+  createIssuingOrganization: categoriesMockApi.createIssuingOrganization,
+  getFeeTypes: categoriesMockApi.getFeeTypes,
+  getRegistrationTypes: async (countryId?: number | null) => {
+    console.log("[mock] getRegistrationTypes", countryId);
+    const { data } = await categoriesMockApi.getRegistrationTypes({ limit: 100 });
+    const active = data.filter((r) => r.is_active);
+    // Mirrors the server's rule: a country's own rows, else the generic (null-country) set.
+    const forCountry = countryId ? active.filter((r) => r.country_id === countryId) : [];
+    return { data: forCountry.length > 0 ? forCountry : active.filter((r) => r.country_id === null) };
+  },
 };

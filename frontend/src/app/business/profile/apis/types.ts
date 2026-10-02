@@ -5,6 +5,12 @@ export type BranchType = "same_company" | "subsidiary" | "franchise";
 export type Branch = {
   id: string;
   name: string;
+  /** A campus from the extraction job, not a business_branches row — read-only. */
+  extracted?: boolean;
+  /** Made from an extracted campus (incl. an unconverted one), or added by hand. */
+  origin?: "extracted" | "manual";
+  /** A linked org this org created — its details are editable here (backend re-checks). */
+  owned?: boolean;
   country: string | null;
   state: string | null;
   city: string | null;
@@ -13,10 +19,13 @@ export type Branch = {
   email: string | null;
   is_primary: boolean;
   linked_business_id: number | null;
+  linked_institution_id: number | null;
   branch_type: BranchType;
   share_description: boolean;
   shared_services: SharedServices;
   created_at: string;
+  /** Live from the branch org; only set on linked rows. */
+  website?: string | null;
 };
 
 export type BranchFilter = "all" | "linked_branches" | "branches_only";
@@ -41,9 +50,13 @@ export type BranchInput = {
   branch_type?: BranchType;
   share_description?: boolean;
   shared_services?: SharedServices;
+  /** Create-only: saved on the branch's own org (it's a real business/institution). */
+  registration_licenses?: Record<string, unknown> | null;
+  /** Saved on the branch's own org. On create, omitted = copy the parent's website; null = none. */
+  website?: string | null;
 };
 
-export type BranchPatch = Partial<BranchInput>;
+export type BranchPatch = Partial<Omit<BranchInput, "registration_licenses">>;
 
 export type LinkExistingBranchInput = {
   business_id: number;
@@ -61,11 +74,21 @@ export type BusinessService = {
   description: string | null;
   price: string | null;
   is_published: boolean;
+  /** Institution courses only (absent on a business's own services, which need no approval):
+   * public only once approved (by the org's owner or a platform admin) AND is_published is on. */
+  approval_status?: "approved" | "pending" | "needs_changes";
+  /** Institution courses only: scraped by the extraction, or added by hand. */
+  origin?: "extracted" | "manual";
+  /** Institution courses only: who last edited the course row, and when (null = never edited). */
+  edited_by?: string | null;
+  edited_at?: string | null;
   public_visibility: Record<string, boolean> | null;
   created_at: string;
   degree_level: string | null;
   area_of_study: string | null;
   duration: string | null;
+  /** Institutions only — extraction_courses.course_category. Absent for a real business's own services. */
+  course_category?: "academic" | "short_course";
 };
 
 export type ServiceInput = {
@@ -79,11 +102,20 @@ export type ServiceSearchParams = {
   search?: string;
   page?: number;
   limit?: number;
+  course_category?: "academic" | "short_course";
+  published?: "published" | "draft";
+  /** Institution courses only. */
+  origin?: "extracted" | "manual";
+  /** Institution courses only — a degree_levels slug. */
+  degree_level?: string;
 };
 
 export type ServiceSearchResult = { data: BusinessService[]; total: number };
 
 export type ServicePatch = Partial<ServiceInput> & { is_published?: boolean; public_visibility?: Record<string, boolean> | null };
+
+export type ServiceAiAssistInput = { name: string; category_name?: string; hint?: string };
+export type ServiceAiAssistResult = { text: string };
 
 export type SchemaFieldValue = { schema_field_id: number; value: unknown };
 
@@ -151,7 +183,16 @@ export type ServiceStudyUnit = {
 export type ServiceStudyUnitInput = Omit<ServiceStudyUnit, "id">;
 export type ServiceStudyUnitPatch = Partial<ServiceStudyUnitInput>;
 
-export type ServiceAccreditationLink = { id: number; accreditation_id: number };
+export type ServiceAccreditationLink = {
+  id: number;
+  accreditation_id: number;
+  /** The link's own accreditation name/status — set even while it's pending or rejected, which the
+   * approved-only accreditations lookup never returns. */
+  accreditation_name?: string | null;
+  accreditation_status?: string | null;
+};
+
+export type ServiceMediaFile = { id: number; original_name: string; mime_type: string; size_bytes: number; url: string };
 
 export type Member = {
   id: number;
@@ -206,8 +247,9 @@ export type MemberListParams = { page?: number; limit?: number; search?: string 
 export type MemberListResult = { data: Member[]; total: number };
 
 export type MemberInviteInput = {
-  first_name: string;
-  last_name: string;
+  /** Optional — the invitee's account supplies their name on accept. */
+  first_name?: string;
+  last_name?: string;
   email: string;
   phone?: string | null;
   role: string;
@@ -361,6 +403,12 @@ export type Scholarship = {
   created_at: string;
 };
 
+/** An institution's scholarships are its extraction job's rows (the Services tab's courses work the
+ * same way) — the extraction's own shape, not a business scholarship's. */
+export type { Scholarship as ExtractedScholarship, ScholarshipParams as ExtractedScholarshipParams } from "@/app/admin/data/all-extractions/apis/types";
+/** Portal create/update body: course_ids = the courses it's for, [] = every course. */
+export type ExtractedScholarshipInput = import("@/app/admin/data/all-extractions/apis/types").ScholarshipParams & { course_ids?: string[] };
+
 export type ScholarshipInput = {
   title: string;
   slug: string;
@@ -387,6 +435,25 @@ export type ScholarshipInput = {
 
 export type ScholarshipPatch = Partial<ScholarshipInput>;
 
-export type ScholarshipListParams = { search?: string; page?: number; limit?: number };
+export type ScholarshipListParams = {
+  search?: string; page?: number; limit?: number;
+  /** Institution Scholarships tab filters (ignored by a business's own scholarship list). */
+  applicable_to?: string; coverage_type?: string; origin?: "extracted" | "manual";
+};
+
+// ─── Bulk import — same job-tracking shape as the superadmin editor's, scoped to this business ───
+
+export type ImportRowResult = { title: string; status: "ok" | "error"; detail?: string };
+
+export type ImportJob = {
+  id: number;
+  status: "pending" | "processing" | "completed" | "failed";
+  total_rows: number;
+  processed_rows: number;
+  created_count: number;
+  error_count: number;
+  results: ImportRowResult[];
+  failure_reason: string | null;
+};
 
 export type ScholarshipListResult = { data: Scholarship[]; total: number };

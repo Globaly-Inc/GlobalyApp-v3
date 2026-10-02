@@ -1,6 +1,7 @@
 // Worker — consumes "extraction_steps" queue.
-// Routes admin-triggered step re-runs: institution, branches, agents,
-// discovery, courses, enrichment, verification, course_data.
+// Runs the one-step-at-a-time chain (site_map → site_snapshot → site_analysis → url_classify →
+// queue_pages, see lib/pipeline-steps.ts) and admin-triggered step re-runs: institution, branches,
+// agents, discovery, courses, enrichment, verification, course_data.
 //
 // Run with: npm run job:extraction-step
 
@@ -12,10 +13,18 @@ import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { scrapeRenderedHtml, mapUrlsDetailed } from "../lib/scraper.js";
-import { getPage, getDocument, isPdfUrl } from "../lib/page-store.js";
+import { crawlSite } from "../lib/site-crawl.js";
+import { linkJobEntities } from "../lib/jev-linker.js";
+import { verifyFieldCoverage } from "../lib/field-coverage.js";
+import { sendCompletionEmail } from "../lib/completion-email.js";
+import { convertCampusesToBranches } from "../../platform/business-branches/services/business-branches.service.js";
+import { getPage, getDocument, isPdfUrl, mergeUrlLists } from "../lib/page-store.js";
+import { canonicalCourseUrl } from "../lib/course-name.js";
+import * as pageEdits from "../repositories/page-edits.repository.js";
+import { GUIDED_KEY_CATEGORY } from "../lib/url-categories.js";
 import { snapshotSite, snapshotRunOutcome } from "../lib/site-snapshot.js";
 import type { SnapshotBatch } from "../lib/site-snapshot.js";
-import { truncateMarkdown, domainOf, extractSocialLinks, extractHrefsFromHtml, extractDomainEmails, fixMalformedAbsoluteUrl } from "../lib/html-utils.js";
+import { truncateMarkdown, domainOf, extractSocialLinks, extractHrefsFromHtml, extractDomainEmails, fixMalformedAbsoluteUrl, COURSE_DATA_TEXT_CAP } from "../lib/html-utils.js";
 import { extractJson, setLlmContext } from "../lib/llm-client.js";
 import {
   institutionExtractionPrompt, INSTITUTION_EXTRACTION_SYSTEM,
@@ -25,6 +34,7 @@ import {
   bulkFeePrompt, BULK_FEE_SYSTEM,
   courseDataPrompt, COURSE_DATA_SYSTEM,
   visaServiceExtractionPrompt, VISA_SERVICE_EXTRACTION_SYSTEM,
+  scholarshipsPagePrompt, SCHOLARSHIPS_PAGE_SYSTEM,
 } from "../lib/extraction-prompts.js";
 import {
   writeInstitutionOverview,
@@ -37,6 +47,7 @@ import {
   upsertStudyUnit,
   feeTypeFor,
   isExtractableFee,
+  isAdmissionRequirement,
   upsertFee,
   normaliseCourseCategory,
   resolveCourseLookups,
@@ -62,6 +73,8 @@ import {
   type ExtractedIntake,
   type InstitutionOverview,
   type ExtractedVisaService,
+  upsertScholarship,
+  type ExtractedScholarship,
 } from "../lib/staging-writer.js";
 import { coercePartialDate } from "../lib/partial-date.js";
 import { parseAddress } from "../lib/address-parser.js";
@@ -74,8 +87,13 @@ import { parseAgentRowsFromHtml } from "../lib/agent-table-parser.js";
 import { enrichAgents } from "../lib/agent-enrichment.js";
 import { matchFeesToCourses } from "../lib/fee-matcher.js";
 import { parseInstallments } from "../lib/installment-parser.js";
-import { createDocumentExtractor, buildDocumentContext, type DocInput } from "../lib/document-extractor.js";
 import type { PipelineStep, CourseDataType } from "../schemas/step.schema.js";
+import {
+  advance, gate, dispatchSnapshotBatches, setProgress,
+  runSiteMap, runSiteAnalysis, runUrlClassify, runQueuePages, republishRetryableQueueItems,
+} from "../lib/pipeline-steps.js";
+import { listActiveSiteUrls, upsertSiteUrls, setSiteUrlCategories, listSiteUrlsByCategory } from "../repositories/site-urls.repository.js";
+import { checkAllPagesDone, continueChain, keepAlive, parseChain } from "../lib/queue-completion.js";
 
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
@@ -88,6 +106,23 @@ function parseGuidedUrls(job: Record<string, unknown>): Record<string, unknown> 
   return typeof job.guided_urls === "string" ? JSON.parse(job.guided_urls as string) : job.guided_urls as Record<string, unknown>;
 }
 
+/** Most extra pages (or PDFs) one step reads for a data type — the rest is prompt-budget waste. */
+const MAX_TYPE_URLS = Number(process.env.EXTRACTION_MAX_TYPE_URLS) || 10;
+
+/**
+ * The pages the admin wants read for one data type: the site list's rows in that category (added
+ * on the Site Context tab, pinned by hand, or classified) — admin-owned rows first — unioned with
+ * the legacy guided_urls list for jobs that predate the site list. PDFs are fine here; the callers
+ * go through scrapeUrlOrPdf.
+ */
+async function urlsForType(jobId: string, job: Record<string, unknown>, guidedKey: string): Promise<string[]> {
+  const category = GUIDED_KEY_CATEGORY[guidedKey];
+  const fromSite = category ? await listSiteUrlsByCategory(jobId, category) : [];
+  const guided = parseGuidedUrls(job)[guidedKey];
+  const fromGuided = Array.isArray(guided) ? guided.filter((u): u is string => typeof u === "string") : [];
+  return mergeUrlLists([fromSite, fromGuided], MAX_TYPE_URLS);
+}
+
 async function loadJob(jobId: string) {
   return masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).first();
 }
@@ -98,35 +133,126 @@ async function heartbeat(jobId: string) {
   });
 }
 
-async function markStepProgress(jobId: string, step: string, status: string) {
-  const job = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).first();
-  const progress = typeof job?.pipeline_progress === "string"
-    ? JSON.parse(job.pipeline_progress)
-    : (job?.pipeline_progress || {});
-  progress[step] = status;
-  await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
-    pipeline_progress: JSON.stringify(progress),
-    updated_at: masterKnex.fn.now(),
-  });
+/** Atomic merge via pipeline-steps.setProgress — a whole-blob read-modify-write here raced the
+ *  concurrent snapshot batches and the chain hand-off (review, 2026-09-21). */
+const markStepProgress = (jobId: string, step: string, status: string) => setProgress(jobId, { [step]: status });
+
+// ── The chain: site_map → site_snapshot → site_analysis → url_classify → queue_pages ──────────
+// Thin wrappers: the work is in lib/pipeline-steps.ts; this file owns the timeline events and the
+// hand-off to the next step through the gate.
+
+async function handleSiteMapStep(jobId: string): Promise<"done" | "pending"> {
+  const job = await loadJob(jobId);
+  if (!job) return "done";
+  await writeJobEvent(jobId, "step_start", { phase: "site_map", message: "Mapping the site" });
+  const { total, crawlStopped } = await runSiteMap(jobId, job);
+  // Paused or stopped mid-crawl: the list is partial. "waiting", not "done", so Resume re-runs
+  // site_map (crawled pages are cached, so the rerun is fast) instead of chaining on half a list.
+  if (crawlStopped) {
+    await setProgress(jobId, { site_map: "waiting" });
+    await writeJobEvent(jobId, "step_complete", { level: "warn", phase: "site_map", message: `Crawl stopped (job paused or stopped) with ${total} URLs so far — Resume re-runs the site map`, data: { count: total, partial: true } });
+    return "pending";
+  }
+  await writeJobEvent(jobId, "step_complete", { phase: "site_map", message: `${total} URLs on the site list`, data: { count: total } });
+
+  // site_map publishes BATCHES, not one message, so it uses gate() and dispatches itself.
+  if (await gate(jobId, "site_map")) {
+    const urls = (await listActiveSiteUrls(jobId)).map((r) => r.url);
+    await setProgress(jobId, { site_snapshot: "processing" });
+    await dispatchSnapshotBatches(jobId, urls, Number(job.page_cap) || 500);
+  }
+  return "done";
 }
 
-/** The job worker passes the discovered URL list; an admin re-run passes none, so fall back to
- *  every URL this job has queued. */
+/**
+ * Batched messages do the work. An UNBATCHED message (the admin's Run button, or a message from
+ * before batching existed) is a dispatcher: it splits the site list into the same concurrent
+ * batches site_map would, so a manual run has the same shape and the same hand-off as an automatic
+ * one. Jobs that predate the site list fall back to the URLs they queued.
+ */
 async function handleSiteSnapshotStep(
-  jobId: string, urls?: string[], batch?: SnapshotBatch,
+  jobId: string, urls?: string[], batch?: SnapshotBatch, fresh = false,
 ): Promise<"done" | "failed" | "pending"> {
-  if (!urls?.length) {
-    const rows = await masterKnex(`${S}.extraction_queue`).where({ job_id: jobId }).select("url");
-    urls = rows.map((r: { url: string }) => r.url);
+  if (!urls?.length || !batch) {
+    const job = await loadJob(jobId);
+    let list = urls?.length ? urls : (await listActiveSiteUrls(jobId, { includeDead: fresh })).map((r) => r.url);
+    if (!list.length) {
+      const rows = await masterKnex(`${S}.extraction_queue`).where({ job_id: jobId }).select("url");
+      list = rows.map((r: { url: string }) => r.url);
+    }
+    if (!list.length) throw new Error("Nothing to snapshot — run site_map first");
+    await dispatchSnapshotBatches(jobId, list, Number(job?.page_cap) || list.length, fresh);
+    return "pending";
   }
-  await snapshotSite(jobId, urls, batch);
-  // One unbatched message (an admin re-run) is the whole step; a batch only speaks for itself.
-  return batch ? snapshotRunOutcome(jobId, batch) : "done";
+  await snapshotSite(jobId, urls, batch, fresh);
+  return snapshotRunOutcome(jobId, batch);
+}
+
+/**
+ * Batches land CONCURRENTLY, and two that finish together can both read the run as complete. The
+ * hand-off must happen once per run, so it is fenced on a per-run marker event under an advisory
+ * lock — the same pattern the page worker uses for its once-per-job outage warning.
+ */
+async function advanceSnapshotRunOnce(jobId: string, batch: SnapshotBatch) {
+  const first = await masterKnex.transaction(async (trx) => {
+    await trx.raw("SELECT pg_advisory_xact_lock(hashtext(?))", [`snapshot_run_complete:${batch.runId}`]);
+    const already = await trx(`${S}.extraction_job_events`)
+      .where({ job_id: jobId, kind: "snapshot_run_complete" })
+      .whereRaw("(data::jsonb)->>'runId' = ?", [batch.runId])
+      .first();
+    if (already) return false;
+    await trx(`${S}.extraction_job_events`).insert({
+      job_id: jobId, kind: "snapshot_run_complete", level: "info", phase: "site_snapshot",
+      message: `Site snapshot complete (${batch.total} batches)`,
+      data: JSON.stringify({ runId: batch.runId, total: batch.total }),
+    });
+    return true;
+  });
+  if (first) await advance(jobId, "site_snapshot");
+}
+
+async function handleSiteAnalysisStep(jobId: string) {
+  const job = await loadJob(jobId);
+  if (!job) return;
+  await writeJobEvent(jobId, "step_start", { phase: "site_analysis", message: "Analysing the homepage" });
+  const patterns = await runSiteAnalysis(jobId, job);
+  await writeJobEvent(jobId, "step_complete", { phase: "site_analysis", message: `Site analysed — ${patterns.length} course URL patterns`, data: { patterns } });
+  await advance(jobId, "site_analysis");
+}
+
+async function handleUrlClassifyStep(jobId: string) {
+  const job = await loadJob(jobId);
+  if (!job) return;
+  await writeJobEvent(jobId, "step_start", { phase: "url_classify", message: "Classifying site URLs" });
+  const r = await runUrlClassify(jobId, job);
+  await writeJobEvent(jobId, "step_complete", { phase: "url_classify", message: `${r.course} of ${r.total} URLs marked as course pages`, data: r });
+  await advance(jobId, "url_classify");
+}
+
+async function handleQueuePagesStep(jobId: string) {
+  const job = await loadJob(jobId);
+  if (!job) return;
+  await writeJobEvent(jobId, "step_start", { phase: "queue_pages", message: "Queueing course pages for extraction" });
+  const r = await runQueuePages(jobId, job);
+  await writeJobEvent(jobId, "step_complete", {
+    phase: "queue_pages",
+    message: r.idle ? "Nothing new to queue — job moved to review" : `${r.queued} pages queued for extraction`,
+    data: r,
+  });
 }
 
 async function scrapeUrl(url: string): Promise<string | null> {
   const r = await getPage(url, { onlyMainContent: true });
   return r.markdown && r.markdown.length > 50 ? r.markdown : null;
+}
+
+async function findManualEditMarkdown(jobId: string, url: string, institutionUrl: string | null): Promise<string | null> {
+  const direct = await pageEdits.findManualEdit(jobId, url);
+  if (direct) return direct.markdown;
+  const target = canonicalCourseUrl(url, institutionUrl);
+  if (!target) return null;
+  const edits = await pageEdits.findManualEditsForJob(jobId);
+  return edits.find((e) => canonicalCourseUrl(e.url, institutionUrl) === target)?.markdown ?? null;
 }
 
 /** Like scrapeUrl but falls back to Gemini vision for PDF URLs — through the snapshot store,
@@ -218,7 +344,33 @@ function mergeInstitutionFields(merged: Record<string, unknown>, data: Record<st
   }
 }
 
-function sha1(...parts: (string | null | undefined)[]): string {
+/**
+ * A stable identity key for a scraped row that carries no id of its own — NOT a security hash.
+ *
+ * SHA-256 rather than SHA-1 because a collision here silently merges two different agencies into
+ * one staged row, and because a function named for its algorithm invites both a scanner finding
+ * and the assumption that it is protecting something. It is not: the inputs go on to be stored
+ * in the clear beside it, so the digest conceals nothing, and swapping the algorithm changes no
+ * privacy property. It is `external_id` for dedup, scoped to one job by
+ * `extraction_agents_job_external_uniq`.
+ */
+function identityKey(...parts: (string | null | undefined)[]): string {
+  return createHash("sha256").update(parts.map(p => p ?? "").join("|")).digest("hex");
+}
+
+/**
+ * The key this row WOULD have had before the switch to SHA-256.
+ *
+ * Compatibility only. `external_id` is how a re-run finds the row it wrote last time, so
+ * changing the algorithm orphaned every agent saved under the old one: upsertAgent looks up by
+ * (job_id, external_id), misses, and inserts a duplicate of an agency it already has. Passing
+ * this lets it adopt and re-key the old row instead, once.
+ *
+ * Deletable when no `extraction_agents` row is still keyed the old way — a 40-character hex
+ * `external_id` is the shape to count. (This database had none at the time of the change; the
+ * AscentOne `ao:` ids, which are not distinguishable by shape, all were.)
+ */
+function legacyIdentityKey(...parts: (string | null | undefined)[]): string {
   return createHash("sha1").update(parts.map(p => p ?? "").join("|")).digest("hex");
 }
 
@@ -286,17 +438,21 @@ function dedupCampuses(campuses: ExtractedCampus[]): ExtractedCampus[] {
   return final;
 }
 
-/** Map URLs under a path prefix via Firecrawl map API. */
+/** URLs under a path prefix: the prefix page's own links via Scrapling, Firecrawl's map only if
+ *  that finds none (it used to be Firecrawl-only, so campus sub-pages vanished with its credits). */
 async function mapUrlsUnderPath(baseOrigin: string, pathPrefix: string): Promise<string[]> {
-  const result = await mapUrlsDetailed(`${baseOrigin}${pathPrefix}`, { limit: 50 });
-  if (!result.success) return [];
-  return result.links.filter(u => {
+  const underPath = (urls: string[]) => urls.filter(u => {
     try {
       const p = new URL(u);
       return p.origin === baseOrigin && p.pathname.startsWith(pathPrefix)
         && p.pathname.replace(pathPrefix, "").replace(/\/$/, "").length > 0;
     } catch { return false; }
   });
+  // Filtered BEFORE deciding: the page's nav alone yields dozens of same-site links, none of them sub-pages.
+  const crawled = underPath((await crawlSite([`${baseOrigin}${pathPrefix}`], { budget: 1, maxDepth: 0 })).urls);
+  if (crawled.length) return crawled;
+  const result = await mapUrlsDetailed(`${baseOrigin}${pathPrefix}`, { limit: 50 });
+  return result.success ? underPath(result.links) : [];
 }
 
 /** Convert raw LLM agent output to AgentSourceRow for enrichment pipeline. */
@@ -410,21 +566,6 @@ async function handleInstitutionStep(jobId: string) {
   }
   if (detectedSocial.other_social_links.length) {
     merged.other_social_links = unionSocialLinks(merged.other_social_links, detectedSocial.other_social_links);
-  }
-
-  // Process supporting documents (PDFs/files attached to the job)
-  const docs: DocInput[] = Array.isArray(job.supporting_documents) ? job.supporting_documents : [];
-  if (docs.length > 0) {
-    const docExtractor = createDocumentExtractor();
-    const docContext = await buildDocumentContext(docExtractor, docs, 30000);
-    if (docContext.length > 200) {
-      await heartbeat(jobId);
-      const docData = await extractJson<Record<string, unknown>>({
-        system,
-        prompt: institutionExtractionPrompt("supporting-documents", docContext, job.guidance_notes),
-      });
-      mergeInstitutionFields(merged, docData);
-    }
   }
 
   // Preserve existing manual edits
@@ -780,7 +921,12 @@ async function handleAgentsStep(jobId: string) {
   for (const agent of allRawAgents) {
     if (!agent.name?.trim()) continue;
     const normalized = normalizeAgentRow(agent as any);
-    const externalId = agent.external_id || sha1(agent.name, normalized.country, normalized.email, agent.website);
+    const externalId = agent.external_id || identityKey(agent.name, normalized.country, normalized.email, agent.website);
+    // A provider's own id never changed, so there is nothing to migrate for one; a source that
+    // changed how it synthesises an id says so by carrying `legacy_external_id`.
+    const legacyExternalId = agent.external_id
+      ? agent.legacy_external_id ?? null
+      : legacyIdentityKey(agent.name, normalized.country, normalized.email, agent.website);
 
     const agentData: Record<string, unknown> = {
       name: agent.name, country: normalized.country, state: normalized.state,
@@ -790,7 +936,7 @@ async function handleAgentsStep(jobId: string) {
       source_url: agentUrls[0],
     };
 
-    const agentId = await upsertAgent(jobId, agentData, externalId);
+    const agentId = await upsertAgent(jobId, agentData, externalId, legacyExternalId);
 
     // Write locations — from provider data or single location
     const locs = agent.locations?.length
@@ -887,18 +1033,33 @@ async function handleDiscoveryStep(jobId: string) {
         const courseUrl = course.url || url;
         const queueItemId = await insertQueueItem(jobId, courseUrl);
         if (!queueItemId) continue; // already queued this job — dedupe now enforced by the DB unique constraint
-        await queueService.publish(EXTRACTION_QUEUES.PAGES, { jobId, queueItemId, url: courseUrl });
+        toPublish.push({ queueItemId, url: courseUrl });
         totalCoursePages++;
       }
     }
   }
 
+  // The page worker reads snapshots only (its snapshot gate), so pages this step discovers are
+  // snapshotted BEFORE they are published — and recorded on the site list as course pages so the
+  // Site URLs tab shows where they came from.
+  const toPublish: { queueItemId: string; url: string }[] = [];
+  async function publishDiscovered() {
+    if (!toPublish.length) return;
+    const urls = toPublish.map((p) => p.url);
+    await upsertSiteUrls(jobId, urls.map((url) => ({ url, source: "discovery" })));
+    await setSiteUrlCategories(jobId, new Map(urls.map((u) => [u, { category: "course" as const, source: "heuristic" as const }])));
+    await snapshotSite(jobId, urls);
+    for (const p of toPublish) await queueService.publish(EXTRACTION_QUEUES.PAGES, { jobId, queueItemId: p.queueItemId, url: p.url });
+    toPublish.length = 0;
+  }
+
   for (const url of courseListUrls) {
     // ponytail: stop check per catalogue URL
     const sc = await masterKnex(`${S}.extraction_jobs`).select("stop_requested").where({ id: jobId }).first();
-    if (sc?.stop_requested) { logger.info("Stop requested, aborting", { jobId }); return; }
+    if (sc?.stop_requested) { logger.info("Stop requested, aborting", { jobId }); await publishDiscovered(); return; }
 
     await processListUrl(url, 0);
+    await publishDiscovered();
   }
 
   // Keep pages_total in step with total_pages_found — the admin "Pages Found" stat reads the latter.
@@ -925,37 +1086,21 @@ async function handleCoursesStep(jobId: string) {
   const job = await loadJob(jobId);
   if (!job) return;
 
-  // Re-dispatch all pending/failed queue items to PAGES queue
-  const items = await masterKnex(`${S}.extraction_queue`)
-    .where({ job_id: jobId })
-    .whereIn("status", ["pending", "failed"])
-    .select("id", "url");
-
-  await writeJobEvent(jobId, "step_start", { phase: "courses", message: `Re-dispatching ${items.length} pending/failed pages` });
+  await writeJobEvent(jobId, "step_start", { phase: "courses", message: "Re-dispatching pending/failed/paused pages" });
 
   // Push queue: an item whose message never published is stranded — nothing polls these
   // rows. If LavinMQ dies mid-loop, stop, record exactly how far dispatch got, and rethrow
   // so the step shows failed. The stranded remainder stays pending/failed (and any guided
   // URL inserted-but-unpublished stays pending), so the next Re-run picks all of it up.
+  let candidates = 0;
   let dispatched = 0;
   let queuedNew = 0;
   let dispatchErr: unknown = null;
   try {
-    for (const item of items) {
-      // Claim-style guard: only re-flip items still retryable. An unconditional update
-      // here can yank an item that completed after the SELECT above (an in-flight backlog
-      // message, or an overlapping courses-step run) back to "pending", making it
-      // claimable again — a full duplicate scrape + Gemini extraction.
-      const flipped = await masterKnex(`${S}.extraction_queue`)
-        .where({ id: item.id })
-        .whereIn("status", ["pending", "failed"])
-        .update({ status: "pending", updated_at: masterKnex.fn.now() });
-      if (flipped === 0) continue;
-      await queueService.publish(EXTRACTION_QUEUES.PAGES, {
-        jobId, queueItemId: item.id, url: item.url,
-      });
-      dispatched++;
-    }
+    const republish = await republishRetryableQueueItems(jobId);
+    candidates = republish.candidates;
+    dispatched = republish.dispatched;
+    if (republish.error) throw republish.error;
 
     // Real bug: this step never looked at guided_urls at all, so adding a new URL under
     // Intakes/Eligibility/Study Units/Accreditations in the Context tab and hitting
@@ -994,8 +1139,8 @@ async function handleCoursesStep(jobId: string) {
   if (dispatchErr) {
     await writeJobEvent(jobId, "step_error", {
       level: "warn", phase: "courses",
-      message: `Dispatch interrupted after ${dispatched}/${items.length} pages and ${queuedNew} guided URLs — re-run to dispatch the rest`,
-      data: { dispatched, total: items.length, new_guided_urls: queuedNew, error: dispatchErr instanceof Error ? dispatchErr.message : String(dispatchErr) },
+      message: `Dispatch interrupted after ${dispatched}/${candidates} pages and ${queuedNew} guided URLs — re-run to dispatch the rest`,
+      data: { dispatched, total: candidates, new_guided_urls: queuedNew, error: dispatchErr instanceof Error ? dispatchErr.message : String(dispatchErr) },
     });
     throw dispatchErr;
   }
@@ -1023,12 +1168,10 @@ async function handleEnrichmentStep(jobId: string) {
   const candidatePaths = ["/fees", "/tuition", "/tuition-fees", "/course-fees", "/costs", "/pricing"];
   let feePageText: string | null = null;
 
-  // Real bug: this step never looked at guided_urls.fees_urls at all — adding a Fees
-  // guided URL in the Context tab and hitting "Re-run" was silently ignored in favor of
-  // site-intelligence guessing and a hardcoded path list. An admin-provided URL is a
-  // stronger signal than either, so it wins outright when present.
-  const guided = parseGuidedUrls(job);
-  const feesUrls: string[] = (guided.fees_urls as string[]) || [];
+  // Fee pages the admin named (Site Context tab / guided fees_urls) or the classifier labelled
+  // `fees` — a stronger signal than site-intelligence guessing or the hardcoded path list, so
+  // they win outright when present.
+  const feesUrls = await urlsForType(jobId, job, "fees_urls");
   if (feesUrls.length > 0) {
     const pages = (await Promise.all(feesUrls.map((u) => scrapeUrlOrPdf(u)))).filter((md): md is string => !!md);
     if (pages.length > 0) feePageText = pages.join("\n\n");
@@ -1267,7 +1410,7 @@ async function handleCourseDataStep(
   const scCd = await masterKnex(`${S}.extraction_jobs`).select("stop_requested").where({ id: jobId }).first();
   if (scCd?.stop_requested) { logger.info("Stop requested, aborting", { jobId }); return; }
 
-  const markdown = await scrapeUrl(sourceUrl);
+  const markdown = (await findManualEditMarkdown(jobId, sourceUrl, job.institution_url)) ?? await scrapeUrl(sourceUrl);
   if (!markdown) {
     throw new Error(`Failed to scrape course page: ${sourceUrl}`);
   }
@@ -1277,24 +1420,19 @@ async function handleCourseDataStep(
   const addendum = buildSystemAddendum(recalled);
   const system = addendum ? `${COURSE_DATA_SYSTEM}\n\n${addendum}` : COURSE_DATA_SYSTEM;
 
-  // Admin-supplied pages for this data type (fees_urls, intakes_urls, …) get appended to
-  // the course page — a shared fee table often lives off the course page entirely.
-  // PDF URLs (fee schedules, prospectuses) are handled via Gemini vision.
-  // ponytail: first 3 only, to bound scrape cost; raise if sites split data wider than that.
+  // Pages for this data type (Site Context tab category / guided `${dataType}_urls`) get appended
+  // to the course page — a shared fee table often lives off the course page entirely. PDF URLs
+  // (fee schedules, prospectuses) go through Gemini vision. Capped at MAX_TYPE_URLS.
   let combined = markdown;
-  const guidedForType = parseGuidedUrls(job)[`${dataType}_urls`];
-  if (Array.isArray(guidedForType)) {
-    for (const extra of guidedForType.slice(0, 3)) {
-      if (typeof extra !== "string") continue;
-      const extraMd = await scrapeUrlOrPdf(extra);
-      if (extraMd) combined += `\n\n---\nSource: ${extra}\n\n${extraMd}`;
-    }
+  for (const extra of await urlsForType(jobId, job, `${dataType}_urls`)) {
+    const extraMd = await scrapeUrlOrPdf(extra);
+    if (extraMd) combined += `\n\n---\nSource: ${extra}\n\n${extraMd}`;
   }
 
-  const pageText = truncateMarkdown(combined, 24000);
+  const pageText = truncateMarkdown(combined, COURSE_DATA_TEXT_CAP);
   const extracted = await extractJson<Record<string, unknown>>({
     system,
-    prompt: courseDataPrompt(sourceUrl, pageText, dataType, job.guidance_notes),
+    prompt: courseDataPrompt(sourceUrl, pageText, dataType, job.guidance_notes, course.name),
   });
 
   // Route by data type
@@ -1476,10 +1614,32 @@ async function handleCourseDataStep(
       // stale requirements into every other course on the job. Scoped to the ids these
       // assignments actually pointed at, so an admin's deliberately-unassigned institution-wide
       // requirement is untouched.
-      const priorIds = await masterKnex(`${S}.extraction_course_eligibility_assignments`)
+      //
+      // AN EXTRACTION THAT FOUND NOTHING REPLACES NOTHING — the same rule the English branch below
+      // and the fees path apply. The scope filter runs BEFORE the delete: a run whose every row is
+      // scholarship or paperwork content (or a scrape miss returning `[]`) has learned nothing
+      // about the course's entry bar, and clearing reviewed requirements on that signal would leave
+      // the course with none (review, 2026-09-24).
+      const reqs = ((extracted.requirements as Array<Record<string, unknown>>) || []).filter((req) => {
+        const keep = isAdmissionRequirement({
+          name: req.name as string | null, description: (req.description as string | null) ?? null,
+          min_score: req.min_score as number | null, min_score_percent: req.min_score_percent as number | null,
+          min_degree_level: req.min_degree_level as string | null, academic_tests: req.academic_tests as unknown[] | null,
+        });
+        if (!keep) logger.info("eligibility-scope: dropped non-admission row", { jobId, courseId, name: req.name ?? null });
+        return keep;
+      });
+      if (reqs.length === 0) {
+        logger.warn("Eligibility extraction found no admission requirements — existing rows kept", {
+          courseId, extracted: ((extracted.requirements as unknown[]) || []).length,
+        });
+      }
+      const priorIds = reqs.length === 0 ? [] : await masterKnex(`${S}.extraction_course_eligibility_assignments`)
         .where({ course_id: courseId })
         .pluck("eligibility_requirement_id");
-      await masterKnex(`${S}.extraction_course_eligibility_assignments`).where({ course_id: courseId }).delete();
+      if (reqs.length > 0) {
+        await masterKnex(`${S}.extraction_course_eligibility_assignments`).where({ course_id: courseId }).delete();
+      }
       const orphanIds = priorIds.filter((id): id is string => id != null);
       if (orphanIds.length > 0) {
         // A requirement still assigned to another course is shared and must survive; only the
@@ -1495,7 +1655,6 @@ async function handleCourseDataStep(
           await masterKnex(`${S}.extraction_eligibility_requirements`).whereIn("id", unreferenced).delete();
         }
       }
-      const reqs = (extracted.requirements as Array<Record<string, unknown>>) || [];
       for (const req of reqs) {
         const description = (req.description as string | null) ?? null;
         let scoreType = normaliseScoreType(req.score_type);
@@ -1742,18 +1901,85 @@ async function handleVisaServiceDataStep(jobId: string, visaServiceId: string) {
   });
 }
 
+// ── Scholarships ────────────────────────────────────────────────────────────
+
+/**
+ * Scholarship / bursary pages (site category `scholarships` + guided scholarships_urls). The course
+ * prompt refuses to stage such a page as courses, so every award on it used to be dropped:
+ * 1% of courses had a scholarship. Stored job-level via upsertScholarship; linking an award to the
+ * courses it covers stays with the admin (the Scholarships tab), because the page's "eligible
+ * programmes" wording rarely names our course rows exactly.
+ */
+async function handleScholarshipsStep(jobId: string) {
+  const job = await loadJob(jobId);
+  if (!job) return;
+  const urls = await urlsForType(jobId, job, "scholarships_urls");
+  await writeJobEvent(jobId, "step_start", { phase: "scholarships", message: `Reading ${urls.length} scholarship page(s)` });
+  let pages = 0;
+  let stored = 0;
+  for (const url of urls) {
+    // One page's failure (bad JSON, a model error) must not cost the rest of the pages.
+    try {
+      const page = await getPage(url, { onlyMainContent: true });
+      if (page.blocked || page.markdown.length < 200) continue;
+      pages++;
+      const res = await extractJson<{ scholarships?: ExtractedScholarship[] }>({
+        system: SCHOLARSHIPS_PAGE_SYSTEM, prompt: scholarshipsPagePrompt(url, truncateMarkdown(page.markdown)), tier: "lite",
+      });
+      for (const s of res.scholarships ?? []) if (await upsertScholarship(jobId, s, url)) stored++;
+    } catch (err) {
+      logger.warn("Scholarship page failed; continuing", { jobId, url, error: err instanceof Error ? err.message : String(err) });
+    }
+    await heartbeat(jobId);
+  }
+  await writeJobEvent(jobId, "step_complete", {
+    phase: "scholarships", message: `${stored} scholarship(s) from ${pages} of ${urls.length} page(s)`, data: { urls: urls.length, pages, stored },
+  });
+}
+
+// ── Link entities to courses (Jev) ─────────────────────────────────────────
+
+async function handleLinkEntitiesStep(jobId: string) {
+  // The completion email waits for linking (see completion-email); a failed link pass still sends it.
+  try {
+    await linkEntities(jobId);
+  } finally {
+    await sendCompletionEmail(jobId);
+    await convertCampusesToBranches(jobId);
+  }
+}
+
+async function linkEntities(jobId: string) {
+  await writeJobEvent(jobId, "step_start", { phase: "link_entities", message: "Linking campuses, intakes, units, fees, requirements, scholarships and accreditations to courses" });
+  const summary = await linkJobEntities(jobId, { heartbeat: () => heartbeat(jobId) });
+  if (!summary) {
+    await writeJobEvent(jobId, "step_complete", { phase: "link_entities", message: "Skipped — JEV_LINK_MIN / TYPESAFE_API_KEY not set" });
+    return;
+  }
+  const made = Object.entries(summary.linked).filter(([, n]) => n > 0).map(([k, n]) => `${n} ${k.replace("_", " ")}`).join(", ");
+  await writeJobEvent(jobId, "step_complete", {
+    phase: "link_entities", level: summary.failed ? "warn" : "info",
+    message: `Linked ${made || "nothing new"} across ${summary.courses} courses (${summary.asked} checked${summary.failed ? `, ${summary.failed} course checks failed` : ""})`,
+    data: { ...summary },
+  });
+  await verifyFieldCoverage(jobId).catch((err: unknown) => logger.warn("Field coverage report failed", { jobId, error: String(err) }));
+}
+
 // ── Main consumer ───────────────────────────────────────────────────────────
 
 await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
   let jobId: string, step: string, courseId: string | undefined, dataType: string | undefined, visaServiceId: string | undefined,
-    urls: string[] | undefined, batch: SnapshotBatch | undefined;
+    urls: string[] | undefined, batch: SnapshotBatch | undefined, fresh: boolean | undefined, then: unknown;
   try {
-    ({ jobId, step, courseId, dataType, visaServiceId, urls, batch } = JSON.parse(msg!.content.toString()));
+    ({ jobId, step, courseId, dataType, visaServiceId, urls, batch, fresh, then } = JSON.parse(msg!.content.toString()));
   } catch {
     logger.error("Malformed queue message, discarding", { raw: msg?.content.toString().slice(0, 200) });
     return;
   }
   logger.info("Received step", { jobId, step, courseId, dataType, visaServiceId });
+  // Held while a chained step runs, so the reclaim sweep never starts a second copy of a slow
+  // campus / scholarship pass (two `branches` would both replace the job's campuses).
+  const stopHeartbeat = parseChain(then).length ? keepAlive(() => heartbeat(jobId), 5 * 60_000) : () => {};
   setLlmContext({ jobId, kind: `step:${step}` });
 
   // Every step is one message that owns its whole step — except site_snapshot, whose batches run
@@ -1761,6 +1987,10 @@ await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
   let outcome: "done" | "failed" | "pending" = "done";
   try {
     switch (step as PipelineStep) {
+      case "site_map":          outcome = await handleSiteMapStep(jobId); break;
+      case "site_analysis":     await handleSiteAnalysisStep(jobId); break;
+      case "url_classify":      await handleUrlClassifyStep(jobId); break;
+      case "queue_pages":       await handleQueuePagesStep(jobId); break;
       case "institution":       await handleInstitutionStep(jobId); break;
       case "branches":          await handleBranchesStep(jobId); break;
       case "agents":            await handleAgentsStep(jobId); break;
@@ -1771,12 +2001,24 @@ await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
       case "course_data":       await handleCourseDataStep(jobId, courseId!, dataType as CourseDataType); break;
       case "visa_services":     await handleVisaServicesStep(jobId); break;
       case "visa_service_data": await handleVisaServiceDataStep(jobId, visaServiceId!); break;
-      case "site_snapshot":     outcome = await handleSiteSnapshotStep(jobId, urls, batch); break;
+      case "site_snapshot":     outcome = await handleSiteSnapshotStep(jobId, urls, batch, !!fresh); break;
+      case "scholarships":      await handleScholarshipsStep(jobId); break;
+      case "link_entities":     await handleLinkEntitiesStep(jobId); break;
       default:
         logger.warn("Unknown step", { step });
     }
 
     if (outcome !== "pending") await markStepProgress(jobId, step, outcome);
+    // The snapshot run is complete only when its LAST batch says so; that batch hands off.
+    if (step === "site_snapshot" && outcome === "done" && batch) await advanceSnapshotRunOnce(jobId, batch);
+    // queue_pages is the only discovery step that can run CONCURRENTLY with pages a Resume already
+    // republished (see republishRetryableQueueItems) — checkAllPagesDone defers completion while
+    // this step shows "processing" in pipeline_progress specifically so that race can't start
+    // verification early, but nothing else ever re-checks once this step actually finishes if it
+    // happened to find nothing new to queue (no fresh page completion would ever come to retrigger
+    // it). Called AFTER markStepProgress above, so pipeline_progress.queue_pages already reads
+    // "done" by the time this runs (Greptile).
+    if (step === "queue_pages" && outcome === "done") await checkAllPagesDone(jobId);
   } catch (err) {
     const errMsg = err instanceof Error ? err.message : String(err);
     logger.error("Step failed", { jobId, step, error: errMsg });
@@ -1789,7 +2031,13 @@ await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
       // run on its own. Absent for every unbatched step, which is what that path expects.
       data: { step, courseId, dataType, visaServiceId, ...(batch ?? {}) },
     });
+  } finally {
+    stopHeartbeat();
   }
+  // Post-extraction chain (branches → scholarships → verify, see queue-completion): hand on whether
+  // this step succeeded or failed, so a failed campus or scholarship pass never strands the job.
+  const chain = parseChain(then);
+  if (chain.length) await continueChain(jobId, chain).catch((err) => logger.error("Failed to continue post-extraction chain", { jobId, step, chain, error: String(err) }));
 });
 
 logger.info(`Extraction step worker started — consuming "${EXTRACTION_QUEUES.STEPS}" queue`);

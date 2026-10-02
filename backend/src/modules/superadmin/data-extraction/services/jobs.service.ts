@@ -16,6 +16,7 @@ import * as coursesRepo from "../repositories/courses.repository.js";
 import * as reviewRepo from "../repositories/review.repository.js";
 import * as stagedRepo from "../repositories/staged.repository.js";
 import * as visaRepo from "../repositories/visa-services.repository.js";
+import { resumeExtraction } from "./queue.service.js";
 import type { CreateJobInput, FailJobInput, PatchJobContextInput } from "../schemas/jobs.schema.js";
 
 const logger = createChildLogger("extraction-jobs-service");
@@ -98,8 +99,54 @@ export async function getJob(id: string) {
   return { job: { ...jobWithActors, usage }, overview: overviewWithActors };
 }
 
+// Mirrors overallProgressPct in frontend/src/app/admin/data/all-extractions/components/
+// extraction-job-row.tsx exactly, so a business/institution owner's progress bar reads the same
+// percentage an admin sees. Kept as a straight port rather than a shared package — five string
+// literals and a status list aren't worth a cross-app dependency.
+const PROGRESS_STAGE_KEYS = ["mapping", "intelligence", "scraping", "extracting", "verifying"];
+const PROGRESS_FINISHED_STATUSES = ["done", "approved", "verified", "exported"];
+
+function computeProgressPct(job: {
+  status: string;
+  pipeline_progress: Record<string, { status: string; total?: number; done?: number }> | null;
+  pages_scraped: number | null;
+  total_pages_found: number | null;
+  verification_score: number | null;
+  verification_total: number | null;
+}): number {
+  if (job.status === "failed" || job.status === "declined") return 0;
+  if (PROGRESS_FINISHED_STATUSES.includes(job.status) || job.status === "review") return 100;
+  if (job.pipeline_progress) {
+    const known = PROGRESS_STAGE_KEYS.map((k) => job.pipeline_progress![k]).filter(Boolean);
+    if (known.length > 0) {
+      const sum = known.reduce((acc, stage) => {
+        if (stage!.status === "done") return acc + 1;
+        if (stage!.status === "processing") return acc + Math.min(1, stage!.total ? (stage!.done || 0) / stage!.total : 0.5);
+        return acc;
+      }, 0);
+      return Math.min(100, Math.round((sum / PROGRESS_STAGE_KEYS.length) * 100));
+    }
+  }
+  if (job.total_pages_found) return Math.min(100, Math.round(((job.pages_scraped ?? 0) / job.total_pages_found) * 100));
+  if (job.verification_total) return Math.min(100, Math.round(((job.verification_score ?? 0) / job.verification_total) * 100));
+  return 0;
+}
+
+/**
+ * Self-service extraction status for a business/institution's own linked job: status, progress
+ * percentage, and entity counts only — never admin internals (LLM cost, job events, error
+ * messages). Returns null when the job no longer exists (shouldn't happen once linked, but a
+ * missing job is "nothing to show", not a 500).
+ */
+export async function getSelfServiceStatus(jobId: string) {
+  const job = await repo.findJobById(jobId);
+  if (!job) return null;
+  const counts = await getTabCounts(jobId);
+  return { status: job.status as string, progress_pct: computeProgressPct(job), counts };
+}
+
 export async function getTabCounts(jobId: string) {
-  const [branches, agents, courses, fees, intakes, eligibility, units, studyOptions, accreditations, visaServices] =
+  const [branches, agents, courses, fees, intakes, eligibility, scholarships, units, studyOptions, accreditations, visaServices] =
     await Promise.all([
       reviewRepo.countCampusesByJob(jobId),
       reviewRepo.countAgentsByJob(jobId),
@@ -107,13 +154,14 @@ export async function getTabCounts(jobId: string) {
       coursesRepo.countCourseFeesByJob(jobId),
       coursesRepo.countIntakesByJob(jobId),
       coursesRepo.countEligibilityByJob(jobId),
+      coursesRepo.countScholarshipsByJob(jobId),
       coursesRepo.countStudyUnitsByJob(jobId),
       coursesRepo.countStudyOptionsByJob(jobId),
       stagedRepo.countAccreditationsByJob(jobId),
       visaRepo.countVisaServicesByJob(jobId),
     ]);
   return {
-    branches, agents, courses, fees, intakes, eligibility, units,
+    branches, agents, courses, fees, intakes, eligibility, scholarships, units,
     study_options: studyOptions, accreditations, visa_services: visaServices,
   };
 }
@@ -171,7 +219,7 @@ async function validateDegreeLevelCodes(codes: string[], serviceCategoryId?: num
   return kept;
 }
 
-export async function createJob(input: CreateJobInput, adminId: number) {
+export async function createJob(input: CreateJobInput, adminId: number, opts: { ignoreJobId?: string } = {}) {
   const host = repo.normaliseHost(input.institution_url);
   const degree_level_codes = input.degree_level_codes?.length
     ? await validateDegreeLevelCodes(input.degree_level_codes, input.service_category_id)
@@ -180,7 +228,7 @@ export async function createJob(input: CreateJobInput, adminId: number) {
   const row = await masterKnex.transaction(async (trx) => {
     if (host) await repo.lockInstitutionHost(host, trx);
 
-    const existing = await repo.findJobByInstitutionHost(input.institution_url, trx);
+    const existing = await repo.findJobByInstitutionHost(input.institution_url, trx, opts.ignoreJobId);
     if (existing) throw conflictFor(existing);
 
     // The signed-in admin owns the job — the list shows them as the extractor.
@@ -228,20 +276,13 @@ export function pauseJob(id: string, adminId: number) {
   return setJobStatus(id, "paused", adminId, "JOB_PAUSE");
 }
 
-export async function resumeJob(id: string, adminId: number) {
-  const result = await setJobStatus(id, "extracting", adminId, "JOB_RESUME", {
-    error_message: null,
-    processing_heartbeat_at: null,
-  });
-
-  // Re-dispatch so the pipeline worker picks it back up
-  try {
-    await queueService.publish(EXTRACTION_QUEUES.JOBS, { jobId: id, resumed: true });
-  } catch {
-    logger.warn("Queue unavailable on resume, worker will poll", { jobId: id });
-  }
-
-  return result;
+// Resume picks up the pages that were found but never scraped — it must NOT behave like a
+// fresh job (that's Re-run's job now). Delegates to resumeExtraction (queue.service.ts), which
+// re-dispatches this job's pending/failed/paused queue items via the "courses" step instead of
+// republishing to the JOBS queue, which the one-step-at-a-time job worker treats as brand new
+// and restarts from site_map — that was the actual bug behind "resume re-extracts everything".
+export function resumeJob(id: string, adminId: number) {
+  return resumeExtraction(id, adminId);
 }
 
 export function declineJob(id: string, adminId: number) {
@@ -266,6 +307,7 @@ export async function patchJobContext(id: string, input: PatchJobContextInput, a
   const updates: Record<string, unknown> = {};
   if (input.guided_urls !== undefined) updates.guided_urls = JSON.stringify(input.guided_urls);
   if (input.guidance_notes !== undefined) updates.guidance_notes = input.guidance_notes;
+  if (input.step_mode !== undefined) updates.step_mode = input.step_mode;
   const found = await repo.updateJob(id, updates, adminId);
   if (!found) throw new NotFoundError("Extraction job not found");
   await logAudit(adminId, "JOB_CONTEXT_UPDATE", { entityType: "extraction_jobs", entityId: id });

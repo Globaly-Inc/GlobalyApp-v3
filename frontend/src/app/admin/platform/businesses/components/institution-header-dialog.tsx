@@ -13,11 +13,11 @@ import { flagFromIso2 } from "@/app/admin/platform/categories/utils";
 import { isValidPhoneForCountry } from "../utils";
 import { splitPhone } from "@/lib/utils";
 import { AddressAutocomplete } from "./add-business/address-autocomplete";
-import type { CountryOption } from "@/app/admin/platform/categories/apis";
+import type { Category, CountryOption } from "@/app/admin/platform/categories/apis";
 import type { InstitutionDetail, InstitutionPatch, PlaceDetails } from "../apis/types";
 
 type FormState = {
-  name: string;
+  name: string; categoryId: string;
   countryId: string; address: string; state: string; city: string; postcode: string;
   email: string; phoneCountryId: string; phoneNumber: string; website: string;
 };
@@ -27,6 +27,7 @@ const urlField = z.string().refine((v) => v === "" || /^https?:\/\/\S+\.\S+/.tes
 function buildSchema(countries: CountryOption[]): z.ZodType<FormState> {
   return z.object({
     name: z.string().min(2, "Required"),
+    categoryId: z.string(),
     countryId: z.string(),
     address: z.string(),
     state: z.string(),
@@ -49,6 +50,7 @@ function toForm(inst: InstitutionDetail, countries: CountryOption[]): FormState 
   const { phoneCountryId, phoneNumber } = splitPhone(inst.phone, countries);
   return {
     name: inst.business_name,
+    categoryId: inst.business_category_id ? String(inst.business_category_id) : "",
     countryId: inst.country_id ? String(inst.country_id) : "",
     address: inst.address ?? "",
     state: inst.state ?? "",
@@ -65,6 +67,7 @@ export function InstitutionHeaderDialog({
   open,
   onOpenChange,
   institution,
+  categories,
   countries,
   onSave,
   saving,
@@ -72,6 +75,7 @@ export function InstitutionHeaderDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   institution: InstitutionDetail;
+  categories: Category[];
   countries: CountryOption[];
   onSave: (patch: InstitutionPatch) => Promise<boolean>;
   saving: boolean;
@@ -79,6 +83,7 @@ export function InstitutionHeaderDialog({
   const schema = useMemo(() => buildSchema(countries), [countries]);
   const { form, setForm, errors, reset, validate } = useValidatedForm(schema, () => toForm(institution, countries));
 
+  const categoryOptions = categories.map((c) => ({ value: String(c.id), label: c.name }));
   const countryOptions = countries.map((c) => ({ value: String(c.id), label: `${flagFromIso2(c.iso2)} ${c.name}` }));
   const addressCountryIso2 = countries.find((c) => String(c.id) === form.countryId)?.iso2;
 
@@ -111,6 +116,7 @@ export function InstitutionHeaderDialog({
     const phone = [phoneCode, data.phoneNumber].filter(Boolean).join(" ");
     const ok = await onSave({
       business_name: data.name,
+      business_category_id: data.categoryId ? Number(data.categoryId) : null,
       country_id: data.countryId ? Number(data.countryId) : null,
       address: data.address || null,
       state: data.state || null,
@@ -134,6 +140,17 @@ export function InstitutionHeaderDialog({
             <Label>Institution Name *</Label>
             <Input className="h-10" value={form.name} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} aria-invalid={!!errors.name} />
             <FieldError message={errors.name} />
+          </div>
+
+          <div className="flex flex-col gap-2">
+            <Label>Business Category</Label>
+            <Combobox
+              value={form.categoryId}
+              onChange={(v) => setForm((f) => ({ ...f, categoryId: v }))}
+              placeholder="Select category"
+              searchPlaceholder="Search categories..."
+              options={categoryOptions}
+            />
           </div>
 
           <div className="space-y-2">

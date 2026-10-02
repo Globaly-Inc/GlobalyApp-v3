@@ -6,4 +6,5 @@ export type CategoryTab =
   | "areas_of_study"
   | "tests"
   | "fee_types"
-  | "accreditations";
+  | "accreditations"
+  | "registration_types";

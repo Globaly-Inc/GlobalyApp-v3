@@ -1,0 +1,208 @@
+<title>Nearest Branch Mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600;700&display=swap">
+<style>
+/* Layout: four real screens in the order the feature is met — the visitor's widget, an overseas visitor for contrast, the staff view, the branch settings. Light only, like the app. */
+:root {
+  --bg: #f4f6fa;
+  --card: #ffffff;
+  --fg: #0f1729;
+  --muted: #65758b;
+  --line: #e1e5ea;
+  --primary: #012e8a;
+  --primary-soft: #e8eefb;
+  --green-bg: #e6f6ec;
+  --green-fg: #15803d;
+  --amber-bg: #fdf3e1;
+  --amber-fg: #92560b;
+  --brand: #7a1f2b; /* the widget's own brand colour */
+  --display: "Fraunces", Georgia, serif;
+  --body: "Inter", system-ui, sans-serif;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 14px/1.5 var(--body); padding-inline: 16px; padding-block: 0 48px; }
+h1, h2 { font-family: var(--display); font-weight: 600; text-wrap: balance; margin: 0; }
+.wrap { max-width: 1180px; margin: 0 auto; display: flex; flex-direction: column; gap: 40px; }
+.top { position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; background: var(--bg); padding-block: 16px 12px; border-bottom: 1px solid var(--line); display: flex; flex-wrap: wrap; gap: 10px 20px; align-items: center; }
+.top h1 { font-size: 22px; }
+.top nav { display: flex; flex-wrap: wrap; gap: 6px; }
+.top a { text-decoration: none; color: var(--primary); border: 1px solid var(--line); background: var(--card); border-radius: 999px; padding: 4px 12px; font-size: 13px; }
+a:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.intro { color: var(--muted); max-width: 72ch; margin: 0; }
+section.screen { display: flex; flex-direction: column; gap: 14px; scroll-margin-top: 90px; }
+.head { display: flex; flex-direction: column; gap: 4px; max-width: 76ch; }
+.head .step { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--primary); font-weight: 600; }
+.head h2 { font-size: 22px; }
+.head p { margin: 0; color: var(--muted); }
+.new { display: inline-block; font: 600 10px/1 var(--body); letter-spacing: .06em; text-transform: uppercase; background: var(--green-bg); color: var(--green-fg); border-radius: 4px; padding: 3px 6px; vertical-align: 2px; margin-left: 6px; }
+.pair { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 18px; align-items: start; }
+.note { font-size: 12.5px; color: var(--muted); background: var(--card); border: 1px dashed var(--line); border-radius: 10px; padding: 10px 12px; margin: 0; }
+.note b { color: var(--fg); }
+
+/* widget */
+.panel { border: 1px solid var(--line); border-radius: 18px; background: #fff; overflow: hidden; box-shadow: 0 10px 30px rgba(15,23,41,.08); display: flex; flex-direction: column; }
+.ph { display: flex; align-items: center; gap: 10px; padding: 10px 14px; border-bottom: 1px solid var(--line); border-top: 3px solid var(--brand); }
+.aly { width: 28px; height: 28px; border-radius: 50%; flex: none; background: radial-gradient(circle at 32% 30%, #fff 0, color-mix(in srgb, var(--brand) 55%, #fff) 28%, var(--brand) 72%); }
+.ph b { display: block; font-size: 13px; }
+.ph small { color: var(--muted); font-size: 11px; }
+.pbody { padding: 14px; display: flex; flex-direction: column; gap: 12px; font-size: 13px; }
+.u { align-self: flex-end; background: #f1f3f6; border-radius: 14px 14px 4px 14px; padding: 8px 12px; max-width: 85%; }
+.a { display: flex; gap: 8px; }
+.a .aly { width: 22px; height: 22px; }
+.a p { margin: 0; }
+.branch { border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: #fff; box-shadow: 0 1px 2px rgba(15,23,41,.05); }
+.map { height: 92px; background:
+  linear-gradient(90deg, transparent 49.5%, #dbe2ea 49.5%, #dbe2ea 50.5%, transparent 50.5%) 0 0 / 46px 46px,
+  linear-gradient(0deg, transparent 49.5%, #dbe2ea 49.5%, #dbe2ea 50.5%, transparent 50.5%) 0 0 / 46px 46px,
+  #eef2f6; position: relative; }
+.map::after { content: ""; position: absolute; left: 50%; top: 42%; width: 16px; height: 16px; margin: -8px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: var(--brand); box-shadow: 0 2px 6px rgba(0,0,0,.25); }
+.bi { padding: 12px; display: flex; flex-direction: column; gap: 6px; }
+.bi small { font: 600 10.5px var(--body); letter-spacing: .07em; text-transform: uppercase; color: var(--brand); }
+.bi b { font-size: 14px; }
+.bi .addr { color: var(--muted); font-size: 12px; }
+.dist { display: inline-flex; gap: 6px; flex-wrap: wrap; font-size: 11.5px; }
+.dist span { background: #f1f3f6; border-radius: 999px; padding: 2px 8px; }
+.btns { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px; }
+.btns span { border-radius: 9px; padding: 6px 11px; font-size: 12px; font-weight: 600; border: 1px solid var(--line); }
+.btns .go { background: var(--brand); border-color: var(--brand); color: #fff; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chip { border: 1px solid var(--line); border-radius: 999px; padding: 4px 10px; font-size: 11.5px; background: #fff; }
+.pin { border-top: 1px solid var(--line); padding: 8px 12px; }
+.pin div { border: 1px solid var(--line); border-radius: 12px; padding: 8px 12px; color: var(--muted); font-size: 12px; }
+
+/* staff */
+.shell { background: var(--card); border: 1px solid var(--line); border-radius: 14px; overflow: hidden; }
+.bar { display: flex; align-items: center; gap: 12px; height: 50px; border-bottom: 1px solid var(--line); padding-inline: 14px; }
+.logo { width: 30px; height: 30px; border-radius: 8px; background: var(--primary); color: #fff; display: grid; place-items: center; font-weight: 700; }
+.app { display: grid; grid-template-columns: 64px minmax(0, 1fr); }
+.rail { border-right: 1px solid var(--line); display: flex; flex-direction: column; align-items: center; gap: 6px; padding-block: 12px; font-size: 10px; color: var(--muted); }
+.rail span { width: 48px; text-align: center; padding: 6px 0; border-radius: 8px; }
+.rail .on { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+.main { min-width: 0; padding: 18px; background: #fbfcfe; }
+@media (max-width: 700px) { .app { grid-template-columns: minmax(0, 1fr); } .rail { display: none; } }
+.cols { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: 16px; align-items: start; }
+@media (max-width: 860px) { .cols { grid-template-columns: minmax(0, 1fr); } }
+.sc { border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.sc h3 { margin: 0; font: 600 14px var(--body); padding: 11px 14px; border-bottom: 1px solid var(--line); display: flex; gap: 8px; align-items: center; }
+.sc .in { padding: 12px 14px; display: flex; flex-direction: column; gap: 10px; font-size: 13px; }
+.kv { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 6px 10px; }
+.kv span:nth-child(odd) { color: var(--muted); }
+.approx { font-size: 10.5px; font-weight: 600; background: var(--amber-bg); color: var(--amber-fg); border-radius: 4px; padding: 1px 6px; margin-left: 4px; }
+.tline { font-size: 12.5px; color: var(--muted); border-left: 2px solid var(--line); padding-left: 10px; }
+
+/* branch settings */
+.table { width: 100%; border-collapse: collapse; font-size: 13px; min-width: 620px; }
+.table th, .table td { text-align: left; padding: 10px 12px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.table th { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .05em; }
+.tbox { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
+.ok { color: var(--green-fg); font-weight: 600; }
+.warn { color: var(--amber-fg); font-weight: 600; }
+</style>
+
+<div class="wrap">
+  <header class="top">
+    <h1>Nearest branch</h1>
+    <nav aria-label="Screens">
+      <a href="#local">1 · Domestic visitor</a>
+      <a href="#abroad">2 · Overseas visitor</a>
+      <a href="#staff">3 · Staff view</a>
+      <a href="#branches">4 · Branch locations</a>
+    </nav>
+  </header>
+
+  <p class="intro">Mockup for review; nothing is built. When a visitor in the institution's own country asks about applying, studying or visiting, the widget suggests the branch nearest to them. Their approximate location (country and state) comes from two headers Cloudflare adds to each request, and is matched against each branch's state and country. No maps, no coordinates. Example data: a fictional Australian university with three campuses.</p>
+
+  <section class="screen" id="local">
+    <div class="head">
+      <span class="step">Screen 1 · the visitor's widget</span>
+      <h2>A visitor in Melbourne asks about applying</h2>
+      <p>Their location reads as Melbourne, Australia, the same country as the campuses, so the reply is followed by the nearest campus. Shown once per chat; the AI can also mention it in its reply.</p>
+    </div>
+    <div class="pair">
+      <div class="panel">
+        <div class="ph"><span class="aly" aria-hidden="true"></span><div><b>Northfield Admissions</b><small>AI counsellor · powered by Globaly</small></div></div>
+        <div class="pbody">
+          <div class="u">I'd like to apply for the Bachelor of Nursing. How do I start?</div>
+          <div class="a"><span class="aly" aria-hidden="true"></span><p>You can apply online in about 20 minutes. You'll need your Year 12 results and a short statement. Our <b>Melbourne campus</b> is the closest to you if you'd like to visit or talk to the admissions team in person.</p></div>
+          <div class="branch" aria-label="Nearest campus">
+            <div class="map" aria-hidden="true"></div>
+            <div class="bi">
+              <small>Campus in your state <span class="new">New</span></small>
+              <b>Melbourne Campus</b>
+              <span class="addr">120 Collins Street, Melbourne VIC 3000</span>
+              <div class="dist"><span>Melbourne, Victoria</span><span>03 9000 0000</span></div>
+              <div class="btns"><span class="go">Get directions</span><span>See all campuses</span></div>
+            </div>
+          </div>
+          <div class="chips"><span class="chip">What are the entry requirements?</span><span class="chip">Can I book a campus tour?</span></div>
+        </div>
+        <div class="pin"><div>How can I help you today?</div></div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <p class="note"><b>Who counts as domestic:</b> the visitor's location country, from the headers, matches the country the institution's branches are in. If they told the assistant their nationality and it differs (for example a student from Nepal living in Melbourne), they're treated as international, as today.</p>
+        <p class="note"><b>When it shows:</b> once per chat, on a reply to a message about applying, enrolling, studying, campuses, visiting or "near me". Only branches the system has placed on the map are considered. If no branch is within the visitor's country, nothing shows.</p>
+        <p class="note"><b>How "nearest" is chosen:</b> a branch in the visitor's <b>state</b> ("Campus in your state"), else the institution's <b>primary branch</b> in that country ("Our main campus"). No distance is shown, because none is known.</p>
+        <p class="note"><b>"Get directions"</b> opens Google Maps in a new tab with the branch's written address (a plain link, no Maps API). <b>"See all campuses"</b> lists every branch, best match first.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="screen" id="abroad">
+    <div class="head">
+      <span class="step">Screen 2 · the same widget, from overseas</span>
+      <h2>A visitor in Kathmandu asks the same thing</h2>
+      <p>Their location country is Nepal, not Australia, so no campus card. The assistant answers as it does today.</p>
+    </div>
+    <div class="pair">
+      <div class="panel">
+        <div class="ph"><span class="aly" aria-hidden="true"></span><div><b>Northfield Admissions</b><small>AI counsellor · powered by Globaly</small></div></div>
+        <div class="pbody">
+          <div class="u">I'd like to apply for the Bachelor of Nursing. How do I start?</div>
+          <div class="a"><span class="aly" aria-hidden="true"></span><p>As an international applicant you'll apply online with your transcripts and an English test such as IELTS (7.0 for Nursing). Most students start in February or July.</p></div>
+          <div class="chips"><span class="chip">Which English tests do you accept?</span><span class="chip">What does a student visa need?</span></div>
+        </div>
+        <div class="pin"><div>How can I help you today?</div></div>
+      </div>
+      <p class="note">No location headers (Cloudflare off, local development) means no card, everywhere. The feature fails quiet.</p>
+    </div>
+  </section>
+
+  <section class="screen" id="staff">
+    <div class="head">
+      <span class="step">Screen 3 · Inbox and the visitor page</span>
+      <h2>Staff see roughly where the visitor is, and which branch was suggested</h2>
+      <p>City-level, marked approximate. Useful for routing a lead to the right campus team.</p>
+    </div>
+    <div class="shell">
+      <div class="bar"><span class="logo">g</span><span>Northfield University ▾</span></div>
+      <div class="app">
+        <div class="rail"><span>Home</span><span>Business</span><span class="on">Contacts</span><span>Inbox</span><span>Settings</span></div>
+        <div class="main">
+          <div class="cols">
+            <div class="sc"><h3>Contact Details</h3><div class="in"><div class="kv"><span>Email</span><span>mia.chen@example.com</span><span>Location <span class="new">New</span></span><span>Victoria, Australia <span class="approx">Approximate</span></span><span>Domestic</span><span>Yes, same country as your campuses</span><span>Nearest branch</span><span>Melbourne Campus · same state</span></div></div></div>
+            <div class="sc"><h3>Activity</h3><div class="in"><div class="tline">Suggested <b style="color:var(--fg)">Melbourne Campus</b> as the nearest branch<br><small>Today, 10:42 AM</small></div><div class="tline">Applying for the Bachelor of Nursing<br><small>Today, 10:40 AM</small></div></div></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="screen" id="branches">
+    <div class="head">
+      <span class="step">Screen 4 · Business › Branches</span>
+      <h2>Branches need a state to be suggested</h2>
+      <p>Matching uses the state and country already on each branch. A branch with no state can still be the main-campus fallback, but never "in your state", so it's flagged here. Use the full state name ("Victoria"), as Cloudflare sends it.</p>
+    </div>
+    <div class="tbox">
+      <table class="table">
+        <thead><tr><th>Branch</th><th>City · State · Country</th><th>Suggestable <span class="new">New</span></th></tr></thead>
+        <tbody>
+          <tr><td><b>Melbourne Campus</b> · Primary</td><td>Melbourne · Victoria · Australia</td><td class="ok">✓ By state</td></tr>
+          <tr><td><b>Sydney Campus</b></td><td>Sydney · New South Wales · Australia</td><td class="ok">✓ By state</td></tr>
+          <tr><td><b>Brisbane Study Centre</b></td><td>Brisbane · — · Australia</td><td class="warn">Add a state so visitors there are matched to it.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+</div>

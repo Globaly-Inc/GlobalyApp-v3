@@ -22,6 +22,10 @@ export const authRealApi = {
   updateRole: (params: UpdateRoleParams): Promise<void> =>
     httpPatch("/platform-users/me/category", { user_category: params.category }),
 
+  // Mints the self-service "Preview" button's short-lived preview_token (see backend's
+  // issuePreviewToken) — never the caller's own session token, so it's safe to put in a URL.
+  mintPreviewToken: (): Promise<{ preview_token: string }> => httpPost("/auth/preview-token", {}),
+
   verifyOtp: async ({ email, otp }: VerifyOtpParams): Promise<AuthUser> => {
     const data = await httpPost<{
       access_token: string;

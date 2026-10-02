@@ -25,7 +25,9 @@ export async function generateMetadata({ params }: BusinessPageProps): Promise<M
 }
 
 function toProfileData(business: BusinessDetail): ProfileData {
-  const headOffice = business.address || business.city
+  // `show_locations` false means the owner made the Locations card private; the server already
+  // sent `branches: []`, and the head office is assembled here, so it has to be dropped here too.
+  const headOffice = business.show_locations !== false && (business.address || business.city)
     ? [{
       id: `business-${business.id}`,
       name: business.business_name,

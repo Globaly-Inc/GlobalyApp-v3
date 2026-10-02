@@ -16,6 +16,7 @@ import {
   normaliseAcademicTests,
   normaliseCustomDates,
   eligibilityRowsAgree,
+  eligibilityRowsIdentical,
   englishUpdates,
 } from "../src/modules/superadmin/data-extraction/lib/staging-writer.js";
 import { evaluateEligibility } from "../src/modules/enquiries/shared/eligibility.js";
@@ -401,6 +402,16 @@ assert("a course whose only row states nothing still answers unknown", () =>
     requirements: [bareRow], englishRequirements: [],
     degreeLadder: new Map(), student: NO_STUDENT, studentType: "international",
   }).status, "unknown"));
+
+// AgentCIS products are complete records: a blank is "none", so it must not inherit another's tests.
+console.log("\neligibilityRowsIdentical — structured sources share only identical rows");
+const gre = JSON.stringify([{ test_name: "GRE", score: 2 }]);
+assert("no tests vs tests is a different requirement", () =>
+  eq(eligibilityRowsIdentical({ min_degree_level: "Certificate", academic_tests: gre }, { min_degree_level: "Certificate", academic_tests: [] }), false));
+assert("blank vs stated minimum is a different requirement", () =>
+  eq(eligibilityRowsIdentical({ min_score: null, academic_tests: "[]" }, { min_score: 4, academic_tests: [] }), false));
+assert("identical requirements share, decimals included", () =>
+  eq(eligibilityRowsIdentical({ min_score: "4.00", score_type: "gpa_4", academic_tests: gre }, { min_score: 4, score_type: "gpa_4", academic_tests: [{ test_name: "GRE", score: 2 }] }), true));
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed > 0 ? 1 : 0);

@@ -7,13 +7,20 @@ const TABLE = "scholarship_import_jobs";
 
 export type ImportRowResult = { title: string; status: "ok" | "error"; detail?: string };
 
-export async function createJob(createdBy: number, totalRows: number) {
-  const [row] = await masterKnex(TABLE).insert({ created_by: createdBy, total_rows: totalRows }).returning("*");
+export async function createJob(createdBy: number, totalRows: number, businessId?: number) {
+  const [row] = await masterKnex(TABLE)
+    .insert({ created_by: createdBy, total_rows: totalRows, business_id: businessId ?? null })
+    .returning("*");
   return row;
 }
 
 export async function findJob(id: number) {
   return masterKnex(TABLE).where({ id }).first();
+}
+
+/** Business self-service polling — scoped so one business can't read another's import job. */
+export async function findJobForBusiness(id: number, businessId: number) {
+  return masterKnex(TABLE).where({ id, business_id: businessId }).first();
 }
 
 export async function markProcessing(id: number) {

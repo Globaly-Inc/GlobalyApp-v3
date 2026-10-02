@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PaginationSchema } from "../../../shared/pagination.js";
 
 export const SendMessageSchema = z.object({
   session_id: z.coerce.number().int().positive().optional(),
@@ -43,18 +44,52 @@ export const CreditGrantSchema = z.object({
 });
 
 export const GuestMessageSchema = z.object({
-  content: z.string().trim().min(1).max(5000),
+  content: z.string().trim().max(5000).default(""),
   fingerprint: z.string().min(1),
   embed_key: z.string().uuid().optional(),
+  /** No new message: answer what the visitor asked while a person had the chat (see takeover.unansweredTail). */
+  resume: z.boolean().optional(),
+}).refine((v) => (v.resume ? v.content.length === 0 : v.content.length > 0), {
+  message: "Send a message, or resume with no message",
+  path: ["content"],
 });
+
+const HexColour = z.string().regex(/^#[0-9a-fA-F]{6}$/);
 
 export const EmbedConfigCreateSchema = z.object({
   display_name: z.string().trim().min(1).max(120).optional(),
   logo_url: z.string().url().max(500).optional(),
-  brand_color: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
+  brand_color: HexColour.optional(),
+  /** Bottom corner of the launcher on the customer's site. */
+  position: z.enum(["left", "right"]).optional(),
   custom_instructions: z.string().trim().max(2000).optional(),
+  greeting: z.string().trim().min(1).max(300).optional(),
+  subtitle: z.string().trim().min(1).max(120).optional(),
   monthly_credit_limit: z.coerce.number().int().min(1).max(100000).optional(),
+  /** Opt in to learning counselling patterns from whole conversations on this widget. */
+  auto_learn: z.boolean().optional(),
 });
+
+/** Appearance edit. Omitted = unchanged; null clears the optional text fields. */
+export const EmbedConfigUpdateSchema = z.object({
+  display_name: z.string().trim().min(1).max(120).nullish(),
+  logo_url: z.string().url().max(500).nullish(),
+  brand_color: HexColour.nullish(),
+  position: z.enum(["left", "right"]).optional(),
+  custom_instructions: z.string().trim().max(2000).nullish(),
+  greeting: z.string().trim().min(1).max(300).nullish(),
+  subtitle: z.string().trim().min(1).max(120).nullish(),
+  monthly_credit_limit: z.coerce.number().int().min(1).max(100000).optional(),
+  auto_learn: z.boolean().optional(),
+}).strict();
+export type EmbedConfigUpdateInput = z.infer<typeof EmbedConfigUpdateSchema>;
+
+export const SendSnippetSchema = z.object({
+  invitee: z.object({
+    name: z.string().trim().min(1).max(200),
+    email: z.string().trim().toLowerCase().email().max(320),
+  }).strict().optional(),
+}).strict();
 
 export const EmbedConfigIdParamSchema = z.object({
   id: z.coerce.number().int().positive(),
@@ -62,6 +97,16 @@ export const EmbedConfigIdParamSchema = z.object({
 
 export const EmbedKeyQuerySchema = z.object({
   key: z.string().uuid(),
+});
+
+/**
+ * The owner's visitors/leads list. `status` is a FILTER over derived state, never a value the
+ * caller can write — nothing in this module accepts a status as input, because the row's own
+ * name/email is what decides it (see visitors.repository's STATUS_SQL).
+ */
+export const VisitorListQuerySchema = PaginationSchema.extend({
+  status: z.enum(["all", "visitor", "lead"]).default("all"),
+  search: z.string().trim().max(120).optional(),
 });
 
 export const GuestSessionQuerySchema = z.object({
@@ -73,7 +118,63 @@ export const GuestMigrateSchema = z.object({
   fingerprint_hash: z.string().min(1),
 });
 
+/**
+ * The visitor's answer to the contact card — both answers, one endpoint, because "not now"
+ * is as much a recorded decision as a submission is (it restarts the cooldown).
+ *
+ * `website` is a honeypot, copied from the public guide-lead form: a real visitor never sees
+ * the field, and a bot that fills every field gets a plausible success with no write, so it
+ * has nothing to adapt to.
+ *
+ * The refine is the reason this is one schema rather than two. It outlived the DB constraint it
+ * was written for (20261001_002 dropped chk_ai_widget_visitors_contact_pair so that details a
+ * visitor VOLUNTEERS in prose can be stored a half at a time) and it stays, because this is the
+ * CARD: it asks for both fields and its copy promises a summary, which needs an address. A
+ * submit missing either one means the form broke, not that the visitor said less.
+ */
+export const GuestContactSchema = z
+  .object({
+    embed_key: z.string().uuid(),
+    fingerprint: z.string().min(1),
+    action: z.enum(["submit", "skip"]),
+    name: z.string().trim().min(1).max(120).optional(),
+    email: z.string().trim().email().max(320).optional(),
+    website: z.string().max(200).optional(),
+  })
+  .refine((v) => v.action === "skip" || (!!v.name && !!v.email), {
+    message: "Name and email are both required",
+    path: ["email"],
+  });
+
+/**
+ * The visitor's answer to the end-of-chat offer.
+ *
+ * The only thing that makes a summary due immediately. A quiet half hour still sends one
+ * eventually, but only claiming to be the conversation they had — never that it was resolved.
+ */
+export const GuestFeedbackSchema = z.object({
+  embed_key: z.string().uuid(),
+  fingerprint: z.string().min(1),
+  feedback: z.enum(["positive", "negative"]).nullable(),
+});
+
+export const GuestConversationEndSchema = z.object({
+  embed_key: z.string().uuid(),
+  fingerprint: z.string().min(1),
+  action: z.enum(["end", "continue"]),
+});
+
+/** The five-face end-of-chat rating. The comment is optional and capped like the DB CHECK. */
+export const GuestRatingSchema = z.object({
+  embed_key: z.string().uuid(),
+  fingerprint: z.string().min(1),
+  rating: z.number().int().min(1).max(5),
+  comment: z.string().trim().max(1000).optional(),
+});
+
 export type CreditGrantInput = z.infer<typeof CreditGrantSchema>;
 export type GuestMessageInput = z.infer<typeof GuestMessageSchema>;
 export type GuestMigrateInput = z.infer<typeof GuestMigrateSchema>;
 export type GuestSessionQuery = z.infer<typeof GuestSessionQuerySchema>;
+export type GuestContactInput = z.infer<typeof GuestContactSchema>;
+export type GuestConversationEndInput = z.infer<typeof GuestConversationEndSchema>;

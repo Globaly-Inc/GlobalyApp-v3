@@ -15,9 +15,8 @@ const MAX_POOLS = 50; // ponytail: tune up when you have >50 concurrent business
 const POOL_TTL_MS = 5 * 60_000;
 const PER_BUSINESS_MAX = 3;
 
-/** Get or create a Knex instance for a business schema */
 export async function getKnex(businessId: string | number, schema: string): Promise<Knex> {
-  const key = String(businessId);
+  const key = schema;
   const existing = pools.get(key);
   if (existing) {
     existing.lastUsed = Date.now();

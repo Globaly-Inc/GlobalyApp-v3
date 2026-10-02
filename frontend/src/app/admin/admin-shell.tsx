@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { useRouter, usePathname } from "next/navigation";
+import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { ChevronDown, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
@@ -22,11 +22,13 @@ import { AdminMobileNav } from "./components/admin-mobile-nav";
 import { AdminPortalSwitcher } from "./components/admin-portal-switcher";
 import { PortalSidebar } from "@/components/portal-sidebar";
 import { ICON } from "@/lib/public-assets";
-import { PERSONAL_PORTAL_HOME } from "@/app/personal/const";
+import { PERSONAL_PORTAL_HOME, SHOW_PERSONAL_PORTAL } from "@/app/personal/const";
+import { SIGN_IN_HREF } from "@/app/auth/const";
 
 export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>) {
   const router = useRouter();
   const pathname = usePathname();
+  const searchParams = useSearchParams();
   const dispatch = useAppDispatch();
   const { me, status, error } = useAppSelector((state) => state.admin);
   const { user: authUser, initializing } = useAuthState();
@@ -35,10 +37,14 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
   useEffect(() => setMounted(true), []);
 
   useEffect(() => {
-    if (!initializing && !isAdmin) {
+    if (initializing || isAdmin) return;
+    if (authUser) {
       router.replace("/");
+      return;
     }
-  }, [initializing, isAdmin, router]);
+    const qs = searchParams.toString();
+    router.replace(`${SIGN_IN_HREF}?redirect=${encodeURIComponent(qs ? `${pathname}?${qs}` : pathname)}`);
+  }, [initializing, isAdmin, authUser, pathname, searchParams, router]);
 
   const fetchedMeRef = useRef(false);
   useEffect(() => {
@@ -56,7 +62,7 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
 
   const handleSignOut = () => {
     dispatch(logout());
-    router.push("/auth/sign-in");
+    router.push(SIGN_IN_HREF);
   };
 
   if (initializing) {
@@ -149,7 +155,7 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
             <DropdownMenuContent align="end" className="w-56 p-1.5 rounded-md">
               <DropdownMenuItem
                 className="cursor-pointer px-1.5 py-1.5 flex items-center gap-2"
-                onClick={() => router.push("/admin/profile")}
+                onClick={() => router.push("/personal/profile")}
               >
                 <div
                   className={cn(
@@ -169,9 +175,11 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
                 </div>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push(PERSONAL_PORTAL_HOME)}>
-                Personal Portal
-              </DropdownMenuItem>
+              {SHOW_PERSONAL_PORTAL && (
+                <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push(PERSONAL_PORTAL_HOME)}>
+                  Personal Portal
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/business/portal")}>
                 Business Portal
               </DropdownMenuItem>

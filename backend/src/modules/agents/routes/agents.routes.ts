@@ -118,7 +118,13 @@ export async function agentBusinessRoutes(app: FastifyInstance) {
       // which is what updateMemberRole/setMemberStatus are keyed by for the admin route's sake.
       const member = await institutionMembers.getMember(req.db, id);
       if (patch.role !== undefined) await institutionMembers.updateMemberRole(req.db, req.institutionId, member.platform_user_id, patch.role);
-      if (patch.account_status !== undefined) await institutionMembers.setMemberStatus(req.db, member.platform_user_id, patch.account_status);
+      if (patch.account_status !== undefined) await institutionMembers.setMemberStatus(req.db, req.institutionId, member.platform_user_id, patch.account_status);
+      const {
+        role: _role, account_status: _accountStatus, is_owner: _isOwner, position, is_public: _isPublic,
+        ...contactPatch
+      } = patch;
+      // An institution member's position lives in members.job_title.
+      await institutionMembers.updateMemberDetails(req.db, id, { ...contactPatch, ...(position !== undefined ? { job_title: position } : {}) });
       const result = await institutionMembers.getMember(req.db, id);
       return reply.send(result);
     }

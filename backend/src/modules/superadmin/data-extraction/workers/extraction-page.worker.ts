@@ -12,10 +12,13 @@ import { queueService } from "../../../../shared/queue/queueService.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
-import { scrapeRenderedHtml } from "../lib/scraper.js";
+import { scrapeFailureText, scrapeRenderedHtml } from "../lib/scraper.js";
 import { getPage, getDocument, isPdfUrl } from "../lib/page-store.js";
-import { truncateMarkdown, domainOf, MIN_EXTRACTABLE_CHARS } from "../lib/html-utils.js";
-import { courseLinksByName, looksLikeCourseList, parseCourseList } from "../lib/courselist-parser.js";
+import { JEV_MODEL, shouldSkipPage } from "../lib/jev-page-gate.js";
+import { fillFromPicks } from "../lib/jev-pickers.js";
+import { checkCourseWithJev } from "../lib/jev-course-check.js";
+import { truncateMarkdown, domainOf, MIN_EXTRACTABLE_CHARS, compileBlocklist } from "../lib/html-utils.js";
+import { courseLinksByName, curriculumFromMarkup } from "../lib/courselist-parser.js";
 import { extractJson, setLlmContext, withLlmKind } from "../lib/llm-client.js";
 import {
   courseExtractionPrompt, COURSE_EXTRACTION_SYSTEM, studyUnitsFromPagePrompt, STUDY_UNITS_SYSTEM,
@@ -32,7 +35,7 @@ import {
 import { loadLookupLists, resolveCountryCode } from "../lib/lookup-catalog.js";
 import { checkAllPagesDone } from "../lib/queue-completion.js";
 import { recallMemory, rememberMemory, buildSystemAddendum } from "../lib/memory-client.js";
-import { classifyFailure, type FailureClass } from "../lib/classify-failure.js";
+import { classifyFailure, isScraperInfraFailure, type FailureClass } from "../lib/classify-failure.js";
 
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
@@ -147,9 +150,9 @@ async function unitsFromMarkup(
   let units: ExtractedStudyUnit[] | null = null;
   try {
     const { html } = await scrapeRenderedHtml(resolvedUrl);
-    if (html && looksLikeCourseList(html)) {
-      const parsed = parseCourseList(html);
-      if (parsed.units.length) units = parsed.units;
+    if (html) {
+      const parsed = curriculumFromMarkup(html);
+      if (parsed.length) units = parsed;
     }
   } catch (err) {
     logger.warn("Curriculum markup fetch failed, falling back to the model", {
@@ -214,9 +217,9 @@ async function extractSecondaryPageInner(opts: {
 
 await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
   let jobId: string, queueItemId: string, url: string, forceFirecrawl: boolean | undefined, mobile: boolean | undefined,
-    proxy: "stealth" | "auto" | undefined, expandCollapsed: boolean | undefined;
+    proxy: "stealth" | "auto" | undefined, expandCollapsed: boolean | undefined, adminRetry: boolean | undefined;
   try {
-    ({ jobId, queueItemId, url, forceFirecrawl, mobile, proxy, expandCollapsed } = JSON.parse(msg!.content.toString()));
+    ({ jobId, queueItemId, url, forceFirecrawl, mobile, proxy, expandCollapsed, adminRetry } = JSON.parse(msg!.content.toString()));
   } catch {
     logger.error("Malformed queue message, discarding", { raw: msg?.content.toString().slice(0, 200) });
     return;
@@ -249,8 +252,11 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
     .first();
   if (blocklistRow?.value) {
     try {
-      const patterns: string[] = JSON.parse(blocklistRow.value);
-      if (patterns.some((p) => new RegExp(p, "i").test(url))) {
+      const raw: unknown = JSON.parse(blocklistRow.value);
+      // compileBlocklist drops an invalid entry on its own, so one bad pattern no longer disables
+      // the valid ones for this page (the catch below is now only for malformed JSON).
+      const { patterns } = compileBlocklist(Array.isArray(raw) ? raw.filter((p): p is string => typeof p === "string") : []);
+      if (patterns.some((rx) => rx.test(url))) {
         logger.info("URL blocklisted, skipping", { jobId, url });
         await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).update({
           status: "completed",
@@ -326,7 +332,8 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
   }
 
   try {
-    // ── Scrape page to markdown ──
+    // ── Read the page: the site_snapshot step's .md file on a hit; a live Scrapling scrape when the
+    // file is missing (never snapshotted, or gone from the bucket), which getPage then stores. ──
     // The retry ladder (forceFirecrawl) exists because the stored attempt failed or was thin,
     // so it always fetches fresh; a first attempt takes a snapshot within the window.
     const page = await getPage(url, {
@@ -344,8 +351,39 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
 
     if (page.blocked || page.markdown.length < 50) {
       const reason = page.notFound ? "not_found" : page.blocked ? "blocked" : "minimal_content";
-      const failureClass: FailureClass = page.notFound ? "not_found" : "anti_bot";
-      logger.warn("Page blocked, not found, or empty", { url, scraper: page.scraper, error: page.error });
+      // "Empty page" has two completely different causes that used to share one label. A target
+      // defending itself is `anti_bot` — escalate proxies, slow down. OUR stack failing is
+      // `scraper_down` — go look at the container. Hardcoding `anti_bot` here is what made a
+      // Chromium-leaked Scrapling container read as a Yale WAF block for hours.
+      const infraFailure = isScraperInfraFailure(page.error);
+      const failureClass: FailureClass = page.notFound
+        ? "not_found"
+        : infraFailure ? "scraper_down" : "anti_bot";
+      logger.warn("Page blocked, not found, or empty", { url, scraper: page.scraper, error: scrapeFailureText(page), failureClass });
+
+      // Say it once per job, loudly: a scraper outage is an operational problem and every page
+      // after this one will fail the same way until someone looks. Deduped on the job's own
+      // events so 500 failing pages don't write 500 identical warnings.
+      if (infraFailure) {
+        // An outage fails every in-flight page at once, so a plain read-then-insert lets every
+        // concurrent consumer see "no event yet" and write its own — one warning per worker, on
+        // the timeline of a job that already has 500 red rows. There is no unique constraint on
+        // (job_id, kind) to conflict against, and adding one would also forbid ever recording a
+        // SECOND, genuinely separate outage later in the same job. A transaction-scoped advisory
+        // lock keyed on the job makes check-and-write atomic with no schema change and no such
+        // side effect; it is released automatically when the transaction ends, including on error.
+        await masterKnex.transaction(async (trx) => {
+          await trx.raw("SELECT pg_advisory_xact_lock(hashtext(?))", [`scraper_unavailable:${jobId}`]);
+          const alreadyWarned = await trx(`${S}.extraction_job_events`)
+            .where({ job_id: jobId, kind: "scraper_unavailable" }).first();
+          if (alreadyWarned) return;
+          await trx(`${S}.extraction_job_events`).insert({
+            job_id: jobId, kind: "scraper_unavailable", level: "error", phase: "data_extraction",
+            message: `Scraper stack unavailable — this is OUR infrastructure, not the target site. Check the Scrapling container (docker stats scrapling-mcp). First seen on ${url}: ${scrapeFailureText(page) ?? "no detail"}`,
+            data: JSON.stringify({ url, scraper: page.scraper, error: page.error ?? null }),
+          });
+        });
+      }
 
       // Route through retry logic instead of silently completing
       const item = await masterKnex(`${S}.extraction_queue`).where({ id: queueItemId }).select("retry_count", "processing_meta").first();
@@ -357,9 +395,11 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       // client-side accordion shell (see expandCollapsed above) or the source URL is just dead.
       const meta = {
         ...(item?.processing_meta ?? {}), last_error: reason,
-        last_error_detail: page.error ?? null, last_failure_class: failureClass,
+        last_error_detail: scrapeFailureText(page) ?? null, last_failure_class: failureClass,
       };
 
+      // Both retries run Scrapling's browser tiers first (8s render wait; retry 2 with a mobile
+      // user agent) and reach Firecrawl only if those fail — see ScrapeOptions.forceFirecrawl.
       // Retry 1: Firecrawl with JS rendering + auto proxy escalation (Firecrawl only
       // pays for its stealth/residential proxy tier if the basic datacenter IP
       // actually gets blocked — free insurance). Retry 2: same, but forced to
@@ -373,7 +413,15 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       // A not_found page skips retries entirely — every proxy/mobile tier hits the exact
       // same 404 on the source site, so retrying only delays the (unchanged) failure.
       if (!page.notFound && retries < 2) {
-        meta.retry_strategy = retries === 0 ? "browser_render" : "mobile";
+        // Escalating to a paid proxy tier answers "the site is defending itself". It is the wrong
+        // answer to "our own scraper is down", and actively harmful: forceFirecrawl SKIPS Scrapling
+        // entirely, so a container that has merely leaked its Chromium processes is never retried
+        // against, and every retry burns Firecrawl quota that may not exist. Seen live: 308 pages
+        // failed as "blocked after 2 retries (firecrawl): Insufficient credits" while the real
+        // fault was ours. An infra failure retries through the NORMAL cascade instead, which tries
+        // Scrapling first (it may have recovered) and still reaches Firecrawl on its own if not.
+        const infraRetry = failureClass === "scraper_down";
+        meta.retry_strategy = infraRetry ? "cascade" : retries === 0 ? "browser_render" : "mobile";
         const retryProxy = retries === 0 ? "auto" : "stealth";
         const owned = await writeIfOwned({
           status: "pending", failure_class: failureClass, retry_count: retries + 1,
@@ -381,10 +429,11 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
         });
         if (!owned) { logger.info("Fenced out — a newer attempt owns this item, dropping stale retry", { jobId, queueItemId, url }); return; }
         await queueService.publish(EXTRACTION_QUEUES.PAGES, {
-          jobId, queueItemId, url, forceFirecrawl: true, mobile: meta.retry_strategy === "mobile", proxy: retryProxy,
+          jobId, queueItemId, url, forceFirecrawl: !infraRetry, mobile: meta.retry_strategy === "mobile", proxy: retryProxy,
           expandCollapsed: true,
         });
-        logger.info("Blocked page re-queued for Firecrawl retry", { url, retries: retries + 1, proxy: retryProxy });
+        logger.info(infraRetry ? "Scraper-down page re-queued through the normal cascade" : "Blocked page re-queued for a browser-tier retry",
+          { url, retries: retries + 1, proxy: retryProxy, failureClass });
       } else {
         // Exhausted retries (or a dead URL that can't benefit from any) — mark failed so
         // it's visible in the admin queue panel with the real reason, not a generic one.
@@ -392,7 +441,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
           status: "failed",
           error: page.notFound
             ? `Page does not exist on the source site (404)${page.error ? `: ${page.error}` : ""}`
-            : `Page ${reason} after ${retries} retries (${page.scraper})${page.error ? `: ${page.error}` : ""}`,
+            : `Page ${reason} after ${retries} retries (${page.scraper})${page.error ? `: ${scrapeFailureText(page)}` : ""}`,
           failure_class: failureClass, retry_count: retries,
           processing_meta: JSON.stringify(meta), updated_at: masterKnex.fn.now(),
         });
@@ -493,6 +542,30 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       return;
     }
 
+    if (!isVisaService && !isIntakeSource && !adminRetry) {
+      const gate = await shouldSkipPage(url, page.markdown);
+      if (gate.skip) {
+        const owned = await writeIfOwned({
+          status: "completed",
+          extracted_data: JSON.stringify({ skipped: true, reason: "jev_not_programme", p: gate.p, threshold: gate.threshold }),
+          page_id: page.pageId,
+          page_content_hash: page.contentHash,
+          updated_at: masterKnex.fn.now(),
+        });
+        if (!owned) {
+          logger.info("Fenced out — a newer attempt owns this item, dropping stale Jev skip", { jobId, queueItemId, url });
+          return;
+        }
+        await writeJobEvent(jobId, "page_skipped_jev", {
+          phase: "data_extraction",
+          message: `Skipped model call: ${url} is not a programme page (Jev p=${gate.p?.toFixed(2)} < ${gate.threshold})`,
+          data: { url, p: gate.p, threshold: gate.threshold, model: JEV_MODEL },
+        });
+        await checkAllPagesDone(jobId);
+        return;
+      }
+    }
+
     const recalled = await recallMemory(domain, memoryStep, markdown.slice(0, 500));
     const addendum = buildSystemAddendum(recalled);
 
@@ -551,6 +624,9 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
         prompt: courseExtractionPrompt(
           url, markdown, job.guidance_notes, siteIntel, await loadLookupLists(),
           job.degree_level_codes ?? undefined,
+          // The page's own title — the parent programme for a curriculum page, the course for a
+          // detail page. Names the context the model otherwise has to infer from 100k chars.
+          markdown.match(/^#\s+(.+)$/m)?.[1]?.trim().slice(0, 200) ?? null,
         ),
         maxTokens: 65536,
       });
@@ -606,9 +682,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       let pageCourseLinks: Map<string, string> = new Map();
       if (extracted.courses?.some((c) => c.name && !c.study_units?.length)) {
         const { html: pageHtml } = await scrapeRenderedHtml(url);
-        if (pageHtml && looksLikeCourseList(pageHtml)) {
-          pageUnits = parseCourseList(pageHtml).units;
-        }
+        if (pageHtml) pageUnits = curriculumFromMarkup(pageHtml);
         if (pageHtml) pageCourseLinks = courseLinksByName(pageHtml, url);
         if (pageUnits.length || pageCourseLinks.size) {
           logger.info("Parsed curriculum markup", {
@@ -780,13 +854,43 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
             }
           }
 
+          if (extracted.courses.length === 1) {
+            const filled = await fillFromPicks(course, page.markdown);
+            if (filled) {
+              await writeJobEvent(jobId, "fields_picked_jev", {
+                phase: "data_extraction",
+                message: `Jev filled ${[filled.duration && `duration "${filled.duration}"`, filled.fees && `${filled.fees} tuition fee(s)`].filter(Boolean).join(" and ")} for "${course.name}"`,
+                data: { url, course: course.name, ...filled },
+              });
+            }
+          }
+
+          // Jev checks every item against the page and links unlinked lookups (on with
+          // TYPESAFE_API_KEY — lib/jev-course-check.ts).
+          const checked = await checkCourseWithJev(course, page.markdown, await loadLookupLists());
+          if (checked) {
+            const parts = [
+              checked.dropped.length && `removed ${checked.dropped.length} item(s)`,
+              checked.suspects.length > checked.dropped.length && `${checked.suspects.length - checked.dropped.length} item(s) to review (kept)`,
+              checked.linked.degree_level && `level → ${checked.linked.degree_level}`,
+              checked.linked.area_of_study && `area → ${checked.linked.area_of_study}`,
+              checked.flagged && `may not be an enrollable programme (p=${checked.notProgramme?.toFixed(2)})`,
+            ].filter(Boolean);
+            await writeJobEvent(jobId, "course_checked_jev", {
+              level: checked.suspects.length || checked.flagged ? "warn" : "info",
+              phase: "data_extraction",
+              message: `Jev check on "${course.name}": ${parts.join(", ")}`,
+              data: { url, course: course.name, ...checked },
+            });
+          }
+
           const written = await writeCourse(jobId, {
             ...course,
             source_url: course.source_url ?? url,
             // From site intelligence, never the model — one country per job, resolved to the ISO2
             // the public search joins on. See lookup-catalog.resolveCountryCode.
             country_code: await resolveCountryCode(siteIntel?.country),
-          }, campusIdMap);
+          }, campusIdMap, { pageUrl: url, coursesOnPage: extracted.courses.length });
           if (written) entitiesWritten++;
         }
       }

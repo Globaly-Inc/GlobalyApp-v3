@@ -30,8 +30,9 @@ export const STATUS_FILTER_OPTIONS: { value: string; label: string }[] = [
 
 export const SOURCE_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: "all", label: "All sources" },
-  { value: "pre-seeded", label: "Pre-seeded" },
-  { value: "user-created", label: "User created" },
+  { value: "seeded", label: "Seeded" },
+  { value: "admin", label: "Admin-added" },
+  { value: "signup", label: "Sign-up" },
 ];
 
 export const SORT_OPTIONS: { value: string; label: string }[] = [

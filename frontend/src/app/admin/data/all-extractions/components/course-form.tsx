@@ -26,7 +26,6 @@ const courseSchema = z.object({
   degreeLevel: z.string().trim().transform((v) => v || null),
   studyMode: z.string().trim().transform((v) => v || null),
   subjectArea: z.string().trim().transform((v) => v || null),
-  duration: z.string().trim().transform((v) => (v ? Number(v) || null : null)),
   description: z.string().trim().transform((v) => v || null),
 });
 
@@ -44,7 +43,6 @@ export function CourseForm({
   const [degreeLevel, setDegreeLevel] = useState("");
   const [studyMode, setStudyMode] = useState("");
   const [subjectArea, setSubjectArea] = useState("");
-  const [duration, setDuration] = useState("");
   const [description, setDescription] = useState("");
   const [errors, setErrors] = useState<Record<string, string>>({});
 
@@ -55,7 +53,6 @@ export function CourseForm({
       degreeLevel,
       studyMode,
       subjectArea,
-      duration,
       description,
     });
 
@@ -77,7 +74,6 @@ export function CourseForm({
       ...(d.degreeLevel ? { degree_level: d.degreeLevel } : { degree_level: null }),
       ...(d.studyMode ? { study_mode: d.studyMode } : { study_mode: null }),
       ...(d.subjectArea ? { subject_area: d.subjectArea } : { subject_area: null }),
-      ...(d.duration ? { duration_weeks: d.duration } : { duration_weeks: null }),
       ...(d.description ? { description: d.description } : { description: null }),
     });
   };
@@ -141,15 +137,6 @@ export function CourseForm({
               onChange={setSubjectArea}
               placeholder="Select or type subject area"
               creatable
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="course-form-duration">Duration (weeks)</Label>
-            <Input
-              id="course-form-duration"
-              value={duration}
-              onChange={(e) => setDuration(e.target.value)}
-              inputMode="numeric"
             />
           </div>
         </div>

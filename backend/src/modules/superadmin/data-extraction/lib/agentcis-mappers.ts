@@ -78,6 +78,8 @@ export function mapCountry(c: unknown): string | null {
   if (typeof c === "number") return COUNTRY_MAP[c] || null;
   if (typeof c === "object" && c !== null) {
     const o = c as Record<string, unknown>;
+    // AgentCIS's `include=country` object names it `country_name`, not `name`.
+    if (typeof o.country_name === "string") return o.country_name;
     if (typeof o.name === "string") return o.name;
     if (typeof o.id === "number") return COUNTRY_MAP[o.id] || null;
   }

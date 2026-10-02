@@ -10,7 +10,7 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { agentcisBaseUrl, fetchAgentcisSearchPage } from "../lib/agentcis-client.js";
-import { stageAgentcisInstitution } from "../lib/agentcis-staging.js";
+import { stageAgentcisInstitution, getInstitutionsCategoryId } from "../lib/agentcis-staging.js";
 
 const logger = createChildLogger("extraction-agentcis-worker");
 
@@ -39,7 +39,9 @@ async function fetchInstitutionById(id: string): Promise<Record<string, unknown>
       const params = new URLSearchParams();
       params.set("page[number]", String(page));
       params.set("page[size]", String(PAGE_SIZE));
-      params.set("include", "branches,products");
+      // `country` too: without it the API sends a bare id, and COUNTRY_MAP's ids don't match
+      // AgentCIS's (Australia is 11 there).
+      params.set("include", "branches,products,country");
       data = await fetchAgentcisSearchPage(params);
     } catch {
       break;
@@ -54,11 +56,22 @@ async function fetchInstitutionById(id: string): Promise<Record<string, unknown>
 }
 
 async function recordFailedJob(institutionId: string, message: string): Promise<void> {
+  let businessCategoryId: number | null = null;
+  try {
+    businessCategoryId = await getInstitutionsCategoryId();
+  } catch (err) {
+    logger.warn("Category lookup failed while recording failed job — proceeding without one", {
+      institutionId,
+      error: (err as Error).message,
+    });
+  }
+
   await masterKnex(`${S}.extraction_jobs`).insert({
     institution_name: `AgentCIS #${institutionId}`,
     institution_url: `https://agentcis.com/institution/${institutionId}`,
     status: "failed",
     source_type: "agentcis",
+    business_category_id: businessCategoryId,
     aggregator_name: "AgentCIS",
     error_message: message,
     pipeline_progress: JSON.stringify({ phase: "failed", error: message, agentcis_id: institutionId }),

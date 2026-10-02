@@ -2,14 +2,17 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Crown, Loader2, Pencil, Shield, Trash2, User, Users } from "lucide-react";
+import { Briefcase, Crown, Loader2, MoreHorizontal, Shield, Trash2, User, Users } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Switch } from "@/components/ui/switch";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Pagination } from "@/components/ui/pagination";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { useAuthState } from "@/app/auth/store/auth-slice";
-import { fetchMembers, removeMember } from "../../store/business-profile-detail-slice";
+import { fetchMembers, removeMember, updateMember } from "../../store/business-profile-detail-slice";
 import type { Member } from "../../apis/types";
 
 const PAGE_SIZE = 10;
@@ -50,6 +53,15 @@ export function AcceptedMembersList({
     }
   };
 
+  const handleVisibilityChange = async (memberId: number, is_public: boolean) => {
+    try {
+      await dispatch(updateMember({ id: businessId, memberId, patch: { is_public } })).unwrap();
+      toast.success(is_public ? "Visible on public profile" : "Hidden from public profile");
+    } catch (e) {
+      toast.error("Couldn't update visibility", { description: (e as Error).message });
+    }
+  };
+
   if (status === "loading") {
     return (
       <div className="flex justify-center py-8">
@@ -69,50 +81,95 @@ export function AcceptedMembersList({
 
   return (
     <>
-      <div className="space-y-2">
-        {members.map((m) => {
-          const cfg = ROLE_CONFIG[m.is_owner ? "owner" : m.role] ?? DEFAULT_ROLE_CONFIG;
-          const RoleIcon = cfg.icon;
-          return (
-            <div key={m.id} className="flex items-center justify-between rounded-lg border p-3">
-              <div className="flex items-center gap-3">
-                <Avatar className="h-9 w-9">
-                  {m.photo_url && <AvatarImage src={m.photo_url} alt="" />}
-                  <AvatarFallback className="text-xs font-semibold uppercase">{(m.first_name ?? "?").slice(0, 2)}</AvatarFallback>
-                </Avatar>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-sm font-medium">{m.first_name ? `${m.first_name} ${m.last_name}` : "—"}</span>
-                    {m.email === user?.email && <Badge variant="outline" className="text-[10px] px-1.5 py-0">You</Badge>}
-                    {m.role_display && (
-                      <Badge className={`${cfg.className} border-0 flex w-fit items-center gap-1`}>
-                        <RoleIcon className="h-3 w-3" />
-                        {m.is_owner ? "Owner" : m.role_display}
-                      </Badge>
-                    )}
-                    {m.admin_point_of_contact && <Badge variant="outline">POC</Badge>}
-                    {m.account_status !== 1 && <Badge variant="secondary">Inactive</Badge>}
-                    {m.is_public && <Badge variant="secondary">Public profile</Badge>}
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    {[m.position, m.email, m.phone].filter(Boolean).join(" • ") || "—"}
-                  </p>
-                </div>
-              </div>
-              <div className="flex gap-1">
-                <Button size="icon-sm" variant="ghost" onClick={() => onEdit(m)} aria-label="Edit member">
-                  <Pencil className="h-4 w-4" />
-                </Button>
-                {!m.is_owner && (
-                  <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(m.id)} aria-label="Remove member">
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                )}
-              </div>
-            </div>
-          );
-        })}
-      </div>
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base">Active Members ({total})</CardTitle>
+        </CardHeader>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b bg-muted/40 text-xs text-muted-foreground">
+                  <th className="p-3 text-left">Member</th>
+                  <th className="hidden p-3 text-left sm:table-cell">Email</th>
+                  <th className="p-3 text-left">Role</th>
+                  <th className="hidden p-3 text-left md:table-cell">Position</th>
+                  <th className="hidden p-3 text-left md:table-cell">Visibility</th>
+                  <th className="hidden p-3 text-left md:table-cell">Joined</th>
+                  <th className="w-12 p-3" />
+                </tr>
+              </thead>
+              <tbody>
+                {members.map((m) => {
+                  const cfg = ROLE_CONFIG[m.is_owner ? "owner" : m.role] ?? DEFAULT_ROLE_CONFIG;
+                  const RoleIcon = cfg.icon;
+                  const isMe = m.email === user?.email;
+                  return (
+                    <tr key={m.id} className="border-b last:border-0 hover:bg-muted/20">
+                      <td className="p-3">
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-9 w-9">
+                            {m.photo_url && <AvatarImage src={m.photo_url} alt="" />}
+                            <AvatarFallback className="bg-primary/10 text-xs font-medium text-primary">
+                              {(m.first_name ?? "?").slice(0, 2).toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
+                          <div className="min-w-0">
+                            <p className="flex items-center gap-2 truncate text-sm font-medium">
+                              {m.first_name ? `${m.first_name} ${m.last_name}` : "—"}
+                              {isMe && <Badge variant="outline" className="px-1.5 py-0 text-[10px]">You</Badge>}
+                            </p>
+                            <p className="truncate text-xs text-muted-foreground sm:hidden">{m.email}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="hidden p-3 sm:table-cell">
+                        <span className="text-sm text-muted-foreground">{m.email}</span>
+                      </td>
+                      <td className="p-3">
+                        <Badge className={`${cfg.className} flex w-fit items-center gap-1 border-0`}>
+                          <RoleIcon className="h-3 w-3" />
+                          {m.is_owner ? "Owner" : m.role_display}
+                        </Badge>
+                      </td>
+                      <td className="hidden p-3 md:table-cell">
+                        <span className="text-sm text-muted-foreground">{m.position || "—"}</span>
+                      </td>
+                      <td className="hidden p-3 md:table-cell">
+                        <Switch checked={m.is_public} onCheckedChange={(v) => handleVisibilityChange(m.id, v)} />
+                      </td>
+                      <td className="hidden p-3 md:table-cell">
+                        <span className="text-sm text-muted-foreground">
+                          {new Date(m.created_at).toLocaleDateString("en-AU", { day: "2-digit", month: "short", year: "numeric" })}
+                        </span>
+                      </td>
+                      <td className="p-3">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={<Button variant="ghost" size="icon" className="h-8 w-8" aria-label="Member actions" />}
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            <DropdownMenuItem onClick={() => onEdit(m)}>
+                              <Briefcase className="mr-2 h-4 w-4" /> Edit
+                            </DropdownMenuItem>
+                            {!m.is_owner && (
+                              <DropdownMenuItem className="text-destructive" onClick={() => handleDelete(m.id)}>
+                                <Trash2 className="mr-2 h-4 w-4" /> Remove
+                              </DropdownMenuItem>
+                            )}
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </CardContent>
+      </Card>
       {total > 0 && <Pagination page={page} total={total} limit={PAGE_SIZE} onPageChange={handlePageChange} />}
     </>
   );

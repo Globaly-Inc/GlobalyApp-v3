@@ -69,7 +69,9 @@ export function CourseCard({ card }: CourseCardProps) {
   const isExternal = !card.slug && !!card.source_url;
 
   return (
-    <div className="group relative flex h-72 w-full flex-col overflow-hidden rounded-2xl shadow-md ring-1 ring-white/10 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl">
+    // A container of its own: when the card is narrow (two per row in the website widget) it goes
+    // compact — shorter, smaller type, fewer details. Full-width cards are unchanged.
+    <div className="@container/card group relative flex h-72 w-full flex-col overflow-hidden rounded-2xl shadow-md ring-1 ring-white/10 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl @max-[14rem]/card:h-52 @max-[14rem]/card:rounded-xl">
       {/* Card-wide link */}
       {href && (
         isExternal
@@ -95,20 +97,21 @@ export function CourseCard({ card }: CourseCardProps) {
       <div aria-hidden className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/40 to-black/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100" />
 
       {/* Logo — top-left */}
-      <div className="relative z-20 p-3 pointer-events-none">
+      <div className="relative z-20 p-3 pointer-events-none @max-[14rem]/card:p-2">
         <InstitutionLogo
           name={card.institution_name}
           logoUrl={card.institution_logo_url}
-          className="size-10 rounded-xl ring-2 ring-white/30 shadow-md"
+          className="size-10 rounded-xl ring-2 ring-white/30 shadow-md @max-[14rem]/card:size-7 @max-[14rem]/card:rounded-lg"
         />
       </div>
 
       {/* Compare button — top-right, above the link overlay */}
-      <div className="absolute right-3 top-3 z-20">
+      <div className="absolute right-3 top-3 z-20 @max-[14rem]/card:right-2 @max-[14rem]/card:top-2">
         <Button
           variant="ghost"
           size="sm"
-          className={`h-7 gap-1 rounded-full px-2.5 text-[11px] backdrop-blur-sm ${
+          aria-label={added ? "Added to compare" : "Compare"}
+          className={`h-7 gap-1 rounded-full px-2.5 text-[11px] backdrop-blur-sm @max-[14rem]/card:h-6 @max-[14rem]/card:px-1.5 ${
             added
               ? "bg-white/30 text-white"
               : "bg-black/30 text-white/80 hover:bg-white/20 hover:text-white"
@@ -116,26 +119,30 @@ export function CourseCard({ card }: CourseCardProps) {
           disabled={added || compare.isFull}
           onClick={() => compare.add(compareItem)}
         >
-          {added ? <><Check className="size-3" /> Added</> : <><Plus className="size-3" /> Compare</>}
+          {added
+            ? <><Check className="size-3" /><span className="@max-[14rem]/card:hidden">Added</span></>
+            : <><Plus className="size-3" /><span className="@max-[14rem]/card:hidden">Compare</span></>}
         </Button>
       </div>
 
       {/* Content overlay — anchored to bottom, pointer-events-none so link overlay handles clicks */}
-      <div className="relative z-20 mt-auto flex flex-col gap-1 p-4 pointer-events-none">
+      <div className="relative z-20 mt-auto flex flex-col gap-1 p-4 pointer-events-none @max-[14rem]/card:gap-0.5 @max-[14rem]/card:p-2.5">
         {/* Institution + location */}
-        <div className="flex items-center gap-1 text-[11px] text-white/80">
-          <span className="font-semibold text-white">{card.institution_name}</span>
+        <div className="flex min-w-0 items-center gap-1 text-[11px] text-white/80 @max-[14rem]/card:text-[10px]">
+          <span className="truncate font-semibold text-white">{card.institution_name}</span>
           {place && (
-            <>
+            <span className="contents @max-[14rem]/card:hidden">
               <span>·</span>
               <MapPin className="size-3 shrink-0" />
               <span className="truncate">{place}</span>
-            </>
+            </span>
           )}
         </div>
 
         {/* Course name */}
-        <p className="line-clamp-2 text-base font-bold leading-snug text-white drop-shadow" title={card.course_name}>
+        {/* text-shadow, not `drop-shadow`: a CSS filter on a line-clamped block makes Chromium paint
+            ghost copies of the clipped lines over the title. Same look, no filter. */}
+        <p className="line-clamp-2 text-base font-bold leading-snug text-white [text-shadow:0_1px_2px_rgb(0_0_0/0.45)] @max-[14rem]/card:line-clamp-3 @max-[14rem]/card:text-[13px] @max-[14rem]/card:leading-tight" title={card.course_name}>
           {card.course_name}
         </p>
 
@@ -161,21 +168,21 @@ export function CourseCard({ card }: CourseCardProps) {
         )}
 
         {/* Fee + meta */}
-        <div className="flex items-center justify-between gap-2 pt-1">
+        <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 pt-1 @max-[14rem]/card:pt-0.5">
           <div className="flex flex-wrap gap-x-3 gap-y-0.5">
             {card.duration && (
-              <span className="flex items-center gap-1 text-[11px] text-white/85">
+              <span className="flex items-center gap-1 text-[11px] text-white/85 @max-[14rem]/card:text-[10px]">
                 <Clock className="size-3 shrink-0" />{card.duration}
               </span>
             )}
             {nextIntake && (
-              <span className="flex items-center gap-1 text-[11px] text-white/85">
+              <span className="flex items-center gap-1 text-[11px] text-white/85 @max-[14rem]/card:hidden">
                 <CalendarDays className="size-3 shrink-0" />Intake: {nextIntake}
               </span>
             )}
           </div>
           {fee && (
-            <span className="shrink-0 text-sm font-bold tabular-nums text-white">
+            <span className="shrink-0 text-sm font-bold tabular-nums text-white @max-[14rem]/card:text-xs">
               {fee}
               {feeSuffix && (
                 <span className="ml-0.5 text-[10px] font-normal text-white/70">{feeSuffix}</span>

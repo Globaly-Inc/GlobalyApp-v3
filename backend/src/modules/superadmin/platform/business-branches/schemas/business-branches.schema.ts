@@ -24,9 +24,15 @@ export const BranchInputSchema = z.object({
   branch_type: z.enum(["same_company", "subsidiary", "franchise"]).default("same_company"),
   share_description: z.boolean().default(false),
   shared_services: SharedServicesSchema,
+  // Stored on the branch's OWN org (it's a real business/institution), not on the parent's
+  // business_branches row — hence create-only, and omitted from the patch schema below.
+  registration_licenses: z.record(z.string(), z.unknown()).nullable().optional(),
+  // Saved on the branch's own org, not the parent's business_branches row. On create, omitted =
+  // same website as the parent; null = none. On update only a branch this parent created takes it.
+  website: z.string().url().nullable().optional(),
 });
 
-export const BranchPatchSchema = BranchInputSchema.partial();
+export const BranchPatchSchema = BranchInputSchema.omit({ registration_licenses: true }).partial();
 
 export const LinkExistingBranchInputSchema = z.object({
   business_id: z.number().int().positive(),

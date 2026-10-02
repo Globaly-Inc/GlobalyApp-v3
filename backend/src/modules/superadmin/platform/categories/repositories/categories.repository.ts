@@ -217,15 +217,17 @@ export async function deleteFeeType(id: number) {
 
 // ─── Issuing Organizations ─────────────────────────────────────────────────
 
-export async function listIssuingOrganizations(limit: number, offset: number, search?: string) {
+export async function listIssuingOrganizations(limit: number, offset: number, search?: string, approvedOnly?: boolean) {
   const q = masterKnex("issuing_organizations").orderBy("name").limit(limit).offset(offset);
   if (search) q.whereILike("name", `%${search}%`);
+  if (approvedOnly) q.where("status", "approved");
   return q;
 }
 
-export async function countIssuingOrganizations(search?: string) {
+export async function countIssuingOrganizations(search?: string, approvedOnly?: boolean) {
   const q = masterKnex("issuing_organizations").count("* as count");
   if (search) q.whereILike("name", `%${search}%`);
+  if (approvedOnly) q.where("status", "approved");
   const [row] = await q;
   return Number(row.count);
 }
@@ -233,6 +235,10 @@ export async function countIssuingOrganizations(search?: string) {
 export async function insertIssuingOrganization(data: Record<string, unknown>) {
   const [row] = await masterKnex("issuing_organizations").insert(data).returning("*");
   return row;
+}
+
+export async function findIssuingOrganizationById(id: number) {
+  return masterKnex("issuing_organizations").where({ id }).first();
 }
 
 export async function updateIssuingOrganization(id: number, data: Record<string, unknown>) {
@@ -248,17 +254,33 @@ const scopeCountryIds = masterKnex.raw(`COALESCE((
   FROM accreditation_scope_countries s WHERE s.accreditation_id = a.id
 ), '[]'::json) as scope_country_ids`);
 
-export async function listAccreditations(limit: number, offset: number) {
-  return masterKnex("accreditations as a")
+export async function listAccreditations(limit: number, offset: number, approvedOnly?: boolean) {
+  // An accreditation can be approved while its own linked issuer is still pending (reviewed on
+  // different timelines) — when this listing must only show reviewed data, the issuer's name/logo
+  // are withheld rather than leaking a name the issuing-organizations lookup itself excludes. The
+  // accreditation row itself stays visible: it was independently approved and is usable on its own.
+  const issuerName = approvedOnly
+    ? masterKnex.raw("CASE WHEN o.status = 'approved' THEN o.name END as issuing_organization_name")
+    : "o.name as issuing_organization_name";
+  const issuerLogo = approvedOnly
+    ? masterKnex.raw("CASE WHEN o.status = 'approved' THEN o.logo_url END as issuing_organization_logo_url")
+    : "o.logo_url as issuing_organization_logo_url";
+  const q = masterKnex("accreditations as a")
     .leftJoin("issuing_organizations as o", "o.id", "a.issuing_organization_id")
     .whereNull("a.deleted_at")
     .orderBy("a.sort_order").orderBy("a.name")
     .limit(limit).offset(offset)
-    .select("a.*", "o.name as issuing_organization_name", "o.logo_url as issuing_organization_logo_url", scopeCountryIds);
+    // The issuer is reviewed on its own (the accreditation list shows its status + actions), so
+    // approving an accreditation never silently vets the organization it names.
+    .select("a.*", issuerName, issuerLogo, "o.status as issuing_organization_status", scopeCountryIds);
+  if (approvedOnly) q.where("a.status", "approved");
+  return q;
 }
 
-export async function countAccreditations() {
-  const [row] = await masterKnex("accreditations").whereNull("deleted_at").count("* as count");
+export async function countAccreditations(approvedOnly?: boolean) {
+  const q = masterKnex("accreditations").whereNull("deleted_at").count("* as count");
+  if (approvedOnly) q.where("status", "approved");
+  const [row] = await q;
   return Number(row.count);
 }
 
@@ -294,4 +316,89 @@ export async function updateAccreditation(id: number, data: Record<string, unkno
 
 export async function deleteAccreditation(id: number) {
   return masterKnex("accreditations").where({ id }).update({ deleted_at: now() });
+}
+
+// ─── Registration Types ────────────────────────────────────────────────────
+// The identifier a business quotes where it is registered (ABN, UEN, EIN…). A NULL country_id is
+// the generic fallback row rather than a missing value, so ordering puts real countries first.
+
+const REGISTRATION_TYPE_COLUMNS = [
+  "r.id", "r.country_id", "r.code", "r.label", "r.sort_order", "r.is_active",
+] as const;
+
+function registrationTypeQuery() {
+  return masterKnex("business_registration_types as r")
+    .leftJoin("countries as c", "c.id", "r.country_id")
+    .whereNull("r.deleted_at");
+}
+
+export async function listRegistrationTypes(limit: number, offset: number, countryId?: number, search?: string) {
+  const q = registrationTypeQuery()
+    .orderByRaw("c.name NULLS FIRST")
+    .orderBy("r.sort_order").orderBy("r.code")
+    .limit(limit).offset(offset)
+    .select(...REGISTRATION_TYPE_COLUMNS, "c.name as country_name");
+  if (countryId) q.where("r.country_id", countryId);
+  if (search) q.where((b) => b.whereILike("r.code", `%${search}%`).orWhereILike("r.label", `%${search}%`));
+  return q;
+}
+
+export async function countRegistrationTypes(countryId?: number, search?: string) {
+  const q = registrationTypeQuery().count("* as count");
+  if (countryId) q.where("r.country_id", countryId);
+  if (search) q.where((b) => b.whereILike("r.code", `%${search}%`).orWhereILike("r.label", `%${search}%`));
+  const [row] = await q;
+  return Number(row.count);
+}
+
+/**
+ * What the business profile's picker offers. Falls back to the generic (NULL country) rows when
+ * the country has none of its own — one round trip, and the rule lives in one place instead of
+ * being re-derived by every client.
+ */
+export async function listActiveRegistrationTypes(countryId?: number) {
+  const forCountry = countryId
+    ? await registrationTypeQuery().where("r.is_active", true).where("r.country_id", countryId)
+      .orderBy("r.sort_order").orderBy("r.code").select(...REGISTRATION_TYPE_COLUMNS)
+    : [];
+  if (forCountry.length > 0) return forCountry;
+  return registrationTypeQuery().where("r.is_active", true).whereNull("r.country_id")
+    .orderBy("r.sort_order").orderBy("r.code").select(...REGISTRATION_TYPE_COLUMNS);
+}
+
+export async function findRegistrationTypeById(id: number) {
+  return masterKnex("business_registration_types").where({ id }).whereNull("deleted_at").first();
+}
+
+export async function insertRegistrationType(data: Record<string, unknown>) {
+  const [row] = await masterKnex("business_registration_types").insert(data).returning("*");
+  return row;
+}
+
+export async function updateRegistrationType(id: number, data: Record<string, unknown>) {
+  const [row] = await masterKnex("business_registration_types").where({ id }).whereNull("deleted_at")
+    .update({ ...data, updated_at: now() }).returning("*");
+  return row;
+}
+
+export async function deleteRegistrationType(id: number) {
+  return masterKnex("business_registration_types").where({ id }).update({ deleted_at: now() });
+}
+
+/**
+ * A course/service can link an accreditation its own org just proposed — still pending, or later
+ * rejected — which the approved-only /accreditations lookup never returns, so the editor had no
+ * name to show for it. Attach each link's own name + review status so that state is explicit.
+ */
+export async function attachAccreditationInfo<T extends { accreditation_id: number }>(rows: T[]) {
+  if (rows.length === 0) return rows.map((r) => ({ ...r, accreditation_name: null, accreditation_status: null }));
+  const accs = await masterKnex("accreditations")
+    .whereIn("id", [...new Set(rows.map((r) => r.accreditation_id))])
+    .whereNull("deleted_at")
+    .select("id", "name", "status");
+  const byId = new Map(accs.map((a) => [a.id, a]));
+  return rows.map((r) => {
+    const a = byId.get(r.accreditation_id);
+    return { ...r, accreditation_name: (a?.name ?? null) as string | null, accreditation_status: (a?.status ?? null) as string | null };
+  });
 }

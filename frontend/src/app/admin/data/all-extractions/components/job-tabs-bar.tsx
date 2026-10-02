@@ -3,7 +3,6 @@
 import type { LucideIcon } from "lucide-react";
 import {
   ListOrdered,
-  Settings2,
   Building2,
   MapPin,
   Users,
@@ -14,6 +13,8 @@ import {
   Clock,
   ShieldCheck,
   Globe2,
+  Link2,
+  Award,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScrollRow } from "@/components/scroll-row";
@@ -21,7 +22,7 @@ import type { TabCounts } from "../apis/types";
 
 export type JobTab =
   | "overview"
-  | "context"
+  | "site"
   | "institution"
   | "branches"
   | "agents"
@@ -29,6 +30,7 @@ export type JobTab =
   | "fees"
   | "intakes"
   | "eligibility"
+  | "scholarships"
   | "units"
   | "study_options"
   | "accreditations"
@@ -36,7 +38,7 @@ export type JobTab =
 
 const TABS: { value: JobTab; label: string; icon: LucideIcon; countKey?: keyof TabCounts }[] = [
   { value: "overview", label: "Overview", icon: ListOrdered },
-  { value: "context", label: "Context", icon: Settings2 },
+  { value: "site", label: "Site Context", icon: Link2 },
   { value: "institution", label: "Institution", icon: Building2 },
   { value: "branches", label: "Branches", icon: MapPin, countKey: "branches" },
   { value: "agents", label: "Agents", icon: Users, countKey: "agents" },
@@ -44,6 +46,7 @@ const TABS: { value: JobTab; label: string; icon: LucideIcon; countKey?: keyof T
   { value: "fees", label: "Fees", icon: DollarSign, countKey: "fees" },
   { value: "intakes", label: "Intakes", icon: Calendar, countKey: "intakes" },
   { value: "eligibility", label: "Eligibility", icon: GraduationCap, countKey: "eligibility" },
+  { value: "scholarships", label: "Scholarships", icon: Award, countKey: "scholarships" },
   { value: "units", label: "Study Units", icon: BookOpen, countKey: "units" },
   { value: "study_options", label: "Study Options", icon: Clock, countKey: "study_options" },
   { value: "accreditations", label: "Accreditations", icon: ShieldCheck, countKey: "accreditations" },

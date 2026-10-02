@@ -1,3 +1,3 @@
-export function FieldError({ message }: Readonly<{ message?: string }>) {
-  return message ? <p className="text-xs text-destructive">{message}</p> : null;
+export function FieldError({ id, message }: Readonly<{ id?: string; message?: string }>) {
+  return message ? <p id={id} className="text-xs text-destructive">{message}</p> : null;
 }
