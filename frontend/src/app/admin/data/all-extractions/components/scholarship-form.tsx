@@ -168,6 +168,8 @@ export function ScholarshipForm({
                 value={currency}
                 onChange={setCurrency}
                 placeholder="Select currency"
+                // The API takes any ISO code — a code missing from the countries list can be typed.
+                creatable
               />
             </div>
           </div>
