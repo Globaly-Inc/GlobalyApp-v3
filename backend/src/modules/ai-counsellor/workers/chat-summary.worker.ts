@@ -282,8 +282,8 @@ async function processTenant(tenant: TenantSchema): Promise<number> {
         }
 
         await db(TABLE).where({ id: row.id }).update({
-          summary_status: "sent",
-          summary_sent_at: db.fn.now(),
+          summary_status: db.raw("CASE WHEN end_confirmed_at > ? THEN 'pending' ELSE 'sent' END", [row.updated_at]),
+          summary_sent_at: db.raw("CASE WHEN end_confirmed_at > ? THEN ?::timestamptz ELSE now() END", [row.updated_at, row.updated_at]),
           summary_error: null,
           updated_at: db.fn.now(),
         });

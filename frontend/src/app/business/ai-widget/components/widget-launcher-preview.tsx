@@ -22,26 +22,40 @@ const LAUNCHER_ID = "globaly-ai-launcher"; // what embed.js renders
  * from "it remounted"; a live count can, and only a drop to zero means the page really left.
  */
 let liveMounts = 0;
+let activeKey: string | null = null;
+
+const dropLauncher = () => document.getElementById(LAUNCHER_ID)?.remove();
+
+function inject(embedKey: string): HTMLScriptElement {
+  const script = document.createElement("script");
+  script.src = `${window.location.origin}/embed.js`;
+  script.async = true;
+  script.dataset.key = embedKey;
+  // Removing an async script tag does not cancel a load already in flight, so a launcher can
+  // still appear after this component is gone. Sweep it only when nothing is mounted — if a
+  // remount is waiting, that launcher is the one it is going to use.
+  script.addEventListener("load", () => {
+    if (liveMounts === 0) dropLauncher();
+    else if (activeKey !== embedKey) {
+      dropLauncher();
+      if (activeKey) document.body.appendChild(inject(activeKey));
+    }
+  });
+  return script;
+}
 
 export function WidgetLauncherPreview({ embedKey }: Readonly<{ embedKey: string }>) {
   useEffect(() => {
     liveMounts += 1;
-    const dropLauncher = () => document.getElementById(LAUNCHER_ID)?.remove();
-
-    const script = document.createElement("script");
-    script.src = `${window.location.origin}/embed.js`;
-    script.async = true;
-    script.dataset.key = embedKey;
-    // Removing an async script tag does not cancel a load already in flight, so a launcher can
-    // still appear after this component is gone. Sweep it only when nothing is mounted — if a
-    // remount is waiting, that launcher is the one it is going to use.
-    script.addEventListener("load", () => { if (liveMounts === 0) dropLauncher(); });
+    activeKey = embedKey;
+    dropLauncher();
+    const script = inject(embedKey);
     document.body.appendChild(script);
 
     return () => {
       liveMounts -= 1;
       script.remove();
-      if (liveMounts === 0) dropLauncher();
+      if (liveMounts === 0) { activeKey = null; dropLauncher(); }
     };
   }, [embedKey]);
   return null;

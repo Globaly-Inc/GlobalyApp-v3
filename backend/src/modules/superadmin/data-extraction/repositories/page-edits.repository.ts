@@ -30,6 +30,13 @@ export async function upsertManualEdit(jobId: string, url: string, markdown: str
   return row;
 }
 
+export async function restoreManualEdit(jobId: string, url: string, edit: PageManualEdit): Promise<void> {
+  await masterKnex(T)
+    .insert({ job_id: jobId, url, markdown: edit.markdown, editor_id: edit.editor_id, updated_at: edit.updated_at })
+    .onConflict(["job_id", "url"])
+    .ignore();
+}
+
 export async function deleteManualEdit(jobId: string, url: string): Promise<void> {
   await masterKnex(T).where({ job_id: jobId, url }).del();
 }

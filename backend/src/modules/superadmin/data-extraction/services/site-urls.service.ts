@@ -193,13 +193,16 @@ export async function refreshSiteUrls(jobId: string, urls: string[], editorId: n
   const rejected: { url: string; error: string }[] = [];
   for (const url of urls) {
     if (!owned.has(url)) { rejected.push({ url, error: "Not part of this job's site" }); continue; }
+    let removed: pageEdits.PageManualEdit | undefined;
     try {
       // An explicit refresh means "show me what's live now" — drop this job's own correction so
       // it doesn't keep masking the fresh pull that's about to happen.
+      removed = await pageEdits.findManualEdit(jobId, url);
       await pageEdits.deleteManualEdit(jobId, url);
       await queueService.publish(SELF_SERVICE_QUEUES.SITE_URL_REFRESH, { url, jobId, editorId });
       queued.push(url);
     } catch (err) {
+      if (removed) await pageEdits.restoreManualEdit(jobId, url, removed).catch(() => undefined);
       // Isolated per URL: a publish failure partway through must not discard the URLs already
       // queued earlier in this same loop, or the caller has no way to know they shouldn't retry
       // (and re-queue) work that already went through.

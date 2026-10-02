@@ -422,7 +422,7 @@ export function decidePrompt(
 export async function recordTurn(
   db: Knex,
   visitorId: number,
-  opts: { prompted: PromptKind | null; nextCount: number; sessionId: number | null },
+  opts: { prompted: PromptKind | null; nextCount: number; sessionId: number | null; promptedAt?: Date },
 ): Promise<void> {
   await db(TABLE)
     .where({ id: visitorId })
@@ -442,11 +442,12 @@ export async function recordTurn(
       // should not find the same card waiting on the next turn.
       conversation_state: db.raw(
         `CASE
+           WHEN ? AND conversation_state = 'end_confirmed' AND end_confirmed_at >= ? THEN 'end_confirmed'
            WHEN ? THEN 'ending_prompt_shown'
            WHEN conversation_state IN ('ending_prompt_shown','end_confirmed') THEN 'active'
            ELSE conversation_state
          END`,
-        [opts.prompted === "ending"],
+        [opts.prompted === "ending", opts.promptedAt ?? new Date(), opts.prompted === "ending"],
       ),
       ...(opts.prompted === "ending"
         ? {
@@ -613,11 +614,11 @@ export async function recordConversationEnd(
     .where(where)
     // Idempotent: a double-clicked button cannot disturb a summary already being sent. A
     // `pending` row is fine to confirm over — that is the whole point, it makes it due now.
-    .where((q) => q.whereNull("summary_status").orWhere({ summary_status: "pending" }))
+    .where((q) => q.whereNull("summary_status").orWhereIn("summary_status", ["pending", "processing"]))
     .update({
       conversation_state: "end_confirmed",
       end_confirmed_at: db.fn.now(),
-      summary_status: db.raw("CASE WHEN email IS NOT NULL THEN 'pending' ELSE NULL END"),
+      summary_status: db.raw("CASE WHEN summary_status = 'processing' THEN 'processing' WHEN email IS NOT NULL THEN 'pending' ELSE NULL END"),
       updated_at: db.fn.now(),
     })
     .returning("*");

@@ -155,6 +155,20 @@ export async function reopenSession(id: number): Promise<void> {
   await masterKnex(TABLE).where({ id }).update({ ended_at: null, updated_at: masterKnex.fn.now() });
 }
 
+export async function openForReply(visitorKey: string, embedConfigId: number): Promise<number | null> {
+  const open = await findByVisitor(visitorKey, embedConfigId);
+  if (open) return open.id;
+  const latest = (await findChatsByVisitor(visitorKey, embedConfigId)).at(-1);
+  if (!latest) return null;
+  try {
+    await reopenSession(latest.id);
+    return latest.id;
+  } catch (err) {
+    if ((err as { code?: string }).code !== "23505") throw err;
+    return (await findByVisitor(visitorKey, embedConfigId))?.id ?? null;
+  }
+}
+
 export interface VisitorChat {
   id: number;
   created_at: Date;

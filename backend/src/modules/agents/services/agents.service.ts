@@ -274,35 +274,40 @@ export async function acceptInvitation(orgId: string, token: string) {
   }
 
   // Create agent in per-business DB
-  const agent = await repo.insertAgent(db, {
-    platform_user_id: platformUser.id,
-    role_id: role.id,
-    is_owner: false,
-    account_status: 1,
-    added_by: invitation.invited_by,
-    addedby_admin_id: (details.addedby_admin_id as unknown as number | null) ?? null,
-    admin_point_of_contact: Boolean(details.admin_point_of_contact),
-    // Accepting an invite makes this a real agent — clears is_contact_only so it lands in Users,
-    // regardless of admin_point_of_contact (see insertAgent: that flag is never touched on an
-    // existing row's accept, only used here for a brand-new row).
-    is_contact_only: false,
-    first_name: platformUser.first_name,
-    last_name: platformUser.last_name,
-    email: platformUser.email,
-    phone: platformUser.phone,
-    position: (details.position as string) ?? null,
-    // Explicit resets, not omissions — insertAgent's upsert only overwrites columns actually
-    // present in this object, so leaving these out would resurrect a soft-deleted or dormant
-    // contact row with its stale CRM data (an old is_primary: true could also collide with
-    // another agent's primary flag, since accepting an invite never calls resetPrimaryAgents).
-    job_title: null,
-    department: null,
-    linkedin_url: null,
-    other_url: null,
-    tags: [],
-    preferred_channel: null,
-    is_primary: false,
-    notes: null,
+  const agent = await db.transaction(async (trx) => {
+    if (!(await repo.claimInvitation(trx, invitation.id, token))) {
+      throw new NotFoundError("Invitation not found or already used");
+    }
+    return repo.insertAgent(trx, {
+      platform_user_id: platformUser.id,
+      role_id: role.id,
+      is_owner: false,
+      account_status: 1,
+      added_by: invitation.invited_by,
+      addedby_admin_id: (details.addedby_admin_id as unknown as number | null) ?? null,
+      admin_point_of_contact: Boolean(details.admin_point_of_contact),
+      // Accepting an invite makes this a real agent — clears is_contact_only so it lands in Users,
+      // regardless of admin_point_of_contact (see insertAgent: that flag is never touched on an
+      // existing row's accept, only used here for a brand-new row).
+      is_contact_only: false,
+      first_name: platformUser.first_name,
+      last_name: platformUser.last_name,
+      email: platformUser.email,
+      phone: platformUser.phone,
+      position: (details.position as string) ?? null,
+      // Explicit resets, not omissions — insertAgent's upsert only overwrites columns actually
+      // present in this object, so leaving these out would resurrect a soft-deleted or dormant
+      // contact row with its stale CRM data (an old is_primary: true could also collide with
+      // another agent's primary flag, since accepting an invite never calls resetPrimaryAgents).
+      job_title: null,
+      department: null,
+      linkedin_url: null,
+      other_url: null,
+      tags: [],
+      preferred_channel: null,
+      is_primary: false,
+      notes: null,
+    });
   });
 
   // Write to master DB index so getMe/verifyOtp can list this business
@@ -312,8 +317,6 @@ export async function acceptInvitation(orgId: string, token: string) {
     role: roleName,
     is_owner: false,
   });
-
-  await repo.markInvitationAccepted(db, invitation.id);
 
   // Mark user as business account holder + track category
   await platformUserRepo.updateUser(platformUser.id, { is_business_account: true });

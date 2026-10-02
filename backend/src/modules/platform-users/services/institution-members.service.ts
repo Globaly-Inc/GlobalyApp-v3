@@ -574,18 +574,21 @@ export async function acceptMemberInvitation(institutionSchemaName: string, toke
     account_status: 0, // inactive until they verify OTP
   });
 
-  await addMember(tenantDb, Number(institution.id), {
-    platform_user_id: platformUser.id,
-    role: roleName,
-    is_owner: false,
-    first_name: platformUser.first_name,
-    last_name: platformUser.last_name,
-    email: platformUser.email,
-    phone: platformUser.phone,
-    job_title: details.position || null,
+  await tenantDb.transaction(async (trx) => {
+    if (!(await invitesRepo.claimInvitation(trx, invitation.id, token))) {
+      throw new NotFoundError("Invitation not found or already used");
+    }
+    await addMember(trx, Number(institution.id), {
+      platform_user_id: platformUser.id,
+      role: roleName,
+      is_owner: false,
+      first_name: platformUser.first_name,
+      last_name: platformUser.last_name,
+      email: platformUser.email,
+      phone: platformUser.phone,
+      job_title: details.position || null,
+    });
   });
-
-  await invitesRepo.markInvitationAccepted(tenantDb, invitation.id);
   await repo.updateUser(platformUser.id, { is_institution_account: true });
   await repo.addAccountCategory(platformUser.id, { type: "institution", role: roleName });
 

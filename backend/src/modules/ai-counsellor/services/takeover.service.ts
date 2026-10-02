@@ -75,6 +75,10 @@ export async function expire(db: Knex, visitorId: number, what: { handler: boole
   }
 }
 
+export async function readControl(db: Knex, visitorId: number): Promise<ControlRow | null> {
+  return (await db(TABLE).where({ id: visitorId }).first(...CONTROL_COLUMNS)) ?? null;
+}
+
 /** A visitor message staff haven't seen. Also reopens a resolved chat — they wrote again. */
 export async function bumpUnread(db: Knex, visitorId: number) {
   await db(TABLE).where({ id: visitorId }).update({

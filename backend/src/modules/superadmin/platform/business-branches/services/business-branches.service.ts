@@ -360,6 +360,19 @@ export async function deleteInstitutionBranch(institutionId: number, branchId: s
 // Never throws. A failed campus is marked (failCampus) and not retried — the mint may already have
 // left a provisioned schema behind (see linkOrDiscard) — and keeps showing as an extracted campus.
 
+const CAMPUS_BRANCH_FIELDS = ["name", "country", "state", "city", "address", "phone", "email"] as const;
+
+async function carryEditsMadeDuringConversion(
+  org: { id: number | string; schema_name: string }, read: Record<string, unknown> & { id: string },
+) {
+  const now = await reviewRepo.findCampusById(read.id);
+  if (!now?.converted_branch_id) return;
+  const changed: Record<string, unknown> = {};
+  for (const k of CAMPUS_BRANCH_FIELDS) if ((now[k] ?? null) !== (read[k] ?? null)) changed[k] = now[k];
+  if (Object.keys(changed).length === 0) return;
+  await syncConvertedCampusToBranch({ id: Number(org.id), schema_name: org.schema_name }, String(now.converted_branch_id), changed);
+}
+
 export async function convertCampusesToBranches(jobId: string): Promise<number> {
   try {
     // An unprovisioned (account_status 0) org has no tenant schema to link a branch into.
@@ -394,9 +407,13 @@ export async function convertCampusesToBranches(jobId: string): Promise<number> 
         if (inst) await createInstitutionBranch(Number(inst.id), data, { id: c.id, claimId });
         else await createBranch(Number(biz!.id), data, { id: c.id, claimId });
         converted += 1;
+        await carryEditsMadeDuringConversion(org, c).catch((err) =>
+          logger.warn("Couldn't carry a mid-conversion campus edit to its branch", { campusId: c.id, error: String(err) }));
       } catch (err) {
         // Only the copy THIS run retired — never one the owner deleted themselves.
-        if (retiredCopy) await repo.restoreBranch(Number(org.id), org.schema_name, c.id).catch(() => {});
+        if (retiredCopy && !(await reviewRepo.findCampusById(c.id).then((r) => r?.converted_branch_id).catch(() => null))) {
+          await repo.restoreBranch(Number(org.id), org.schema_name, c.id).catch(() => {});
+        }
         await reviewRepo.failCampus(c.id, claimId);
         logger.warn("Campus → branch conversion failed", { jobId, campusId: c.id, error: String(err) });
       }

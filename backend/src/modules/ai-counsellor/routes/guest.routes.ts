@@ -106,7 +106,7 @@ async function persistVisitorTurn(
     /** streamChat reports camelCase; the messages table stores snake_case. */
     usage?: { promptTokens?: number; completionTokens?: number; totalTokens?: number };
     /** Absent when the owner has no provisioned schema — the chat still works, see tenantDbFor. */
-    visitor?: { db: Knex; id: number; nextCount: number; prompted: visitorService.PromptKind | null };
+    visitor?: { db: Knex; id: number; nextCount: number; prompted: visitorService.PromptKind | null; promptedAt?: Date };
   },
 ) {
   await messagesRepo.create({ session_id: sessionId, role: "user", content: turn.content });
@@ -132,6 +132,7 @@ async function persistVisitorTurn(
     await visitorService.attempt("recordTurn", () =>
       visitorService.recordTurn(v.db, v.id, {
         prompted: v.prompted,
+        promptedAt: v.promptedAt,
         nextCount: v.nextCount,
         sessionId,
       }),
@@ -223,32 +224,39 @@ export async function guestRoutes(app: FastifyInstance) {
       (await judgeWantsHuman(input.content)) &&
       (await visitorService.attempt("requestHandover", () => takeover.requestHandover(tenantDb, visitor.id))));
 
-    if (control && visitor && tenantDb && session && (control.answerer !== "ai" || handedOver)) {
+    const answerWithoutAi = async (
+      answerer: takeover.Answerer, handed: boolean, v: NonNullable<typeof visitor>, db: Knex,
+      sess: NonNullable<typeof session>, streamOpen: boolean,
+    ) => {
       // No RAG, no model, no credits. The visitor's message is stored for the Inbox to show, and
       // the widget is told who it is waiting on.
-      initSSE(reply);
+      if (!streamOpen) initSSE(reply);
       try {
-        if (handedOver) {
+        if (handed) {
           writeData(reply, { choices: [{ delta: { content: HANDOVER_LINE } }] });
           // Nobody watches the Inbox all day, and there is no in-app notification yet. Not
           // awaited: the visitor's reply must not wait on a mail server.
-          takeover.notifyHandoverRequest(embed!.config, visitor, input.content)
-            .catch((err) => logger.warn("Handover email not sent", { visitorId: visitor.id, err: err instanceof Error ? err.message : String(err) }));
+          takeover.notifyHandoverRequest(embed!.config, v, input.content)
+            .catch((err) => logger.warn("Handover email not sent", { visitorId: v.id, err: err instanceof Error ? err.message : String(err) }));
         }
-        await persistVisitorTurn(session.id, {
+        await persistVisitorTurn(sess.id, {
           content: input.content,
-          answer: handedOver ? HANDOVER_LINE : null,
+          answer: handed ? HANDOVER_LINE : null,
           sources: [], cards: [], chips: [], blocks: [],
-          visitor: { db: tenantDb, id: visitor.id, nextCount, prompted: null },
+          visitor: { db, id: v.id, nextCount, prompted: null },
         });
-        void refreshChatSummary(session.id, embed?.config.display_name ?? null, { db: tenantDb, visitorId: visitor.id });
-        if (control.answerer === "agent") writeEvent(reply, "handoff", { agent_name: visitor.handled_by_name ?? null });
+        void refreshChatSummary(sess.id, embed?.config.display_name ?? null, { db, visitorId: v.id });
+        if (answerer === "agent") writeEvent(reply, "handoff", { agent_name: v.handled_by_name ?? null });
         else writeEvent(reply, "handover", {});
       } catch (err) {
         logger.error("Failed to persist a handed-over visitor message", { err: err instanceof Error ? err.message : String(err) });
         writeData(reply, { choices: [{ delta: { content: "I'm sorry, something went wrong. Please try again." } }] });
       }
       writeDone(reply);
+    };
+
+    if (control && visitor && tenantDb && session && (control.answerer !== "ai" || handedOver)) {
+      await answerWithoutAi(control.answerer, handedOver, visitor, tenantDb, session, false);
       return;
     }
 
@@ -369,6 +377,15 @@ export async function guestRoutes(app: FastifyInstance) {
         noMoneyData,
       });
 
+      if (visitor && tenantDb && session) {
+        const latest = await visitorService.attempt("recheckControl", () => takeover.readControl(tenantDb, visitor.id));
+        const now = latest ? takeover.whoAnswers(latest) : null;
+        if (latest && now && now.answerer !== "ai") {
+          await answerWithoutAi(now.answerer, false, { ...visitor, handled_by_name: latest.handled_by_name }, tenantDb, session, true);
+          return;
+        }
+      }
+
       const result = await streamChat({
         system,
         history,
@@ -482,6 +499,7 @@ export async function guestRoutes(app: FastifyInstance) {
       const prompted = embed && current
         ? visitorService.decidePrompt(current, nextCount, forceEnd || concluded?.likelihood === "high", contactAsk)
         : null;
+      let promptedAt: Date | undefined;
 
       // Why no card appeared is otherwise unanswerable: a missing visitor row, a gate that was
       // never open, a model that declined to signal and a cooldown all look identical from the
@@ -522,6 +540,7 @@ export async function guestRoutes(app: FastifyInstance) {
           body: `Share your name and email and we'll send you a summary of everything we've covered${org ? ` about ${org}` : ""} — the programs, the details, and what to do next.`,
         });
       } else if (prompted === "ending") {
+        promptedAt = new Date();
         writeEvent(reply, "end-prompt", {
           heading: "Shall we wrap up here?",
           // The model's clause, not ours — this is the difference between reading as part of
@@ -555,7 +574,7 @@ export async function guestRoutes(app: FastifyInstance) {
           memoryIds: memory?.ids,
           usage: result.usage,
           ...(tenantDb && visitor
-            ? { visitor: { db: tenantDb, id: visitor.id, nextCount, prompted } }
+            ? { visitor: { db: tenantDb, id: visitor.id, nextCount, prompted, promptedAt } }
             : {}),
         })
           // The chat's staff summary follows every turn, once the turn is stored.

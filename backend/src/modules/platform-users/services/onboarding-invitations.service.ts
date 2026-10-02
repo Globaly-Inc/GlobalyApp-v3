@@ -256,6 +256,7 @@ async function rollbackUser(userId: number) {
     const business = await repo.findBusinessByOwner(userId);
     if (business) {
       await masterKnex("user_business_index").where({ business_id: business.id }).delete();
+      await masterKnex("referral_codes").where({ owner_type: "business", owner_id: Number(business.id) }).delete();
       await masterKnex.raw("DROP SCHEMA IF EXISTS ?? CASCADE", [business.schema_name]);
       await masterKnex("businesses").where({ id: business.id }).delete();
     }

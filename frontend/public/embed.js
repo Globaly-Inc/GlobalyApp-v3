@@ -246,7 +246,7 @@
   teaser.setAttribute("tabindex", "0");
   var teaserHead = el("div");
   var teaserOrb = el("img", "width:44px;height:44px;flex-shrink:0;transform:scale(1.6)");
-  teaserOrb.src = orb.src;
+  teaserOrb.src = origin + "/aly-orb?c=4F46E5";
   teaserOrb.alt = "";
   var teaserHeadText = el("div", "min-width:0");
   var teaserKicker = el("div", "font:600 11px/1.3 " + FONT + ";letter-spacing:.06em;text-transform:uppercase;opacity:.85", "Meet our AI counsellor");
@@ -388,7 +388,7 @@
         if (cfg.greeting) teaserTitle.textContent = cfg.greeting;
         if (c) {
           brand = c;
-          orb.src = teaserOrb.src = origin + "/aly-orb?c=" + cfg.brand_color.replace("#", "").trim();
+          teaserOrb.src = origin + "/aly-orb?c=" + cfg.brand_color.replace("#", "").trim();
           paint();
           placeTeaser();
         }

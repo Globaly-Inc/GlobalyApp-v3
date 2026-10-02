@@ -80,6 +80,10 @@ export async function claimCampus(id: string): Promise<string | null> {
   return row ? String(row.convert_claim_id) : null;
 }
 
+export async function findCampusById(id: string) {
+  return masterKnex(`${S}.extraction_campuses`).where({ id }).first();
+}
+
 export async function failCampus(id: string, claimId: string) {
   await masterKnex(`${S}.extraction_campuses`).where({ id, convert_claim_id: claimId })
     .update({ convert_claimed_at: null, convert_claim_id: null, convert_failed_at: masterKnex.fn.now() });

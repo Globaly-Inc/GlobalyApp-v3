@@ -8,7 +8,7 @@
 import type { Knex } from "knex";
 import { config } from "../../../config.js";
 import { masterKnex } from "../../../core/db/master-pool.js";
-import { BadRequestError } from "../../../shared/errors.js";
+import { AppError, BadRequestError } from "../../../shared/errors.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import { queueEmail } from "../../auth/auth.service.js";
 import { embedSnippetEmail } from "../../../shared/mail/templates.js";
@@ -103,8 +103,6 @@ async function findTeamMemberByEmail(
     ? await institutionInvitesRepo.findMemberByPlatformUserId(db, user.id)
     : await agentsRepo.findAgentByPlatformUserId(db, user.id);
   if (!member || member.is_contact_only) return null;
-  // Suspended teammates can't open the portal, so "you can sign in" would be false — refuse here
-  // rather than mail them; the invite path then reports the conflict.
   if (member.account_status !== 1) {
     throw new BadRequestError("That teammate's access is suspended — reactivate them before sending the code.");
   }
@@ -201,20 +199,28 @@ export async function sendSnippetToDeveloper(args: {
     }
   }
 
-  // The invite, when there was one, is its own email and carries the sign-in link; this one carries
-  // the snippet. Fire-and-forget like every other queued mail — the team change already happened and
-  // must not be rolled back by a mail outage.
   const recipient = developer;
-  queueEmail({
-    to: recipient.email,
-    ...embedSnippetEmail({
-      recipientName: recipient.name,
-      orgName,
-      snippet: embedSnippet(embedKey),
-      widgetUrl: `${config.WEB_APP_URL.replace(/\/$/, "")}/business/ai-widget`,
-      access: invited ? "invited" : recipient.pending ? "pending" : "member",
-    }),
-  }).catch((err) => logger.warn("Embed snippet email failed", { to: recipient.email, err: err.message }));
+  try {
+    await queueEmail({
+      to: recipient.email,
+      ...embedSnippetEmail({
+        recipientName: recipient.name,
+        orgName,
+        snippet: embedSnippet(embedKey),
+        widgetUrl: `${config.WEB_APP_URL.replace(/\/$/, "")}/business/ai-widget`,
+        access: invited ? "invited" : recipient.pending ? "pending" : "member",
+      }),
+    });
+  } catch (err) {
+    logger.warn("Embed snippet email failed", { to: recipient.email, err: err instanceof Error ? err.message : String(err) });
+    throw new AppError(
+      invited
+        ? `${recipient.email} was invited, but we couldn't email the code. Try sending it again in a moment.`
+        : `We couldn't email the code to ${recipient.email}. Please try again in a moment.`,
+      503,
+      "EMAIL_UNAVAILABLE",
+    );
+  }
 
   logger.info("Embed snippet sent to developer", { kind: owner.kind, id: owner.id, invited });
   return { sent_to: recipient.email, invited, pending: recipient.pending && !invited };

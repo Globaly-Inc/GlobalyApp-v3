@@ -423,8 +423,13 @@ export async function findInvitationByToken(db: Knex, token: string) {
     .first();
 }
 
-export async function markInvitationAccepted(db: Knex, id: string) {
-  await db("agent_invitations").where({ id }).update({ status: "accepted" });
+export async function claimInvitation(db: Knex, id: string, token: string): Promise<boolean> {
+  const n = await db("agent_invitations")
+    .where({ id, invite_token: token, status: "pending" })
+    .whereNull("deleted_at")
+    .where("expired_at", ">", db.fn.now())
+    .update({ status: "accepted" });
+  return n > 0;
 }
 
 export async function listPendingInvitations(db: Knex, limit: number, offset: number) {
