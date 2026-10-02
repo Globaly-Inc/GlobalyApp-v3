@@ -281,9 +281,13 @@ async function processTenant(tenant: TenantSchema): Promise<number> {
           });
         }
 
+        const queued = new Set(owed.map((c) => c.id));
+        const claimedAt = new Date(row.updated_at).getTime();
+        const stillOwed = (await sessionsRepo.findChatsByVisitor(row.visitor_key, row.embed_config_id))
+          .some((c) => c.ended_at && new Date(c.ended_at).getTime() > claimedAt && !queued.has(c.id));
         await db(TABLE).where({ id: row.id }).update({
-          summary_status: db.raw("CASE WHEN end_confirmed_at > ? THEN 'pending' ELSE 'sent' END", [row.updated_at]),
-          summary_sent_at: db.raw("CASE WHEN end_confirmed_at > ? THEN ?::timestamptz ELSE now() END", [row.updated_at, row.updated_at]),
+          summary_status: stillOwed ? "pending" : "sent",
+          summary_sent_at: stillOwed ? row.updated_at : db.fn.now(),
           summary_error: null,
           updated_at: db.fn.now(),
         });

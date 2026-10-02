@@ -198,7 +198,7 @@ export async function refreshSiteUrls(jobId: string, urls: string[], editorId: n
       // An explicit refresh means "show me what's live now" — drop this job's own correction so
       // it doesn't keep masking the fresh pull that's about to happen.
       removed = await pageEdits.findManualEdit(jobId, url);
-      await pageEdits.deleteManualEdit(jobId, url);
+      if (removed) await pageEdits.deleteManualEdit(jobId, url, removed.markdown);
       await queueService.publish(SELF_SERVICE_QUEUES.SITE_URL_REFRESH, { url, jobId, editorId });
       queued.push(url);
     } catch (err) {

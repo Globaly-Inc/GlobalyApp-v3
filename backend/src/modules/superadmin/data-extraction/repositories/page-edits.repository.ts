@@ -37,6 +37,8 @@ export async function restoreManualEdit(jobId: string, url: string, edit: PageMa
     .ignore();
 }
 
-export async function deleteManualEdit(jobId: string, url: string): Promise<void> {
-  await masterKnex(T).where({ job_id: jobId, url }).del();
+export async function deleteManualEdit(jobId: string, url: string, onlyIfMarkdown?: string): Promise<void> {
+  const q = masterKnex(T).where({ job_id: jobId, url });
+  if (onlyIfMarkdown !== undefined) q.where({ markdown: onlyIfMarkdown });
+  await q.del();
 }

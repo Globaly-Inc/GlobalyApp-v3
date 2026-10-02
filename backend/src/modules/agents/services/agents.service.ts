@@ -278,7 +278,7 @@ export async function acceptInvitation(orgId: string, token: string) {
     if (!(await repo.claimInvitation(trx, invitation.id, token))) {
       throw new NotFoundError("Invitation not found or already used");
     }
-    return repo.insertAgent(trx, {
+    const agent = await repo.insertAgent(trx, {
       platform_user_id: platformUser.id,
       role_id: role.id,
       is_owner: false,
@@ -308,19 +308,20 @@ export async function acceptInvitation(orgId: string, token: string) {
       is_primary: false,
       notes: null,
     });
-  });
 
-  // Write to master DB index so getMe/verifyOtp can list this business
-  await platformUserRepo.insertUserBusinessIndex({
-    platform_user_id: platformUser.id,
-    business_id: Number(business.id),
-    role: roleName,
-    is_owner: false,
-  });
+    // Mark user as business account holder + track category
+    await platformUserRepo.updateUser(platformUser.id, { is_business_account: true });
+    await platformUserRepo.addAccountCategory(platformUser.id, { type: "business", role: roleName });
 
-  // Mark user as business account holder + track category
-  await platformUserRepo.updateUser(platformUser.id, { is_business_account: true });
-  await platformUserRepo.addAccountCategory(platformUser.id, { type: "business", role: roleName });
+    // Write to master DB index so getMe/verifyOtp can list this business
+    await platformUserRepo.insertUserBusinessIndex({
+      platform_user_id: platformUser.id,
+      business_id: Number(business.id),
+      role: roleName,
+      is_owner: false,
+    });
+    return agent;
+  });
 
   logger.info("Agent invitation accepted", { agentId: agent.id, platformUserId: platformUser.id, orgId });
   return {

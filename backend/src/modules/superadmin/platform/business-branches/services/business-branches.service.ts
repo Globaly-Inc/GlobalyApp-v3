@@ -373,6 +373,20 @@ async function carryEditsMadeDuringConversion(
   await syncConvertedCampusToBranch({ id: Number(org.id), schema_name: org.schema_name }, String(now.converted_branch_id), changed);
 }
 
+async function carryEditsWithRetry(org: Parameters<typeof carryEditsMadeDuringConversion>[0], read: Parameters<typeof carryEditsMadeDuringConversion>[1]) {
+  for (let attempt = 1; ; attempt++) {
+    try {
+      return await carryEditsMadeDuringConversion(org, read);
+    } catch (err) {
+      if (attempt === 3) {
+        logger.error("Mid-conversion campus edit never reached its branch", { campusId: read.id, error: String(err) });
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 250 * attempt));
+    }
+  }
+}
+
 export async function convertCampusesToBranches(jobId: string): Promise<number> {
   try {
     // An unprovisioned (account_status 0) org has no tenant schema to link a branch into.
@@ -407,8 +421,7 @@ export async function convertCampusesToBranches(jobId: string): Promise<number> 
         if (inst) await createInstitutionBranch(Number(inst.id), data, { id: c.id, claimId });
         else await createBranch(Number(biz!.id), data, { id: c.id, claimId });
         converted += 1;
-        await carryEditsMadeDuringConversion(org, c).catch((err) =>
-          logger.warn("Couldn't carry a mid-conversion campus edit to its branch", { campusId: c.id, error: String(err) }));
+        await carryEditsWithRetry(org, c);
       } catch (err) {
         // Only the copy THIS run retired — never one the owner deleted themselves.
         if (retiredCopy && !(await reviewRepo.findCampusById(c.id).then((r) => r?.converted_branch_id).catch(() => null))) {

@@ -86,14 +86,14 @@ export async function addMember(tenantDb: Knex, institutionId: number, input: In
       tags: [], preferred_channel: null, is_primary: false, notes: null,
     });
 
+  await repo.updateUser(input.platform_user_id, { is_institution_account: true });
+
   await repo.insertUserInstitutionIndex({
     platform_user_id: input.platform_user_id,
     institution_id: institutionId,
     role: input.role,
     is_owner: isOwner,
   });
-
-  await repo.updateUser(input.platform_user_id, { is_institution_account: true });
 }
 
 /** Change a member's role on both sides. */
@@ -578,6 +578,7 @@ export async function acceptMemberInvitation(institutionSchemaName: string, toke
     if (!(await invitesRepo.claimInvitation(trx, invitation.id, token))) {
       throw new NotFoundError("Invitation not found or already used");
     }
+    await repo.addAccountCategory(platformUser.id, { type: "institution", role: roleName });
     await addMember(trx, Number(institution.id), {
       platform_user_id: platformUser.id,
       role: roleName,
@@ -589,8 +590,6 @@ export async function acceptMemberInvitation(institutionSchemaName: string, toke
       job_title: details.position || null,
     });
   });
-  await repo.updateUser(platformUser.id, { is_institution_account: true });
-  await repo.addAccountCategory(platformUser.id, { type: "institution", role: roleName });
 
   logger.info("Institution member invitation accepted", { institutionId: institution.id, platformUserId: platformUser.id });
   return {

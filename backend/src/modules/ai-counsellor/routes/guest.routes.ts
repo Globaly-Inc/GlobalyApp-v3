@@ -766,7 +766,7 @@ export async function guestSessionRoutes(app: FastifyInstance) {
 
     // Tells the widget whether a summary is actually coming. A visitor who confirmed without
     // ever giving an address must not be shown "on its way to …".
-    return reply.send({ ok: true, summary_queued: row?.summary_status === "pending" });
+    return reply.send({ ok: true, summary_queued: row?.summary_status === "pending" || row?.summary_status === "processing" });
   });
 }
 
