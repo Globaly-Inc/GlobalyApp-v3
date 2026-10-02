@@ -1,10 +1,12 @@
 "use client";
 
 import { Combobox, type ComboboxOption } from "@/components/combobox";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FieldError } from "@/components/field-error";
 import { PhoneInput } from "@/components/ui/phone-input";
+import { AddressAutocomplete } from "@/components/address-autocomplete";
 import { cn } from "@/lib/utils";
 import { BRANCH_TYPE_OPTIONS } from "../../const";
 import type { BranchType } from "../../apis/types";
@@ -12,12 +14,58 @@ import type { BranchType } from "../../apis/types";
 export type BranchForm = {
   name: string; countryId: string; city: string; address: string; state: string;
   email: string; phone: string;
+  /** Create only. "same" sends no website, so the backend copies the parent's. */
+  websiteMode: "same" | "own"; website: string;
 };
 
 export const EMPTY_BRANCH_FORM: BranchForm = {
   name: "", countryId: "", city: "", address: "", state: "",
-  email: "", phone: "",
+  email: "", phone: "", websiteMode: "same", website: "",
 };
+
+/** "example.edu" → "https://example.edu", so a bare domain passes the backend's URL check. */
+const withScheme = (url: string) => (/^https?:\/\//i.test(url) ? url : `https://${url}`);
+
+/** The create payload's website: undefined = same as parent, null = none, else the branch's own. */
+export function branchWebsite(form: BranchForm): string | null | undefined {
+  if (form.websiteMode === "same") return undefined;
+  const url = form.website.trim();
+  return url ? withScheme(url) : null;
+}
+
+/** Hostname without "www." — "https://ku.edu.np/" and "ku.edu.np" are the same site. */
+const siteHost = (url: string | null | undefined) => {
+  if (!url?.trim()) return null;
+  try {
+    return new URL(withScheme(url.trim())).hostname.replace(/^www\./, "").toLowerCase();
+  } catch {
+    return url.trim().toLowerCase();
+  }
+};
+
+/** Edit prefill: "same" (the default) unless the branch has a website of its own on another site. */
+export function websiteFields(branchWebsite: string | null | undefined, parentWebsite: string | null | undefined) {
+  const own = siteHost(branchWebsite);
+  const same = own == null || own === siteHost(parentWebsite);
+  return { websiteMode: same ? "same" : "own", website: same ? "" : branchWebsite ?? "" } as const;
+}
+
+/** Edit payload: "same" saves the parent's current website explicitly (a patch has no "copy" default). */
+export function branchWebsitePatch(form: BranchForm, parentWebsite: string | null | undefined) {
+  const website = branchWebsite(form);
+  return website === undefined ? parentWebsite ?? null : website;
+}
+
+export function branchWebsiteError(form: BranchForm): string | undefined {
+  const url = branchWebsite(form);
+  if (!url) return undefined;
+  try {
+    new URL(url);
+    return undefined;
+  } catch {
+    return "Enter a valid website URL";
+  }
+}
 
 export function CreateBranchDetailsStep({
   form,
@@ -29,9 +77,11 @@ export function CreateBranchDetailsStep({
   onCityChange,
   branchType,
   onBranchTypeChange,
+  showWebsite = false,
+  countryIso2,
 }: Readonly<{
   form: BranchForm;
-  onChange: <K extends keyof BranchForm>(key: K, value: string) => void;
+  onChange: <K extends keyof BranchForm>(key: K, value: BranchForm[K]) => void;
   errors: Record<string, string | undefined>;
   countryOptions: ComboboxOption[];
   cityOptions: ComboboxOption[];
@@ -39,6 +89,10 @@ export function CreateBranchDetailsStep({
   onCityChange: (cityName: string) => void;
   branchType: BranchType;
   onBranchTypeChange: (value: BranchType) => void;
+  /** On create, and on edit of a branch this org created (the website is saved on that org). */
+  showWebsite?: boolean;
+  /** Biases address suggestions to the picked country. */
+  countryIso2?: string | null;
 }>) {
   return (
     <>
@@ -78,7 +132,18 @@ export function CreateBranchDetailsStep({
         </div>
         <FieldError message={errors.countryId} />
         <Input className="h-10" value={form.state} onChange={(e) => onChange("state", e.target.value)} placeholder="State / Province" />
-        <Input className="h-10" value={form.address} onChange={(e) => onChange("address", e.target.value)} placeholder="Street address" />
+        {/* Same Places autocomplete as the other address forms — picking a suggestion fills
+            State and, when it's in this country's list, City. */}
+        <AddressAutocomplete
+          value={form.address}
+          onChange={(v) => onChange("address", v)}
+          countryIso2={countryIso2}
+          onResolved={(details) => {
+            if (details.state) onChange("state", details.state);
+            const city = details.city && cityOptions.find((o) => o.value.toLowerCase() === details.city!.toLowerCase());
+            if (city) onCityChange(city.value);
+          }}
+        />
       </div>
 
       <div className="flex flex-col gap-2">
@@ -98,6 +163,37 @@ export function CreateBranchDetailsStep({
         <Label>Phone</Label>
         <PhoneInput value={form.phone} onChange={(v) => onChange("phone", v)} placeholder="(201) 555-0123" />
       </div>
+
+      {showWebsite && (
+        <div className="flex flex-col gap-2">
+          <Label>Does this branch use the same website as the parent?</Label>
+          <div className="flex gap-2">
+            {([["same", "Yes, same website"], ["own", "No, it has its own"]] as const).map(([mode, label]) => (
+              <Button
+                key={mode}
+                type="button"
+                size="sm"
+                variant={form.websiteMode === mode ? "default" : "outline"}
+                onClick={() => onChange("websiteMode", mode)}
+              >
+                {label}
+              </Button>
+            ))}
+          </div>
+          {form.websiteMode === "own" && (
+            <>
+              <Input
+                className="h-10"
+                aria-invalid={!!errors.website}
+                value={form.website}
+                onChange={(e) => onChange("website", e.target.value)}
+                placeholder="https://branch.example.com"
+              />
+              <FieldError message={errors.website} />
+            </>
+          )}
+        </div>
+      )}
 
       <div className="rounded-lg border border-border bg-muted/50 p-3 space-y-1">
         <p className="text-sm font-medium text-foreground">How branches work</p>

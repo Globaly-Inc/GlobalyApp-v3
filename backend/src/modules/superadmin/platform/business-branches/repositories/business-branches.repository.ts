@@ -37,13 +37,17 @@ export async function listBranches(
 ) {
   const db = await getKnex(businessId, schemaName);
   const rows = await applyBranchFilters(db("business_branches").whereNull("deleted_at"), filter, search)
-    .select(BRANCH_COLUMNS).orderBy("is_primary", "desc").orderBy("created_at").limit(limit).offset(offset);
-  return withLiveOrgDetails(rows);
+    .select(BRANCH_COLUMNS).orderBy("is_primary", "desc")
+    // Head office first, then recently added on top — id breaks ties for stable paging.
+    .orderBy("created_at", "desc").orderBy("id", "desc").limit(limit).offset(offset);
+  return withLiveOrgDetails(rows, businessId);
 }
 
 /** A linked row's name/contact were copied at link time, but the branch org owns them (see
  * assertLinkOnlyPatch) — read them live so an edit on the branch's own profile shows up here. */
-async function withLiveOrgDetails<T extends { linked_business_id: number | null; linked_institution_id: number | null }>(rows: T[]) {
+/** `owned`: the linked org was created by this parent (parent_* id matches), so its details are
+ * editable here. A UI hint only — updateBranch re-checks it against the parent's own table. */
+async function withLiveOrgDetails<T extends { linked_business_id: number | null; linked_institution_id: number | null }>(rows: T[], parentId: number) {
   const bizIds = rows.map((r) => r.linked_business_id).filter((id): id is number => id != null);
   const instIds = rows.map((r) => r.linked_institution_id).filter((id): id is number => id != null);
   const [bizs, insts] = await Promise.all([
@@ -55,16 +59,17 @@ async function withLiveOrgDetails<T extends { linked_business_id: number | null;
   return rows.map((r) => {
     const org = r.linked_business_id != null ? biz.get(r.linked_business_id) : r.linked_institution_id != null ? inst.get(r.linked_institution_id) : undefined;
     if (!org) return r;
-    const { id: _id, ...live } = org;
-    return { ...r, ...live };
+    const { id: _id, parent_id, ...live } = org;
+    return { ...r, ...live, owned: Number(parent_id) === parentId };
   });
 }
 
 function orgDetails(table: "businesses" | "institutions", nameCol: string, ids: number[]) {
+  const parentCol = table === "businesses" ? "parent_business_id" : "parent_institution_id";
   return masterKnex(`${table} as o`)
     .leftJoin("countries as c", "c.id", "o.country_id")
     .whereIn("o.id", ids)
-    .select("o.id", `o.${nameCol} as name`, "c.name as country", "o.state", "o.city", "o.address", "o.phone", "o.email");
+    .select("o.id", `o.${nameCol} as name`, "c.name as country", "o.state", "o.city", "o.address", "o.phone", "o.email", "o.website", `o.${parentCol} as parent_id`);
 }
 
 /** The partner's country, as the name the branch row stores (branch `country` is free text). */
@@ -119,7 +124,7 @@ export async function seedBranchesFromCampuses(businessId: number, schemaName: s
 export async function findBranchById(businessId: number, schemaName: string, branchId: string) {
   const db = await getKnex(businessId, schemaName);
   const row = await db("business_branches").where({ uuid: branchId }).whereNull("deleted_at").select(BRANCH_COLUMNS).first();
-  return row ? (await withLiveOrgDetails([row]))[0] : row;
+  return row ? (await withLiveOrgDetails([row], businessId))[0] : row;
 }
 
 export async function updateBranch(businessId: number, schemaName: string, branchId: string, data: Record<string, unknown>) {

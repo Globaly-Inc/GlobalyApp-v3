@@ -14,13 +14,13 @@ import { Progress } from "@/components/ui/progress";
 import { businessProfileDetailApi } from "../../apis";
 import type { Accreditation, Lookup } from "@/app/admin/platform/categories/apis/types";
 import { ServiceMediaUploader } from "./service-media-uploader";
+import { EligibilityRequirementCard } from "./eligibility-requirement-card";
 import type { ServiceEligibility, ServiceFee, ServiceIntake, ServiceMediaFile, ServiceStudyUnit } from "../../apis/types";
 
-// The business apis/types.ts keeps installments/language_tests as loose JSON
+// The business apis/types.ts keeps installments as loose JSON
 // (Record<string, unknown>[]) rather than fully typing their nested shape — narrowed locally
 // here since this display code needs to read into them.
 type FeeInstallment = { label?: string; lines: { amount: number }[] };
-type LanguageTestRow = { test_type_name: string; overall_score: number };
 
 /** Static — used where there's no section key to toggle (e.g. no visibility prop supplied). */
 export function PublicBadge() {
@@ -222,27 +222,7 @@ export function ServiceSummaryBodyExtras({
           ) : (
             <div className="grid grid-cols-2 gap-3">
               {eligibility.map((row) => (
-                <div key={row.id} className="space-y-2.5 rounded-lg border bg-muted/30 p-3">
-                  <Badge variant="secondary" className="text-xs capitalize">{row.applicable_to}</Badge>
-                  {(row.degree_level_id || (row.score_type && row.min_score)) && (
-                    <div className="space-y-1.5">
-                      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Academic</p>
-                      {row.degree_level_id && (
-                        <p className="text-xs">Min. degree: <span className="font-medium">{degreeLevels.find((d) => d.id === row.degree_level_id)?.name ?? "—"}</span></p>
-                      )}
-                    </div>
-                  )}
-                  {row.language_tests.length > 0 && (
-                    <div className="space-y-1.5">
-                      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Language tests</p>
-                      <div className="flex flex-wrap gap-1.5">
-                        {(row.language_tests as LanguageTestRow[]).map((t, i) => (
-                          <Badge key={`${t.test_type_name}-${i}`} variant="outline">{t.test_type_name} ≥ {t.overall_score}</Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
+                <EligibilityRequirementCard key={row.id} row={row} degreeLevels={degreeLevels} />
               ))}
             </div>
           )}

@@ -17,6 +17,7 @@ import { crawlSite } from "../lib/site-crawl.js";
 import { linkJobEntities } from "../lib/jev-linker.js";
 import { verifyFieldCoverage } from "../lib/field-coverage.js";
 import { sendCompletionEmail } from "../lib/completion-email.js";
+import { convertCampusesToBranches } from "../../platform/business-branches/services/business-branches.service.js";
 import { getPage, getDocument, isPdfUrl, mergeUrlLists } from "../lib/page-store.js";
 import { canonicalCourseUrl } from "../lib/course-name.js";
 import * as pageEdits from "../repositories/page-edits.repository.js";
@@ -1913,6 +1914,7 @@ async function handleLinkEntitiesStep(jobId: string) {
     await linkEntities(jobId);
   } finally {
     await sendCompletionEmail(jobId);
+    await convertCampusesToBranches(jobId);
   }
 }
 

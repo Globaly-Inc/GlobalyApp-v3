@@ -299,6 +299,10 @@ export type Branch = {
   share_description: boolean;
   shared_services: SharedServices;
   created_at: string;
+  /** A linked org this org created — its details are editable here (backend re-checks). */
+  owned?: boolean;
+  /** Live from the branch org; only set on linked rows. */
+  website?: string | null;
 };
 
 export type BranchType = "same_company" | "subsidiary" | "franchise";
@@ -325,6 +329,8 @@ export type BranchInput = {
   branch_type?: BranchType;
   share_description?: boolean;
   shared_services?: SharedServices;
+  /** Saved on the branch's own org. On create, omitted = copy the parent's website; null = none. */
+  website?: string | null;
 };
 
 export type BranchPatch = Partial<BranchInput>;

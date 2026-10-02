@@ -10,6 +10,7 @@ import type {
   PartnerInstitutionCourse, PartnerInstitutionCourseListParams, PartnerInstitutionCourseListResult, PartnerInstitutionDetail, Permission,
   RelationInput, RelationListParams, RelationListResult, RelationPatch, Role, RoleCreateInput, RolePatch,
   SchemaFieldValue, Scholarship, ScholarshipInput, ServiceAiAssistInput, ServiceAiAssistResult,
+  ExtractedScholarship, ExtractedScholarshipInput,
   ScholarshipListParams, ScholarshipListResult, ScholarshipPatch, ServiceAccreditationLink, ServiceEligibility,
   ServiceEligibilityInput, ServiceEligibilityPatch, ServiceFee, ServiceFeeInput, ServiceFeePatch, ServiceInput,
   ServiceIntake, ServiceIntakeInput, ServiceIntakePatch, ServicePatch, ServiceSearchParams, ServiceSearchResult,
@@ -64,6 +65,9 @@ function toServiceSearchQuery(params: ServiceSearchParams): string {
   if (params.limit) q.set("limit", String(params.limit));
   if (params.search) q.set("search", params.search);
   if (params.course_category) q.set("course_category", params.course_category);
+  if (params.published) q.set("published", params.published);
+  if (params.origin) q.set("origin", params.origin);
+  if (params.degree_level) q.set("degree_level", params.degree_level);
   const qs = q.toString();
   return qs ? `?${qs}` : "";
 }
@@ -104,6 +108,9 @@ function toScholarshipQuery(params: ScholarshipListParams): string {
   if (params.page) q.set("page", String(params.page));
   if (params.limit) q.set("limit", String(params.limit));
   if (params.search) q.set("search", params.search);
+  if (params.applicable_to) q.set("applicable_to", params.applicable_to);
+  if (params.coverage_type) q.set("coverage_type", params.coverage_type);
+  if (params.origin) q.set("origin", params.origin);
   const qs = q.toString();
   return qs ? `?${qs}` : "";
 }
@@ -142,6 +149,8 @@ export const businessProfileDetailRealApi = {
   updateService: (serviceId: string, patch: ServicePatch): Promise<BusinessService> =>
     httpPatch(`${BASE}/services/${serviceId}`, patch),
   deleteService: (serviceId: string): Promise<void> => httpDelete(`${BASE}/services/${serviceId}`),
+  /** Owner/admin only. Approved courses can then be published. */
+  approveServices: (ids: string[]): Promise<{ approved: number }> => httpPost(`${BASE}/services/approve`, { ids }),
   getServiceFieldValues: (serviceId: string): Promise<SchemaFieldValue[]> =>
     httpGet(`${BASE}/services/${serviceId}/field-values`),
   updateServiceFieldValues: (serviceId: string, values: SchemaFieldValue[]): Promise<SchemaFieldValue[]> =>
@@ -206,6 +215,13 @@ export const businessProfileDetailRealApi = {
   updateScholarship: (scholarshipId: number, patch: ScholarshipPatch): Promise<Scholarship> =>
     httpPatch(`${BASE}/scholarships/${scholarshipId}`, patch),
   deleteScholarship: (scholarshipId: number): Promise<void> => httpDelete(`${BASE}/scholarships/${scholarshipId}`),
+  getExtractedScholarships: async (params: ScholarshipListParams = {}): Promise<{ data: ExtractedScholarship[]; total: number }> => {
+    const { data, meta } = await httpGet<{ data: ExtractedScholarship[]; meta: { total: number } }>(`${BASE}/extracted-scholarships${toScholarshipQuery(params)}`);
+    return { data, total: meta.total };
+  },
+  createExtractedScholarship: (input: ExtractedScholarshipInput): Promise<{ id: string }> => httpPost(`${BASE}/extracted-scholarships`, input),
+  updateExtractedScholarship: (id: string, patch: ExtractedScholarshipInput): Promise<void> => httpPatch(`${BASE}/extracted-scholarships/${id}`, patch),
+  deleteExtractedScholarship: (id: string): Promise<void> => httpDelete(`${BASE}/extracted-scholarships/${id}`),
   // Bulk import — mirrors the superadmin editor's flow (client parses/maps the spreadsheet,
   // only clean rows go over the wire), scoped to this business by the backend.
   startScholarshipImport: (rows: ScholarshipInput[]): Promise<ImportJob> => httpPost(`${BASE}/scholarships/import`, { rows }),

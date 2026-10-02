@@ -3,7 +3,7 @@
 // Every figure is scoped to what a signed-out visitor can actually reach through the search
 // tabs, so the landing page can never advertise more than the site will show:
 //   institutions         → institutions.is_published        (mirrors institutionsQuery)
-//   courses              → job promoted to 'exported'       (mirrors PUBLICLY_VISIBLE)
+//   courses              → job public (publicJobSql)         (mirrors PUBLICLY_VISIBLE)
 //   education counselors → business_type 'agent', published (mirrors baseQuery)
 //
 // Countries and cities are *coverage* — the places a published institution or counselor
@@ -11,7 +11,7 @@
 // seeded reference data (~194 countries, ~2 380 cities) and describe the world, not our reach.
 
 import { masterKnex } from "../../../core/db/master-pool.js";
-import { SUPERADMIN_SCHEMA as S } from "../../superadmin/consts.js";
+import { SUPERADMIN_SCHEMA as S, publicJobSql } from "../../superadmin/consts.js";
 import { PUBLIC_COURSE } from "./courses.repository.js";
 
 export type PlatformStats = {
@@ -43,7 +43,7 @@ export async function getPlatformStats(): Promise<PlatformStats> {
 
       (select count(*) from ${S}.extraction_courses ec
         where exists (select 1 from ${S}.extraction_jobs ej
-                       where ej.id = ec.job_id and ej.status = 'exported')
+                       where ej.id = ec.job_id and ${publicJobSql("ej")})
           and ${PUBLIC_COURSE}) as courses,
 
       (select count(*) from businesses b

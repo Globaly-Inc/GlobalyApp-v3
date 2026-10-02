@@ -6,6 +6,7 @@ import { Award, Loader2, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Combobox } from "@/components/combobox";
+import { useCurrencyOptions } from "../use-currency-options";
 import { FieldError } from "@/components/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -41,8 +42,14 @@ export function ScholarshipForm({
   saving,
   onCancel,
   onSave,
+  extraFields,
+  defaultCurrency,
 }: Readonly<{
   scholarship?: Scholarship;
+  /** Preselected on a new scholarship — the portal passes the org's Default Currency. */
+  defaultCurrency?: string | null;
+  /** Rendered after the built-in fields — the portal adds its course picker here. */
+  extraFields?: React.ReactNode;
   saving: boolean;
   onCancel: () => void;
   onSave: (values: ScholarshipParams) => void;
@@ -51,7 +58,8 @@ export function ScholarshipForm({
   const [name, setName] = useState(scholarship?.name ?? "");
   const [coverageType, setCoverageType] = useState(scholarship?.coverage_type ?? NONE);
   const [amount, setAmount] = useState(scholarship?.amount?.toString() ?? "");
-  const [currency, setCurrency] = useState(scholarship?.currency ?? "");
+  const [currency, setCurrency] = useState(scholarship?.currency ?? defaultCurrency ?? "");
+  const currencyOptions = useCurrencyOptions(currency);
   const [deadline, setDeadline] = useState(scholarship?.deadline?.slice(0, 10) ?? "");
   const [applicationUrl, setApplicationUrl] = useState(scholarship?.application_url ?? "");
   const [description, setDescription] = useState(scholarship?.description ?? "");
@@ -154,12 +162,14 @@ export function ScholarshipForm({
             </div>
             <div className="flex flex-col gap-1.5">
               <Label htmlFor="scholarship-currency">Currency</Label>
-              <Input
+              <Combobox
                 id="scholarship-currency"
+                options={currencyOptions}
                 value={currency}
-                onChange={(e) => setCurrency(e.target.value)}
-                placeholder="e.g. AUD"
-                maxLength={3}
+                onChange={setCurrency}
+                placeholder="Select currency"
+                // The API takes any ISO code — a code missing from the countries list can be typed.
+                creatable
               />
             </div>
           </div>
@@ -197,6 +207,7 @@ export function ScholarshipForm({
             />
           </div>
         </div>
+        {extraFields}
       </CardContent>
       <CardFooter className="justify-end gap-2">
         <Button variant="outline" className="cursor-pointer" onClick={onCancel} disabled={saving}>

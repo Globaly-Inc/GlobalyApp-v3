@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Loader2, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -14,7 +14,7 @@ import type { Branch, BranchType, SharedServices } from "../../apis/types";
 import { createBranch, updateBranch } from "../../store/businesses-slice";
 import { isValidEmail } from "../../utils";
 import { BranchStepper } from "./branch-stepper";
-import { CreateBranchDetailsStep, EMPTY_BRANCH_FORM } from "./create-branch-details-step";
+import { CreateBranchDetailsStep, EMPTY_BRANCH_FORM, branchWebsite, branchWebsiteError, branchWebsitePatch, websiteFields } from "./create-branch-details-step";
 import { CreateBranchCopyStep } from "./create-branch-copy-step";
 import { ServiceSharingPicker } from "../services/service-sharing-picker";
 
@@ -38,12 +38,21 @@ export function CreateBranchDialog({
   const [citiesLoading, setCitiesLoading] = useState(false);
   const [branchType, setBranchType] = useState<BranchType>("same_company");
   const [copyDescription, setCopyDescription] = useState(false);
-  const [sharedServices, setSharedServices] = useState<SharedServices>([]);
+  // A new branch defaults to the same website as its head office, so it shares the head office's
+  // catalog; "own website" starts empty (it extracts its own). Once the owner picks in the
+  // Services step, the website choice stops overriding them.
+  const [sharedServices, setSharedServices] = useState<SharedServices>(isEdit ? [] : "all");
+  const servicesTouchedRef = useRef(false);
+  const pickServices = (v: SharedServices) => {
+    servicesTouchedRef.current = true;
+    setSharedServices(v);
+  };
   const [saving, setSaving] = useState(false);
   const [errors, setErrors] = useState<Record<string, string | undefined>>({});
 
-  const set = <K extends keyof typeof EMPTY_BRANCH_FORM>(key: K, value: string) => {
+  const set = <K extends keyof typeof EMPTY_BRANCH_FORM>(key: K, value: (typeof EMPTY_BRANCH_FORM)[K]) => {
     setForm((f) => ({ ...f, [key]: value }));
+    if (key === "websiteMode" && !isEdit && !servicesTouchedRef.current) setSharedServices(value === "same" ? "all" : []);
     setErrors((e) => (e[key as string] ? { ...e, [key]: undefined } : e));
   };
 
@@ -61,6 +70,7 @@ export function CreateBranchDialog({
         state: editBranch.state ?? "",
         email: editBranch.email ?? "",
         phone: editBranch.phone ?? "",
+        ...(editBranch.owned ? websiteFields(editBranch.website, parent?.website) : {}),
       });
       setBranchType(editBranch.branch_type);
       setCopyDescription(editBranch.share_description);
@@ -69,7 +79,8 @@ export function CreateBranchDialog({
       setForm(EMPTY_BRANCH_FORM);
       setBranchType("same_company");
       setCopyDescription(false);
-      setSharedServices([]);
+      setSharedServices("all");
+      servicesTouchedRef.current = false;
     }
     setCities([]);
     setErrors({});
@@ -105,6 +116,8 @@ export function CreateBranchDialog({
     if (form.name.trim().length < 2) next.name = "Branch name is required";
     if (!form.countryId) next.countryId = "Select a country";
     if (form.email && !isValidEmail(form.email)) next.email = "Enter a valid email";
+    const websiteError = isEdit && !editBranch?.owned ? undefined : branchWebsiteError(form);
+    if (websiteError) next.website = websiteError;
     setErrors(next);
     return Object.keys(next).length === 0;
   };
@@ -134,10 +147,11 @@ export function CreateBranchDialog({
       };
 
       if (isEdit && editBranch) {
-        await dispatch(updateBranch({ id: businessId, branchId: editBranch.id, patch: input })).unwrap();
+        await dispatch(updateBranch({ id: businessId, branchId: editBranch.id, patch: { ...input, ...(editBranch?.owned ? { website: branchWebsitePatch(form, parent?.website) } : {}) } })).unwrap();
         toast.success("Branch updated");
       } else {
-        await dispatch(createBranch({ id: businessId, input })).unwrap();
+        const website = branchWebsite(form);
+        await dispatch(createBranch({ id: businessId, input: { ...input, ...(website !== undefined ? { website } : {}) } })).unwrap();
         const description = country ? `${form.name} (${country.name}).` : `${form.name}.`;
         toast.success("Branch created", { description });
       }
@@ -181,6 +195,8 @@ export function CreateBranchDialog({
               onCityChange={handleCityChange}
               branchType={branchType}
               onBranchTypeChange={setBranchType}
+              countryIso2={countries.find((c) => String(c.id) === form.countryId)?.iso2 ?? null}
+              showWebsite={!isEdit || !!editBranch?.owned}
             />
           )}
 
@@ -194,7 +210,7 @@ export function CreateBranchDialog({
               <ServiceSharingPicker
                 businessId={businessId}
                 value={sharedServices}
-                onChange={setSharedServices}
+                onChange={pickServices}
                 emptyText="No services available to share."
               />
             </>

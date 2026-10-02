@@ -2,11 +2,10 @@
 
 import { useEffect, useRef } from "react";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { fetchCredits, fetchDistributions } from "@/app/business/enquiries/store/business-enquiries-slice";
+import { fetchCredits } from "@/app/business/enquiries/store/business-enquiries-slice";
 import { fetchOnboardingProgress } from "../../store/business-onboarding-slice";
 import { PortalHero } from "./portal-hero";
 import { BusinessQuickActions } from "./business-quick-actions";
-import { BusinessRecentEnquiries } from "./business-recent-enquiries";
 import { StartExtractionCard } from "./start-extraction-card";
 import { DashboardPreview } from "./dashboard-preview";
 import { GetSetUpChecklist } from "./get-set-up-checklist";
@@ -22,13 +21,11 @@ export function BusinessPortalView() {
   const dispatch = useAppDispatch();
   const profile = useAppSelector((state) => state.businessOnboarding.profile);
   const onboardingProgress = useAppSelector((state) => state.businessOnboarding.onboardingProgress);
-  const { items: enquiries } = useAppSelector((state) => state.businessEnquiries);
 
   const fetchedRef = useRef(false);
   useEffect(() => {
     if (fetchedRef.current || !profile) return;
     fetchedRef.current = true;
-    dispatch(fetchDistributions());
     dispatch(fetchCredits());
     dispatch(fetchOnboardingProgress());
   }, [dispatch, profile]);
@@ -41,7 +38,8 @@ export function BusinessPortalView() {
         <div className="order-1 space-y-4 lg:col-span-2">
           {profile && <StartExtractionCard profile={profile} />}
           <DashboardPreview />
-          <BusinessRecentEnquiries items={enquiries} />
+          {/* Recent enquiries card hidden for the short release — <BusinessRecentEnquiries items={enquiries} />,
+              fed by fetchDistributions() and state.businessEnquiries.items. */}
         </div>
 
         <div className="order-2 space-y-4 lg:col-span-1">

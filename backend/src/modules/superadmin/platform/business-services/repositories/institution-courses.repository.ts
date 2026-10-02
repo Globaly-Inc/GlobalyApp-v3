@@ -12,8 +12,9 @@
 // per-tenant schema.
 
 import { masterKnex } from "../../../../../core/db/master-pool.js";
-import { NotFoundError } from "../../../../../shared/errors.js";
-import { SUPERADMIN_SCHEMA as S } from "../../../consts.js";
+import { BadRequestError, NotFoundError } from "../../../../../shared/errors.js";
+import { APPROVED_COURSE_STATUSES, SUPERADMIN_SCHEMA as S, isApprovedCourse } from "../../../consts.js";
+import { findJobSourceType } from "../../../data-extraction/repositories/jobs.repository.js";
 import * as coursesRepo from "../../../data-extraction/repositories/courses.repository.js";
 
 const COURSES = `${S}.extraction_courses`;
@@ -177,6 +178,15 @@ export async function getServiceListExtras(_institutionId: number, jobId: string
   };
 }
 
+
+/** Approves the job's unapproved courses among `ids` (others are ignored). Returns how many changed. */
+export async function approveServices(jobId: string, ids: string[], actorId: number) {
+  return masterKnex(`${S}.extraction_courses`)
+    .where({ job_id: jobId }).whereIn("id", ids)
+    .where((w) => w.whereNull("verification_status").orWhereNotIn("verification_status", [...APPROVED_COURSE_STATUSES]))
+    .update({ verification_status: "confirmed", updated_by_platform_user_id: actorId, updated_at: masterKnex.fn.now() });
+}
+
 async function requireCourse(jobId: string, serviceId: string) {
   const course = await coursesRepo.findCourseById(serviceId);
   if (!course || course.job_id !== jobId) throw new NotFoundError("Service not found");
@@ -190,7 +200,10 @@ export async function getService(_institutionId: number, jobId: string, serviceI
   return courseToService(course, prices.get(serviceId));
 }
 
-export async function createService(_institutionId: number, jobId: string, data: Record<string, unknown>, adminId?: number) {
+/** byOwner: created from the institution's own portal — it starts unapproved like an extracted
+ * course, so it can't be published until the org's owner or a platform admin approves it
+ * (POST /services/approve). Other members who can add courses can't make one live. */
+export async function createService(_institutionId: number, jobId: string, data: Record<string, unknown>, adminId?: number, byOwner = false) {
   const { price, ...rest } = data;
   const category = typeof rest.service_category_id === "number" ? await requireActiveCategory(rest.service_category_id) : null;
   const row = await coursesRepo.insertCourse({
@@ -209,9 +222,9 @@ export async function createService(_institutionId: number, jobId: string, data:
     // either. The owner publishes explicitly once the listing is actually ready.
     is_published: false,
     created_by_platform_user_id: adminId ?? null,
-    // Admin-created (this path is superadmin-only), so approved by definition — same as the
-    // extraction screen's own create (courses.service createCourse).
-    verification_status: "manual",
+    // Admin-created: approved by definition — same as the extraction screen's own create
+    // (courses.service createCourse). Owner-created: null = unverified, i.e. awaiting approval.
+    verification_status: byOwner ? null : "manual",
   });
   return getService(_institutionId, jobId, row.id);
 }
@@ -222,6 +235,11 @@ export async function updateService(institutionId: number, jobId: string, servic
   // category lives in this same table, so changing it is a plain column update, not a cross-table
   // move. is_published and public_visibility are also real columns now (migrations 20260925_002/003).
   const { price, is_published, public_visibility, ...rest } = data;
+  // A course goes public only once approved (search PUBLIC_COURSE needs both) — publishing an
+  // unapproved one would just be a "Published" label on something nobody can see.
+  if (is_published === true && !course.is_published && !isApprovedCourse(course.verification_status, await findJobSourceType(jobId))) {
+    throw new BadRequestError("Approve this course before publishing it.");
+  }
   const category = typeof rest.service_category_id === "number" ? await requireActiveCategory(rest.service_category_id) : null;
   // The single "Price" control only ever edits whichever column courseToService actually
   // displayed (international, falling back to domestic) — never the other one. Writing both

@@ -1,5 +1,7 @@
 import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
+import { masterKnex } from "../../../core/db/master-pool.js";
+import { SUPERADMIN_SCHEMA } from "../../superadmin/consts.js";
 import { requireBusinessOrInstitutionContext } from "../../../core/plugins/auth.plugin.js";
 import {
   AccreditationLinkInputSchema, EligibilityInputSchema, EligibilityPatchInputSchema,
@@ -88,6 +90,19 @@ function registerChildRoutes(
 }
 
 export async function businessServiceDetailsRoutes(app: FastifyInstance) {
+  // A tab edit (fees, intakes, eligibility, …) is written to a child table, so it never touched the
+  // course row — the Services list's "Edited by" missed it. Stamp the course after any successful
+  // write. Scoped to this plugin's routes; a 2xx means the route already checked the course is this
+  // institution's. Institution courses only — business_services has no updated_by column.
+  app.addHook("onResponse", async (req, reply) => {
+    if (req.method === "GET" || reply.statusCode >= 300 || req.auth?.orgType !== "institution") return;
+    const { serviceId } = (req.params ?? {}) as { serviceId?: string };
+    if (!serviceId) return;
+    await masterKnex(`${SUPERADMIN_SCHEMA}.extraction_courses`).where({ id: serviceId })
+      .update({ updated_by_platform_user_id: Number(req.auth.sub), updated_at: masterKnex.fn.now() })
+      .catch(() => {}); // best-effort attribution — never fails the edit itself
+  });
+
   registerChildRoutes(app, "fees", detailsService.fees, institutionChildFns.fees, FeeInputSchema, FeePatchInputSchema);
   registerChildRoutes(app, "intakes", detailsService.intakes, institutionChildFns.intakes, IntakeInputSchema, IntakePatchInputSchema);
   registerChildRoutes(

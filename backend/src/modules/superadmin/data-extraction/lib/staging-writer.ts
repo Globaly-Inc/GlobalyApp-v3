@@ -2294,6 +2294,8 @@ export async function writeCourse(
       short_name: course.short_name ?? null,
       degree_level: link.degree_level,
       degree_level_code: link.degree_level_code,
+      // No verdict stays NULL (never guessed), so a later page that classifies it can still fill it
+      // in via the merge below. Readers treat NULL as academic (courses.repository's category filter).
       course_category: normaliseCourseCategory(course.course_category),
       subject_area: course.subject_area ?? null,
       subject_area_code: link.subject_area_code,

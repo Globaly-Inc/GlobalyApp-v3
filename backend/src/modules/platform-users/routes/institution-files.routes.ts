@@ -3,6 +3,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import * as storage from "../../../shared/storage/storageService.js";
+import { masterKnex } from "../../../core/db/master-pool.js";
 import * as filesRepo from "../../../shared/storage/files.repository.js";
 import * as repo from "../repositories/platform-users.repository.js";
 import { ForbiddenError, NotFoundError } from "../../../shared/errors.js";
@@ -63,6 +64,22 @@ export async function institutionFileRoutes(app: FastifyInstance) {
 
     // The client only has the resolved (signed) URL, not a file id scoped to this org — without this
     // check, any authenticated institution could pass another org's gallery URL and delete their object.
+    // An extracted photo is stored as the site's own URL, not a file of ours — just drop it from
+    // this org's list (the update is scoped to this org, so it can't touch anyone else's).
+    // A photo copied from the extraction lives in the job's shared folder (extractedMediaDir), not
+    // this org's — it's this org's to remove only if it's in its own list. The object stays: the
+    // cover may be the same file.
+    if (storagePath.startsWith("public/extracted/")) {
+      const owns = await masterKnex("institutions").where({ id: req.institutionId }).whereRaw("? = any(??)", [storagePath, col]).first("id");
+      if (!owns) throw new ForbiddenError("Not your media");
+      await repo.removeInstitutionMedia(req.institutionId, col, storagePath);
+      return reply.status(204).send();
+    }
+    if (storage.isExternalUrl(url)) {
+      await repo.removeInstitutionMedia(req.institutionId, col, url);
+      return reply.status(204).send();
+    }
+
     const ownPrefix = `public/institutions/${req.auth.orgId!}/gallery/`;
     if (!storagePath.startsWith(ownPrefix)) throw new ForbiddenError("Not your media");
 

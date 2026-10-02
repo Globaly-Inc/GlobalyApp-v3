@@ -15,7 +15,10 @@ import type { BusinessProfile } from "@/app/business/apis/types";
 import type { Country } from "@/app/geo/apis";
 import { HEADER_PENCIL } from "../const";
 
-// Matches only what a Combobox needs — not exhaustive, the API accepts any ISO code.
+
+// Matches only what a Combobox needs — not exhaustive, the API accepts any ISO code. Full names
+// (not the countries table's code + symbol list the fee and scholarship forms use) because this
+// card shows "NPR - Nepalese Rupee".
 const CURRENCY_OPTIONS = [
   { value: "USD", label: "US Dollar (USD)" },
   { value: "GBP", label: "British Pound (GBP)" },

@@ -25,7 +25,7 @@ import { logAudit } from "../shared/audit.js";
 import * as jobsRepo from "../repositories/jobs.repository.js";
 import * as repo from "../repositories/promote.repository.js";
 import type { OverviewRow, AgentRow } from "../repositories/promote.repository.js";
-import { baseProfileFieldsFrom, institutionExtrasFrom, businessExtrasFrom } from "../lib/overview-sync.js";
+import { baseProfileFieldsFrom, institutionExtrasFrom, businessExtrasFrom, localizeImages } from "../lib/overview-sync.js";
 import { PROMOTABLE_JOB_STATUSES } from "../schemas/jobs.schema.js";
 
 /**
@@ -39,10 +39,15 @@ const PLACEHOLDER_EMAIL_DOMAIN = "unclaimed.globalyhub.invalid";
  * has data for. The overview is thinner than a claimed owner's portal profile (no email, phone,
  * city…), and a full overwrite was nulling those. Meta is merged, not replaced, for the same reason.
  */
+const KEEP_EXISTING = new Set(["currency", "gallery_images", "cover_url"]);
+
 export function repatch(existing: Record<string, unknown>, fields: Record<string, unknown>): Record<string, unknown> {
   const patch: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(fields)) {
     if (v === null || v === undefined || v === "") continue;
+    // Derived, not extracted — the country's currency, homepage photos, cover — so never replaces what the
+    // org already has (an emptied gallery, [], counts as set: the owner removed those photos).
+    if (KEEP_EXISTING.has(k) && existing[k] != null && existing[k] !== "") continue;
     patch[k] = k === "meta" && existing.meta && typeof existing.meta === "object"
       ? { ...(existing.meta as Record<string, unknown>), ...(v as Record<string, unknown>) }
       : v;
@@ -297,6 +302,8 @@ export async function promoteJob(jobId: string, adminId: number) {
   const isInstitution = await resolveIsInstitution(job);
 
   const listing = isInstitution ? await promoteInstitution(job, overview) : await promoteBusiness(job, overview);
+  // Extracted photos are hot-linked until copied into our storage (best-effort, never fails promote).
+  await localizeImages(isInstitution ? "institutions" : "businesses", Number(listing.row.id), jobId).catch(() => {});
 
   // Agents are scraped from institution directories, so they only ever accompany an
   // institution job — but promoting them is keyed on the rows existing, not on the category.

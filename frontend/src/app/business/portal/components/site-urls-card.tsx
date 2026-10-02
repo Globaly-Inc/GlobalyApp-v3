@@ -39,7 +39,9 @@ const CATEGORY_ORDER = Object.keys(CATEGORY_LABELS) as SiteUrlCategory[];
 /** Self-service twin of the admin's Site tab — shows what the crawl found on this org's own site,
  *  and lets the owner hand-correct one page's content (unlike the admin tab, there's no category/
  *  exclude curation here — see getExtractionSiteUrls' forced excluded: false). */
-export function SiteUrlsCard() {
+/** sharedFrom: this branch reads its head office's extraction (same website) — view only, since
+ * edits and re-pulls belong to the head office's own job. */
+export function SiteUrlsCard({ sharedFrom = null }: Readonly<{ sharedFrom?: string | null }> = {}) {
   const [page, setPage] = useState<SiteUrlsPage | null>(null);
   const [category, setCategory] = useState<SiteUrlCategory | null>(null);
   const [pageNum, setPageNum] = useState(1);
@@ -226,6 +228,11 @@ export function SiteUrlsCard() {
           </CardTitle>
           {counts && <Badge variant="secondary">{counts.total} found</Badge>}
         </div>
+        {sharedFrom && (
+          <p className="text-xs text-muted-foreground">
+            Shared from {sharedFrom}&apos;s extraction — view only. Edit or refresh these pages from the head office.
+          </p>
+        )}
       </CardHeader>
       <CardContent className="space-y-4">
         {counts && (
@@ -280,7 +287,7 @@ export function SiteUrlsCard() {
                   <ExternalLink className="h-3 w-3 shrink-0" />
                 </a>
                 {u.category_source === "admin" && <ShieldCheck className="h-3.5 w-3.5 shrink-0 text-emerald-500" />}
-                <Button
+                {!sharedFrom && <Button
                   variant="ghost"
                   size="icon-sm"
                   className={cn("h-7 w-7 shrink-0", selected.has(u.url) && "bg-primary/10 text-primary hover:bg-primary/15 hover:text-primary")}
@@ -290,7 +297,7 @@ export function SiteUrlsCard() {
                   aria-label="Queue this page to re-pull from your live site"
                 >
                   <RefreshCw className="h-3.5 w-3.5" />
-                </Button>
+                </Button>}
                 <Button
                   variant="ghost"
                   size="sm"
@@ -326,7 +333,7 @@ export function SiteUrlsCard() {
                 <SheetTitle className="truncate text-sm">{snapshot?.url}</SheetTitle>
                 {snapshot?.edited && <Badge variant="secondary" className="shrink-0">Manually edited</Badge>}
               </div>
-              {!editing && (
+              {!editing && !sharedFrom && (
                 <Button
                   variant="ghost"
                   size="icon-sm"

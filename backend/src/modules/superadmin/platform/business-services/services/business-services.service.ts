@@ -172,7 +172,7 @@ export async function listServices(businessId: number) {
   return withListExtras(businessId, biz.schema_name, rows);
 }
 
-export async function searchServices(businessId: number, limit: number, offset: number, search?: string) {
+export async function searchServices(businessId: number, limit: number, offset: number, search?: string, published?: boolean) {
   const biz = await requireBusiness(businessId);
 
   // See listServices above for why this is gated on schema_provisioned_at.
@@ -184,7 +184,7 @@ export async function searchServices(businessId: number, limit: number, offset: 
     return { rows: rows.map(courseAsService), total };
   }
 
-  const { rows, total } = await repo.searchServices(businessId, biz.schema_name, limit, offset, search);
+  const { rows, total } = await repo.searchServices(businessId, biz.schema_name, limit, offset, search, published);
   return { rows: await withListExtras(businessId, biz.schema_name, rows), total };
 }
 
@@ -494,10 +494,10 @@ export async function getInstitutionService(institutionId: number, serviceId: st
   return instRepo.getService(institutionId, jobId, serviceId);
 }
 
-export async function createInstitutionService(institutionId: number, data: ServiceInput, adminId?: number) {
+export async function createInstitutionService(institutionId: number, data: ServiceInput, adminId?: number, byOwner = false) {
   const inst = await requireInstitution(institutionId);
   const jobId = await requireInstitutionJobId(inst);
-  return instRepo.createService(institutionId, jobId, data, adminId);
+  return instRepo.createService(institutionId, jobId, data, adminId, byOwner);
 }
 
 export async function updateInstitutionService(institutionId: number, serviceId: string, data: ServicePatchInput, adminId: number) {

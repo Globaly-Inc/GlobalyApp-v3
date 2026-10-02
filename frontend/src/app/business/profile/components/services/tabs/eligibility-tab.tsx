@@ -10,11 +10,8 @@ import { OneToManySection } from "@/app/personal/profile/section-card";
 import { businessProfileDetailApi } from "../../../apis";
 import type { Lookup } from "@/app/admin/platform/categories/apis/types";
 import { ServiceEligibilityForm } from "./service-eligibility-form";
+import { minScoreLabel, type EligibilityExtras } from "../eligibility-requirement-card";
 import type { ServiceEligibility, ServiceEligibilityInput } from "../../../apis/types";
-
-const SCORE_TYPE_LABELS: Record<string, string> = {
-  percentage: "Percentage", gpa_4: "GPA (4.0)", gpa_10: "GPA (10.0)", cgpa: "CGPA",
-};
 
 type LanguageTestRow = { test_type_name?: string; overall_score?: string };
 
@@ -81,6 +78,12 @@ export function EligibilityTab({ serviceId }: Readonly<{ serviceId: string }>) {
         <div className="space-y-3">
           {rows.map((row) => {
             const languageTests = (row.language_tests as LanguageTestRow[]) ?? [];
+            const academicTests = (row.academic_tests as LanguageTestRow[]) ?? [];
+            // Extracted rows often carry only the scraped text forms — same fallbacks as the summary card.
+            const degree = row.degree_level_id
+              ? degreeLevels.find((d) => d.id === row.degree_level_id)?.name
+              : (row as EligibilityExtras).min_degree_level;
+            const score = minScoreLabel(row);
             return (
               <div key={row.id} className="rounded-lg border p-3">
                 <div className="mb-3 flex items-start justify-between">
@@ -88,7 +91,6 @@ export function EligibilityTab({ serviceId }: Readonly<{ serviceId: string }>) {
                     <ShieldCheck className="h-4 w-4 text-primary" />
                     <span className="text-sm font-semibold">{row.name || "Untitled requirement"}</span>
                     <Badge variant="secondary" className="capitalize">{row.applicable_to === "both" ? "All Students" : row.applicable_to}</Badge>
-                    <Badge variant="outline">Global</Badge>
                   </div>
                   <div className="flex gap-1">
                     <Button size="icon-sm" variant="ghost" onClick={() => openEdit(row)} aria-label="Edit requirement">
@@ -100,18 +102,25 @@ export function EligibilityTab({ serviceId }: Readonly<{ serviceId: string }>) {
                   </div>
                 </div>
 
-                {(row.degree_level_id || (row.score_type && row.min_score)) && (
+                {row.description && <p className="mb-3 line-clamp-3 text-xs text-muted-foreground">{row.description}</p>}
+
+                {(degree || score || academicTests.length > 0) && (
                   <div className="mb-3 flex flex-wrap gap-1.5">
-                    {row.degree_level_id && (
+                    {degree && (
                       <Badge variant="outline" className="gap-1 font-normal">
-                        Min. degree <span className="font-semibold">{degreeLevels.find((d) => d.id === row.degree_level_id)?.name ?? "—"}</span>
+                        Min. degree <span className="font-semibold">{degree}</span>
                       </Badge>
                     )}
-                    {row.score_type && row.min_score && (
+                    {score && (
                       <Badge variant="outline" className="gap-1 font-normal">
-                        Min score <span className="font-semibold">{row.min_score} ({SCORE_TYPE_LABELS[row.score_type]})</span>
+                        Min score <span className="font-semibold">{score}</span>
                       </Badge>
                     )}
+                    {academicTests.map((t, i) => (
+                      <Badge key={`${t.test_type_name}-${i}`} variant="outline" className="gap-1 font-normal">
+                        {t.test_type_name}{t.overall_score != null && <span className="font-semibold">≥ {t.overall_score}</span>}
+                      </Badge>
+                    ))}
                   </div>
                 )}
 

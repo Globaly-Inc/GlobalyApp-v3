@@ -26,6 +26,9 @@ export type BusinessProfile = SocialLinks & {
   business_category_id: number | null;
   /** Extraction job this profile was linked to (self-triggered or promoted). Null = no extracted data yet. */
   source_job_id: string | null;
+  /** Set on a branch that shares its head office's website — it uses that extraction (named here)
+   * instead of running its own. Optional: mock/older responses omit it. */
+  extraction_parent_name?: string | null;
   /**
    * Institutions only — the ownership sector, "Public" or "Private". Absent on a business, which
    * is classified by `business_category_id` instead.
@@ -138,6 +141,7 @@ export type ExtractionCounts = {
   fees: number;
   intakes: number;
   eligibility: number;
+  scholarships: number;
   units: number;
   study_options: number;
   accreditations: number;

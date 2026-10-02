@@ -5,7 +5,7 @@
 import { masterKnex } from "../../../core/db/master-pool.js";
 import { applyCourseScope, type SharedCourses } from "../../superadmin/data-extraction/repositories/courses.repository.js";
 import { resolveSharedCourses } from "../../superadmin/platform/business-branches/repositories/business-branches.repository.js";
-import { SUPERADMIN_SCHEMA as S, approvedCourseSql } from "../../superadmin/consts.js";
+import { SUPERADMIN_SCHEMA as S, approvedCourseSql, publicJobSql } from "../../superadmin/consts.js";
 import { courseSlug, parseCourseIdFragment } from "../utils/slug.js";
 import * as filesRepo from "../../../shared/storage/files.repository.js";
 import * as storage from "../../../shared/storage/storageService.js";
@@ -96,20 +96,21 @@ const campusFilter = (course: string) => `(
 
 /**
  * Public visibility = the course's job was promoted to a business (promote.service.ts sets status
- * 'exported'), and an admin APPROVED the course (APPROVED_COURSE_STATUSES) — unapproved imports,
- * owner-added courses and rejected ones never reach students.
+ * 'exported'), and the course is approved (approvedCourseSql — by a platform admin or the org's
+ * owner, or a business-portal extraction) — unapproved imports, unapproved owner-added courses and
+ * rejected ones never reach students.
  *
  * NOT_REJECTED is the looser rule kept only for the owner's own Preview (courseQuery): an owner
  * must still be able to see a course of theirs that is awaiting approval.
  */
 export const NOT_REJECTED = "coalesce(ec.verification_status, 'unverified') <> 'flagged'";
-/** Admin-approved (APPROVED_COURSE_STATUSES). */
+/** Approved (approvedCourseSql). */
 export const APPROVED = approvedCourseSql("ec");
 /** Approved AND not an owner's draft (is_published) — what any public reader of a course must
  * require. courseQuery applies is_published separately so its preview token can bypass it. */
 export const PUBLIC_COURSE = `${APPROVED} and ec.is_published`;
 
-const PUBLICLY_VISIBLE = `exists (select 1 from ${S}.extraction_jobs ej where ej.id = ec.job_id and ej.status = 'exported')
+const PUBLICLY_VISIBLE = `exists (select 1 from ${S}.extraction_jobs ej where ej.id = ec.job_id and ${publicJobSql("ej")})
   and ${APPROVED}`;
 
 /**

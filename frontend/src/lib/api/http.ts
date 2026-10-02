@@ -7,6 +7,7 @@ import {
   saveTokens,
 } from "@/lib/session";
 import { parseBody } from "./parse-body";
+import { SIGN_IN_HREF } from "@/app/auth/const";
 
 const RAW_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 const BASE_URL = `${RAW_BASE.replace(/\/+$/, "")}/api/v3`;
@@ -63,7 +64,7 @@ function forceSignIn(): never {
     // Skip it when already under /auth, or signing out would build a redirect loop.
     const back = `${window.location.pathname}${window.location.search}`;
     window.location.href = back.startsWith("/auth")
-      ? "/auth/sign-in"
+      ? SIGN_IN_HREF
       : `/auth/sign-in?redirect=${encodeURIComponent(back)}`;
   }
   throw new Error("Your session has expired. Please sign in again.");

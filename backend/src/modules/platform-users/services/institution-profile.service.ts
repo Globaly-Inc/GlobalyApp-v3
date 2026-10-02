@@ -7,6 +7,9 @@ import * as jobsRepo from "../../superadmin/data-extraction/repositories/jobs.re
 import { createJob, getSelfServiceStatus } from "../../superadmin/data-extraction/services/jobs.service.js";
 import { listSiteUrls, getSnapshotMarkdownByUrl, updateSnapshotMarkdown, refreshSiteUrls } from "../../superadmin/data-extraction/services/site-urls.service.js";
 import { getInstitutionOnboardingProgress, markCoursesReviewedForInstitution } from "../../businesses/services/onboarding-progress.service.js";
+import { parentExtraction } from "../../businesses/services/parent-extraction.service.js";
+import * as coursesRepo from "../../superadmin/data-extraction/repositories/courses.repository.js";
+import { resolveSharedCourses } from "../../superadmin/platform/business-branches/repositories/business-branches.repository.js";
 import { getWidgetAnalytics } from "../../ai-counsellor/services/widget-analytics.service.js";
 import { ConflictError, BadRequestError, NotFoundError } from "../../../shared/errors.js";
 import type {
@@ -50,8 +53,17 @@ async function withPublicSourceJobId<T extends { source_job_id: string | null }>
   return sourceType === "self_service" ? { ...inst, source_job_id: null } : inst;
 }
 
+/** Own real job, else the head office's when this branch shares its website (parentExtraction). */
+async function extractionJobId(institution: InstitutionRecord) {
+  const own = (await withPublicSourceJobId(institution)).source_job_id;
+  return own ?? (await parentExtraction("institutions", institution))?.jobId ?? null;
+}
+
 export async function getMyInstitution(institution: InstitutionRecord) {
-  return withImagePreviews(await withPublicSourceJobId(institution));
+  const pub = await withPublicSourceJobId(institution);
+  // Tells the portal to show the head office's extraction instead of a "Start extraction" form.
+  const inherited = pub.source_job_id ? null : await parentExtraction("institutions", institution);
+  return withImagePreviews({ ...pub, extraction_parent_name: inherited?.parentName ?? null });
 }
 
 export async function updateMyInstitution(institutionId: number, patch: InstitutionProfilePatchInput) {
@@ -64,7 +76,7 @@ export async function updateMyInstitution(institutionId: number, patch: Institut
   if (updated?.source_job_id && patch.website?.trim()) {
     await jobsRepo.syncOwnedJobUrl(updated.source_job_id, patch.website.trim());
   }
-  return withImagePreviews(await withPublicSourceJobId(updated));
+  return getMyInstitution(updated);
 }
 
 /**
@@ -75,6 +87,8 @@ export async function updateMyInstitution(institutionId: number, patch: Institut
  * placeholder job (see withPublicSourceJobId) or this would never be callable for any institution.
  */
 export async function startExtraction(institution: InstitutionRecord, platformUserId: number, input: StartExtractionInput) {
+  const inherited = await parentExtraction("institutions", institution);
+  if (inherited) throw new ConflictError(`This branch shares ${inherited.parentName}'s website, which is already extracted.`);
   return masterKnex.transaction(async (trx) => {
     const locked: InstitutionRecord | undefined = await trx("institutions").where({ id: institution.id }).forUpdate().first();
     if (!locked) throw new NotFoundError("Institution not found");
@@ -117,18 +131,19 @@ export async function startExtraction(institution: InstitutionRecord, platformUs
 
 /** Progress + counts for the institution's own linked extraction job, or null if none started yet. */
 export async function getExtractionStatus(institution: InstitutionRecord) {
-  const sourceJobId = (await withPublicSourceJobId(institution)).source_job_id;
+  const sourceJobId = await extractionJobId(institution);
   if (!sourceJobId) return null;
   return getSelfServiceStatus(sourceJobId);
 }
 
 /**
  * The self-service twin of the admin's Site tab (site-urls.service.ts's listSiteUrls, reused
- * as-is) — scoped to the institution's OWN job only, forced to excluded: false since curating
+ * as-is) — scoped to the institution's own job (or its head office's, see extractionJobId), forced to excluded: false since curating
  * what to exclude is an admin job, not something to expose here.
  */
 export async function getExtractionSiteUrls(institution: InstitutionRecord, query: SiteUrlsQueryInput) {
-  const sourceJobId = (await withPublicSourceJobId(institution)).source_job_id;
+  // Same job as getExtractionStatus — a branch sharing its head office's website reads its pages.
+  const sourceJobId = await extractionJobId(institution);
   if (!sourceJobId) {
     return { data: [], meta: { page: query.page, limit: query.limit, total: 0, totalPages: 0 }, counts: null };
   }
@@ -137,12 +152,13 @@ export async function getExtractionSiteUrls(institution: InstitutionRecord, quer
 
 /** The "View" action's content — same stored snapshot markdown the admin's Snapshots tab shows. */
 export async function getExtractionSiteUrlSnapshot(institution: InstitutionRecord, query: SiteUrlSnapshotQueryInput) {
-  const sourceJobId = (await withPublicSourceJobId(institution)).source_job_id;
+  const sourceJobId = await extractionJobId(institution);
   if (!sourceJobId) throw new NotFoundError("No extraction started for this institution");
   return getSnapshotMarkdownByUrl(sourceJobId, query.url);
 }
 
-/** Write half of the above — the owner correcting what was scraped from their own page. */
+/** Write half of the above — the owner correcting what was scraped from their own page. Own job
+ * only: a branch reading its head office's pages can't edit or re-pull them. */
 export async function updateExtractionSiteUrlSnapshot(institution: InstitutionRecord, input: SiteUrlSnapshotUpdateInput, editorId: number) {
   const sourceJobId = (await withPublicSourceJobId(institution)).source_job_id;
   if (!sourceJobId) throw new NotFoundError("No extraction started for this institution");
@@ -157,8 +173,14 @@ export async function refreshExtractionSiteUrls(institution: InstitutionRecord, 
 }
 
 export async function getOnboardingProgress(institution: InstitutionRecord) {
-  const sourceJobId = (await withPublicSourceJobId(institution)).source_job_id;
-  return getInstitutionOnboardingProgress(institution.id, sourceJobId, institution.schema_name);
+  const sourceJobId = await extractionJobId(institution);
+  // Hand-added courses live on the institution's own job (even the placeholder one); a branch
+  // may also review courses its head office shares with it.
+  const [ownCount, shared] = await Promise.all([
+    institution.source_job_id ? coursesRepo.countCoursesByJob(institution.source_job_id) : 0,
+    resolveSharedCourses(institution.id),
+  ]);
+  return getInstitutionOnboardingProgress(institution.id, sourceJobId, institution.schema_name, ownCount > 0 || !!shared);
 }
 
 export async function markOnboardingCoursesReviewed(institution: InstitutionRecord) {

@@ -27,7 +27,7 @@ const ALLOWED_MIME_TYPES = new Set([
   "text/plain", "text/csv",
 ]);
 
-const MAX_FILE_SIZE = config.GCS_MAX_FILE_SIZE_MB * 1024 * 1024;
+export const MAX_FILE_SIZE = config.GCS_MAX_FILE_SIZE_MB * 1024 * 1024;
 const SIGNED_URL_EXPIRY = config.GCS_SIGNED_URL_EXPIRY; // seconds
 
 // ─── GCS client ────────────────────────────────────────────────────────────
@@ -228,13 +228,23 @@ export function toStoragePath(raw: string): string {
  * losing the profile is not. So it degrades to null and logs loudly enough that the
  * misconfiguration is still visible.
  */
+/** A full URL outside our bucket (seeded/extracted images) — viewable as-is, not a stored file. */
+export function isExternalUrl(path: string): boolean {
+  // Judged by the parsed host — a substring test let "https://evil.com/storage.googleapis.com/x"
+  // pass as one of ours (CodeQL: incomplete URL substring sanitization).
+  try {
+    const { protocol, hostname } = new URL(path);
+    return (protocol === "http:" || protocol === "https:") && hostname !== "storage.googleapis.com";
+  } catch {
+    return false;
+  }
+}
+
 export async function resolvePreviewUrl(path: string | null | undefined): Promise<string | null> {
   if (!path) return null;
   // External URLs (e.g. seeded pexels.com images) are already viewable — signing them as a
   // bucket path produced storage.googleapis.com/<bucket>/https%3A//... broken links.
-  if (/^https?:\/\//i.test(path) && !path.includes("storage.googleapis.com/")) {
-    return path;
-  }
+  if (isExternalUrl(path)) return path;
   try {
     return await getSignedViewUrl(toStoragePath(path));
   } catch (err) {

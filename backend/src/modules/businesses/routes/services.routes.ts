@@ -7,9 +7,13 @@ import {
 } from "../../superadmin/platform/business-services/schemas/business-services.schema.js";
 import * as service from "../../superadmin/platform/business-services/services/business-services.service.js";
 import * as coursesRepo from "../../superadmin/data-extraction/repositories/courses.repository.js";
-import { getFeePricesForCourses } from "../../superadmin/platform/business-services/repositories/institution-courses.repository.js";
+import { approveServices, getFeePricesForCourses } from "../../superadmin/platform/business-services/repositories/institution-courses.repository.js";
+import { findAdminByPlatformUserId } from "../../superadmin/admin-users/repositories/admin-users.repository.js";
+import { SELF_SERVICE_SOURCE_TYPES, isApprovedCourse } from "../../superadmin/consts.js";
+import { masterKnex } from "../../../core/db/master-pool.js";
+import { selfServiceJobIds } from "../../superadmin/data-extraction/repositories/jobs.repository.js";
 import { isInstitutionCategory } from "../../superadmin/data-extraction/repositories/promote.repository.js";
-import { ForbiddenError, NotFoundError } from "../../../shared/errors.js";
+import { BadRequestError, ForbiddenError, NotFoundError } from "../../../shared/errors.js";
 import type { CourseListFilters } from "../../superadmin/data-extraction/repositories/courses.repository.js";
 import * as activityService from "../services/activity.service.js";
 import { resolveSharedCourses } from "../../superadmin/platform/business-branches/repositories/business-branches.repository.js";
@@ -27,8 +31,9 @@ function courseToBusinessService(c: {
   degree_level: string | null; duration_weeks: number | null; domestic_fee_total: string | number | null;
   domestic_currency: string | null; created_at: Date; course_category: string | null;
   service_category_id: number | null; public_visibility?: Record<string, boolean> | null;
-  is_published?: boolean;
-}, feePrice?: string) {
+  is_published?: boolean; verification_status?: string | null;
+  created_by_platform_user_id?: number | null; updated_by_platform_user_id?: number | null; updated_at?: Date | null;
+}, feePrice?: string, selfService = false, editors: Map<number, string> = new Map()) {
   return {
     id: c.id,
     // Was hardcoded null — extraction_courses has had a real service_category_id column since
@@ -45,6 +50,15 @@ function courseToBusinessService(c: {
     // Was hardcoded true — same duplicate-mapper bug as public_visibility below: extraction_courses
     // has a real is_published column now (migration 20260925_003).
     is_published: c.is_published ?? false,
+    // Public pages need BOTH approval (owner or admin) and is_published (search PUBLIC_COURSE) — the
+    // portal shows this so "Published" never claims a course is live before it's approved.
+    approval_status: approvalStatus(c.verification_status, selfService),
+    // created_by is null only on rows the extraction pipeline wrote (migration 20260908_002), so it
+    // tells an extracted course from one someone added by hand. updated_by = the last editor.
+    origin: c.created_by_platform_user_id == null ? "extracted" : "manual",
+    // Never-edited hand-added courses credit their creator; untouched extracted ones show nothing.
+    edited_by: lastEditor(c) != null ? editors.get(lastEditor(c)!) ?? null : null,
+    edited_at: lastEditor(c) != null ? c.updated_at ?? null : null,
     // Was hardcoded null — same bug as service_category_id above: extraction_courses has a real
     // public_visibility column (migration 20260925_002), left unread here meant the edit page's
     // toggles (which seed their initial state from whatever's already in the list) always looked
@@ -59,14 +73,57 @@ function courseToBusinessService(c: {
   };
 }
 
+/** verification_status → what the owner sees. flagged/mismatch = an admin found a problem. */
+/** selfService: the course is from a business-portal extraction (see SELF_SERVICE_SKIPS_APPROVAL). */
+function approvalStatus(status: string | null | undefined, selfService: boolean): "approved" | "pending" | "needs_changes" {
+  if (isApprovedCourse(status, selfService ? SELF_SERVICE_SOURCE_TYPES[0] : null)) return "approved";
+  return status === "flagged" || status === "mismatch" ? "needs_changes" : "pending";
+}
+
+async function canApproveCourses(req: {
+  auth: { sub: string | number; orgType?: string };
+  db?: ((table: string) => import("knex").Knex.QueryBuilder) | null;
+  business?: { owner_id?: number | string | null } | null;
+}) {
+  if (await findAdminByPlatformUserId(Number(req.auth.sub))) return true;
+  if (req.auth.orgType === "institution") {
+    const member = await req.db?.("members").where({ platform_user_id: Number(req.auth.sub), account_status: 1 })
+      .whereNull("deleted_at").first("is_owner");
+    return !!member?.is_owner;
+  }
+  return req.business?.owner_id != null && Number(req.business.owner_id) === Number(req.auth.sub);
+}
+
 async function searchInstitutionCourses(sourceJobId: string | null, limit: number, offset: number, filters: CourseListFilters) {
   if (!sourceJobId) return { rows: [], total: 0 };
   const [rows, total] = await Promise.all([
-    coursesRepo.listCoursesByJob(sourceJobId, limit, offset, filters),
+    coursesRepo.listCoursesByJob(sourceJobId, limit, offset, filters, "newest"), // recently added first
     coursesRepo.countCoursesByJob(sourceJobId, filters),
   ]);
-  const prices = await getFeePricesForCourses(sourceJobId, rows.map((r) => r.id));
-  return { rows: rows.map((r) => courseToBusinessService(r, prices.get(r.id))), total };
+  const editorIds = [...new Set(rows.map(lastEditor).filter((id): id is number => id != null))];
+  const [prices, selfService, editors] = await Promise.all([
+    getFeePricesForCourses(sourceJobId, rows.map((r) => r.id)),
+    // Rows can be a parent's shared courses, from another job — so per row, not per listing.
+    selfServiceJobIds([...new Set(rows.map((r) => String(r.job_id)))]),
+    editorNames(editorIds),
+  ]);
+  return {
+    rows: rows.map((r) => courseToBusinessService(r, prices.get(r.id), selfService.has(String(r.job_id)), editors)),
+    total,
+  };
+}
+
+/** Who last touched a course row: its last editor, else whoever added it by hand. */
+function lastEditor(c: { updated_by_platform_user_id?: number | null; created_by_platform_user_id?: number | null }) {
+  const id = c.updated_by_platform_user_id ?? c.created_by_platform_user_id;
+  return id == null ? null : Number(id);
+}
+
+/** platform_users id → display name (full name, else email) for the "Edited by" line. */
+async function editorNames(ids: number[]): Promise<Map<number, string>> {
+  if (ids.length === 0) return new Map();
+  const users = await masterKnex("platform_users").whereIn("id", ids).select("id", "first_name", "last_name", "email");
+  return new Map(users.map((u) => [Number(u.id), [u.first_name, u.last_name].filter(Boolean).join(" ") || u.email]));
 }
 
 /**
@@ -81,7 +138,7 @@ async function searchInstitutionCourses(sourceJobId: string | null, limit: numbe
  * institutions started minting theirs still owns whatever business_services rows it has, and
  * showing an empty catalog instead would be a regression, not a collapse.
  */
-async function servicesSourceJobId(req: {
+export async function servicesSourceJobId(req: {
   auth: { orgType?: string };
   institution?: { source_job_id: string | null } | null;
   business?: { source_job_id?: string | null; business_category_id?: number | null } | null;
@@ -116,13 +173,16 @@ export async function businessServicesRoutes(app: FastifyInstance) {
   });
 
   app.get("/services/search", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
-    const { search, course_category, ...pagination } = ServiceSearchQuerySchema.parse(req.query);
+    const { search, course_category, published: publishedParam, origin, degree_level, ...pagination } = ServiceSearchQuerySchema.parse(req.query);
+    const published = publishedParam === undefined ? undefined : publishedParam === "published";
     const { limit, offset } = paginationToOffset(pagination);
     const sourceJobId = await servicesSourceJobId(req);
     const shared = req.auth.orgType === "institution" ? await resolveSharedCourses(req.institutionId) : null;
     const { rows, total } = sourceJobId
-      ? await searchInstitutionCourses(sourceJobId, limit, offset, { search, courseCategory: course_category, shared })
-      : await service.searchServices(Number(req.business!.id), limit, offset, search);
+      ? await searchInstitutionCourses(sourceJobId, limit, offset, {
+        search, courseCategory: course_category, shared, published, origin, degreeLevel: degree_level,
+      })
+      : await service.searchServices(Number(req.business!.id), limit, offset, search, published);
     return reply.send(buildPaginatedResponse(rows, total, pagination));
   });
 
@@ -145,7 +205,8 @@ export async function businessServicesRoutes(app: FastifyInstance) {
   app.post("/services", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
     const data = ServiceInputSchema.parse(req.body);
     if (req.auth.orgType === "institution") {
-      const created = await service.createInstitutionService(Number(req.institution!.id), data, Number(req.auth.sub));
+      // byOwner: a portal-created course starts unapproved — the owner or an admin approves it.
+      const created = await service.createInstitutionService(Number(req.institution!.id), data, Number(req.auth.sub), true);
       return reply.status(201).send(created);
     }
     await refuseIfCatalogIsExtracted(req);
@@ -164,6 +225,17 @@ export async function businessServicesRoutes(app: FastifyInstance) {
       : await service.getService(Number(req.business!.id), subId);
     if (!found) throw new NotFoundError("Service not found");
     return reply.send(found);
+  });
+
+  // Approving makes a course eligible to publish (and live, once published). Only the org's
+  // OWNER or a platform admin may approve — not every member who can edit courses.
+  app.post("/services/approve", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
+    const { ids } = z.object({ ids: z.array(z.string().uuid()).min(1) }).parse(req.body);
+    if (!(await canApproveCourses(req))) throw new ForbiddenError("Only the owner or an admin can approve courses.");
+    const jobId = await servicesSourceJobId(req);
+    if (!jobId) throw new BadRequestError("This listing's services don't need approval.");
+    const approved = await approveServices(jobId, ids, Number(req.auth.sub));
+    return reply.send({ approved });
   });
 
   app.patch("/services/:subId", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {

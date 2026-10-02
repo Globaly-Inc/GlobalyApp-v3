@@ -7,7 +7,7 @@ import { masterKnex } from "../../../core/db/master-pool.js";
 // to the durations curated on its linked study options — so the picker can't quote a different
 // length than the card the student came from.
 import { courseDurationWeeks } from "../../search/repositories/courses.repository.js";
-import { approvedCourseSql } from "../../superadmin/consts.js";
+import { approvedCourseSql, publicJobSql } from "../../superadmin/consts.js";
 
 const T = "superadmin.extraction_courses";
 
@@ -39,7 +39,7 @@ export interface CourseListRow {
 export const PUBLICLY_VISIBLE = `exists (
   select 1 from superadmin.extraction_jobs ej
   join institutions i on i.source_job_id = ej.id and i.is_published and i.deleted_at is null
-  where ej.id = c.job_id and ej.status = 'exported'
+  where ej.id = c.job_id and ${publicJobSql("ej")}
 ) and ${approvedCourseSql("c")}
   and c.is_published`;
 

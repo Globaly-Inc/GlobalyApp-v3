@@ -27,6 +27,7 @@ import * as jobsRepo from "../../superadmin/data-extraction/repositories/jobs.re
 import { isInstitutionCategory } from "../../superadmin/data-extraction/repositories/promote.repository.js";
 import { listSiteUrls, getSnapshotMarkdownByUrl, updateSnapshotMarkdown, refreshSiteUrls } from "../../superadmin/data-extraction/services/site-urls.service.js";
 import { getBusinessOnboardingProgress, markCoursesReviewedForBusiness } from "./onboarding-progress.service.js";
+import { parentExtraction } from "./parent-extraction.service.js";
 import { getWidgetAnalytics } from "../../ai-counsellor/services/widget-analytics.service.js";
 import * as branchesRepo from "../../superadmin/platform/business-branches/repositories/business-branches.repository.js";
 
@@ -222,7 +223,14 @@ async function withCategory<T extends { business_category_id?: number | null }>(
 export async function getProfile(orgId: string) {
   const business = await repo.findBusinessByDbName(orgId);
   if (!business) throw new NotFoundError("Business not found");
-  return withCategory(await withImagePreviews(business));
+  // Tells the portal to show the head office's extraction instead of a "Start extraction" form.
+  const inherited = business.source_job_id ? null : await parentExtraction("businesses", business);
+  return withCategory(await withImagePreviews({ ...business, extraction_parent_name: inherited?.parentName ?? null }));
+}
+
+/** Own job, else the head office's when this branch shares its website (parentExtraction). */
+async function extractionJobId(business: BusinessRecord) {
+  return business.source_job_id ?? (await parentExtraction("businesses", business))?.jobId ?? null;
 }
 
 /** Update business profile fields by schema_name (orgId from JWT). */
@@ -236,7 +244,9 @@ export async function updateProfile(orgId: string, data: BusinessProfilePatchInp
   if (data.business_category_id !== undefined && updated.source_job_id && !updated.source_agent_id) {
     await jobsRepo.syncOwnedJobCategory(updated.source_job_id, updated.business_category_id);
   }
-  return withCategory(await withImagePreviews(updated));
+  // Same shape as getProfile — the portal replaces its profile with this response.
+  const inherited = updated.source_job_id ? null : await parentExtraction("businesses", updated);
+  return withCategory(await withImagePreviews({ ...updated, extraction_parent_name: inherited?.parentName ?? null }));
 }
 
 export async function startExtraction(orgId: string, platformUserId: number, input: StartExtractionInput) {
@@ -245,6 +255,8 @@ export async function startExtraction(orgId: string, platformUserId: number, inp
   if (!business.business_category_id || !(await isInstitutionCategory(business.business_category_id))) {
     throw new BadRequestError("Extraction is only available for institutions");
   }
+  const inherited = await parentExtraction("businesses", business);
+  if (inherited) throw new ConflictError(`This branch shares ${inherited.parentName}'s website, which is already extracted.`);
 
   return masterKnex.transaction(async (trx) => {
     const locked: BusinessRecord | undefined = await trx("businesses").where({ id: business.id }).forUpdate().first();
@@ -284,33 +296,38 @@ export async function startExtraction(orgId: string, platformUserId: number, inp
 export async function getExtractionStatus(orgId: string) {
   const business = await repo.findBusinessByDbName(orgId);
   if (!business) throw new NotFoundError("Business not found");
-  if (!business.source_job_id) return null;
-  return getSelfServiceStatus(business.source_job_id);
+  const jobId = await extractionJobId(business);
+  if (!jobId) return null;
+  return getSelfServiceStatus(jobId);
 }
 
 /**
  * The self-service twin of the admin's Site tab (site-urls.service.ts's listSiteUrls, reused
- * as-is) — scoped to the business's OWN job only, never a client-supplied job id, and forced to
+ * as-is) — scoped to the business's own job (or its head office's, see extractionJobId), never a client-supplied job id, and forced to
  * excluded: false since curating what to exclude is an admin job, not something to expose here.
  */
 export async function getExtractionSiteUrls(orgId: string, query: SiteUrlsQueryInput) {
   const business = await repo.findBusinessByDbName(orgId);
   if (!business) throw new NotFoundError("Business not found");
-  if (!business.source_job_id) {
+  // Same job as getExtractionStatus — a branch sharing its head office's website reads its pages.
+  const jobId = await extractionJobId(business);
+  if (!jobId) {
     return { data: [], meta: { page: query.page, limit: query.limit, total: 0, totalPages: 0 }, counts: null };
   }
-  return listSiteUrls(business.source_job_id, { ...query, excluded: false });
+  return listSiteUrls(jobId, { ...query, excluded: false });
 }
 
 /** The "View" action's content — same stored snapshot markdown the admin's Snapshots tab shows. */
 export async function getExtractionSiteUrlSnapshot(orgId: string, query: SiteUrlSnapshotQueryInput) {
   const business = await repo.findBusinessByDbName(orgId);
   if (!business) throw new NotFoundError("Business not found");
-  if (!business.source_job_id) throw new NotFoundError("No extraction started for this business");
-  return getSnapshotMarkdownByUrl(business.source_job_id, query.url);
+  const jobId = await extractionJobId(business);
+  if (!jobId) throw new NotFoundError("No extraction started for this business");
+  return getSnapshotMarkdownByUrl(jobId, query.url);
 }
 
-/** Write half of the above — the owner correcting what was scraped from their own page. */
+/** Write half of the above — the owner correcting what was scraped from their own page. Own job
+ * only: a branch reading its head office's pages can't edit or re-pull them. */
 export async function updateExtractionSiteUrlSnapshot(orgId: string, input: SiteUrlSnapshotUpdateInput, editorId: number) {
   const business = await repo.findBusinessByDbName(orgId);
   if (!business) throw new NotFoundError("Business not found");
@@ -330,7 +347,7 @@ export async function getOnboardingProgress(orgId: string) {
   const business = await repo.findBusinessByDbName(orgId);
   if (!business) throw new NotFoundError("Business not found");
   return getBusinessOnboardingProgress(
-    Number(business.id), business.source_job_id, business.schema_name, business.business_category_id ?? null,
+    Number(business.id), await extractionJobId(business), business.schema_name, business.business_category_id ?? null,
   );
 }
 

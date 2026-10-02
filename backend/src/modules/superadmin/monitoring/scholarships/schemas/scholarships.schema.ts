@@ -50,6 +50,13 @@ export const BusinessScholarshipListQuery = PaginationSchema.extend({
   search: z.string().trim().min(1).optional(),
 });
 
+/** The portal's institution Scholarships tab (extraction_scholarships) — adds its filters. */
+export const ExtractedScholarshipListQuery = BusinessScholarshipListQuery.extend({
+  applicable_to: z.enum(["domestic", "international", "both"]).optional(),
+  coverage_type: z.string().trim().min(1).optional(),
+  origin: z.enum(["extracted", "manual"]).optional(),
+});
+
 export const ScholarshipListQuery = PaginationSchema.extend({
   limit: z.coerce.number().int().min(1).max(100).default(10),
   search: z.string().trim().min(1).optional(),

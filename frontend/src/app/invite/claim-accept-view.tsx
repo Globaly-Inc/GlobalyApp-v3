@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { inviteApi } from "./apis";
 import { LOGO } from "@/lib/public-assets";
+import { SIGN_IN_HREF } from "@/app/auth/const";
 
 // One view for both kinds — a business and an institution claim are the same flow, the two
 // tables exist only to keep the rows apart. `kind` picks the endpoint and the wording.
@@ -61,7 +62,7 @@ export function ClaimAcceptView({ kind }: Readonly<{ kind: Kind }>) {
     }
   };
 
-  const signInHref = email ? `/auth/sign-in?email=${encodeURIComponent(email)}` : "/auth/sign-in";
+  const signInHref = email ? `/auth/sign-in?email=${encodeURIComponent(email)}` : SIGN_IN_HREF;
   const canSubmit = Boolean(firstName.trim() && lastName.trim()) && status !== "submitting";
 
   return (

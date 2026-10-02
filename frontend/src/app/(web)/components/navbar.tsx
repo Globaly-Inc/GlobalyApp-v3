@@ -22,15 +22,14 @@ import { logout, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchFullProfile } from "@/app/personal/store/profile-slice";
 import type { AuthUser } from "@/app/auth/apis/types";
 import { LOGO, LOGO_WHITE } from "@/lib/public-assets";
-import { PERSONAL_PORTAL_HOME } from "@/app/personal/const";
-import { NAV_LINKS } from "../const/index";
+import { PERSONAL_PORTAL_HOME, SHOW_PERSONAL_PORTAL } from "@/app/personal/const";
+import { SIGN_IN_HREF, SIGN_UP_ENABLED } from "@/app/auth/const";
+import { BOOK_MEETING_URL, NAV_LINKS } from "../const/index";
 
-/** Where a signed-in user's own profile lives. */
+/** Where a signed-in user's own profile lives — always the personal profile, whatever the account
+ * type (the org's profile is reached from the Business Portal). */
 function profileHref(user: AuthUser | null): string {
-  if (!user) return "/";
-  if (user.type === "admin") return "/personal/profile";
-  if (user.user_category === "business" || user.user_category === "institution") return "/business/profile";
-  return "/personal/profile";
+  return user ? "/personal/profile" : "/";
 }
 
 export function Navbar() {
@@ -53,7 +52,7 @@ export function Navbar() {
 
   const handleSignOut = () => {
     dispatch(logout());
-    router.push("/auth/sign-in");
+    router.push(SIGN_IN_HREF);
   };
 
 
@@ -123,9 +122,11 @@ export function Navbar() {
                     </div>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
-                  <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push(PERSONAL_PORTAL_HOME)}>
-                    Personal Portal
-                  </DropdownMenuItem>
+                  {SHOW_PERSONAL_PORTAL && (
+                    <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push(PERSONAL_PORTAL_HOME)}>
+                      Personal Portal
+                    </DropdownMenuItem>
+                  )}
                   <DropdownMenuItem
                     className="cursor-pointer px-1.5 py-1.5"
                     onClick={async () => {
@@ -160,13 +161,23 @@ export function Navbar() {
                   Sign In
                 </Button>
                 {/* The brand navy rather than .btn-gold's aqua, matching the reference's CTA. */}
-                <Button
-                  className="h-10 rounded-full px-5 shadow-sm"
-                  nativeButton={false}
-                  render={<Link href="/auth/sign-up" />}
-                >
-                  Get Started
-                </Button>
+                {SIGN_UP_ENABLED ? (
+                  <Button
+                    className="h-10 rounded-full px-5 shadow-sm"
+                    nativeButton={false}
+                    render={<Link href="/auth/sign-up" />}
+                  >
+                    Get Started
+                  </Button>
+                ) : (
+                  <Button
+                    className="h-10 rounded-full px-5 shadow-sm"
+                    nativeButton={false}
+                    render={<a href={BOOK_MEETING_URL} target="_blank" rel="noopener noreferrer" />}
+                  >
+                    Book a meeting
+                  </Button>
+                )}
               </>
             )
           )}
@@ -212,18 +223,20 @@ export function Navbar() {
                         {/* One button per destination the user actually has, not an either/or. This was
                             `admin ? "Super Admin" : "Personal Portal"`, which gave an admin no way to reach
                             their own Personal Portal and offered nobody the Business Portal. */}
-                        <Button
-                          className="btn-gold h-10"
-                          nativeButton={false}
-                          render={
-                            <Link
-                              href={PERSONAL_PORTAL_HOME}
-                              onClick={() => setMobileOpen(false)}
-                            />
-                          }
-                        >
-                          Personal Portal
-                        </Button>
+                        {SHOW_PERSONAL_PORTAL && (
+                          <Button
+                            className="btn-gold h-10"
+                            nativeButton={false}
+                            render={
+                              <Link
+                                href={PERSONAL_PORTAL_HOME}
+                                onClick={() => setMobileOpen(false)}
+                              />
+                            }
+                          >
+                            Personal Portal
+                          </Button>
+                        )}
                         {(user.businesses?.length ?? 0) > 0 && (
                           <Button
                             variant="outline"
@@ -271,13 +284,23 @@ export function Navbar() {
                         >
                           Sign In
                         </Button>
-                        <Button
-                          className="btn-gold h-10"
-                          nativeButton={false}
-                          render={<Link href="/auth/sign-up" onClick={() => setMobileOpen(false)} />}
-                        >
-                          Get Started
-                        </Button>
+                        {SIGN_UP_ENABLED ? (
+                          <Button
+                            className="btn-gold h-10"
+                            nativeButton={false}
+                            render={<Link href="/auth/sign-up" onClick={() => setMobileOpen(false)} />}
+                          >
+                            Get Started
+                          </Button>
+                        ) : (
+                          <Button
+                            className="btn-gold h-10"
+                            nativeButton={false}
+                            render={<a href={BOOK_MEETING_URL} target="_blank" rel="noopener noreferrer" onClick={() => setMobileOpen(false)} />}
+                          >
+                            Book a meeting
+                          </Button>
+                        )}
                       </>
                     )
                   )}

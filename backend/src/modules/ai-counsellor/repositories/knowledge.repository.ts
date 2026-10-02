@@ -2,7 +2,7 @@
 
 import type { Knex } from "knex";
 import { masterKnex } from "../../../core/db/master-pool.js";
-import { approvedCourseSql } from "../../superadmin/consts.js";
+import { approvedCourseSql, publicJobSql } from "../../superadmin/consts.js";
 
 // ── Result interfaces ──
 
@@ -314,7 +314,7 @@ export async function searchCourses(opts: {
       // superadmin has published it yet: a self-service institution's job sits in 'review'
       // until then, and its widget was returning "we don't offer that" for its own courses.
       if (!opts.jobIds) {
-        q.whereRaw(`exists (select 1 from ${SA}.extraction_jobs ej where ej.id = c.job_id and ej.status = 'exported')`);
+        q.whereRaw(`exists (select 1 from ${SA}.extraction_jobs ej where ej.id = c.job_id and ${publicJobSql("ej")})`);
       }
       // Empty query = browse mode (filters only): rankSql would be empty SQL.
       if (words.length) q.orderByRaw(`${rankSql} DESC`, rankBindings);
@@ -634,7 +634,7 @@ export async function getCourseDetails(courseId: string, opts: { jobIds?: string
     .where("c.is_published", true)
     .whereRaw(approvedCourseSql("c"))
     .where((q) => {
-      q.whereRaw(`exists (select 1 from ${SA}.extraction_jobs ej where ej.id = c.job_id and ej.status = 'exported')`);
+      q.whereRaw(`exists (select 1 from ${SA}.extraction_jobs ej where ej.id = c.job_id and ${publicJobSql("ej")})`);
       if (opts.jobIds?.length) q.orWhereIn("c.job_id", opts.jobIds);
     })
     .first();

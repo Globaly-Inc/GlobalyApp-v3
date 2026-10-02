@@ -7,6 +7,7 @@ import { useAppSelector } from "@/lib/hooks";
 import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs";
 import type { Member, Role } from "../../apis/types";
 import { AddMemberDrawer } from "../members/add-member-drawer";
+import { InviteMemberDialog } from "../members/invite-member-dialog";
 import { AcceptedMembersList } from "../members/accepted-members-list";
 import { InvitedMembersList } from "../members/invited-members-list";
 import { RolesList } from "../members/roles-list";
@@ -24,6 +25,7 @@ export function MembersTab({ businessId }: Readonly<{ businessId: number }>) {
   const { invitations } = useAppSelector((state) => state.businessProfileDetail);
   const [subTab, setSubTab] = useState<SubTab>("users");
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [inviteOpen, setInviteOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
   const [roleDrawerOpen, setRoleDrawerOpen] = useState(false);
   const [editingRole, setEditingRole] = useState<Role | null>(null);
@@ -40,7 +42,7 @@ export function MembersTab({ businessId }: Readonly<{ businessId: number }>) {
             <Plus className="mr-1.5 h-3.5 w-3.5" /> Add role
           </Button>
         ) : (
-          <Button className="h-10" onClick={() => { setEditingMember(null); setDrawerOpen(true); }}>
+          <Button className="h-10" onClick={() => setInviteOpen(true)}>
             <Plus className="mr-1.5 h-3.5 w-3.5" /> Invite Member
           </Button>
         )}
@@ -58,6 +60,7 @@ export function MembersTab({ businessId }: Readonly<{ businessId: number }>) {
       {subTab === "invited" && <InvitedMembersList businessId={businessId} />}
       {subTab === "roles" && <RolesList businessId={businessId} onEdit={(r) => { setEditingRole(r); setRoleDrawerOpen(true); }} />}
 
+      <InviteMemberDialog open={inviteOpen} onOpenChange={setInviteOpen} businessId={businessId} />
       <AddMemberDrawer open={drawerOpen} onOpenChange={setDrawerOpen} businessId={businessId} editingMember={editingMember} />
       <RoleDrawer open={roleDrawerOpen} onOpenChange={setRoleDrawerOpen} businessId={businessId} editingRole={editingRole} />
     </div>

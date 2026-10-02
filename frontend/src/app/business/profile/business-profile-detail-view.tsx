@@ -20,6 +20,7 @@ import { ServicesTab } from "./components/tabs/services-tab";
 import { PartnersTab } from "./components/tabs/partners-tab";
 import { MembersTab } from "./components/tabs/members-tab";
 import { ScholarshipsTab } from "./components/tabs/scholarships-tab";
+import { InstitutionScholarshipsTab } from "./components/scholarships/institution-scholarships-tab";
 import { ActivityTab } from "./components/tabs/activity-tab";
 import { ProfileTab } from "./components/tabs/profile-tab";
 import { ProfileHeaderCard } from "./components/profile-header-card";
@@ -28,6 +29,7 @@ import { isInstitutionOrg } from "./utils";
 // Lives in the ai-widget feature because that is whose data it is — the same reason
 // /business/settings/ai-embed renders AiWidgetView from there rather than forking it.
 import { VisitorsTab } from "@/app/business/ai-widget/components/visitors-tab";
+import { SIGN_IN_HREF } from "@/app/auth/const";
 
 // Tab switching happens only via the sidebar (`BUSINESS_NAV_GROUPS`) — this page renders no
 // second, in-content tab strip.
@@ -77,7 +79,7 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
 
   useEffect(() => {
     if (initializing) return;
-    if (!authUser) router.replace("/auth/sign-in");
+    if (!authUser) router.replace(SIGN_IN_HREF);
     // A business/institution membership takes priority over `type` — a super-admin who
     // also owns or manages a business must still be able to view it, not get bounced to
     // the admin dashboard just because their session is admin-typed.
@@ -226,11 +228,11 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
           <ProfileTab profile={profile} countries={countries} isInstitution={isViewingInstitution} />
         </>
       ) : tab === "site_mapping" ? (
-        <SiteUrlsCard />
+        <SiteUrlsCard sharedFrom={profile?.extraction_parent_name ?? null} />
       ) : (
         <Card>
           <CardContent>
-            {tab === "branches" && <BranchesTab businessId={businessId} isInstitution={isViewingInstitution} />}
+            {tab === "branches" && <BranchesTab businessId={businessId} isInstitution={isViewingInstitution} countries={countries} />}
             {tab === "partners" && (
               <PartnersTab businessId={businessId} businessName={profile.business_name} isInstitution={isViewingInstitution} />
             )}
@@ -241,7 +243,7 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
                 gets the same full "Add service"/manage UI a business does (backend now writes
                 a manually-added course into the institution's own extraction catalog). */}
             {tab === "services" && <ServicesTab businessId={businessId} isInstitution={isViewingInstitution} />}
-            {tab === "scholarships" && <ScholarshipsTab businessId={businessId} />}
+            {tab === "scholarships" && (isViewingInstitution ? <InstitutionScholarshipsTab /> : <ScholarshipsTab businessId={businessId} />)}
             {tab === "activity" && <ActivityTab businessId={businessId} />}
           </CardContent>
         </Card>

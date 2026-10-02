@@ -19,9 +19,39 @@ function dateParts(value: string) {
   return { month: MONTH_ABBR[d.getMonth()], day: d.getDate(), year: d.getFullYear() };
 }
 
-function isEnded(intake: ServiceIntake) {
+/** The tile's date: a full date when there is one, else the month/year an extracted intake
+ *  often only has, else null — never a placeholder that looks like a broken date. */
+function tileParts(intake: ServiceIntake): { top: string; main: string; bottom: string } | null {
+  const ref = intake.start_date ?? intake.end_date;
+  if (ref) {
+    const p = dateParts(ref);
+    return { top: p.month ?? "", main: String(p.day), bottom: String(p.year) };
+  }
+  if (intake.intake_month || intake.intake_year) {
+    return { top: intake.intake_month ? MONTH_ABBR[intake.intake_month - 1] ?? "" : "", main: String(intake.intake_year ?? ""), bottom: "" };
+  }
+  return null;
+}
+
+/** null = no date at all, so it can't honestly be called upcoming or ended. */
+function isEnded(intake: ServiceIntake): boolean | null {
   const ref = intake.end_date ?? intake.start_date;
-  return ref ? new Date(ref) < new Date() : false;
+  if (ref) return new Date(ref) < new Date();
+  if (intake.intake_year) {
+    const now = new Date();
+    const month = intake.intake_month ?? 12;
+    return intake.intake_year < now.getFullYear() || (intake.intake_year === now.getFullYear() && month < now.getMonth() + 1);
+  }
+  return null;
+}
+
+function dateSummary(intake: ServiceIntake) {
+  const bits = [
+    intake.start_date && `Starts ${formatDate(intake.start_date)}`,
+    intake.admission_deadline && `Apply by ${formatDate(intake.admission_deadline)}`,
+    intake.end_date && `Ends ${formatDate(intake.end_date)}`,
+  ].filter(Boolean);
+  return bits.length > 0 ? bits.join(" · ") : "No dates set yet — edit to add them";
 }
 
 function formatDate(value: string) {
@@ -90,34 +120,39 @@ export function IntakesTab({ serviceId, allowMonth = false }: Readonly<{ service
       <OneToManySection icon={Calendar} title="Intakes" count={intakes.length} onAdd={openAdd} emptyText="No intakes configured yet.">
         <div className="space-y-3">
           {intakes.map((intake) => {
-            const ref = intake.start_date ?? intake.end_date;
             const ended = isEnded(intake);
-            const parts = ref ? dateParts(ref) : null;
+            const parts = tileParts(intake);
             return (
               <div key={intake.id} className="flex items-center gap-3 rounded-lg border p-3">
                 <div
                   className={cn(
-                    "flex w-16 shrink-0 flex-col items-center rounded-md py-1.5 text-center",
-                    ended ? "bg-muted" : "bg-primary/10",
+                    "flex min-h-14 w-16 shrink-0 flex-col items-center justify-center rounded-md py-1.5 text-center",
+                    ended || !parts ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary",
                   )}
                 >
-                  <span className={cn("text-[10px] font-semibold uppercase", ended ? "text-muted-foreground" : "text-primary")}>
-                    {parts?.month ?? "--"}
-                  </span>
-                  <span className={cn("text-lg font-bold leading-tight", ended ? "text-muted-foreground" : "text-primary")}>
-                    {parts?.day ?? "-"}
-                  </span>
-                  <span className={cn("text-[10px]", ended ? "text-muted-foreground" : "text-primary")}>{parts?.year ?? ""}</span>
+                  {parts ? (
+                    <>
+                      {parts.top && <span className="text-[10px] font-semibold uppercase">{parts.top}</span>}
+                      <span className="text-lg font-bold leading-tight">{parts.main}</span>
+                      {parts.bottom && <span className="text-[10px]">{parts.bottom}</span>}
+                    </>
+                  ) : (
+                    <Calendar className="h-5 w-5" aria-label="No date set" />
+                  )}
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-medium">{intake.intake_name || "Untitled intake"}</p>
-                    <Badge variant={ended ? "secondary" : "default"} className="text-[10px]">
-                      {ended ? "Ended" : "Upcoming"}
-                    </Badge>
+                    {ended === null ? (
+                      <Badge variant="outline" className="text-[10px] text-muted-foreground">Date not set</Badge>
+                    ) : (
+                      <Badge variant={ended ? "secondary" : "default"} className="text-[10px]">
+                        {ended ? "Ended" : "Upcoming"}
+                      </Badge>
+                    )}
                   </div>
                   <p className="text-xs text-muted-foreground">
-                    {intake.end_date ? `Ends ${formatDate(intake.end_date)}` : "No end date set"}
+                    {dateSummary(intake)}
                   </p>
                 </div>
                 <div className="flex gap-1">
