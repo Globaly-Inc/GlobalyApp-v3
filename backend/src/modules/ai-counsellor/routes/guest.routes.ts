@@ -564,9 +564,20 @@ export async function guestSessionRoutes(app: FastifyInstance) {
     //
     // Unreadable rules (`degraded`) store nothing either, matching the message path: "we do not
     // know what we may keep" is not permission. Still `{ ok: true }` — the visitor gets no
-    // signal about another tenant's settings, and the form must not be left undismissable.
-    const rack = config.institution_id != null ? await getProfile(Number(config.institution_id)) : null;
-    if (!mayKeepEmail(rack)) return reply.send({ ok: true });
+    // signal about another tenant's settings.
+    //
+    // SKIP IS EXEMPT, and the exemption is the whole point of the gate being here rather than
+    // around the endpoint. A skip stores no contact details at all: recordContact's skip branch
+    // writes `contact_status` and the cooldown anchor only, ignoring name/email even when a
+    // client sends them. Gating it dropped the dismissal, so `contact_prompted_at_count` never
+    // advanced and the card came back — a visitor left unable to get rid of a form, caused by a
+    // privacy check applied to the one action that stores nothing.
+    // Guarded by tests/widget-visitor-list §8: if the skip branch ever starts writing a contact
+    // column, this exemption becomes a hole and that assertion goes red first.
+    if (input.action !== "skip") {
+      const rack = config.institution_id != null ? await getProfile(Number(config.institution_id)) : null;
+      if (!mayKeepEmail(rack)) return reply.send({ ok: true });
+    }
 
     await visitorService.attempt("recordContact", () =>
       visitorService.recordContact(db, {
