@@ -231,9 +231,17 @@ export async function setOwnedBranchRegistration(
     .update({ registration_licenses: registration ?? null, updated_at: masterKnex.fn.now() });
 }
 
+/** Soft-deletes; returns how many rows THIS call deleted (0 when it was already deleted), so a
+ * caller can tell its own deletion apart from one someone made earlier. */
 export async function deleteBranch(businessId: number, schemaName: string, branchId: string) {
   const db = await getKnex(businessId, schemaName);
-  return db("business_branches").where({ uuid: branchId }).update({ deleted_at: db.fn.now() });
+  return db("business_branches").where({ uuid: branchId }).whereNull("deleted_at").update({ deleted_at: db.fn.now() });
+}
+
+/** Undoes deleteBranch — for a soft-delete that a later step of the same operation must roll back. */
+export async function restoreBranch(businessId: number, schemaName: string, branchId: string) {
+  const db = await getKnex(businessId, schemaName);
+  return db("business_branches").where({ uuid: branchId }).whereNotNull("deleted_at").update({ deleted_at: null });
 }
 
 /**

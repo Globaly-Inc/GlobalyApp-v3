@@ -44,6 +44,8 @@ export const SYSTEM_FIELDS: SystemField[] = [
   // Fees
   { key: "fee_amount", label: "International tuition fee (per period)", group: "Fees", type: "number", aliases: ["tuitionfeetypeamount", "internationaltuitionfeetypeamount", "internationalfee", "internationaltuitionfee", "feeamount", "amount", "tuitionfee", "fee", "tuition"] },
   { key: "domestic_fee_amount", label: "Domestic tuition fee (per period)", group: "Fees", type: "number", aliases: ["domestictuitionfeetypeamount", "domesticfee", "domestictuitionfee", "domesticamount"] },
+  // A single rate that applies to both — saved as one fee for "Both" students, not two copies.
+  { key: "both_fee_amount", label: "Tuition fee — domestic & international (per period)", group: "Fees", type: "number", aliases: ["bothtuitionfee", "tuitionfeeboth", "bothfee", "domesticandinternationalfee"] },
   { key: "fee_installments", label: "Number of installments", group: "Fees", type: "number", aliases: ["tuitionfeetypeinstallments", "installments", "instalments", "noofinstallments"] },
   { key: "fee_period", label: "Fee period (e.g. Per Semester)", group: "Fees", type: "text", aliases: ["installmenttype", "feeperiod", "period", "feeterm"] },
   { key: "fee_name", label: "Fee name", group: "Fees", type: "text", aliases: ["tuitionfeetypeproductfee", "feename", "feetype"] },

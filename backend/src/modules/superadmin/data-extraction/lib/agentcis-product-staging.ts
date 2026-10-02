@@ -51,6 +51,8 @@ export async function stageProduct(
   const link = await resolveCourseLookups({
     name: cName,
     degree_level: taxonomy.degreeLevelName,
+    // Set by the spreadsheet mapper when the sheet's column states a level; AgentCIS never sets it.
+    degree_level_explicit: p.degree_level_explicit === true,
     subject_area: taxonomy.subjectName,
     area_of_study: taxonomy.areaName,
   });

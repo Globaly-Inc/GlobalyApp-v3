@@ -100,11 +100,29 @@ export async function markCampusConverted(id: string, claimId: string, branchId:
   if (count === 0) throw new Error(`Campus ${id} was reclaimed by another run`);
 }
 
-/** Which of these business_branches ids were made from an extracted campus. */
+/** Jobs with campuses still waiting to become branch orgs (never converted, not failed, no live
+ * claim) whose org is active — what an interrupted conversion left behind. Bounded per sweep. */
+export async function jobsWithPendingCampuses(limit = 20): Promise<string[]> {
+  const activeOrg = (table: string) => (sub: import("knex").Knex.QueryBuilder) =>
+    sub.select(1).from(table).whereRaw(`${table}.source_job_id = c.job_id`)
+      .whereNull(`${table}.deleted_at`).whereNot(`${table}.account_status`, 0);
+  const rows = await masterKnex(`${S}.extraction_campuses as c`)
+    .whereNull("c.converted_branch_id").whereNull("c.convert_failed_at")
+    .where((w) => w.whereNull("c.convert_claimed_at").orWhereRaw(`c.convert_claimed_at < now() - interval '${CLAIM_STALE}'`))
+    .where((w) => w.whereExists(activeOrg("institutions")).orWhereExists(activeOrg("businesses")))
+    .distinct("c.job_id").limit(limit);
+  return rows.map((r) => String(r.job_id));
+}
+
+/** Which of these business_branches ids came from an extracted campus: converted into a branch
+ * org (converted_branch_id), or copied in as a plain row at claim time (its uuid IS the campus id). */
 export async function convertedBranchIds(branchIds: string[]): Promise<Set<string>> {
   if (branchIds.length === 0) return new Set();
-  const rows = await masterKnex(`${S}.extraction_campuses`).whereIn("converted_branch_id", branchIds).select("converted_branch_id");
-  return new Set(rows.map((r) => String(r.converted_branch_id)));
+  const rows = await masterKnex(`${S}.extraction_campuses`)
+    .where((w) => w.whereIn("converted_branch_id", branchIds).orWhereIn("id", branchIds))
+    .select("id", "converted_branch_id");
+  const wanted = new Set(branchIds);
+  return new Set(rows.flatMap((r) => [String(r.id), String(r.converted_branch_id)]).filter((id) => wanted.has(id)));
 }
 
 export async function listCampusesByJob(jobId: string) {

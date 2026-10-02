@@ -104,6 +104,28 @@ const fees3 = rowToProduct(SpreadsheetCourseRowSchema.parse({
 ok(fees3.fee_items.map((i) => [i.student_type, i.amount, i.instalment, i.period ?? fees3.feeTerms.name]),
   [["international", 9464, 8, "Per Semester"], ["domestic", 7000, 8, "Per Semester"], ["both", 50, 1, "Total"]],
   "international, domestic and application fee lines");
+// A mapped degree-level column is marked as stated, so it beats the level in the course name.
+ok(rowToProduct(SpreadsheetCourseRowSchema.parse({ course_name: "Biology, B.S.", degree_level: "High school" }), null).degree_level_explicit,
+  true, "a mapped degree level is marked explicit");
+ok(rowToProduct(SpreadsheetCourseRowSchema.parse({ course_name: "Biology, B.S." }), null).degree_level_explicit,
+  false, "no degree-level column → the course name decides");
+// One tuition rate for every student — a single "both" line, not an international + domestic pair.
+const feesBoth = rowToProduct(SpreadsheetCourseRowSchema.parse({
+  course_name: "X", fee_period: "Per Semester", fee_installments: "2", both_fee_amount: "5000",
+}), "NPR").fees as { feeTerms: { name: string }; fee_items: Record<string, unknown>[] };
+ok(feesBoth.fee_items.map((i) => [i.student_type, i.amount, i.instalment]), [["both", 5000, 2]], "both-students tuition is one fee line");
+const feesMixed = rowToProduct(SpreadsheetCourseRowSchema.parse({
+  course_name: "X", fee_period: "Per Year", both_fee_amount: "5000", fee_amount: "5000",
+}), "NPR").fees as { fee_items: Record<string, unknown>[] };
+ok(feesMixed.fee_items.map((i) => [i.student_type, i.amount]), [["international", 5000]], "a specific rate beside a shared one wins — never both");
+// …and the import API refuses such a row outright, rather than saving an incomplete price.
+const mixed = SpreadsheetImportSchema.safeParse({
+  institution: { name: "Example University" },
+  rows: [{ course_name: "BSc CS", both_fee_amount: "5000", fee_amount: "6000" }],
+});
+ok([mixed.success, mixed.success ? null : mixed.error.issues[0]?.path.join(".")], [false, "rows.0.both_fee_amount"], "mixed shared + specific rates rejected by the API");
+ok(SpreadsheetImportSchema.safeParse({ institution: { name: "U" }, rows: [{ course_name: "X", both_fee_amount: "5000" }] }).success,
+  true, "a shared rate alone is accepted");
 ok((rowToProduct(SpreadsheetCourseRowSchema.parse({ course_name: "X", branch_names: "Main Campus, City Campus; Online" }), null).branches),
   [{ name: "Main Campus" }, { name: "City Campus" }, { name: "Online" }], "branch names split on , and ;");
 

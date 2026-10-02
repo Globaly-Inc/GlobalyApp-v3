@@ -245,6 +245,11 @@ export function validateGroups(groups: InstitutionGroup[], existingNames: string
           issues.push({ groupId: g.id, row, field: "course_name", message: `Same name as row ${first.row}, different ${diff.length ? diff.join(", ") : "capitalisation only"} — rename or remove one`, blocking: true });
         } else seen.set(k, { row, data: r });
       }
+      // A shared rate AND a specific one would both be saved, and a student-type view would add
+      // them (5,000 + 5,000 shown as 10,000) — the admin picks which the sheet means.
+      if (!blank(r.both_fee_amount) && (!blank(r.fee_amount) || !blank(r.domestic_fee_amount))) {
+        issues.push({ groupId: g.id, row, field: "both_fee_amount", message: "Tuition fee for domestic & international can't be mapped alongside a domestic or international tuition fee — map one or the other", blocking: true });
+      }
       for (const [key, value] of Object.entries(r)) {
         if (blank(value)) continue;
         const field = FIELD_BY_KEY.get(key);

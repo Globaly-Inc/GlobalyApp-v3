@@ -109,8 +109,14 @@ function feeItems(row: SpreadsheetCourseRow) {
   const tuition = { instalment: num(row.fee_installments) ?? 1, fee_type: { name: row.fee_name ?? "Tuition Fee" } };
   const items: Record<string, unknown>[] = [];
   const intl = num(row.fee_amount), dom = num(row.domestic_fee_amount), app = num(row.application_fee_amount);
+  // One tuition rate that applies to domestic AND international students — a single "both" line,
+  // not two copies. A row that also states a specific rate is refused by the wizard's validation;
+  // should one reach here anyway, the specific rate wins — saving both would make a student-type
+  // view add the shared rate to its own (5,000 + 5,000 shown as 10,000).
+  const both = intl || dom ? null : num(row.both_fee_amount);
   if (intl) items.push({ ...tuition, amount: intl, student_type: "international" });
   if (dom) items.push({ ...tuition, amount: dom, student_type: "domestic" });
+  if (both) items.push({ ...tuition, amount: both, student_type: "both" });
   if (app) {
     items.push({
       amount: app, instalment: num(row.application_fee_installments) ?? 1, student_type: "both",
@@ -141,6 +147,8 @@ export function rowToProduct(row: SpreadsheetCourseRow, defaultCurrency: string 
     study_mode: row.study_mode ?? duration.study_mode,
     study_load: duration.study_load,
     duration: duration.duration,
+    // The admin mapped a degree-level column — that beats a level read from the course name.
+    degree_level_explicit: !!normaliseDegreeLabel(row.degree_level),
     subject_area_and_level: {
       degree_level: { name: normaliseDegreeLabel(row.degree_level) },
       // A sheet's "Subject Area" is the broad area; it fills both, as AgentCIS's subject/area pair.

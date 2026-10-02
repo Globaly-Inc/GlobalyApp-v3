@@ -80,7 +80,8 @@ export function SpreadsheetImportWizard({ onDirtyChange }: Readonly<{ onDirtyCha
     const mapped = new Set(Object.values(auto));
     // A column naming the institution beats the tab name — Excel cuts tab names at 31 characters.
     setSource(mapped.has("institution_name") ? "column" : "sheet");
-    setDefaults(mapped.has("fee_amount") && !mapped.has("fee_currency") ? { fee_currency: DEFAULT_CURRENCY } : {});
+    const mapsTuition = ["fee_amount", "domestic_fee_amount", "both_fee_amount"].some((k) => mapped.has(k));
+    setDefaults(mapsTuition && !mapped.has("fee_currency") ? { fee_currency: DEFAULT_CURRENCY } : {});
     setStep(1);
   };
 

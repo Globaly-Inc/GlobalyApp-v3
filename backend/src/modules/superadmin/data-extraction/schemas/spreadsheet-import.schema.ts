@@ -25,6 +25,8 @@ export const SpreadsheetCourseRowSchema = z.object({
   // fee_amount is the international tuition rate; domestic and application fees are their own lines.
   fee_name: text, fee_amount: text, fee_currency: text, fee_period: text, fee_installments: text,
   domestic_fee_amount: text,
+  // One tuition rate for domestic and international students alike (a single "both" fee line).
+  both_fee_amount: text,
   application_fee_name: text, application_fee_amount: text, application_fee_period: text, application_fee_installments: text,
   intake_months: text,
   min_degree_level: text, min_score: text, score_type: text,
@@ -51,7 +53,18 @@ export const SpreadsheetExtrasSchema = z.object({
 
 export const SpreadsheetImportSchema = z.object({
   institution: SpreadsheetInstitutionSchema,
-  rows: z.array(SpreadsheetCourseRowSchema).min(1).max(10_000),
+  rows: z.array(SpreadsheetCourseRowSchema).min(1).max(10_000).superRefine((rows, ctx) => {
+    // A shared rate beside a specific one can't both be saved (a student-type view would add them)
+    // and neither can be silently dropped — the sender must say which the sheet means.
+    rows.forEach((r, i) => {
+      if (r.both_fee_amount?.trim() && (r.fee_amount?.trim() || r.domestic_fee_amount?.trim())) {
+        ctx.addIssue({
+          code: "custom", path: [i, "both_fee_amount"],
+          message: "both_fee_amount can't be sent with fee_amount or domestic_fee_amount — send one or the other",
+        });
+      }
+    });
+  }),
   extras: SpreadsheetExtrasSchema.optional(),
 });
 

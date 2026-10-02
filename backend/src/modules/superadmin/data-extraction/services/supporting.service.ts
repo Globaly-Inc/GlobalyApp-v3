@@ -213,7 +213,7 @@ export async function saveAndLearn(input: SaveAndLearnInput, adminId: number) {
 
   await repo.patchEntityRow(table, id, patch, adminId);
   if (table === "extraction_campuses") {
-    await syncBranchFromCampus(id).catch((err) =>
+    await syncBranchFromCampus(id, patch).catch((err) =>
       logger.warn("Tenant branch sync failed after campus save-and-learn", { id, err: err instanceof Error ? err.message : String(err) }),
     );
   }
