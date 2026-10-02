@@ -19,6 +19,8 @@
     "fees:normalise": "node --import tsx scripts/normalise-course-fees.ts",
     "institutions:backfill-jobs": "node --import tsx scripts/backfill-institution-jobs.ts",
     "institutions:backfill-category": "node --import tsx scripts/backfill-institution-category.ts",
+    "users:backfill-personal-account": "node --import tsx scripts/backfill-personal-accounts.ts",
+    "orgs:backfill-currency": "node --import tsx scripts/backfill-org-currency.ts",
     "jobs:backfill-category": "node --import tsx scripts/backfill-job-category.ts",
     "backfill:institution-branches": "node --import tsx scripts/backfill-institution-branches.ts",
     "eligibility:backfill": "node --import tsx scripts/eligibility-backfill.ts",

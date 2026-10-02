@@ -69,7 +69,7 @@ export async function insert(data: {
   const [row] = await db<PlatformUserRow>("platform_users")
     .insert({
       // Every user has a personal account — an invited org member or an org owner too — so the
-      // personal portal and profile always work for them (see the personal_account_for_all migration).
+      // personal portal and profile always work for them (existing rows: scripts/backfill-personal-accounts.ts).
       is_personal_account: true,
       ...rest,
       // Only set when provided, so the column default ('{}') still applies otherwise. pg serialises a

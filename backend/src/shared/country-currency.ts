@@ -1,5 +1,5 @@
 // An org's default currency follows its country unless someone picked one: set on extraction,
-// on a profile edit that sets the country, and backfilled by migration 20261002_001.
+// on a profile edit that sets the country, and backfilled by scripts/backfill-org-currency.ts.
 
 import { masterKnex } from "../core/db/master-pool.js";
 
