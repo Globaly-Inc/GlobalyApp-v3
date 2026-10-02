@@ -27,7 +27,7 @@ import * as messagesRepo from "../repositories/messages.repository.js";
 import * as visitorsRepo from "../repositories/visitors.repository.js";
 import { enqueue } from "../../enquiries/services/email-queue.service.js";
 import {
-  buildSummaryPrompt, pickSummaryChat, summariseConversation, summaryDedupKey, trimToCompleteSentence, worthSummarising,
+  buildSummaryPrompt, pickSummaryChats, summariseConversation, summaryDedupKey, trimToCompleteSentence, worthSummarising,
 } from "../lib/conversation-summary.js";
 import * as sessionsRepo from "../repositories/sessions.repository.js";
 import { refreshContactSummary } from "../services/chat-summaries.service.js";
@@ -240,46 +240,46 @@ async function processTenant(tenant: TenantSchema): Promise<number> {
           .where({ id: row.embed_config_id })
           .first("display_name", "embed_key");
 
-        // Which chat: the latest one the visitor ENDED since the last email, if any — a message
-        // after "End chat" opens a new chat, and that one isn't what they asked to be sent.
-        // Otherwise (the quiet fallback) the chat they're in. Oldest-first, the whole chat.
-        const chatId = pickSummaryChat(
+        // Which chats: every one the visitor ENDED since the last email (a message after "End
+        // chat" opens a new chat, and that one isn't what they asked to be sent), or, for the
+        // quiet fallback, the chat they're in. One email each, oldest first; the per-chat dedup
+        // key makes a retry after a partial failure skip the ones already queued.
+        const owed = pickSummaryChats(
           await sessionsRepo.findChatsByVisitor(row.visitor_key, row.embed_config_id),
           row.summary_sent_at,
           row.session_id,
         );
-        const conversation = summariseConversation(await messagesRepo.findBySession(chatId));
-        const { turns, courses } = conversation;
-
         const widgetName = widget?.display_name ?? null;
-        const summary = await writeSummary(conversation, widgetName);
+        for (const chat of owed) {
+          const conversation = summariseConversation(await messagesRepo.findBySession(chat.id));
+          const { turns, courses } = conversation;
+          const summary = await writeSummary(conversation, widgetName);
 
-        await enqueue({
-          // One email per CHAT, not per visitor: a returning visitor who ends a second chat is owed its own.
-          dedupKey: summaryDedupKey(tenant.schema, row.id, chatId),
-          template: "chat_summary",
-          recipientEmail: row.email,
-          payload: {
-            name: row.name ?? "there",
-            org_name: widgetName,
-            courses,
-            program: conversation.program ?? null,
-            // Both travel in the payload: the recap is the email, the transcript is what
-            // renders if the recap came back null.
-            summary,
-            turns,
-            // Which of the two triggers claimed this row — the visitor saying so, or us
-            // inferring it from their silence. The claim predicate above already knows the
-            // difference and until now discarded it, so every abandoned tab was mailed as
-            // though the visitor had finished. Snapshotted here with everything else: the
-            // payload is write-once, so a retry cannot revise it.
-            confirmed_end: row.conversation_state === "end_confirmed",
-            // Only restores the thread in the browser that started it — the widget keys its
-            // thread on a localStorage fingerprint. On another device this opens a fresh chat
-            // with the same counsellor, which is still the most useful place to land.
-            conversation_url: `${config.WEB_APP_URL.replace(/\/$/, "")}/embed/${widget?.embed_key ?? ""}`,
-          },
-        });
+          await enqueue({
+            // One email per CHAT, not per visitor: a returning visitor who ends a second chat is owed its own.
+            dedupKey: summaryDedupKey(tenant.schema, row.id, chat.id),
+            template: "chat_summary",
+            recipientEmail: row.email,
+            payload: {
+              name: row.name ?? "there",
+              org_name: widgetName,
+              courses,
+              program: conversation.program ?? null,
+              // Both travel in the payload: the recap is the email, the transcript is what
+              // renders if the recap came back null.
+              summary,
+              turns,
+              // The visitor ended this chat themselves, or we're sending on the quiet fallback.
+              // Snapshotted with everything else: the payload is write-once, so a retry cannot
+              // revise it.
+              confirmed_end: chat.ended || row.conversation_state === "end_confirmed",
+              // Only restores the thread in the browser that started it — the widget keys its
+              // thread on a localStorage fingerprint. On another device this opens a fresh chat
+              // with the same counsellor, which is still the most useful place to land.
+              conversation_url: `${config.WEB_APP_URL.replace(/\/$/, "")}/embed/${widget?.embed_key ?? ""}`,
+            },
+          });
+        }
 
         await db(TABLE).where({ id: row.id }).update({
           summary_status: "sent",

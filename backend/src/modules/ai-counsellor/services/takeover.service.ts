@@ -55,13 +55,24 @@ export function whoAnswers(
   return { answerer, expireHandler, expireRequest };
 }
 
-/** Stale claims off, in one statement. Called by the guest route before it decides who answers. */
+/**
+ * Stale claims off. Called by the guest route before it decides who answers.
+ *
+ * Each clear re-checks staleness IN the UPDATE, not just from the row the route read: a staff
+ * member taking over (or a fresh handover request) between that read and this write sets a new
+ * timestamp, and clearing by id alone would wipe the new claim and let the AI answer a chat
+ * staff now hold. The SQL interval mirrors IDLE_MS.
+ */
 export async function expire(db: Knex, visitorId: number, what: { handler: boolean; request: boolean }) {
-  if (!what.handler && !what.request) return;
-  await db(TABLE).where({ id: visitorId }).update({
-    ...(what.handler ? { handled_by_user_id: null, handled_by_name: null, handled_at: null } : {}),
-    ...(what.request ? { handoff_requested_at: null } : {}),
-  });
+  const stale = (col: string) => `(${col} IS NULL OR ${col} < now() - interval '15 minutes')`;
+  if (what.handler) {
+    await db(TABLE).where({ id: visitorId }).whereRaw(stale("handled_at"))
+      .update({ handled_by_user_id: null, handled_by_name: null, handled_at: null });
+  }
+  if (what.request) {
+    await db(TABLE).where({ id: visitorId }).whereRaw(stale("handoff_requested_at"))
+      .update({ handoff_requested_at: null });
+  }
 }
 
 /** A visitor message staff haven't seen. Also reopens a resolved chat — they wrote again. */

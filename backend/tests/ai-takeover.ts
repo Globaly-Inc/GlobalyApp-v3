@@ -7,7 +7,7 @@ import { IDLE_MS, whoAnswers, withMe } from "../src/modules/ai-counsellor/servic
 import { MIGHT_WANT_HUMAN } from "../src/modules/ai-counsellor/lib/handover-detect.js";
 import { VisitorNoteSchema, VisitorReplySchema } from "../src/modules/ai-counsellor/schemas/visitor.schema.js";
 import { GuestRatingSchema } from "../src/modules/ai-counsellor/schemas/chat.schema.js";
-import { buildContactPrompt, parseStaffSummary, pickSummaryChat, summariseConversation, summaryDedupKey } from "../src/modules/ai-counsellor/lib/conversation-summary.js";
+import { buildContactPrompt, parseStaffSummary, pickSummaryChats, summariseConversation, summaryDedupKey } from "../src/modules/ai-counsellor/lib/conversation-summary.js";
 import { dueForSummaryQuery } from "../src/modules/ai-counsellor/repositories/visitors.repository.js";
 import knexFactory from "knex";
 import { handoverRequestEmail } from "../src/shared/mail/templates.js";
@@ -108,16 +108,16 @@ ok(contactPrompt.includes("age"), false, "unset profile fields are left out");
 ok(contactPrompt.includes("Chat 1 (2026-10-01, ended) — Entry requirements for the MEng"), true, "each chat in order, with its title");
 ok(contactPrompt.includes("Chat 2 (2026-10-02, in progress):"), true, "an untitled open chat");
 
-/* ── which chat a summary email is for ── */
+/* ── which chats a summary sweep owes an email for ── */
 const chatsSeen = [
   { id: 41, ended_at: "2026-10-01T10:35:00Z" },
   { id: 42, ended_at: "2026-10-02T14:44:00Z" },
   { id: 43, ended_at: null },
 ];
-ok(pickSummaryChat(chatsSeen, "2026-10-01T11:05:00Z", 43), 42, "a message after ending: still emails the chat that ended, not the new one");
-ok(pickSummaryChat(chatsSeen, "2026-10-02T15:00:00Z", 43), 43, "nothing ended since the last email: the current chat (quiet fallback)");
-ok(pickSummaryChat(chatsSeen, null, 43), 42, "never emailed: the most recent ended chat");
-ok(pickSummaryChat([], null, 7), 7, "no chats on record (adopted or pre-migration): the visitor's session");
+ok(pickSummaryChats(chatsSeen, "2026-10-01T11:05:00Z", 43), [{ id: 42, ended: true }], "a message after ending: the chat that ended, not the new one");
+ok(pickSummaryChats(chatsSeen, null, 43), [{ id: 41, ended: true }, { id: 42, ended: true }], "two chats ended before the worker ran: both are owed, oldest first");
+ok(pickSummaryChats(chatsSeen, "2026-10-02T15:00:00Z", 43), [{ id: 43, ended: false }], "nothing ended since the last email: the current chat (quiet fallback)");
+ok(pickSummaryChats([], null, 7), [{ id: 7, ended: false }], "no chats on record (adopted or pre-migration): the visitor's session");
 
 console.log(`ai-takeover: ${passed} passed, ${failed} failed`);
 if (failed) process.exit(1);

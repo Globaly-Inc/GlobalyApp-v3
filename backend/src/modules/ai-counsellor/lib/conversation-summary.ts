@@ -271,15 +271,17 @@ export function summaryDedupKey(schema: string, visitorId: number, sessionId: nu
 }
 
 /**
- * The chat a summary email is for: the most recent chat the visitor ended since the last email,
- * or, when none (the quiet fallback for an unconfirmed chat), the chat they're in.
+ * The chats a summary sweep owes an email for, oldest first: EVERY chat the visitor ended since
+ * the last email — two chats ended before the worker ran are owed two emails, and picking only
+ * the latest silently dropped the first — or, when none ended (the quiet fallback for an
+ * unconfirmed chat), the chat they're in. `ended` says whether each one was ended by the visitor.
  */
-export function pickSummaryChat(
+export function pickSummaryChats(
   chats: { id: number; ended_at: Date | string | null }[],
   lastSentAt: Date | string | null,
   currentSessionId: number,
-): number {
+): { id: number; ended: boolean }[] {
   const since = lastSentAt ? new Date(lastSentAt).getTime() : -Infinity;
   const ended = chats.filter((c) => c.ended_at && new Date(c.ended_at).getTime() > since);
-  return ended.at(-1)?.id ?? currentSessionId;
+  return ended.length ? ended.map((c) => ({ id: c.id, ended: true })) : [{ id: currentSessionId, ended: false }];
 }

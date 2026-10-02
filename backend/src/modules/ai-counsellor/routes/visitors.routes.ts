@@ -108,9 +108,13 @@ export async function visitorRoutes(app: FastifyInstance) {
     if (!v) throw new NotFoundError("Visitor not found");
     // Into the visitor's open chat. If the last one ended, reopen it: the reply then shows on the
     // visitor's next visit instead of vanishing into a chat their widget no longer loads.
+    //
+    // The fallback is the visitor's latest chat that is still THEIRS (owned by their visitor key
+    // on this widget) — never the row's session_id, which can point at a chat already adopted into
+    // a signed-up account, where the widget would never load the reply.
     const open = await sessionsRepo.findByVisitor(v.visitor_key, v.embed_config_id);
-    const sessionId = open?.id ?? v.session_id;
-    if (sessionId == null) throw new BadRequestError("This visitor hasn't started a conversation yet");
+    const sessionId = open?.id ?? (await sessionsRepo.findChatsByVisitor(v.visitor_key, v.embed_config_id)).at(-1)?.id;
+    if (sessionId == null) throw new BadRequestError("This visitor has no chat on the widget to reply to");
     if (!open) await sessionsRepo.reopenSession(sessionId);
 
     const staff = await takeover.staffFor(Number(req.auth.sub));
