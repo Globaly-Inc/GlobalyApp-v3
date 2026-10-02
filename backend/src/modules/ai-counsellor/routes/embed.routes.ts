@@ -15,8 +15,9 @@ import { embedSnippet, findDeveloper, sendSnippetToDeveloper } from "../services
 import { buildPaginatedResponse } from "../../../shared/pagination.js";
 import * as embedRepo from "../repositories/embed.repository.js";
 import * as visitorsRepo from "../repositories/visitors.repository.js";
+import * as takeover from "../services/takeover.service.js";
 import { ensureOwnerSiteIndex } from "../services/site-index.service.js";
-import { NotFoundError } from "../../../shared/errors.js";
+import { ConflictError, NotFoundError } from "../../../shared/errors.js";
 import { createChildLogger } from "../../../shared/logger.js";
 
 const logger = createChildLogger("embed-routes");
@@ -55,6 +56,13 @@ export async function embedRoutes(app: FastifyInstance) {
   app.post("/embed/configs", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
     const data = EmbedConfigCreateSchema.parse(req.body ?? {});
     const owner = recipientFromRequest(req);
+    // One widget per business or institution. The Inbox, the widget switch and the visitor list
+    // all assume a single widget, and a second one would split one org's visitors across two keys.
+    // ponytail: a check, not a unique index — two simultaneous creates could both pass; add a
+    // partial unique index on the owner columns if that ever happens.
+    if ((await embedRepo.findByOwner(owner)).length) {
+      throw new ConflictError("This organisation already has a widget. Edit it instead.");
+    }
     const config = await embedRepo.create(owner, data);
 
     // Index the owner's own website so the widget can answer from anything published on
@@ -164,7 +172,8 @@ export async function embedRoutes(app: FastifyInstance) {
   app.get("/embed/visitors", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
     const { status, search, ...pagination } = VisitorListQuerySchema.parse(req.query ?? {});
     const counts = await visitorsRepo.visitorCounts(req.db, { search });
-    const data = await visitorsRepo.listQuery(req.db, { ...pagination, status, search });
+    const rows = await visitorsRepo.listQuery(req.db, { ...pagination, status, search });
+    const data = rows.map((r: Record<string, unknown>) => takeover.withMe(r, Number(req.auth.sub)));
     return reply.send({ ...buildPaginatedResponse(data, counts[status], pagination), counts });
   });
 }
@@ -179,6 +188,7 @@ export async function embedPublicRoutes(app: FastifyInstance) {
       display_name: config.display_name,
       logo_url: config.logo_url,
       brand_color: config.brand_color,
+      position: config.position ?? "right",
       greeting: config.greeting,
       subtitle: config.subtitle,
       // The panel's starter questions differ by owner: an institution's widget answers

@@ -65,6 +65,10 @@ export type EmbedChatEvent =
   | { type: "chips"; chips: string[] }
   | { type: "contact-prompt"; prompt: EmbedContactPrompt }
   | { type: "end-prompt"; prompt: EmbedEndPrompt }
+  /** A staff member is handling the chat; the message was delivered to them, no AI reply. */
+  | { type: "handoff"; agentName: string | null }
+  /** The visitor asked for a person (or is still waiting for one); the AI is paused. */
+  | { type: "handover" }
   | { type: "done" };
 
 export type GuestContactRequest = {
@@ -87,19 +91,36 @@ export type GuestConversationEndResponse = {
   summary_queued?: boolean;
 };
 
+/** A file a staff member sent. The URL is signed per read. */
+export type EmbedFile = { original_name: string; mime_type: string; url: string };
+
 /** One stored turn of the visitor's thread, as /guest/session returns it. */
 export type EmbedStoredMessage = {
   id: number;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "agent";
   content: string;
   cards: WireCourseCard[];
   chips: string[];
+  sender_name?: string | null;
+  attachments?: EmbedFile[] | string[];
   created_at: string;
 };
 
 export type EmbedThread = {
   session_id: number | null;
   messages: EmbedStoredMessage[];
+  /** Set while a staff member is handling the chat. */
+  agent_name?: string | null;
+  /** The visitor asked for a person and nobody has joined yet. */
+  waiting?: boolean;
+};
+
+export type GuestRatingRequest = {
+  embed_key: string;
+  fingerprint: string;
+  /** 1 (😞) to 5 (😍). */
+  rating: number;
+  comment?: string;
 };
 
 export type GuestMessageRequest = {

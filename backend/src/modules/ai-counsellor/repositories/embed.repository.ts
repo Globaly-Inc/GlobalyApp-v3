@@ -15,6 +15,8 @@ export interface EmbedConfigRow {
   display_name: string | null;
   logo_url: string | null;
   brand_color: string | null;
+  /** Launcher corner (20261001_002). Absent on a database behind that migration. */
+  position?: "left" | "right";
   custom_instructions: string | null;
   /** Panel copy, editable after creation (20260928_001). Never reaches the model. */
   greeting: string | null;
@@ -37,6 +39,7 @@ export interface EmbedConfigPatch {
   display_name?: string | null;
   logo_url?: string | null;
   brand_color?: string | null;
+  position?: "left" | "right";
   custom_instructions?: string | null;
   greeting?: string | null;
   subtitle?: string | null;

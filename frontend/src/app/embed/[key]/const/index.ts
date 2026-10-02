@@ -112,3 +112,13 @@ export function embedStarters(kind: EmbedOwnerKind): StarterCategory[] {
     },
   ];
 }
+
+/** postMessage type the panel sends to public/embed.js to close itself. Keep in step with it. */
+export const CLOSE_MESSAGE = "globaly-embed:close";
+
+/** postMessage type telling public/embed.js this visitor has a conversation, so its teaser
+ *  card stops inviting them. Keep in step with it. */
+export const STARTED_MESSAGE = "globaly-embed:started";
+
+/** postMessage type the panel sends embed.js with its visitor id, so the host page can keep it. */
+export const FP_MESSAGE = "globaly-embed:fp";

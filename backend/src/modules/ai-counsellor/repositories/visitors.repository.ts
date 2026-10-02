@@ -66,6 +66,20 @@ const COLUMNS = [
   "study_preference",
   "summary_status",
   "summary_sent_at",
+  "end_confirmed_at",
+  // Takeover and the Inbox's own bookkeeping (20261001_001). `handled_by_me` is not a column —
+  // routes add it from the token, see takeover.service's withMe.
+  "handled_by_user_id",
+  "handled_by_name",
+  "handled_at",
+  "handoff_requested_at",
+  "resolved_at",
+  "resolved_by_name",
+  "unread_count",
+  "rating",
+  "rating_comment",
+  "rated_at",
+  "summary",
 ] as const;
 
 /** Status filter + search, shared by the page query and the tab counts so they cannot drift. */
@@ -127,4 +141,19 @@ export async function visitorCounts(
   const all = row?.total_count ?? 0;
   const lead = row?.lead_count ?? 0;
   return { all, lead, visitor: all - lead };
+}
+
+/**
+ * Visitors with no contact summary yet, or one in an older shape (no `kind`) — the worker's
+ * backfill. Everything else is rewritten as it happens, after each chat summary and profile edit.
+ * Unexecuted, so tests can read the SQL.
+ */
+export function dueForSummaryQuery(db: Knex, opts: { limit: number }): Knex.QueryBuilder {
+  return db(TABLE)
+    .whereNotNull("session_id")
+    .where("message_count", ">=", 2)
+    .where((q) => q.whereNull("summary").orWhereRaw(`summary->>'kind' IS NULL`))
+    .orderBy("last_activity_at", "desc")
+    .limit(opts.limit)
+    .select("id");
 }

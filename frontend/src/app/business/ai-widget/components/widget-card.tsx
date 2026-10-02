@@ -1,8 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import Link from "next/link";
-import { Check, Copy, Eye, KeyRound, Palette, Power, PowerOff } from "lucide-react";
+import { Check, Copy, KeyRound, Palette } from "lucide-react";
+import { WidgetSwitch } from "@/app/business/messages/components/widget-switch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -30,19 +30,16 @@ function Confirm({ label, onYes, onNo }: Readonly<{ label: string; onYes: () => 
 
 export function WidgetCard({
   config,
-  onDeactivate,
-  onReactivate,
   onEdit,
   onRotateKey,
 }: Readonly<{
   config: EmbedConfig;
-  onDeactivate: (id: number) => void;
-  onReactivate: (id: number) => void;
-  onEdit: (config: EmbedConfig) => void;
+  /** Absent when the editor is on the same page. */
+  onEdit?: (config: EmbedConfig) => void;
   onRotateKey: (id: number) => void;
 }>) {
   const [copied, setCopied] = useState(false);
-  const [confirming, setConfirming] = useState<"deactivate" | "rotate" | null>(null);
+  const [confirming, setConfirming] = useState<"rotate" | null>(null);
 
   const copy = async () => {
     await navigator.clipboard.writeText(embedSnippet(config.embed_key));
@@ -62,30 +59,20 @@ export function WidgetCard({
           {config.display_name ?? "Untitled widget"}
           {!config.is_active && <Badge variant="secondary">Paused</Badge>}
         </CardTitle>
-        {confirming === "deactivate" ? (
-          <Confirm label="Pause on your site?" onYes={() => { onDeactivate(config.id); setConfirming(null); }} onNo={() => setConfirming(null)} />
-        ) : confirming === "rotate" ? (
+        {confirming === "rotate" ? (
           <Confirm label="Old snippet stops working. Continue?" onYes={() => { onRotateKey(config.id); setConfirming(null); }} onNo={() => setConfirming(null)} />
         ) : (
           <div className="flex items-center gap-1">
-            <Button size="sm" variant="ghost" onClick={() => onEdit(config)} title="Appearance">
-              <Palette className="size-4" />
-            </Button>
-            <Button size="sm" variant="ghost" render={<Link href={`/business/ai-widget/preview/${config.embed_key}`} />} title="Preview on a sample page">
-              <Eye className="size-4" />
-            </Button>
+            {onEdit && (
+              <Button size="sm" variant="ghost" onClick={() => onEdit(config)} title="Appearance">
+                <Palette className="size-4" />
+              </Button>
+            )}
             <Button size="sm" variant="ghost" onClick={() => setConfirming("rotate")} title="Regenerate key">
               <KeyRound className="size-4" />
             </Button>
-            {config.is_active ? (
-              <Button size="sm" variant="ghost" onClick={() => setConfirming("deactivate")} title="Pause">
-                <Power className="size-4" />
-              </Button>
-            ) : (
-              <Button size="sm" variant="ghost" onClick={() => onReactivate(config.id)} title="Resume">
-                <PowerOff className="size-4" />
-              </Button>
-            )}
+            {/* The same switch as above the Inbox: off asks nothing, and offers Undo instead. */}
+            <WidgetSwitch />
           </div>
         )}
       </CardHeader>

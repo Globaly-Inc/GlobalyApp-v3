@@ -79,7 +79,8 @@ export async function judgeConclusion(
     const raw = await generateText({
       system: SYSTEM,
       prompt: lines,
-      maxTokens: 400,
+      // Thinking shares this budget, so 400 could clip the verdict JSON; see profile-extract.
+      maxTokens: 8000,
       // A judgement, not prose. Sampling here makes the same conversation classify differently
       // on two consecutive turns, which reads to the visitor as the card appearing at random.
       temperature: 0,

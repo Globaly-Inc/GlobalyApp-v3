@@ -4,7 +4,7 @@ export const QUICK_ACTIONS: { label: string; href: string; icon: LucideIcon; tin
   // Hidden for the short release (Enquiries is off the sidebar too):
   // { label: "Enquiry inbox", href: "/business/enquiries", icon: Inbox, tint: "bg-primary/10 text-primary ring-primary/15" },
   { label: "Manage profile & services", href: "/business/profile", icon: Package, tint: "bg-emerald-500/10 text-emerald-600 ring-emerald-500/15 dark:text-emerald-400" },
-  { label: "AI assistant", href: "/business/ai-widget", icon: Sparkles, tint: "bg-violet-500/10 text-violet-600 ring-violet-500/15 dark:text-violet-400" },
+  { label: "AI assistant", href: "/business/messages/widget", icon: Sparkles, tint: "bg-violet-500/10 text-violet-600 ring-violet-500/15 dark:text-violet-400" },
 ];
 
 /**

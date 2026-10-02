@@ -225,6 +225,13 @@
     -webkit-text-fill-color: transparent;
     background-clip: text;
   }
+  /* Inside the website widget the gradient stays within the institution's brand colour, which
+     the panel root sets as --primary (embed/[key]/utils widgetTheme) — no Globaly cyan. */
+  [data-widget-brand] .gradient-text {
+    background: linear-gradient(135deg, var(--primary), color-mix(in srgb, var(--primary) 65%, #ffffff));
+    -webkit-background-clip: text;
+    background-clip: text;
+  }
   /* The four landing heroes lay white type over bright stock footage. They each used
      a flat navy scrim, which protected the type but flattened the footage into one
      heavy slab. This wash spends the same light budget differently: the tone travels

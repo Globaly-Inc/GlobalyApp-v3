@@ -36,7 +36,10 @@
 
   // The panel must reach our origin, not the host's, so derive it from this script's own src.
   var origin = new URL(script.src, location.href).origin;
-  var side = script.getAttribute("data-position") === "left" ? "left" : "right";
+  // The widget's setting (fetched with the branding below) decides the corner; a data-position
+  // attribute on the tag, when present, overrides it. Until the setting arrives: the tag, else right.
+  var tagSide = script.getAttribute("data-position");
+  var side = tagSide === "left" ? "left" : "right";
   var reduceMotion = false;
   try { reduceMotion = !!(window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches); } catch {}
 
@@ -93,14 +96,13 @@
   panel.setAttribute("allow", "clipboard-write");
   // Created hidden and with no src: the chat page (and its credit-consuming session)
   // must not load until someone actually opens the widget.
-  var PANEL_DESKTOP =
-    "display:none;position:fixed;bottom:88px;" + side + ":20px;width:400px;height:min(704px,calc(100vh - 108px));" +
+  var panelDesktop = function () { return "display:none;position:fixed;bottom:88px;" + side + ":20px;width:400px;height:min(704px,calc(100vh - 108px));" +
     "max-width:calc(100vw - 40px);border:0;border-radius:24px;background:#fff;color-scheme:normal;" +
-    "box-shadow:0 12px 48px rgba(0,0,0,.25)";
+    "box-shadow:0 12px 48px rgba(0,0,0,.25)"; };
   // Under 480px the panel IS the screen; the orb stays on top of it as the way back.
   var PANEL_MOBILE = "display:none;position:fixed;inset:0;width:100%;height:100%;border:0;background:#fff;color-scheme:normal";
   var isMobile = function () { return window.innerWidth < 480; };
-  panel.style.cssText = PANEL_DESKTOP;
+  panel.style.cssText = panelDesktop();
 
   var button = document.createElement("button");
   button.type = "button";
@@ -225,12 +227,98 @@
     );
   }
 
+  // Teaser: a card above the orb that invites the first click — brand-coloured header with the
+  // orb and the widget's name, then the greeting. Pops in after a beat, not on load. Two memories:
+  //   sessionStorage TEASER_SEEN — dismissed or opened this visit, so it doesn't nag every page;
+  //   localStorage STARTED — the panel reported a conversation (STARTED_MESSAGE), so never again
+  //   on this site: someone already chatting doesn't need inviting.
+  var TEASER_SEEN = "globaly-ai-teaser-seen";
+  var STARTED = "globaly-ai-chat-started:" + key;
+  var FONT = "system-ui,-apple-system,'Segoe UI',Roboto,sans-serif";
+  function el(tag, css, text) {
+    var n = document.createElement(tag);
+    if (css) n.style.cssText = css;
+    if (text) n.textContent = text;
+    return n;
+  }
+  var teaser = el("div");
+  teaser.setAttribute("role", "button");
+  teaser.setAttribute("tabindex", "0");
+  var teaserHead = el("div");
+  var teaserOrb = el("img", "width:44px;height:44px;flex-shrink:0;transform:scale(1.6)");
+  teaserOrb.src = orb.src;
+  teaserOrb.alt = "";
+  var teaserHeadText = el("div", "min-width:0");
+  var teaserKicker = el("div", "font:600 11px/1.3 " + FONT + ";letter-spacing:.06em;text-transform:uppercase;opacity:.85", "Meet our AI counsellor");
+  var teaserName = el("div", "font:700 17px/1.25 " + FONT + ";white-space:nowrap;overflow:hidden;text-overflow:ellipsis", "Ask us anything");
+  teaserHeadText.appendChild(teaserKicker);
+  teaserHeadText.appendChild(teaserName);
+  teaserHead.appendChild(teaserOrb);
+  teaserHead.appendChild(teaserHeadText);
+  var teaserBody = el("div", "padding:12px 16px 14px");
+  var teaserTitle = el("div", "font:600 15px/1.35 " + FONT + ";color:#111827", "Hi! 👋 How can I help you today?");
+  var teaserText = el("div", "margin-top:4px;font:13px/1.45 " + FONT + ";color:#6b7280",
+    "Ask about courses, entry requirements, fees and scholarships — answers in seconds.");
+  teaserBody.appendChild(teaserTitle);
+  teaserBody.appendChild(teaserText);
+  var teaserClose = el("button", "", "×");
+  teaserClose.type = "button";
+  teaserClose.setAttribute("aria-label", "Dismiss");
+  teaser.appendChild(teaserHead);
+  teaser.appendChild(teaserBody);
+  teaser.appendChild(teaserClose);
+
+  function placeTeaser() {
+    teaser.style.cssText = "display:" + (teaser.style.display || "none") + ";position:absolute;bottom:72px;" + side + ":0;" +
+      "width:300px;max-width:calc(100vw - 40px);background:#fff;border-radius:16px;overflow:hidden;text-align:left;" +
+      "box-shadow:0 12px 40px rgba(0,0,0,.18),0 2px 6px rgba(0,0,0,.06);cursor:pointer;transform-origin:bottom " + side;
+    teaserHead.style.cssText = "display:flex;align-items:center;gap:12px;padding:16px 40px 16px 16px;color:#fff;" +
+      "background:linear-gradient(135deg," + rgba(brand, 1) + "," + rgba(brand.map(function (v) { return Math.round(v * 0.55); }), 1) + ")";
+    teaserClose.style.cssText = "position:absolute;top:10px;right:10px;width:24px;height:24px;padding:0;border:0;" +
+      "border-radius:9999px;background:rgba(255,255,255,.22);color:#fff;font:16px/1 " + FONT + ";cursor:pointer;" +
+      "display:flex;align-items:center;justify-content:center";
+  }
+  placeTeaser();
+  function flag(store, k) { try { return store.getItem(k) === "1"; } catch (e) { return false; } }
+  function hideTeaser() {
+    teaser.style.display = "none";
+    try { sessionStorage.setItem(TEASER_SEEN, "1"); } catch (e) {}
+  }
+  teaserClose.onclick = function (e) { e.stopPropagation(); hideTeaser(); };
+  teaser.onclick = function () { if (!open) button.onclick(); };
+  teaser.onkeydown = function (e) { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); teaser.onclick(); } };
+  setTimeout(function () {
+    if (open || flag(sessionStorage, TEASER_SEEN) || flag(localStorage, STARTED)) return;
+    teaser.style.display = "block";
+    if (!reduceMotion && teaser.animate) {
+      // A pop, not a fade: rises, overshoots a touch, settles.
+      teaser.animate([
+        { opacity: 0, transform: "translateY(16px) scale(.85)" },
+        { opacity: 1, transform: "translateY(-3px) scale(1.03)", offset: 0.65 },
+        { opacity: 1, transform: "none" },
+      ], { duration: 520, easing: "cubic-bezier(.2,.9,.3,1.2)" });
+      // And the orb gives one nudge as it lands, so the eye goes to the right place.
+      button.animate([{ transform: "scale(1)" }, { transform: "scale(1.12)" }, { transform: "scale(1)" }],
+        { duration: 420, delay: 380, easing: "ease-out" });
+    }
+  }, 1500);
+
+  // The visitor's id is mirrored in the HOST page's storage, not only the iframe's. Browsers
+  // partition (Chrome, Safari) or wipe on tab close (Brave, Firefox strict) a third-party iframe's
+  // localStorage, so an id kept only inside the panel made a returning visitor look new. The panel
+  // reports its id (FP_MESSAGE); we keep it first-party and hand it back in the hash next time, and
+  // the panel adopts it (embed/[key] getFingerprint). The hash never reaches a server.
+  var FP_KEY = "globaly_embed_fp:" + key;
+  function hostFingerprint() {
+    try { return localStorage.getItem(FP_KEY) || ""; } catch (err) { return ""; }
+  }
+
   var open = false;
   button.onclick = function () {
     open = !open;
     if (open) hideTeaser();
-    if (open && !panel.src) panel.src = origin + "/embed/" + encodeURIComponent(key);
-    panel.style.cssText = isMobile() ? PANEL_MOBILE : PANEL_DESKTOP;
+    if (open && !panel.src) panel.src = origin + "/embed/" + encodeURIComponent(key) + (hostFingerprint() ? "#fp=" + encodeURIComponent(hostFingerprint()) : "");
+    panel.style.cssText = isMobile() ? PANEL_MOBILE : panelDesktop();
     panel.style.display = open ? "block" : "none";
     orb.style.display = open ? "none" : "block";
     chevron.style.display = open ? "block" : "none";
@@ -255,8 +343,21 @@
     button.setAttribute("aria-expanded", open ? "true" : "false");
     button.setAttribute("aria-label", open ? "Close Aly" : "Ask Aly");
   };
+  // The panel's own close button (embed/[key] widget-header, CLOSE_MESSAGE). Only from our panel
+  // and our origin, and only to close — nothing on the host page can drive the widget this way.
+  window.addEventListener("message", function (e) {
+    if (e.source !== panel.contentWindow || e.origin !== origin) return;
+    if (e.data && e.data.type === "globaly-embed:close" && open) button.onclick();
+    if (e.data && e.data.type === "globaly-embed:fp" && typeof e.data.fp === "string" && /^[\w-]{8,80}$/.test(e.data.fp)) {
+      try { localStorage.setItem(FP_KEY, e.data.fp); } catch (err) {}
+    }
+    if (e.data && e.data.type === "globaly-embed:started") {
+      try { localStorage.setItem(STARTED, "1"); } catch (err) {}
+      hideTeaser();
+    }
+  });
   window.addEventListener("resize", function () {
-    if (open) { panel.style.cssText = isMobile() ? PANEL_MOBILE : PANEL_DESKTOP; panel.style.display = "block"; }
+    if (open) { panel.style.cssText = isMobile() ? PANEL_MOBILE : panelDesktop(); panel.style.display = "block"; }
   });
 
   button.appendChild(orb);
@@ -276,8 +377,23 @@
       .then(function (cfg) {
         if (!cfg) return;
         var c = parseHex(cfg.brand_color);
-        if (c) { brand = c; paint(); }
+        if (!tagSide && (cfg.position === "left" || cfg.position === "right") && cfg.position !== side) {
+          side = cfg.position;
+          root.style.left = root.style.right = "";
+          root.style[side] = "20px";
+          panel.style.cssText = isMobile() ? PANEL_MOBILE : panelDesktop();
+          if (open) panel.style.display = "block";
+          placeTeaser();
+        }
+        if (cfg.greeting) teaserTitle.textContent = cfg.greeting;
+        if (c) {
+          brand = c;
+          orb.src = teaserOrb.src = origin + "/aly-orb?c=" + cfg.brand_color.replace("#", "").trim();
+          paint();
+          placeTeaser();
+        }
         if (cfg.display_name) {
+          teaserName.textContent = cfg.display_name;
           panel.title = cfg.display_name;
           button.setAttribute("aria-label", open ? "Close " + cfg.display_name : "Ask " + cfg.display_name);
         }

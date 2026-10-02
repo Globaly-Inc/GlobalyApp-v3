@@ -62,6 +62,22 @@ export function mergeCounsellingContext(
   return merged;
 }
 
+/** A chat's (or a contact's) staff-facing summary, as stored. */
+export interface ChatSummaryJson {
+  /** "contact" on the visitor's whole-person summary; absent on a chat's own. */
+  kind?: "contact";
+  title?: string | null;
+  text: string | null;
+  open?: string[];
+  next_step?: string | null;
+  program?: { name: string; city?: string | null } | null;
+  topics?: string[];
+  /** Contact summaries only: how many summarised chats and stated profile details it was built from. */
+  chat_count?: number;
+  detail_count?: number;
+  generated_at: string;
+}
+
 export interface SessionRow {
   id: number;
   /** Null on an embed-widget visitor's thread — `visitor_key` owns it instead. */
@@ -72,6 +88,10 @@ export interface SessionRow {
   message_count: number;
   credits_used: number;
   is_archived: boolean;
+  /** A widget chat the visitor ended (20261002_003). Absent on a database behind it. */
+  ended_at?: Date | null;
+  /** That chat's staff-facing summary. */
+  summary?: ChatSummaryJson | null;
   counselling_context: CounsellingContext;
   created_at: Date;
   updated_at: Date;
@@ -114,7 +134,48 @@ export async function findByVisitor(
   return masterKnex(TABLE)
     .where({ visitor_key: visitorKey, embed_config_id: embedConfigId })
     .whereNull("deleted_at")
+    // The OPEN chat only — an ended one is never resumed; the visitor's next message starts fresh.
+    .whereNull("ended_at")
     .first();
+}
+
+/** The visitor ended the chat: close it, so their next visit starts a new one. */
+export async function endVisitorSession(visitorKey: string, embedConfigId: number): Promise<number | null> {
+  const [row] = await masterKnex(TABLE)
+    .where({ visitor_key: visitorKey, embed_config_id: embedConfigId })
+    .whereNull("deleted_at")
+    .whereNull("ended_at")
+    .update({ ended_at: masterKnex.fn.now(), updated_at: masterKnex.fn.now() })
+    .returning("id");
+  return row?.id ?? null;
+}
+
+/** Reopen an ended chat — a staff reply after the end, so it reaches the visitor's next visit. */
+export async function reopenSession(id: number): Promise<void> {
+  await masterKnex(TABLE).where({ id }).update({ ended_at: null, updated_at: masterKnex.fn.now() });
+}
+
+export interface VisitorChat {
+  id: number;
+  created_at: Date;
+  updated_at: Date;
+  ended_at: Date | null;
+  message_count: number;
+  summary: ChatSummaryJson | null;
+}
+
+/** Every chat this visitor had with this widget, oldest first. */
+export async function findChatsByVisitor(visitorKey: string, embedConfigId: number): Promise<VisitorChat[]> {
+  return masterKnex(TABLE)
+    .where({ visitor_key: visitorKey, embed_config_id: embedConfigId })
+    .whereNull("deleted_at")
+    .orderBy("created_at", "asc")
+    .select("id", "created_at", "updated_at", "ended_at", "message_count", "summary");
+}
+
+/** Save a chat summary only if the chat hasn't moved on while it was written (see refreshChatSummary). */
+export async function saveSummaryIfUnchanged(id: number, messageCount: number, summary: ChatSummaryJson): Promise<boolean> {
+  return (await masterKnex(TABLE).where({ id, message_count: messageCount }).update({ summary: JSON.stringify(summary) })) > 0;
 }
 
 export async function createForVisitor(
@@ -137,9 +198,11 @@ export async function adoptVisitorSession(
   embedConfigId: number,
   userId: number,
 ): Promise<SessionRow | undefined> {
+  // ponytail: only the open chat moves to the account; ended chats stay with the visitor record.
   const [row] = await masterKnex(TABLE)
     .where({ visitor_key: visitorKey, embed_config_id: embedConfigId })
     .whereNull("deleted_at")
+    .whereNull("ended_at")
     .update({ platform_user_id: userId, visitor_key: null, updated_at: masterKnex.fn.now() })
     .returning("*");
   return row;

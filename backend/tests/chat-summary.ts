@@ -267,7 +267,24 @@ lacks(abandoned.text, "resolved", "the plain-text part claims nothing about reso
 const confirmed = chatSummaryEmail({ ...mailArgs, summary: "Recap.", confirmedEnd: true });
 lacks(confirmed.html, PICK_UP, "a confirmed ending is not invited back — they said they were done");
 lacks(confirmed.text, PICK_UP, "nor in the plain-text part");
-has(confirmed.html, "Here's a recap of your chat", "a confirmed ending keeps today's opening line");
+has(confirmed.html, "Here's a quick recap of your chat", "a confirmed ending gets the plain recap line");
+
+/* ── the program card and the confirmed-requirement check ── */
+const program = { name: "Master of Engineering in Computer Science", institution: "Cornell University", city: "Ithaca", duration: "52 weeks", study_modes: ["On campus"] };
+const carded = chatSummaryEmail({ ...mailArgs, program, courses: ["Master of Engineering in Computer Science — Cornell University", "MBA — Cornell University"], summary: "- We looked at master's programs.\n✓ Your IELTS score of 7.0 meets the English language requirement." });
+has(carded.html, "Program discussed", "the chat's last course gets the program card");
+has(carded.html, "Cornell University · Ithaca campus", "institution and campus under the course name");
+has(carded.html, ">52 weeks<", "duration pill");
+has(carded.html, ">On campus<", "study mode pill");
+has(carded.html, "Also discussed: MBA — Cornell University", "other courses are listed, not dropped");
+has(carded.html, "&#10003;", "a confirmed requirement gets the check mark");
+lacks(carded.html, "✓ Your IELTS", "the ✓ marker itself is not printed in the text");
+has(carded.html, "Your chat with Acme University", "heading names the institution");
+lacks(chatSummaryEmail({ ...mailArgs, summary: "Recap." }).html, "Program discussed", "no program card without a known course");
+has(summariseConversation([
+  { role: "user", content: "q" },
+  { role: "assistant", content: "a", cards: [{ name: "BSc", institution: "X" }, { name: "MEng", institution: "Cornell", duration: "52 weeks" }] },
+]).program?.name ?? "", "MEng", "the program is the last card shown");
 
 /* ── the conclusion marker: parsed, and NEVER visible ── */
 

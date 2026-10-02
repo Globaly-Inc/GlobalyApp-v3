@@ -1,5 +1,5 @@
 import type { LucideIcon } from "lucide-react";
-import { Bot, BookOpen, Brain, Building2, GraduationCap, Globe, Handshake, Home, Inbox, MapPin, Settings, UserSearch, Users } from "lucide-react";
+import { BookOpen, Brain, Building2, Contact, GraduationCap, Globe, Handshake, Home, Inbox, MapPin, Settings, UserSearch, Users } from "lucide-react";
 
 export type BusinessNavItem = { icon: LucideIcon; label: string; href: string };
 export type BusinessNavGroup = { icon: LucideIcon; label: string; items: BusinessNavItem[]; pinBottom?: boolean };
@@ -22,7 +22,6 @@ export const BUSINESS_NAV_GROUPS: BusinessNavGroup[] = [
       { icon: MapPin, label: "Branches", href: "/business/profile?tab=branches" },
       { icon: Handshake, label: "Representative", href: "/business/profile?tab=partners" },
       { icon: Users, label: "Team", href: "/business/profile?tab=team" },
-      { icon: UserSearch, label: "Visitors", href: "/business/profile?tab=visitors" },
       { icon: BookOpen, label: "Services", href: "/business/profile?tab=services" },
       { icon: Globe, label: "Site contents", href: "/business/profile?tab=site_mapping" },
     ],
@@ -41,8 +40,10 @@ export const BUSINESS_NAV_GROUPS: BusinessNavGroup[] = [
   // },
   // { icon: PenLine, label: "Scribe", items: [{ icon: PenLine, label: "Scribe", href: "/business/scribe" }] },
   // { icon: GraduationCap, label: "LMS", items: [{ icon: GraduationCap, label: "LMS", href: "/business/lms" }] },
+  // People who reached the org — the widget's visitors and leads for now.
+  { icon: Contact, label: "Contacts", items: [{ icon: UserSearch, label: "Visitors", href: "/business/contacts/visitors" }] },
+  // Second to last, Settings last. Widget settings are reached from the Inbox's ⚙ Widget button.
   { icon: Inbox, label: "Inbox", items: [{ icon: Inbox, label: "Inbox", href: "/business/messages" }] },
-  // Kept last.
   {
     icon: Settings,
     label: "Settings",
@@ -53,7 +54,7 @@ export const BUSINESS_NAV_GROUPS: BusinessNavGroup[] = [
       // { icon: Coins, label: "Credits", href: "/business/settings/credits" },
       // { icon: Receipt, label: "Application charges", href: "/business/settings/application-charges" },
       // { icon: Plug, label: "Integrations", href: "/business/settings/integrations" },
-      { icon: Bot, label: "AI embed", href: "/business/settings/ai-embed" },
+      // "AI embed" moved: widget settings are reached from the Inbox's ⚙ Widget button.
       // Institution-only on the backend (requireInstitutionContext). The page says so
       // itself rather than vanishing from the sidebar — a business asking where its
       // counsellor's knowledge lives deserves the answer, not a missing menu item.

@@ -1,36 +1,33 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import Link from "next/link";
-import { ArrowLeft, Bot, ExternalLink, Info, User } from "lucide-react";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Button, buttonVariants } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { cn } from "@/lib/utils";
-import { VISITOR_STATUS_BADGE } from "@/app/business/ai-widget/const";
-import { visitorDisplayName, visitorInitials } from "@/app/business/ai-widget/utils";
 import type { WidgetVisitor } from "@/app/business/ai-widget/apis/types";
-import { fetchEmbedTranscript } from "../store/embed-chats-slice";
-import { DateDivider, dayLabel, TranscriptBubble } from "./transcript-bubble";
+import { fetchEmbedNotes, fetchEmbedTranscript, markEmbedChatRead } from "../store/embed-chats-slice";
+import { EmbedChatComposer } from "./embed-chat-composer";
+import { EmbedConversationHeader } from "./embed-conversation-header";
+import { EmbedTranscript } from "./embed-transcript";
+import { EmbedVisitorPanel } from "./embed-visitor-panel";
+import { useEmbedChatActions } from "./use-embed-chat-actions";
 
 /**
- * An AI conversation (embed widget chat): the enquiry `ConversationView` header bar over a
- * bubble transcript (visitor left, assistant right), read-only: the visitor talked to the assistant on
- * the business's website, and there is no channel to reply to them from here. The footer says
- * so where the composer would be, and points to the visitor's record for follow-up.
+ * How often the open chat checks for new messages. Faster than the enquiry thread's 15s: a
+ * visitor on a website waits for an answer the way someone in live chat does.
+ * ponytail: polling; an SSE stream replaces it if 5s ever feels slow.
  */
-/**
- * The message column — Ask Aly's (`@/app/ai/components/chat-messages`): centred, 48rem wide,
- * 16/24px gutters. Turn spacing comes from each bubble's own vertical padding (2×16px = Ask
- * Aly's gap-8), since day dividers sit between turns at a wider measure.
- */
-const MESSAGE_COLUMN = "mx-auto w-full max-w-3xl px-4 sm:px-6";
+const POLL_MS = 5_000;
 
+/**
+ * An AI conversation (embed widget chat) in a support-inbox layout, modelled on GlobalyOS's
+ * Support Inbox: the header with who is answering, the transcript, and a composer that lets
+ * staff take the chat over from the AI. The visitor panel sits beside it from lg up.
+ */
 export function EmbedConversationView({ visitor, onBack }: Readonly<{ visitor: WidgetVisitor; onBack: () => void }>) {
   const dispatch = useAppDispatch();
   const messages = useAppSelector((s) => s.embedChats.transcripts[visitor.id]);
-  const status = useAppSelector((s) => s.embedChats.transcriptStatus[visitor.id]);
+  const notes = useAppSelector((s) => s.embedChats.notes[visitor.id]);
+  const failed = useAppSelector((s) => s.embedChats.transcriptStatus[visitor.id] === "failed");
+  const actions = useEmbedChatActions(visitor.id);
 
   // Strict Mode double-invokes effects; only refetch when the open chat actually changes.
   const fetchedFor = useRef<number | null>(null);
@@ -38,91 +35,42 @@ export function EmbedConversationView({ visitor, onBack }: Readonly<{ visitor: W
     if (fetchedFor.current === visitor.id) return;
     fetchedFor.current = visitor.id;
     dispatch(fetchEmbedTranscript(visitor.id));
+    dispatch(fetchEmbedNotes(visitor.id));
   }, [dispatch, visitor.id]);
 
-  const badge = VISITOR_STATUS_BADGE[visitor.status];
-  const name = visitorDisplayName(visitor);
+  // Skipped while the tab is hidden — nobody is reading, and the next visible tick catches up.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (document.visibilityState !== "visible") return;
+      dispatch(fetchEmbedTranscript(visitor.id));
+      dispatch(fetchEmbedNotes(visitor.id));
+    }, POLL_MS);
+    return () => clearInterval(timer);
+  }, [dispatch, visitor.id]);
+
+  // Opening the chat is reading it — and so is a message arriving while it's open.
+  // The ref stops Strict Mode's second run posting the same read twice.
+  const unread = visitor.unread_count ?? 0;
+  const readFor = useRef<string | null>(null);
+  useEffect(() => {
+    const key = `${visitor.id}:${unread}`;
+    if (unread === 0 || readFor.current === key) return;
+    readFor.current = key;
+    dispatch(markEmbedChatRead(visitor.id));
+  }, [dispatch, visitor.id, unread]);
 
   return (
-    <div className="flex h-full flex-col">
-      <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-3 py-2.5 md:px-4">
-        <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-3">
-          <Button variant="ghost" size="icon-sm" className="md:hidden" onClick={onBack} aria-label="Back to conversations">
-            <ArrowLeft />
-          </Button>
-          <Avatar className="size-9 shrink-0">
-            <AvatarFallback className="bg-primary/10 text-xs text-primary">
-              {visitor.name ? visitorInitials(visitor) : <User className="size-4" aria-hidden />}
-            </AvatarFallback>
-          </Avatar>
-          <div className="min-w-0">
-            <div className="flex items-center gap-1.5">
-              <h2 className={cn("truncate text-base font-semibold text-foreground", !visitor.name && "italic")}>{name}</h2>
-              <span className={cn("inline-flex shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium", badge.className)}>
-                {badge.label}
-              </span>
-            </div>
-            <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
-              <Bot className="size-3 shrink-0" aria-hidden />
-              AI conversation{visitor.email ? ` · ${visitor.email}` : ""}
-            </p>
-          </div>
-        </div>
-        <Link
-          href={`/business/ai-widget/visitors/${visitor.id}`}
-          className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "shrink-0 gap-1.5")}
-        >
-          <ExternalLink className="size-3.5" aria-hidden />
-          <span className="hidden sm:inline">View visitor</span>
-        </Link>
+    <div className="flex h-full">
+      <div className="flex min-w-0 flex-1 flex-col">
+        <EmbedConversationHeader visitor={visitor} actions={actions} onBack={onBack} />
+        <EmbedTranscript visitor={visitor} messages={messages} notes={notes} failed={failed} />
+        <EmbedChatComposer visitor={visitor} />
       </div>
-
-      {/* The scroller spans the pane (scrollbar at its edge). Messages sit in a centred column;
-          day dividers are wider, 80% of the pane, centred on the same axis. */}
-      <div className="min-h-0 flex-1 overflow-y-auto py-4">
-        <div className={MESSAGE_COLUMN}>
-        {!messages && status !== "failed" ? (
-          <div className="space-y-4 px-4">
-            {[0, 1, 2].map((i) => (
-              <div key={i} className="flex gap-3">
-                <Skeleton className="size-9 shrink-0 rounded-full" />
-                <div className="flex-1 space-y-1.5">
-                  <Skeleton className="h-3 w-32" />
-                  <Skeleton className="h-3 w-2/3" />
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : status === "failed" && !messages ? (
-          <p className="px-4 py-8 text-center text-sm text-muted-foreground">Couldn&apos;t load this conversation.</p>
-        ) : messages!.length === 0 ? (
-          <p className="px-4 py-8 text-center text-sm text-muted-foreground">No messages in this chat.</p>
-        ) : null}
-        </div>
-        {messages && messages.length > 0 &&
-          messages.map((m, i) => {
-            const prev = messages[i - 1];
-            const label = dayLabel(m.created_at);
-            const showDate = !prev || dayLabel(prev.created_at) !== label;
-            return (
-              <div key={m.id}>
-                {showDate && (
-                  <div className="mx-auto w-4/5">
-                    <DateDivider label={label} />
-                  </div>
-                )}
-                <div className={MESSAGE_COLUMN}>
-                  <TranscriptBubble message={m} />
-                </div>
-              </div>
-            );
-          })}
-      </div>
-
-      <div className="flex shrink-0 items-center gap-2 border-t border-border bg-muted/40 px-4 py-3 text-xs text-muted-foreground">
-        <Info className="size-3.5 shrink-0" aria-hidden />
-        This visitor chatted with your AI assistant. The transcript is read-only.
-      </div>
+      {/* Hidden below lg, as the enquiry chat's info panel is: at md the transcript beside
+          the list and a panel would be too narrow to read. */}
+      <aside className="hidden w-72 shrink-0 border-l border-border bg-card lg:block" aria-label="Visitor details">
+        <EmbedVisitorPanel visitor={visitor} actions={actions} />
+      </aside>
     </div>
   );
 }

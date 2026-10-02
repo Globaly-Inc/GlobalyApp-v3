@@ -8,9 +8,11 @@ import { ChatCopyProvider } from "@/components/chat/chat-copy";
 import { fetchThreads, toggleThreadFavorite } from "../store/business-messages-slice";
 import { fetchEmbedChats } from "../store/embed-chats-slice";
 import { EmbedConversationView } from "./embed-conversation-view";
+import { InboxChannelBar } from "./inbox-channel-bar";
 import { InboxListSidebar } from "./inbox-list-sidebar";
-import { InboxKindTabs, type InboxKind } from "./inbox-kind-tabs";
+import type { InboxKind } from "./inbox-kind-tabs";
 import type { WidgetVisitor } from "@/app/business/ai-widget/apis/types";
+import { aiWidgetApi } from "@/app/business/ai-widget/apis";
 import { getDraftCount, getServerDraftCount, subscribeDrafts } from "@/components/chat/draft-store";
 import { ChatEmptyState } from "./chat-empty-state";
 import { ChatSidebar } from "@/components/chat/chat-sidebar";
@@ -49,12 +51,18 @@ const BUSINESS_COPY = {
   otherSide: "the student",
 };
 
+/** How often the AI Conversations list checks for new chats and unread counts. */
+const EMBED_LIST_POLL_MS = 15_000;
+
 export function MessagesView() {
   const dispatch = useAppDispatch();
   const { threads, threadsStatus, byDistribution } = useAppSelector((s) => s.businessMessages);
   const embed = useAppSelector((s) => s.embedChats);
-  /** Which list the rail shows. All merges enquiry threads and AI conversations. */
-  const [kind, setKind] = useState<InboxKind>("all");
+  /**
+   * Which list the rail shows. Pinned to AI Conversations for now — the All / Enquiries /
+   * AI Conversations tabs are hidden. Put `useState` and `<InboxKindTabs>` back to restore them.
+   */
+  const kind = "embed" as InboxKind;
   /**
    * Which side the main column shows on the All tab, which can open either. The other two
    * tabs always show their own side; each side keeps its own selection across a tab switch,
@@ -92,7 +100,11 @@ export function MessagesView() {
     dispatch(fetchThreads());
     // At mount, not on first switch: the All tab (the default) and every tab's count need it.
     dispatch(fetchEmbedChats());
-  }, [dispatch]);
+    // ?visitor=ID — the visitor page's "Open conversation". Fetched on its own because that
+    // visitor may not be on the first page of the list.
+    const visitorId = Number(searchParams.get("visitor"));
+    if (visitorId > 0) aiWidgetApi.getVisitor(visitorId).then(setEmbedOpen, () => {});
+  }, [dispatch, searchParams]);
 
   // Only a server round-trip when the term really changed — the sidebar's debounce fires on
   // mount and on every remount (a tab switch), with the term the list already reflects.
@@ -102,6 +114,17 @@ export function MessagesView() {
     },
     [dispatch, embed.search],
   );
+  // New widget chats, unread counts and takeovers by colleagues arrive on this poll. Only while
+  // the list is on its first page: page 1 replaces the list, which would drop loaded pages.
+  // ponytail: polling, like the enquiry threads; an SSE stream replaces it if 15s feels slow.
+  useEffect(() => {
+    if (embed.page !== 1) return;
+    const timer = setInterval(() => {
+      if (document.visibilityState === "visible") dispatch(fetchEmbedChats({ search: embed.search, poll: true }));
+    }, EMBED_LIST_POLL_MS);
+    return () => clearInterval(timer);
+  }, [dispatch, embed.page, embed.search]);
+
   const loadMoreVisitors = () => dispatch(fetchEmbedChats({ page: embed.page + 1, search: embed.search }));
 
   const draftCount = useSyncExternalStore(subscribeDrafts, getDraftCount, getServerDraftCount);
@@ -129,8 +152,7 @@ export function MessagesView() {
   const enquiryOpen = active.type !== "none" && (active.type !== "conversation" || selected !== undefined);
   const embedSelected = embedOpen ? (embed.visitors.find((v) => v.id === embedOpen.id) ?? embedOpen) : undefined;
   const mainOpen = pane === "enquiry" ? enquiryOpen : embedSelected !== undefined;
-  const counts = { all: threads.length + embed.total, enquiry: threads.length, embed: embed.total };
-  const tabs = <InboxKindTabs value={kind} onChange={setKind} counts={counts} />;
+  const tabs = null;
 
   // Chat wants the whole width, not the shell's centred max-w-7xl column. That comes from
   // BusinessShell's FULL_BLEED_ROUTES, which drops both the SHELL_WIDTH wrapper and
@@ -145,13 +167,15 @@ export function MessagesView() {
     <ChatCopyProvider copy={BUSINESS_COPY}>
       <div
         className={cn(
-          "flex overflow-hidden bg-background",
+          "flex flex-col overflow-hidden bg-background",
           // 4rem header, at every breakpoint. NOT the student's extra mobile allowance:
           // BusinessShell has no bottom nav to clear, so subtracting one would leave a dead
           // strip under the composer on phones.
           "h-[calc(100dvh-4rem)]",
         )}
       >
+        <InboxChannelBar />
+        <div className="flex min-h-0 flex-1">
         <div className={cn("w-full shrink-0 md:w-80 lg:w-[22rem]", mainOpen && "hidden md:block")}>
           {kind !== "enquiry" ? (
             <InboxListSidebar
@@ -213,6 +237,7 @@ export function MessagesView() {
           ) : (
             <ChatEmptyState threadCount={threads.length} />
           )}
+        </div>
         </div>
       </div>
     </ChatCopyProvider>

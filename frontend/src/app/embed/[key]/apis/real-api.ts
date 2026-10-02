@@ -5,7 +5,7 @@ import type { CourseCard } from "@/app/ai/apis/types";
 import type {
   EmbedChatEvent, EmbedContactPrompt, EmbedEndPrompt, EmbedPublicConfig, EmbedThread,
   GuestContactRequest, GuestConversationEndRequest, GuestConversationEndResponse,
-  GuestMessageRequest, WireCourseCard,
+  GuestMessageRequest, GuestRatingRequest, WireCourseCard,
 } from "./types";
 
 const RAW_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
@@ -119,6 +119,10 @@ export const embedRealApi = {
         onEvent({ type: "contact-prompt", prompt: parsed as EmbedContactPrompt });
       } else if (eventType === "end-prompt") {
         onEvent({ type: "end-prompt", prompt: parsed as EmbedEndPrompt });
+      } else if (eventType === "handoff") {
+        onEvent({ type: "handoff", agentName: (parsed as { agent_name?: string | null }).agent_name ?? null });
+      } else if (eventType === "handover") {
+        onEvent({ type: "handover" });
       }
       // session / guest-meta / sources / usage — nothing to render in the widget
     };
@@ -177,5 +181,14 @@ export const embedRealApi = {
       throw new Error((body as { error?: string } | null)?.error ?? "Something went wrong. Please try again.");
     }
     return res.json();
+  },
+
+  /** The end-of-chat faces. Best-effort: a lost rating isn't worth an error in front of the visitor. */
+  submitRating: async (input: GuestRatingRequest): Promise<void> => {
+    await fetch(`${BASE_URL}/guest/rating`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }).catch(() => {});
   },
 };

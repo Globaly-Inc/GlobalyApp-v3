@@ -19,6 +19,16 @@ export function visitorInitials(v: Pick<WidgetVisitor, "name">): string {
   return `${first[0] ?? ""}${second[0] ?? ""}`.toUpperCase() || "?";
 }
 
+/**
+ * The resolved country, with the visitor's own wording beside it when the two differ — so a bad
+ * resolution ("Kashmiri" → nothing, "Nepali" → Nepal) is visible rather than hidden.
+ */
+export function visitorNationality(v: Pick<WidgetVisitor, "nationality" | "nationality_raw">): string | null {
+  return v.nationality && v.nationality_raw && v.nationality_raw !== v.nationality
+    ? `${v.nationality} (said “${v.nationality_raw}”)`
+    : v.nationality ?? v.nationality_raw;
+}
+
 /** `sub_scores` is the one nested value in a profile entry; everything else is a scalar. */
 function profileValue(value: VisitorProfileEntry[string]): string {
   if (value == null || value === "") return "";

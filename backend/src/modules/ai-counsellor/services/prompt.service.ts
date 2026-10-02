@@ -103,6 +103,14 @@ export function buildSystemPrompt(opts: {
       "intakes, entry requirements, who it is for — and mention a campus or city only when it " +
       "distinguishes between our own options.",
     );
+    // Handover to staff is visitor-initiated only (see lib/handover-detect). The model offering it
+    // would promise a person on a widget whose team may not be watching. This overrides the
+    // "offer a human counsellor" wording in the money rule below for the widget.
+    sections.push(
+      "Never suggest talking to a person, an advisor or the admissions team in this chat, and never offer " +
+      "to connect the visitor to one. If they ask for a person themselves, the system handles it. When you " +
+      "lack information, point them to our published contact details instead.",
+    );
     const custom = sanitizeCustomInstructions(opts.embedConfig.custom_instructions);
     if (custom) sections.push(`Additional guidance from ${name}: ${custom}`);
   } else {
