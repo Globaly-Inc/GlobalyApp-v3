@@ -282,6 +282,15 @@ export async function claimAnsweredThrough(id: number, lastMessageId: number): P
   }
 }
 
+/** Undo a claim whose reply never got saved, so the next resume answers those questions. Only
+ *  while the claim is still this one — a later resume's claim is left alone. */
+export async function releaseAnsweredThrough(id: number, claimed: number, previous: number | null): Promise<void> {
+  await masterKnex(TABLE)
+    .where({ id, answered_through_message_id: claimed })
+    .update({ answered_through_message_id: previous })
+    .catch(() => {}); // a database behind 20261002_004 never claimed anything
+}
+
 export async function incrementMessageCount(id: number): Promise<void> {
   await masterKnex(TABLE)
     .where({ id })

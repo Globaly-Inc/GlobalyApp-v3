@@ -265,6 +265,12 @@ export async function guestRoutes(app: FastifyInstance) {
 
     initSSE(reply);
 
+    // Set when this resume claims questions; released if no reply ends up saved for them.
+    let claim: { sessionId: number; through: number; previous: number | null } | null = null;
+    const releaseClaim = () => claim
+      ? sessionsRepo.releaseAnsweredThrough(claim.sessionId, claim.through, claim.previous)
+      : Promise.resolve();
+
     try {
       // Read history BEFORE persisting this turn, so the model isn't handed the very
       // question it is being asked — the same ordering chat.service relies on.
@@ -286,6 +292,9 @@ export async function guestRoutes(app: FastifyInstance) {
       if (input.resume && (!session || pending.lastId == null || !(await sessionsRepo.claimAnsweredThrough(session.id, pending.lastId)))) {
         writeDone(reply);
         return;
+      }
+      if (input.resume && session && pending.lastId != null) {
+        claim = { sessionId: session.id, through: pending.lastId, previous: answeredThrough };
       }
       const asked = pending.questions.length
         ? [...pending.questions, ...(input.resume ? [] : [input.content])].join("\n\n")
@@ -592,10 +601,17 @@ export async function guestRoutes(app: FastifyInstance) {
             : {}),
         })
           // The chat's staff summary follows every turn, once the turn is stored.
-          .then(() => (embed
-            ? refreshChatSummary(session.id, embed.config.display_name, tenantDb && visitor ? { db: tenantDb, visitorId: visitor.id } : undefined)
-            : undefined))
-          .catch((err) => logger.error("Failed to persist visitor turn", { err: String(err) }));
+          .then(
+            () => (embed
+              ? refreshChatSummary(session.id, embed.config.display_name, tenantDb && visitor ? { db: tenantDb, visitorId: visitor.id } : undefined)
+              : undefined),
+            // The reply never got stored, so its questions are still owed.
+            async (err) => {
+              await releaseClaim();
+              logger.error("Failed to persist visitor turn", { err: String(err) });
+            },
+          )
+          .catch((err) => logger.error("Chat summary refresh failed", { err: String(err) }));
       } else {
         guestService.createGuestSession({
           fingerprintHash,
@@ -608,6 +624,7 @@ export async function guestRoutes(app: FastifyInstance) {
       }
     } catch (err) {
       logger.error("Guest stream error", { err: err instanceof Error ? err.message : String(err) });
+      await releaseClaim();
       if (!reply.raw.destroyed) {
         writeData(reply, {
           choices: [{ delta: { content: "I'm sorry, something went wrong. Please try again." } }],
