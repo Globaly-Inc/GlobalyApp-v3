@@ -8,6 +8,7 @@ const InviteType = z.enum(ONBOARDING_INVITE_TYPES);
 export const SendInvitationSchema = z.object({
   email: z.string().trim().toLowerCase().email().max(320),
   name: z.string().trim().min(1).max(240),
+  full_name: z.string().trim().min(1).max(200).optional(),
   business_category_id: z.number().int().positive(),
 });
 
