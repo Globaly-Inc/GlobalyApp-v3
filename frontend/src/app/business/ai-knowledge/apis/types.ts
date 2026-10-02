@@ -63,6 +63,9 @@ export interface Memory {
   conflicts_with_id: string | null;
   history: MemoryHistoryEntry[];
   created_by: number | null;
+  /** Resolved server-side from `created_by`. Null for anything the system wrote — a learned
+   *  candidate has no author, which is not the same as an author we failed to look up. */
+  created_by_name: string | null;
   created_at: string;
   updated_at: string;
   last_used_at: string | null;

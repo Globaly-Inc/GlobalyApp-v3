@@ -4,7 +4,7 @@
 // backend/src/modules/institution-memory/services/memory.service.ts, so if those move, the UI
 // starts offering actions the API refuses. Cover it the day a frontend runner lands.
 
-import { PROMOTION_MIN_ACTORS, SUMMARY_LIMIT } from "../const";
+import { PROMOTION_MIN_ACTORS, SOURCE_LABEL, SUMMARY_LIMIT } from "../const";
 import type { Memory, MemoryListParams } from "../apis/types";
 import type { KnowledgeTab, MemoryActions, MemoryFilter, MemorySummary } from "../types";
 
@@ -147,6 +147,18 @@ export const countLabel = (n: number, saturated: boolean): string => (saturated 
  * Exactly one call to action, ever. A header offering three things to do is a header nobody acts
  * on, so the most urgent state wins and the rest stay reachable through the tabs.
  */
+/**
+ * Where this rule came from, naming the person when we know them.
+ *
+ * "Added by your team" is what the label says when `created_by_name` is null, and null is the
+ * honest answer for everything the system wrote — a learned candidate and a worker-derived
+ * correction have no author. Only the admin-authored rows carry a name, which is exactly the
+ * case someone is asking about when they want to know who wrote a rule.
+ */
+export function sourceLine(memory: Pick<Memory, "source" | "created_by_name">): string {
+  return memory.created_by_name ? `Added by ${memory.created_by_name}` : SOURCE_LABEL[memory.source];
+}
+
 export function headlineFor(
   summary: MemorySummary | null,
   unreviewedReplies: number,

@@ -11,6 +11,7 @@ import { requireInstitutionContext } from "../../../core/plugins/auth.plugin.js"
 import * as embedRepo from "../../ai-counsellor/repositories/embed.repository.js";
 import * as learnRepo from "../repositories/learning.repository.js";
 import * as memoryRepo from "../repositories/memory.repository.js";
+import { withCreatorName, withCreatorNames } from "../repositories/creator-names.repository.js";
 import * as signalsRepo from "../repositories/signals.repository.js";
 import * as memories from "../services/memory.service.js";
 import { clearRetrievalCache } from "../services/retrieval.service.js";
@@ -50,7 +51,7 @@ export async function institutionMemoryRoutes(app: FastifyInstance) {
   // ── Memories ──
   app.get("/institution/memories", async (req, reply) => {
     const query = MemoryQuerySchema.parse(req.query ?? {});
-    return reply.send({ memories: await memoryRepo.list(req.institutionId, query) });
+    return reply.send({ memories: await withCreatorNames(await memoryRepo.list(req.institutionId, query)) });
   });
 
   app.post("/institution/memories", async (req, reply) => {
@@ -59,43 +60,44 @@ export async function institutionMemoryRoutes(app: FastifyInstance) {
       institutionId: req.institutionId, input, source: "admin", actor: actorOf(req), createdBy: Number(req.auth.sub),
     });
     clearRetrievalCache(); // the first memory must not wait out the zero-count cache
-    return reply.status(out.outcome === "created" ? 201 : 200).send(out);
+    return reply.status(out.outcome === "created" ? 201 : 200)
+      .send({ ...out, memory: await withCreatorName(out.memory) });
   });
 
   app.get("/institution/memories/:id", async (req, reply) => {
     const { id } = IdParam.parse(req.params);
     const memory = await memoryRepo.findById(id, req.institutionId);
     if (!memory || memory.status === "deleted") throw new NotFoundError("Memory not found");
-    return reply.send(memory);
+    return reply.send(await withCreatorName(memory));
   });
 
   app.patch("/institution/memories/:id", async (req, reply) => {
     const { id } = IdParam.parse(req.params);
     const input = PatchMemorySchema.parse(req.body ?? {});
-    return reply.send(await memories.edit(id, req.institutionId, input, actorOf(req)));
+    return reply.send(await withCreatorName(await memories.edit(id, req.institutionId, input, actorOf(req))));
   });
 
   app.post("/institution/memories/:id/approve", async (req, reply) => {
     const { id } = IdParam.parse(req.params);
     const memory = await memories.approve(id, req.institutionId, actorOf(req));
     clearRetrievalCache();
-    return reply.send(memory);
+    return reply.send(await withCreatorName(memory));
   });
 
   app.post("/institution/memories/:id/deprecate", async (req, reply) => {
     const { id } = IdParam.parse(req.params);
     const { reason } = DeprecateBody.parse(req.body ?? {});
-    return reply.send(await memories.deprecate(id, req.institutionId, actorOf(req), reason));
+    return reply.send(await withCreatorName(await memories.deprecate(id, req.institutionId, actorOf(req), reason)));
   });
 
   app.post("/institution/memories/:id/reactivate", async (req, reply) => {
     const { id } = IdParam.parse(req.params);
-    return reply.send(await memories.reactivate(id, req.institutionId, actorOf(req)));
+    return reply.send(await withCreatorName(await memories.reactivate(id, req.institutionId, actorOf(req))));
   });
 
   app.post("/institution/memories/:id/unflag", async (req, reply) => {
     const { id } = IdParam.parse(req.params);
-    return reply.send(await memories.unflag(id, req.institutionId, actorOf(req)));
+    return reply.send(await withCreatorName(await memories.unflag(id, req.institutionId, actorOf(req))));
   });
 
   app.delete("/institution/memories/:id", async (req, reply) => {

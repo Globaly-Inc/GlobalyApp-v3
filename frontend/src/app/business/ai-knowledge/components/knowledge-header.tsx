@@ -53,7 +53,7 @@ export function KnowledgeHeader({
           </span>
 
           <div className="min-w-0 flex-1">
-            <h1 className="text-lg font-semibold text-white">Your AI counsellor</h1>
+            <h1 className="text-lg font-semibold text-white">Ally</h1><small className="text-xs text-white/45">Your AI counsellor</small>
             <p className="mt-1 text-sm leading-relaxed text-white/65">{headline.line}</p>
           </div>
 

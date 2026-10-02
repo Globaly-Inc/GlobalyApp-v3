@@ -133,7 +133,8 @@
     "test:llm-request-timeout": "node --import tsx tests/llm-request-timeout.ts",
     "test:site-intelligence-overwrite": "node --import tsx tests/site-intelligence-overwrite.ts",
     "test:rag-money-topics": "node --import tsx tests/rag-money-topics.ts",
-    "test:institution-memory-recovery": "node --import tsx tests/institution-memory-recovery.ts"
+    "test:institution-memory-recovery": "node --import tsx tests/institution-memory-recovery.ts",
+    "test:institution-memory-creator-names": "node --import tsx tests/institution-memory-creator-names.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",

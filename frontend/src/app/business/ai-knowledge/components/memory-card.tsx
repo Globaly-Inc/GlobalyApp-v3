@@ -4,8 +4,8 @@ import { AlertTriangle, Flag, Pin } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { relativeTime } from "@/components/feed/utils";
-import { MEMORY_TYPE_META, SOURCE_LABEL } from "../const";
-import { actionsFor, confidencePct, isAlwaysOn, needsDecision, provenanceLine } from "../utils";
+import { MEMORY_TYPE_META } from "../const";
+import { actionsFor, confidencePct, isAlwaysOn, needsDecision, provenanceLine, sourceLine } from "../utils";
 import type { Memory } from "../apis/types";
 
 /**
@@ -108,7 +108,7 @@ export function MemoryCard({
         </button>
 
         <p className="mt-2 text-xs text-muted-foreground">
-          {SOURCE_LABEL[memory.source]}
+          {sourceLine(memory)}
           {learned && ` · ${confidencePct(memory.confidence)} confident`}
           {` · ${relativeTime(memory.created_at)}`}
           {provenance && ` · ${provenance}`}
