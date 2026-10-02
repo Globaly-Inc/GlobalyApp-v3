@@ -255,6 +255,10 @@ async function processTenant(tenant: TenantSchema): Promise<number> {
           const { turns, courses } = conversation;
           const summary = await writeSummary(conversation, widgetName);
 
+          const endedNow = (await sessionsRepo.findChatsByVisitor(row.visitor_key, row.embed_config_id))
+            .some((c) => c.id === chat.id && c.ended_at);
+          const stateNow = await db(TABLE).where({ id: row.id }).first("conversation_state");
+
           await enqueue({
             // One email per CHAT, not per visitor: a returning visitor who ends a second chat is owed its own.
             dedupKey: summaryDedupKey(tenant.schema, row.id, chat.id),
@@ -272,7 +276,7 @@ async function processTenant(tenant: TenantSchema): Promise<number> {
               // The visitor ended this chat themselves, or we're sending on the quiet fallback.
               // Snapshotted with everything else: the payload is write-once, so a retry cannot
               // revise it.
-              confirmed_end: chat.ended || row.conversation_state === "end_confirmed",
+              confirmed_end: chat.ended || endedNow || stateNow?.conversation_state === "end_confirmed",
               // Only restores the thread in the browser that started it — the widget keys its
               // thread on a localStorage fingerprint. On another device this opens a fresh chat
               // with the same counsellor, which is still the most useful place to land.

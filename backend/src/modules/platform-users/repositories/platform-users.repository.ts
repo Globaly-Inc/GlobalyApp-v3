@@ -175,6 +175,13 @@ export async function softDeleteUserBusinessIndex(platformUserId: number, busine
     .update({ deleted_at: masterKnex.fn.now() });
 }
 
+export async function hasLiveUserBusinessIndex(platformUserId: number, businessId: number): Promise<boolean> {
+  return !!(await masterKnex("user_business_index")
+    .where({ platform_user_id: platformUserId, business_id: businessId })
+    .whereNull("deleted_at")
+    .first("platform_user_id"));
+}
+
 export async function findBusinessByDbName(dbName: string) {
   return masterKnex("businesses")
     .where({ schema_name: dbName, account_status: 1 })
@@ -409,6 +416,13 @@ export async function softDeleteUserInstitutionIndex(platformUserId: number, ins
     .where({ platform_user_id: platformUserId, institution_id: institutionId })
     .whereNull("deleted_at")
     .update({ deleted_at: masterKnex.fn.now() });
+}
+
+export async function hasLiveUserInstitutionIndex(platformUserId: number, institutionId: number): Promise<boolean> {
+  return !!(await masterKnex("user_institution_index")
+    .where({ platform_user_id: platformUserId, institution_id: institutionId })
+    .whereNull("deleted_at")
+    .first("platform_user_id"));
 }
 
 /** Institution-context equivalent of findBusinessByDbName — used by switch-account. */
