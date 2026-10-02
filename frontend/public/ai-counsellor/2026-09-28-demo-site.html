@@ -12,34 +12,227 @@
      ponytail: same-origin, so this does NOT exercise the cross-origin path a real institution's
      site takes (CORS on /api/embed/<key>, third-party cookie rules). For THAT, serve this file
      from somewhere else — `python3 -m http.server` — and hardcode
-     src="https://staging.globalyapp.com/embed.js". -->
+     src="https://staging.globalyapp.com/embed.js".
+
+     ponytail: everything is inline — no fonts, images or scripts from anywhere but our own origin.
+     A demo that pulls in a CDN is a demo that breaks on a flaky wifi in front of a customer. The
+     "photography" is CSS gradients and the crest is one inline SVG. -->
 <html lang="en">
 <head>
   <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
   <meta name="robots" content="noindex" />
   <title>AIT — Australian Institute of Technology (demo site)</title>
   <style>
-    body { margin: 0; font-family: system-ui, sans-serif; color: #1f2937; background: #f8fafc; }
-    header { background: #111827; color: #fff; padding: 20px 40px; font-size: 20px; font-weight: 600; }
-    main { max-width: 860px; margin: 48px auto; padding: 0 24px; line-height: 1.6; }
-    h1 { font-size: 34px; margin-bottom: 8px; }
-    .muted { color: #6b7280; }
-    .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 32px; }
-    .card { background: #fff; border: 1px solid #e5e7eb; border-radius: 10px; padding: 18px; }
+    :root {
+      --navy: #0b1b3a; --navy-soft: #16305c; --gold: #c8a45c; --ink: #1f2937;
+      --muted: #64748b; --line: #e3e8ef; --wash: #f6f8fb;
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: var(--ink); background: #fff; font-family: Georgia, "Times New Roman", serif; }
+    .sans { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+    a { color: inherit; }
+    .wrap { max-width: 1120px; margin: 0 auto; padding: 0 24px; }
+
+    /* Utility bar + masthead */
+    .util { background: var(--navy); color: #cbd5e1; font: 500 12px/1 system-ui, sans-serif; }
+    .util .wrap { display: flex; gap: 20px; justify-content: flex-end; padding-top: 9px; padding-bottom: 9px; }
+    .util a { text-decoration: none; opacity: .85; }
+    .mast { border-bottom: 1px solid var(--line); position: sticky; top: 0; background: rgba(255,255,255,.94);
+            backdrop-filter: blur(6px); z-index: 10; }
+    .mast .wrap { display: flex; align-items: center; gap: 28px; padding-top: 14px; padding-bottom: 14px; }
+    .brand { display: flex; align-items: center; gap: 12px; text-decoration: none; }
+    .brand-name, .brand-sub { display: block; }
+    .brand-name { font-size: 19px; font-weight: 700; letter-spacing: .02em; color: var(--navy); line-height: 1.1; }
+    .brand-sub { font: 500 10.5px/1.3 system-ui, sans-serif; letter-spacing: .14em; text-transform: uppercase; color: var(--muted); }
+    nav { margin-left: auto; display: flex; gap: 22px; font: 600 14px/1 system-ui, sans-serif; }
+    nav a { text-decoration: none; color: var(--navy); padding: 6px 0; border-bottom: 2px solid transparent; }
+    nav a:hover { border-bottom-color: var(--gold); }
+    .apply { background: var(--navy); color: #fff !important; border-radius: 4px; padding: 10px 16px !important; border: 0 !important; }
+
+    /* Hero */
+    .hero { position: relative; color: #fff; background:
+      radial-gradient(900px 420px at 15% 10%, rgba(200,164,92,.33), transparent 60%),
+      linear-gradient(135deg, var(--navy) 0%, var(--navy-soft) 55%, #24487f 100%); }
+    .hero .wrap { padding: 76px 24px 84px; max-width: 1120px; }
+    .eyebrow { font: 600 12px/1 system-ui, sans-serif; letter-spacing: .18em; text-transform: uppercase; color: var(--gold); }
+    .hero h1 { font-size: clamp(34px, 5vw, 52px); line-height: 1.08; margin: 16px 0 14px; max-width: 16ch; }
+    .hero p { font: 17px/1.65 system-ui, sans-serif; color: #dbe3f0; max-width: 54ch; margin: 0 0 28px; }
+    .btn { display: inline-block; font: 600 15px/1 system-ui, sans-serif; padding: 14px 22px; border-radius: 4px; text-decoration: none; }
+    .btn-gold { background: var(--gold); color: #1a1407; }
+    .btn-ghost { border: 1px solid rgba(255,255,255,.45); color: #fff; margin-left: 10px; }
+    .stats { display: flex; flex-wrap: wrap; gap: 44px; margin-top: 56px; padding-top: 28px; border-top: 1px solid rgba(255,255,255,.18); }
+    .stats b { display: block; font-size: 30px; color: #fff; }
+    .stats span { font: 500 13px/1.4 system-ui, sans-serif; color: #b9c6dc; }
+
+    /* Sections */
+    section { padding: 72px 0; }
+    section.alt { background: var(--wash); border-top: 1px solid var(--line); border-bottom: 1px solid var(--line); }
+    h2 { font-size: 30px; margin: 0 0 8px; color: var(--navy); }
+    .lede { font: 16px/1.6 system-ui, sans-serif; color: var(--muted); margin: 0 0 36px; max-width: 60ch; }
+    .grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(270px, 1fr)); gap: 22px; }
+    .card { background: #fff; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+    .card .shot { height: 128px; background: linear-gradient(135deg, #2b4b86, #6d86bb); }
+    .card:nth-child(2) .shot { background: linear-gradient(135deg, #37606b, #7fa9a5); }
+    .card:nth-child(3) .shot { background: linear-gradient(135deg, #5a4a7a, #9f8ab7); }
+    .card .body { padding: 20px 22px 24px; }
+    .tag { font: 600 11px/1 system-ui, sans-serif; letter-spacing: .12em; text-transform: uppercase; color: var(--gold); }
+    .card h3 { font-size: 19px; margin: 10px 0 8px; color: var(--navy); }
+    .card p { font: 14.5px/1.6 system-ui, sans-serif; color: var(--muted); margin: 0 0 14px; }
+    .meta { font: 500 13px/1 system-ui, sans-serif; color: var(--ink); border-top: 1px solid var(--line); padding-top: 14px; }
+    .meta span { color: var(--muted); }
+
+    .two { display: grid; grid-template-columns: 1.1fr .9fr; gap: 56px; align-items: start; }
+    ul.ticks { list-style: none; padding: 0; margin: 0; font: 15.5px/1.7 system-ui, sans-serif; }
+    ul.ticks li { padding-left: 28px; margin-bottom: 12px; position: relative; }
+    ul.ticks li::before { content: "✓"; position: absolute; left: 0; color: var(--gold); font-weight: 700; }
+    .dates { border: 1px solid var(--line); border-radius: 8px; background: #fff; }
+    .dates h3 { margin: 0; padding: 18px 22px; border-bottom: 1px solid var(--line); font-size: 16px; color: var(--navy); }
+    .dates .row { display: flex; justify-content: space-between; padding: 14px 22px; border-bottom: 1px solid var(--line);
+                  font: 14.5px/1.4 system-ui, sans-serif; }
+    .dates .row:last-child { border-bottom: 0; }
+    .dates .row span { color: var(--muted); }
+
+    /* Footer */
+    footer { background: var(--navy); color: #c3cddd; font: 14px/1.7 system-ui, sans-serif; padding: 56px 0 28px; }
+    footer .cols { display: grid; grid-template-columns: 1.4fr repeat(3, 1fr); gap: 36px; }
+    footer h4 { font-size: 13px; letter-spacing: .12em; text-transform: uppercase; color: #fff; margin: 0 0 14px; }
+    footer a { text-decoration: none; display: block; color: #c3cddd; margin-bottom: 8px; }
+    footer .fine { margin-top: 40px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,.14);
+                   display: flex; justify-content: space-between; gap: 16px; font-size: 12.5px; color: #93a3bb; }
+    @media (max-width: 860px) {
+      nav { display: none; }
+      .two, footer .cols { grid-template-columns: 1fr; gap: 32px; }
+    }
   </style>
 </head>
 <body>
-  <header>AIT</header>
-  <main>
-    <h1>Study at AIT</h1>
-    <p class="muted">Diplomas and bachelor degrees in IT, film, design and business. Intakes in February, June and October.</p>
-    <div class="cards">
-      <div class="card"><strong>Diploma pathways</strong><br />Start with a diploma and articulate into a bachelor.</div>
-      <div class="card"><strong>Scholarships</strong><br />Merit and regional scholarships for international students.</div>
-      <div class="card"><strong>Student support</strong><br />Orientation week, counselling and career services.</div>
+  <div class="util"><div class="wrap">
+    <a href="#">Current students</a><a href="#">Staff</a><a href="#">Library</a><a href="#">Give to AIT</a>
+  </div></div>
+
+  <header class="mast"><div class="wrap">
+    <a class="brand" href="#">
+      <svg width="38" height="38" viewBox="0 0 48 48" aria-hidden="true">
+        <path d="M24 3 42 11v12c0 11-7.6 19.4-18 22C13.6 42.4 6 34 6 23V11Z" fill="#0b1b3a"/>
+        <path d="M24 7 38 13v10c0 9-6 16.1-14 18.4C16 39.1 10 32 10 23V13Z" fill="none" stroke="#c8a45c" stroke-width="1.4"/>
+        <path d="M17 29V20l7-4 7 4v9" fill="none" stroke="#fff" stroke-width="2" stroke-linejoin="round"/>
+        <path d="M24 29v-6" stroke="#c8a45c" stroke-width="2"/>
+      </svg>
+      <span>
+        <span class="brand-name">AIT</span>
+        <span class="brand-sub">Australian Institute of Technology</span>
+      </span>
+    </a>
+    <nav>
+      <a href="#courses">Study</a>
+      <a href="#why">International</a>
+      <a href="#dates">Fees &amp; scholarships</a>
+      <a href="#">Research</a>
+      <a href="#">About</a>
+      <a class="apply" href="#">Apply now</a>
+    </nav>
+  </div></header>
+
+  <div class="hero"><div class="wrap">
+    <p class="eyebrow">Sydney &amp; Melbourne · CRICOS 02155J</p>
+    <h1>Build the career the industry is hiring for.</h1>
+    <p>Diplomas, bachelor degrees and masters in information technology, film, design and business —
+       taught by people who still work in the field, in two of Australia's biggest creative cities.</p>
+    <a class="btn btn-gold" href="#courses">Explore courses</a>
+    <a class="btn btn-ghost" href="#dates">Book a campus tour</a>
+    <div class="stats">
+      <div><b>7,400</b><span>students from 61 countries</span></div>
+      <div><b>92%</b><span>in work within 6 months</span></div>
+      <div><b>3</b><span>intakes a year</span></div>
+      <div><b>#1</b><span>in NSW for film &amp; animation</span></div>
     </div>
-    <p style="margin-top:40px">Questions? Use the chat in the corner — it is the AI counsellor from the widget page, with AIT's own rules applied.</p>
-  </main>
+  </div></div>
+
+  <section id="courses"><div class="wrap">
+    <h2>Study at AIT</h2>
+    <p class="lede">Start where you are. Diploma pathways articulate straight into year two of a bachelor,
+       and every course carries industry placement in the final year.</p>
+    <div class="grid">
+      <div class="card">
+        <div class="shot"></div>
+        <div class="body">
+          <p class="tag">Undergraduate</p>
+          <h3>Bachelor of Information Technology</h3>
+          <p>Software engineering, cloud and data, with a capstone built for a real client in semester six.</p>
+          <p class="meta">3 years full-time · <span>Feb / Jun / Oct intake</span></p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="shot"></div>
+        <div class="body">
+          <p class="tag">Undergraduate</p>
+          <h3>Bachelor of Film &amp; Television</h3>
+          <p>Production, post and sound on the same kit the studios use, finishing with a festival-ready short.</p>
+          <p class="meta">3 years full-time · <span>Feb / Jun intake</span></p>
+        </div>
+      </div>
+      <div class="card">
+        <div class="shot"></div>
+        <div class="body">
+          <p class="tag">Postgraduate</p>
+          <h3>Master of Interactive Media</h3>
+          <p>Games, XR and interaction design for graduates moving across from another discipline.</p>
+          <p class="meta">2 years full-time · <span>Feb / Oct intake</span></p>
+        </div>
+      </div>
+    </div>
+  </div></section>
+
+  <section class="alt" id="why"><div class="wrap">
+    <div class="two">
+      <div>
+        <h2>International students</h2>
+        <p class="lede">Over half of our students come from outside Australia. The international team handles
+           the paperwork so you can get on with choosing a course.</p>
+        <ul class="ticks">
+          <li>Merit and regional scholarships up to 30% of tuition</li>
+          <li>Conditional offers within five working days</li>
+          <li>Airport pickup, accommodation help and orientation week</li>
+          <li>Post-study work rights advice from a registered migration agent</li>
+          <li>English pathways on campus — no separate provider to enrol with</li>
+        </ul>
+      </div>
+      <div class="dates" id="dates">
+        <h3>Key dates — 2027</h3>
+        <div class="row"><b>February intake</b><span>Applications close 12 Jan</span></div>
+        <div class="row"><b>June intake</b><span>Applications close 10 May</span></div>
+        <div class="row"><b>October intake</b><span>Applications close 6 Sep</span></div>
+        <div class="row"><b>Scholarship round 1</b><span>Closes 30 Nov 2026</span></div>
+        <div class="row"><b>Open day — Sydney</b><span>Sat 21 Nov, 10am</span></div>
+      </div>
+    </div>
+  </div></section>
+
+  <section><div class="wrap">
+    <h2>Not sure where to start?</h2>
+    <p class="lede">Ask our AI counsellor in the corner — it answers from AIT's own course, fee and
+       scholarship information, any time of day, in your language.</p>
+    <a class="btn btn-gold" href="#" onclick="return false">Chat with us</a>
+  </div></section>
+
+  <footer><div class="wrap">
+    <div class="cols">
+      <div>
+        <h4>Australian Institute of Technology</h4>
+        Level 5, 7 Kelly Street<br />Ultimo NSW 2007, Australia<br />
+        +61 2 9218 8500<br />study@ait.edu.au
+      </div>
+      <div><h4>Study</h4><a href="#">Undergraduate</a><a href="#">Postgraduate</a><a href="#">Diplomas</a><a href="#">English</a></div>
+      <div><h4>Students</h4><a href="#">Timetables</a><a href="#">Fees</a><a href="#">Support</a><a href="#">Careers</a></div>
+      <div><h4>About</h4><a href="#">Our campuses</a><a href="#">Industry partners</a><a href="#">News</a><a href="#">Contact</a></div>
+    </div>
+    <div class="fine">
+      <span>© 2026 Australian Institute of Technology · CRICOS 02155J · TEQSA PRV12005</span>
+      <span>Demo site — not a real institution</span>
+    </div>
+  </div></footer>
+
   <!-- The key is the one thing that varies between widgets, so take it from the URL:
        ?key=<uuid> demos any widget; with none, the seeded AIT one. `npm run demo:institution-memory`
        prints the current key. ponytail: no DB lookup here — a public institution -> key endpoint
