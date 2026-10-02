@@ -10,7 +10,7 @@
 export const MEMORY_TYPES = [
   "COUNSELLING_GUIDELINE", "RESPONSE_PREFERENCE", "RESPONSE_PATTERN", "INSTITUTION_POLICY",
   "COURSE_RECOMMENDATION_RULE", "TERMINOLOGY", "STUDENT_CONCERN_PATTERN", "COUNSELLOR_CORRECTION",
-  "AVOIDANCE_RULE", "GENERAL_CONTEXT",
+  "AVOIDANCE_RULE", "GENERAL_CONTEXT", "GENERAL_KNOWLEDGE",
 ] as const;
 export type MemoryType = (typeof MEMORY_TYPES)[number];
 
@@ -63,10 +63,27 @@ export interface Memory {
   conflicts_with_id: string | null;
   history: MemoryHistoryEntry[];
   created_by: number | null;
+  /** Resolved server-side from `created_by`. Null for anything the system wrote — a learned
+   *  candidate has no author, which is not the same as an author we failed to look up. */
+  created_by_name: string | null;
   created_at: string;
   updated_at: string;
   last_used_at: string | null;
   expires_at: string | null;
+}
+
+/** The header's figures, counted server-side. See GET /institution/memories/summary. */
+export interface MemoryCounts {
+  active: number;
+  candidate: number;
+  conflicting: number;
+  flagged: number;
+  alwaysOn: number;
+  /** Counted per row, so a candidate that also contradicts something is one piece of work. */
+  needsYou: number;
+  /** Assistant replies nobody has reviewed, over EVERY conversation — not the 50 the
+   *  conversations tab happens to be showing. */
+  unreviewedReplies: number;
 }
 
 export interface MemoryListParams {
@@ -230,4 +247,30 @@ export interface PatchRackProfileInput {
   behaviour?: Partial<BehaviourProfile>;
   collection?: Partial<CollectionRules>;
   learning?: Partial<LearningRules>;
+}
+
+// ── Conversion insights ──────────────────────────────────────────────────────
+// Mirrors ConversionInsights in backend/src/modules/institution-memory/schemas/signals.schema.ts.
+// Every figure is a count over JOURNEYS — the table behind it holds no transcript, no visitor and
+// no message, so nothing here can identify anyone.
+
+/** The closed topic vocabulary journeys are labelled with. */
+export const JOURNEY_TOPICS = [
+  "course", "eligibility", "fees", "scholarship", "application", "visa", "accommodation", "contact", "other",
+] as const;
+export type JourneyTopic = (typeof JOURNEY_TOPICS)[number];
+
+export interface ConversionInsights {
+  conversations: number;
+  converted: number;
+  /** Converted without the counsellor ever asking — the "easy conversion". */
+  volunteered: number;
+  /** Converted having been asked at least once. */
+  prompted: number;
+  median_messages_to_conversion: number | null;
+  /** Time from first message to sharing details — §10's "time to conversion". */
+  median_seconds_to_conversion: number | null;
+  top_paths: Array<{ path: string[]; count: number }>;
+  topic_before_conversion: Array<{ value: string; count: number }>;
+  first_topic: Array<{ value: string; count: number }>;
 }

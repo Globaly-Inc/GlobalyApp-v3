@@ -98,9 +98,16 @@ console.log("\n3. counsellor review");
 
 console.log("\n4. conversation end");
 {
+  // This asserted "auto_learn off: no lookup, no job" until conversion signals started riding
+  // this job. The publisher is now unconditional and BOTH gates live in the worker, because the
+  // two halves are gated differently: signals are the institution's own funnel analytics and
+  // always run, while learning writes guidance the counsellor follows and stays behind the
+  // opt-in. Gating here would have meant an institution that declined learning also lost the
+  // ability to see how its visitors convert — unrelated choices.
   wire();
   await s.onConversationEnd(config({ auto_learn: false }) as never, "vk");
-  assert(count(SES) === 0 && published.length === 0, "auto_learn off: no lookup, no job");
+  assert(published.length === 1 && published[0]?.kind === "conversation",
+    "auto_learn off STILL publishes: the worker decides what to do with it", published);
 
   wire();
   await s.onConversationEnd(config({ auto_learn: true }) as never, "vk");

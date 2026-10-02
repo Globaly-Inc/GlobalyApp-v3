@@ -95,6 +95,24 @@ console.log("\n5. Candidate promotion: conditional on distinct students, in SQL"
   reset([[INSERT_MEMORY, () => []], [PROMOTE, () => [row({ status: "active", source: "extracted" })]], [UPDATE_MEMORY, () => [row({ status: "candidate", source: "extracted" })]], [SELECT_MEMORY, () => [row({ status: "candidate", source: "extracted" })]]]);
   out = await svc.createMemory({ institutionId: INST, input: policy, source: "extracted", actor: worker, evidenceActor: HEX(3) });
   assert(out.outcome === "reinforced" && out.promoted && out.memory.status === "active", "promoted when the predicate holds");
+
+  // …but a FACT never promotes itself, however much evidence accrues. Same fixtures as the line
+  // above — the DB would happily promote it, so the only thing stopping it is the type check in
+  // reinforceMemory, which is what this asserts. Behaviour, not set membership: an assertion on
+  // NEVER_AUTO_PROMOTES alone stayed green when the guard was deleted.
+  const fact = { type: "GENERAL_KNOWLEDGE" as const, content: "Australian student visas generally require proof of funds.", metadata: { topic: "visas" }, importance: 3 };
+  reset([
+    [INSERT_MEMORY, () => []],
+    [PROMOTE, () => [row({ status: "active", source: "extracted", type: "GENERAL_KNOWLEDGE" })]],
+    [UPDATE_MEMORY, () => [row({ status: "candidate", source: "extracted", type: "GENERAL_KNOWLEDGE" })]],
+    [SELECT_MEMORY, () => [row({ status: "candidate", source: "extracted", type: "GENERAL_KNOWLEDGE" })]],
+  ]);
+  out = await svc.createMemory({ institutionId: INST, input: fact, source: "extracted", actor: worker, evidenceActor: HEX(3) });
+  assert(out.outcome === "reinforced" && !out.promoted && out.memory.status === "candidate",
+    "a GENERAL_KNOWLEDGE candidate is reinforced but NEVER promoted by the crowd", out);
+  assert(count(PROMOTE) === 0,
+    "and the promotion statement is not even attempted — three students hearing the same wrong "
+    + "answer is three students misinformed, not three confirmations", count(PROMOTE));
 }
 
 console.log("\n6. Human confirms a candidate; human revives a deprecated one; learned repeat of deprecated is rejected");
@@ -212,9 +230,50 @@ console.log("\n9. touchUsed, sweep, match, pinned");
   await repo.match(h.vector, INST, { count: 6, types: ["AVOIDANCE_RULE"] });
   const call = find(MATCH_FN);
   assert(/\(\$1::vector, \$2, \$3, \$4\)/.test(call?.text ?? "") && call?.values[1] === 6 && h.tenantRequests[0] === INST, "function called unqualified inside the institution's schema, count second");
+  reset([]);
   await repo.pinned(INST);
-  const pinnedSql = find(/"type" = \$\d/);
-  assert(!/institution_id/.test(pinnedSql?.text ?? "") && pinnedSql?.values.includes("active") && pinnedSql.values.includes(5), "pinned query: status + importance 5, no institution column");
+  const pinnedSql = find(/from "institution_ai_memories"/);
+  assert(!/institution_id/.test(pinnedSql?.text ?? "") && pinnedSql?.values.includes("active"),
+    "pinned query: active rows, no institution column — the schema is the boundary", pinnedSql?.text);
+
+  // The always-on predicate is ONE string shared by pinned() and counts(). Asserted as the same
+  // text in both because the header's "N on every reply" and the rules actually carried into a
+  // reply are the same claim: a rule enforced at one end and not the other is this module's
+  // whole defect history.
+  const alwaysOn = /AVOIDANCE_RULE.*RESPONSE_PREFERENCE.*COUNSELLING_GUIDELINE.*importance = 5/s;
+  assert(alwaysOn.test(pinnedSql?.text ?? "") && /expires_at IS NULL OR expires_at > now\(\)/.test(pinnedSql?.text ?? ""),
+    "…and carries the always-on predicate, expiry included", pinnedSql?.text);
+
+  reset([[/count\(\*\) FILTER/, () => [{ active: "4", candidate: "2", conflicting: "1", flagged: "1", always_on: "3", needs_you: "3" }]]]);
+  const counts = await repo.counts(INST);
+  const countSql = find(/count\(\*\) FILTER/);
+  assert(counts.active === 4 && counts.alwaysOn === 3 && counts.needsYou === 3,
+    "counts(): Postgres returns count() as a string; every figure is a number", counts);
+  assert(alwaysOn.test(countSql?.text ?? ""), "counts() uses the SAME always-on predicate as pinned()");
+  assert(/status <> 'deleted'/.test(countSql?.text ?? "") && !/limit/i.test(countSql?.text ?? ""),
+    "…counts every live row, with no limit — a capped list is what it replaces", countSql?.text);
+  // needs_you is counted per ROW, not as flagged + conflicting + candidate, which would count a
+  // flagged candidate twice. Mirrors needsDecision() in the portal's utils.
+  assert(/FILTER \(WHERE status = 'candidate'\s+OR conflicts_with_id IS NOT NULL\s+OR flagged_at IS NOT NULL\)/.test(countSql?.text ?? ""),
+    "…and needs_you is ONE per-row predicate, never a sum of three counters", countSql?.text);
+}
+
+console.log("\n9b. The header's figures are COUNTED, never summed from a page");
+{
+  const learnRepo = await import("../src/modules/institution-memory/repositories/learning.repository.js");
+  reset([[/count\(\*\)/i, () => [{ c: "7" }]]]);
+  const n = await learnRepo.countUnreviewedReplies([3, 9]);
+  const sql = find(/count\(\*\)/i);
+  assert(n === 7, "countUnreviewedReplies: a string count becomes a number", n);
+  assert(/"m"\."review_status" is null/.test(sql?.text ?? "") && /"m"\."role" = \$/.test(sql?.text ?? ""),
+    "…the same predicate the per-session subquery uses", sql?.text);
+  // Every session of every widget the institution owns. The cap this replaces was in the portal,
+  // which summed one 50-session page client-side; there is no backend assertion that can catch
+  // that, so what is pinned here is that the figure it reads instead is a real count.
+  assert(/"s"\."embed_config_id" in \(\$\d, \$\d\)/.test(sql?.text ?? ""),
+    "…over every session of the institution's widgets", sql?.text);
+  assert(await learnRepo.countUnreviewedReplies([]) === 0 && count(/count\(\*\)/i) === 1,
+    "an institution with no widgets asks nothing");
 }
 
 console.log("\n12. Query flags and deleted rows");

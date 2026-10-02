@@ -10,7 +10,7 @@
 import * as sessionsRepo from "../repositories/sessions.repository.js";
 import type { EmbedConfigRow } from "../repositories/embed.repository.js";
 import * as learnRepo from "../../institution-memory/repositories/learning.repository.js";
-import { enqueueLearning, getProfile, hashActor, type ReviewMessageInput } from "../../institution-memory/index.js";
+import { enqueueLearning, hashActor, type ReviewMessageInput } from "../../institution-memory/index.js";
 import { NotFoundError } from "../../../shared/errors.js";
 
 /** Who is thumbing: the signed-in student, or a widget visitor on one specific widget. */
@@ -58,21 +58,23 @@ export async function recordCounsellorReview(messageId: number, review: ReviewMe
 }
 
 /**
- * A widget visitor ended their chat. Learns only where the institution opted in.
+ * A widget visitor ended their chat.
  *
- * Two sources of that opt-in, and either is enough. `ai_embed_configs.auto_learn` is per widget
- * and predates the Rack; `institution_ai_profile.learning.auto_learn` is per institution and is
- * what the portal actually exposes. Reading only the column — which is what this did until the
- * Rack's toggle was wired — meant switching learning on in the portal changed nothing at all.
- *
- * OR rather than a precedence rule: the column is the older, narrower switch, so a widget that
- * already has it on keeps working, and the institution-wide toggle turns it on for the rest.
- * Turning it off in the portal does not force off a widget whose column was set deliberately.
+ * Published UNCONDITIONALLY, because two different things ride this one job and they are gated
+ * differently: conversion signals are the institution's own funnel analytics and always run,
+ * while learning writes guidance the counsellor will follow and stays behind the opt-in. Both
+ * gates live in the worker now (learning.service.learnFromConversation), which is the only place
+ * that can tell them apart.
  */
 export async function onConversationEnd(config: EmbedConfigRow, visitorKey: string): Promise<void> {
+  // A business widget returns here and is never learned from, and never has its journey
+  // recorded. Same deliberate institution-only scope as buildEmbedContext's rackInstitutionId —
+  // see the note there. Revisit both together if business parity is ever taken on.
   if (config.institution_id == null) return;
-  const rack = await getProfile(Number(config.institution_id)).catch(() => null);
-  if (!config.auto_learn && !rack?.profile.learning.auto_learn) return;
+  // Published unconditionally since conversion signals ride this job. The auto_learn check moved
+  // INTO the worker (learnFromConversation), because the two halves are gated differently: an
+  // institution's own funnel analytics should not depend on whether it opted its counsellor into
+  // learning. The worker records the journey either way and learns only when permitted.
   const session = await sessionsRepo.findByVisitor(visitorKey, config.id);
   if (session) await enqueueLearning({ kind: "conversation", institution_id: Number(config.institution_id), session_id: session.id });
 }

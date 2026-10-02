@@ -109,6 +109,27 @@ export interface ReviewSession {
 }
 
 /** Threads on this institution's widgets, newest activity first. Visitor identity is not returned. */
+/**
+ * Assistant replies nobody has looked at yet, across every widget this institution owns.
+ *
+ * The portal header used to sum `unreviewed` over the conversations list, which is one page of
+ * at most 50 sessions and is REPLACED when the tab's filter changes — so a page full of recently
+ * reviewed chats pushed older outstanding replies out of the figure entirely. Same predicate as
+ * the per-session subquery below; counted over every session rather than over one page.
+ */
+export async function countUnreviewedReplies(configIds: number[]): Promise<number> {
+  if (!configIds.length) return 0;
+  const row = await masterKnex("ai_counselor_messages as m")
+    .join("ai_counselor_sessions as s", "s.id", "m.session_id")
+    .whereIn("s.embed_config_id", configIds)
+    .whereNull("s.deleted_at")
+    .where({ "m.role": "assistant" })
+    .whereNull("m.review_status")
+    .count("* as c")
+    .first();
+  return Number(row?.c ?? 0);
+}
+
 export async function findSessionsForConfigs(configIds: number[], opts: { limit: number; unreviewedOnly?: boolean }): Promise<ReviewSession[]> {
   if (!configIds.length) return [];
   const q = masterKnex("ai_counselor_sessions as s")

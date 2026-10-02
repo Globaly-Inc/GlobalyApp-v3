@@ -1,6 +1,6 @@
 import type { LucideIcon } from "lucide-react";
 import {
-  Ban, BookMarked, Brain, GraduationCap, MessageSquareQuote, Palette, ScrollText, Sparkles, Users,
+  Ban, BookMarked, Brain, Globe, GraduationCap, MessageSquareQuote, Palette, ScrollText, Sparkles, Users,
 } from "lucide-react";
 import type { MemorySource, MemoryStatus, MemoryType, ReviewStatus } from "../apis/types";
 import type { MemoryFilter } from "../types";
@@ -14,6 +14,7 @@ export const KNOWLEDGE_TABS = [
   { value: "style", label: "How it answers" },
   { value: "memories", label: "What it knows" },
   { value: "conversations", label: "Review replies" },
+  { value: "insights", label: "How visitors convert" },
 ] as const;
 
 /**
@@ -43,6 +44,12 @@ export const MEMORY_TYPE_META: Record<MemoryType, { label: string; icon: LucideI
   COUNSELLOR_CORRECTION: { label: "Correction", icon: Brain, hint: "A reply one of your team rewrote. Stored as your words." },
   AVOIDANCE_RULE: { label: "Never do", icon: Ban, hint: "A hard limit. Applied to every answer." },
   GENERAL_CONTEXT: { label: "Context", icon: ScrollText, hint: "Background the counsellor should carry." },
+  GENERAL_KNOWLEDGE: {
+    label: "General knowledge", icon: Globe,
+    hint: "A fact about studying abroad, not about your institution. The only kind your counsellor "
+      + "may propose with figures in it — and the only kind that always waits for you, however "
+      + "often it comes up.",
+  },
 };
 
 /** The types an institution writes by hand. The rest arrive from corrections and learning. */
@@ -78,6 +85,9 @@ export const PROMOTION_MIN_ACTORS = 3;
 export const CANDIDATE_TTL_DAYS = 90;
 
 export const MEMORY_PAGE_SIZE = 100;
+/** The list endpoint's own ceiling (memory.schema.ts: `limit ... .max(200)`). Asking for more is
+ *  a 400, so the header's unfiltered read takes exactly this and reports "200+" when it fills. */
+export const SUMMARY_LIMIT = 200;
 export const CONVERSATION_PAGE_SIZE = 50;
 
 // ── Knowledge Rack configuration ─────────────────────────────────────────────
@@ -154,4 +164,11 @@ export const FIELD_CAUTION: Record<string, string> = {
   age: "Collected from every visitor today with no stated purpose — off unless you need it.",
   gender: "Collected from every visitor today with no stated purpose — off unless you need it.",
   phone: "More than a counsellor needs to answer a question.",
+};
+
+/** The journey vocabulary, in a visitor's terms rather than the classifier's. */
+export const TOPIC_LABEL: Record<string, string> = {
+  course: "Courses", eligibility: "Eligibility", fees: "Fees", scholarship: "Scholarships",
+  application: "Applying", visa: "Visas", accommodation: "Accommodation",
+  contact: "Talking to someone", other: "Something else",
 };

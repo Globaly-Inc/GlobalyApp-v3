@@ -4,8 +4,8 @@ import { AlertTriangle, Flag, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { relativeTime } from "@/components/feed/utils";
-import { CANDIDATE_TTL_DAYS, MEMORY_TYPE_META, SOURCE_LABEL, STATUS_META } from "../const";
-import { actionsFor, confidencePct, isAlwaysOn, metadataPairs } from "../utils";
+import { CANDIDATE_TTL_DAYS, MEMORY_TYPE_META, STATUS_META } from "../const";
+import { actionsFor, confidencePct, isAlwaysOn, metadataPairs, sourceLine } from "../utils";
 import type { Memory, MemoryHistoryEntry } from "../apis/types";
 
 const BY_LABEL: Record<string, string> = {
@@ -99,7 +99,7 @@ export function MemoryDetailSheet({
 
           <div className="rounded-lg border p-3">
             <p className="mb-1 text-xs font-medium">Where it came from</p>
-            <Row label="Source" value={SOURCE_LABEL[memory.source]} />
+            <Row label="Source" value={sourceLine(memory)} />
             <Row label="Status" value={STATUS_META[memory.status].label} />
             {learned && <Row label="Model confidence" value={confidencePct(memory.confidence)} />}
             <Row label="Conversations it came from" value={String(memory.source_reference.actors.length)} />
@@ -137,7 +137,18 @@ export function MemoryDetailSheet({
                 <li key={`${h.at}-${i}`} className="flex items-baseline justify-between gap-3 text-xs">
                   <span>
                     {EVENT_LABEL[h.event] ?? h.event}
-                    {h.by && <span className="text-muted-foreground"> by {BY_LABEL[h.by.kind] ?? h.by.kind}</span>}
+                    {/* The one actor we can name. `by.id` is a platform user id for an admin entry
+                        and a hash for a student one, so only the row's own author is resolvable —
+                        and leaving "by your team" under a line that already names them reads as a
+                        second, vaguer person. */}
+                    {h.by && (
+                      <span className="text-muted-foreground">
+                        {" by "}
+                        {h.event === "created" && memory.created_by_name
+                          ? memory.created_by_name
+                          : BY_LABEL[h.by.kind] ?? h.by.kind}
+                      </span>
+                    )}
                     {h.reason && <span className="block text-muted-foreground">{h.reason}</span>}
                   </span>
                   <span className="shrink-0 text-muted-foreground">{relativeTime(h.at)}</span>

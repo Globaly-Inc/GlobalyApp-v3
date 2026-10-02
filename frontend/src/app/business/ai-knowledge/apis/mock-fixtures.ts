@@ -17,6 +17,7 @@ export const base = {
   flagged_at: null,
   conflicts_with_id: null,
   created_by: null,
+  created_by_name: null,
   last_used_at: null,
   expires_at: null,
 } as const;

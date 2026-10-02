@@ -7,8 +7,8 @@ import { Input } from "@/components/ui/input";
 import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import {
-  approveMemory, createMemory, deleteMemory, deprecateMemory, fetchMemories, reactivateMemory,
-  unflagMemory, updateMemory,
+  approveMemory, createMemory, deleteMemory, deprecateMemory, fetchMemories, fetchMemorySummary,
+  reactivateMemory, unflagMemory, updateMemory,
 } from "../store/ai-knowledge-slice";
 import { MEMORY_FILTERS } from "../const";
 import { filterToParams } from "../utils";
@@ -45,8 +45,16 @@ export function MemoriesTab() {
     return () => clearTimeout(timer);
   }, [dispatch, filter, search]);
 
+  /**
+   * Re-read the list AND the header's figures.
+   *
+   * The summary is a separate unfiltered read, so approving a candidate here would otherwise
+   * leave "Waiting on you" showing the count from page load — a number contradicting the list
+   * directly beneath it. Every path that changes a row goes through here for that reason.
+   */
   const refetch = () => {
     dispatch(fetchMemories({ ...filterToParams(filter), q: search.trim() || undefined }));
+    dispatch(fetchMemorySummary());
   };
 
   /**

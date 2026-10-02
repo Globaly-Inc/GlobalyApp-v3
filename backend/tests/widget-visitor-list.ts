@@ -269,7 +269,7 @@ console.log("\n11. volunteered details, and the meta bag");
 {
   // Same fakeDb shape as section 8 — the point is which columns each write names, because every
   // one of these is a product rule hiding in an UPDATE.
-  const { recordMeta, recordVolunteeredContact } = await import("../src/modules/ai-counsellor/services/visitor.service.js");
+  const { recordContact, recordMeta, recordVolunteeredContact } = await import("../src/modules/ai-counsellor/services/visitor.service.js");
 
   function fakeDb() {
     const captured: { updated?: Record<string, unknown>; sql?: string } = {};
@@ -345,6 +345,21 @@ console.log("\n11. volunteered details, and the meta bag");
     "and is offered nothing while the conversation is still going");
   assert(decidePrompt({ ...holder, summary_status: "sent" as const }, 6, true, DEFAULT_CONTACT_ASK) === null,
     "a summary already sent is never offered again");
+
+  // WHERE they were when they converted, captured at the moment — message_count keeps climbing
+  // afterwards, so reading it later counts every subsequent message as effort spent winning the
+  // lead, and pushes topic_before_conversion past the hand-over.
+  const vol = fix.captured.updated ?? {};
+  assert(String(vol.contact_submitted_at_count).includes("message_count + 1"),
+    "a volunteered address records the count +1 — it lands DURING the turn, before recordTurn increments", vol);
+  assert(String(vol.contact_submitted_at_count).includes("COALESCE"),
+    "and COALESCE, so a later correction does not move where it happened", vol);
+
+  const card = fakeDb();
+  await recordContact(card.db, { visitorKey: "k", embedConfigId: 1, action: "submit", name: "Jo", email: "jo@example.com" });
+  const c = card.captured.updated ?? {};
+  assert(String(c.contact_submitted_at_count) === "message_count",
+    "the CARD records it without +1 — answered in its own request, after the turn was recorded", c);
 
   const meta = fakeDb();
   await recordMeta(meta.db, 1, { referrer: "https://uni.edu/courses" });

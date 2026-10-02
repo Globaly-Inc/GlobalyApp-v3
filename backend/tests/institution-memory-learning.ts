@@ -20,6 +20,7 @@ process.env.TYPESAFE_API_KEY = "test-key"; // config reads it at load; the clien
 const h = await import("./institution-memory.harness.js");
 const { assert, reset, all, count, find, INST, OTHER_INST, ID, ID2, HEX, INSERT_MEMORY, UPDATE_MEMORY, SELECT_MEMORY } = h;
 const learn = await import("../src/modules/institution-memory/services/learning.service.js");
+const schema = await import("../src/modules/institution-memory/schemas/memory.schema.js");
 const { _llmDeps } = await import("../src/modules/superadmin/data-extraction/lib/llm-client.js");
 const jev = await import("../src/modules/institution-memory/lib/jev.js");
 type Candidate = import("../src/modules/institution-memory/schemas/memory.schema.js").ExtractionCandidate;
@@ -79,6 +80,86 @@ const cand = (o: Partial<Candidate>): Candidate => ({
   type: "RESPONSE_PATTERN", content: "When asked about refunds, state the timeframe and point to the policy page.",
   metadata: { technique: "answer_then_ask", trigger: "refund question" }, confidence: 0.8, mentions_person: false, ...o,
 });
+
+console.log("\n0. evaluateCandidate — sensitive CATEGORIES, which PII_RE cannot see");
+{
+  const names = ["john"];
+  const ev = (content: string) => learn.evaluateCandidate(
+    { type: "COUNSELLING_GUIDELINE", content, metadata: {}, confidence: 0.9, mentions_person: false },
+    names,
+  );
+  // Each of these names nobody, states no figure, and IS genuine guidance — so every other
+  // filter in the file passes it. What makes it unacceptable is the category it reasons about.
+  const rejected = (content: string, label: string) => {
+    const out = ev(content);
+    assert(!out.ok && out.reason === "sensitive_category", label, out.ok ? "accepted" : out.reason);
+  };
+  rejected("Students with depression should be offered a deferral.", "mental health");
+  rejected("Applicants with a disability need the longer application route.", "disability");
+  rejected("Asylum seekers cannot be offered the scholarship.", "immigration status");
+  rejected("Muslim students should be told about prayer facilities first.", "religion");
+  rejected("Students who cannot afford the deposit should be steered to cheaper courses.", "financial hardship");
+
+  // And the filter must not swallow ordinary counselling, or it would quietly stop all learning.
+  assert(ev("Ask what the student wants from the course before recommending one.").ok,
+    "ordinary counselling guidance is untouched");
+  assert(ev("Explain the application steps in order rather than all at once.").ok,
+    "and so is ordinary process guidance");
+
+  // It reaches free-text metadata too — `concern` is exactly where a health category would land.
+  const meta = learn.evaluateCandidate(
+    { type: "STUDENT_CONCERN_PATTERN", content: "Visitors often worry before applying.",
+      metadata: { concern: "anxiety about the interview", approach: "reassure them" },
+      confidence: 0.9, mentions_person: false },
+    names,
+  );
+  assert(!meta.ok && meta.reason === "sensitive_category", "and it is checked in metadata, not only content", meta);
+}
+
+console.log("\n0b. near-duplicate merge — and why contradiction is checked FIRST");
+{
+  // The ordering this pins down is the dangerous one. Two statements can be ~0.9 apart because
+  // they share almost every word and still mean the opposite ("discuss refunds BEFORE an offer"
+  // vs "only AFTER an offer"). Merging on similarity before asking whether they agree would
+  // reinforce the memory that says the reverse — a disagreement counted as evidence FOR the
+  // thing being disagreed with. §4 below is that exact pair and must stay a conflict, not a merge.
+  assert(learn.MERGE_SIMILARITY >= 0.85,
+    "the merge threshold is high enough that it fires on a restatement, not a neighbour",
+    learn.MERGE_SIMILARITY);
+}
+
+console.log("\n0c. GENERAL_KNOWLEDGE — the one type that may state a fact, and what it pays for it");
+{
+  const names = ["john"];
+  const gk = (content: string, metadata: Record<string, unknown> = { topic: "visas" }) =>
+    learn.evaluateCandidate(
+      { type: "GENERAL_KNOWLEDGE", content, metadata, confidence: 0.9, mentions_person: false }, names);
+  const guideline = (content: string) =>
+    learn.evaluateCandidate(
+      { type: "COUNSELLING_GUIDELINE", content, metadata: {}, confidence: 0.9, mentions_person: false }, names);
+
+  const fact = "Australian student visas generally require evidence of funds for 2026 entry.";
+  assert(gk(fact).ok, "a sector fact is accepted — figures and years included");
+  const asGuideline = guideline(fact);
+  assert(!asGuideline.ok && asGuideline.reason === "fact_like",
+    "the SAME sentence as a guideline is still refused: the licence belongs to the type, not the text",
+    asGuideline);
+
+  // The licence is narrow. Everything that protects a person still applies.
+  assert(!gk("John's visa needed proof of funds.").ok, "a named person is still rejected");
+  assert(!gk("Email admissions@uni.edu about visa funds.").ok, "PII is still rejected");
+  assert(!gk("Refugee applicants generally need extra visa documents.").ok,
+    "and a sensitive category is still rejected, fact or not");
+
+  assert(!gk(fact, {}).ok, "metadata must carry the topic it is filed under");
+
+  // What it pays: no quantity of reinforcement activates it.
+  assert(schema.NEVER_AUTO_PROMOTES.has("GENERAL_KNOWLEDGE"),
+    "GENERAL_KNOWLEDGE can never auto-promote — three students hearing the same wrong answer is "
+    + "three students misinformed, not three confirmations");
+  assert(!schema.NEVER_AUTO_PROMOTES.has("RESPONSE_PATTERN"),
+    "while a counselling technique still promotes on the crowd signal, which is what it is for");
+}
 
 console.log("\n1. evaluateCandidate — the filters (pure)");
 {
@@ -164,7 +245,9 @@ console.log("\n2. learnFromCorrection: correction stored active; derived rules a
   assert(/never store facts/i.test(modelCalls[0]!.system) && /mentions_person/.test(modelCalls[0]!.system), "system prompt forbids facts and requires mentions_person");
   const judged = jevCalls.filter((c) => c.keys.includes("mentions_person"));
   assert(judged.length === 5, "Jev judged the correction and each derived candidate up to the survivor cap (1 + 4)", judged.length);
-  assert(count(h.MATCH_FN) === 2, "each survivor was checked for neighbours (no neighbours here → no contradiction question)", count(h.MATCH_FN));
+  // TWO queries per survivor, not one: the active set is fetched on its own so that nearer
+  // candidates can never crowd a contradicting active rule out of the window.
+  assert(count(h.MATCH_FN) === 4, "each survivor fetched BOTH neighbour windows (2 survivors x 2 scopes)", count(h.MATCH_FN));
 }
 
 console.log("\n2a. approved / flagged reviews act on the memories the reply used");
@@ -230,6 +313,75 @@ console.log("\n2c. A contradicting candidate is stored linked, never as a plain 
   const check = jevCalls.find((c) => c.keys[0] === "c0");
   assert(!!check && JSON.stringify(check.state).includes("Discuss refunds before") && JSON.stringify(check.state).includes("only after an offer"), "Jev saw the new statement and the neighbour");
   assert(h.embedCalls.length >= 1, "one embedding served both the contradiction check and the insert");
+  jevOverride = {};
+}
+
+console.log("\n2d. A contradicted CANDIDATE is never merged into — the gap between two right decisions");
+{
+  // The bug this pins down lived between two individually-correct choices:
+  //   - the contradiction check was narrowed to ACTIVE memories, because flagging one unreviewed
+  //     candidate against another blocks both behind a decision nobody can make;
+  //   - the near-duplicate merge was widened to INCLUDE candidates, because two paraphrases of
+  //     the same unreviewed observation are exactly what it exists to fold together.
+  // Together they left a hole: a statement contradicting a CANDIDATE raised no conflict, so the
+  // merge read it as a restatement and reinforced the memory saying the opposite — which three
+  // distinct visitors would then promote. The question is now asked of every neighbour the merge
+  // could touch; only the FLAG stays active-only.
+  modelCalls = []; jevCalls = [];
+  modelReply = { candidates: [cand({ type: "INSTITUTION_POLICY", content: "Discuss refunds before the student has an offer.", metadata: {} })] };
+  jevOverride = { c0: 0.9 }; // Jev: these disagree
+  reset([
+    // Same wording distance as 2c (0.9) and the same disagreement — but UNREVIEWED.
+    //
+    // The route HONOURS the statuses binding, which is what makes this test mean anything: the
+    // active-only window must come back EMPTY, exactly as Postgres would answer it, or the
+    // candidate leaks into the set a conflict can be flagged against and the assertion passes
+    // for the wrong reason.
+    [h.MATCH_FN, (stmt) => (JSON.stringify(stmt.values).includes("candidate")
+      ? [{ id: ID, type: "INSTITUTION_POLICY", content: "Refunds are discussed only after an offer.", metadata: {}, source: "extracted", confidence: 0.7, importance: 3, status: "candidate", reinforce_count: 0, use_count: 0, similarity: 0.9 }]
+      : [])],
+    ...baseRoutes(),
+  ]);
+  const r = await learn.learnFromCorrection({ kind: "correction", institution_id: INST, message_id: 77 });
+
+  assert(r.reinforced === 0,
+    "the disagreement is NOT counted as support for the candidate it contradicts", r);
+  const stored = all(INSERT_MEMORY).find((st) => st.values.includes("INSTITUTION_POLICY") && !st.values.includes("COUNSELLOR_CORRECTION"));
+  assert(!!stored, "it lands as its own row instead", stored?.values);
+  assert(!!stored && !stored.values.includes(ID),
+    "and carries NO conflicts_with_id: linking two unreviewed candidates would block both behind "
+    + "a decision nobody can make — they sit side by side awaiting review", stored?.values);
+  const asked = jevCalls.find((c) => c.keys[0] === "c0");
+  assert(!!asked && JSON.stringify(asked.state).includes("only after an offer"),
+    "the candidate WAS put to Jev — asking is wider than flagging", asked?.keys);
+  jevOverride = {};
+}
+
+console.log("\n2e. Agreeing with a candidate does not bury a conflict with an ACTIVE rule");
+{
+  // Both neighbours are near, and the statement does two things at once: it RESTATES an
+  // unreviewed candidate and CONTRADICTS a rule the institution follows. Settling the merge
+  // first reinforced the candidate and returned — the active disagreement was never flagged,
+  // and the reinforced pair could then promote into use against the live rule with nobody asked.
+  modelCalls = []; jevCalls = [];
+  modelReply = { candidates: [cand({ type: "INSTITUTION_POLICY", content: "Discuss refunds before the student has an offer.", metadata: {} })] };
+  const active = { id: ID, type: "INSTITUTION_POLICY", content: "Refunds are discussed only after an offer.", metadata: {}, source: "admin", confidence: 1, importance: 3, status: "active", reinforce_count: 0, use_count: 0, similarity: 0.88 };
+  const nearCandidate = { ...active, id: ID2, content: "Refunds should come up before any offer is made.", source: "extracted", confidence: 0.7, status: "candidate", similarity: 0.95 };
+  // nearest = [active, candidate] in that order, so c0 is the active rule: disagrees with it,
+  // agrees with the candidate (c1 falls through to the neutral 0).
+  jevOverride = { c0: 0.9 };
+  reset([
+    [h.MATCH_FN, (stmt) => (JSON.stringify(stmt.values).includes("candidate") ? [active, nearCandidate] : [active])],
+    [UPDATE_MEMORY, (st) => [h.row({ id: uuidIn(st) })]],
+    ...baseRoutes(),
+  ]);
+  const r = await learn.learnFromCorrection({ kind: "correction", institution_id: INST, message_id: 77 });
+
+  assert(r.reinforced === 0 && r.conflicting === 1,
+    "the active conflict wins: nothing reinforced, the statement is flagged", r);
+  const linked = all(INSERT_MEMORY).find((st) => st.values.includes("INSTITUTION_POLICY") && !st.values.includes("COUNSELLOR_CORRECTION"));
+  assert(!!linked && linked.values.includes(ID) && linked.values.includes("candidate"),
+    "and lands as a candidate linked to the ACTIVE rule it contradicts", linked?.values);
   jevOverride = {};
 }
 

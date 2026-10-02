@@ -1,9 +1,11 @@
 import type {
-  CreateMemoryInput, CreateMemoryOutcome, Memory, MemoryListParams, PatchMemoryInput,
-  PatchRackProfileInput, RackProfile, ReviewInput, ReviewMessage, ReviewSession, StoredRackProfile,
+  CreateMemoryInput, CreateMemoryOutcome, Memory, MemoryCounts, MemoryListParams, PatchMemoryInput,
+  ConversionInsights, PatchRackProfileInput, RackProfile, ReviewInput, ReviewMessage, ReviewSession,
+  StoredRackProfile,
 } from "./types";
 
 import { base, memories, sessions, setMemories, threads } from "./mock-fixtures";
+import { isAlwaysOn, needsDecision } from "../utils";
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -30,7 +32,43 @@ let rackProfile: RackProfile = {
 };
 let rackVersion = 0;
 
+/**
+ * A plausible funnel rather than round numbers: most conversations never convert, most that do
+ * were asked, and a minority volunteer — which is the asymmetry the panel exists to show.
+ */
+const insights: ConversionInsights = {
+  conversations: 214,
+  converted: 38,
+  // volunteered + prompted === converted: one axis (was the counsellor ever asked), so the two
+  // partition the leads rather than overlapping.
+  volunteered: 11,
+  prompted: 27,
+  median_messages_to_conversion: 7,
+  median_seconds_to_conversion: 412,
+  top_paths: [
+    { path: ["course", "eligibility", "fees", "application"], count: 9 },
+    { path: ["course", "fees", "contact"], count: 6 },
+    { path: ["eligibility", "course", "application"], count: 5 },
+    { path: ["fees", "scholarship", "application"], count: 4 },
+    { path: ["course", "visa", "eligibility", "contact"], count: 3 },
+  ],
+  topic_before_conversion: [
+    { value: "application", count: 14 }, { value: "fees", count: 9 },
+    { value: "contact", count: 7 }, { value: "eligibility", count: 5 }, { value: "visa", count: 3 },
+  ],
+  first_topic: [
+    { value: "course", count: 96 }, { value: "fees", count: 48 }, { value: "eligibility", count: 31 },
+    { value: "visa", count: 19 }, { value: "scholarship", count: 12 }, { value: "other", count: 8 },
+  ],
+};
+
 export const aiKnowledgeMockApi = {
+  getConversionInsights: async (): Promise<ConversionInsights> => {
+    console.log("[mock] getConversionInsights");
+    await delay(240);
+    return insights;
+  },
+
   getProfile: async (): Promise<StoredRackProfile> => {
     console.log("[mock] getProfile");
     await delay(220);
@@ -69,6 +107,23 @@ export const aiKnowledgeMockApi = {
       && (params.conflicting === undefined || (params.conflicting ? !!m.conflicts_with_id : !m.conflicts_with_id))
       && (!q || m.content.toLowerCase().includes(q)),
     );
+  },
+
+  // Counted over every fixture row, the way the endpoint counts over every stored row — a mock
+  // that reduced a truncated list would hide the very bug this endpoint exists to fix.
+  getMemorySummary: async (): Promise<MemoryCounts> => {
+    console.log("[mock] getMemorySummary");
+    await delay(200);
+    const live = memories.filter((m) => m.status !== "deleted");
+    return {
+      active: live.filter((m) => m.status === "active").length,
+      candidate: live.filter((m) => m.status === "candidate").length,
+      conflicting: live.filter((m) => !!m.conflicts_with_id).length,
+      flagged: live.filter((m) => !!m.flagged_at).length,
+      alwaysOn: live.filter(isAlwaysOn).length,
+      needsYou: live.filter(needsDecision).length,
+      unreviewedReplies: sessions.reduce((n, x) => n + x.unreviewed, 0),
+    };
   },
 
   getMemory: async (id: string): Promise<Memory> => {

@@ -70,6 +70,7 @@
     "test:manual-institution-job": "node --import tsx tests/manual-institution-job.ts",
     "test:ai-embed-owner": "node --import tsx tests/ai-embed-owner.ts",
     "test:widget-visitor-list": "node --import tsx tests/widget-visitor-list.ts",
+    "test:conversation-signals": "node --import tsx tests/conversation-signals.ts",
     "test:widget-visitor-context": "node --import tsx tests/widget-visitor-context.ts",
     "test:institution-rack-profile": "node --import tsx tests/institution-rack-profile.ts",
     "test:institution-memory-lifecycle": "node --import tsx tests/institution-memory-lifecycle.ts",
@@ -132,7 +133,8 @@
     "test:llm-request-timeout": "node --import tsx tests/llm-request-timeout.ts",
     "test:site-intelligence-overwrite": "node --import tsx tests/site-intelligence-overwrite.ts",
     "test:rag-money-topics": "node --import tsx tests/rag-money-topics.ts",
-    "test:institution-memory-recovery": "node --import tsx tests/institution-memory-recovery.ts"
+    "test:institution-memory-recovery": "node --import tsx tests/institution-memory-recovery.ts",
+    "test:institution-memory-creator-names": "node --import tsx tests/institution-memory-creator-names.ts"
   },
   "dependencies": {
     "@fastify/cors": "^10.0.0",

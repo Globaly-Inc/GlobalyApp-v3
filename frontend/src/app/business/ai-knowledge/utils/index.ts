@@ -4,9 +4,9 @@
 // backend/src/modules/institution-memory/services/memory.service.ts, so if those move, the UI
 // starts offering actions the API refuses. Cover it the day a frontend runner lands.
 
-import { PROMOTION_MIN_ACTORS } from "../const";
+import { PROMOTION_MIN_ACTORS, SOURCE_LABEL } from "../const";
 import type { Memory, MemoryListParams } from "../apis/types";
-import type { MemoryActions, MemoryFilter } from "../types";
+import type { KnowledgeTab, MemoryActions, MemoryFilter, MemorySummary } from "../types";
 
 /** One capsule → the query the list endpoint understands. */
 export function filterToParams(filter: MemoryFilter): MemoryListParams {
@@ -93,3 +93,91 @@ export function metadataPairs(metadata: Record<string, unknown>): { label: strin
       value: Array.isArray(value) ? value.join(", ") : String(value),
     }));
 }
+
+/**
+ * Does this row want a decision from a human?
+ *
+ * Shared by the card (which shows its actions unconditionally when true) and by `summarise`
+ * (which counts it). Deliberately ONE function: when the card and the header each decided this
+ * for themselves, a flagged ACTIVE rule made the header say "3 rules are flagged" while the
+ * figure beside it read 0 — the header shouting about work the counter did not believe existed.
+ *
+ * Counted per row, never as a sum of separate counters, so a candidate that also contradicts
+ * something is one piece of work rather than two.
+ */
+export function needsDecision(memory: Memory): boolean {
+  return memory.status === "candidate" || !!memory.conflicts_with_id || !!memory.flagged_at;
+}
+
+// `summarise()` and `countLabel()` lived here and are gone: the header's figures are counted by
+// GET /institution/memories/summary now. Reducing a 200-row page could not see an older flagged
+// rule, and "200+" was an honest label on a dishonest number. `isAlwaysOn` and `needsDecision`
+// stay — the cards use them, and the mock API counts with them.
+
+/**
+ * What the header says, and the one thing it offers to do about it.
+ *
+ * Ordered by what would cost the institution most if it sat unseen, NOT by count: a rule that
+ * contradicts one the counsellor already follows outranks forty unreviewed suggestions, because
+ * the contradiction is already affecting answers while the suggestions are only waiting. A
+ * flagged ACTIVE rule outranks everything for the same reason — visitors are pushing back on
+ * something that is in use right now.
+ *
+ * Exactly one call to action, ever. A header offering three things to do is a header nobody acts
+ * on, so the most urgent state wins and the rest stay reachable through the tabs.
+ */
+/**
+ * Where this rule came from, naming the person when we know them.
+ *
+ * "Added by your team" is what the label says when `created_by_name` is null, and null is the
+ * honest answer for everything the system wrote — a learned candidate and a worker-derived
+ * correction have no author. Only the admin-authored rows carry a name, which is exactly the
+ * case someone is asking about when they want to know who wrote a rule.
+ */
+export function sourceLine(memory: Pick<Memory, "source" | "created_by_name">): string {
+  return memory.created_by_name ? `Added by ${memory.created_by_name}` : SOURCE_LABEL[memory.source];
+}
+
+export function headlineFor(
+  summary: MemorySummary | null,
+  unreviewedReplies: number,
+): { line: string; cta?: { label: string; tab: KnowledgeTab } } {
+  if (!summary) return { line: "Reading what your counsellor knows…" };
+
+  if (summary.flagged > 0) {
+    return {
+      line: `${plural(summary.flagged, "rule is", "rules are")} flagged — visitors pushed back on replies that used ${summary.flagged === 1 ? "it" : "them"}.`,
+      cta: { label: "See what was flagged", tab: "memories" },
+    };
+  }
+  if (summary.conflicting > 0) {
+    return {
+      line: `${plural(summary.conflicting, "suggestion contradicts", "suggestions contradict")} something your counsellor already follows. Neither goes into use until you pick one.`,
+      cta: { label: "Settle it", tab: "memories" },
+    };
+  }
+  if (summary.candidate > 0) {
+    return {
+      line: `${plural(summary.candidate, "suggestion is", "suggestions are")} waiting on you. Nothing learned is used in a reply until you approve it.`,
+      cta: { label: "Review suggestions", tab: "memories" },
+    };
+  }
+  if (unreviewedReplies > 0) {
+    return {
+      line: `${plural(unreviewedReplies, "reply has", "replies have")} not been looked at yet. Correcting one teaches your counsellor in your own words.`,
+      cta: { label: "Review replies", tab: "conversations" },
+    };
+  }
+  if (summary.active === 0) {
+    return {
+      line: "Answering from your courses and website. Give it the things you'd tell a new counsellor on their first day.",
+      cta: { label: "Add your first rule", tab: "memories" },
+    };
+  }
+  return {
+    line: `Following ${summary.active} ${summary.active === 1 ? "rule" : "rules"}, and nothing needs you right now.`,
+  };
+}
+
+/** "1 rule is" / "4 rules are" — the count and the verb agree or the sentence reads broken. */
+const plural = (n: number, one: string, many: string): string => `${n} ${n === 1 ? one : many}`;

@@ -1,7 +1,7 @@
 import { httpDelete, httpGet, httpPatch, httpPost } from "@/lib/api/http";
 import type {
-  CreateMemoryInput, CreateMemoryOutcome, Memory, MemoryListParams, PatchMemoryInput,
-  PatchRackProfileInput, ReviewInput, ReviewMessage, ReviewSession, StoredRackProfile,
+  CreateMemoryInput, CreateMemoryOutcome, Memory, MemoryCounts, MemoryListParams, PatchMemoryInput,
+  ConversionInsights, PatchRackProfileInput, ReviewInput, ReviewMessage, ReviewSession, StoredRackProfile,
 } from "./types";
 
 const BASE = "/ai-chat/institution";
@@ -24,6 +24,8 @@ function toMemoryQuery(params: MemoryListParams): string {
 export const aiKnowledgeRealApi = {
   getProfile: (): Promise<StoredRackProfile> => httpGet(`${BASE}/ai-profile`),
 
+  getConversionInsights: (): Promise<ConversionInsights> => httpGet(`${BASE}/conversion-insights`),
+
   updateProfile: (patch: PatchRackProfileInput): Promise<StoredRackProfile> =>
     httpPatch(`${BASE}/ai-profile`, patch),
 
@@ -31,6 +33,8 @@ export const aiKnowledgeRealApi = {
     const res = await httpGet<{ memories: Memory[] }>(`${BASE}/memories${toMemoryQuery(params)}`);
     return res.memories;
   },
+
+  getMemorySummary: (): Promise<MemoryCounts> => httpGet(`${BASE}/memories/summary`),
 
   getMemory: (id: string): Promise<Memory> => httpGet(`${BASE}/memories/${id}`),
 

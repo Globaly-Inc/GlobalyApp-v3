@@ -201,4 +201,46 @@ assert(/"review_learned_at" = /.test(rv?.text ?? "") && !/"feedback_learned_at"/
     "…and never uses raw equality on the timestamp", rstamp?.text);
 }
 
+// ── Signals recovery records the journey ITSELF, and never replays learning ──
+// The two halves of the conversation job are not equally repeatable. `record()` upserts on
+// session_id, so replaying signals is free; `reinforce` raises reinforce_count and confidence
+// unconditionally, so replaying LEARNING makes one visitor's single conversation count twice
+// toward the confidence of every memory it touched. "Ended with no signals row" cannot tell a
+// job that never ran from one that ran and failed only at the insert, so the sweep may only
+// repeat the idempotent half. Re-publishing the conversation job repeated both (Greptile).
+{
+  const signals = await import("../src/modules/institution-memory/services/conversation-signals.service.js");
+  const SIGNALS_INSERT = /insert into "institution_conversation_signals"/i;
+  reset([
+    // provisionedInstitutionIds and tenantDbFor both read "institutions"; only the latter asks
+    // for schema_name, and returning none keeps the visitor lookup off a real tenant connection.
+    [/from "institutions"/i, (st) => (/"schema_name"/.test(st.text) ? [] : [{ id: INST }])],
+    [/from "ai_widget_visitors"/i, () => [{ session_id: 90 }]],
+    [/from "ai_counselor_sessions"/i, () => [{ id: 90, platform_user_id: null, visitor_key: "v1", embed_config_id: 7 }]],
+    [/from "ai_embed_configs"/i, () => [{ id: 7, institution_id: INST, auto_learn: true }]],
+    [SELECT_MSGS, () => [{ id: 1, session_id: 90, role: "user", content: "how much is the tuition?", memory_ids: ["m1"] }]],
+    [SIGNALS_INSERT, () => []],
+  ]);
+  published = [];
+  const out = await signals.sweepMissingSignals();
+  assert(out.found === 1 && out.recorded === 1, "the missing journey is recovered", out);
+  assert(all(SIGNALS_INSERT).length === 1, "…by writing the signals row directly", all(SIGNALS_INSERT).length);
+  assert(published.length === 0,
+    "…and NOTHING is published: learning already succeeded and must not run twice", published);
+
+  // The left join finds rows inside one tenant's schema, but the session is master-schema and
+  // answers for itself — the same ownership guard the job applies.
+  reset([
+    [/from "institutions"/i, (st) => (/"schema_name"/.test(st.text) ? [] : [{ id: INST }])],
+    [/from "ai_widget_visitors"/i, () => [{ session_id: 90 }]],
+    [/from "ai_counselor_sessions"/i, () => [{ id: 90, platform_user_id: null, visitor_key: "v1", embed_config_id: 7 }]],
+    [/from "ai_embed_configs"/i, () => [{ id: 7, institution_id: 999, auto_learn: true }]],
+    [SELECT_MSGS, () => []],
+    [SIGNALS_INSERT, () => []],
+  ]);
+  const other = await signals.sweepMissingSignals();
+  assert(other.recorded === 0 && all(SIGNALS_INSERT).length === 0,
+    "a session owned by another institution is skipped, not written", other);
+}
+
 await finish();

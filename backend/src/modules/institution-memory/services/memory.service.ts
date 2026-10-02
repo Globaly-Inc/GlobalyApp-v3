@@ -15,7 +15,7 @@ import { embed, isEmbedConfigured } from "../../superadmin/data-extraction/lib/l
 import { NotFoundError, ConflictError } from "../../../shared/errors.js";
 import * as repo from "../repositories/memory.repository.js";
 import {
-  isHumanSource, METADATA_BY_TYPE,
+  isHumanSource, METADATA_BY_TYPE, NEVER_AUTO_PROMOTES,
   type Actor, type CreateMemoryInput, type HistoryEntry, type MemoryRow, type MemorySource,
   type MemoryType, type PatchMemoryInput,
 } from "../schemas/memory.schema.js";
@@ -151,6 +151,10 @@ export async function createMemory(opts: CreateMemoryOpts): Promise<CreateOutcom
 export async function reinforceMemory(memory: MemoryRow, actor: Actor, evidenceActor: string | null): Promise<Extract<CreateOutcome, { outcome: "reinforced" }>> {
   const updated = (await repo.reinforce(memory.id, memory.institution_id, evidenceActor, entry("reinforced", actor))) ?? memory;
   if (updated.status !== "candidate") return { outcome: "reinforced", memory: updated, promoted: false };
+  // Evidence still accrues — the portal shows how often it has come up — but no quantity of it
+  // activates a factual claim. Three students hearing the same wrong answer is three students
+  // who were misinformed, not three confirmations.
+  if (NEVER_AUTO_PROMOTES.has(updated.type)) return { outcome: "reinforced", memory: updated, promoted: false };
   const promoted = await repo.promoteIfReady(memory.id, memory.institution_id, PROMOTION_MIN_ACTORS, entry("promoted", actor, `${PROMOTION_MIN_ACTORS} distinct students`));
   return { outcome: "reinforced", memory: promoted ?? updated, promoted: !!promoted };
 }

@@ -12,9 +12,27 @@ import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { aiKnowledgeApi } from "../apis";
 import type { CreateMemoryInput, Memory, MemoryListParams, PatchMemoryInput } from "../apis/types";
 import { MEMORY_PAGE_SIZE } from "../const";
+import type { MemorySummary } from "../types";
 
 export const fetchMemories = createAsyncThunk("aiKnowledge/fetch", (params: MemoryListParams) =>
   aiKnowledgeApi.listMemories({ limit: MEMORY_PAGE_SIZE, ...params }),
+);
+
+/**
+ * The header's figures, counted by the API.
+ *
+ * Deliberately NOT derived from `items`: that list is whatever filter the user has open, so
+ * counting it would make the header's numbers change when someone presses "Retired". This is its
+ * own read into its own field, and the two never interfere.
+ *
+ * It used to reduce one unfiltered `listMemories` capped at the API's own 200-row ceiling, which
+ * is wrong in the way that matters: past 200 memories an older flagged rule falls outside the
+ * window, so the header would say nothing needs attention while a rule in use is being pushed
+ * back on. "How many are there" is the one question a capped list cannot answer, so the count
+ * moved into SQL.
+ */
+export const fetchMemorySummary = createAsyncThunk("aiKnowledge/summary", () =>
+  aiKnowledgeApi.getMemorySummary(),
 );
 
 export const createMemory = createAsyncThunk("aiKnowledge/create", (input: CreateMemoryInput) =>
@@ -56,6 +74,8 @@ type AiKnowledgeState = {
   error: string | null;
   /** The latest fetch. Filters change faster than responses arrive; only this one may write. */
   requestId: string | null;
+  /** Counts for the header, from an unfiltered read. Null until the first one lands. */
+  summary: MemorySummary | null;
 };
 
 const initialState: AiKnowledgeState = {
@@ -64,6 +84,7 @@ const initialState: AiKnowledgeState = {
   actionStatus: "idle",
   error: null,
   requestId: null,
+  summary: null,
 };
 
 /** Every mutation answers with the row; keep the list's order and swap it in place. */
@@ -93,6 +114,13 @@ const aiKnowledgeSlice = createSlice({
         state.error = action.error.message ?? "Couldn't load what your counsellor knows.";
       })
 
+      // No pending/rejected case: the header simply keeps the last good figures, and a page
+      // whose numbers flicker to zero on a dropped request is worse than one that is a moment
+      // stale. The matchers below skip it for the same reason.
+      .addCase(fetchMemorySummary.fulfilled, (state, action) => {
+        state.summary = action.payload;
+      })
+
       .addCase(createMemory.fulfilled, (state, action) => {
         state.actionStatus = "idle";
         const exists = state.items.some((m) => m.id === action.payload.memory.id);
@@ -117,7 +145,8 @@ const aiKnowledgeSlice = createSlice({
       )
       .addMatcher(
         (action) => action.type.startsWith("aiKnowledge/") && action.type.endsWith("/pending")
-          && !action.type.startsWith("aiKnowledge/fetch"),
+          && !action.type.startsWith("aiKnowledge/fetch")
+          && !action.type.startsWith("aiKnowledge/summary"),
         (state) => {
           state.actionStatus = "loading";
           state.error = null;
@@ -126,7 +155,8 @@ const aiKnowledgeSlice = createSlice({
       .addMatcher(
         (action): action is { type: string; error: { message?: string } } =>
           action.type.startsWith("aiKnowledge/") && action.type.endsWith("/rejected")
-          && !action.type.startsWith("aiKnowledge/fetch"),
+          && !action.type.startsWith("aiKnowledge/fetch")
+          && !action.type.startsWith("aiKnowledge/summary"),
         (state, action) => {
           state.actionStatus = "failed";
           state.error = action.error.message ?? "That didn't go through.";
