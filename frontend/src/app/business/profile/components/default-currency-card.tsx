@@ -6,7 +6,6 @@ import { DollarSign, Loader2, Pencil, Save } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/combobox";
-import { CURRENCY_OPTIONS } from "@/lib/currencies";
 import { Label } from "@/components/ui/label";
 import { flagEmoji } from "@/components/ui/phone-input";
 import { ProfileSection } from "@/app/(web)/components/profile/profile-section";
@@ -16,6 +15,24 @@ import type { BusinessProfile } from "@/app/business/apis/types";
 import type { Country } from "@/app/geo/apis";
 import { HEADER_PENCIL } from "../const";
 
+
+// Matches only what a Combobox needs — not exhaustive, the API accepts any ISO code. Full names
+// (not the countries table's code + symbol list the fee and scholarship forms use) because this
+// card shows "NPR - Nepalese Rupee".
+const CURRENCY_OPTIONS = [
+  { value: "USD", label: "US Dollar (USD)" },
+  { value: "GBP", label: "British Pound (GBP)" },
+  { value: "EUR", label: "Euro (EUR)" },
+  { value: "AUD", label: "Australian Dollar (AUD)" },
+  { value: "CAD", label: "Canadian Dollar (CAD)" },
+  { value: "NZD", label: "New Zealand Dollar (NZD)" },
+  { value: "INR", label: "Indian Rupee (INR)" },
+  { value: "NPR", label: "Nepalese Rupee (NPR)" },
+  { value: "SGD", label: "Singapore Dollar (SGD)" },
+  { value: "AED", label: "UAE Dirham (AED)" },
+  { value: "JPY", label: "Japanese Yen (JPY)" },
+  { value: "CNY", label: "Chinese Yuan (CNY)" },
+];
 
 /** V1 showed the code and its full name together — "NPR - Nepalese Rupee", not a bare code. */
 function currencyLabel(code: string): string {

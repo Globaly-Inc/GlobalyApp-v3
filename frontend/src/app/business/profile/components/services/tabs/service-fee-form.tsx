@@ -10,12 +10,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { businessProfileDetailApi } from "../../../apis";
-import { geoApi } from "@/app/geo/apis";
-import { CURRENCY_OPTIONS, ENABLED_FEE_TYPES, PERIOD_TYPE_OPTIONS, STUDENT_TYPE_OPTIONS } from "@/app/admin/data/all-extractions/const";
+import { ENABLED_FEE_TYPES, PERIOD_TYPE_OPTIONS, STUDENT_TYPE_OPTIONS } from "@/app/admin/data/all-extractions/const";
 import { emptyFeeInstallment, sumFeeInstallments } from "@/app/admin/data/all-extractions/utils";
 import { FeeInstallmentsEditor } from "@/app/admin/data/all-extractions/components/fee-installments-editor";
 import type { FeeFormInstallment } from "@/app/admin/data/all-extractions/types";
 import type { ServiceFee, ServiceFeeInput } from "../../../apis/types";
+import { useCurrencyOptions } from "@/app/admin/data/all-extractions/use-currency-options";
 
 type FeeInstallmentLine = { fee_type: string; amount: number };
 type FeeInstallmentRow = { label: string; lines: FeeInstallmentLine[] };
@@ -51,7 +51,7 @@ export function ServiceFeeForm({
   const [split, setSplit] = useState(false);
   const [intlInstallments, setIntlInstallments] = useState<FeeFormInstallment[]>(() => [emptyFeeInstallment(0)]);
   const [feeTypes, setFeeTypes] = useState<{ value: string; label: string }[]>([]);
-  const [currencyOptions, setCurrencyOptions] = useState(CURRENCY_OPTIONS);
+  const currencyOptions = useCurrencyOptions();
   const [errors, setErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
@@ -66,20 +66,6 @@ export function ServiceFeeForm({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the fee's own types, read once on mount
   }, []);
 
-  // Currencies come from the countries table — CURRENCY_OPTIONS is only the offline fallback.
-  useEffect(() => {
-    geoApi.getCountries()
-      .then((countries) => {
-        const byCode = new Map(
-          countries
-            .filter((c) => c.currency)
-            .map((c) => [c.currency!, `${c.currency}${c.currencySymbol ? ` (${c.currencySymbol})` : ""}`]),
-        );
-        if (byCode.size === 0) return;
-        setCurrencyOptions([...byCode].sort(([a], [b]) => a.localeCompare(b)).map(([value, label]) => ({ value, label })));
-      })
-      .catch(() => setCurrencyOptions(CURRENCY_OPTIONS));
-  }, []);
 
   const clearError = (key: string) => {
     if (errors[key]) setErrors((prev) => ({ ...prev, [key]: "" }));

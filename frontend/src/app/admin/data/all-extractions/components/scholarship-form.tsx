@@ -6,7 +6,7 @@ import { Award, Loader2, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Combobox } from "@/components/combobox";
-import { withCurrentCurrency } from "@/lib/currencies";
+import { useCurrencyOptions } from "../use-currency-options";
 import { FieldError } from "@/components/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -59,6 +59,7 @@ export function ScholarshipForm({
   const [coverageType, setCoverageType] = useState(scholarship?.coverage_type ?? NONE);
   const [amount, setAmount] = useState(scholarship?.amount?.toString() ?? "");
   const [currency, setCurrency] = useState(scholarship?.currency ?? defaultCurrency ?? "");
+  const currencyOptions = useCurrencyOptions(currency);
   const [deadline, setDeadline] = useState(scholarship?.deadline?.slice(0, 10) ?? "");
   const [applicationUrl, setApplicationUrl] = useState(scholarship?.application_url ?? "");
   const [description, setDescription] = useState(scholarship?.description ?? "");
@@ -163,7 +164,7 @@ export function ScholarshipForm({
               <Label htmlFor="scholarship-currency">Currency</Label>
               <Combobox
                 id="scholarship-currency"
-                options={withCurrentCurrency(currency)}
+                options={currencyOptions}
                 value={currency}
                 onChange={setCurrency}
                 placeholder="Select currency"
