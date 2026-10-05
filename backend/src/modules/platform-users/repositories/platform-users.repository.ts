@@ -376,13 +376,6 @@ export async function listUserInstitutions(platformUserId: number) {
     );
 }
 
-export async function ownsAnyOrg(platformUserId: number): Promise<boolean> {
-  const [businesses, institutions] = await Promise.all([
-    listUserBusinesses(platformUserId),
-    listUserInstitutions(platformUserId),
-  ]);
-  return businesses.length > 0 || institutions.length > 0;
-}
 
 /** See insertUserBusinessIndex for why the merge clears deleted_at. */
 export async function insertUserInstitutionIndex(data: {

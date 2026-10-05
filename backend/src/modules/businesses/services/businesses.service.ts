@@ -54,10 +54,6 @@ export async function registerBusiness(userId: number, input: BusinessRegisterIn
   const user = await userRepo.findByIdFull(userId);
   if (!user) throw new NotFoundError("User not found");
 
-  if (!input.email && (await userRepo.ownsAnyOrg(userId))) {
-    throw new BadRequestError("Business email is required when you already have a business or institution");
-  }
-
   // There's no subdomain field left for a user to fix, so a collision (including the
   // check-then-insert race between two signups) is retried with a freshly generated
   // subdomain instead of ever surfacing as an error.
@@ -73,7 +69,6 @@ export async function registerBusiness(userId: number, input: BusinessRegisterIn
         business_type: input.business_type,
         business_category_id: input.business_category_id,
         description: input.description,
-        email: input.email,
         phone: input.phone,
         country_id: input.country_id,
         state: input.state,
