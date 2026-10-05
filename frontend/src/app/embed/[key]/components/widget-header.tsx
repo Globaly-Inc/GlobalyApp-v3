@@ -30,9 +30,12 @@ export function WidgetHeader({
     window.parent.postMessage({ type: EXPAND_MESSAGE, expanded: next }, "*");
   };
 
-  // The close control below now exists; embed.js may hide its launcher on mobile.
+  // The close control below now exists; embed.js may hide its launcher on mobile. On unmount (a
+  // crash swaps this tree for an error page) it's gone again, so the launcher must come back.
   useEffect(() => {
-    if (framed) window.parent.postMessage({ type: READY_MESSAGE }, "*");
+    if (!framed) return;
+    window.parent.postMessage({ type: READY_MESSAGE, ready: true }, "*");
+    return () => window.parent.postMessage({ type: READY_MESSAGE, ready: false }, "*");
   }, [framed]);
 
   return (

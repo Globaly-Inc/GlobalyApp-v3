@@ -356,7 +356,7 @@
   window.addEventListener("message", function (e) {
     if (e.source !== panel.contentWindow || e.origin !== origin) return;
     if (e.data && e.data.type === "globaly-embed:close" && open) button.onclick();
-    if (e.data && e.data.type === "globaly-embed:ready") { panelReady = true; syncButton(); }
+    if (e.data && e.data.type === "globaly-embed:ready") { panelReady = e.data.ready !== false; syncButton(); }
     if (e.data && e.data.type === "globaly-embed:expand" && open) {
       expanded = e.data.expanded === true;
       panel.style.cssText = panelCss();
