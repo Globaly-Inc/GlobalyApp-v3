@@ -105,8 +105,18 @@
   // to load, or loaded its error state, has no close button, and the launcher stays as the way out.
   var PANEL_MOBILE = "display:none;position:fixed;inset:0;width:100%;height:100%;border:0;background:#fff;color-scheme:normal";
   var isMobile = function () { return window.innerWidth < 480; };
+  // Expanded (the header's expand button, EXPAND_MESSAGE): the panel grows over the host page
+  // in place, and the same button shrinks it back. Phones are already full-screen.
+  var expanded = false;
+  // Explicit size: an iframe is a replaced element, so `inset` alone doesn't stretch it — it falls
+  // back to its 300x150 default in the top-left corner.
+  var PANEL_EXPANDED = "display:none;position:fixed;top:16px;left:16px;width:calc(100vw - 32px);height:calc(100vh - 32px);" +
+    "border:0;border-radius:24px;" +
+    "background:#fff;color-scheme:normal;box-shadow:0 12px 48px rgba(0,0,0,.25)";
+  var panelCss = function () { return isMobile() ? PANEL_MOBILE : expanded ? PANEL_EXPANDED : panelDesktop(); };
   var panelReady = false;
-  var syncButton = function () { button.style.display = open && isMobile() && panelReady ? "none" : "flex"; };
+  // Full-screen or expanded, the launcher would sit on the composer; the header has collapse + close.
+  var syncButton = function () { button.style.display = open && (isMobile() || expanded) && panelReady ? "none" : "flex"; };
   panel.style.cssText = panelDesktop();
 
   var button = document.createElement("button");
@@ -315,7 +325,7 @@
     open = !open;
     if (open) hideTeaser();
     if (open && !panel.src) panel.src = origin + "/embed/" + encodeURIComponent(key) + (hostFingerprint() ? "#fp=" + encodeURIComponent(hostFingerprint()) : "");
-    panel.style.cssText = isMobile() ? PANEL_MOBILE : panelDesktop();
+    panel.style.cssText = panelCss();
     panel.style.display = open ? "block" : "none";
     orb.style.display = open ? "none" : "block";
     chevron.style.display = open ? "block" : "none";
@@ -347,6 +357,12 @@
     if (e.source !== panel.contentWindow || e.origin !== origin) return;
     if (e.data && e.data.type === "globaly-embed:close" && open) button.onclick();
     if (e.data && e.data.type === "globaly-embed:ready") { panelReady = true; syncButton(); }
+    if (e.data && e.data.type === "globaly-embed:expand" && open) {
+      expanded = e.data.expanded === true;
+      panel.style.cssText = panelCss();
+      panel.style.display = "block";
+      syncButton();
+    }
     if (e.data && e.data.type === "globaly-embed:fp" && typeof e.data.fp === "string" && /^[\w-]{8,80}$/.test(e.data.fp)) {
       try { localStorage.setItem(FP_KEY, e.data.fp); } catch (err) {}
     }
@@ -356,7 +372,7 @@
     }
   });
   window.addEventListener("resize", function () {
-    if (open) { panel.style.cssText = isMobile() ? PANEL_MOBILE : panelDesktop(); panel.style.display = "block"; }
+    if (open) { panel.style.cssText = panelCss(); panel.style.display = "block"; }
     syncButton();
   });
 
@@ -370,39 +386,58 @@
   if (document.body) document.body.appendChild(root);
   else document.addEventListener("DOMContentLoaded", function () { document.body.appendChild(root); });
 
-  // Branding, best-effort: a slow or failed fetch leaves the default look in place.
+  // Branding. The last copy is kept in the HOST page's storage, so a returning visitor's launcher is
+  // painted in the brand colour at once instead of flashing the default until the fetch lands. A
+  // first visit has no copy: the launcher stays invisible until the fetch answers (at most 1.5s,
+  // then the default look shows rather than no launcher at all). Storage may be blocked; guarded.
+  var BRAND_KEY = "globaly_embed_brand:" + key;
+  function applyBranding(cfg) {
+    if (!cfg) return;
+    var c = parseHex(cfg.brand_color);
+    if (!tagSide && (cfg.position === "left" || cfg.position === "right") && cfg.position !== side) {
+      side = cfg.position;
+      root.style.left = root.style.right = "";
+      root.style[side] = "20px";
+      panel.style.cssText = panelCss();
+      if (open) panel.style.display = "block";
+      placeTeaser();
+    }
+    if (cfg.greeting) teaserTitle.textContent = cfg.greeting;
+    if (c) {
+      brand = c;
+      orb.src = teaserOrb.src = origin + "/aly-orb?c=" + cfg.brand_color.replace("#", "").trim();
+      paint();
+      placeTeaser();
+    }
+    if (cfg.display_name) {
+      teaserName.textContent = cfg.display_name;
+      panel.title = cfg.display_name;
+      button.setAttribute("aria-label", open ? "Close " + cfg.display_name : "Ask " + cfg.display_name);
+    }
+    // The tenant's own opening line, so the nudge speaks in their voice rather than ours.
+    // Capped because this is a 240px bubble on someone else's page, not a paragraph.
+    if (cfg.greeting && String(cfg.greeting).trim().length <= 90) {
+      teaserText.textContent = String(cfg.greeting).trim();
+    }
+  }
+  var cached = null;
+  try { cached = JSON.parse(localStorage.getItem(BRAND_KEY) || "null"); } catch (err) {}
+  if (cached) applyBranding(cached);
+  var reveal = function () { root.style.visibility = ""; };
+  if (!cached) {
+    root.style.visibility = "hidden";
+    setTimeout(reveal, 1500);
+  }
   if (window.fetch) {
     fetch(origin + "/api/embed/" + encodeURIComponent(key))
       .then(function (r) { return r.ok ? r.json() : null; })
       .then(function (cfg) {
-        if (!cfg) return;
-        var c = parseHex(cfg.brand_color);
-        if (!tagSide && (cfg.position === "left" || cfg.position === "right") && cfg.position !== side) {
-          side = cfg.position;
-          root.style.left = root.style.right = "";
-          root.style[side] = "20px";
-          panel.style.cssText = isMobile() ? PANEL_MOBILE : panelDesktop();
-          if (open) panel.style.display = "block";
-          placeTeaser();
+        if (cfg) {
+          applyBranding(cfg);
+          try { localStorage.setItem(BRAND_KEY, JSON.stringify(cfg)); } catch (err) {}
         }
-        if (cfg.greeting) teaserTitle.textContent = cfg.greeting;
-        if (c) {
-          brand = c;
-          orb.src = teaserOrb.src = origin + "/aly-orb?c=" + cfg.brand_color.replace("#", "").trim();
-          paint();
-          placeTeaser();
-        }
-        if (cfg.display_name) {
-          teaserName.textContent = cfg.display_name;
-          panel.title = cfg.display_name;
-          button.setAttribute("aria-label", open ? "Close " + cfg.display_name : "Ask " + cfg.display_name);
-        }
-        // The tenant's own opening line, so the nudge speaks in their voice rather than ours.
-        // Capped because this is a 240px bubble on someone else's page, not a paragraph.
-        if (cfg.greeting && String(cfg.greeting).trim().length <= 90) {
-          teaserText.textContent = String(cfg.greeting).trim();
-        }
+        reveal();
       })
-      .catch(function () {});
-  }
+      .catch(reveal);
+  } else reveal();
 })();

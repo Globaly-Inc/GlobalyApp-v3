@@ -19,7 +19,6 @@ export const EMPTY_WIDGET_FORM = {
   greeting: "",
   subtitle: "",
   custom_instructions: "",
-  monthly_credit_limit: "1000",
 };
 export type WidgetFormValues = typeof EMPTY_WIDGET_FORM;
 
@@ -30,11 +29,9 @@ export const formFromConfig = (c: EmbedConfig): WidgetFormValues => ({
   greeting: c.greeting ?? "",
   subtitle: c.subtitle ?? "",
   custom_instructions: c.custom_instructions ?? "",
-  monthly_credit_limit: String(c.monthly_credit_limit),
 });
 
 const text = (v: string) => v.trim() || undefined;
-const limitOf = (form: WidgetFormValues) => Number(form.monthly_credit_limit) || undefined;
 
 export const toCreateInput = (form: WidgetFormValues): CreateEmbedConfigInput => ({
   display_name: text(form.display_name),
@@ -43,7 +40,6 @@ export const toCreateInput = (form: WidgetFormValues): CreateEmbedConfigInput =>
   greeting: text(form.greeting),
   subtitle: text(form.subtitle),
   custom_instructions: text(form.custom_instructions),
-  monthly_credit_limit: limitOf(form),
 });
 
 /** Edit: an emptied field is cleared, not left as it was. */
@@ -54,7 +50,6 @@ export const toUpdateInput = (form: WidgetFormValues): UpdateEmbedConfigInput =>
   greeting: text(form.greeting) ?? null,
   subtitle: text(form.subtitle) ?? null,
   custom_instructions: text(form.custom_instructions) ?? null,
-  monthly_credit_limit: limitOf(form),
 });
 
 /** The widget's settings, controlled — the editor page owns the values so its preview can follow them. */
@@ -155,17 +150,6 @@ export function WidgetFormFields({
           Instructions that attempt to override the counsellor&apos;s
           behaviour are ignored.
         </p>
-      </div>
-
-      <div className="flex flex-col gap-1.5">
-        <Label htmlFor="widget-limit">Monthly message limit</Label>
-        <Input
-          id="widget-limit"
-          type="number"
-          min={1}
-          value={form.monthly_credit_limit}
-          onChange={set("monthly_credit_limit")}
-        />
       </div>
     </div>
   );

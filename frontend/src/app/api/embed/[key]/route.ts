@@ -12,5 +12,7 @@ export async function GET(_req: Request, { params }: { params: Promise<{ key: st
   const res = await fetch(`${API}/api/v3/ai-chat/embed/resolve?key=${encodeURIComponent(key)}`, { cache: "no-store" });
   if (!res.ok) return NextResponse.json({ error: "Not found" }, { status: 404 });
   const body = await res.json();
-  return NextResponse.json(body, { headers: { "Cache-Control": "public, max-age=60", "Access-Control-Allow-Origin": "*" } });
+  // no-store: a branding change must show on the next page load. embed.js keeps its own copy for
+  // an instant first paint, so a browser cache here buys nothing but a minute of stale colours.
+  return NextResponse.json(body, { headers: { "Cache-Control": "no-store", "Access-Control-Allow-Origin": "*" } });
 }

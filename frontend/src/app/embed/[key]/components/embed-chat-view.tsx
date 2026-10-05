@@ -25,10 +25,10 @@ import { DEFAULT_WIDGET_NAME, embedStarters, FP_MESSAGE, STARTED_MESSAGE } from 
 const POLL_MS = 5_000;
 
 
-type EmbedChatViewProps = { embedKey: string };
+type EmbedChatViewProps = { embedKey: string; initialConfig?: EmbedPublicConfig | null };
 
-export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
-  const [config, setConfig] = useState<EmbedPublicConfig | null>(null);
+export function EmbedChatView({ embedKey, initialConfig = null }: EmbedChatViewProps) {
+  const [config, setConfig] = useState<EmbedPublicConfig | null>(initialConfig);
   const [configError, setConfigError] = useState<string | null>(null);
   const [messages, setMessages] = useState<WidgetMessage[]>([]);
   // Who is answering, from the server: a staff member's name, or waiting for one. Polled.
@@ -125,7 +125,7 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
   useEffect(() => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
-    embedApi.resolveConfig(embedKey).then(setConfig, (e: Error) => setConfigError(e.message));
+    if (!initialConfig) embedApi.resolveConfig(embedKey).then(setConfig, (e: Error) => setConfigError(e.message));
     // Inside a host page: hand our visitor id to embed.js, which keeps it in first-party storage
     // and gives it back next visit — iframe storage alone is partitioned or wiped by some browsers.
     if (window.parent !== window) window.parent.postMessage({ type: FP_MESSAGE, fp: getFingerprint() }, "*");
@@ -141,7 +141,7 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
       // Back after a person had the chat and left a question unanswered: the AI answers it now.
       if (!thread.agent_name && !thread.waiting && thread.messages.at(-1)?.role === "user") resume();
     });
-  }, [embedKey]);
+  }, [embedKey, initialConfig]);
 
   // Staff replies arrive from the Inbox, not as the answer to anything the visitor sent, so the
   // open widget polls for them. Paused while a send is streaming and while the tab is hidden.
@@ -231,11 +231,9 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
     // chips, the heading, focus rings — so the widget reads as the institution's, not Globaly's.
     <div className="flex h-dvh flex-col bg-background" data-widget-brand style={theme.vars}>
       <WidgetHeader
-        embedKey={embedKey}
         name={name}
         brandColor={config?.brand_color}
         framed={framed}
-        fingerprint={framed ? getFingerprint() : ""}
         subtitle={
           agentName
             ? `${agentName} from the admissions team is replying`
