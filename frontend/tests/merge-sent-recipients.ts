@@ -34,17 +34,26 @@ assert.deepEqual(
   "a re-sent row takes the server's fresh counts, not the stale local copy",
 );
 
-// A read-back that failed server-side comes through empty: keep what the card has rather than
-// blanking the list.
+// A read-back that failed server-side comes through empty. Absent is NOT a deletion: the mail
+// was accepted, so a row already on the card must survive — dropping it makes a successful
+// resend look like it un-sent itself.
 assert.deepEqual(
   mergeSentRecipients([kept], ["kept@agency.com"], []),
-  [],
-  "an empty server list drops only the rows it claimed to cover",
+  [kept],
+  "a resent row with no replacement keeps the copy the card already had",
 );
 assert.deepEqual(
   mergeSentRecipients([kept], ["other@agency.com"], []),
   [kept],
-  "...and leaves untouched rows alone",
+  "...and untouched rows are left alone too",
+);
+
+// The limit of that: a FIRST send to a new address has nothing to fall back on, so an empty
+// read-back shows it on the next card load rather than now. There is no row to keep.
+assert.deepEqual(
+  mergeSentRecipients([kept], ["new@agency.com"], []),
+  [kept],
+  "a brand-new address cannot be invented from an empty response",
 );
 
 // Newly sent rows lead, matching the server's newest-sent-first order.

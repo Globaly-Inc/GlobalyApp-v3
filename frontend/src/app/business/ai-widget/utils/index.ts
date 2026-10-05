@@ -5,10 +5,14 @@ import type { DeveloperContact, VisitorProfileEntry, WidgetVisitor } from "../ap
  *
  * `fromServer` is the whole list as it stood when the send READ it, so adopting it wholesale
  * undoes anything that changed while the send was in flight — a Remove that completed in that
- * window would put the deleted address straight back on screen. Only the rows this send actually
- * touched are taken from it; everything else keeps the state the card has, including gone.
+ * window would put the deleted address straight back on screen.
  *
- * Touched rows go first, matching the server's own newest-sent-first ordering.
+ * So a current row is replaced only by a row the server actually handed back for it. Absent is
+ * never a deletion: the read-back can fail server-side and come through empty, and dropping a
+ * visible row on that would make a successful resend look like it un-sent itself (Greptile).
+ * Rows the send never touched keep whatever state the card has — including gone.
+ *
+ * Replaced rows go first, matching the server's own newest-sent-first ordering.
  */
 export function mergeSentRecipients(
   current: DeveloperContact[],
@@ -16,10 +20,9 @@ export function mergeSentRecipients(
   fromServer: DeveloperContact[],
 ): DeveloperContact[] {
   const justSent = new Set(sent);
-  return [
-    ...fromServer.filter((r) => justSent.has(r.email)),
-    ...current.filter((d) => !justSent.has(d.email)),
-  ];
+  const fresh = fromServer.filter((r) => justSent.has(r.email));
+  const replaced = new Set(fresh.map((r) => r.email));
+  return [...fresh, ...current.filter((d) => !replaced.has(d.email))];
 }
 
 /**

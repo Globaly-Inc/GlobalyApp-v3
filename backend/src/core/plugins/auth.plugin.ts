@@ -144,8 +144,14 @@ export function requirePermission(...required: string[]) {
       return reply.status(403).send({ error: "Business context required" });
     }
 
+    // The same three conditions switch-account checks before it mints an org-scoped token
+    // (auth.service.ts), re-read on every request. A token outlives the membership it was minted
+    // for, so checking only `deleted_at` here left a SUSPENDED admin acting as the business until
+    // their token expired — and a contact flipped to contact-only likewise (Greptile).
     const agent = await req.db("agents")
       .where("agents.platform_user_id", Number(req.auth.sub))
+      .where("agents.account_status", 1)
+      .where("agents.is_contact_only", false)
       .whereNull("agents.deleted_at")
       .select("agents.role_id")
       .first();
