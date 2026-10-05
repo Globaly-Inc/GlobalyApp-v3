@@ -63,6 +63,7 @@ function OnboardingForm({
   const dispatch = useAppDispatch();
   const { status } = useAppSelector((state) => state.businessOnboarding);
   const saving = status === "saving";
+  const submittingRef = useRef(false);
 
   const [countries, setCountries] = useState<Country[]>([]);
   const [categories, setCategories] = useState<BusinessCategoryOption[]>([]);
@@ -158,6 +159,16 @@ function OnboardingForm({
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
+    if (submittingRef.current) return;
+    submittingRef.current = true;
+    try {
+      await submitOnboarding();
+    } finally {
+      submittingRef.current = false;
+    }
+  };
+
+  const submitOnboarding = async () => {
     const errors = validateBusinessDetails({
       isInstitution,
       phoneCountryId,

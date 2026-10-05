@@ -138,6 +138,7 @@ export async function acceptInvitation(token: string, type: InviteType) {
   }
 
   let createdUserId: number | undefined;
+  let createdOrg: { kind: "business" | "institution"; id: number; schemaName: string } | undefined;
   let user: Awaited<ReturnType<typeof userRepo.insert>>;
   // Everything after the claim is inside this try, so any failure — even a read — releases the link.
   try {
@@ -162,6 +163,7 @@ export async function acceptInvitation(token: string, type: InviteType) {
         business_name: invite.org_name,
         business_category_id: invite.business_category_id ?? undefined,
       });
+      createdOrg = { kind: "business", id: Number(org.id), schemaName: org.org_id };
       if (!(await repo.recordAccepted(invite.id, user.id, { businessId: Number(org.id) }))) {
         logger.warn("Invite vanished during setup; account kept without its invite row", { invitationId: invite.id, userId: user.id, businessId: org.id });
       }
@@ -174,6 +176,7 @@ export async function acceptInvitation(token: string, type: InviteType) {
         institution_name: invite.org_name,
         email: invite.email,
       });
+      createdOrg = { kind: "institution", id: Number(institution.id), schemaName: institution.org_id };
       if (!(await repo.recordAccepted(invite.id, user.id, { institutionId: Number(institution.id) }))) {
         logger.warn("Invite vanished during setup; account kept without its invite row", { invitationId: invite.id, userId: user.id, institutionId: institution.id });
       }
@@ -182,6 +185,7 @@ export async function acceptInvitation(token: string, type: InviteType) {
     }
   } catch (err) {
     if (createdUserId) await rollbackUser(createdUserId);
+    else if (createdOrg) await rollbackOrg(createdOrg);
     await repo.revertToPending(invite.id);
     throw err;
   }
@@ -231,24 +235,30 @@ export async function requestNewLink(token: string, type: InviteType) {
   return { requested: true };
 }
 
-/** Mirrors businesses.service createInstitution's rollback, so a retry of the same link can succeed. */
+async function rollbackOrg(org: { kind: "business" | "institution"; id: number; schemaName: string }) {
+  try {
+    if (org.kind === "institution") {
+      await masterKnex("user_institution_index").where({ institution_id: org.id }).delete();
+      await masterKnex.raw("DROP SCHEMA IF EXISTS ?? CASCADE", [org.schemaName]);
+      const row = await masterKnex("institutions").where({ id: org.id }).first("source_job_id");
+      await userRepo.deleteInstitution(org.id);
+      if (row?.source_job_id) await jobsRepo.deleteJob(row.source_job_id);
+    } else {
+      await masterKnex("user_business_index").where({ business_id: org.id }).delete();
+      await masterKnex.raw("DROP SCHEMA IF EXISTS ?? CASCADE", [org.schemaName]);
+      await masterKnex("businesses").where({ id: org.id }).delete();
+    }
+  } catch (err: any) {
+    logger.error("Onboarding invite org rollback failed", { kind: org.kind, orgId: org.id, err: err.message });
+  }
+}
+
 async function rollbackUser(userId: number) {
   try {
-    // onboardInstitution provisions the tenant schema and adds the owner member before it can fail late.
     const institution = await repo.findInstitutionByOwner(userId);
-    if (institution) {
-      await masterKnex("user_institution_index").where({ institution_id: institution.id }).delete();
-      await masterKnex.raw("DROP SCHEMA IF EXISTS ?? CASCADE", [institution.schema_name]);
-      await userRepo.deleteInstitution(institution.id);
-      if (institution.source_job_id) await jobsRepo.deleteJob(institution.source_job_id);
-    }
-    // registerBusiness provisions a tenant schema and owner index before it can fail late.
+    if (institution) await rollbackOrg({ kind: "institution", id: Number(institution.id), schemaName: institution.schema_name });
     const business = await repo.findBusinessByOwner(userId);
-    if (business) {
-      await masterKnex("user_business_index").where({ business_id: business.id }).delete();
-      await masterKnex.raw("DROP SCHEMA IF EXISTS ?? CASCADE", [business.schema_name]);
-      await masterKnex("businesses").where({ id: business.id }).delete();
-    }
+    if (business) await rollbackOrg({ kind: "business", id: Number(business.id), schemaName: business.schema_name });
     await userRepo.deleteUser(userId);
   } catch (err: any) {
     logger.error("Onboarding invite rollback failed", { userId, err: err.message });
