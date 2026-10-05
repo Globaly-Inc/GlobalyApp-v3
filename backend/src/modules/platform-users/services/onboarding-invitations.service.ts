@@ -255,8 +255,7 @@ async function rollbackOrg(org: { kind: "business" | "institution"; id: number; 
 }
 
 async function resetAccountKind(userId: number, kind: "business" | "institution") {
-  const remaining = kind === "institution" ? await repo.findInstitutionByOwner(userId) : await repo.findBusinessByOwner(userId);
-  if (remaining) return;
+  if (await userRepo.hasAnyOrgMembership(userId, kind)) return;
   await userRepo.updateUser(userId, kind === "institution" ? { is_institution_account: false } : { is_business_account: false });
   await userRepo.removeAccountCategory(userId, kind);
 }

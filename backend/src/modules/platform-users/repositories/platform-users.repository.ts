@@ -114,12 +114,14 @@ export async function removeAccountCategory(userId: number, type: AccountCategor
     .update({ account_categories: JSON.stringify(updated), updated_at: masterKnex.fn.now() });
 }
 
-// ── Business Index (master DB) ──
+export async function hasAnyOrgMembership(platformUserId: number, kind: "business" | "institution") {
+  const row = await masterKnex(kind === "institution" ? "user_institution_index" : "user_business_index")
+    .where({ platform_user_id: platformUserId })
+    .whereNull("deleted_at")
+    .first("platform_user_id");
+  return Boolean(row);
+}
 
-/** True if this user currently has a suspended (not removed) membership on at least one
- * business — distinct from "has zero accessible businesses", which also happens for reasons
- * that aren't suspension at all (removed from the business, the business itself deactivated,
- * or they were simply never a member) and must never block login. */
 export async function hasSuspendedBusinessMembership(platformUserId: number): Promise<boolean> {
   const row = await masterKnex("user_business_index")
     .where({ platform_user_id: platformUserId, account_status: 0 })
