@@ -78,6 +78,7 @@
     "test:widget-visitor-list": "node --import tsx tests/widget-visitor-list.ts",
     "test:conversation-signals": "node --import tsx tests/conversation-signals.ts",
     "test:widget-visitor-context": "node --import tsx tests/widget-visitor-context.ts",
+    "test:widget-visitor-location": "node --import tsx tests/widget-visitor-location.ts",
     "test:institution-rack-profile": "node --import tsx tests/institution-rack-profile.ts",
     "test:institution-memory-lifecycle": "node --import tsx tests/institution-memory-lifecycle.ts",
     "test:institution-memory-retrieval": "node --import tsx tests/institution-memory-retrieval.ts",

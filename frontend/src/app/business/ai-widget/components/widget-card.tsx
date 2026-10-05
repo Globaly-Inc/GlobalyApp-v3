@@ -6,7 +6,6 @@ import { WidgetSwitch } from "@/app/business/messages/components/widget-switch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Progress } from "@/components/ui/progress";
 import type { EmbedConfig } from "../apis/types";
 
 // One script tag, not a raw iframe: public/embed.js renders the floating orb and only
@@ -47,8 +46,6 @@ export function WidgetCard({
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const usagePct = Math.min(100, Math.round((config.credits_used_this_month / config.monthly_credit_limit) * 100));
-
   return (
     <Card className={config.is_active ? "" : "opacity-60"}>
       <CardHeader className="flex flex-row items-center justify-between gap-2">
@@ -82,14 +79,6 @@ export function WidgetCard({
             {config.subtitle}{config.subtitle && config.greeting ? " · " : ""}{config.greeting && `“${config.greeting}”`}
           </p>
         )}
-        <div>
-          <div className="mb-1 flex justify-between text-xs text-muted-foreground">
-            <span>Messages this month</span>
-            <span>{config.credits_used_this_month} / {config.monthly_credit_limit}</span>
-          </div>
-          <Progress value={usagePct} />
-        </div>
-
         <div className="flex flex-col gap-1.5">
           <p className="text-xs font-medium text-muted-foreground">Embed on your website</p>
           <div className="flex items-start gap-2">

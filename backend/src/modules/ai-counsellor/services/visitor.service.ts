@@ -14,6 +14,10 @@ import { schemaName } from "../../../core/db/knex.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import type { EmbedConfigRow } from "../repositories/embed.repository.js";
 import { PROFILE_KEYS, PROFILE_SCALAR_COLUMNS, type ProfileKey, type VisitorProfile } from "../lib/card-parser.js";
+import { config as appConfig } from "../../../config.js";
+import { resolveCountryCode, resolveCountryName } from "../../superadmin/data-extraction/lib/lookup-catalog.js";
+import * as branchService from "../../superadmin/platform/business-branches/services/business-branches.service.js";
+import { readVisitorLocation, rankBranches, renderLocationSection, type BranchLike } from "../lib/visitor-location.js";
 
 const logger = createChildLogger("widget-visitor");
 
@@ -693,6 +697,52 @@ export async function recordContact(
  * unreachable, un-migrated, or mid-provision must cost the visitor their contact record, not
  * their reply. Every call site in the streaming path goes through this.
  */
+/**
+ * The VISITOR LOCATION prompt section for this turn, or null when there is nothing to say.
+ *
+ * Reads Cloudflare's location headers (names from config) and the owner's existing branches,
+ * plus the extracted campuses an unclaimed owner has instead. Stores nothing. Null for: no or
+ * unknown country header (local dev, not behind Cloudflare), no branches, or a visitor outside
+ * every branch's country. Callers wrap it in `attempt`, so a failure costs the section, not the turn.
+ */
+// ponytail: ~4 small queries per 100 branches per widget message; cache per owner for a minute if that ever shows up.
+export async function branchRecommendationFor(
+  config: Pick<EmbedConfigRow, "institution_id" | "business_id">,
+  headers: Record<string, string | string[] | undefined>,
+): Promise<string | null> {
+  const location = readVisitorLocation(headers, {
+    country: appConfig.CLOUDFLARE_COUNTRY_HEADER,
+    region: appConfig.CLOUDFLARE_REGION_HEADER,
+    regionCode: appConfig.CLOUDFLARE_REGION_CODE_HEADER,
+  });
+  if (!location) return null;
+
+  const { institution_id, business_id } = config;
+  const page = institution_id != null
+    ? (limit: number, offset: number) => branchService.listInstitutionBranches(institution_id, limit, offset, "all")
+    : business_id != null
+      ? (limit: number, offset: number) => branchService.listBranches(business_id, limit, offset, "all")
+      : null;
+  if (!page) return null;
+  // Every branch, not the first page: the match may be on any of them.
+  const rows: BranchLike[] = [];
+  for (let offset = 0; ; offset += 100) {
+    const { rows: batch, total } = await page(100, offset);
+    // Loosely typed (own rows + campus stand-ins); both carry these columns.
+    rows.push(...(batch as unknown as BranchLike[]));
+    if (!batch.length || rows.length >= total) break;
+  }
+  if (!rows.length) return null;
+
+  // Branch `country` is free text ("Australia", "AU", "australia "); the shared resolver puts
+  // both sides on ISO2, aliases included.
+  const branches = await Promise.all(rows.map(async (b) => ({ ...b, iso2: await resolveCountryCode(b.country) })));
+  const match = rankBranches(location, branches);
+  if (!match) return null;
+  const countryName = (await resolveCountryName(location.country)) ?? location.country;
+  return renderLocationSection(location, countryName, match);
+}
+
 export async function attempt<T>(label: string, fn: () => Promise<T>): Promise<T | null> {
   try {
     return await fn();

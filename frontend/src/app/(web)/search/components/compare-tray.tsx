@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { InstitutionLogo } from "@/components/institution-logo";
 import { useCompareTray } from "../use-compare-tray";
 
-const COMPARE_ENABLED_PATHS = ["/search", "/personal/explore", "/personal/ai"];
+// /embed: the AI widget on a partner site, whose course cards carry the same compare button.
+const COMPARE_ENABLED_PATHS = ["/search", "/personal/explore", "/personal/ai", "/embed"];
 
 type View = "list" | "detail";
 
@@ -22,7 +23,10 @@ export function CompareTray({ positionClass = "bottom-4 right-4" }: Readonly<{ p
 
   const baseComparePath = pathname.startsWith("/personal/explore") ? "/personal/explore/compare" : "/compare";
   const slugParam = items.map((i) => i.slug).filter(Boolean).join(",");
-  const comparePath = slugParam ? `${baseComparePath}?slugs=${encodeURIComponent(slugParam)}` : baseComparePath;
+  // The full selection rides in the fragment: the new tab can't read this tab's storage when we
+  // are the widget's iframe (partitioned per host site), and ?slugs= alone drops slug-less courses.
+  // A fragment never reaches a server. ?slugs= stays as the readable, shareable fallback.
+  const comparePath = `${slugParam ? `${baseComparePath}?slugs=${encodeURIComponent(slugParam)}` : baseComparePath}#items=${encodeURIComponent(JSON.stringify(items))}`;
 
   // Collapsed bubble
   if (collapsed) {
@@ -201,7 +205,6 @@ export function CompareTray({ positionClass = "bottom-4 right-4" }: Readonly<{ p
               size="sm"
               className="h-8 flex-1 gap-1.5"
               render={<Link href={comparePath} target="_blank" rel="noopener noreferrer" />}
-              onClick={() => localStorage.setItem("compare_items", JSON.stringify(items))}
             >
               View More <ArrowRight className="size-3.5" />
             </Button>

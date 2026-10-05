@@ -62,7 +62,8 @@ export const embedRealApi = {
   toCourseCards: (cards: WireCourseCard[]): CourseCard[] => cards.map(toCourseCard),
 
   resolveConfig: async (key: string): Promise<EmbedPublicConfig> => {
-    const res = await fetch(`${BASE_URL}/embed/resolve?key=${encodeURIComponent(key)}`);
+    // no-store: also runs on the server (page.tsx), where a cached copy would keep old branding.
+    const res = await fetch(`${BASE_URL}/embed/resolve?key=${encodeURIComponent(key)}`, { cache: "no-store" });
     if (!res.ok) throw new Error(res.status === 404 ? "This counsellor is unavailable." : "Failed to load.");
     return res.json();
   },

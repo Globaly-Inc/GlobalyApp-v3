@@ -3,7 +3,7 @@
 
 import * as embedRepo from "../repositories/embed.repository.js";
 import * as knowledgeRepo from "../repositories/knowledge.repository.js";
-import { NotFoundError, ForbiddenError, TooManyRequestsError } from "../../../shared/errors.js";
+import { NotFoundError, ForbiddenError } from "../../../shared/errors.js";
 
 export type EmbedContext = {
   config: embedRepo.EmbedConfigRow;
@@ -15,8 +15,8 @@ export type EmbedContext = {
 };
 
 /**
- * Resolve an embed key to an active, within-limit config.
- * Applies the lazy monthly reset before checking the limit.
+ * Resolve an embed key to an active config. There is no monthly message cap (removed by product
+ * decision); usage is still counted, with the lazy monthly reset, but never blocks a chat.
  */
 export async function resolveActiveConfig(embedKey: string): Promise<embedRepo.EmbedConfigRow> {
   const config = await embedRepo.findByEmbedKey(embedKey);
@@ -26,9 +26,6 @@ export async function resolveActiveConfig(embedKey: string): Promise<embedRepo.E
   if (new Date(config.month_reset_at) <= new Date()) {
     await embedRepo.resetMonthlyUsage(config.id);
     config.credits_used_this_month = 0;
-  }
-  if (config.credits_used_this_month >= config.monthly_credit_limit) {
-    throw new TooManyRequestsError("Monthly message limit reached for this counsellor");
   }
   return config;
 }

@@ -79,6 +79,9 @@ export function buildSystemPrompt(opts: {
   /** Money topics this turn asked about that retrieval could NOT ground: withhold those, don't
    *  guess — and answer everything else. Empty or absent means nothing is withheld. */
   withheldMoneyTopics?: MoneyTopic[];
+  /** Embed mode: Cloudflare-derived visitor location + the most relevant branch, already rendered
+   *  by lib/visitor-location. Absent when location is unknown or no branch is in their country. */
+  visitorLocation?: string | null;
 }): string {
   const sections: string[] = [];
   // Every instruction that pointed at the pasted CONTEXT block has to point at tool
@@ -338,6 +341,9 @@ export function buildSystemPrompt(opts: {
       learned,
     );
   }
+
+  // ── Visitor location (embed) ── an enhancement only: absent, and nothing else changes.
+  if (opts.visitorLocation) sections.push(opts.visitorLocation);
 
   if (opts.counsellingContext?.stage) {
     sections.push(

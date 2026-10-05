@@ -109,6 +109,13 @@ const envSchema = z.object({
 
   // Google Maps (Places Autocomplete + Details for address lookup)
   GOOGLE_MAPS_API_KEY: z.string().optional(),
+
+  // Cloudflare visitor-location headers (AI widget branch recommendation). Header NAMES, not
+  // values; set one to an empty string to ignore that header. Region headers need Cloudflare's
+  // "Add visitor location headers" managed transform.
+  CLOUDFLARE_COUNTRY_HEADER: z.string().default("cf-ipcountry"),
+  CLOUDFLARE_REGION_HEADER: z.string().default("cf-region"),
+  CLOUDFLARE_REGION_CODE_HEADER: z.string().default("cf-region-code"),
 });
 
 const parsed = envSchema.parse(process.env);
