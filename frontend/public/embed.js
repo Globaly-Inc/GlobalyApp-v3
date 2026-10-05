@@ -391,34 +391,38 @@
   // first visit has no copy: the launcher stays invisible until the fetch answers (at most 1.5s,
   // then the default look shows rather than no launcher at all). Storage may be blocked; guarded.
   var BRAND_KEY = "globaly_embed_brand:" + key;
+  // Every field is set from cfg OR back to its default, never "only when present": the stored copy
+  // is applied first, so a greeting/name/colour the owner has since cleared must be undone by the
+  // fresh fetch, not left showing.
+  var DEFAULT_BRAND = brand;
+  var DEFAULT_TITLE = teaserTitle.textContent;
+  var DEFAULT_TEXT = teaserText.textContent;
+  var DEFAULT_NAME = teaserName.textContent;
   function applyBranding(cfg) {
     if (!cfg) return;
-    var c = parseHex(cfg.brand_color);
     if (!tagSide && (cfg.position === "left" || cfg.position === "right") && cfg.position !== side) {
       side = cfg.position;
       root.style.left = root.style.right = "";
       root.style[side] = "20px";
       panel.style.cssText = panelCss();
       if (open) panel.style.display = "block";
-      placeTeaser();
     }
-    if (cfg.greeting) teaserTitle.textContent = cfg.greeting;
-    if (c) {
-      brand = c;
-      orb.src = teaserOrb.src = origin + "/aly-orb?c=" + cfg.brand_color.replace("#", "").trim();
-      paint();
-      placeTeaser();
-    }
-    if (cfg.display_name) {
-      teaserName.textContent = cfg.display_name;
-      panel.title = cfg.display_name;
-      button.setAttribute("aria-label", open ? "Close " + cfg.display_name : "Ask " + cfg.display_name);
-    }
+    var c = parseHex(cfg.brand_color);
+    brand = c || DEFAULT_BRAND;
+    orb.src = teaserOrb.src = origin + "/aly-orb" + (c ? "?c=" + cfg.brand_color.replace("#", "").trim() : "");
+    paint();
+    placeTeaser();
+
+    var greeting = typeof cfg.greeting === "string" ? cfg.greeting.trim() : "";
+    teaserTitle.textContent = greeting || DEFAULT_TITLE;
     // The tenant's own opening line, so the nudge speaks in their voice rather than ours.
     // Capped because this is a 240px bubble on someone else's page, not a paragraph.
-    if (cfg.greeting && String(cfg.greeting).trim().length <= 90) {
-      teaserText.textContent = String(cfg.greeting).trim();
-    }
+    teaserText.textContent = greeting && greeting.length <= 90 ? greeting : DEFAULT_TEXT;
+
+    var name = typeof cfg.display_name === "string" ? cfg.display_name.trim() : "";
+    teaserName.textContent = name || DEFAULT_NAME;
+    panel.title = name || "Aly";
+    button.setAttribute("aria-label", (open ? "Close " : "Ask ") + (name || "Aly"));
   }
   var cached = null;
   try { cached = JSON.parse(localStorage.getItem(BRAND_KEY) || "null"); } catch (err) {}
