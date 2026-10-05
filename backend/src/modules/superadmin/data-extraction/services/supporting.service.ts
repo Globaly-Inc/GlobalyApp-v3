@@ -19,6 +19,7 @@ import {
 } from "../schemas/staged.schema.js";
 import type { SaveAndLearnInput } from "../schemas/supporting.schema.js";
 import { resolveCourseLookups } from "../lib/staging-writer.js";
+import { pushOverviewEdit } from "../lib/overview-sync.js";
 
 const logger = createChildLogger("supporting-service");
 
@@ -212,6 +213,12 @@ export async function saveAndLearn(input: SaveAndLearnInput, adminId: number) {
   if (table === "extraction_courses") await normaliseCoursePatch(patch);
 
   await repo.patchEntityRow(table, id, patch, adminId);
+  // The overview feeds the org's profile — an admin's correction here shows in the business portal too.
+  if (table === "extraction_institution_overview" && original.job_id) {
+    await pushOverviewEdit(String(original.job_id), patch).catch((err) =>
+      logger.warn("Profile sync failed after overview save-and-learn", { id, err: err instanceof Error ? err.message : String(err) }),
+    );
+  }
   if (table === "extraction_campuses") {
     await syncBranchFromCampus(id, patch).catch((err) =>
       logger.warn("Tenant branch sync failed after campus save-and-learn", { id, err: err instanceof Error ? err.message : String(err) }),

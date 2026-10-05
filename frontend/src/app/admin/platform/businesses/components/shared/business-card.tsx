@@ -107,12 +107,17 @@ export function BusinessCard({
               )}
               {b.origin === "seeded" && (
                 <Badge variant="outline" className="px-1.5 py-0 text-[10px] text-amber-700 dark:text-amber-400">
-                  Seeded
+                  {b.source_job_type === "spreadsheet" ? "Spreadsheet import" : b.source_job_type === "agentcis" ? "AgentCIS import" : "Seeded"}
                 </Badge>
               )}
               {b.origin === "admin" && (
                 <Badge variant="outline" className="px-1.5 py-0 text-[10px] text-violet-700 dark:text-violet-400">
                   Admin-added
+                </Badge>
+              )}
+              {b.origin === "signup" && (
+                <Badge variant="outline" className="px-1.5 py-0 text-[10px] text-teal-700 dark:text-teal-400">
+                  Sign-up
                 </Badge>
               )}
               {b.is_published ? (

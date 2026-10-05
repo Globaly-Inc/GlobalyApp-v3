@@ -14,14 +14,16 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { ensureBusinessContext, refreshAccessToken } from "@/lib/api/http";
+import { currentOrgId, ensureBusinessContext, refreshAccessToken } from "@/lib/api/http";
 import { getSelectedOrgId, saveSelectedOrgId } from "@/lib/session";
 import { authApi } from "@/app/auth/apis";
 import type { AuthMeInstitution } from "@/app/auth/apis";
 import { logout, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchMyProfile } from "@/app/business/store/business-onboarding-slice";
+import { useExtractionLock } from "./utils/use-extraction-lock";
 import { BUSINESS_NAV_GROUPS, INSTITUTION_SCHOLARSHIPS_ITEM, withBusinessId } from "./const";
 import { BusinessSwitcher, type SwitcherOrg } from "./components/business-switcher";
+import { ExtractionInProgress } from "./components/extraction-in-progress";
 import { PortalSidebar } from "@/components/portal-sidebar";
 import { cn } from "@/lib/utils";
 import { ICON, APP_ICON_ATTR } from "@/lib/public-assets";
@@ -107,8 +109,11 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
         if (!active) return;
         const merged = await loadOrgs();
         if (!active) return;
+        // The token's org first: it is what the page's data comes from, so the switcher must show it
+        // too (a profile URL can switch the token to another org than the last one picked here).
         const saved = getSelectedOrgId();
-        setActiveOrgId(merged.some((o) => o.org_id === saved) ? saved : [...merged].sort((a, b) => a.id - b.id)[0]?.org_id ?? null);
+        const pick = [currentOrgId(), saved].find((id) => merged.some((o) => o.org_id === id));
+        setActiveOrgId(pick ?? [...merged].sort((a, b) => a.id - b.id)[0]?.org_id ?? null);
         if (merged.length > 0) dispatch(fetchMyProfile());
       })
       .finally(() => {
@@ -123,6 +128,9 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
   const handleSwitchBusiness = async (orgId: string) => {
     if (orgId === activeOrgId) return;
     saveSelectedOrgId(orgId);
+    // Switch the token first on every path — the next page reads its data (and its extraction
+    // lock) from the token's org, not from the pick saved above.
+    await ensureBusinessContext(true);
     if (pathname === "/business/profile" || /^\/business\/profile\/\d/.test(pathname ?? "")) {
       const target = businesses.find((b) => b.org_id === orgId);
       if (target) {
@@ -130,7 +138,6 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
         return;
       }
     }
-    await ensureBusinessContext(true);
     window.location.reload();
   };
 
@@ -138,6 +145,8 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
     dispatch(logout());
     router.push(SIGN_IN_HREF);
   };
+
+  const { extractionStatus, lockedOut } = useExtractionLock(pathname);
 
   const wantsNewBusiness = searchParams.get("new") === "1";
   const bareOnboarding = pathname === "/business/onboarding" && (businesses.length === 0 || wantsNewBusiness);
@@ -192,6 +201,7 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
     ? INSTITUTION_NAV_GROUPS
     : isInstitutionCategory ? BUSINESS_NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => i.label !== "Representative") })) : BUSINESS_NAV_GROUPS;
   const navGroups = withBusinessId(baseNav, activeBusinessId);
+  const content = lockedOut ? <ExtractionInProgress status={extractionStatus} /> : children;
 
   return (
     <div className="min-h-screen flex flex-col bg-background">
@@ -300,7 +310,7 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
         <PortalSidebar groups={navGroups} />
 
         <main className={cn("min-w-0 flex-1 overflow-x-clip", isFullBleed ? "" : "py-4 md:py-6")}>
-          {isFullBleed ? children : <div className={isWide ? SHELL_WIDE : SHELL_WIDTH}>{children}</div>}
+          {isFullBleed && !lockedOut ? content : <div className={isWide ? SHELL_WIDE : SHELL_WIDTH}>{content}</div>}
         </main>
       </div>
     </div>

@@ -25,6 +25,12 @@ export const fetchBranch = createAsyncThunk(
   ({ branchId }: { id: number; branchId: string }, { getState }) =>
     businessProfileDetailApi.getBranch(branchId, getOrgBase(getState)),
 );
+// Not stored: the caller goes straight to the new branch's edit form, which loads it itself.
+export const convertCampus = createAsyncThunk(
+  "businessProfileDetail/convertCampus",
+  ({ campusId }: { campusId: string }, { getState }) =>
+    businessProfileDetailApi.convertCampus(campusId, getOrgBase(getState)),
+);
 export const createBranch = createAsyncThunk(
   "businessProfileDetail/createBranch",
   ({ id, input }: { id: number; input: BranchInput }, { getState }) =>

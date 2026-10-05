@@ -33,6 +33,8 @@ export const SOURCE_FILTER_OPTIONS: { value: string; label: string }[] = [
   { value: "seeded", label: "Seeded" },
   { value: "admin", label: "Admin-added" },
   { value: "signup", label: "Sign-up" },
+  { value: "spreadsheet", label: "Spreadsheet import" },
+  { value: "agentcis", label: "AgentCIS import" },
 ];
 
 export const SORT_OPTIONS: { value: string; label: string }[] = [

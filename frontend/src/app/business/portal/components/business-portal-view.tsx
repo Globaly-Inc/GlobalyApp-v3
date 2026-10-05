@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchCredits } from "@/app/business/enquiries/store/business-enquiries-slice";
-import { fetchOnboardingProgress } from "../../store/business-onboarding-slice";
+import { fetchOnboardingProgress, isExtractionRunning } from "../../store/business-onboarding-slice";
 import { PortalHero } from "./portal-hero";
 import { BusinessQuickActions } from "./business-quick-actions";
 import { StartExtractionCard } from "./start-extraction-card";
@@ -23,6 +23,8 @@ export function BusinessPortalView() {
   const dispatch = useAppDispatch();
   const profile = useAppSelector((state) => state.businessOnboarding.profile);
   const onboardingProgress = useAppSelector((state) => state.businessOnboarding.onboardingProgress);
+  // Widgets and setup act on profile data the crawl is still writing — they appear once it ends.
+  const extracting = useAppSelector((state) => isExtractionRunning(state.businessOnboarding.profile, state.businessOnboarding.extractionStatus));
 
   const fetchedRef = useRef(false);
   useEffect(() => {
@@ -44,15 +46,19 @@ export function BusinessPortalView() {
       <div className="flex flex-col gap-4 md:gap-6 lg:grid lg:grid-cols-3 lg:items-start">
         <div className="order-1 space-y-4 lg:col-span-2">
           {profile && <StartExtractionCard profile={profile} />}
-          <AiEmbedCard installed={!!onboardingProgress?.steps.find((s) => s.key === "add_chat_widget")?.done} />
-          <DashboardPreview />
+          {!extracting && (
+            <>
+              <AiEmbedCard installed={!!onboardingProgress?.steps.find((s) => s.key === "add_chat_widget")?.done} />
+              <DashboardPreview />
+            </>
+          )}
           {/* Recent enquiries card hidden for the short release — <BusinessRecentEnquiries items={enquiries} />,
               fed by fetchDistributions() and state.businessEnquiries.items. */}
         </div>
 
         <div className="order-2 space-y-4 lg:col-span-1">
-          {onboardingProgress && <GetSetUpChecklist progress={onboardingProgress} />}
-          <BusinessQuickActions />
+          {!extracting && onboardingProgress && <GetSetUpChecklist progress={onboardingProgress} />}
+          {!extracting && <BusinessQuickActions />}
           <NeedAHandCard />
         </div>
       </div>

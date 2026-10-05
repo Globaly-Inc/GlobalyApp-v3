@@ -31,6 +31,11 @@ export const InstitutionProfilePatchSchema = z.object({
   twitter_url: z.string().nullable(),
   youtube_url: z.string().nullable(),
   whatsapp_url: z.string().nullable(),
+  // Labelled links beyond the fixed platforms (Weibo, Medium, Bluesky…) — first filled from extraction.
+  other_social_links: z.array(z.object({
+    label: z.string().trim().min(1).max(60),
+    url: z.string().trim().url(),
+  }).strict()).max(20).nullable(),
   logo_url: z.string().nullable(),
   cover_url: z.string().nullable(),
   is_published: z.boolean(),

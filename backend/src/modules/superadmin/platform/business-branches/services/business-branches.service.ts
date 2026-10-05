@@ -12,6 +12,7 @@ import { registerBusiness } from "../../../../businesses/services/businesses.ser
 import { onboardInstitution } from "../../../../platform-users/services/platform-users.service.js";
 import { createChildLogger } from "../../../../../shared/logger.js";
 import { BranchInputSchema } from "../schemas/business-branches.schema.js";
+import { countryCurrency } from "../../../../../shared/country-currency.js";
 
 const logger = createChildLogger("business-branches");
 
@@ -292,6 +293,7 @@ export async function createInstitutionBranch(institutionId: number, data: Branc
   // Parent's owner owns the branch — see createBranch.
   if (!inst.platform_user_id) throw new NotFoundError("Institution has no owner to assign the new branch to");
   const countryId = await resolveCountryId(data.country);
+  // A campus often lists the head office's address — onboardInstitution drops an email already taken.
   const { institution } = await onboardInstitution(Number(inst.platform_user_id), {
     institution_name: data.name,
     institution_type: (inst.institution_type ?? undefined) as never,
@@ -360,50 +362,132 @@ export async function deleteInstitutionBranch(institutionId: number, branchId: s
 // Never throws. A failed campus is marked (failCampus) and not retried — the mint may already have
 // left a provisioned schema behind (see linkOrDiscard) — and keeps showing as an extracted campus.
 
+/** What a branch shows that only its head office has: the brand and the extracted profile. */
+// Not currency: it follows the BRANCH's own country (a UK campus of a Nepali head office is GBP).
+const INHERITED_PROFILE_COLUMNS = [
+  "logo_url", "cover_url", "gallery_images", "description",
+  "linkedin_url", "facebook_url", "instagram_url", "twitter_url", "youtube_url", "whatsapp_url",
+] as const;
+
+/**
+ * Fills a branch's BLANK profile fields from its head office — a campus converted to a branch
+ * starts with only its name and address, so its profile page had no logo, cover, photos or
+ * description. Never overwrites what the branch already has (an emptied gallery counts as set).
+ */
+export async function inheritHeadOfficeProfile(table: "institutions" | "businesses", branchId: number, parentId: number) {
+  const columns = table === "institutions" ? [...INHERITED_PROFILE_COLUMNS, "other_social_links"] : [...INHERITED_PROFILE_COLUMNS];
+  const [branch, parent] = await Promise.all([
+    masterKnex(table).where({ id: branchId }).first([...columns, "currency", "country_id"]),
+    masterKnex(table).where({ id: parentId }).first([...columns, "currency", "country_id"]),
+  ]);
+  if (!branch || !parent) return;
+  const blank = (v: unknown) => v === null || v === undefined || v === "";
+  const patch: Record<string, unknown> = {};
+  for (const col of columns) {
+    if (!blank(branch[col]) || blank(parent[col])) continue;
+    // jsonb — stringified, or pg sends the array as a Postgres array literal. gallery_images is text[].
+    patch[col] = col === "other_social_links" ? JSON.stringify(parent[col]) : parent[col];
+  }
+  // Currency from the branch's own country — when blank, or when it is just the head office's
+  // carried over to a branch in another country (what an earlier version of this copied).
+  const own = await countryCurrency(branch.country_id);
+  const carriedOver = branch.currency === parent.currency && branch.country_id !== parent.country_id;
+  if (own && own !== branch.currency && (blank(branch.currency) || carriedOver)) patch.currency = own;
+  if (Object.keys(patch).length > 0) {
+    await masterKnex(table).where({ id: branchId }).update({ ...patch, updated_at: masterKnex.fn.now() });
+  }
+}
+
+type CampusRow = Awaited<ReturnType<typeof reviewRepo.listCampusesByJobPaged>>[number];
+type ConvertingOrg = { kind: "institutions" | "businesses"; id: number; schema_name: string };
+
+/** Turns one already-claimed campus into a branch org linked to `org`. Throws on failure, after
+ * putting back anything it retired and marking the campus failed. Returns the new branch link. */
+async function convertClaimedCampus(org: ConvertingOrg, c: CampusRow, claimId: string, jobId: string) {
+  let retiredCopy = false;
+  try {
+    // Same website as the head office, so it shares the head office's catalog rather than
+    // extracting its own: the courses linked to this campus, or all of them when none are.
+    const courseIds = await reviewRepo.listCourseIdsByCampus(c.id);
+    const data = BranchInputSchema.parse({
+      name: c.name?.trim() || "Unnamed campus", country: c.country, state: c.state, city: c.city,
+      address: c.address, phone: c.phone, email: c.email,
+      shared_services: courseIds.length > 0 ? courseIds : "all",
+    });
+    // Listings claimed before this conversion existed got each campus copied in as a PLAIN
+    // branch row (uuid = the campus id — branch-sync's seedBranchesFromJob). Retire that copy
+    // FIRST: creating the branch records the campus as converted, after which no run revisits
+    // it — so a cleanup after that point that failed would leave the campus listed twice. If
+    // the create then fails, the copy is put back (catch below), so the owner never loses it.
+    retiredCopy = (await repo.deleteBranch(org.id, org.schema_name, c.id)) > 0;
+    const branch = org.kind === "institutions"
+      ? await createInstitutionBranch(org.id, data, { id: c.id, claimId })
+      : await createBranch(org.id, data, { id: c.id, claimId });
+    // Best-effort: the branch exists either way; the backfill script can fill it later.
+    const link = branch as { linked_institution_id?: number | null; linked_business_id?: number | null } | null;
+    const child = Number(link?.linked_institution_id ?? link?.linked_business_id);
+    if (child) {
+      await inheritHeadOfficeProfile(org.kind, child, org.id).catch((err) =>
+        logger.warn("Branch profile inherit failed", { jobId, campusId: c.id, error: String(err) }),
+      );
+    }
+    return branch;
+  } catch (err) {
+    // Only the copy THIS run retired — never one the owner deleted themselves.
+    if (retiredCopy) await repo.restoreBranch(org.id, org.schema_name, c.id).catch(() => {});
+    await reviewRepo.failCampus(c.id, claimId);
+    logger.warn("Campus → branch conversion failed", { jobId, campusId: c.id, error: String(err) });
+    throw err;
+  }
+}
+
+/** The provisioned org a job feeds — an unprovisioned one (account_status 0) has no tenant schema to link into. */
+async function convertingOrgForJob(jobId: string): Promise<ConvertingOrg | null> {
+  for (const kind of ["institutions", "businesses"] as const) {
+    const row = await masterKnex(kind).where({ source_job_id: jobId }).whereNull("deleted_at")
+      .whereNot({ account_status: 0 }).first("id", "schema_name");
+    if (row) return { kind, id: Number(row.id), schema_name: row.schema_name };
+  }
+  return null;
+}
+
 export async function convertCampusesToBranches(jobId: string): Promise<number> {
   try {
-    // An unprovisioned (account_status 0) org has no tenant schema to link a branch into.
-    const inst = await masterKnex("institutions").where({ source_job_id: jobId }).whereNull("deleted_at")
-      .whereNot({ account_status: 0 }).first("id", "schema_name");
-    const biz = inst ? null : await masterKnex("businesses").where({ source_job_id: jobId }).whereNull("deleted_at")
-      .whereNot({ account_status: 0 }).first("id", "schema_name");
-    const org = (inst ?? biz)!;
-    if (!inst && !biz) return 0;
-
+    const org = await convertingOrgForJob(jobId);
+    if (!org) return 0;
     const campuses = await reviewRepo.listCampusesByJobPaged(jobId, 1000, 0, { unconverted: true });
     let converted = 0;
     for (const c of campuses) {
       const claimId = await reviewRepo.claimCampus(c.id);
       if (!claimId) continue; // another run holds it
-      let retiredCopy = false;
-      try {
-        // Same website as the head office, so it shares the head office's catalog rather than
-        // extracting its own: the courses linked to this campus, or all of them when none are.
-        const courseIds = await reviewRepo.listCourseIdsByCampus(c.id);
-        const data = BranchInputSchema.parse({
-          name: c.name?.trim() || "Unnamed campus", country: c.country, state: c.state, city: c.city,
-          address: c.address, phone: c.phone, email: c.email,
-          shared_services: courseIds.length > 0 ? courseIds : "all",
-        });
-        // Listings claimed before this conversion existed got each campus copied in as a PLAIN
-        // branch row (uuid = the campus id — branch-sync's seedBranchesFromJob). Retire that copy
-        // FIRST: creating the branch records the campus as converted, after which no run revisits
-        // it — so a cleanup after that point that failed would leave the campus listed twice. If
-        // the create then fails, the copy is put back (catch below), so the owner never loses it.
-        retiredCopy = (await repo.deleteBranch(Number(org.id), org.schema_name, c.id)) > 0;
-        if (inst) await createInstitutionBranch(Number(inst.id), data, { id: c.id, claimId });
-        else await createBranch(Number(biz!.id), data, { id: c.id, claimId });
-        converted += 1;
-      } catch (err) {
-        // Only the copy THIS run retired — never one the owner deleted themselves.
-        if (retiredCopy) await repo.restoreBranch(Number(org.id), org.schema_name, c.id).catch(() => {});
-        await reviewRepo.failCampus(c.id, claimId);
-        logger.warn("Campus → branch conversion failed", { jobId, campusId: c.id, error: String(err) });
-      }
+      if (await convertClaimedCampus(org, c, claimId, jobId).then(() => true, () => false)) converted += 1;
     }
     return converted;
   } catch (err) {
     logger.warn("Campus → branch conversion skipped", { jobId, error: String(err) });
     return 0;
   }
+}
+
+/**
+ * The owner opening an extracted campus to edit it: converts just that campus to a real branch
+ * now, instead of waiting for the extraction to finish, and returns its branch link id for the
+ * edit form. Retries a campus whose earlier automatic conversion failed. Already converted → its id.
+ */
+export async function convertCampusOnDemand(kind: "institutions" | "businesses", orgId: number, campusId: string) {
+  const owner = await masterKnex(kind).where({ id: orgId }).whereNull("deleted_at").first("id", "schema_name", "source_job_id");
+  const jobId = owner?.source_job_id ? String(owner.source_job_id) : null;
+  if (!owner || !jobId) throw new NotFoundError("Campus not found");
+  const campus = await masterKnex("superadmin.extraction_campuses").where({ id: campusId, job_id: jobId }).first();
+  if (!campus) throw new NotFoundError("Campus not found");
+  if (campus.converted_branch_id) return { branch_id: String(campus.converted_branch_id) };
+
+  // An explicit retry by the owner — clear an earlier automatic failure so the claim can take it.
+  await masterKnex("superadmin.extraction_campuses").where({ id: campusId }).whereNull("converted_branch_id")
+    .update({ convert_failed_at: null });
+  const claimId = await reviewRepo.claimCampus(campusId);
+  if (!claimId) throw new BadRequestError("This branch is being set up right now — try again in a moment");
+  const org: ConvertingOrg = { kind, id: Number(owner.id), schema_name: owner.schema_name };
+  const branch = await convertClaimedCampus(org, campus as CampusRow, claimId, jobId);
+  return { branch_id: String((branch as { id: string }).id) };
 }

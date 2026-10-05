@@ -37,7 +37,7 @@ export function ProfileTab({
       {/* ── Main column (2/3) ── */}
       <div className="space-y-4 md:space-y-6 lg:col-span-2">
         <GeneralInformationCard profile={profile} readOnly={readOnly} isInstitution={isInstitution} />
-        <ProfileLocationsSection profile={profile} countries={countries} readOnly={readOnly} hasBranches={!isInstitution} />
+        <ProfileLocationsSection profile={profile} countries={countries} readOnly={readOnly} />
         <MediaCard profile={profile} readOnly={readOnly} />
       </div>
 

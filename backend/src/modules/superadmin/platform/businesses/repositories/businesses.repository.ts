@@ -8,6 +8,27 @@ import { APPROVED_COURSE_STATUSES, SUPERADMIN_SCHEMA as S } from "../../../const
 
 const now = () => masterKnex.fn.now();
 
+/** The seeding job's source_type (spreadsheet, agentcis, …) — the card's source chip names it. */
+const sourceJobType = (alias: "b" | "i") =>
+  masterKnex.raw(`(select j.source_type from ${S}.extraction_jobs j where j.id = ${alias}.source_job_id) as source_job_type`);
+
+/** Source filter. "spreadsheet"/"agentcis" aren't stored origins — they're seeded listings whose
+ * extraction job came from that importer, so they match on the job's source_type. */
+function applyOrigin(q: Knex.QueryBuilder, alias: "b" | "i", origin?: string) {
+  if (!origin) return;
+  const importJobs = (types: string[]) => masterKnex(`${S}.extraction_jobs`).whereIn("source_type", types).select("id");
+  if (origin === "spreadsheet" || origin === "agentcis") {
+    q.whereIn(`${alias}.source_job_id`, importJobs([origin]));
+    return;
+  }
+  q.where({ [`${alias}.origin`]: origin });
+  // "Seeded" = crawled: the imports have their own options (and chips), so they're left out here.
+  // whereNull first — NOT IN never matches a NULL source_job_id.
+  if (origin === "seeded") {
+    q.where((w) => w.whereNull(`${alias}.source_job_id`).orWhereNotIn(`${alias}.source_job_id`, importJobs(["spreadsheet", "agentcis"])));
+  }
+}
+
 /**
  * Where a listing's branch/service counts come from.
  *
@@ -76,7 +97,7 @@ function applyBusinessFilters<T extends ReturnType<typeof businessListQuery>>(
   if (category) q.where({ "b.business_category_id": category });
   if (businessType) q.where({ "b.business_type": businessType });
   if (categorySlug) q.where({ "cat.slug": categorySlug });
-  if (origin) q.where({ "b.origin": origin });
+  applyOrigin(q, "b", origin);
   if (ownership === "unclaimed") q.whereRaw(BUSINESS_UNCLAIMED_SQL);
   if (ownership === "owned") q.whereRaw(`NOT ${BUSINESS_UNCLAIMED_SQL}`);
   return q;
@@ -91,7 +112,7 @@ export async function listBusinesses(
       "b.id", "b.business_name", "b.subdomain", "b.business_type", "b.business_category_id",
       "b.email", "b.phone", "b.status", "b.claim_status", "b.is_published", "b.country_id", "b.city",
       "b.logo_url", "b.account_status", "b.created_at",
-      "b.owner_id", "b.schema_name", "b.profile_views", "b.source_job_id", "b.origin",
+      "b.owner_id", "b.schema_name", "b.profile_views", "b.source_job_id", "b.origin", sourceJobType("b"),
       // Unclaimed means no one has actually signed in as this business's owner yet — an
       // owner_id assigned at creation (e.g. superadmin's "Add Business" placeholder account)
       // doesn't count until that owner verifies via OTP, which is the only thing that flips
@@ -194,7 +215,7 @@ function applyInstitutionFilters<T extends ReturnType<typeof institutionListQuer
     );
   }
   if (status) q.where({ "i.status": status });
-  if (origin) q.where({ "i.origin": origin });
+  applyOrigin(q, "i", origin);
   if (ownership === "unclaimed") q.whereRaw(INSTITUTION_UNCLAIMED_SQL);
   if (ownership === "owned") q.whereRaw(`NOT ${INSTITUTION_UNCLAIMED_SQL}`);
   return q;
@@ -213,7 +234,7 @@ export async function listInstitutions(
       "i.institution_type as business_type",
       "i.email", "i.phone", "i.status", "i.claim_status", "i.is_published", "i.country_id", "i.city",
       "i.logo_url", "i.account_status", "i.created_at",
-      "i.platform_user_id as owner_id", "i.schema_name", "i.source_job_id", "i.origin",
+      "i.platform_user_id as owner_id", "i.schema_name", "i.source_job_id", "i.origin", sourceJobType("i"),
       // See listBusinesses' matching comment — same "owner has actually logged in" rule.
       masterKnex.raw("(i.platform_user_id IS NULL OR (owner.is_email_verified IS NOT TRUE AND i.claim_status != 'claimed')) as is_unclaimed"),
       "i.business_category_id",

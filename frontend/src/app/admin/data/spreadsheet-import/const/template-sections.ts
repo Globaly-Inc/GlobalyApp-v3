@@ -77,6 +77,8 @@ export const TEMPLATE_SECTIONS: Section[] = [
       { key: "international_amount", label: "International Amount", aliases: ["internationaltuitionfeetypeamount", "internationalfee", "internationaltuitionfee", "tuitionfeetypeamount", "tuition", "tuitionfee"] },
       { key: "domestic_amount", label: "Domestic Amount", aliases: ["domestictuitionfeetypeamount", "domesticfee", "domestictuitionfee"] },
       { key: "application_fee_name", label: "Application Fee Name", aliases: ["applicationfeetypeproductfee", "applicationfeetype"] },
+      { key: "international_application_fee_amount", label: "International Application Fee", aliases: ["internationalapplicationfee", "internationalapplicationfeeamount"] },
+      { key: "domestic_application_fee_amount", label: "Domestic Application Fee", aliases: ["domesticapplicationfee", "domesticapplicationfeeamount"] },
       { key: "application_fee_amount", label: "Application Fee Amount", aliases: ["applicationtypeamount", "applicationfee", "applicationamount"] },
       { key: "application_fee_period", label: "Application Fee Period", aliases: ["applicationinstallmenttype", "installmenttype"] },
       { key: "application_fee_installments", label: "Application Fee Installments", aliases: ["applicationtypeinstallments", "applicationinstallments"] },

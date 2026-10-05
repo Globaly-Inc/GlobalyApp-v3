@@ -135,6 +135,10 @@ export type InstitutionOverview = ActorFields & {
   /** Social/profile links that don't fit a known platform column (TikTok, Threads, etc), each
    * with a label — either LLM-guessed from the platform or set manually by an admin. */
   other_social_links: { label: string; url: string }[] | null;
+  /** Picked from the homepage when the overview is written — copied to the org's profile. */
+  cover_url?: string | null;
+  /** Up to 3 photos; null = not picked yet, [] = none found or cleared. */
+  gallery_images?: string[] | null;
   updated_at?: string | null;
 };
 

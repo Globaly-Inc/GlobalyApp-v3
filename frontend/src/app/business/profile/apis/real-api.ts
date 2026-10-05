@@ -133,6 +133,9 @@ export const businessProfileDetailRealApi = {
     return { data, total: meta.total };
   },
   getBranch: (branchId: string, orgBase = BASE): Promise<Branch> => httpGet(`${orgBase}/branches/${branchId}`),
+  /** An extracted (read-only) campus → a real, editable branch; returns its branch id. */
+  convertCampus: (campusId: string, orgBase = BASE): Promise<{ branch_id: string }> =>
+    httpPost(`${orgBase}/branches/campuses/${campusId}/convert`, {}),
   createBranch: (input: BranchInput, orgBase = BASE): Promise<Branch> => httpPost(`${orgBase}/branches`, input),
   updateBranch: (branchId: string, patch: BranchPatch, orgBase = BASE): Promise<Branch> => httpPatch(`${orgBase}/branches/${branchId}`, patch),
   // No institution twin — linking another registered org as a branch is business-to-business only.

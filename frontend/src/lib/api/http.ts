@@ -88,6 +88,11 @@ function orgIdFromToken(token: string | null): string | null {
   }
 }
 
+/** The org the current access token is scoped to — the one every /me API call answers for. */
+export function currentOrgId(): string | null {
+  return orgIdFromToken(getAccessToken());
+}
+
 export function hasBusinessContext(): boolean {
   return orgIdFromToken(getAccessToken()) !== null;
 }

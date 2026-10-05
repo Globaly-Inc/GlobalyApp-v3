@@ -13,12 +13,39 @@ const logger = createChildLogger("overview-sync");
 
 const OWNERSHIP_TYPE_MAP: Record<string, "Public" | "Private"> = { public: "Public", private: "Private" };
 
+/** Photos scraped from the overview's page snapshot — up to 3, logo and icons skipped. Tries the
+ * overview's source page then the homepage, each main-content snapshot then the full one: the
+ * main-content cut often drops a homepage's hero/banner photos. */
+async function scrapeGallery(overview: OverviewRow | undefined): Promise<string[] | null> {
+  const pages = [...new Set([overview?.source_url, overview?.website].filter((u): u is string => !!u))];
+  for (const pageUrl of pages) {
+    for (const mode of ["main", "full"] as const) {
+      const page = await readSnapshot(pageUrl, mode);
+      const images = page ? pickGalleryImages(page.markdown, pageUrl, overview?.logo_url ?? null) : [];
+      if (images.length > 0) return images;
+    }
+  }
+  return null;
+}
+
+/** The overview's stored media when it has any (an admin may have corrected it), else scraped now. */
 async function galleryFrom(overview: OverviewRow | undefined): Promise<string[] | null> {
-  const pageUrl = overview?.source_url ?? overview?.website;
-  if (!pageUrl) return null;
-  const page = await readSnapshot(pageUrl);
-  const images = page ? pickGalleryImages(page.markdown, pageUrl, overview?.logo_url ?? null) : [];
-  return images.length > 0 ? images : null;
+  // An array, even empty, is a decision already made (picked, or cleared by an admin) — don't re-scrape.
+  if (Array.isArray(overview?.gallery_images)) return overview.gallery_images.length ? overview.gallery_images : null;
+  return scrapeGallery(overview);
+}
+
+/**
+ * Stores the cover and up to 3 media photos on the job's overview, picked from its homepage —
+ * only while they're unset (null), so an admin's correction or clearing ([] / "" cover) is never redone.
+ */
+export async function pickOverviewMedia(jobId: string): Promise<void> {
+  const overview = await findOverviewByJobId(jobId);
+  if (!overview || overview.gallery_images != null) return;
+  const gallery = await scrapeGallery(overview);
+  if (!gallery) return; // homepage not snapshotted yet / no photos — a later write tries again
+  await masterKnex("superadmin.extraction_institution_overview").where({ job_id: jobId }).whereNull("gallery_images")
+    .update({ gallery_images: JSON.stringify(gallery), cover_url: overview.cover_url ?? gallery[0], updated_at: masterKnex.fn.now() });
 }
 
 export async function baseProfileFieldsFrom(overview: OverviewRow | undefined) {
@@ -34,7 +61,8 @@ export async function baseProfileFieldsFrom(overview: OverviewRow | undefined) {
     // A few photos from the scraped homepage for the Media section, and the first as the cover —
     // each only when the profile has none yet.
     gallery_images: gallery,
-    cover_url: gallery?.[0] ?? null,
+    // "" is an admin's clear (see pickOverviewMedia) — no cover, and no gallery photo in its place.
+    cover_url: overview?.cover_url != null ? overview.cover_url || null : gallery?.[0] ?? null,
     state: overview?.state ?? null,
     city: overview?.city ?? null,
     address: overview?.address ?? null,
@@ -42,10 +70,17 @@ export async function baseProfileFieldsFrom(overview: OverviewRow | undefined) {
   };
 }
 
-/** Institutions get the extracted social links too, plus ownership_type as their one extra field. */
+/** Institutions get the extracted social links too, plus ownership_type and the labelled "other"
+ * links (institutions.other_social_links — businesses have no such column). */
 export function institutionExtrasFrom(overview: OverviewRow | undefined) {
   const mapped = overview?.ownership_type ? OWNERSHIP_TYPE_MAP[overview.ownership_type.toLowerCase()] : undefined;
-  return { institution_type: mapped ?? null, ...businessExtrasFrom(overview) };
+  const others = overview?.other_social_links;
+  return {
+    institution_type: mapped ?? null,
+    ...businessExtrasFrom(overview),
+    // jsonb: stringified, or pg would send the array as a Postgres array literal.
+    other_social_links: others?.length ? JSON.stringify(others) : null,
+  };
 }
 
 /** The extracted social links — both businesses and institutions have these columns. */
@@ -136,6 +171,54 @@ export async function backfillSelfServiceProfile(jobId: string): Promise<void> {
     logger.info("Backfilled self-service business profile", { jobId, businessId: business.id, fields: Object.keys(patch), subdomain });
   }
   await localizeImages("businesses", Number(business.id), jobId);
+}
+
+/** Overview column → the org column it fills, where the names differ. */
+const PROFILE_COLUMN: Record<string, { institutions: string; businesses: string | null }> = {
+  name: { institutions: "institution_name", businesses: "business_name" },
+  zip_code: { institutions: "postcode", businesses: "postcode" },
+  ownership_type: { institutions: "institution_type", businesses: null },
+  other_social_links: { institutions: "other_social_links", businesses: null },
+};
+const SAME_NAME_COLUMNS = new Set([
+  "description", "logo_url", "website", "email", "phone", "address", "city", "state", "cover_url", "gallery_images",
+  "linkedin_url", "facebook_url", "instagram_url", "twitter_url", "youtube_url",
+]);
+
+/**
+ * An admin's edit to a job's overview (the extraction's Institution tab), pushed onto the org the
+ * job feeds — so a correction made in Super Admin shows in the business portal and public profile.
+ * Overwrites, unlike the fill-blanks backfill: the admin is deliberately correcting this value.
+ * Only the edited fields move. The subdomain is never regenerated, even on a rename.
+ */
+export async function pushOverviewEdit(jobId: string, edited: Record<string, unknown>): Promise<void> {
+  for (const table of ["institutions", "businesses"] as const) {
+    const org = await masterKnex(table).where({ source_job_id: jobId }).first("id");
+    if (!org) continue;
+    const patch: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(edited)) {
+      if (key === "country") {
+        patch.country_id = await findCountryId(typeof value === "string" ? value : null);
+      } else if (key === "ownership_type") {
+        if (table === "institutions") patch.institution_type = typeof value === "string" ? OWNERSHIP_TYPE_MAP[value.toLowerCase()] ?? null : null;
+      } else if (key === "other_social_links") {
+        if (table === "institutions") patch.other_social_links = Array.isArray(value) && value.length ? JSON.stringify(value) : null;
+      } else if (PROFILE_COLUMN[key]) {
+        const column = PROFILE_COLUMN[key][table];
+        if (column) patch[column] = value;
+      } else if (SAME_NAME_COLUMNS.has(key)) {
+        patch[key] = value;
+      }
+    }
+    // A blank name would leave the org nameless — keep the old one.
+    if (patch.institution_name === "" || patch.institution_name === null) delete patch.institution_name;
+    if (patch.business_name === "" || patch.business_name === null) delete patch.business_name;
+    if (patch.cover_url === "") patch.cover_url = null; // the overview's "cleared" marker; the org just has none
+    if (Object.keys(patch).length === 0) continue;
+    await masterKnex(table).where({ id: org.id }).update({ ...patch, updated_at: masterKnex.fn.now() });
+    logger.info("Pushed overview edit to profile", { jobId, table, id: org.id, fields: Object.keys(patch) });
+    if ("cover_url" in patch || "gallery_images" in patch) await localizeImages(table, Number(org.id), jobId);
+  }
 }
 
 /** Where copied extraction photos live — shared by every org on the job, not one org's own folder. */

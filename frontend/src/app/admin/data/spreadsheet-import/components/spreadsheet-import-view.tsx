@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/compone
 import { useConfirmDelete } from "@/app/admin/data/all-extractions/components/use-confirm-delete";
 import { SpreadsheetIllustration } from "./spreadsheet-illustration";
 import { SpreadsheetImportWizard } from "./spreadsheet-import-wizard";
+import { ImportHistory } from "./import-history";
 
 const HOW_IT_WORKS = [
   { icon: Download, title: "Download the template", text: "One tab for each part of an institution — the same tabs as an extraction." },
@@ -27,6 +28,8 @@ export function SpreadsheetImportView() {
   const [open, setOpen] = useState(false);
   // A ref, not state: read inside onOpenChange, where a stale closure would miss the latest value.
   const dirtyRef = useRef(false);
+  // Bumped when the wizard closes, so the history picks up what was just imported.
+  const [historyKey, setHistoryKey] = useState(0);
   const { confirm, dialog: confirmDialog } = useConfirmDelete();
 
   const close = async (next: boolean) => {
@@ -38,6 +41,7 @@ export function SpreadsheetImportView() {
     ))) return;
     dirtyRef.current = false;
     setOpen(false);
+    setHistoryKey((k) => k + 1);
   };
 
   return (
@@ -107,6 +111,8 @@ export function SpreadsheetImportView() {
           </ul>
         </CardContent>
       </Card>
+
+      <ImportHistory refreshKey={historyKey} />
 
       <Dialog open={open} onOpenChange={close}>
         {/* Full screen: the Validate step's tables are wide, and a centred modal would scroll both ways. */}

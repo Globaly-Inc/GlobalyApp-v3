@@ -27,7 +27,9 @@ export const SpreadsheetCourseRowSchema = z.object({
   domestic_fee_amount: text,
   // One tuition rate for domestic and international students alike (a single "both" fee line).
   both_fee_amount: text,
+  // application_fee_amount is one fee for both student types; the other two are per student type.
   application_fee_name: text, application_fee_amount: text, application_fee_period: text, application_fee_installments: text,
+  international_application_fee_amount: text, domestic_application_fee_amount: text,
   intake_months: text,
   min_degree_level: text, min_score: text, score_type: text,
   gre: text, gmat: text, sat_1: text, sat_2: text,
@@ -63,9 +65,23 @@ export const SpreadsheetImportSchema = z.object({
           message: "both_fee_amount can't be sent with fee_amount or domestic_fee_amount — send one or the other",
         });
       }
+      if (r.application_fee_amount?.trim() && (r.international_application_fee_amount?.trim() || r.domestic_application_fee_amount?.trim())) {
+        ctx.addIssue({
+          code: "custom", path: [i, "application_fee_amount"],
+          message: "application_fee_amount can't be sent with international_application_fee_amount or domestic_application_fee_amount — send one or the other",
+        });
+      }
     });
   }),
   extras: SpreadsheetExtrasSchema.optional(),
+  /** Workbook line of each entry in `rows` — recorded errors and merges name the admin's line, not a position. */
+  row_lines: z.array(z.number().int()).max(10_000).optional(),
+  /** Course rows the wizard left out (validation errors) — recorded so the import history can list them. */
+  skipped: z.array(z.object({
+    row: z.number().int(), course: z.string().max(500).nullable(), error: z.string().max(1000),
+    /** "duplicate": a repeat of an earlier row — listed apart from rows dropped for errors. */
+    kind: z.enum(["duplicate"]).optional(),
+  })).max(10_000).default([]),
 });
 
 export const SpreadsheetCheckNamesSchema = z.object({

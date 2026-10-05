@@ -39,6 +39,8 @@ export type Business = {
   profile_views: number;
   source_job_id: string | null;
   origin: BusinessOrigin;
+  /** The seeding extraction job's source_type (list rows only) — "spreadsheet", "agentcis", … */
+  source_job_type?: string | null;
   branch_count: number;
   service_count: number;
 };
@@ -57,8 +59,9 @@ export type BusinessListParams = {
    *  sitting past the first page. */
   business_type?: string;
   /** Applied server-side, same as business_type — so pagination totals stay correct across
-   *  every page rather than only filtering whatever page happened to already be fetched. */
-  origin?: BusinessOrigin;
+   *  every page rather than only filtering whatever page happened to already be fetched.
+   *  "spreadsheet"/"agentcis" narrow seeded listings to the importer their extraction job came from. */
+  origin?: BusinessOrigin | "spreadsheet" | "agentcis";
   ownership?: "owned" | "unclaimed";
   page?: number;
   limit?: number;

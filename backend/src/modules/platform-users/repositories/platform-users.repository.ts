@@ -486,9 +486,11 @@ export async function clearInstitutionClaim(id: number) {
 }
 
 export async function updateInstitution(id: number, data: Record<string, unknown>) {
+  // jsonb array: pg would otherwise send a JS array as a Postgres array literal.
+  const patch = Array.isArray(data.other_social_links) ? { ...data, other_social_links: JSON.stringify(data.other_social_links) } : data;
   const [row] = await masterKnex("institutions")
     .where({ id })
-    .update({ ...withCountryCurrency(data), updated_at: masterKnex.fn.now() })
+    .update({ ...withCountryCurrency(patch), updated_at: masterKnex.fn.now() })
     .returning("*");
   return row;
 }

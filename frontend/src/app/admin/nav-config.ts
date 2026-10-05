@@ -44,6 +44,8 @@ export interface AdminNavGroup {
   icon: LucideIcon;
   items: AdminNavItem[];
   roles?: AdminRole[];
+  /** Pinned to the bottom of the rail, as in the business portal. */
+  pinBottom?: boolean;
 }
 
 const GENERAL_ADMIN: AdminRole[] = ["super_admin", "admin", "moderator"];
@@ -119,6 +121,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     icon: Settings,
     label: "Settings",
     roles: GENERAL_ADMIN,
+    pinBottom: true,
     items: [{ icon: Settings, label: "Integrations", href: "/admin/settings/integrations" }],
   },
 ];

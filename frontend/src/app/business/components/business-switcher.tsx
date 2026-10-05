@@ -1,7 +1,8 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Building2, Check, ChevronDown, CornerDownRight, GraduationCap, Plus } from "lucide-react";
+import { Building2, Check, ChevronDown, ChevronRight, CornerDownRight, GraduationCap, Plus } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -20,7 +21,9 @@ export type SwitcherOrg = AuthMeBusiness & { kind?: "business" | "institution"; 
  * parent the user isn't a member of is shown top-level. Ids are only unique per kind, so the
  * parent is matched on kind + id.
  */
-function nestBranches(orgs: SwitcherOrg[]): { org: SwitcherOrg; depth: number }[] {
+type NestedOrg = { org: SwitcherOrg; depth: number; root: string; branchCount: number };
+
+function nestBranches(orgs: SwitcherOrg[]): NestedOrg[] {
   const key = (kind: SwitcherOrg["kind"], id: number) => `${kind ?? "business"}:${id}`;
   const present = new Set(orgs.map((o) => key(o.kind, o.id)));
   const children = new Map<string, SwitcherOrg[]>();
@@ -30,18 +33,18 @@ function nestBranches(orgs: SwitcherOrg[]): { org: SwitcherOrg; depth: number }[
     if (parentKey && present.has(parentKey)) children.set(parentKey, [...(children.get(parentKey) ?? []), o]);
     else roots.push(o);
   }
-  const out: { org: SwitcherOrg; depth: number }[] = [];
+  const out: NestedOrg[] = [];
   const seen = new Set<string>();
-  const visit = (o: SwitcherOrg, depth: number) => {
+  const visit = (o: SwitcherOrg, depth: number, root: string) => {
     const k = key(o.kind, o.id);
     if (seen.has(k)) return;
     seen.add(k);
-    out.push({ org: o, depth });
-    for (const c of children.get(k) ?? []) visit(c, depth + 1);
+    out.push({ org: o, depth, root, branchCount: children.get(k)?.length ?? 0 });
+    for (const c of children.get(k) ?? []) visit(c, depth + 1, root);
   };
-  roots.forEach((r) => visit(r, 0));
+  roots.forEach((r) => visit(r, 0, key(r.kind, r.id)));
   // ponytail: a parent cycle has no root to start from — list any leftovers flat.
-  orgs.forEach((o) => visit(o, 0));
+  orgs.forEach((o) => visit(o, 0, key(o.kind, o.id)));
   return out;
 }
 
@@ -56,9 +59,15 @@ export function BusinessSwitcher({
 }: Readonly<{ businesses: SwitcherOrg[]; activeOrgId: string | null; onSwitch: (orgId: string) => void }>) {
   const router = useRouter();
   const active = businesses.find((b) => b.org_id === activeOrgId) ?? businesses[0];
+  const nested = nestBranches(businesses);
+  // Each head office's branches fold away; the active org's group opens by itself on every open.
+  const activeRoot = nested.find((n) => n.org.org_id === activeOrgId)?.root ?? null;
+  const [openRoots, setOpenRoots] = useState<Set<string>>(new Set());
+  const toggleRoot = (root: string) =>
+    setOpenRoots((prev) => { const next = new Set(prev); if (next.has(root)) next.delete(root); else next.add(root); return next; });
 
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={(open) => { if (open) setOpenRoots(new Set(activeRoot ? [activeRoot] : [])); }}>
       <DropdownMenuTrigger
         render={
           <button
@@ -81,8 +90,10 @@ export function BusinessSwitcher({
         <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" className="w-64">
-        <DropdownMenuGroup>
-          {nestBranches(businesses).map(({ org: b, depth }) => (
+        {/* The org list scrolls on its own — an org with many branches would otherwise push
+            "Add Organisation" off the screen. */}
+        <DropdownMenuGroup className="scrollbar-thin max-h-[min(60vh,28rem)] overflow-y-auto">
+          {nested.filter(({ depth, root }) => depth === 0 || openRoots.has(root)).map(({ org: b, depth, root, branchCount }) => (
             <DropdownMenuItem
               key={b.org_id}
               className="cursor-pointer gap-2"
@@ -107,6 +118,19 @@ export function BusinessSwitcher({
                 </span>
               </span>
               {b.org_id === activeOrgId && <Check className="h-4 w-4 text-primary shrink-0" />}
+              {depth === 0 && branchCount > 0 && (
+                <button
+                  type="button"
+                  // Toggles the branches without switching org or closing the menu.
+                  onClick={(e) => { e.preventDefault(); e.stopPropagation(); toggleRoot(root); }}
+                  aria-label={openRoots.has(root) ? `Hide ${b.business_name}'s branches` : `Show ${b.business_name}'s branches`}
+                  aria-expanded={openRoots.has(root)}
+                  className="flex shrink-0 items-center gap-0.5 rounded px-1 py-0.5 text-xs text-muted-foreground hover:bg-muted hover:text-foreground"
+                >
+                  {branchCount}
+                  <ChevronRight className={`h-3.5 w-3.5 transition-transform ${openRoots.has(root) ? "rotate-90" : ""}`} />
+                </button>
+              )}
             </DropdownMenuItem>
           ))}
         </DropdownMenuGroup>

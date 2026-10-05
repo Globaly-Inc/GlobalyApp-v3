@@ -1,4 +1,5 @@
-import type { ImportInstitutionPayload, ImportInstitutionResult, ImportJobStatus } from "./types";
+import type { GetJobsResult } from "../../all-extractions/apis/types";
+import type { ImportInstitutionPayload, ImportInstitutionResult, ImportJobStatus, ListImportsParams } from "./types";
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -12,9 +13,13 @@ export const spreadsheetImportMockApi = {
     await delay(300);
     return { job_id: crypto.randomUUID() };
   },
+  listImports: async (params: ListImportsParams): Promise<GetJobsResult> => {
+    await delay(200);
+    return { jobs: [], meta: { page: params.page, limit: params.limit, total: 0, totalPages: 0 } };
+  },
   getJobStatus: async (jobId: string): Promise<ImportJobStatus> => {
     console.log("[mock] spreadsheet job status", jobId);
     await delay(300);
-    return { status: "done", error: null };
+    return { status: "review", error: null };
   },
 };
