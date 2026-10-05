@@ -121,7 +121,6 @@ export async function insertBusiness(data: {
   business_type?: string | null;
   business_category_id?: number | null;
   description?: string | null;
-  email?: string | null;
   phone?: string | null;
   country_id?: number | null;
   state?: string | null;

@@ -1,20 +1,11 @@
 import { CheckCheck, Loader2, TriangleAlert, type LucideIcon } from "lucide-react";
-import type { EmailMatch, EmailStatus, InviteStatus } from "../apis/types";
+import type { EmailStatus, InviteStatus } from "../apis/types";
 
 /** Must match the backend's platform guard (superadmin/consts ALLOWED_ROLES) — other admins get a 403. */
 export const INVITE_ROLES: readonly string[] = ["super_admin", "data_admin"];
 
 /** Invites are for institutions only for now; the backend still derives the type from the category. */
 export const INVITE_CATEGORY_SLUG = "institutions";
-
-/** Where each kind of existing match lives in the admin; users have no detail page, so no link. */
-export const EMAIL_MATCH: Record<EmailMatch["kind"], { label: string; href: (id: EmailMatch["id"]) => string | null }> = {
-  user: { label: "Users", href: () => null },
-  institution: { label: "Institutions", href: (id) => `/admin/platform/businesses/${id}?kind=institution` },
-  business: { label: "Businesses", href: (id) => `/admin/platform/businesses/${id}?kind=business` },
-  extraction: { label: "Extractions", href: (id) => `/admin/data/all-extractions/${id}?tab=overview` },
-  invite: { label: "Pending invites", href: () => "/admin/platform/businesses?tab=invites" },
-};
 
 /** Soft tinted pills (tone + dot) so a column of statuses scans by colour, not by reading each word. */
 export const STATUS_BADGE: Record<InviteStatus, { label: string; pill: string; dot: string }> = {

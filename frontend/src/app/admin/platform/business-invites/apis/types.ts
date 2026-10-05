@@ -43,10 +43,6 @@ export type PaginatedInvites = {
 
 export type SendInviteParams = { email: string; name: string; full_name: string; business_category_id: number };
 
-/** Where an address is already in use — a send to it is refused with a 409 carrying these. */
-export type EmailMatch = { kind: "user" | "institution" | "business" | "extraction" | "invite"; id: string | number; name: string | null };
-
-/** Refusals come back as a 409 whose details are `{ matches: EmailMatch[] }`. */
 export type SendInviteResult = { email: string; type: InviteType; email_status: Exclude<EmailStatus, "queued"> };
 
 export type ResendInviteResult = { expires_at: string; email_status: Exclude<EmailStatus, "queued"> };

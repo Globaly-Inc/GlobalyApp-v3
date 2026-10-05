@@ -1,21 +1,18 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
-import { ApiError } from "@/lib/api/http";
 import { businessInvitesApi } from "../apis";
-import type { EmailMatch, InviteCounts, InviteListParams, OnboardingInvite, SendInviteParams, SendInviteResult } from "../apis/types";
+import type { InviteCounts, InviteListParams, OnboardingInvite, SendInviteParams, SendInviteResult } from "../apis/types";
 
 export const fetchInvites = createAsyncThunk("businessInvites/fetchInvites", (params: InviteListParams = {}) =>
   businessInvitesApi.listInvites(params),
 );
 
-/** Rejects with the matches too, since a thrown error's details don't survive serialisation. */
-export const sendInvite = createAsyncThunk<SendInviteResult, SendInviteParams, { rejectValue: { message: string; matches: EmailMatch[] } }>(
+export const sendInvite = createAsyncThunk<SendInviteResult, SendInviteParams, { rejectValue: { message: string } }>(
   "businessInvites/sendInvite",
   async (params, { rejectWithValue }) => {
     try {
       return await businessInvitesApi.sendInvite(params);
     } catch (err) {
-      const matches = err instanceof ApiError ? ((err.details as { matches?: EmailMatch[] } | undefined)?.matches ?? []) : [];
-      return rejectWithValue({ message: (err as Error).message || "Please try again.", matches });
+      return rejectWithValue({ message: (err as Error).message || "Please try again." });
     }
   },
 );

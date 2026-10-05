@@ -57,21 +57,11 @@ async function sendInviteEmail(d: InviteDelivery): Promise<"sent" | "failed"> {
   }
 }
 
-const EMAIL_MATCH_LABEL: Record<repo.EmailMatch["kind"], string> = {
-  user: "Users", institution: "Institutions", business: "Businesses", extraction: "Extractions", invite: "pending invites",
-};
-
-/** `email` arrives trimmed and lower-cased (SendInvitationSchema). */
 export async function sendInvitation(email: string, orgName: string, businessCategoryId: number, invitedBy: number, contactName?: string) {
   const category = await repo.findCategory(businessCategoryId);
   if (!category) throw new BadRequestError("Unknown business category");
   // Institutions are their own table and onboarding; every other category is a business.
   const type: InviteType = category.slug === "institutions" ? "institution" : "business";
-  const matches = await repo.findEmailMatches(email);
-  if (matches.length) {
-    const where = [...new Set(matches.map((m) => EMAIL_MATCH_LABEL[m.kind]))].join(", ");
-    throw new ConflictError(`This email already exists in ${where}`, { matches });
-  }
 
   const { token, token_hash, expires_at } = mintToken();
   let id: string;
@@ -147,34 +137,33 @@ export async function acceptInvitation(token: string, type: InviteType) {
     throw new NotFoundError("This invite link isn't valid.");
   }
 
-  let userId: number | undefined;
+  let createdUserId: number | undefined;
+  let createdOrg: { kind: "business" | "institution"; id: number; schemaName: string; ownerId: number } | undefined;
   let user: Awaited<ReturnType<typeof userRepo.insert>>;
   // Everything after the claim is inside this try, so any failure — even a read — releases the link.
   try {
-    // Registered on their own between invite and click — their account is theirs, don't touch it.
-    // The invite is retired, so the catch's release below finds nothing to revert.
-    if (await userRepo.findByEmail(invite.email)) {
-      await repo.transitionStatus(invite.id, "accepted", "revoked");
-      throw new ConflictError("An account already exists for this email. Sign in instead.", { email: invite.email });
+    const existing = await userRepo.findByEmail(invite.email);
+    if (existing) {
+      user = existing;
+    } else {
+      user = await userRepo.insert({
+        first_name: invite.contact_name?.split(/\s+/)[0] ?? "",
+        last_name: invite.contact_name?.split(/\s+/).slice(1).join(" ") ?? "",
+        email: invite.email,
+        account_status: 1,
+        is_personal_account: true,
+        meta: { created_via: "onboarding_invite" },
+      });
+      createdUserId = user.id;
+      await userRepo.updateUser(user.id, { is_email_verified: true });
     }
-
-    user = await userRepo.insert({
-      first_name: invite.contact_name?.split(/\s+/)[0] ?? "",
-      last_name: invite.contact_name?.split(/\s+/).slice(1).join(" ") ?? "",
-      email: invite.email,
-      account_status: 1,
-      is_personal_account: true,
-      meta: { created_via: "onboarding_invite" },
-    });
-    userId = user.id;
-    await userRepo.updateUser(user.id, { is_email_verified: true });
 
     if (invite.type === "business") {
       const { org } = await registerBusiness(user.id, {
         business_name: invite.org_name,
         business_category_id: invite.business_category_id ?? undefined,
-        email: invite.email,
       });
+      createdOrg = { kind: "business", id: Number(org.id), schemaName: org.org_id, ownerId: user.id };
       if (!(await repo.recordAccepted(invite.id, user.id, { businessId: Number(org.id) }))) {
         logger.warn("Invite vanished during setup; account kept without its invite row", { invitationId: invite.id, userId: user.id, businessId: org.id });
       }
@@ -187,6 +176,7 @@ export async function acceptInvitation(token: string, type: InviteType) {
         institution_name: invite.org_name,
         email: invite.email,
       });
+      createdOrg = { kind: "institution", id: Number(institution.id), schemaName: institution.org_id, ownerId: user.id };
       if (!(await repo.recordAccepted(invite.id, user.id, { institutionId: Number(institution.id) }))) {
         logger.warn("Invite vanished during setup; account kept without its invite row", { invitationId: invite.id, userId: user.id, institutionId: institution.id });
       }
@@ -194,15 +184,19 @@ export async function acceptInvitation(token: string, type: InviteType) {
       logger.info("Onboarding invite accepted", { invitationId: invite.id, userId: user.id, institutionId: institution.id });
     }
   } catch (err) {
-    if (userId) await rollbackUser(userId);
+    if (createdUserId) await rollbackUser(createdUserId);
+    else if (createdOrg) await rollbackOrg(createdOrg);
     await repo.revertToPending(invite.id);
     throw err;
   }
 
-  const newUserId = user.id;
-  issueCode("user", newUserId).catch((err) =>
-    logger.warn("Referral code issuance error", { userId: newUserId, err: err.message }),
-  );
+  // An adopted account already got its referral code at its own signup.
+  if (createdUserId !== undefined) {
+    const newUserId = createdUserId;
+    issueCode("user", newUserId).catch((err) =>
+      logger.warn("Referral code issuance error", { userId: newUserId, err: err.message }),
+    );
+  }
   return { email: invite.email, type: invite.type };
 }
 
@@ -241,24 +235,37 @@ export async function requestNewLink(token: string, type: InviteType) {
   return { requested: true };
 }
 
-/** Mirrors businesses.service createInstitution's rollback, so a retry of the same link can succeed. */
+async function rollbackOrg(org: { kind: "business" | "institution"; id: number; schemaName: string; ownerId?: number }) {
+  try {
+    if (org.kind === "institution") {
+      await masterKnex("user_institution_index").where({ institution_id: org.id }).delete();
+      await masterKnex.raw("DROP SCHEMA IF EXISTS ?? CASCADE", [org.schemaName]);
+      const row = await masterKnex("institutions").where({ id: org.id }).first("source_job_id");
+      await userRepo.deleteInstitution(org.id);
+      if (row?.source_job_id) await jobsRepo.deleteJob(row.source_job_id);
+    } else {
+      await masterKnex("user_business_index").where({ business_id: org.id }).delete();
+      await masterKnex.raw("DROP SCHEMA IF EXISTS ?? CASCADE", [org.schemaName]);
+      await masterKnex("businesses").where({ id: org.id }).delete();
+    }
+    if (org.ownerId) await resetAccountKind(org.ownerId, org.kind);
+  } catch (err: any) {
+    logger.error("Onboarding invite org rollback failed", { kind: org.kind, orgId: org.id, err: err.message });
+  }
+}
+
+async function resetAccountKind(userId: number, kind: "business" | "institution") {
+  if (await userRepo.hasAnyOrgMembership(userId, kind)) return;
+  await userRepo.updateUser(userId, kind === "institution" ? { is_institution_account: false } : { is_business_account: false });
+  await userRepo.removeAccountCategory(userId, kind);
+}
+
 async function rollbackUser(userId: number) {
   try {
-    // onboardInstitution provisions the tenant schema and adds the owner member before it can fail late.
     const institution = await repo.findInstitutionByOwner(userId);
-    if (institution) {
-      await masterKnex("user_institution_index").where({ institution_id: institution.id }).delete();
-      await masterKnex.raw("DROP SCHEMA IF EXISTS ?? CASCADE", [institution.schema_name]);
-      await userRepo.deleteInstitution(institution.id);
-      if (institution.source_job_id) await jobsRepo.deleteJob(institution.source_job_id);
-    }
-    // registerBusiness provisions a tenant schema and owner index before it can fail late.
+    if (institution) await rollbackOrg({ kind: "institution", id: Number(institution.id), schemaName: institution.schema_name });
     const business = await repo.findBusinessByOwner(userId);
-    if (business) {
-      await masterKnex("user_business_index").where({ business_id: business.id }).delete();
-      await masterKnex.raw("DROP SCHEMA IF EXISTS ?? CASCADE", [business.schema_name]);
-      await masterKnex("businesses").where({ id: business.id }).delete();
-    }
+    if (business) await rollbackOrg({ kind: "business", id: Number(business.id), schemaName: business.schema_name });
     await userRepo.deleteUser(userId);
   } catch (err: any) {
     logger.error("Onboarding invite rollback failed", { userId, err: err.message });

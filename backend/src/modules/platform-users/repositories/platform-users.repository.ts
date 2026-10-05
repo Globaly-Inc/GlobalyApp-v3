@@ -103,12 +103,25 @@ export async function addAccountCategory(userId: number, category: AccountCatego
     .update({ account_categories: JSON.stringify(updated), updated_at: masterKnex.fn.now() });
 }
 
-// ── Business Index (master DB) ──
+export async function removeAccountCategory(userId: number, type: AccountCategory["type"]) {
+  const user = await findByIdFull(userId);
+  if (!user) return;
+  const existing: AccountCategory[] = Array.isArray(user.account_categories) ? user.account_categories : [];
+  const updated = existing.filter((c) => c.type !== type);
+  if (updated.length === existing.length) return;
+  await masterKnex("platform_users")
+    .where({ id: userId })
+    .update({ account_categories: JSON.stringify(updated), updated_at: masterKnex.fn.now() });
+}
 
-/** True if this user currently has a suspended (not removed) membership on at least one
- * business — distinct from "has zero accessible businesses", which also happens for reasons
- * that aren't suspension at all (removed from the business, the business itself deactivated,
- * or they were simply never a member) and must never block login. */
+export async function hasAnyOrgMembership(platformUserId: number, kind: "business" | "institution") {
+  const row = await masterKnex(kind === "institution" ? "user_institution_index" : "user_business_index")
+    .where({ platform_user_id: platformUserId })
+    .whereNull("deleted_at")
+    .first("platform_user_id");
+  return Boolean(row);
+}
+
 export async function hasSuspendedBusinessMembership(platformUserId: number): Promise<boolean> {
   const row = await masterKnex("user_business_index")
     .where({ platform_user_id: platformUserId, account_status: 0 })
@@ -376,13 +389,6 @@ export async function listUserInstitutions(platformUserId: number) {
     );
 }
 
-export async function ownsAnyOrg(platformUserId: number): Promise<boolean> {
-  const [businesses, institutions] = await Promise.all([
-    listUserBusinesses(platformUserId),
-    listUserInstitutions(platformUserId),
-  ]);
-  return businesses.length > 0 || institutions.length > 0;
-}
 
 /** See insertUserBusinessIndex for why the merge clears deleted_at. */
 export async function insertUserInstitutionIndex(data: {
