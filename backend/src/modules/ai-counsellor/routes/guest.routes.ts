@@ -365,7 +365,7 @@ export async function guestRoutes(app: FastifyInstance) {
       const visitorProfile = visitorProfileContext(visible);
       const visitorContext = visitorCounsellingContext(visible, customFields, customValues);
       const situation = rag.situationText(visitorProfile, visitorContext);
-      const [ragOutput, memory, rackProfile] = await Promise.all([
+      const [ragOutput, memory, rackProfile, visitorLocation] = await Promise.all([
         rag.searchAll({
           query: asked,
           userId: 0, // ponytail: guests have no userId, profile context will be empty
@@ -388,6 +388,12 @@ export async function guestRoutes(app: FastifyInstance) {
         // The Rack's configuration half — voice, behaviour, what may be collected. Cached 60s
         // and never throws, so it rides the same Promise.all rather than adding a round trip.
         embed?.rackInstitutionId ? profileBlockFor(embed.rackInstitutionId) : "",
+        // Cloudflare location → the most relevant existing branch. Stores nothing; any failure
+        // (no headers locally, no branches, a lookup error) drops the section, never the turn.
+        embed
+          ? visitorService.attempt("branchRecommendation", () =>
+              visitorService.branchRecommendationFor(embed.config, req.headers))
+          : null,
       ]);
 
       if (ragOutput.sources.length) {
@@ -409,6 +415,7 @@ export async function guestRoutes(app: FastifyInstance) {
         rackProfile,
         institutionGuidance: memory?.text,
         withheldMoneyTopics,
+        visitorLocation,
       });
 
       const result = await streamChat({

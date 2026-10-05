@@ -99,9 +99,12 @@
   var panelDesktop = function () { return "display:none;position:fixed;bottom:88px;" + side + ":20px;width:400px;height:min(704px,calc(100vh - 108px));" +
     "max-width:calc(100vw - 40px);border:0;border-radius:24px;background:#fff;color-scheme:normal;" +
     "box-shadow:0 12px 48px rgba(0,0,0,.25)"; };
-  // Under 480px the panel IS the screen; the orb stays on top of it as the way back.
+  // Under 480px the panel IS the screen. The launcher hides while it is open: drawn on top, it
+  // covered the composer's send button, and the panel header's own minimise (CLOSE_MESSAGE) is
+  // the way back.
   var PANEL_MOBILE = "display:none;position:fixed;inset:0;width:100%;height:100%;border:0;background:#fff;color-scheme:normal";
   var isMobile = function () { return window.innerWidth < 480; };
+  var syncButton = function () { button.style.display = open && isMobile() ? "none" : "flex"; };
   panel.style.cssText = panelDesktop();
 
   var button = document.createElement("button");
@@ -314,6 +317,7 @@
     panel.style.display = open ? "block" : "none";
     orb.style.display = open ? "none" : "block";
     chevron.style.display = open ? "block" : "none";
+    syncButton();
 
     // Grows out of the orb instead of appearing: the corner it expands from is the control that
     // opened it, which is what makes the panel feel attached to the button rather than dropped on
@@ -350,6 +354,7 @@
   });
   window.addEventListener("resize", function () {
     if (open) { panel.style.cssText = isMobile() ? PANEL_MOBILE : panelDesktop(); panel.style.display = "block"; }
+    syncButton();
   });
 
   button.appendChild(orb);

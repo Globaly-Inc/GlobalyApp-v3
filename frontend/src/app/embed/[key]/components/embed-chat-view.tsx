@@ -311,7 +311,8 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
 
       <ChatInput value={input} onChange={setInput} onSend={send} disabled={sending} />
       <p className="shrink-0 pb-2 text-center text-[11px] text-muted-foreground">Powered by Globaly · AI can make mistakes</p>
-      <CompareTray />
+      {/* Above the composer, so the tray never covers the message box or Send. */}
+      <CompareTray positionClass="bottom-28 right-3" />
     </div>
   );
 }

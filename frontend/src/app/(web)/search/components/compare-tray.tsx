@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { InstitutionLogo } from "@/components/institution-logo";
 import { useCompareTray } from "../use-compare-tray";
 
-const COMPARE_ENABLED_PATHS = ["/search", "/personal/explore", "/personal/ai"];
+// /embed: the AI widget on a partner site, whose course cards carry the same compare button.
+const COMPARE_ENABLED_PATHS = ["/search", "/personal/explore", "/personal/ai", "/embed"];
 
 type View = "list" | "detail";
 
