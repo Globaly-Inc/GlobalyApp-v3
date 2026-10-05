@@ -1,9 +1,10 @@
 "use client";
 
+import { useEffect } from "react";
 import { Expand, Minus } from "lucide-react";
 import { AlyOrbIcon } from "@/components/aly-orb-icon";
 import { Button } from "@/components/ui/button";
-import { CLOSE_MESSAGE } from "../const";
+import { CLOSE_MESSAGE, READY_MESSAGE } from "../const";
 
 /**
  * Identity on the left (always Aly, in the widget's brand colour), then the panel controls.
@@ -25,6 +26,11 @@ export function WidgetHeader({
   framed: boolean;
   fingerprint: string;
 }>) {
+  // The close control below now exists; embed.js may hide its launcher on mobile.
+  useEffect(() => {
+    if (framed) window.parent.postMessage({ type: READY_MESSAGE }, "*");
+  }, [framed]);
+
   return (
     // The brand owns the header surface (staging's design): --primary is the brand and
     // --primary-foreground its measured readable ink (widgetTheme.onAccent), so any hex is legible.

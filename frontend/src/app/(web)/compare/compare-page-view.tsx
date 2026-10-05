@@ -26,17 +26,21 @@ export function ComparePageView({
   const { items, add, remove, clear } = useCompareTray();
 
   // Seed store when opened in a new tab — store is in-memory, doesn't survive tab boundary.
-  // Primary: localStorage (set by CompareTray before opening the tab — works for all courses).
-  // Fallback: ?slugs= param (for slug-based courses from the search page).
+  // Primary: #items= (set by CompareTray's link — carries every course, and works from the AI
+  // widget's iframe, whose storage a new tab can't read). Fallback: ?slugs= (a shared link).
   useEffect(() => {
     if (items.length > 0) return;
-    const stored = localStorage.getItem("compare_items");
-    if (stored) {
+    const fromHash = new URLSearchParams(window.location.hash.slice(1)).get("items");
+    if (fromHash) {
       try {
-        const parsed = JSON.parse(stored);
+        const parsed = JSON.parse(fromHash);
         if (Array.isArray(parsed) && parsed.length > 0) {
-          parsed.forEach((item) => add(item));
-          localStorage.removeItem("compare_items");
+          // A link anyone can craft: keep only entries shaped like a course.
+          parsed
+            .filter((i) => i && typeof i.id === "string" && typeof i.slug === "string" && typeof i.name === "string")
+            .forEach((item) => add(item));
+          // Drop the payload from the address bar; ?slugs= stays for sharing.
+          window.history.replaceState(null, "", window.location.pathname + window.location.search);
           return;
         }
       } catch { /* fall through to slug param */ }

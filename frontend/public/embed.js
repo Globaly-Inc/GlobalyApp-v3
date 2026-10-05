@@ -101,10 +101,12 @@
     "box-shadow:0 12px 48px rgba(0,0,0,.25)"; };
   // Under 480px the panel IS the screen. The launcher hides while it is open: drawn on top, it
   // covered the composer's send button, and the panel header's own minimise (CLOSE_MESSAGE) is
-  // the way back.
+  // the way back. Only once the panel says that header is up (READY_MESSAGE): a panel that failed
+  // to load, or loaded its error state, has no close button, and the launcher stays as the way out.
   var PANEL_MOBILE = "display:none;position:fixed;inset:0;width:100%;height:100%;border:0;background:#fff;color-scheme:normal";
   var isMobile = function () { return window.innerWidth < 480; };
-  var syncButton = function () { button.style.display = open && isMobile() ? "none" : "flex"; };
+  var panelReady = false;
+  var syncButton = function () { button.style.display = open && isMobile() && panelReady ? "none" : "flex"; };
   panel.style.cssText = panelDesktop();
 
   var button = document.createElement("button");
@@ -344,6 +346,7 @@
   window.addEventListener("message", function (e) {
     if (e.source !== panel.contentWindow || e.origin !== origin) return;
     if (e.data && e.data.type === "globaly-embed:close" && open) button.onclick();
+    if (e.data && e.data.type === "globaly-embed:ready") { panelReady = true; syncButton(); }
     if (e.data && e.data.type === "globaly-embed:fp" && typeof e.data.fp === "string" && /^[\w-]{8,80}$/.test(e.data.fp)) {
       try { localStorage.setItem(FP_KEY, e.data.fp); } catch (err) {}
     }

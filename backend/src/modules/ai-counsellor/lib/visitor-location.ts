@@ -129,6 +129,13 @@ const TIER_LABEL: Record<MatchTier, string> = {
   country: "in the visitor's country, not their state",
 };
 
+/** Country tier with no region header (a separate Cloudflare setting) proves nothing about their
+ * state — a branch may well be in it. Say so rather than "not their state". */
+const tierLabel = (location: VisitorLocation, tier: MatchTier) =>
+  tier === "country" && !location.region && !location.regionCode
+    ? "in the visitor's country; their state is unknown"
+    : TIER_LABEL[tier];
+
 function describe(b: BranchLike): string {
   const address = clean(b.address);
   // An address often already contains the city/state; don't repeat what it says.
@@ -148,14 +155,16 @@ export function renderLocationSection(location: VisitorLocation, countryName: st
     "VISITOR LOCATION (approximate, from the visitor's network — they did not tell you this):",
     `  Country: ${clean(countryName)}`,
     ...(location.region ? [`  Region: ${location.region}`] : []),
-    `RECOMMENDED BRANCH (${TIER_LABEL[match.tier]}):`,
+    `RECOMMENDED BRANCH (${tierLabel(location, match.tier)}):`,
     `  ${describe(match.branch)}`,
     ...(others.length ? [`  Other branches in ${clean(countryName)}: ${others.join(", ")}`] : []),
     "- Mention a branch only when the visitor asks about visiting, campuses, where you are, or " +
       "studying or meeting someone in person. Otherwise ignore this section.",
-    match.tier === "country"
-      ? "- No branch is in their state. Do not imply one is close to them; list the branches in their country instead."
-      : "- You may say the branch is in their state or area. Never call it the nearest or closest — distance is unknown.",
+    match.tier !== "country"
+      ? "- You may say the branch is in their state or area. Never call it the nearest or closest — distance is unknown."
+      : location.region || location.regionCode
+        ? "- No branch is in their state. Do not imply one is close to them; list the branches in their country instead."
+        : "- Their state is unknown. Do not say whether any branch is in or near their state; list the branches in their country instead.",
     "- Do not tell the visitor you know where they are unless they ask how you know; then say it is an " +
       "approximate guess from their connection.",
   ].join("\n");

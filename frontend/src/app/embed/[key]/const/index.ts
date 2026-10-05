@@ -116,6 +116,10 @@ export function embedStarters(kind: EmbedOwnerKind): StarterCategory[] {
 /** postMessage type the panel sends to public/embed.js to close itself. Keep in step with it. */
 export const CLOSE_MESSAGE = "globaly-embed:close";
 
+/** postMessage type telling public/embed.js the panel's header — and so its close button — is on
+ *  screen. Until then a mobile host keeps its own launcher showing as the way out. Keep in step. */
+export const READY_MESSAGE = "globaly-embed:ready";
+
 /** postMessage type telling public/embed.js this visitor has a conversation, so its teaser
  *  card stops inviting them. Keep in step with it. */
 export const STARTED_MESSAGE = "globaly-embed:started";

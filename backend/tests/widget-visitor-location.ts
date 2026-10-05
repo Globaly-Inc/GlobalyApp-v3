@@ -125,7 +125,11 @@ console.log("\nPrompt section");
   assert(waText.includes("No branch is in their state"), "country-tier match says so");
 
   const noRegion = at("AU");
-  assert(!loc.renderLocationSection(noRegion, "Australia", loc.rankBranches(noRegion, all)!).includes("Region:"), "no Region line when unknown");
+  const noRegionText = loc.renderLocationSection(noRegion, "Australia", loc.rankBranches(noRegion, all)!);
+  assert(!noRegionText.includes("Region:"), "no Region line when unknown");
+  assert(!noRegionText.includes("No branch is in their state") && !noRegionText.includes("not their state"),
+    "region unknown → never claims no branch is in their state", noRegionText);
+  assert(noRegionText.includes("Their state is unknown"), "region unknown → says the state is unknown");
 
   const base = { profile: null, ragContext: "", isFirstMessage: false, embedConfig: { display_name: "SCI", custom_instructions: null } };
   assert(prompt.buildSystemPrompt({ ...base, visitorLocation: text }).includes("RECOMMENDED BRANCH"), "buildSystemPrompt includes it when passed");

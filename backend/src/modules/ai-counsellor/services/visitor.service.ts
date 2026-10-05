@@ -705,7 +705,7 @@ export async function recordContact(
  * unknown country header (local dev, not behind Cloudflare), no branches, or a visitor outside
  * every branch's country. Callers wrap it in `attempt`, so a failure costs the section, not the turn.
  */
-// ponytail: ~4 small queries per widget message; cache per owner for a minute if that ever shows up.
+// ponytail: ~4 small queries per 100 branches per widget message; cache per owner for a minute if that ever shows up.
 export async function branchRecommendationFor(
   config: Pick<EmbedConfigRow, "institution_id" | "business_id">,
   headers: Record<string, string | string[] | undefined>,
@@ -717,13 +717,21 @@ export async function branchRecommendationFor(
   });
   if (!location) return null;
 
-  const listed = config.institution_id != null
-    ? await branchService.listInstitutionBranches(config.institution_id, 50, 0, "all")
-    : config.business_id != null
-      ? await branchService.listBranches(config.business_id, 50, 0, "all")
+  const { institution_id, business_id } = config;
+  const page = institution_id != null
+    ? (limit: number, offset: number) => branchService.listInstitutionBranches(institution_id, limit, offset, "all")
+    : business_id != null
+      ? (limit: number, offset: number) => branchService.listBranches(business_id, limit, offset, "all")
       : null;
-  // The list is loosely typed (own rows + campus stand-ins); both carry these columns.
-  const rows = (listed?.rows ?? []) as unknown as BranchLike[];
+  if (!page) return null;
+  // Every branch, not the first page: the match may be on any of them.
+  const rows: BranchLike[] = [];
+  for (let offset = 0; ; offset += 100) {
+    const { rows: batch, total } = await page(100, offset);
+    // Loosely typed (own rows + campus stand-ins); both carry these columns.
+    rows.push(...(batch as unknown as BranchLike[]));
+    if (!batch.length || rows.length >= total) break;
+  }
   if (!rows.length) return null;
 
   // Branch `country` is free text ("Australia", "AU", "australia "); the shared resolver puts
