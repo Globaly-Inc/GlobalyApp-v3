@@ -103,6 +103,17 @@ export async function addAccountCategory(userId: number, category: AccountCatego
     .update({ account_categories: JSON.stringify(updated), updated_at: masterKnex.fn.now() });
 }
 
+export async function removeAccountCategory(userId: number, type: AccountCategory["type"]) {
+  const user = await findByIdFull(userId);
+  if (!user) return;
+  const existing: AccountCategory[] = Array.isArray(user.account_categories) ? user.account_categories : [];
+  const updated = existing.filter((c) => c.type !== type);
+  if (updated.length === existing.length) return;
+  await masterKnex("platform_users")
+    .where({ id: userId })
+    .update({ account_categories: JSON.stringify(updated), updated_at: masterKnex.fn.now() });
+}
+
 // ── Business Index (master DB) ──
 
 /** True if this user currently has a suspended (not removed) membership on at least one

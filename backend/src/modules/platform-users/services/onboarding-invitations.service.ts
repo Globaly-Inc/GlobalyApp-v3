@@ -138,7 +138,7 @@ export async function acceptInvitation(token: string, type: InviteType) {
   }
 
   let createdUserId: number | undefined;
-  let createdOrg: { kind: "business" | "institution"; id: number; schemaName: string } | undefined;
+  let createdOrg: { kind: "business" | "institution"; id: number; schemaName: string; ownerId: number } | undefined;
   let user: Awaited<ReturnType<typeof userRepo.insert>>;
   // Everything after the claim is inside this try, so any failure — even a read — releases the link.
   try {
@@ -163,7 +163,7 @@ export async function acceptInvitation(token: string, type: InviteType) {
         business_name: invite.org_name,
         business_category_id: invite.business_category_id ?? undefined,
       });
-      createdOrg = { kind: "business", id: Number(org.id), schemaName: org.org_id };
+      createdOrg = { kind: "business", id: Number(org.id), schemaName: org.org_id, ownerId: user.id };
       if (!(await repo.recordAccepted(invite.id, user.id, { businessId: Number(org.id) }))) {
         logger.warn("Invite vanished during setup; account kept without its invite row", { invitationId: invite.id, userId: user.id, businessId: org.id });
       }
@@ -176,7 +176,7 @@ export async function acceptInvitation(token: string, type: InviteType) {
         institution_name: invite.org_name,
         email: invite.email,
       });
-      createdOrg = { kind: "institution", id: Number(institution.id), schemaName: institution.org_id };
+      createdOrg = { kind: "institution", id: Number(institution.id), schemaName: institution.org_id, ownerId: user.id };
       if (!(await repo.recordAccepted(invite.id, user.id, { institutionId: Number(institution.id) }))) {
         logger.warn("Invite vanished during setup; account kept without its invite row", { invitationId: invite.id, userId: user.id, institutionId: institution.id });
       }
@@ -235,7 +235,7 @@ export async function requestNewLink(token: string, type: InviteType) {
   return { requested: true };
 }
 
-async function rollbackOrg(org: { kind: "business" | "institution"; id: number; schemaName: string }) {
+async function rollbackOrg(org: { kind: "business" | "institution"; id: number; schemaName: string; ownerId?: number }) {
   try {
     if (org.kind === "institution") {
       await masterKnex("user_institution_index").where({ institution_id: org.id }).delete();
@@ -248,9 +248,17 @@ async function rollbackOrg(org: { kind: "business" | "institution"; id: number; 
       await masterKnex.raw("DROP SCHEMA IF EXISTS ?? CASCADE", [org.schemaName]);
       await masterKnex("businesses").where({ id: org.id }).delete();
     }
+    if (org.ownerId) await resetAccountKind(org.ownerId, org.kind);
   } catch (err: any) {
     logger.error("Onboarding invite org rollback failed", { kind: org.kind, orgId: org.id, err: err.message });
   }
+}
+
+async function resetAccountKind(userId: number, kind: "business" | "institution") {
+  const remaining = kind === "institution" ? await repo.findInstitutionByOwner(userId) : await repo.findBusinessByOwner(userId);
+  if (remaining) return;
+  await userRepo.updateUser(userId, kind === "institution" ? { is_institution_account: false } : { is_business_account: false });
+  await userRepo.removeAccountCategory(userId, kind);
 }
 
 async function rollbackUser(userId: number) {
