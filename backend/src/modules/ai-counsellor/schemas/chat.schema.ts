@@ -84,12 +84,16 @@ export const EmbedConfigUpdateSchema = z.object({
 }).strict();
 export type EmbedConfigUpdateInput = z.infer<typeof EmbedConfigUpdateSchema>;
 
+// Addresses the owner typed. Nobody is invited and no account is created, so there is no name and
+// no role here — just who to mail. Capped because this is the one authenticated endpoint that
+// mails an arbitrary address; the route is rate-limited too.
 export const SendSnippetSchema = z.object({
-  invitee: z.object({
-    name: z.string().trim().min(1).max(200),
-    email: z.string().trim().toLowerCase().email().max(320),
-  }).strict().optional(),
+  emails: z.array(z.string().trim().toLowerCase().email().max(320)).min(1).max(10),
 }).strict();
+
+export const EmbedDeveloperIdParamSchema = z.object({
+  id: z.coerce.number().int().positive(),
+});
 
 export const EmbedConfigIdParamSchema = z.object({
   id: z.coerce.number().int().positive(),

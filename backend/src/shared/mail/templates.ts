@@ -941,24 +941,15 @@ export function onboardingLinkRequestEmail(options: {
  * (theme.liquid, Code Injection → Footer, footer.php, root layout), and per-page pasting is how a
  * widget ends up on three pages out of forty. Verified against current platform docs 2026-10-02.
  *
- * `invited` adds the line explaining why they can now sign in.
+ * Addressed generically and says nothing about signing in: the reader is whoever the owner asked
+ * us to send the code to, has no GlobalyApp account, and is not being offered one.
  */
 export function embedSnippetEmail(options: {
-  recipientName: string | null;
   orgName: string;
   snippet: string;
-  widgetUrl: string;
-  /**
-   * How this reader reaches the portal — the only part of the mail that differs by recipient.
-   * "invited": added to the team by the same action, so a sign-in email is right behind this one.
-   * "pending": invited earlier and has not accepted, so the way in is that invitation, not a login.
-   * "member": already on the team and can sign in now.
-   */
-  access: "invited" | "pending" | "member";
 }): { subject: string; html: string; text: string } {
   const org = esc(options.orgName);
-  const firstName = options.recipientName?.split(" ")[0];
-  const greeting = firstName ? `Hi ${esc(firstName)},` : "Hi there,";
+  const greeting = "Hi there,";
   const mono = "ui-monospace,SFMono-Regular,Menlo,Consolas,monospace";
 
   /** Where "once" actually is, per platform. Ordered by how likely this reader is to be on it. */
@@ -983,13 +974,6 @@ export function embedSnippetEmail(options: {
        </td></tr>
      </table>`;
 
-  const ACCESS: Record<typeof options.access, string> = {
-    invited: `${org} has also added you to their GlobalyApp team as a <strong>Developer</strong>, so you can sign in and check the widget once it is live. A separate email has your sign-in link.`,
-    pending: `Your invitation to join <strong>${org}</strong> on GlobalyApp is still open. Accept it and you can sign in to watch the first conversations come in — the code above works either way.`,
-    member: `You are already on <strong>${org}</strong>'s GlobalyApp team, so you can sign in whenever you like and watch the first conversations come in.`,
-  };
-  const accessLine = `<p style="margin:0 0 20px;padding:14px 16px;background-color:${BRAND.soft};border-radius:10px;font-size:14px;line-height:22px">${ACCESS[options.access]}</p>`;
-
   const body = `<p style="margin:0 0 18px;line-height:24px">${greeting}</p>
      <p style="margin:0 0 18px;line-height:24px"><strong>${org}</strong> asked us to send you the code for their GlobalyApp chat assistant.
        It is one script tag — nothing to install, no stylesheet to load.</p>
@@ -1003,13 +987,12 @@ export function embedSnippetEmail(options: {
 
      <p style="margin:0 0 20px;line-height:24px"><strong style="color:${BRAND.ink}">What happens then:</strong> a chat button appears in the
        bottom-right corner of the site. Visitors can ask about courses, fees, intakes and entry requirements, and
-       ${org} sees every conversation in their portal.</p>
-     ${accessLine}`;
+       ${org} sees every conversation in their portal.</p>`;
 
   return {
     subject: `Chat widget code for ${options.orgName}`,
     text: [
-      firstName ? `Hi ${firstName},` : "Hi there,",
+      "Hi there,",
       "",
       `${options.orgName} asked us to send you the code for their GlobalyApp chat assistant.`,
       "It is one script tag — nothing to install, no stylesheet to load.",
@@ -1029,20 +1012,12 @@ export function embedSnippetEmail(options: {
       "",
       `What happens then: a chat button appears in the bottom-right corner. Visitors can ask about courses, fees, intakes and entry requirements, and ${options.orgName} sees every conversation in their portal.`,
       "",
-      {
-        invited: `${options.orgName} has also added you to their GlobalyApp team as a Developer. A separate email has your sign-in link.`,
-        pending: `Your invitation to join ${options.orgName} on GlobalyApp is still open. Accept it and you can sign in to watch the first conversations come in — the code above works either way.`,
-        member: `You are already on ${options.orgName}'s GlobalyApp team, so you can sign in whenever you like and watch the first conversations come in.`,
-      }[options.access],
-      "",
-      `Widget settings: ${options.widgetUrl}`,
     ].join("\n"),
     html: emailLayout({
       heading: "Your chat widget code",
       body,
       align: "left",
       size: "wide",
-      cta: { label: "Open widget settings", href: options.widgetUrl },
       footnote: "Sent because someone at this organisation asked us to share their widget code with you.",
     }),
   };

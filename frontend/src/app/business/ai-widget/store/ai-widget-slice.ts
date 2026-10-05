@@ -37,10 +37,18 @@ export const sendEmbedSnippet = createAsyncThunk(
     try {
       return await aiWidgetApi.sendSnippet(input);
     } catch (e) {
-      // The backend's message names the real reason (no developer, duplicate member, pending
-      // invite); a generic "failed" would hide the one thing the owner can act on.
+      // The backend's message names the real reason (rate limit, bad address); a generic
+      // "failed" would hide the one thing the owner can act on.
       return rejectWithValue(e instanceof Error ? e.message : "Couldn't send the code.");
     }
+  },
+);
+
+export const forgetEmbedDeveloper = createAsyncThunk(
+  "aiWidget/forgetDeveloper",
+  async (id: number) => {
+    await aiWidgetApi.forgetDeveloper(id);
+    return id;
   },
 );
 
@@ -126,16 +134,12 @@ const aiWidgetSlice = createSlice({
       })
       .addCase(sendEmbedSnippet.fulfilled, (state, action) => {
         state.sendStatus = "idle";
-        // An invite just created the developer, so the card must stop asking for one. Pending
-        // until they accept — same shape findDeveloper would return on the next load. The name
-        // comes off the thunk arg, not the response: the card renders `name || email`, and the
-        // response carries only the address, so someone typed "Sam Taylor" and saw an email.
-        if (state.handoff && action.payload.invited) {
-          state.handoff.developer = {
-            email: action.payload.sent_to,
-            name: action.meta.arg.invitee?.name ?? null,
-            pending: true,
-          };
+        // The send returns the list it just changed, so the card updates without refetching.
+        if (state.handoff) state.handoff.developers = action.payload.recipients;
+      })
+      .addCase(forgetEmbedDeveloper.fulfilled, (state, action) => {
+        if (state.handoff) {
+          state.handoff.developers = state.handoff.developers.filter((d) => d.id !== action.payload);
         }
       })
       .addCase(sendEmbedSnippet.rejected, (state) => {

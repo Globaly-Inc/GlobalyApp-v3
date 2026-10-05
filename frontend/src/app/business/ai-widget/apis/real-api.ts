@@ -34,6 +34,9 @@ export const aiWidgetRealApi = {
   sendSnippet: (input: SendSnippetInput): Promise<SendSnippetResult> =>
     httpPost<SendSnippetResult>("/ai-chat/embed/send-snippet", input),
 
+  forgetDeveloper: (id: number): Promise<void> =>
+    httpDelete(`/ai-chat/embed/developers/${id}`),
+
   updateConfig: (id: number, input: UpdateEmbedConfigInput): Promise<EmbedConfig> =>
     httpPatch<EmbedConfig>(`/ai-chat/embed/configs/${id}`, input),
 

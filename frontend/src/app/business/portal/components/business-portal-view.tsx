@@ -44,10 +44,7 @@ export function BusinessPortalView() {
       <div className="flex flex-col gap-4 md:gap-6 lg:grid lg:grid-cols-3 lg:items-start">
         <div className="order-1 space-y-4 lg:col-span-2">
           {profile && <StartExtractionCard profile={profile} />}
-          <AiEmbedCard
-            orgName={profile?.business_name ?? ""}
-            installed={!!onboardingProgress?.steps.find((s) => s.key === "add_chat_widget")?.done}
-          />
+          <AiEmbedCard installed={!!onboardingProgress?.steps.find((s) => s.key === "add_chat_widget")?.done} />
           <DashboardPreview />
           {/* Recent enquiries card hidden for the short release — <BusinessRecentEnquiries items={enquiries} />,
               fed by fetchDistributions() and state.businessEnquiries.items. */}

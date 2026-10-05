@@ -259,10 +259,14 @@ export async function handleMessage(opts: {
       // not by the model's judgement — a guessed fee or refund window is the costliest mistake.
       // Matched per topic, not one boolean over the whole context: a retrieved course fee is
       // evidence for a fees question and NOT for a refund-policy one (Greptile).
-      const noMoneyData = rag.shouldWithholdMoney(opts.content, ragOutput.moneyTopics);
-      if (noMoneyData) {
-        trace(`Money question, no evidence for ${rag.moneyTopicsOf(opts.content).join("/")}`
-          + `${ragOutput.moneyTopics.length ? ` (context has: ${ragOutput.moneyTopics.join(", ")})` : ""}: answer withheld`);
+      // Only the topics asked AND ungrounded are withheld — the rest of the question is still
+      // answered. `askedMoneyTopics` reads the question strictly, so a finance COURSE or an
+      // accommodation availability question is not treated as a question about an amount.
+      const withheldMoneyTopics = rag.askedMoneyTopics(opts.content)
+        .filter((topic) => !ragOutput.moneyTopics.includes(topic));
+      if (withheldMoneyTopics.length) {
+        trace(`Money question, no evidence for ${withheldMoneyTopics.join("/")}`
+          + `${ragOutput.moneyTopics.length ? ` (context has: ${ragOutput.moneyTopics.join(", ")})` : ""}: that part withheld`);
       }
 
       result = await streamChat({
@@ -278,7 +282,7 @@ export async function handleMessage(opts: {
           embedConfig: opts.embed?.config,
           rackProfile,
           institutionGuidance: memory?.text,
-          noMoneyData,
+          withheldMoneyTopics,
         }),
         history,
         userMessage: opts.content,

@@ -56,21 +56,21 @@ export type EmbedConfigListResponse = { configs: EmbedConfig[] };
 // The portal's AI-embed card: the org's widget (minted on first ask), the tag to paste, and
 // whoever the tag gets mailed to.
 
-/** The team member holding the Developer role. `pending` = invited, hasn't accepted yet. */
-export type DeveloperContact = { email: string; name: string | null; pending: boolean };
+/** Someone the widget code has been mailed to. NOT a teammate: no account, no role, no invitation
+ *  — the whole record is the `ai_embed_developers` row. */
+export type DeveloperContact = { id: number; email: string; last_sent_at: string | null; send_count: number };
 
 export type EnsureEmbedResult = {
   config: EmbedConfig;
   /** Built by the backend so the email and the card always show the same string. */
   snippet: string;
-  developer: DeveloperContact | null;
+  developers: DeveloperContact[];
 };
 
-/** `invitee` is read ONLY when the team has no developer — sending it invites that person into
- *  the org, so the card states that consequence before it lets you send. */
-export type SendSnippetInput = { invitee?: { name: string; email: string } };
+/** Who to mail the code to. Nobody is invited and no account is created, so there is no name. */
+export type SendSnippetInput = { emails: string[] };
 
-export type SendSnippetResult = { sent_to: string; invited: boolean; pending: boolean };
+export type SendSnippetResult = { sent_to: string; recipients: DeveloperContact[] };
 
 // ── Widget visitors and leads ────────────────────────────────────────────────
 // The people who talked to the widget. Rows come from the OWNING tenant's schema

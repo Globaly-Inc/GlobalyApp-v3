@@ -6,7 +6,7 @@ import { StreamingMessage } from "@/app/ai/components/chat-message";
 import { ThinkingIndicator } from "@/app/ai/components/thinking-indicator";
 import { SuggestedStarters } from "@/app/ai/components/suggested-starters";
 import { CompareTray } from "@/app/(web)/search/components/compare-tray";
-import type { CourseCard } from "@/app/ai/apis/types";
+import type { CourseCard, ResponseBlock } from "@/app/ai/apis/types";
 import { embedApi, type EmbedContactPrompt, type EmbedEndPrompt, type EmbedPublicConfig } from "../apis";
 import { ContactCaptureCard } from "./contact-capture-card";
 import { ConversationEndCard } from "./conversation-end-card";
@@ -39,6 +39,7 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
   const [streamText, setStreamText] = useState("");
   const [streamCards, setStreamCards] = useState<CourseCard[]>([]);
   const [streamChips, setStreamChips] = useState<string[]>([]);
+  const [streamBlocks, setStreamBlocks] = useState<ResponseBlock[]>([]);
   const [traceSteps, setTraceSteps] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   // Server-decided: the backend emits this when the visitor has had enough turns for the ask
@@ -69,6 +70,7 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
     setStreamText("");
     setStreamCards([]);
     setStreamChips([]);
+    setStreamBlocks([]);
     setTraceSteps([]);
     // Typing instead of answering IS the answer. Both cards go; the backend already treats an
     // unanswered prompt as a decline and waits out the same cooldown before offering again.
@@ -83,6 +85,7 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
     let text = "";
     let cards: CourseCard[] = [];
     let chips: string[] = [];
+    let blocks: ResponseBlock[] = [];
     try {
       await embedApi.sendMessage(
         { content, fingerprint: getFingerprint(), embed_key: embedKey, ...(resume ? { resume: true } : {}) },
@@ -90,6 +93,7 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
           if (event.type === "delta") { text += event.text; setStreamText(text); }
           else if (event.type === "cards") { cards = event.cards; setStreamCards(cards); }
           else if (event.type === "chips") { chips = event.chips; setStreamChips(chips); }
+          else if (event.type === "blocks") { blocks = event.blocks; setStreamBlocks(blocks); }
           else if (event.type === "trace") { setTraceSteps((prev) => [...prev, event.step]); }
           else if (event.type === "contact-prompt") { setContactPrompt(event.prompt); }
           else if (event.type === "end-prompt") { setEndPrompt(event.prompt); }
@@ -99,10 +103,10 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
       );
       // A person is handling the chat or being waited for: the message was delivered, and there
       // is no AI reply to draw — an empty bubble here would read as the AI saying nothing.
-      if (!text && !cards.length && !chips.length) return;
+      if (!text && !cards.length && !chips.length && !blocks.length) return;
       setMessages((prev) => [
         ...prev,
-        { id: -prev.length - 1, session_id: 0, role: "assistant", content: stripStructuredBlocks(text), cards, chips, blocks: [], feedback: null, created_at: new Date().toISOString() },
+        { id: -prev.length - 1, session_id: 0, role: "assistant", content: stripStructuredBlocks(text), cards, chips, blocks, feedback: null, created_at: new Date().toISOString() },
       ]);
     } catch (e) {
       setError((e as Error).message);
@@ -111,6 +115,7 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
       setStreamText("");
       setStreamCards([]);
       setStreamChips([]);
+      setStreamBlocks([]);
     }
   };
   const send = (content: string) => run(content, false);
@@ -252,10 +257,17 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
               panel the max-width is inert; in the expanded tab it stops the thread from
               running the full screen width. */}
           <div className="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-6 sm:px-6">
-            <ThreadMessages messages={messages} onChipClick={send} joinedAgent={agentName} />
+            <ThreadMessages messages={messages} onChipClick={send} onSend={send} joinedAgent={agentName} />
             {sending && !streamText && <ThinkingIndicator steps={traceSteps} />}
             {sending && streamText && (
-              <StreamingMessage content={stripStructuredBlocks(streamText)} cards={streamCards} chips={streamChips} onChipClick={send} />
+              <StreamingMessage
+                content={stripStructuredBlocks(streamText)}
+                cards={streamCards}
+                chips={streamChips}
+                blocks={streamBlocks}
+                onChipClick={send}
+                onSend={send}
+              />
             )}
             {contactPrompt && !sending && (
               <ContactCaptureCard prompt={contactPrompt} onSubmit={submitContact} onSkip={skipContact} />

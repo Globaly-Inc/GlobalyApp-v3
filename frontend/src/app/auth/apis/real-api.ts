@@ -1,5 +1,5 @@
 import { httpGet, httpPatch, httpPost, runExclusiveSwitch } from "@/lib/api/http";
-import { getRefreshToken, saveAccessToken, saveTokens } from "@/lib/session";
+import { getRefreshToken, saveAccessToken, saveSelectedOrgId, saveTokens } from "@/lib/session";
 import type {
   AcceptInviteParams, AcceptInviteResult, AuthMeBusiness, AuthMeInstitution, AuthMeUser, AuthUser, SendOtpParams,
   SwitchAccountParams, SwitchAccountResult, UpdateRoleParams, VerifyOtpParams,
@@ -94,6 +94,10 @@ export const authRealApi = {
         refresh_token: getRefreshToken() ?? undefined,
       });
       saveAccessToken(data.access_token);
+      // Every org switch records the pick — it is what BusinessShell/ensureBusinessContext read
+      // to decide the active org, so a switch that skips it (e.g. opening another org's profile)
+      // leaves the token on one business and the header on another.
+      saveSelectedOrgId(org_id);
       return { access_token: data.access_token };
     }),
 };

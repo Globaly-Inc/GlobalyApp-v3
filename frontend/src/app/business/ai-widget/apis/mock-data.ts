@@ -9,9 +9,10 @@ import type {
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Starts empty so the card's "no developer yet" path — the one with real consequences — is the
- *  default thing you see against mocks. `sendSnippet` fills it, as a real invite would. */
-let mockDeveloper: DeveloperContact | null = null;
+/** Starts empty so the card's "nobody has this code yet" path is the default thing you see
+ *  against mocks. `sendSnippet` fills it, exactly as a real send records a row. */
+let mockDevelopers: DeveloperContact[] = [];
+let devSeq = 1;
 
 let seq = 3;
 
@@ -100,18 +101,30 @@ export const aiWidgetMockApi = {
     return {
       config: seedConfig,
       snippet: `<script src="https://app.globalyapp.com/embed.js" data-key="${seedConfig.embed_key}" async></script>`,
-      developer: mockDeveloper,
+      developers: [...mockDevelopers],
     };
   },
 
   sendSnippet: async (input: SendSnippetInput): Promise<SendSnippetResult> => {
     console.log("[mock] sendSnippet", input);
     await delay(500);
-    if (mockDeveloper) return { sent_to: mockDeveloper.email, invited: false, pending: mockDeveloper.pending };
-    if (!input.invitee) throw new Error("Nobody on your team has the Developer role yet — send a name and email to invite one.");
-    // Mirrors the real thing: the invite lands first, so a second send goes to them, not a new person.
-    mockDeveloper = { email: input.invitee.email, name: input.invitee.name, pending: true };
-    return { sent_to: input.invitee.email, invited: true, pending: false };
+    // Mirrors recordSend's upsert: a repeat address bumps its row rather than adding a second.
+    for (const email of input.emails) {
+      const existing = mockDevelopers.find((d) => d.email === email);
+      if (existing) {
+        existing.send_count += 1;
+        existing.last_sent_at = new Date().toISOString();
+      } else {
+        mockDevelopers.unshift({ id: devSeq++, email, last_sent_at: new Date().toISOString(), send_count: 1 });
+      }
+    }
+    return { sent_to: input.emails.join(", "), recipients: [...mockDevelopers] };
+  },
+
+  forgetDeveloper: async (id: number): Promise<void> => {
+    console.log("[mock] DELETE /ai-chat/embed/developers/" + id);
+    await delay(300);
+    mockDevelopers = mockDevelopers.filter((d) => d.id !== id);
   },
 
   createConfig: async (input: CreateEmbedConfigInput): Promise<EmbedConfig> => {
