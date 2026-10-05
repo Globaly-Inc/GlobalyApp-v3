@@ -1,17 +1,20 @@
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import {
-  requireBusinessOrInstitutionContext, requireInstitutionRole, requirePermission,
+  requireBusinessOrInstitutionContext,
+  requireInstitutionRole,
+  requirePermission,
 } from "../../../core/plugins/auth.plugin.js";
 import { recipientFromRequest } from "../../enquiries/shared/recipient.js";
 import {
   EmbedConfigCreateSchema,
   EmbedConfigIdParamSchema,
   EmbedConfigUpdateSchema,
+  EmbedDeveloperIdParamSchema,
   EmbedKeyQuerySchema,
   SendSnippetSchema,
   VisitorListQuerySchema,
 } from "../schemas/chat.schema.js";
-import { embedSnippet, findDeveloper, sendSnippetToDeveloper } from "../services/embed-handoff.service.js";
+import { embedSnippet, forgetRecipient, listRecipients, sendSnippet } from "../services/embed-handoff.service.js";
 import { buildPaginatedResponse } from "../../../shared/pagination.js";
 import * as embedRepo from "../repositories/embed.repository.js";
 import * as visitorsRepo from "../repositories/visitors.repository.js";
@@ -37,17 +40,25 @@ function startSiteIndex(owner: ReturnType<typeof recipientFromRequest>) {
     .catch((err) => logger.error("Owner site index failed to start", { owner, err: String(err) }));
 }
 
-const businessTeamWrite = requirePermission("agents:write");
-const institutionTeamWrite = requireInstitutionRole("admin");
+const businessWidgetAdmin = requirePermission("business:write");
+const institutionWidgetAdmin = requireInstitutionRole("admin");
 
-export function invitesSomeone(body: unknown): boolean {
-  const parsed = SendSnippetSchema.safeParse(body ?? {});
-  return parsed.success && !!parsed.data.invitee;
-}
-
-async function requireTeamWriteWhenInviting(req: FastifyRequest, reply: FastifyReply) {
-  if (!invitesSomeone(req.body)) return;
-  return req.auth.orgType === "institution" ? institutionTeamWrite(req, reply) : businessTeamWrite(req, reply);
+/**
+ * Who may spend the org's name: mail going out branded as them, and the recipient list behind it.
+ *
+ * Org context alone is not enough. Every member of the org holds that, so without this any one of
+ * them could spray org-branded mail at outside addresses — and a token stays valid for its full
+ * life after someone is removed. Both guards below re-read the tenant's own member row, so removal
+ * takes effect immediately rather than when the token expires.
+ *
+ * Not `agents:write` (what the deleted invite flow used): nobody is invited here and no account is
+ * created. This is a settings-level action on the org's own widget, so it rides the same rights as
+ * editing the org profile — owner/admin in both tenant kinds.
+ */
+export async function requireWidgetAdmin(req: FastifyRequest, reply: FastifyReply) {
+  return req.auth?.orgType === "institution"
+    ? institutionWidgetAdmin(req, reply)
+    : businessWidgetAdmin(req, reply);
 }
 
 /** Embed-config management — served to both org kinds; the owner comes from the token's
@@ -94,31 +105,45 @@ export async function embedRoutes(app: FastifyInstance) {
     // deactivated would be handed a brand-new one with no site index behind it.
     if (!existing.some((c) => c.id === config.id)) startSiteIndex(owner);
 
-    const developer = await findDeveloper(req.db, owner.kind);
-    return reply.send({ config, snippet: embedSnippet(config.embed_key), developer });
+    // req.db is the tenant schema these rows live in — see embed-handoff.service.
+    const developers = await listRecipients(req.db, config.id);
+    return reply.send({ config, snippet: embedSnippet(config.embed_key), developers });
   });
 
   /**
-   * Mail the snippet to the org's developer. With no developer on the team, `invitee` both invites
-   * one and addresses the mail — the card states that consequence before this is called.
+   * Mail the snippet to addresses the owner typed, and record them.
+   *
+   * Nobody is invited and no account is created — the recipients are agencies and contractors, not
+   * staff — but the mail still goes out branded as the org, so it takes `requireWidgetAdmin`.
    *
    * No config id: the card works on the one widget `ensureForOwner` resolves, which is owner-scoped
    * by construction, so there is no id here to tamper with.
    */
-  app.post("/embed/send-snippet", { preHandler: [requireBusinessOrInstitutionContext, requireTeamWriteWhenInviting] }, async (req, reply) => {
-    const { invitee } = SendSnippetSchema.parse(req.body ?? {});
-    const owner = recipientFromRequest(req);
-    const config = await embedRepo.ensureForOwner(owner);
-    const result = await sendSnippetToDeveloper({
+  app.post("/embed/send-snippet", {
+    // Capped per caller: the snippet itself is public, but mail going out over our domain is not
+    // free to spray at arbitrary addresses.
+    config: { rateLimit: { max: 5, timeWindow: "1 minute" } },
+    preHandler: [requireBusinessOrInstitutionContext, requireWidgetAdmin],
+  }, async (req, reply) => {
+    const { emails } = SendSnippetSchema.parse(req.body ?? {});
+    const config = await embedRepo.ensureForOwner(recipientFromRequest(req));
+    const result = await sendSnippet({
       db: req.db,
-      owner,
-      orgSchemaName: req.auth.orgId as string,
-      orgName: req.institution?.institution_name ?? req.business?.business_name ?? "Your organisation",
+      configId: config.id,
       embedKey: config.embed_key,
-      inviterPlatformUserId: Number(req.auth.sub),
-      invitee,
+      orgName: req.institution?.institution_name ?? req.business?.business_name ?? "Your organisation",
+      emails,
     });
     return reply.send(result);
+  });
+
+  /** Drop a recipient from the list. Removes the record only — nothing was ever provisioned.
+   *  Same rights as adding one: this is the other half of send-snippet's list. */
+  app.delete("/embed/developers/:id", { preHandler: [requireBusinessOrInstitutionContext, requireWidgetAdmin] }, async (req, reply) => {
+    const { id } = EmbedDeveloperIdParamSchema.parse(req.params);
+    const config = await embedRepo.ensureForOwner(recipientFromRequest(req));
+    if (!await forgetRecipient(req.db, config.id, id)) throw new NotFoundError("Recipient not found");
+    return reply.status(204).send();
   });
 
   // Appearance + limits after creation. The key and the owner never change here.

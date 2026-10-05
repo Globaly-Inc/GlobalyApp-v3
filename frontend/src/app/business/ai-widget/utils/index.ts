@@ -1,4 +1,29 @@
-import type { VisitorProfileEntry, WidgetVisitor } from "../apis/types";
+import type { DeveloperContact, VisitorProfileEntry, WidgetVisitor } from "../apis/types";
+
+/**
+ * Fold a send's response into the recipient list the card is already showing.
+ *
+ * `fromServer` is the whole list as it stood when the send READ it, so adopting it wholesale
+ * undoes anything that changed while the send was in flight — a Remove that completed in that
+ * window would put the deleted address straight back on screen.
+ *
+ * So a current row is replaced only by a row the server actually handed back for it. Absent is
+ * never a deletion: the read-back can fail server-side and come through empty, and dropping a
+ * visible row on that would make a successful resend look like it un-sent itself (Greptile).
+ * Rows the send never touched keep whatever state the card has — including gone.
+ *
+ * Replaced rows go first, matching the server's own newest-sent-first ordering.
+ */
+export function mergeSentRecipients(
+  current: DeveloperContact[],
+  sent: string[],
+  fromServer: DeveloperContact[],
+): DeveloperContact[] {
+  const justSent = new Set(sent);
+  const fresh = fromServer.filter((r) => justSent.has(r.email));
+  const replaced = new Set(fresh.map((r) => r.email));
+  return [...fresh, ...current.filter((d) => !replaced.has(d.email))];
+}
 
 /**
  * What to call someone who never told us their name.

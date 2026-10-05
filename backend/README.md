@@ -183,10 +183,16 @@ npm run migrate:globalyapp
 # Create superadmin tables (admin_users, extraction tables, cross-schema FKs)
 npm run migrate:superadmin
 
+# Apply tenant migrations to every provisioned business + institution schema
+npm run migrate:tenants
+
 # Seed initial data
 npm run seed:globalyapp    # countries table
 npm run seed:superadmin    # the first super admin user
 ```
+
+Writing a migration rather than running one? Read [Where a migration goes](#where-a-migration-goes)
+first — business- and institution-owned tables belong in their own directories, not in `globalyapp/`.
 
 ### 6. Start the server and worker
 
@@ -527,12 +533,44 @@ sudo -u postgres psql -c "DROP DATABASE globaly_v2_import;"
 | `npm run build` | Compile TypeScript |
 | `npm run migrate:globalyapp` | Run public schema migrations (businesses, students, etc.) |
 | `npm run migrate:superadmin` | Run superadmin schema migrations (admin_users, admin_invitations) |
-| `npm run migrate:tenants` | Run business migrations on all existing business databases |
+| `npm run migrate:tenants` | Run `migrations/business` on every business schema AND `migrations/institution` on every institution schema |
 | `npm run seed:superadmin` | Seed the first super admin user |
 | `npm run import:v2` | Import V2 extraction + AI knowledge data (see [Importing V2 data](#importing-v2-data)) |
 | `npm run job:auth` | Start the auth worker (sends emails + processes invitation acceptances) |
 
 ---
+
+## Where a migration goes
+
+**Four migration directories, one per schema family. Putting a migration in the wrong one means
+it never runs on the schemas it was written for.**
+
+| Directory | Schema it migrates | Runner |
+|-----------|--------------------|--------|
+| `database/migrations/globalyapp/` | the shared `public` schema in the `globalyapp` DB | `npm run migrate:globalyapp` |
+| `database/migrations/superadmin/` | the `superadmin` schema | `npm run migrate:superadmin` |
+| `database/migrations/business/` | **every business tenant schema**, one run per tenant | `npm run migrate:tenants` |
+| `database/migrations/institution/` | **every institution tenant schema**, one run per tenant | `npm run migrate:tenants` |
+
+### The rule
+
+A table owned by a **business** goes in `database/migrations/business/`.
+A table owned by an **institution** goes in `database/migrations/institution/`.
+Never in `globalyapp/`, and never in `superadmin/`.
+
+A tenant's own records live in that tenant's schema — the schema *is* the isolation boundary, so
+there is no tenant id to filter on and no cross-tenant leak to guard against. A tenant-owned
+table added to `globalyapp/` lands in the shared `public` schema instead, where every business
+and institution can see every other one's rows.
+
+Businesses and institutions are the same flow over two tables, so a change to one almost always
+needs the mirror change in the other: **write both migrations, keyed on `{kind, id}`.** Split
+them only because the files are per-schema, not because the feature differs.
+
+`migrate:tenants` walks both directories (see `src/workers/migration-runner.ts`) and applies each
+one to every provisioned schema of that kind, so a new tenant migration has to be safe to run
+against ~hundreds of schemas, some of them lagging. There is no central ledger of which tenant
+schema is at which migration — query across schemas when you need to know.
 
 ## Database layout
 
@@ -583,12 +621,15 @@ All async work goes through **LavinMQ** (AMQP). One worker process (`npm run job
 ├── package.json
 │
 ├── database/
-│   ├── migrations/
-│   │   ├── globalyapp/                  # public schema tables
+│   ├── migrations/                      # see "Where a migration goes" — four dirs, pick right
+│   │   ├── globalyapp/                  # shared public schema tables
 │   │   ├── superadmin/                  # superadmin schema tables
-│   │   └── business/                    # per-business DB tables (agents)
+│   │   ├── business/                    # EVERY business tenant schema
+│   │   └── institution/                 # EVERY institution tenant schema
 │   └── seeders/
-│       └── superadmin/                  # seed first super admin
+│       ├── superadmin/                  # seed first super admin
+│       ├── business/                    # per-business-schema seeds
+│       └── institution/                 # per-institution-schema seeds
 │
 └── src/
     ├── server.ts                        # Entry point

@@ -26,8 +26,15 @@ function Divider({ children }: Readonly<{ children: React.ReactNode }>) {
 export function ThreadMessages({
   messages,
   onChipClick,
+  onSend,
   joinedAgent,
-}: Readonly<{ messages: WidgetMessage[]; onChipClick: (chip: string) => void; joinedAgent?: string | null }>) {
+}: Readonly<{
+  messages: WidgetMessage[];
+  onChipClick: (chip: string) => void;
+  /** Sends the text composed inside a quick_replies block. */
+  onSend?: (value: string) => void;
+  joinedAgent?: string | null;
+}>) {
   // The visitor's own turns don't change who is answering, so look back past them.
   // A plain loop, not .map: the React compiler rejects a variable mutated inside a callback.
   let lastAnswerer: string | null = null;
@@ -45,7 +52,7 @@ export function ThreadMessages({
     rows.push(
       <Fragment key={m.id}>
         {line && <Divider>{line}</Divider>}
-        {m.role === "agent" ? <AgentMessage message={m} /> : <ChatMessage message={m} onChipClick={onChipClick} />}
+        {m.role === "agent" ? <AgentMessage message={m} /> : <ChatMessage message={m} onChipClick={onChipClick} onSend={onSend} />}
       </Fragment>,
     );
   }

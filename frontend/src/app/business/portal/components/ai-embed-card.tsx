@@ -1,15 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import Link from "next/link";
-import { ArrowRight, Check, Copy, MessagesSquare } from "lucide-react";
-import { toast } from "sonner";
+import { ArrowRight, Check, MessagesSquare } from "lucide-react";
 import { Card, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { ensureEmbedConfig } from "@/app/business/ai-widget/store/ai-widget-slice";
 import { EmbedDeveloperHandoff } from "./embed-developer-handoff";
+import { EmbedSnippetBox } from "./embed-snippet-box";
 import { EmbedWidgetPreview } from "./embed-widget-preview";
 
 const COLUMNS = "lg:grid-cols-[minmax(0,1fr)_minmax(0,16rem)]";
@@ -46,14 +46,10 @@ function Step({ n, title, children }: Readonly<{ n: number; title: string; child
  * "not installed yet" pill is a negative label on someone's own dashboard, and it is redundant:
  * a card full of installation instructions already says the thing is not installed.
  */
-export function AiEmbedCard({
-  orgName,
-  installed,
-}: Readonly<{ orgName: string; installed: boolean }>) {
+export function AiEmbedCard({ installed }: Readonly<{ installed: boolean }>) {
   const dispatch = useAppDispatch();
   const handoff = useAppSelector((s) => s.aiWidget.handoff);
   const status = useAppSelector((s) => s.aiWidget.handoffStatus);
-  const [copied, setCopied] = useState(false);
 
   // Strict mode double-invokes effects; without this the org's widget is minted twice on mount.
   const ensuredRef = useRef(false);
@@ -62,20 +58,6 @@ export function AiEmbedCard({
     ensuredRef.current = true;
     dispatch(ensureEmbedConfig());
   }, [dispatch]);
-
-  const copy = async () => {
-    if (!handoff) return;
-    try {
-      await navigator.clipboard.writeText(handoff.snippet);
-      setCopied(true);
-      toast.success("Code copied");
-      setTimeout(() => setCopied(false), 2000);
-    } catch {
-      // Clipboard is blocked in some embedded and insecure contexts — the code is on screen and
-      // selectable, so say that rather than failing silently.
-      toast.error("Couldn't copy", { description: "Select the code and copy it manually." });
-    }
-  };
 
   return (
     <Card>
@@ -141,31 +123,21 @@ export function AiEmbedCard({
               {/* The work is the subject and reads first; the preview is the reference beside it. */}
               <div className="space-y-5">
                 <Step n={1} title="Paste it on your site yourself">
-                  {/* Selectable, never behind a reveal: this tag ships in the page source of their
-                      own public website, so masking it would be theatre that costs a click. */}
-                  <div className="flex flex-col gap-2 rounded-lg border border-border bg-muted/40 p-3 sm:flex-row sm:items-center">
-                    <code className="min-w-0 flex-1 overflow-x-auto whitespace-pre font-mono text-xs leading-5 text-foreground">
-                      {handoff.snippet}
-                    </code>
-                    <Button variant="outline" size="sm" onClick={copy} className="shrink-0 cursor-pointer">
-                      {copied
-                        ? <Check className="mr-1.5 h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden />
-                        : <Copy className="mr-1.5 h-4 w-4" aria-hidden />}
-                      {copied ? "Copied" : "Copy"}
-                    </Button>
-                  </div>
+                  {/* Copy, or mail it to whoever installs it — the box owns both, so the code and
+                      the ways of getting it out of here stay in one place. */}
+                  <EmbedSnippetBox snippet={handoff.snippet} />
                   {/* Once, in the shared layout — not per page. Every platform these customers use
                       has a single site-wide slot, and per-page pasting is how a widget ends up on
                       three pages out of forty. The developer email spells out where, per platform. */}
                   <p className="text-xs text-muted-foreground">
                     Add it <strong className="font-medium text-foreground">once</strong>, in the file every page
                     already shares — your root layout, theme footer, or your platform&apos;s site-wide code
-                    setting. Pasting it twice is safe.
+                    setting.
                   </p>
                 </Step>
 
                 <Step n={2} title="Or let your developer do it">
-                  <EmbedDeveloperHandoff developer={handoff.developer} orgName={orgName} />
+                  <EmbedDeveloperHandoff developers={handoff.developers} />
                 </Step>
               </div>
 

@@ -1,6 +1,7 @@
 import type { ProfileContext } from "../repositories/knowledge.repository.js";
 import type { CounsellingContext } from "../repositories/sessions.repository.js";
 import { sanitizeCustomInstructions } from "./embed.service.js";
+import type { MoneyTopic } from "./rag.service.js";
 
 /** Profile fields a student must have before recommendations feel grounded.
  * Students (individual_category === "student") are expected to reach 100%;
@@ -19,6 +20,14 @@ function missingProfileFields(ctx: ProfileContext): string[] {
   if (!p.expected_start_date) missing.push("expected start date");
   return missing;
 }
+
+/** How to name each withheld topic to the model — plain words, not the internal key. */
+const MONEY_TOPIC_WORDS: Record<MoneyTopic, string> = {
+  fees: "fees and tuition",
+  refund: "refunds, withdrawals and deferrals",
+  scholarship: "scholarships and funding",
+  living: "living costs",
+};
 
 const CONTEXT_LABELS: Array<[keyof CounsellingContext, string]> = [
   ["goals", "Goals"],
@@ -67,8 +76,9 @@ export function buildSystemPrompt(opts: {
    *  hard-limits line stays the last rule read before the student data. Empty when the
    *  institution has changed nothing from the defaults. */
   rackProfile?: string;
-  /** This turn asked about money and retrieval found nothing to ground it: withhold, don't guess. */
-  noMoneyData?: boolean;
+  /** Money topics this turn asked about that retrieval could NOT ground: withhold those, don't
+   *  guess — and answer everything else. Empty or absent means nothing is withheld. */
+  withheldMoneyTopics?: MoneyTopic[];
 }): string {
   const sections: string[] = [];
   // Every instruction that pointed at the pasted CONTEXT block has to point at tool
@@ -459,12 +469,24 @@ export function buildSystemPrompt(opts: {
   }
 
   // ── Money guard (decided by retrieval, not by the model) ──
-  if (opts.noMoneyData) {
+  // Scoped to the topics actually asked and actually ungrounded. The old wording listed every
+  // money topic and said "do NOT answer the money part", and the model read that as a refusal:
+  // asked to compare two programs on fees, duration and intakes it answered "we don't have that
+  // specific information" and dropped the duration and the intakes with it.
+  if (opts.withheldMoneyTopics?.length) {
+    const named = opts.withheldMoneyTopics.map((t) => MONEY_TOPIC_WORDS[t]).join(" and ");
     sections.push(
-      "NO MONEY DATA THIS TURN: the visitor asked about fees, refunds, scholarships, funding or costs, and " +
-      `${srcShort} holds nothing on it. Do NOT answer the money part — no figure, no policy, no 'usually', ` +
-      "no comparison. Say you do not have that information, then offer to connect them with a counsellor " +
-      "(use the published contact details if present) or ask what else you can help with. Institution " +
+      `NO MONEY DATA THIS TURN: this question touches ${named}, ` +
+      `and ${srcShort} holds nothing to ground that part of it.\n` +
+      `- ANSWER THE REST OF THE QUESTION IN FULL. Everything that is not ${named} is unaffected — ` +
+      "study level, duration, intakes, study modes, entry requirements, campuses, what we offer, how to " +
+      "apply. A question that mentions money in one clause is still a real question: answer the rest of it " +
+      "normally, in the same reply.\n" +
+      `- Withhold ONLY ${named}: no figure, no range, no policy, no 'usually', no estimate, no other ` +
+      "institution's practice, and no comparison on that one dimension.\n" +
+      "- Say in a single clause that you do not have those specific details, and point them at the " +
+      "published contact details if present. Do not make the apology the reply.\n" +
+      "- Never refuse a whole answer because one clause of the question was about money. Institution " +
       "guidance about where to direct such questions still applies.",
     );
   }

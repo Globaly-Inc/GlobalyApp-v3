@@ -395,8 +395,9 @@ export async function guestRoutes(app: FastifyInstance) {
       }
 
       // Same money guard as chat.service: widget visitors are the audience it exists for.
-      const noMoneyData = rag.shouldWithholdMoney(asked, ragOutput.moneyTopics);
-      if (noMoneyData) trace(`Money question, no evidence for ${rag.moneyTopicsOf(asked).join("/")}: answer withheld`);
+      const withheldMoneyTopics = rag.askedMoneyTopics(asked)
+        .filter((topic) => !ragOutput.moneyTopics.includes(topic));
+      if (withheldMoneyTopics.length) trace(`Money question, no evidence for ${withheldMoneyTopics.join("/")}: that part withheld`);
 
       const system = buildSystemPrompt({
         profile: visitorProfile,
@@ -407,7 +408,7 @@ export async function guestRoutes(app: FastifyInstance) {
         embedConfig: embed?.config,
         rackProfile,
         institutionGuidance: memory?.text,
-        noMoneyData,
+        withheldMoneyTopics,
       });
 
       const result = await streamChat({

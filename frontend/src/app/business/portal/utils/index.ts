@@ -14,3 +14,21 @@ export function weatherCondition(code: number): string {
   if (code <= 99) return "Stormy";
   return "Cloudy";
 }
+
+export const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+/** Comma, semicolon, space or newline — people paste addresses out of whatever they copied them
+ *  from, and a pasted "a@x.com, b@x.com" should not be read as one broken address.
+ *  Deduped and lower-cased, matching what the backend stores. */
+export function parseEmails(raw: string): { valid: string[]; invalid: string[] } {
+  const seen = new Set<string>();
+  const valid: string[] = [];
+  const invalid: string[] = [];
+  for (const part of raw.split(/[,;\s]+/)) {
+    const email = part.trim().toLowerCase();
+    if (!email || seen.has(email)) continue;
+    seen.add(email);
+    (EMAIL_RE.test(email) ? valid : invalid).push(email);
+  }
+  return { valid, invalid };
+}

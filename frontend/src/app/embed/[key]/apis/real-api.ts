@@ -1,7 +1,7 @@
 // Plain fetch throughout — the widget runs on partner sites with no auth
 // session, so it must never import the token/refresh HTTP client.
 
-import type { CourseCard } from "@/app/ai/apis/types";
+import type { CourseCard, ResponseBlock } from "@/app/ai/apis/types";
 import type {
   EmbedChatEvent, EmbedContactPrompt, EmbedEndPrompt, EmbedPublicConfig, EmbedThread,
   GuestContactRequest, GuestConversationEndRequest, GuestConversationEndResponse,
@@ -115,6 +115,8 @@ export const embedRealApi = {
         onEvent({ type: "cards", cards: (parsed as WireCourseCard[]).map(toCourseCard) });
       } else if (eventType === "chips") {
         onEvent({ type: "chips", chips: parsed as string[] });
+      } else if (eventType === "blocks") {
+        onEvent({ type: "blocks", blocks: parsed as ResponseBlock[] });
       } else if (eventType === "contact-prompt") {
         onEvent({ type: "contact-prompt", prompt: parsed as EmbedContactPrompt });
       } else if (eventType === "end-prompt") {

@@ -111,21 +111,79 @@ export interface RagOutput {
 // here, so those two topics are groundable ONLY by prose that actually discusses them — which
 // is exactly the distinction the old single boolean could not make.
 const MONEY_TOPIC_RE = {
-  fees: /\b(fees?|tuition|costs?|price|pricing|deposits?|instal+ments?|payments?|pay|expenses|afford(?:able)?|budget|cheap(?:er|est)?|financial|finance)\b/i,
-  refund: /\b(refunds?|refundable|withdraw(?:al|ing|n)?|cancel(?:lation|ling|led)?|deferr?(?:al|ing)?)\b/i,
-  scholarship: /\b(scholarships?|bursar(?:y|ies)|funding|funds?|grants?|waivers?|discounts?|stipends?|loans?|financial aid)\b/i,
-  living: /\b(cost of living|living costs?|accommodation|rent|groceries|homestay)\b/i,
+  fees: /\b(fees?|tuition|costs?|price|pricing|deposits?|instal+ments?|payments?|expenses|afford(?:able)?|expensive|cheap(?:er|est)?)\b/i,
+  refund: /\b(refunds?|refundable)\b/i,
+  scholarship: /\b(scholarships?|bursar(?:y|ies)|funding|grants?|waivers?|stipends?|loans?|financial aid)\b/i,
+  living: /\b(cost of living|living costs?)\b/i,
 } as const;
+
+// The words above mean money wherever they appear. These don't: every one of them is the
+// ordinary word for something else in this product — "finance" and "financial engineering" are
+// SUBJECTS we teach, a budget is a student's constraint, "how do I pay" asks about process,
+// accommodation and deferral are facilities and admin. Matching them outright is what made the
+// widget answer "we don't have that specific information" to "compare two masters programs on
+// fees, duration and intakes" — observed live 2026-10-05 — and to plain availability questions.
+// They count only alongside a cost sense in the same message.
+const MONEY_MAYBE_RE = {
+  fees: /\b(pay|budget|financial|finance)\b/i,
+  refund: /\b(withdraw(?:al|ing|n)?|cancel(?:lation|ling|led)?|deferr?(?:al|ing)?)\b/i,
+  scholarship: /\b(funds?|discounts?)\b/i,
+  living: /\b(accommodation|rent|groceries|homestay)\b/i,
+} as const;
+
+/** What turns an ambiguous word into a question about an amount. Deliberately has no "pay"
+ *  family: "pay" is itself an ambiguous word above, and a word must never satisfy its own
+ *  cost sense — "how do I pay" would classify itself as a money question. */
+const COST_SENSE_RE =
+  /\b(how much|cost(?:s|ly)?|fees?|tuition|price[sd]?|pricing|charge[sd]?|expensive|cheap(?:er|est)?|afford(?:able)?|refunds?|money|instal+ments?|deposits?|per (?:year|semester|month|week|term))\b/i;
+
+/**
+ * Where one clause of a question stops and the next begins. The cost sense that promotes an
+ * ambiguous word has to come from the SAME clause, or a money clause lends its cost sense to an
+ * unrelated one: "what are the fees, and can I defer my start date?" read "defer" as a refund
+ * question, and the withhold line for `refund` names deferrals — so the start-date answer we
+ * hold was gagged by the fee clause beside it (Greptile).
+ *
+ * ponytail: conjunctions and sentence enders only. A bare comma splice ("what are the fees, can
+ * I defer?") still reads as one clause; splitting on every comma separates appositives from
+ * their own cost sense ("how much, roughly, is accommodation?") and loses more than it saves.
+ * Split on commas too if real transcripts show the splice is common.
+ */
+const CLAUSE_SPLIT_RE = /[.!?;\n]+|,?\s+(?:and|but|also|plus|or)\s+/gi;
 
 export type MoneyTopic = keyof typeof MONEY_TOPIC_RE;
 const MONEY_TOPICS = Object.keys(MONEY_TOPIC_RE) as MoneyTopic[];
 
-/** Every money topic a piece of text touches. Empty = not about money at all. */
+/**
+ * Every money topic a piece of text touches, read GENEROUSLY — the ambiguous words count too.
+ *
+ * This is the CONTEXT side: it answers "could this passage ground a money answer?", and the
+ * safe error there is to say yes. A passage that quotes a monthly rent in prose must ground a
+ * cost-of-living question even though "rent" on its own is ambiguous; tightening this side
+ * would withhold MORE answers, which is the opposite of the defect.
+ */
 export function moneyTopicsOf(text: string): MoneyTopic[] {
-  return MONEY_TOPICS.filter((topic) => MONEY_TOPIC_RE[topic].test(text));
+  return MONEY_TOPICS.filter((topic) => MONEY_TOPIC_RE[topic].test(text) || MONEY_MAYBE_RE[topic].test(text));
 }
 
-export const isMoneyQuestion = (query: string): boolean => moneyTopicsOf(query).length > 0;
+/**
+ * Every money topic a QUESTION actually asks about, read strictly.
+ *
+ * This is the asked side: it answers "is the visitor asking for an amount?", and here the safe
+ * error is to say no — a false yes gags an answer we hold, which costs the visitor their reply.
+ * A false no only means the model answers from context as usual, still bound by the
+ * "money comes only from CONTEXT" rule in the system prompt.
+ *
+ * Read per clause: an unambiguous money word counts wherever it appears, but an ambiguous one is
+ * promoted only by a cost sense standing next to it in the same clause.
+ */
+export function askedMoneyTopics(query: string): MoneyTopic[] {
+  const clauses = query.split(CLAUSE_SPLIT_RE).filter((c) => c?.trim());
+  return MONEY_TOPICS.filter((topic) => clauses.some((clause) =>
+    MONEY_TOPIC_RE[topic].test(clause) || (COST_SENSE_RE.test(clause) && MONEY_MAYBE_RE[topic].test(clause))));
+}
+
+export const isMoneyQuestion = (query: string): boolean => askedMoneyTopics(query).length > 0;
 
 /** The courses the counsellor last put in front of the student (oldest-first history), so a
  *  follow-up like "this course" resolves. Shared by the signed-in and widget-visitor paths. */
@@ -141,7 +199,7 @@ export function pinnedCourseIdsFrom(messages: Array<{ role: string; cards: unkno
  *  Overlap, not equality — "what are the fees and is there a scholarship" is answerable
  *  the moment either one is grounded, and the model still only says what its context holds. */
 export function shouldWithholdMoney(query: string, contextTopics: MoneyTopic[]): boolean {
-  const asked = moneyTopicsOf(query);
+  const asked = askedMoneyTopics(query);
   return asked.length > 0 && !asked.some((topic) => contextTopics.includes(topic));
 }
 
