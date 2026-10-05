@@ -194,15 +194,8 @@ export async function resumeExtraction(jobId: string, adminId: number) {
   return { updated: true, retryable, step };
 }
 
-// An AgentCIS-sourced job was never crawled from the institution's own website — it was
-// imported wholesale from the AgentCIS API — so re-crawling its institution_url (the real
-// site, e.g. concordia.ab.ca) is wrong on its face and was hitting Firecrawl rate limits for
-// no reason. Re-run it the same way it was created: re-dispatch the AgentCIS import for the
-// same institution (importAgentCIS creates a fresh job row; resetPipeline never applies here).
-//
-// Every other job always restarts from a clean slate now — no partial "resume" branch here
-// any more (see resumeExtraction above for that; it's a dedicated action, not folded into
-// Re-run).
+// Every job always restarts from a clean slate — no partial "resume" branch here any more (see
+// resumeExtraction above for that; it's a dedicated action, not folded into Re-run).
 export async function rerunJob(jobId: string, adminId: number) {
   const job = await findJobById(jobId);
   if (!job) throw new NotFoundError("Extraction job not found");
@@ -211,17 +204,6 @@ export async function rerunJob(jobId: string, adminId: number) {
   // synthetic placeholder the web crawler must never be pointed at.
   if (job.source_type === "spreadsheet") {
     throw new BadRequestError("This extraction came from a spreadsheet — delete it and import the sheet again to refresh it");
-  }
-
-  if (job.source_type === "agentcis") {
-    const progress = typeof job.pipeline_progress === "string"
-      ? JSON.parse(job.pipeline_progress) : (job.pipeline_progress || {});
-    const agentcisId = progress.agentcis_id;
-    if (!agentcisId) {
-      throw new BadRequestError("This AgentCIS job has no agentcis_id on record — cannot re-import");
-    }
-    await importAgentCIS([agentcisId], adminId);
-    return { updated: true, reimport: true };
   }
 
   // Bring this job's EXISTING courses into line with the current pipeline before wiping the

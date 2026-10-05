@@ -117,7 +117,7 @@ export async function checkAllPagesDone(jobId: string) {
       phase: "data_extraction", message: "All pages extracted, starting verification",
     });
     const job = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).first();
-    const isInstitution = !job?.source_type || job.source_type === "institution";
+    const isInstitution = !job?.source_type || job.source_type === "institution" || job.source_type === "agentcis";
     const needsBranches = isInstitution && !(await masterKnex(`${S}.extraction_campuses`).where({ job_id: jobId }).first());
     const hasScholarshipPages = isInstitution && !!(await masterKnex(`${S}.extraction_site_urls`)
       .where({ job_id: jobId, category: "scholarships", excluded: false }).whereNull("dead_reason").first("id"));

@@ -327,10 +327,7 @@ export async function runSiteAnalysis(jobId: string, job: JobRow): Promise<strin
     data: { patterns },
   });
 
-  // The "institution" step does a better overview than the homepage alone (it also reads the
-  // contact page) and "branches" chains off it. It is a side branch, not part of the chain, but
-  // it obeys the same gate so a manual-mode job does not start work behind the admin's back.
-  if (!job.source_type || job.source_type === "institution") {
+  if (!job.source_type || job.source_type === "institution" || job.source_type === "agentcis") {
     if (job.step_mode === "manual") {
       await _stepDeps.setProgress(jobId, { institution: "waiting" });
     } else {
