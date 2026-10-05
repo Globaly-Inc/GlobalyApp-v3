@@ -13,8 +13,6 @@ import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchBusinessCategoryOptions } from "@/app/admin/platform/categories/store/categories-slice";
 import { INVITE_CATEGORY_SLUG } from "../const";
 import { sendInvite } from "../store/business-invites-slice";
-import type { EmailMatch } from "../apis/types";
-import { EmailMatchesNotice } from "./email-matches-notice";
 
 const emailSchema = z.email();
 
@@ -31,7 +29,6 @@ export function SendInvitationDialog({
   const [fullName, setFullName] = useState("");
   const [categoryId, setCategoryId] = useState("");
   const [sending, setSending] = useState(false);
-  const [matches, setMatches] = useState<EmailMatch[]>([]);
 
   const fetchedRef = useRef(false);
   const [categoriesFailed, setCategoriesFailed] = useState(false);
@@ -57,14 +54,13 @@ export function SendInvitationDialog({
   const emailValid = emailSchema.safeParse(trimmedEmail).success;
   const nameLabel = category?.slug === "institutions" ? "Institution name" : "Business name";
   const emailInvalid = !!email.trim() && !emailValid;
-  const canSend = !sending && !!category && emailValid && !!name.trim() && !!fullName.trim() && matches.length === 0;
+  const canSend = !sending && !!category && emailValid && !!name.trim() && !!fullName.trim();
 
   const close = () => {
     setEmail("");
     setName("");
     setFullName("");
     setCategoryId("");
-    setMatches([]);
     onOpenChange(false);
   };
 
@@ -74,8 +70,7 @@ export function SendInvitationDialog({
     const outcome = await dispatch(sendInvite({ email: trimmedEmail, name: name.trim(), full_name: fullName.trim(), business_category_id: category.id }));
     setSending(false);
     if (sendInvite.rejected.match(outcome)) {
-      if (outcome.payload?.matches.length) setMatches(outcome.payload.matches);
-      else toast.error("Couldn't send invitation", { description: outcome.payload?.message ?? outcome.error.message ?? "Please try again." });
+      toast.error("Couldn't send invitation", { description: outcome.payload?.message ?? outcome.error.message ?? "Please try again." });
       return;
     }
     if (outcome.payload.email_status === "failed") {
@@ -148,13 +143,12 @@ export function SendInvitationDialog({
               aria-invalid={emailInvalid}
               aria-describedby="invite-email-hint"
               value={email}
-              onChange={(e) => { setEmail(e.target.value); setMatches([]); }}
+              onChange={(e) => setEmail(e.target.value)}
             />
             <p id="invite-email-hint" className={emailInvalid ? "text-xs text-destructive" : "text-xs text-muted-foreground"}>
               {emailInvalid ? "Enter a valid email address." : "The invitation and sign-in codes go to this address."}
             </p>
           </div>
-          {matches.length > 0 && <EmailMatchesNotice matches={matches} />}
         </div>
 
         <DialogFooter className="gap-2 sm:gap-2">

@@ -57,21 +57,11 @@ async function sendInviteEmail(d: InviteDelivery): Promise<"sent" | "failed"> {
   }
 }
 
-const EMAIL_MATCH_LABEL: Record<repo.EmailMatch["kind"], string> = {
-  user: "Users", institution: "Institutions", business: "Businesses", extraction: "Extractions", invite: "pending invites",
-};
-
-/** `email` arrives trimmed and lower-cased (SendInvitationSchema). */
 export async function sendInvitation(email: string, orgName: string, businessCategoryId: number, invitedBy: number, contactName?: string) {
   const category = await repo.findCategory(businessCategoryId);
   if (!category) throw new BadRequestError("Unknown business category");
   // Institutions are their own table and onboarding; every other category is a business.
   const type: InviteType = category.slug === "institutions" ? "institution" : "business";
-  const matches = await repo.findEmailMatches(email);
-  if (matches.length) {
-    const where = [...new Set(matches.map((m) => EMAIL_MATCH_LABEL[m.kind]))].join(", ");
-    throw new ConflictError(`This email already exists in ${where}`, { matches });
-  }
 
   const { token, token_hash, expires_at } = mintToken();
   let id: string;
@@ -147,33 +137,30 @@ export async function acceptInvitation(token: string, type: InviteType) {
     throw new NotFoundError("This invite link isn't valid.");
   }
 
-  let userId: number | undefined;
+  let createdUserId: number | undefined;
   let user: Awaited<ReturnType<typeof userRepo.insert>>;
   // Everything after the claim is inside this try, so any failure — even a read — releases the link.
   try {
-    // Registered on their own between invite and click — their account is theirs, don't touch it.
-    // The invite is retired, so the catch's release below finds nothing to revert.
-    if (await userRepo.findByEmail(invite.email)) {
-      await repo.transitionStatus(invite.id, "accepted", "revoked");
-      throw new ConflictError("An account already exists for this email. Sign in instead.", { email: invite.email });
+    const existing = await userRepo.findByEmail(invite.email);
+    if (existing) {
+      user = existing;
+    } else {
+      user = await userRepo.insert({
+        first_name: invite.contact_name?.split(/\s+/)[0] ?? "",
+        last_name: invite.contact_name?.split(/\s+/).slice(1).join(" ") ?? "",
+        email: invite.email,
+        account_status: 1,
+        is_personal_account: true,
+        meta: { created_via: "onboarding_invite" },
+      });
+      createdUserId = user.id;
+      await userRepo.updateUser(user.id, { is_email_verified: true });
     }
-
-    user = await userRepo.insert({
-      first_name: invite.contact_name?.split(/\s+/)[0] ?? "",
-      last_name: invite.contact_name?.split(/\s+/).slice(1).join(" ") ?? "",
-      email: invite.email,
-      account_status: 1,
-      is_personal_account: true,
-      meta: { created_via: "onboarding_invite" },
-    });
-    userId = user.id;
-    await userRepo.updateUser(user.id, { is_email_verified: true });
 
     if (invite.type === "business") {
       const { org } = await registerBusiness(user.id, {
         business_name: invite.org_name,
         business_category_id: invite.business_category_id ?? undefined,
-        email: invite.email,
       });
       if (!(await repo.recordAccepted(invite.id, user.id, { businessId: Number(org.id) }))) {
         logger.warn("Invite vanished during setup; account kept without its invite row", { invitationId: invite.id, userId: user.id, businessId: org.id });
@@ -194,15 +181,18 @@ export async function acceptInvitation(token: string, type: InviteType) {
       logger.info("Onboarding invite accepted", { invitationId: invite.id, userId: user.id, institutionId: institution.id });
     }
   } catch (err) {
-    if (userId) await rollbackUser(userId);
+    if (createdUserId) await rollbackUser(createdUserId);
     await repo.revertToPending(invite.id);
     throw err;
   }
 
-  const newUserId = user.id;
-  issueCode("user", newUserId).catch((err) =>
-    logger.warn("Referral code issuance error", { userId: newUserId, err: err.message }),
-  );
+  // An adopted account already got its referral code at its own signup.
+  if (createdUserId !== undefined) {
+    const newUserId = createdUserId;
+    issueCode("user", newUserId).catch((err) =>
+      logger.warn("Referral code issuance error", { userId: newUserId, err: err.message }),
+    );
+  }
   return { email: invite.email, type: invite.type };
 }
 

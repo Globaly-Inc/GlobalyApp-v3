@@ -34,9 +34,8 @@ export const businessInvitesMockApi = {
     console.log("[mock] POST /admin/platform/onboarding-invitations", { email, name, business_category_id });
     const type = business_category_id === 1 ? "institution" : "business";
     await delay(500);
-    const pending = mockInvites.find((i) => i.email === email && i.status === "pending");
-    if (pending) {
-      throw new ApiError("This email already exists in pending invites", "CONFLICT", { matches: [{ kind: "invite", id: pending.id, name: pending.org_name }] });
+    if (mockInvites.some((i) => i.email === email && i.status === "pending")) {
+      throw new ApiError("Already invited", "CONFLICT");
     }
     mockInvites = [
       { id: String(Date.now()) + email, email, org_name: name, type, status: "pending", expires_at: at(3 * DAY), business_category_id, business_category_name: null, invited_by_name: "Aarav Sharma", accepted_institution_id: null, accepted_business_id: null, accepted_at: null, email_status: "sent", email_sent_at: at(0), email_error: null, link_requested_at: null, created_at: at(0) },
