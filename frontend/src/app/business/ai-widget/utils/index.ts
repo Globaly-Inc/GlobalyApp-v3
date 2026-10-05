@@ -1,4 +1,26 @@
-import type { VisitorProfileEntry, WidgetVisitor } from "../apis/types";
+import type { DeveloperContact, VisitorProfileEntry, WidgetVisitor } from "../apis/types";
+
+/**
+ * Fold a send's response into the recipient list the card is already showing.
+ *
+ * `fromServer` is the whole list as it stood when the send READ it, so adopting it wholesale
+ * undoes anything that changed while the send was in flight — a Remove that completed in that
+ * window would put the deleted address straight back on screen. Only the rows this send actually
+ * touched are taken from it; everything else keeps the state the card has, including gone.
+ *
+ * Touched rows go first, matching the server's own newest-sent-first ordering.
+ */
+export function mergeSentRecipients(
+  current: DeveloperContact[],
+  sent: string[],
+  fromServer: DeveloperContact[],
+): DeveloperContact[] {
+  const justSent = new Set(sent);
+  return [
+    ...fromServer.filter((r) => justSent.has(r.email)),
+    ...current.filter((d) => !justSent.has(d.email)),
+  ];
+}
 
 /**
  * What to call someone who never told us their name.

@@ -118,7 +118,7 @@ export const aiWidgetMockApi = {
         mockDevelopers.unshift({ id: devSeq++, email, last_sent_at: new Date().toISOString(), send_count: 1 });
       }
     }
-    return { sent_to: input.emails.join(", "), recipients: [...mockDevelopers] };
+    return { sent: input.emails, failed: [], recipients: [...mockDevelopers] };
   },
 
   forgetDeveloper: async (id: number): Promise<void> => {

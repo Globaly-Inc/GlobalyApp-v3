@@ -39,7 +39,7 @@ export function MessageBlocks({ blocks, onAction, onSend }: MessageBlocksProps) 
           case "image":
             return <ImageBlock key={i} block={block} />;
           case "quick_replies":
-            return <QuickRepliesBlock key={i} block={block} onAction={onAction} onSend={onSend} />;
+            return <QuickRepliesBlock key={i} block={block} onSend={onSend} />;
           case "link":
             return <LinkBlock key={i} block={block} />;
           default:

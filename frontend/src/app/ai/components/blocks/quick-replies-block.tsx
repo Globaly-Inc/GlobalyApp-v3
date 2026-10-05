@@ -8,12 +8,14 @@ import type { ResponseBlock } from "../../apis/types";
 
 type QuickRepliesBlockProps = {
   block: Extract<ResponseBlock, { type: "quick_replies" }>;
-  onAction?: (value: string) => void;
+  /** Sends the composed answer. There is deliberately no draft-change callback: this block owns
+   *  its own input, and every caller wires a send handler here. Handing one out as well meant the
+   *  widget fired a turn on each keystroke and then again on Send. */
   onSend?: (value: string) => void;
 };
 
 /** Tappable answer options for a question the counsellor asked. Multi-select populates the input below. */
-export function QuickRepliesBlock({ block, onAction, onSend }: QuickRepliesBlockProps) {
+export function QuickRepliesBlock({ block, onSend }: QuickRepliesBlockProps) {
   const [selected, setSelected] = useState<string[]>([]);
   const [text, setText] = useState("");
 
@@ -25,13 +27,11 @@ export function QuickRepliesBlock({ block, onAction, onSend }: QuickRepliesBlock
     const composed =
       next.length === 0 ? "" : next.length === 1 ? next[0]! : next.map((v) => `• ${v}`).join("\n");
     setText(composed);
-    onAction?.(composed);
   };
 
   const handleTextChange = (value: string) => {
     setText(value);
     setSelected([]);
-    onAction?.(value);
   };
 
   const submit = () => {

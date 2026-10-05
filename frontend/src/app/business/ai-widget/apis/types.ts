@@ -70,7 +70,11 @@ export type EnsureEmbedResult = {
 /** Who to mail the code to. Nobody is invited and no account is created, so there is no name. */
 export type SendSnippetInput = { emails: string[] };
 
-export type SendSnippetResult = { sent_to: string; recipients: DeveloperContact[] };
+/** `sent` names only the addresses whose mail was accepted; anything in `failed` was not sent and
+ *  was not recorded, so it can simply be sent again. A send where nothing got out is an error
+ *  response, never a result with an empty `sent`. `recipients` is the whole list as it stood when
+ *  the send read it — merge the `sent` rows out of it, never adopt it wholesale (see the slice). */
+export type SendSnippetResult = { sent: string[]; failed: string[]; recipients: DeveloperContact[] };
 
 // ── Widget visitors and leads ────────────────────────────────────────────────
 // The people who talked to the widget. Rows come from the OWNING tenant's schema

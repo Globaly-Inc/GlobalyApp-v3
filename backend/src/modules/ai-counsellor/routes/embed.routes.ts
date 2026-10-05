@@ -1,5 +1,9 @@
-import type { FastifyInstance } from "fastify";
-import { requireBusinessOrInstitutionContext } from "../../../core/plugins/auth.plugin.js";
+import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
+import {
+  requireBusinessOrInstitutionContext,
+  requireInstitutionRole,
+  requirePermission,
+} from "../../../core/plugins/auth.plugin.js";
 import { recipientFromRequest } from "../../enquiries/shared/recipient.js";
 import {
   EmbedConfigCreateSchema,
@@ -34,6 +38,27 @@ function startSiteIndex(owner: ReturnType<typeof recipientFromRequest>) {
   embedRepo.ownerWebsite(owner)
     .then((website) => ensureOwnerSiteIndex(owner, website))
     .catch((err) => logger.error("Owner site index failed to start", { owner, err: String(err) }));
+}
+
+const businessWidgetAdmin = requirePermission("business:write");
+const institutionWidgetAdmin = requireInstitutionRole("admin");
+
+/**
+ * Who may spend the org's name: mail going out branded as them, and the recipient list behind it.
+ *
+ * Org context alone is not enough. Every member of the org holds that, so without this any one of
+ * them could spray org-branded mail at outside addresses — and a token stays valid for its full
+ * life after someone is removed. Both guards below re-read the tenant's own member row, so removal
+ * takes effect immediately rather than when the token expires.
+ *
+ * Not `agents:write` (what the deleted invite flow used): nobody is invited here and no account is
+ * created. This is a settings-level action on the org's own widget, so it rides the same rights as
+ * editing the org profile — owner/admin in both tenant kinds.
+ */
+export async function requireWidgetAdmin(req: FastifyRequest, reply: FastifyReply) {
+  return req.auth?.orgType === "institution"
+    ? institutionWidgetAdmin(req, reply)
+    : businessWidgetAdmin(req, reply);
 }
 
 /** Embed-config management — served to both org kinds; the owner comes from the token's
@@ -89,7 +114,7 @@ export async function embedRoutes(app: FastifyInstance) {
    * Mail the snippet to addresses the owner typed, and record them.
    *
    * Nobody is invited and no account is created — the recipients are agencies and contractors, not
-   * staff — so this needs no team-write permission, only membership of the org whose code it is.
+   * staff — but the mail still goes out branded as the org, so it takes `requireWidgetAdmin`.
    *
    * No config id: the card works on the one widget `ensureForOwner` resolves, which is owner-scoped
    * by construction, so there is no id here to tamper with.
@@ -98,7 +123,7 @@ export async function embedRoutes(app: FastifyInstance) {
     // Capped per caller: the snippet itself is public, but mail going out over our domain is not
     // free to spray at arbitrary addresses.
     config: { rateLimit: { max: 5, timeWindow: "1 minute" } },
-    preHandler: requireBusinessOrInstitutionContext,
+    preHandler: [requireBusinessOrInstitutionContext, requireWidgetAdmin],
   }, async (req, reply) => {
     const { emails } = SendSnippetSchema.parse(req.body ?? {});
     const config = await embedRepo.ensureForOwner(recipientFromRequest(req));
@@ -112,8 +137,9 @@ export async function embedRoutes(app: FastifyInstance) {
     return reply.send(result);
   });
 
-  /** Drop a recipient from the list. Removes the record only — nothing was ever provisioned. */
-  app.delete("/embed/developers/:id", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
+  /** Drop a recipient from the list. Removes the record only — nothing was ever provisioned.
+   *  Same rights as adding one: this is the other half of send-snippet's list. */
+  app.delete("/embed/developers/:id", { preHandler: [requireBusinessOrInstitutionContext, requireWidgetAdmin] }, async (req, reply) => {
     const { id } = EmbedDeveloperIdParamSchema.parse(req.params);
     const config = await embedRepo.ensureForOwner(recipientFromRequest(req));
     if (!await forgetRecipient(req.db, config.id, id)) throw new NotFoundError("Recipient not found");

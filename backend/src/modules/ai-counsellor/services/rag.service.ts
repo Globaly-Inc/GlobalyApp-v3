@@ -137,6 +137,20 @@ const MONEY_MAYBE_RE = {
 const COST_SENSE_RE =
   /\b(how much|cost(?:s|ly)?|fees?|tuition|price[sd]?|pricing|charge[sd]?|expensive|cheap(?:er|est)?|afford(?:able)?|refunds?|money|instal+ments?|deposits?|per (?:year|semester|month|week|term))\b/i;
 
+/**
+ * Where one clause of a question stops and the next begins. The cost sense that promotes an
+ * ambiguous word has to come from the SAME clause, or a money clause lends its cost sense to an
+ * unrelated one: "what are the fees, and can I defer my start date?" read "defer" as a refund
+ * question, and the withhold line for `refund` names deferrals — so the start-date answer we
+ * hold was gagged by the fee clause beside it (Greptile).
+ *
+ * ponytail: conjunctions and sentence enders only. A bare comma splice ("what are the fees, can
+ * I defer?") still reads as one clause; splitting on every comma separates appositives from
+ * their own cost sense ("how much, roughly, is accommodation?") and loses more than it saves.
+ * Split on commas too if real transcripts show the splice is common.
+ */
+const CLAUSE_SPLIT_RE = /[.!?;\n]+|,?\s+(?:and|but|also|plus|or)\s+/gi;
+
 export type MoneyTopic = keyof typeof MONEY_TOPIC_RE;
 const MONEY_TOPICS = Object.keys(MONEY_TOPIC_RE) as MoneyTopic[];
 
@@ -159,11 +173,14 @@ export function moneyTopicsOf(text: string): MoneyTopic[] {
  * error is to say no — a false yes gags an answer we hold, which costs the visitor their reply.
  * A false no only means the model answers from context as usual, still bound by the
  * "money comes only from CONTEXT" rule in the system prompt.
+ *
+ * Read per clause: an unambiguous money word counts wherever it appears, but an ambiguous one is
+ * promoted only by a cost sense standing next to it in the same clause.
  */
 export function askedMoneyTopics(query: string): MoneyTopic[] {
-  const hasCostSense = COST_SENSE_RE.test(query);
-  return MONEY_TOPICS.filter((topic) =>
-    MONEY_TOPIC_RE[topic].test(query) || (hasCostSense && MONEY_MAYBE_RE[topic].test(query)));
+  const clauses = query.split(CLAUSE_SPLIT_RE).filter((c) => c?.trim());
+  return MONEY_TOPICS.filter((topic) => clauses.some((clause) =>
+    MONEY_TOPIC_RE[topic].test(clause) || (COST_SENSE_RE.test(clause) && MONEY_MAYBE_RE[topic].test(clause))));
 }
 
 export const isMoneyQuestion = (query: string): boolean => askedMoneyTopics(query).length > 0;

@@ -85,6 +85,31 @@ eq(shouldWithholdMoney("do you have student accommodation?", []), false,
   "accommodation availability is answerable with no cost data");
 eq(shouldWithholdMoney("what are the fees?", []), true, "a real fee question still withholds");
 
+// ── The cost sense belongs to its own clause ──
+// "What are the fees, and can I defer my start date?" used to read 'defer' as a refund topic,
+// because the cost word was looked for anywhere in the message. The withhold line for `refund`
+// names deferrals, so the fee clause gagged a start-date answer we already hold (Greptile).
+eq(askedMoneyTopics("what are the fees, and can I defer my start date?"), ["fees"] as MoneyTopic[],
+  "a fee clause does not make 'defer' in the next clause a refund question");
+eq(askedMoneyTopics("what is the tuition? I might need to cancel later."), ["fees"] as MoneyTopic[],
+  "nor 'cancel' in the next sentence");
+eq(askedMoneyTopics("do you have accommodation and what are the tuition fees?"), ["fees"] as MoneyTopic[],
+  "nor 'accommodation' a living-cost question");
+eq(shouldWithholdMoney("what are the fees, and can I defer my start date?", ["fees"]), false,
+  "with the fees grounded, nothing is withheld — the deferral answer survives");
+
+// Same clause, same words: still caught. This is the half that must not be lost.
+eq(askedMoneyTopics("what are the fees, and is the deposit refundable?"), ["fees", "refund"] as MoneyTopic[],
+  "a refund word in its OWN clause is still a refund question");
+eq(askedMoneyTopics("how much does accommodation cost and when can I move in?"), ["fees", "living"] as MoneyTopic[],
+  "cost sense beside its own ambiguous word, in clause one");
+
+// ponytail: the accepted cost of clause scoping — a cost sense split from its subject by a
+// conjunction no longer promotes it. `fees` still fires, so the turn is not ungated; only the
+// `living` topic is missed, and the prompt's "money comes only from CONTEXT" rule still holds.
+eq(askedMoneyTopics("is accommodation available, and how much does it cost?"), ["fees"] as MoneyTopic[],
+  "known gap: 'it' in the next clause is not resolved back to accommodation");
+
 // ── Context side stays BROAD: generous about what counts as evidence ──
 // Narrowing both sides would withhold MORE, not less: a passage that mentions rent in prose
 // must still ground a cost-of-living question even though "rent" alone is ambiguous.

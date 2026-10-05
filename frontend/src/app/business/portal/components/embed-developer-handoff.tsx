@@ -23,6 +23,19 @@ function Recipient({ person }: Readonly<{ person: DeveloperContact }>) {
   const dispatch = useAppDispatch();
   const sending = useAppSelector((s) => s.aiWidget.sendStatus) === "loading";
 
+  const [removing, setRemoving] = useState(false);
+
+  const forget = async () => {
+    setRemoving(true);
+    try {
+      await dispatch(forgetEmbedDeveloper(person.id)).unwrap();
+    } catch (e) {
+      toast.error("Couldn't remove that address", { description: typeof e === "string" ? e : "Please try again." });
+    } finally {
+      setRemoving(false);
+    }
+  };
+
   const resend = async () => {
     try {
       await dispatch(sendEmbedSnippet({ emails: [person.email] })).unwrap();
@@ -51,7 +64,8 @@ function Recipient({ person }: Readonly<{ person: DeveloperContact }>) {
         <Button
           variant="ghost"
           size="icon-sm"
-          onClick={() => dispatch(forgetEmbedDeveloper(person.id))}
+          onClick={forget}
+          disabled={removing}
           className="cursor-pointer text-muted-foreground hover:text-destructive"
           aria-label={`Remove ${person.email} from the list`}
         >

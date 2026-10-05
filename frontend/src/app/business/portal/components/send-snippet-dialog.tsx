@@ -34,9 +34,18 @@ function Body({ onClose }: Readonly<{ onClose: () => void }>) {
     if (valid.length > MAX_RECIPIENTS) return setError(`That's ${valid.length} addresses — ${MAX_RECIPIENTS} at a time.`);
     try {
       const result = await dispatch(sendEmbedSnippet({ emails: valid })).unwrap();
-      toast.success(valid.length > 1 ? `Code sent to ${valid.length} people` : "Code sent", {
-        description: `We emailed the code to ${result.sent_to}.`,
-      });
+      const sentCount = result.sent.length;
+      // Never claim an address was mailed when it wasn't: the backend reports exactly what it
+      // accepted, and a send where nothing got out comes back as an error, not as this branch.
+      if (result.failed.length) {
+        toast.warning(`Code sent to ${sentCount} of ${valid.length}`, {
+          description: `Couldn't send to ${result.failed.join(", ")} — try those again.`,
+        });
+      } else {
+        toast.success(valid.length > 1 ? `Code sent to ${valid.length} people` : "Code sent", {
+          description: `We emailed the code to ${result.sent.join(", ")}.`,
+        });
+      }
       onClose();
     } catch (e) {
       toast.error("Couldn't send the code", { description: typeof e === "string" ? e : "Please try again." });

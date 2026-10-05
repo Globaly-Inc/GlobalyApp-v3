@@ -1,5 +1,6 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { aiWidgetApi } from "../apis";
+import { mergeSentRecipients } from "../utils";
 import type {
   CreateEmbedConfigInput, EmbedConfig, EnsureEmbedResult, SendSnippetInput, UpdateEmbedConfigInput,
 } from "../apis/types";
@@ -46,9 +47,16 @@ export const sendEmbedSnippet = createAsyncThunk(
 
 export const forgetEmbedDeveloper = createAsyncThunk(
   "aiWidget/forgetDeveloper",
-  async (id: number) => {
-    await aiWidgetApi.forgetDeveloper(id);
-    return id;
+  async (id: number, { rejectWithValue }) => {
+    try {
+      await aiWidgetApi.forgetDeveloper(id);
+      return id;
+    } catch (e) {
+      // Same reason as the send above: the backend names the real cause — "Recipient not found"
+      // for a row somebody else already removed — and the row stays on screen either way, so a
+      // silent failure reads as a button that does nothing.
+      return rejectWithValue(e instanceof Error ? e.message : "Couldn't remove that address.");
+    }
   },
 );
 
@@ -134,8 +142,14 @@ const aiWidgetSlice = createSlice({
       })
       .addCase(sendEmbedSnippet.fulfilled, (state, action) => {
         state.sendStatus = "idle";
-        // The send returns the list it just changed, so the card updates without refetching.
-        if (state.handoff) state.handoff.developers = action.payload.recipients;
+        // Merge the rows this send touched; never adopt `recipients` wholesale. It is the list
+        // as it stood when the server read it, so a Remove that completed while the send was in
+        // flight would be undone by it and the deleted address would reappear. Anything the send
+        // did not touch stays exactly as the card has it — including gone.
+        if (!state.handoff) return;
+        state.handoff.developers = mergeSentRecipients(
+          state.handoff.developers, action.payload.sent, action.payload.recipients,
+        );
       })
       .addCase(forgetEmbedDeveloper.fulfilled, (state, action) => {
         if (state.handoff) {
