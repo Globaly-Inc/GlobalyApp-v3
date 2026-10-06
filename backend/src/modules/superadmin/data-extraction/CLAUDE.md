@@ -1094,6 +1094,16 @@ from the chain — but note `replaceCampuses` DELETES and re-links by name, and 
 variant (`mergeCampuses`/`campusesFromFeed`) is NOT in the tree, so a MANUAL branches run on a job
 that has campuses still wipes them.
 
+**Extraction OVERWRITES the staged overview, including a feed's own contact details.** The crawl is
+the source of truth: when the `institution` step reads a different email/phone/address on the
+website, that value replaces what the AgentCIS import staged. Deliberate (user decision, asked and
+answered three times) — do NOT "fix" it back to add-only, and expect a review bot to flag it on
+every pass, because it reads as data loss without this note. Two things bound it: a field the crawl
+found NOTHING for keeps its stored value (`extraction-step.worker.ts`, the loop before the update),
+and the LIVE `institutions` row is not touched on this path at all — `backfillSelfServiceProfile`
+hangs off `writeInstitutionOverview`, which the existing-row branch skips, and it is fill-blanks-only
+anyway. Publishing to a listing stays promote's job.
+
 **`pipeline_progress` is rebuilt at a run start, and `agentcis_id` must ride across.** That column
 is the only record of which AgentCIS institution a job is, and the two writers that assign a fresh
 literal — the job worker's admission write and `resetPipeline` — erased it, so one "Enrich from
