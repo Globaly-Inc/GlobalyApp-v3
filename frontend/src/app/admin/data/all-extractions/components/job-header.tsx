@@ -12,7 +12,6 @@ import { ACTIVE_STATUSES, PUBLISHABLE_STATUSES, STATUS_CONFIG } from "../const";
 import { declineJob, promoteJob, resetPipeline, resumeJob, stopAllExtraction } from "../store/all-extractions-slice";
 import { useConfirmDelete } from "./use-confirm-delete";
 import { RerunExtractionButton } from "./rerun-extraction-button";
-import { DeepScrapeButton } from "./deep-scrape-button";
 import { EnrichFromWebButton } from "./enrich-from-web-button";
 import { StepModeToggle } from "./step-mode-toggle";
 import type { ExtractionJob } from "../apis/types";
@@ -84,9 +83,10 @@ export function JobHeader({ job, onReload }: Readonly<{ job: ExtractionJob; onRe
             {busy === "resume" ? "Resuming…" : "Resume"}
           </Button>
         )}
-        {job.source_type !== "agentcis" && job.status !== "exported" && (
-          <DeepScrapeButton jobId={job.id} onReload={onReload} />
-        )}
+        {/* Deep Scrape hidden 2026-10-06: jobs are uncapped (migration 20261006_001), so it no
+            longer buys page budget, and unlike Resume it does NOT re-dispatch pages already sitting
+            in the queue — a job could be deep-scraped and still have hundreds untouched. The
+            component, the API method and the backend route are all still there. */}
         {job.source_type === "agentcis" && job.status === "done" && (
           <EnrichFromWebButton jobId={job.id} onReload={onReload} />
         )}

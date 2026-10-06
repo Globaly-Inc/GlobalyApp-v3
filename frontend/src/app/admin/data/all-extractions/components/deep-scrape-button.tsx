@@ -12,7 +12,8 @@ export type DeepScrapeButtonProps = Readonly<{
   onReload: () => void;
 }>;
 
-/** Raises the job's 500-page scrape budget by another 500 and re-runs discovery. */
+/** Re-runs discovery over the site, and raises the page budget by 500 on a job that still has one
+ *  (jobs are uncapped by default — see migration 20261006_001). */
 export function DeepScrapeButton({ jobId, onReload }: DeepScrapeButtonProps) {
   const [running, setRunning] = useState(false);
   const { confirm, dialog } = useConfirmDelete();
@@ -20,14 +21,14 @@ export function DeepScrapeButton({ jobId, onReload }: DeepScrapeButtonProps) {
   async function deepScrape() {
     const ok = await confirm(
       "Deep Scrape?",
-      "Extraction stops after 500 pages per site — enough for the course catalogue on most sites. Deep scrape raises that budget by another 500 pages and re-runs discovery to find and extract them. Already-extracted pages are never re-scraped or re-billed.",
+      "Re-runs discovery over the whole site to find pages that weren't there last time, and queues them for extraction. Already-extracted pages are never re-scraped or re-billed.",
       { confirmLabel: "Deep Scrape", variant: "default" },
     );
     if (!ok) return;
     setRunning(true);
     try {
       await allExtractionsApi.deepScrapeJob(jobId);
-      toast.success("Deep scrape started", { description: "Page budget raised by 500 — discovery is re-running." });
+      toast.success("Deep scrape started", { description: "Discovery is re-running over the site." });
       onReload();
     } catch (e: unknown) {
       toast.error("Deep scrape failed", { description: (e as Error).message });

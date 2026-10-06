@@ -243,8 +243,9 @@ export async function rerunJob(jobId: string, adminId: number) {
   return { updated: true, mode: "full" };
 }
 
-// Deep scrape: the default page_cap (500) covers the course catalogue on most sites; this
-// raises the budget by another 500 and re-dispatches the job worker, whose discovery then
+// Deep scrape: re-dispatches the job worker so discovery runs again over the whole site; on a job
+// that still carries a page_cap it also raises that budget by 500. Jobs are uncapped by default
+// (migration 20261006_001), so for most the value is the re-discovery, and its discovery then
 // finds and queues the pages the cap refused (insertQueueItem dedupes the rest, so nothing
 // already extracted is re-billed). Re-running the job worker also refreshes the institution
 // overview (email/phone/logo) from the homepage. Explicit admin action = explicit extra spend.
@@ -258,8 +259,16 @@ export async function deepScrape(jobId: string, adminId: number) {
   // doesn't revive them) — raising the cap would mutate state, report success, and run
   // nothing. The guard is inside raisePageCap's UPDATE (not a check here) so a promotion
   // landing mid-request can't slip an increment onto a freshly exported job.
-  const pageCap = await repo.raisePageCap(jobId, 500, adminId);
-  if (pageCap == null) {
+  // An uncapped job (page_cap NULL, the default) has no budget to raise — incrementing NULL yields
+  // NULL, which would read as the exported case below and report the wrong reason. Re-dispatching
+  // discovery is the other half of what this action does, so that part still runs.
+  let pageCap: number | null | undefined = job.page_cap;
+  if (job.page_cap != null) {
+    pageCap = await repo.raisePageCap(jobId, 500, adminId);
+    if (pageCap == null) {
+      throw new BadRequestError("This job is already exported — use Reset Pipeline to re-crawl it from scratch");
+    }
+  } else if (job.status === "exported") {
     throw new BadRequestError("This job is already exported — use Reset Pipeline to re-crawl it from scratch");
   }
   await repo.reactivateJob(jobId, adminId);

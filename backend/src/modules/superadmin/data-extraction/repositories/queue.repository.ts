@@ -53,6 +53,7 @@ export async function stopAll(jobId: string) {
 }
 
 // Deep scrape: raise the job's page budget (see insertQueueItem's cap) so discovery can
+// — only called for a job that HAS a cap; NULL means unlimited and there is nothing to raise.
 // find and queue another round of pages past the default cap. The exported guard lives
 // in this UPDATE, not in a prior SELECT — a concurrent promotion could flip the job to
 // exported between a check and the increment, mutating a job the worker will then ignore.

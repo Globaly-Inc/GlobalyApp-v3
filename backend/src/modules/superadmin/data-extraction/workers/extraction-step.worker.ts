@@ -160,7 +160,7 @@ async function handleSiteMapStep(jobId: string): Promise<"done" | "pending"> {
   if (await gate(jobId, "site_map")) {
     const urls = (await listActiveSiteUrls(jobId)).map((r) => r.url);
     await setProgress(jobId, { site_snapshot: "processing" });
-    await dispatchSnapshotBatches(jobId, urls, Number(job.page_cap) || 500);
+    await dispatchSnapshotBatches(jobId, urls, job.page_cap ?? null);
   }
   return "done";
 }
@@ -182,7 +182,7 @@ async function handleSiteSnapshotStep(
       list = rows.map((r: { url: string }) => r.url);
     }
     if (!list.length) throw new Error("Nothing to snapshot — run site_map first");
-    await dispatchSnapshotBatches(jobId, list, Number(job?.page_cap) || list.length, fresh);
+    await dispatchSnapshotBatches(jobId, list, job?.page_cap ?? null, fresh);
     return "pending";
   }
   await snapshotSite(jobId, urls, batch, fresh);

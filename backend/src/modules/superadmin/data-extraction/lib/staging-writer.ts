@@ -2873,8 +2873,11 @@ export async function insertQueueItemDetailed(jobId: string, url: string): Promi
     `WITH existing AS (
        SELECT 1 FROM ${S}.extraction_queue WHERE job_id = :jobId AND url = :url
      ), cap AS (
-       SELECT (SELECT count(*) FROM ${S}.extraction_queue WHERE job_id = :jobId)
-            < (SELECT page_cap FROM ${S}.extraction_jobs WHERE id = :jobId) AS has_room
+       -- NULL page_cap means no limit. Without the IS NULL arm this reads \`count < NULL\` = NULL,
+       -- which is not TRUE, so the insert's WHERE would silently queue nothing at all.
+       SELECT j.page_cap IS NULL
+           OR (SELECT count(*) FROM ${S}.extraction_queue WHERE job_id = :jobId) < j.page_cap AS has_room
+       FROM ${S}.extraction_jobs j WHERE j.id = :jobId
      ), ins AS (
        INSERT INTO ${S}.extraction_queue (job_id, url, status)
        SELECT :jobId, :url, 'pending'
@@ -2906,7 +2909,8 @@ export async function insertQueueItem(jobId: string, url: string): Promise<strin
  */
 export async function atPageCap(jobId: string): Promise<boolean> {
   const { rows } = await masterKnex.raw(
-    `SELECT (SELECT count(*) FROM ${S}.extraction_queue WHERE job_id = :jobId) >= page_cap AS capped
+    `SELECT page_cap IS NOT NULL
+        AND (SELECT count(*) FROM ${S}.extraction_queue WHERE job_id = :jobId) >= page_cap AS capped
      FROM ${S}.extraction_jobs WHERE id = :jobId`,
     { jobId },
   );
