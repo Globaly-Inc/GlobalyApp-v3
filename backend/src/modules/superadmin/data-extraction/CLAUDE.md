@@ -1067,6 +1067,58 @@ Tests: `npm run test:agentcis-writecourse-guardrail` (the per-category add-only-
 DB integration) and `npm run test:agentcis-enrich-from-web` (the trigger's guard rails and queue
 dispatch, DB integration with `queueService.publish` mocked).
 
+## An AgentCIS job is a university: it re-runs in place and gets the institution steps (2026-10-05)
+
+User decisions, and the reason three separate things here looked broken on one afternoon.
+
+**Re-run restarts THIS job, for every source type.** `rerunJob` used to branch on
+`source_type === "agentcis"` and call `importAgentCIS`, which only queues a message — the worker
+then creates a FRESH job row, so the admin watched their own job's page never change while the work
+landed elsewhere. Worse, the new row carries only the feed: one live case replaced a 43-page,
+73-course enriched job with a 6-course import. The branch is gone; AgentCIS falls through to the
+normal reset-and-re-crawl path, against `institution_url`, which IS the website the feed supplied.
+**Re-pulling the feed is the AgentCIS Import page's job, not Re-run's.** `resumeExtraction` keeps
+its own AgentCIS branch — "nothing queued to resume" is a different question. Guarded by
+`tests/rerun-agentcis.ts` (no npm script; `node --import tsx tests/rerun-agentcis.ts`).
+*Known edge, accepted:* `agentcis-staging.ts` falls back to `https://agentcis.com/institution/<id>`
+when the feed record has no `website`, and Re-run on such a job would crawl that placeholder. No
+live occurrence (0 of 8 jobs); a review bot flags it on sight, so expect to re-explain it.
+
+**AgentCIS counts as an institution for the institution-family steps.** `checkAllPagesDone`'s
+`isInstitution` and `runSiteAnalysis`'s dispatch gate both read
+`!source_type || source_type === "institution"`, so an AgentCIS job's post-extraction chain was
+`["verify"]` alone — no `institution` step, no `branches`, and **no `scholarships` ever**. Both now
+include `"agentcis"`. An unknown source type still stays out: a new vertical opts in deliberately.
+`needsBranches` still requires the job to have no campuses, so the feed's campuses are not at risk
+from the chain — but note `replaceCampuses` DELETES and re-links by name, and the merge-for-feed
+variant (`mergeCampuses`/`campusesFromFeed`) is NOT in the tree, so a MANUAL branches run on a job
+that has campuses still wipes them.
+
+**Extraction OVERWRITES the staged overview, including a feed's own contact details.** The crawl is
+the source of truth: when the `institution` step reads a different email/phone/address on the
+website, that value replaces what the AgentCIS import staged. Deliberate (user decision, asked and
+answered three times) — do NOT "fix" it back to add-only, and expect a review bot to flag it on
+every pass, because it reads as data loss without this note. Two things bound it: a field the crawl
+found NOTHING for keeps its stored value (`extraction-step.worker.ts`, the loop before the update),
+and the LIVE `institutions` row is not touched on this path at all — `backfillSelfServiceProfile`
+hangs off `writeInstitutionOverview`, which the existing-row branch skips, and it is fill-blanks-only
+anyway. Publishing to a listing stays promote's job.
+
+**`pipeline_progress` is rebuilt at a run start, and `agentcis_id` must ride across.** That column
+is the only record of which AgentCIS institution a job is, and the two writers that assign a fresh
+literal — the job worker's admission write and `resetPipeline` — erased it, so one "Enrich from
+Website" permanently broke that job's Re-run with "no agentcis_id on record". Both now go through
+`freshProgress` (`lib/pipeline-progress.ts`), which rebuilds the bag and carries only that key.
+A plain `||` merge would be WRONG here: `completion_email` and `post_extraction_chain` must still be
+cleared at a run start. Guarded by `npm run test:agentcis-progress-merge`.
+
+**This module keeps losing these fixes to rebases.** `progressPatch`, `wantsInstitutionSteps`,
+`additiveOverviewUpdate`, `importedFromFeed`, `mergeCampuses` and `campusesFromFeed` were all
+written for the AgentCIS work and are all absent from `src/` today, while the inline checks they
+replaced came back. Before starting an AgentCIS defect, grep for the helper the docs name and
+confirm it still exists. **Still missing and not restored:** `additiveOverviewUpdate` protected the
+feed's email/phone/address from being overwritten by a crawled contact page during enrichment.
+
 ## Stale queue-item reclaim (2026-09-15)
 
 Root cause of jobs found stuck at `status: "processing"` forever (seen live, both local and

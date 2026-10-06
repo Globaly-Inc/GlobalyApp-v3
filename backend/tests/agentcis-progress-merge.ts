@@ -1,5 +1,6 @@
 /**
- * AgentCIS pipeline_progress merge test — covers mergeProgress (lib/agentcis-staging.ts),
+ * AgentCIS pipeline_progress test — covers mergeProgress (lib/agentcis-staging.ts) and
+ * freshProgress (lib/pipeline-progress.ts), the two writers that must not lose agentcis_id,
  * added so retry-by-id and per-phase counters survive every worker update instead of being
  * clobbered by a full JSON.stringify replace (the same bug class as this session's earlier
  * "field silently overwritten by a later write" issues, just for jsonb instead of a plain
@@ -53,6 +54,34 @@ async function main() {
     // The pre-jsonb-merge implementation would have lost `total: 10` here by fully replacing
     // the object — this only holds because `||` merges onto the existing column value.
     assert(afterSecond.pipeline_progress.total === 10, "a key from the FIRST merge survives a merge that doesn't mention it either");
+
+    // freshProgress — the run-start write (extraction-job.worker.ts, resetPipeline). It REBUILDS
+    // the bag rather than merging, so run state is cleared, but agentcis_id is job identity and
+    // must ride across: losing it makes Re-run/Resume refuse the job forever (queue.service.ts).
+    const { freshProgress } = await import("../src/modules/superadmin/data-extraction/lib/pipeline-progress.js");
+    await masterKnex("superadmin.extraction_jobs").where({ id: job.id })
+      .update({ pipeline_progress: masterKnex.raw("pipeline_progress || ?::jsonb", [JSON.stringify({ completion_email: "sent", post_extraction_chain: ["branches"] })]) });
+    await masterKnex("superadmin.extraction_jobs").where({ id: job.id })
+      .update({ pipeline_progress: freshProgress({ site_map: "processing", site_snapshot: "waiting" }) });
+    const afterFresh = await masterKnex("superadmin.extraction_jobs").where({ id: job.id }).first();
+    assert(afterFresh.pipeline_progress.agentcis_id === "12345", "freshProgress carries agentcis_id across a run start");
+    assert(afterFresh.pipeline_progress.site_map === "processing", "freshProgress writes the new step keys");
+    assert(afterFresh.pipeline_progress.completion_email === undefined, "freshProgress still CLEARS completion_email, so the next run can mail again");
+    assert(afterFresh.pipeline_progress.post_extraction_chain === undefined, "freshProgress still CLEARS post_extraction_chain, so no stale chain is resumed");
+    assert(afterFresh.pipeline_progress.phase === undefined, "freshProgress drops the import's own run counters");
+
+    // A non-AgentCIS job must not gain a null agentcis_id key from the carry-across.
+    const [plain] = await masterKnex("superadmin.extraction_jobs")
+      .insert({ institution_url: "https://fresh-progress-test.invalid", source_type: "institution", status: "processing", pipeline_progress: JSON.stringify({ site_map: "done" }) })
+      .returning("id");
+    try {
+      await masterKnex("superadmin.extraction_jobs").where({ id: plain.id })
+        .update({ pipeline_progress: freshProgress({ site_map: "processing" }) });
+      const afterPlain = await masterKnex("superadmin.extraction_jobs").where({ id: plain.id }).first();
+      assert(!("agentcis_id" in afterPlain.pipeline_progress), "freshProgress adds no null agentcis_id to a non-AgentCIS job");
+    } finally {
+      await masterKnex("superadmin.extraction_jobs").where({ id: plain.id }).delete();
+    }
   } finally {
     await masterKnex("superadmin.extraction_jobs").where({ id: job.id }).delete();
     await masterKnex.destroy();

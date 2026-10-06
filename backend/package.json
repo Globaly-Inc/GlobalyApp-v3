@@ -67,6 +67,7 @@
     "test:agentcis-intakes": "node --import tsx tests/agentcis-intakes.ts",
     "test:agentcis-writecourse-guardrail": "node --import tsx tests/agentcis-writecourse-guardrail.ts",
     "test:agentcis-enrich-from-web": "node --import tsx tests/agentcis-enrich-from-web.ts",
+    "test:agentcis-progress-merge": "node --import tsx tests/agentcis-progress-merge.ts",
     "test:course-degree-qualifier-matching": "node --import tsx tests/course-degree-qualifier-matching.ts",
     "test:study-option-dedup": "node --import tsx tests/study-option-dedup.ts",
     "test:agentcis-product-duration-weeks": "node --import tsx tests/agentcis-product-duration-weeks.ts",

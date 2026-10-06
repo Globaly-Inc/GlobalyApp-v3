@@ -15,6 +15,7 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { isConfigured } from "../lib/llm-client.js";
 import { writeJobEvent } from "../lib/staging-writer.js";
+import { freshProgress } from "../lib/pipeline-progress.js";
 
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
@@ -53,7 +54,7 @@ await queueService.consume(EXTRACTION_QUEUES.JOBS, async (msg) => {
       status: "processing",
       processing_heartbeat_at: masterKnex.fn.now(),
       // Legacy keys the job row still reads, plus the per-step keys the new tabs read.
-      pipeline_progress: JSON.stringify({
+      pipeline_progress: freshProgress({
         site_mapping: "processing", course_discovery: "waiting", data_extraction: "waiting", verification: "waiting",
         site_map: "processing", site_snapshot: "waiting", site_analysis: "waiting", url_classify: "waiting", queue_pages: "waiting",
       }),

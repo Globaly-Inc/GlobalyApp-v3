@@ -320,6 +320,9 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
     return n > 0;
   }
 
+  const countScraped = () =>
+    masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).increment("pages_scraped", 1);
+
   // Re-checked right after the AI call, before writing any course/campus/intake/visa-service data
   // below — a reclaim can land at any point (it isn't a lock), and this is the cheapest place to
   // catch it: after the one AI call this attempt is ever going to make, but before any of that
@@ -533,6 +536,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
         logger.info("Fenced out — a newer attempt owns this item, dropping stale thin-page skip", { jobId, queueItemId, url });
         return;
       }
+      await countScraped();
       await writeJobEvent(jobId, "page_skipped_thin", {
         phase: "data_extraction",
         message: `Skipped model call: ${url} has ${page.markdown.length} chars (under ${MIN_EXTRACTABLE_CHARS})`,
@@ -556,6 +560,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
           logger.info("Fenced out — a newer attempt owns this item, dropping stale Jev skip", { jobId, queueItemId, url });
           return;
         }
+        await countScraped();
         await writeJobEvent(jobId, "page_skipped_jev", {
           phase: "data_extraction",
           message: `Skipped model call: ${url} is not a programme page (Jev p=${gate.p?.toFixed(2)} < ${gate.threshold})`,
@@ -917,7 +922,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
     if (entitiesWritten > 0) {
       await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).increment("courses_extracted", entitiesWritten);
     }
-    await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).increment("pages_scraped", 1);
+    await countScraped();
 
     if (overflowQueued > 0) {
       await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({

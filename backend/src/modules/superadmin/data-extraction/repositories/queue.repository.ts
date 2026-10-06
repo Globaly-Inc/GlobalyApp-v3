@@ -2,6 +2,7 @@
 
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { deleteSiteUrls } from "./site-urls.repository.js";
+import { freshProgress } from "../lib/pipeline-progress.js";
 
 const T = "superadmin.extraction_queue";
 const T_JOBS = "superadmin.extraction_jobs";
@@ -126,7 +127,7 @@ export async function resetPipeline(jobId: string, adminId: number) {
       pages_scraped: 0,
       pages_failed: 0,
       processing_heartbeat_at: null,
-      pipeline_progress: JSON.stringify({
+      pipeline_progress: freshProgress({
         site_mapping: "waiting",
         course_discovery: "waiting",
         data_extraction: "waiting",
