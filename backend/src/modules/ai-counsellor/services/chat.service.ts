@@ -237,9 +237,12 @@ export async function handleMessage(opts: {
           rackInstitutionId: institutionId,
           skipCourses: discoveryTurn,
           pinnedCourseIds,
+          priorQuestion: rag.lastAssistantQuestion(prevMessages),
           onTrace: trace,
         }),
-        institutionId
+        // Courtesy turns skip the memory embedding for the same reason searchAll skips its
+        // searches: there is nothing in "thanks" to retrieve guidance for.
+        institutionId && !rag.isCourtesyTurn(opts.content, rag.lastAssistantQuestion(prevMessages))
           ? retrieveMemories({
               institutionId,
               institutionName: opts.embed?.config.display_name,

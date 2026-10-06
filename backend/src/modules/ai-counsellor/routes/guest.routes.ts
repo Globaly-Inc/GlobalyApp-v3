@@ -372,9 +372,12 @@ export async function guestRoutes(app: FastifyInstance) {
           jobIds: embed?.jobIds,
           rackInstitutionId: embed?.rackInstitutionId,
           pinnedCourseIds: rag.pinnedCourseIdsFrom(prevMessages),
+          priorQuestion: rag.lastAssistantQuestion(prevMessages),
           onTrace: trace,
         }),
-        embed?.rackInstitutionId
+        // Courtesy turns skip the memory embedding for the same reason searchAll skips its
+        // searches: there is nothing in "thanks" to retrieve guidance for.
+        embed?.rackInstitutionId && !rag.isCourtesyTurn(asked, rag.lastAssistantQuestion(prevMessages))
           ? retrieveMemories({
               institutionId: embed.rackInstitutionId,
               institutionName: embed.config.display_name,

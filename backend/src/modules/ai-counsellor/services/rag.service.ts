@@ -5,7 +5,7 @@ import type { CounsellingContext } from "../repositories/sessions.repository.js"
 // One card mapping and one chunk-budget rule for both retrieval paths — a divergence
 // here would mean the legacy path and the tool path emitting different course-card
 // shapes, or handing the model different amounts of rack context for the same question.
-import { capPerDocument, courseCardFields, feeLine, rankFees } from "../lib/tools.js";
+import { selectChunks, courseCardFields, feeLine, rankFees } from "../lib/tools.js";
 // Same cross-module import the ai-knowledge crawl worker uses — one embedding client for the platform.
 import { embed, isEmbedConfigured as embeddingConfigured } from "../../superadmin/data-extraction/lib/llm-client.js";
 
@@ -27,6 +27,62 @@ function extractKeywords(query: string): string[] {
     // Strip punctuation — "australia?" must search as "australia"
     .map(w => w.replace(/[^\p{L}\p{N}]/gu, ""))
     .filter(w => w.length > 2 && !STOPWORDS.has(w));
+}
+
+/** Turns that close the conversation. `extractKeywords` keeps every one of these (none is a
+ * stopword and all are >2 chars), so until now a goodbye cost a ten-way search plus a rack
+ * embedding to answer one word. They still see the courses already on screen — they fall
+ * through to the pinned-only path in searchAll. */
+const CLOSING_RE =
+  /^(thanks?|thank you|ty|no thanks?|nope|nothing( else)?|that'?s (it|all)|bye|goodbye|see you|cheers)[\s!.,]*$/i;
+
+/** Acknowledgements, which are closers ONLY when nothing was asked. After the counsellor's own
+ * question these are the student saying YES — "yep" to "shall I show you Melbourne courses?"
+ * must retrieve those courses, not end the turn with nothing to show. */
+const ACK_RE =
+  /^(ok(ay)?|k|cool|great|nice|perfect|awesome|lovely|got it|understood|sure|yep|yup|yeah|alright)[\s!.,]*$/i;
+
+export function isCourtesyTurn(message: string, priorQuestion?: string | null): boolean {
+  const text = message.trim();
+  return CLOSING_RE.test(text) || (!priorQuestion && ACK_RE.test(text));
+}
+
+/** The counsellor's own last question, when its answer is what the student just sent.
+ * A short reply ("yes", "the second one", "September") carries no searchable subject of
+ * its own — the subject is in the question it answers, so that is what we search. */
+export function lastAssistantQuestion(
+  messages: Array<{ role: string; content: string }>,
+): string | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === "user") continue;
+    const text = messages[i].content;
+    return text.includes("?") ? text : null;
+  }
+  return null;
+}
+
+/**
+ * What this turn should actually search for.
+ *
+ * Two turns searched badly before this existed, both because `extractKeywords` keeps any word
+ * over two letters that isn't a stopword:
+ * - "thanks" / "no thanks" / "bye" searched for themselves — a ten-way search plus a rack
+ *   embedding spent on a goodbye.
+ * - "yes", "September", "the second one" searched for themselves too, which matches nothing,
+ *   so "yes" answering "shall I show you Melbourne courses?" left the counsellor with no
+ *   courses to show. The subject of a short reply lives in the question it answers.
+ *
+ * Empty keywords are not a dead end: searchAll still answers from the courses already on screen.
+ */
+export function retrievalKeywords(
+  query: string,
+  priorQuestion?: string | null,
+): { keywords: string[]; fromPriorQuestion: boolean } {
+  const own = isCourtesyTurn(query, priorQuestion) ? [] : extractKeywords(query);
+  if (own.length > 1 || !own.length || !priorQuestion) return { keywords: own, fromPriorQuestion: false };
+  const borrowed = extractKeywords(priorQuestion);
+  if (!borrowed.length) return { keywords: own, fromPriorQuestion: false };
+  return { keywords: [...new Set([...borrowed, ...own])], fromPriorQuestion: true };
 }
 
 // ── Country detection (scopes Knowledge Rack retrieval to country-specific categories) ──
@@ -88,7 +144,7 @@ async function matchRack(
   trace: (step: string) => void,
   institutionId?: number | null,
 ): Promise<knowledge.KnowledgeChunkResult[]> {
-  const capped = capPerDocument(await knowledge.matchKnowledgeChunks(vector, 8, countryCode, institutionId));
+  const capped = selectChunks(await knowledge.matchKnowledgeChunks(vector, 8, countryCode, institutionId));
   trace(institutionId ? `This website: ${capped.length} passages found` : `Knowledge rack: ${capped.length} chunks found`);
   return capped;
 }
@@ -213,6 +269,9 @@ export async function searchAll(opts: {
   /** Discovery turn: skip course retrieval so the model counsels instead of
    * recommending — it cannot list courses it never saw. */
   skipCourses?: boolean;
+  /** The counsellor's last question, when the student's message is the answer to it —
+   * see lastAssistantQuestion. Searched in place of a reply too thin to search. */
+  priorQuestion?: string | null;
   /** Embed mode: read THIS institution's own crawled website instead of the global rack.
    *  Unset for a business widget, which keeps the rack switched off entirely. */
   rackInstitutionId?: number | null;
@@ -223,7 +282,7 @@ export async function searchAll(opts: {
   onTrace?: (step: string) => void;
 }): Promise<RagOutput> {
   const embedScoped = opts.jobIds != null;
-  const keywords = extractKeywords(opts.query);
+  const { keywords, fromPriorQuestion } = retrievalKeywords(opts.query, opts.priorQuestion);
   const searchQuery = keywords.join(" ");
   const pinned = opts.pinnedCourseIds ?? [];
   const trace = (step: string) => {
@@ -233,12 +292,13 @@ export async function searchAll(opts: {
   const traceSteps: string[] = [];
 
   if (!searchQuery && !pinned.length) {
-    trace("No searchable keywords extracted");
+    trace("Nothing to search this turn");
     return { contextText: "", sources: [], traceSteps, moneyTopics: [] };
   }
 
-  if (searchQuery) trace(`Keywords: ${keywords.join(", ")}`);
-  else trace("No searchable keywords; answering from the courses already shown");
+  if (searchQuery && fromPriorQuestion) trace(`Keywords (from the question it answers): ${keywords.join(", ")}`);
+  else if (searchQuery) trace(`Keywords: ${keywords.join(", ")}`);
+  else trace("Nothing to search; answering from the courses already shown");
 
   const countryCode = await detectCountryCode(opts.query);
   if (countryCode) trace(`Country detected: ${countryCode}`);
@@ -610,7 +670,7 @@ export async function counsellorBriefing(opts: {
     const query = situation ? `${opts.message}\nStudent situation: ${situation}` : opts.message;
     const countryCode = await detectCountryCode(query);
     const vector = await embed(query);
-    const hits = capPerDocument(await knowledge.matchKnowledgeChunks(vector, 6, countryCode));
+    const hits = selectChunks(await knowledge.matchKnowledgeChunks(vector, 6, countryCode));
     opts.onTrace?.(`Knowledge rack briefing: ${hits.length} passages`);
     if (!hits.length) return empty;
     return renderRackHits(hits);
