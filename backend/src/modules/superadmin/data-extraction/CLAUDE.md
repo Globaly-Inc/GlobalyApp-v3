@@ -171,6 +171,7 @@ The centralized error handler maps these to HTTP responses.
    in the job header) raises the cap by 500 and re-dispatches the job worker —
    dedupe skips everything already queued, so only newly discovered pages bill.
    No V2 equivalent — cost guardrail, explicitly requested (V2 had no page cap).
+   **SUPERSEDED 2026-10-06 — the cap is OFF by default. See "Jobs are uncapped" below.**
    Exception: eligibility + intake storage repair (2026-09-04) — six changes to how
    entry requirements and intakes are stored, none a V2 behavior, all data-correctness
    fixes. See `docs/data-extraction/2026-09-04-eligibility-intake-storage-plan.md` for
@@ -1118,6 +1119,42 @@ written for the AgentCIS work and are all absent from `src/` today, while the in
 replaced came back. Before starting an AgentCIS defect, grep for the helper the docs name and
 confirm it still exists. **Still missing and not restored:** `additiveOverviewUpdate` protected the
 feed's email/phone/address from being overwritten by a crawled contact page during enrichment.
+
+## Jobs are uncapped: page_cap NULL = no limit (2026-10-06)
+
+User decision. A job now queues every course URL discovery approved, however many that is.
+Migration `20261006_001` drops the `NOT NULL DEFAULT 500` and clears the column on existing jobs.
+
+**Why the 500 default had to go:** it was discarding the majority of discovery on most sites.
+Measured over the live jobs — 6 of 11 had more than 500 active URLs, the largest 13,373, average
+3,186 — and one job found 4,969 course pages and queued 500 of them. That is a large part of why
+yields looked low; see [[page yield audit]] in the notes.
+
+**The limit still exists, it is just off by default.** Set `page_cap` to a number on one job and
+every reader honours it again (verified: a job capped at 30 queues 30 and refuses the rest). There
+is NO API or UI for it — no route or schema references the column, and `raisePageCap` only
+increments — so it is a SQL update today. A review bot reads "the cap was removed" as unbounded
+cost and files it as P1 on sight; the answer is that the default inverted, not that the lever went.
+
+**NULL broke three readers, and every one failed SILENTLY — check these before touching the cap:**
+- `insertQueueItemDetailed` — `count < NULL` is NULL, not TRUE, so the insert's WHERE queued NOTHING
+- `atPageCap` — `rows[0]?.capped ?? true` read NULL as "capped", stopping discovery immediately
+- `dispatchSnapshotBatches` — `Number(null) || 500` silently re-capped the snapshot at 500
+That last one is why the function takes `number | null` now: its internal `pageCap || 500` was a
+second place a silent 500 could come back, and callers pass `job.page_cap ?? null` rather than
+faking "unlimited" with `urls.length`.
+
+**What bounds a run now:** the `course` category (only those are queued), `CLASSIFY_ALL_CAP`
+(25,000, `EXTRACTION_CLASSIFY_CAP`), `CRAWL_BUDGET` (300), `MAX_TYPE_URLS` (10). Classification is
+~1% of LLM calls; `course_extraction` is the spend that removing the cap multiplies. Watch
+`extraction_llm_usage` after a big re-run — and note `LLM_MODEL_PRICES` must be set for costs to
+read as dollars rather than tokens.
+
+**Deep Scrape is hidden** (`job-header.tsx`), component and route left in place. With no cap it
+bought nothing, and it is NOT Resume: it re-runs discovery from `site_map` but does NOT re-dispatch
+rows already `pending`, because `queue_pages` sees them as duplicates and publishes nothing. A
+paused job with pending pages needs RESUME. Known gap, accepted: there is now no action that
+rediscovers a site while keeping completed queue work — Re-run wipes the queue first.
 
 ## Stale queue-item reclaim (2026-09-15)
 

@@ -394,6 +394,17 @@ export type FilterUrlsReport = {
 
 const DROP_SAMPLE_SIZE = 5;
 
+export function redactUrlForSample(url: string): string {
+  try {
+    const u = new URL(url);
+    for (const key of [...u.searchParams.keys()]) u.searchParams.set(key, "[redacted]");
+    u.hash = "";
+    return decodeURIComponent(u.toString());
+  } catch {
+    return "[unparseable url]";
+  }
+}
+
 export function filterUrlsDetailed(urls: string[], base: string): FilterUrlsReport {
   const dropped = {
     invalid_url: { count: 0, sample: [] as string[] },
@@ -406,7 +417,7 @@ export function filterUrlsDetailed(urls: string[], base: string): FilterUrlsRepo
   const drop = (reason: FilterDropReason, url: string) => {
     const d = dropped[reason];
     d.count++;
-    if (d.sample.length < DROP_SAMPLE_SIZE) d.sample.push(url);
+    if (d.sample.length < DROP_SAMPLE_SIZE) d.sample.push(redactUrlForSample(url));
   };
 
   const seen = new Set<string>();

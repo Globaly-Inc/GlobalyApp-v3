@@ -268,7 +268,10 @@ export async function deepScrape(jobId: string, adminId: number) {
     if (pageCap == null) {
       throw new BadRequestError("This job is already exported — use Reset Pipeline to re-crawl it from scratch");
     }
-  } else if (job.status === "exported") {
+  } else if (!(await repo.claimJobUnlessExported(jobId, adminId))) {
+    // Atomic, not `job.status === "exported"` on the row loaded above: a promotion landing between
+    // that read and this point would otherwise record the action and report success while the
+    // worker skips the job. The route stays callable even with its button hidden.
     throw new BadRequestError("This job is already exported — use Reset Pipeline to re-crawl it from scratch");
   }
   await repo.reactivateJob(jobId, adminId);

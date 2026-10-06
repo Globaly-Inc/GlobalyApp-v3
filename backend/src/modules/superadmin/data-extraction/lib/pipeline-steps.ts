@@ -380,7 +380,8 @@ export async function runSiteAnalysis(jobId: string, job: JobRow): Promise<strin
 const CLASSIFIER_BATCH = 200;
 const EXCERPT_CHARS = 300;
 const EXCERPT_CONCURRENCY = 8;
-const CLASSIFY_ALL_CAP = Number(process.env.EXTRACTION_CLASSIFY_CAP) || 25_000;
+const CLASSIFY_CAP_ENV = Number(process.env.EXTRACTION_CLASSIFY_CAP);
+const CLASSIFY_ALL_CAP = Number.isInteger(CLASSIFY_CAP_ENV) && CLASSIFY_CAP_ENV > 0 ? CLASSIFY_CAP_ENV : 25_000;
 
 /** First EXCERPT_CHARS of each snapshotted page, keyed by normalised URL. Pages not yet snapshotted are absent.
  *  One file read per URL, a few at a time — never a scrape. */
