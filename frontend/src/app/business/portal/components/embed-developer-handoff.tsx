@@ -91,14 +91,14 @@ export function EmbedDeveloperHandoff({ developers }: Readonly<{ developers: Dev
     <div className="rounded-lg border border-border bg-muted/30 p-3">
       <div className="flex flex-wrap items-start justify-between gap-x-3 gap-y-2">
         <div className="min-w-0">
-          <p className="text-sm font-medium">Send it to whoever looks after your website</p>
+          <p className="text-sm font-medium">Please send this to the people who look after your website.</p>
           <p className="text-sm text-muted-foreground">
             They get the code and where to put it. No account, no invitation in GlobalyApp.
           </p>
         </div>
         <Button size="sm" onClick={() => setMailOpen(true)} className="shrink-0 cursor-pointer">
           <Mail className="mr-1.5 h-4 w-4" aria-hidden />
-          {developers.length ? "Send to someone else" : "Email the code"}
+          {developers.length ? "Send to someone else" : "Email the script"}
         </Button>
       </div>
 

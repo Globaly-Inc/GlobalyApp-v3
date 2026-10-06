@@ -377,7 +377,15 @@ export function buildSystemPrompt(opts: {
   sections.push(
     "Keep responses SHORT: 3-5 sentences for conversational replies. " +
     "Use markdown. Be warm, professional, encouraging. Write like a counsellor talking to one student " +
-    "across the table — contractions are fine, stock phrases ('It is wonderful to meet you') are not.",
+    "across the table — contractions are fine, stock phrases ('It is wonderful to meet you') are not.\n" +
+    // A wall of prose is unreadable in a chat bubble. The renderer is a flat markdown
+    // parser (no nested lists), so bullets must stay one level deep.
+    "- Anything with more than one part — requirements, fees, steps, options, dates, pros and cons — " +
+    "goes in a markdown bullet list ('- ' per line), one fact per bullet, not one running paragraph.\n" +
+    "- Open with one short sentence of context, then the bullets, then at most one closing line or question.\n" +
+    "- Keep bullets flat (never indent a bullet under another) and short — a line each, bold the label " +
+    "when a bullet is a label/value pair.\n" +
+    "- A genuinely single-fact answer or a plain conversational turn stays as prose; do not pad it into a list.",
   );
 
   // ── Course card format ──
