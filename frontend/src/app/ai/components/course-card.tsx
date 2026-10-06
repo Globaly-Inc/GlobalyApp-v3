@@ -8,6 +8,7 @@ import { useCompareTray } from "@/app/(web)/search/use-compare-tray";
 import type { CompareCourseItem } from "@/app/(web)/search/types";
 import type { CourseCard as CourseCardType } from "../apis/types";
 import { InstitutionLogo } from "@/components/institution-logo";
+import { FallbackImage } from "@/components/fallback-image";
 
 type CourseCardProps = { card: CourseCardType };
 
@@ -79,16 +80,16 @@ export function CourseCard({ card }: CourseCardProps) {
           : <Link href={href} target="_blank" rel="noopener noreferrer" className="absolute inset-0 z-10" aria-label={card.course_name} />
       )}
 
-      {/* Full-bleed background */}
-      {card.institution_cover_url ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
+      {/* Full-bleed background. The gradient is a LAYER, not an else-branch: a cover URL that
+          403s (institution covers are often private-bucket links) hides its img and falls back
+          to this instead of painting a broken-image icon across the card. */}
+      <div className="absolute inset-0 bg-gradient-to-br from-primary via-primary/70 to-primary/40" />
+      {card.institution_cover_url && (
+        <FallbackImage
           src={card.institution_cover_url}
           alt={card.institution_name}
           className="absolute inset-0 h-full w-full object-cover scale-100 transition-all duration-500 group-hover:scale-105 group-hover:blur-[2px]"
         />
-      ) : (
-        <div className="absolute inset-0 bg-gradient-to-br from-primary via-primary/70 to-primary/40" />
       )}
 
       {/* Base scrim */}
