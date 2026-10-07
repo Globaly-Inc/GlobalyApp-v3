@@ -15,6 +15,7 @@ import { allExtractionsApi } from "../apis";
 import { EditableField, type EditableFieldProps } from "./editable-field";
 import { RowActors } from "./row-actors";
 import { LogoPreview } from "./logo-preview";
+import { OverviewMediaSection } from "./overview-media-section";
 import { OtherSocialLinksField } from "./other-social-links-field";
 import { OwnershipTypeField } from "./ownership-type-field";
 import type { InstitutionOverview } from "../apis/types";
@@ -230,6 +231,14 @@ export function InstitutionTab({ overview, jobId, onReload, isVisaServiceJob }: 
           <Field icon={MapPin} label="Address Line" value={overview.address} onSave={(v) => saveField("address", v)} multiline className="md:col-span-2" />
           <Field icon={FileText} label="Description" value={overview.description} onSave={(v) => saveField("description", v)} multiline className="md:col-span-2" />
         </Section>
+
+        <OverviewMediaSection
+          coverUrl={overview.cover_url || null}
+          gallery={overview.gallery_images ?? []}
+          // "" = cleared by an admin, kept distinct from null (never set) so the homepage pick won't refill it.
+          onSaveCover={(v) => saveField("cover_url", v ?? "")}
+          onSaveGallery={(v) => saveField("gallery_images", v)}
+        />
 
         <Section icon={Share2} title="Social Media">
           <Field icon={Link2} label="Facebook" value={overview.facebook_url} onSave={(v) => saveField("facebook_url", v)} />

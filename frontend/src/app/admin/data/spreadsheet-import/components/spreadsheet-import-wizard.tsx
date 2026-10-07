@@ -6,15 +6,14 @@ import { toast } from "sonner";
 import { ArrowRight, ChevronLeft, Loader2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { BranchStepper } from "@/app/admin/platform/businesses/components/branches/branch-stepper";
-import { DEFAULT_CURRENCY, STEPS, type InstitutionSource } from "../const";
+import { STEPS } from "../const";
 import {
-  applyTabMapping, autoMap, autoMapTabs, buildGroups, buildTemplateGroups, importPlan, isTabbedWorkbook, tabMappingProblem, validateGroups,
+  applyTabMapping, autoMapTabs, buildTemplateGroups, importPlan, tabMappingProblem, validateGroups,
 } from "../utils";
-import type { Defaults, ImportStatus, InstitutionGroup, Mapping, Sheet, TabMapping } from "../types";
+import type { ImportStatus, InstitutionGroup, Sheet, TabMapping } from "../types";
 import { spreadsheetImportApi } from "../apis";
 import { UploadStep } from "./upload-step";
 import { PreviewStep } from "./preview-step";
-import { MapStep } from "./map-step";
 import { TemplateMapStep } from "./template-map-step";
 import { ValidateStep } from "./validate-step";
 import { FinalizeStep } from "./finalize-step";
@@ -30,15 +29,10 @@ export function SpreadsheetImportWizard({ onDirtyChange }: Readonly<{ onDirtyCha
   const [sheets, setSheets] = useState<Sheet[]>([]);
   const [fileName, setFileName] = useState("");
   const [selected, setSelected] = useState<string[]>([]);
-  const [source, setSource] = useState<InstitutionSource>("sheet");
-  const [mapping, setMapping] = useState<Mapping>({});
-  const [defaults, setDefaults] = useState<Defaults>({});
   const [groups, setGroups] = useState<InstitutionGroup[]>([]);
   const [existingNames, setExistingNames] = useState<string[]>([]);
   const [statuses, setStatuses] = useState<Record<string, ImportStatus>>({});
   const [busy, setBusy] = useState(false);
-  /** Tab-per-section layout (our template, or a workbook shaped like it) rather than a course per row. */
-  const [template, setTemplate] = useState(false);
   const [tabs, setTabs] = useState<Record<string, TabMapping>>({});
   const router = useRouter();
 
@@ -49,11 +43,6 @@ export function SpreadsheetImportWizard({ onDirtyChange }: Readonly<{ onDirtyCha
     onDirtyChange?.(step > 0 && !allQueued);
   }, [step, groups, statuses, onDirtyChange]);
 
-  // Union of the selected tabs' headers, in first-seen order — tabs of one workbook share a layout.
-  const headers = useMemo(
-    () => [...new Set(sheets.filter((s) => selected.includes(s.name)).flatMap((s) => s.headers))],
-    [sheets, selected],
-  );
   const issues = useMemo(() => validateGroups(groups, existingNames), [groups, existingNames]);
   const plan = useMemo(() => importPlan(groups, issues), [groups, issues]);
   const importable = plan.filter((p) => p.rows.length > 0);
@@ -64,24 +53,16 @@ export function SpreadsheetImportWizard({ onDirtyChange }: Readonly<{ onDirtyCha
   const locked = Object.values(statuses).some((st) => st.state === "done" || (st.state === "importing" && !!st.jobId));
 
   const reset = () => {
-    setStep(0); setSheets([]); setSelected([]); setMapping({}); setDefaults({});
+    setStep(0); setSheets([]); setSelected([]);
     setGroups([]); setExistingNames([]); setStatuses({}); setTabs({});
   };
 
   const onParsed = (parsed: Sheet[], name: string) => {
     setSheets(parsed);
     setFileName(name);
-    setTemplate(isTabbedWorkbook(parsed));
+    // Every workbook is read as a tab per section (Institution, Branch, Course, …).
     setTabs(autoMapTabs(parsed));
     setSelected(parsed.map((s) => s.name));
-    const auto = autoMap([...new Set(parsed.flatMap((s) => s.headers))]);
-    setMapping(auto);
-    // No currency column → USD, shown as an editable default rather than applied silently.
-    const mapped = new Set(Object.values(auto));
-    // A column naming the institution beats the tab name — Excel cuts tab names at 31 characters.
-    setSource(mapped.has("institution_name") ? "column" : "sheet");
-    const mapsTuition = ["fee_amount", "domestic_fee_amount", "both_fee_amount"].some((k) => mapped.has(k));
-    setDefaults(mapsTuition && !mapped.has("fee_currency") ? { fee_currency: DEFAULT_CURRENCY } : {});
     setStep(1);
   };
 
@@ -97,12 +78,14 @@ export function SpreadsheetImportWizard({ onDirtyChange }: Readonly<{ onDirtyCha
 
   const next = async () => {
     if (step === 1 && selected.length === 0) { toast.error("Select at least one tab"); return; }
-    if (step === 2 && template) {
+    if (step === 2) {
       const problem = tabMappingProblem(selected, tabs);
       if (problem) { toast.error(problem); return; }
       setBusy(true);
       try {
-        const built = buildTemplateGroups(applyTabMapping(sheets, selected, tabs), selected);
+        // Mapped sheets include rows built from cross-section columns, so select them all by name.
+        const mappedSheets = applyTabMapping(sheets, selected, tabs);
+        const built = buildTemplateGroups(mappedSheets, mappedSheets.map((s) => s.name));
         // One institution per workbook: the Institution tab names exactly one.
         if (built.length !== 1) {
           toast.error("One institution at a time", {
@@ -120,22 +103,6 @@ export function SpreadsheetImportWizard({ onDirtyChange }: Readonly<{ onDirtyCha
         setBusy(false);
       }
       return;
-    }
-    if (step === 2) {
-      const mapped = new Set(Object.values(mapping));
-      if (!mapped.has("course_name")) { toast.error("Map a column to Course name"); return; }
-      if (source === "column" && !mapped.has("institution_name")) { toast.error("Map a column to Institution name, or take names from the tab"); return; }
-      setBusy(true);
-      try {
-        const built = buildGroups(sheets, selected, mapping, defaults, source);
-        setGroups(built);
-        setStatuses({});
-        await checkNames(built);
-      } catch (e) {
-        { toast.error("Couldn't check institution names", { description: (e as Error).message }); return; }
-      } finally {
-        setBusy(false);
-      }
     }
     if (step === 3) {
       setBusy(true);
@@ -165,12 +132,13 @@ export function SpreadsheetImportWizard({ onDirtyChange }: Readonly<{ onDirtyCha
       await new Promise((r) => setTimeout(r, POLL_INTERVAL_MS));
       for (const [groupId, jobId] of queued) {
         const job = await spreadsheetImportApi.getJobStatus(jobId).catch(() => null);
-        if (job?.status !== "done" && job?.status !== "failed") continue;
+        // Staging finishes at "review" (courses await approval); "done" is from before that change.
+        if (!job || !["review", "done", "failed"].includes(job.status)) continue;
         queued.delete(groupId);
         if (job.status === "failed") failed++;
         setStatuses((s) => ({
           ...s,
-          [groupId]: job.status === "done" ? { state: "done", jobId } : { state: "failed", jobId, error: job.error ?? "Failed while importing" },
+          [groupId]: job.status !== "failed" ? { state: "done", jobId } : { state: "failed", jobId, error: job.error ?? "Failed while importing" },
         }));
       }
     }
@@ -189,7 +157,17 @@ export function SpreadsheetImportWizard({ onDirtyChange }: Readonly<{ onDirtyCha
       if (pending?.state === "importing" && pending.jobId) { queued.set(g.id, pending.jobId); continue; }
       setStatuses((s) => ({ ...s, [g.id]: { state: "importing" } }));
       try {
-        const { job_id } = await spreadsheetImportApi.importInstitution({ institution: { ...g.institution, name: g.name.trim() }, rows, extras: g.extras });
+        // Rows the Validate step blocked, one entry per row with all its reasons.
+        const blocked = new Map<number, string[]>();
+        for (const i of issues) if (i.groupId === g.id && i.blocking && i.row > 0) blocked.set(i.row, [...(blocked.get(i.row) ?? []), i.message]);
+        // Every row is reported by its workbook line, so history entries point at the admin's sheet.
+        const lineOf = (i: number) => g.rowLines?.[i] ?? i + 1;
+        const skipped = [
+          ...(g.droppedCourses ?? []),
+          ...[...blocked].map(([row, errs]) => ({ row: lineOf(row - 1), course: g.rows[row - 1]?.course_name ?? null, error: errs.join("; ") })),
+        ];
+        const row_lines = g.rows.map((_, i) => lineOf(i)).filter((_, i) => !blocked.has(i + 1));
+        const { job_id } = await spreadsheetImportApi.importInstitution({ institution: { ...g.institution, name: g.name.trim() }, rows, extras: g.extras, skipped, row_lines });
         queued.set(g.id, job_id);
         setStatuses((s) => ({ ...s, [g.id]: { state: "importing", jobId: job_id } }));
       } catch (e) {
@@ -236,12 +214,9 @@ export function SpreadsheetImportWizard({ onDirtyChange }: Readonly<{ onDirtyCha
           <div className="min-h-0 flex-1 overflow-y-auto">
           {step === 0 && <UploadStep onParsed={onParsed} />}
           {step === 1 && (
-            <PreviewStep sheets={sheets} fileName={fileName} selected={selected} onSelectedChange={setSelected} source={source} onSourceChange={setSource} template={template} onTemplateChange={setTemplate} />
+            <PreviewStep sheets={sheets} fileName={fileName} selected={selected} onSelectedChange={setSelected} />
           )}
-          {step === 2 && template && <TemplateMapStep sheets={sheets} selected={selected} tabs={tabs} onTabsChange={setTabs} />}
-          {step === 2 && !template && (
-            <MapStep headers={headers} mapping={mapping} onMappingChange={setMapping} defaults={defaults} onDefaultsChange={setDefaults} source={source} />
-          )}
+          {step === 2 && <TemplateMapStep sheets={sheets} selected={selected} tabs={tabs} onTabsChange={setTabs} />}
           {step === 3 && <ValidateStep groups={groups} onGroupsChange={setGroups} issues={issues} onEditMapping={() => setStep(2)} />}
           {step === 4 && <FinalizeStep plan={plan} issues={issues} statuses={statuses} />}
           </div>

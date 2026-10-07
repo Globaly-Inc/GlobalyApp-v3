@@ -26,14 +26,10 @@ export function ProfileLocationsSection({
   profile,
   countries,
   readOnly,
-  hasBranches,
 }: Readonly<{
   profile: BusinessProfile;
   countries: Country[];
   readOnly: boolean;
-  /** Institutions own campuses, not branches, and `/businesses/branches` 403s without a business
-   *  context — so for them the card shows the one address and skips the request entirely. */
-  hasBranches: boolean;
 }>) {
   const dispatch = useAppDispatch();
   const { isPublic, toggle, canToggle } = useSectionVisibility(profile);
@@ -48,7 +44,8 @@ export function ProfileLocationsSection({
   // that follows a profile change, and a refetch that fails parks on "failed" with rows still in
   // the list; either way the card would put edit pencils on addresses this profile doesn't own.
   const [loadedFor, setLoadedFor] = useState<number | null>(null);
-  const showBranches = hasBranches && branchOwnerId === profile.id && loadedFor === profile.id && branchStatus === "idle";
+  // Institutions too: fetchBranches routes their session to /institutions/branches (getOrgBase).
+  const showBranches = branchOwnerId === profile.id && loadedFor === profile.id && branchStatus === "idle";
   const branches = showBranches ? branchRows : [];
 
   // Keyed to the profile, not a bare boolean: the guard is there because Strict Mode double-invokes
@@ -56,14 +53,14 @@ export function ProfileLocationsSection({
   // and a `true` that never resets would pin the card to whichever business mounted first.
   const fetchedForRef = useRef<number | null>(null);
   useEffect(() => {
-    if (!hasBranches || fetchedForRef.current === profile.id) return;
+    if (fetchedForRef.current === profile.id) return;
     fetchedForRef.current = profile.id;
     dispatch(fetchBranches({ id: profile.id, params: { limit: BRANCH_LIMIT } }))
       .unwrap()
       .then(() => setLoadedFor(profile.id))
       // The slice already records the failure; the card just keeps showing the business address.
       .catch(() => {});
-  }, [dispatch, hasBranches, profile.id]);
+  }, [dispatch, profile.id]);
 
   const [editing, setEditing] = useState<LocationTarget | null>(null);
 

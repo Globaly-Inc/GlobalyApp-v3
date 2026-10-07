@@ -4,23 +4,17 @@ import { useState } from "react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
-import type { InstitutionSource } from "../const";
 import type { Sheet } from "../types";
 
 const PREVIEW_ROWS = 5;
 
 export function PreviewStep({
-  sheets, fileName, selected, onSelectedChange, source, onSourceChange, template, onTemplateChange,
+  sheets, fileName, selected, onSelectedChange,
 }: Readonly<{
   sheets: Sheet[];
   fileName: string;
   selected: string[];
   onSelectedChange: (names: string[]) => void;
-  source: InstitutionSource;
-  onSourceChange: (s: InstitutionSource) => void;
-  /** Template workbook: names come from each tab's Institution Name column, so no choice to make. */
-  template?: boolean;
-  onTemplateChange?: (t: boolean) => void;
 }>) {
   const [focused, setFocused] = useState(sheets[0]?.name ?? "");
   const sheet = sheets.find((s) => s.name === focused) ?? sheets[0];
@@ -38,22 +32,6 @@ export function PreviewStep({
           <p className="text-sm text-muted-foreground">
             {sheets.length} tab{sheets.length === 1 ? "" : "s"} · {selected.length} selected · {totalRows} rows
           </p>
-        </div>
-        <div className="flex flex-col items-end gap-2 text-sm">
-          <Toggle
-            label="Layout:"
-            options={[["tabs", "A tab per section"], ["rows", "A tab per institution"]]}
-            value={template ? "tabs" : "rows"}
-            onChange={(v) => onTemplateChange?.(v === "tabs")}
-          />
-          {!template && (
-            <Toggle
-              label="Institution name from:"
-              options={[["sheet", "Tab name"], ["column", "A column"]]}
-              value={source}
-              onChange={(v) => onSourceChange(v as InstitutionSource)}
-            />
-          )}
         </div>
       </div>
 
@@ -99,30 +77,6 @@ export function PreviewStep({
           </div>
         )}
       </div>
-    </div>
-  );
-}
-
-/** A labelled pair of pill buttons — the Preview step's two layout choices. */
-function Toggle({ label, options, value, onChange }: Readonly<{
-  label: string; options: [string, string][]; value: string; onChange: (v: string) => void;
-}>) {
-  return (
-    <div className="flex items-center gap-2">
-      <span className="text-muted-foreground">{label}</span>
-      {options.map(([v, text]) => (
-        <button
-          key={v}
-          type="button"
-          onClick={() => onChange(v)}
-          className={cn(
-            "cursor-pointer rounded-md border px-2.5 py-1 text-xs font-medium",
-            value === v ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground",
-          )}
-        >
-          {text}
-        </button>
-      ))}
     </div>
   );
 }

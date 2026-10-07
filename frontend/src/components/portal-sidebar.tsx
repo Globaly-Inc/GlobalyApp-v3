@@ -115,7 +115,7 @@ export function PortalSidebar({ groups }: Readonly<{ groups: PortalNavGroup[] }>
                   )}
                 >
                   <group.icon className="h-5 w-5" />
-                  <span className="max-w-full truncate text-center text-[10px] font-medium leading-tight">
+                  <span className="max-w-full truncate text-center text-[10px] font-medium leading-tight" title={group.label}>
                     {group.label}
                   </span>
                 </Link>
@@ -151,7 +151,8 @@ export function PortalSidebar({ groups }: Readonly<{ groups: PortalNavGroup[] }>
                     />
                   )}
                   <item.icon className="h-4 w-4 shrink-0" />
-                  <span className="truncate">{item.label}</span>
+                  {/* Native tooltip: the 180px column cuts longer labels ("Spreadsheet Import"). */}
+                  <span className="truncate" title={item.label}>{item.label}</span>
                 </Link>
               );
             })}

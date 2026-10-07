@@ -339,7 +339,8 @@
     scrollbar-width: thin;
   }
   .scrollbar-thin::-webkit-scrollbar {
-    height: 6px;
+    width: 6px; /* vertical lists */
+    height: 6px; /* horizontal rows */
   }
   .scrollbar-thin::-webkit-scrollbar-track {
     background: transparent;

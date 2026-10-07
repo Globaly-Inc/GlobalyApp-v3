@@ -10,6 +10,7 @@ import {
   ChevronDown,
   ChevronUp,
   Eye,
+  FileSpreadsheet,
   FileText,
   Globe,
   Landmark,
@@ -144,6 +145,12 @@ export function ExtractionJobRow({
               <p className="font-semibold text-foreground truncate">{job.institution_name || job.institution_url}</p>
               <ExtractionStatusBadge status={job.status} />
               <NeedsAttentionBadge job={job} />
+              {job.source_type === "spreadsheet" && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700">
+                  <FileSpreadsheet className="h-3 w-3" />
+                  Spreadsheet
+                </span>
+              )}
             </div>
             <div className="flex flex-wrap items-center gap-3 mt-1.5 text-sm text-muted-foreground">
               <span className="flex items-center gap-1 truncate">

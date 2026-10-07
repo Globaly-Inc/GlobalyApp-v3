@@ -19,7 +19,7 @@ import {
   updateBusinessPublished,
   updateBusinessStatus,
 } from "../store/businesses-slice";
-import type { Business, BusinessSort, ListingRef } from "../apis/types";
+import type { Business, BusinessListParams, BusinessSort, ListingRef } from "../apis/types";
 import { BusinessCard } from "./shared/business-card";
 import { DeleteBusinessDialog } from "./shared/delete-business-dialog";
 import { BulkDeleteDialog } from "./shared/bulk-delete-dialog";
@@ -158,7 +158,7 @@ export function BusinessesView() {
     search: debouncedSearch || undefined,
     status: statusFilter !== "all" ? statusFilter : undefined,
     category: categoryFilter !== "all" ? Number(categoryFilter) : undefined,
-    origin: sourceFilter !== "all" ? (sourceFilter as Business["origin"]) : undefined,
+    origin: sourceFilter !== "all" ? (sourceFilter as BusinessListParams["origin"]) : undefined,
     ownership: ownershipFilter !== "all" ? (ownershipFilter as "owned" | "unclaimed") : undefined,
     sort: sort as BusinessSort,
     page,

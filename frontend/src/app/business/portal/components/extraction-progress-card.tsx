@@ -1,16 +1,14 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
 import { BookOpen, CheckCircle2, Loader2, XCircle } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
-import { businessApi } from "../../apis";
-import type { ExtractionCounts, ExtractionStatus } from "../../apis/types";
-import { EXTRACTION_POLL_INTERVAL_MS as POLL_INTERVAL_MS, EXTRACTION_MAX_POLLS as MAX_POLLS } from "../const";
+import { useAppSelector } from "@/lib/hooks";
+import type { ExtractionCounts } from "../../apis/types";
+import { EXTRACTION_TERMINAL_STATUSES as TERMINAL_STATUSES } from "../const";
 
-const TERMINAL_STATUSES = new Set(["done", "exported", "approved", "verified", "review", "failed", "declined"]);
 const FAILED_STATUSES = new Set(["failed", "declined"]);
 
 const SECONDARY_COUNTS: { key: keyof ExtractionCounts; label: string }[] = [
@@ -25,26 +23,10 @@ const SECONDARY_COUNTS: { key: keyof ExtractionCounts; label: string }[] = [
   { key: "agents", label: "Agents" },
 ];
 
-/** Shown in place of StartExtractionCard once a real job is linked — polls until the job finishes. */
+/** Shown in place of StartExtractionCard once a real job is linked. BusinessShell polls the status
+ * (it also gates the nav on it); this card only renders it. */
 export function ExtractionProgressCard({ sharedFrom = null }: Readonly<{ sharedFrom?: string | null }>) {
-  const [data, setData] = useState<ExtractionStatus>(null);
-  const fetchedRef = useRef(false);
-  const pollCountRef = useRef(0);
-
-  useEffect(() => {
-    if (fetchedRef.current) return;
-    fetchedRef.current = true;
-    businessApi.getExtractionStatus().then(setData).catch(() => setData(null));
-  }, []);
-
-  useEffect(() => {
-    if (!data || TERMINAL_STATUSES.has(data.status) || pollCountRef.current >= MAX_POLLS) return undefined;
-    const timer = setTimeout(() => {
-      pollCountRef.current += 1;
-      businessApi.getExtractionStatus().then(setData).catch(() => {});
-    }, POLL_INTERVAL_MS);
-    return () => clearTimeout(timer);
-  }, [data]);
+  const data = useAppSelector((state) => state.businessOnboarding.extractionStatus);
 
   if (!data) return null;
 

@@ -132,6 +132,11 @@ export const businessProfileDetailMockApi = {
     if (!branch) throw new Error("Branch not found");
     return branch;
   },
+  convertCampus: async (campusId: string, _orgBase?: string): Promise<{ branch_id: string }> => {
+    console.log("[mock] POST /branches/campuses/:id/convert", campusId);
+    await delay(300);
+    return { branch_id: campusId };
+  },
   createBranch: async (input: BranchInput, _orgBase?: string): Promise<Branch> => {
     await delay(300);
     const branch: Branch = {

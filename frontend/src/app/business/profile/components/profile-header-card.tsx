@@ -1,13 +1,13 @@
 "use client";
 
 import { useRef } from "react";
-import { Camera, Globe, Loader2, MapPin, Pencil } from "lucide-react";
+import { Camera, Globe, Link2, Loader2, MapPin, Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { CoverLogoEditor } from "@/components/cover-logo-editor";
 import { DynamicIcon } from "@/components/dynamic-icon";
 import { CroppedFileInput, type CroppedFileInputHandle } from "@/components/cropped-file-input";
-import { SocialIcon, type SocialName } from "@/app/(web)/components/social-icon";
+import { SocialIcon, socialNameForUrl, type SocialName } from "@/app/(web)/components/social-icon";
 import { externalUrl } from "@/app/(web)/components/profile/profile-section";
 import type { BusinessProfile, SocialLinks } from "@/app/business/apis/types";
 import type { Country } from "@/app/geo/apis";
@@ -163,6 +163,15 @@ export function ProfileHeaderCard({
                     <SocialIcon name={s.name} className="h-4 w-4" />
                   </a>
                 ))}
+                {/* Its brand icon when we have one (TikTok, Threads…), else a link glyph; the label on hover. */}
+                {(profile.other_social_links ?? []).map((l) => {
+                  const brand = socialNameForUrl(l.url);
+                  return (
+                    <a key={l.url} href={externalUrl(l.url)} target="_blank" rel="noopener noreferrer" aria-label={l.label} title={l.label} className={ICON_LINK}>
+                      {brand ? <SocialIcon name={brand} className="h-4 w-4" /> : <Link2 className="h-4 w-4" />}
+                    </a>
+                  );
+                })}
               </div>
             </div>
           </div>

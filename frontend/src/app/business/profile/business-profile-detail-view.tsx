@@ -10,9 +10,10 @@ import { Switch } from "@/components/ui/switch";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { geoApi, type Country } from "@/app/geo/apis";
 import { fetchMe, useAuthState, switchAccount } from "@/app/auth/store/auth-slice";
+import { saveSelectedOrgId } from "@/lib/session";
 import { fetchMyProfile, updateMyProfile } from "@/app/business/store/business-onboarding-slice";
 import { businessApi } from "@/app/business/apis";
-import type { SocialLinks } from "@/app/business/apis/types";
+import type { SocialLinksPatch } from "@/app/business/apis/types";
 import { authApi } from "@/app/auth/apis";
 import { SocialLinksDialog } from "./components/social-links-dialog";
 import { BranchesTab } from "./components/tabs/branches-tab";
@@ -118,6 +119,8 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
     dispatch(switchAccount(target.org_id))
       .unwrap()
       .then(() => {
+        // This org is now the active one — remember it, or the next page goes back to the old pick.
+        saveSelectedOrgId(target.org_id);
         setContextReady(true);
         dispatch(fetchMyProfile());
       })
@@ -159,7 +162,7 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
     toast.success(is_published ? "Profile published" : "Profile unpublished");
   };
 
-  const handleSaveSocials = async (patch: Partial<SocialLinks>) => {
+  const handleSaveSocials = async (patch: SocialLinksPatch) => {
     setSavingSocials(true);
     try {
       await dispatch(updateMyProfile(patch)).unwrap();

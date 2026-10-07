@@ -1,6 +1,6 @@
 import { read, utils } from "xlsx";
 import { FIELD_BY_KEY, SYSTEM_FIELDS, TEMPLATE_TABS, type InstitutionSource } from "../const";
-import { normaliseHeader, stripHint } from "./template-mapping";
+import { normaliseHeader, SOURCE_LINE, stripHint } from "./template-mapping";
 import type { CourseRow, Defaults, ImportPlanItem, InstitutionGroup, Issue, Mapping, Sheet } from "../types";
 
 /** Every tab, header row = row 1, every cell as trimmed text (SheetJS formats numbers/dates). */
@@ -119,17 +119,22 @@ export function buildTemplateGroups(sheets: Sheet[], selected: string[]): Instit
   for (const sheet of tabs) {
     const def = tabDef(sheet)!;
     sheet.rows.forEach((raw, i) => {
+      const line = Number(raw[SOURCE_LINE]) || i + 2;
       const r: Record<string, string | null> = {};
-      for (const [h, v] of Object.entries(raw)) r[def.rename?.[snake(h)] ?? snake(h)] = blank(v) ? null : v;
+      for (const [h, v] of Object.entries(raw)) if (h !== SOURCE_LINE) r[def.rename?.[snake(h)] ?? snake(h)] = blank(v) ? null : v;
       // Institution-tab rows pick their own group; every other row belongs to the file's one institution
       // (with several, the wizard refuses the file, so those rows have nowhere to go and are dropped).
       const g = def.key === "institution" ? group(r.institution_name ?? "", sheet.name) : only;
       delete r.institution_name;
       if (!g) return;
-      const at = `(line ${i + 2})`;
+      const at = `(line ${line})`;
+      const drop = (error: string, kind?: "duplicate") => {
+        if (def.key === "courses") (g.droppedCourses ??= []).push({ row: line, course: r.course_name ?? null, error, kind });
+      };
       const missing = (def.required ?? []).filter((k) => k.split("|").every((f) => blank(r[f])));
       if (missing.length) {
         note(g, `${sheet.name}: ${def.requiredLabel ?? missing.join(", ").replaceAll("|", " or ").replaceAll("_", " ")} missing — skipped ${at}`);
+        drop(`${def.requiredLabel ?? missing.join(", ").replaceAll("|", " or ").replaceAll("_", " ")} missing`);
         return;
       }
       const notNumber = (def.numeric ?? []).filter((k) => !blank(r[k]) && !Number.isFinite(toNumber(r[k]!)));
@@ -138,6 +143,7 @@ export function buildTemplateGroups(sheets: Sheet[], selected: string[]): Instit
       const valid = (f: string) => !blank(r[f]) && !notNumber.includes(f);
       if ((def.required ?? []).some((req) => !req.split("|").some(valid))) {
         note(g, `${sheet.name}: ${notNumber.join(", ").replaceAll("_", " ")} must be a number — skipped ${at}`);
+        drop(`${notNumber.join(", ").replaceAll("_", " ")} must be a number`);
         return;
       }
       for (const k of notNumber) { note(g, `${sheet.name}: ${k.replaceAll("_", " ")} must be a number — ignored ${at}`); r[k] = null; }
@@ -149,10 +155,11 @@ export function buildTemplateGroups(sheets: Sheet[], selected: string[]): Instit
       if (def.key === "courses") {
         // Same rule as buildGroups: a byte-for-byte repeat is dropped, a differing same-name row is flagged.
         const fp = JSON.stringify(Object.entries(r).sort(([x], [y]) => x.localeCompare(y)));
-        if (fingerprints.has(fp)) g.skippedDuplicates++;
+        if (fingerprints.has(fp)) { g.skippedDuplicates++; drop("Exact duplicate of an earlier row — skipped", "duplicate"); }
         else {
           fingerprints.add(fp);
           g.rows.push(r);
+          (g.rowLines ??= []).push(line);
           const k = r.course_name?.trim().toLowerCase() ?? "";
           courseByName.set(k, [...(courseByName.get(k) ?? []), r]);
         }
@@ -170,10 +177,45 @@ export function buildTemplateGroups(sheets: Sheet[], selected: string[]): Instit
         }
         return;
       }
+      if (def.key === "intakes") {
+        const intakes = expandIntakeRow(r);
+        if (!intakes) { note(g, `${sheet.name}: intake lists have different lengths — skipped ${at}`); return; }
+        (g.extras!.intakes ??= []).push(...intakes);
+        return;
+      }
       (g.extras![def.key] ??= []).push(...(def.key === "fees" ? expandFeeRow(r) : [r]));
     });
   }
   return [...groups.values()];
+}
+
+/** "a, b; c" → items. With `keepYear` (date columns only), a bare year after a comma stays with the
+ * item before it, so "Jan 5, 2026, May 3, 2026" is two dates, not four pieces. A name or year column
+ * splits at every comma — "Fall, 2027" there is not a date. */
+function splitIntakeList(v: string, keepYear: boolean): string[] {
+  return v.split(";").flatMap((part) => part.split(",").reduce<string[]>((out, piece) => {
+    const t = piece.trim();
+    if (keepYear && /^\d{4}$/.test(t) && out.length) out[out.length - 1] += `, ${t}`;
+    else out.push(t);
+    return out;
+  }, []));
+}
+
+const INTAKE_DATE_FIELDS = new Set(["start_date", "end_date", "orientation_date", "admission_deadline"]);
+const INTAKE_LIST_FIELDS = ["intake_name", "intake_month", "intake_year", "start_date", "end_date", "orientation_date", "admission_deadline"];
+
+/** An Intakes row may list several intakes, position by position: "Fall 2026, Spring 2027" with
+ * "2026-09-02, 2027-01-12" → two intakes. A single value applies to every intake. Null when two
+ * lists disagree in length (or a date like "Jan 5, 2026" was split) — the row can't be paired up. */
+export function expandIntakeRow(row: Record<string, string | null>): Record<string, string | null>[] | null {
+  const lists = Object.fromEntries(INTAKE_LIST_FIELDS.map((k) => [k, splitIntakeList(row[k] ?? "", INTAKE_DATE_FIELDS.has(k))]));
+  const count = Math.max(...Object.values(lists).map((l) => l.length));
+  if (count === 1) return [row];
+  if (Object.values(lists).some((l) => l.length !== 1 && l.length !== count)) return null;
+  return Array.from({ length: count }, (_, i) => ({
+    ...row,
+    ...Object.fromEntries(Object.entries(lists).map(([k, l]) => [k, (l.length === 1 ? l[0] : l[i]) || null])),
+  }));
 }
 
 /** A Fees row with a column per fee kind → one fee per filled amount, in the backend's shape. */
@@ -185,12 +227,10 @@ function expandFeeRow(row: Record<string, string | null>) {
   if (!blank(v("amount"))) out.push({ ...tuition, amount: v("amount"), student_type: v("student_type") });
   if (!blank(v("international_amount"))) out.push({ ...tuition, name: v("name") ?? "Tuition Fee", amount: v("international_amount"), student_type: "international" });
   if (!blank(v("domestic_amount"))) out.push({ ...tuition, name: v("name") ?? "Tuition Fee", amount: v("domestic_amount"), student_type: "domestic" });
-  if (!blank(v("application_fee_amount"))) {
-    out.push({
-      courses: v("courses"), currency: v("currency"), name: v("application_fee_name") ?? "Application Fee", amount: v("application_fee_amount"),
-      period: v("application_fee_period") ?? "Total", installments: v("application_fee_installments"), student_type: "both",
-    });
-  }
+  const application = { courses: v("courses"), currency: v("currency"), name: v("application_fee_name") ?? "Application Fee", period: v("application_fee_period") ?? "Total", installments: v("application_fee_installments") };
+  if (!blank(v("international_application_fee_amount"))) out.push({ ...application, amount: v("international_application_fee_amount"), student_type: "international" });
+  if (!blank(v("domestic_application_fee_amount"))) out.push({ ...application, amount: v("domestic_application_fee_amount"), student_type: "domestic" });
+  if (!blank(v("application_fee_amount"))) out.push({ ...application, amount: v("application_fee_amount"), student_type: "both" });
   return out;
 }
 
@@ -249,6 +289,9 @@ export function validateGroups(groups: InstitutionGroup[], existingNames: string
       // them (5,000 + 5,000 shown as 10,000) — the admin picks which the sheet means.
       if (!blank(r.both_fee_amount) && (!blank(r.fee_amount) || !blank(r.domestic_fee_amount))) {
         issues.push({ groupId: g.id, row, field: "both_fee_amount", message: "Tuition fee for domestic & international can't be mapped alongside a domestic or international tuition fee — map one or the other", blocking: true });
+      }
+      if (!blank(r.application_fee_amount) && (!blank(r.international_application_fee_amount) || !blank(r.domestic_application_fee_amount))) {
+        issues.push({ groupId: g.id, row, field: "application_fee_amount", message: "Application fee for domestic & international can't be mapped alongside a domestic or international application fee — map one or the other", blocking: true });
       }
       for (const [key, value] of Object.entries(r)) {
         if (blank(value)) continue;

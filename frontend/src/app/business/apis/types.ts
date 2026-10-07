@@ -17,7 +17,15 @@ export type SocialLinks = {
 
 export type CoverPosition = { x: number; y: number; zoom: number };
 
+/** A labelled link beyond the fixed platform columns (Weibo, Medium, Bluesky…). */
+export type OtherSocialLink = { label: string; url: string };
+
+/** What the Social links dialog saves — `other_social_links` is institutions only. */
+export type SocialLinksPatch = Partial<SocialLinks> & { other_social_links?: OtherSocialLink[] | null };
+
 export type BusinessProfile = SocialLinks & {
+  /** Institutions only — first filled from extraction, editable in the Social links dialog. */
+  other_social_links?: OtherSocialLink[] | null;
   id: number;
   schema_name: string;
   business_name: string;
@@ -72,7 +80,7 @@ export type BusinessProfilePatch = Partial<
     | "is_published" | "show_team_public" | "public_visibility" | "currency" | "cover_position"
     | "linkedin_url" | "facebook_url" | "instagram_url" | "twitter_url" | "youtube_url" | "whatsapp_url"
     | "tiktok_url" | "threads_url" | "messenger_url" | "telegram_url" | "line_url" | "viber_url"
-    | "gallery_images" | "video_urls" | "registration_licenses"
+    | "gallery_images" | "video_urls" | "registration_licenses" | "other_social_links"
   >
 >;
 

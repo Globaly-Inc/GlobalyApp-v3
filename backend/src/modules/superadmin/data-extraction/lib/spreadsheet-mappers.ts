@@ -108,7 +108,7 @@ export const splitList = (v: string | null) => (v ?? "").split(/[,;]/).map((s) =
 function feeItems(row: SpreadsheetCourseRow) {
   const tuition = { instalment: num(row.fee_installments) ?? 1, fee_type: { name: row.fee_name ?? "Tuition Fee" } };
   const items: Record<string, unknown>[] = [];
-  const intl = num(row.fee_amount), dom = num(row.domestic_fee_amount), app = num(row.application_fee_amount);
+  const intl = num(row.fee_amount), dom = num(row.domestic_fee_amount);
   // One tuition rate that applies to domestic AND international students — a single "both" line,
   // not two copies. A row that also states a specific rate is refused by the wizard's validation;
   // should one reach here anyway, the specific rate wins — saving both would make a student-type
@@ -117,12 +117,13 @@ function feeItems(row: SpreadsheetCourseRow) {
   if (intl) items.push({ ...tuition, amount: intl, student_type: "international" });
   if (dom) items.push({ ...tuition, amount: dom, student_type: "domestic" });
   if (both) items.push({ ...tuition, amount: both, student_type: "both" });
-  if (app) {
-    items.push({
-      amount: app, instalment: num(row.application_fee_installments) ?? 1, student_type: "both",
-      fee_type: { name: row.application_fee_name ?? "Application Fee" }, period: row.application_fee_period ?? "Total",
-    });
-  }
+  // Application fee: same rule — a specific rate wins over the shared one.
+  const application = { instalment: num(row.application_fee_installments) ?? 1, fee_type: { name: row.application_fee_name ?? "Application Fee" }, period: row.application_fee_period ?? "Total" };
+  const appIntl = num(row.international_application_fee_amount), appDom = num(row.domestic_application_fee_amount);
+  const appBoth = appIntl || appDom ? null : num(row.application_fee_amount);
+  if (appIntl) items.push({ ...application, amount: appIntl, student_type: "international" });
+  if (appDom) items.push({ ...application, amount: appDom, student_type: "domestic" });
+  if (appBoth) items.push({ ...application, amount: appBoth, student_type: "both" });
   return items;
 }
 

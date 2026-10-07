@@ -12,7 +12,7 @@ import { Combobox } from "@/components/combobox";
 import { Pagination } from "@/components/ui/pagination";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchMe, useAuthState } from "@/app/auth/store/auth-slice";
-import { fetchBranches, deleteBranch } from "../../store/business-profile-detail-slice";
+import { fetchBranches, deleteBranch, convertCampus } from "../../store/business-profile-detail-slice";
 import type { Branch, BranchFilter } from "../../apis/types";
 import { LinkBranchDialog } from "../branches/link-branch-dialog";
 import { DeleteBranchDialog } from "../branches/delete-branch-dialog";
@@ -48,6 +48,18 @@ export function BranchesTab({
   };
   const orgQuery = activeOrgId ? `?org=${encodeURIComponent(activeOrgId)}` : "";
   const router = useRouter();
+  const [convertingId, setConvertingId] = useState<string | null>(null);
+  // An extracted campus has no branch org yet — make it one, then edit that like any branch.
+  const editExtracted = async (campusId: string) => {
+    setConvertingId(campusId);
+    try {
+      const { branch_id } = await dispatch(convertCampus({ campusId })).unwrap();
+      router.push(`/business/profile/${businessId}/branches/${branch_id}/edit${orgQuery}`);
+    } catch (e) {
+      toast.error("Couldn't open this branch for editing", { description: (e as Error).message });
+      setConvertingId(null);
+    }
+  };
   const dispatch = useAppDispatch();
   const { items: branches, status, total: branchesTotal, ownerId } = useAppSelector((state) => state.businessProfileDetail.branches);
   // The list is shared with the Locations card and outlives a switch to another business, and the
@@ -141,6 +153,18 @@ export function BranchesTab({
                 <p className="text-xs text-muted-foreground">{[b.city, b.state, b.country].filter(Boolean).join(", ") || "—"}</p>
               </div>
             </div>
+            {b.extracted && (
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                disabled={convertingId !== null}
+                onClick={() => editExtracted(b.id)}
+                aria-label="Edit branch"
+                title="Edit — sets this extracted branch up so you can complete its details"
+              >
+                {convertingId === b.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pencil className="h-4 w-4" />}
+              </Button>
+            )}
             {!b.extracted && <div className="flex items-center gap-1">
               {/* A branch this org created opens the full edit form (details are written to the branch
                  org itself). One linked from elsewhere is someone else's org — only the link

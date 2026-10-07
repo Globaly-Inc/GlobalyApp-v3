@@ -31,6 +31,10 @@ export interface OverviewRow {
   twitter_url: string | null;
   linkedin_url: string | null;
   youtube_url: string | null;
+  /** Picked from the homepage when the overview is written (pickOverviewMedia); null = not yet. */
+  cover_url?: string | null;
+  gallery_images?: string[] | null;
+  other_social_links?: { label: string; url: string }[] | null;
 }
 
 export interface AgentRow {
