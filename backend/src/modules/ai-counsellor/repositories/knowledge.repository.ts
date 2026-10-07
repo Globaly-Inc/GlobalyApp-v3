@@ -316,6 +316,17 @@ async function strictThenWiden<T>(
  * model chose, is covered by the same table. An unrecognised level is used as written.
  */
 const LEVEL_SYNONYMS: Array<[RegExp, string[]]> = [
+  // Qualified levels first: the extractor writes Certificate, Graduate Certificate, Diploma,
+  // Advanced Diploma and Graduate Diploma as five DISTINCT values, so a qualified request must not
+  // fall through to the bare rules below — widening "Graduate Diploma" to %diploma% let ordinary
+  // diplomas fill the limit ahead of the ones asked for (Greptile). Expanding only to the other
+  // spelling of the same level keeps it narrow, and narrow is the safe direction here: tools.ts
+  // retries without filters when nothing matches, while too broad silently answers the wrong level.
+  [/\b(graduate|postgraduate|grad|pg)[\s.-]*(certificate|cert\b)/i, ["graduate certificate", "postgraduate certificate"]],
+  [/\b(graduate|postgraduate|grad|pg)[\s.-]*(diploma|dip\b)/i, ["graduate diploma", "postgraduate diploma"]],
+  [/\badvanced?[\s.-]*(diploma|dip\b)/i, ["advanced diploma", "advance diploma"]],
+  // No "Master (Research)" rule: the extractor has no such value — research master's are stored as
+  // "Master", so narrowing one would return nothing the broad rule does not already answer.
   [/doctor|ph\.?d|d\.?b\.?a/i, ["doctoral", "doctorate", "phd"]],
   [/master|m\.?b\.?a|m\.?sc|m\.?eng/i, ["master", "mba"]],
   [/bachelor|undergrad|b\.?sc|b\.?eng/i, ["bachelor"]],

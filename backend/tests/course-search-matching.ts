@@ -42,8 +42,16 @@ assert.deepEqual(levelPatterns("PhD"), ["doctoral", "doctorate", "phd"], "howeve
 assert.deepEqual(levelPatterns("Doctorate"), ["doctoral", "doctorate", "phd"]);
 // A certificate must never resolve to diplomas — that hid 213 rows and returned 151 unrelated ones.
 assert.deepEqual(levelPatterns("Certificate"), ["certificate"]);
-assert.deepEqual(levelPatterns("Graduate Certificate"), ["certificate"]);
 assert.deepEqual(levelPatterns("Diploma"), ["diploma"]);
+// A qualified level is a level of its OWN — the extractor writes Certificate, Graduate Certificate,
+// Diploma, Advanced Diploma and Graduate Diploma as five distinct degree_level values. Widening one
+// to the bare level let ordinary diplomas fill the limit ahead of the graduate diplomas asked for.
+assert.deepEqual(levelPatterns("Graduate Certificate"), ["graduate certificate", "postgraduate certificate"]);
+assert.deepEqual(levelPatterns("Postgraduate Diploma"), ["graduate diploma", "postgraduate diploma"]);
+assert.deepEqual(levelPatterns("Advanced Diploma"), ["advanced diploma", "advance diploma"]);
+for (const qualified of ["Graduate Diploma", "Advanced Diploma"]) {
+  assert.ok(!levelPatterns(qualified).includes("diploma"), `${qualified} must not widen to every diploma`);
+}
 assert.ok(!levelPatterns("Certificate").includes("diploma"), "certificate is not a diploma");
 // "Post-Doctoral Certificate" is a doctorate, and the doctoral rule claims it first.
 assert.deepEqual(levelPatterns("Post-Doctoral Certificate"), ["doctoral", "doctorate", "phd"]);
