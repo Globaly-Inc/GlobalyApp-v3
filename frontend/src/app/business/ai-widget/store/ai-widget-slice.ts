@@ -145,9 +145,12 @@ const aiWidgetSlice = createSlice({
         state.handoff = action.payload;
         // ensure may have just created the widget: keep the cached list in step, or the Inbox
         // (which trusts `loaded` and won't refetch) keeps showing setup prompts for a live widget.
-        const i = state.configs.findIndex((c) => c.id === action.payload.config.id);
-        if (i >= 0) state.configs[i] = action.payload.config;
-        else state.configs.unshift(action.payload.config);
+        // But this request can still be in flight while the owner saves or rotates the key on the
+        // settings page, so it only replaces a cached record that is older than it — never a newer one.
+        const incoming = action.payload.config;
+        const i = state.configs.findIndex((c) => c.id === incoming.id);
+        if (i < 0) state.configs.unshift(incoming);
+        else if (Date.parse(incoming.updated_at) > Date.parse(state.configs[i]!.updated_at)) state.configs[i] = incoming;
       })
       .addCase(ensureEmbedConfig.rejected, (state, action) => {
         state.handoffStatus = "failed";
