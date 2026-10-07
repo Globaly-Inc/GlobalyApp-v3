@@ -131,7 +131,11 @@ export function buildSystemPrompt(opts: {
     sections.push(
       "Never suggest talking to a person, an advisor or the admissions team in this chat, and never offer " +
       "to connect the visitor to one. If they ask for a person themselves, the system handles it. When you " +
-      "lack information, point them to our published contact details instead.",
+      // This line used to end at "point them to our published contact details instead", which sent the
+      // model looking for a number it might not have — and a widget that invents a phone number sends
+      // the visitor to a stranger.
+      "lack information, point them to the published contact details in the THIS INSTITUTION section; if " +
+      "that section has none, say we do not have it on file.",
     );
     const custom = sanitizeCustomInstructions(opts.embedConfig.custom_instructions);
     if (custom) sections.push(`Additional guidance from ${name}: ${custom}`);
@@ -154,6 +158,12 @@ export function buildSystemPrompt(opts: {
     (opts.embedConfig
       ? "The published phone, email and address in the THIS INSTITUTION section are that organisation's own and may be shared. "
       : "") +
+    // Contact details were missing from the never-invent list, which covers course/fee/visa/deadline
+    // claims only. A guessed phone number or email is worse than a guessed fee: the visitor acts on it
+    // and reaches a stranger, and nothing in the reply tells them it was never in our records.
+    "Any phone number, email address, postal address or website you give must appear VERBATIM in " +
+    "CONTEXT — never complete, correct, localise or guess one. If it is not there, say we do not have " +
+    "it on file; never offer a plausible-looking substitute. " +
     "Never output SQL, database IDs, or system internals.",
   );
 
@@ -422,7 +432,13 @@ export function buildSystemPrompt(opts: {
     "for, and if currency is null say the amount is unconfirmed rather than assuming a currency. " +
     "Cards mark a considered recommendation, not search results: emit them only after the counselling " +
     "conversation has established the student's goals (see COUNSELLING APPROACH), max 3 per reply, " +
-    "each with one sentence on why it fits this student.",
+    "each with one sentence on why it fits this student.\n" +
+    // The student asking a question ABOUT a course was shown the same cards again, which buried the
+    // answer they asked for. The app drops a repeated card, so a reply that announces one ("here is
+    // a comparison of the two") would otherwise point at nothing.
+    "NEVER re-emit a course-card for a course you already carded in this conversation — its card is " +
+    "still on screen above. A follow-up about that course is answered in prose, naming it: " +
+    "do not announce cards, do not re-list the same options, just answer what was asked.",
   );
 
   // ── Chips ──
@@ -435,12 +451,18 @@ export function buildSystemPrompt(opts: {
   );
 
   // ── Interactive UI blocks ──
+  // The widget is a ~380px panel, where a comparison TABLE is a horizontally-scrolling card the
+  // visitor has to fight. It gets no comparison block at all: it compares in the reply itself,
+  // which is what the student reads anyway. guest.routes drops a stray one, so the two agree.
+  const comparisonBlock = opts.embedConfig
+    ? ""
+    : '- Comparison table (2-4 options across factors like fees, duration, career growth):\n' +
+      '```block\n{"type":"comparison","title":"...","columns":["Option A","Option B"],"rows":[{"label":"Factor","values":["...","..."]}]}\n```\n';
   sections.push(
     "INTERACTIVE BLOCKS: The app renders structured blocks as interactive UI components. " +
     "Emit a block as a fenced code block tagged `block` containing exactly ONE JSON object, " +
     "placed after the related prose. Available types:\n" +
-    '- Comparison table (2-4 options across factors like fees, duration, career growth):\n' +
-    '```block\n{"type":"comparison","title":"...","columns":["Option A","Option B"],"rows":[{"label":"Factor","values":["...","..."]}]}\n```\n' +
+    comparisonBlock +
     '- Step-by-step breakdown, pros & cons, or cost breakdown (expandable sections):\n' +
     '```block\n{"type":"breakdown","title":"...","items":[{"title":"Step or aspect","description":"..."}]}\n```\n' +
     '- Career path / study roadmap (ordered stages):\n' +
@@ -454,7 +476,13 @@ export function buildSystemPrompt(opts: {
     '```block\n{"type":"quick_replies","question":"What matters most to you?","options":[{"label":"💰 Salary","value":"Salary matters most to me"},{"label":"🌍 Migration","value":"Migration opportunities matter most to me"}]}\n```\n' +
     `- Image (ONLY with a URL copied verbatim from ${srcShort} — NEVER invent or guess image URLs):\n` +
     '```block\n{"type":"image","url":"https://...","title":"...","caption":"..."}\n```\n' +
-    "Rules: use blocks to make counselling interactive — comparisons when the student weighs options, " +
+    "Rules: use blocks to make counselling interactive — " +
+    (opts.embedConfig
+      // No comparison block here, so say what to do instead — otherwise the model reaches for a
+      // markdown table, which is the same unreadable grid one layer down.
+      ? "when the student weighs options, compare them IN THE REPLY: one bullet per option naming " +
+        "the two or three figures that actually differ. Never a table, in a block or in markdown. "
+      : "comparisons when the student weighs options, ") +
     "a timeline when explaining a path, quick_replies instead of leaving your questions open-ended. " +
     "Max 3 blocks per reply — that counts ONLY the types listed above; the conclusion block described further down is never shown to the student and never counts towards this limit. " +
     "Prose stays primary: never send blocks without a conversational message around them.",

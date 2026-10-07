@@ -247,11 +247,30 @@ const DEFAULT_LIMIT = 10;
 
 /** Per-keyword OR match — a joined-phrase ILIKE ('%data science canada%') never
  * hits real rows, so every multi-word query used to return zero results. */
-function anyKeywordILike(columns: string[], query: string) {
+export function anyKeywordILike(columns: string[], query: string) {
   const words = query.split(/\s+/).filter(Boolean);
   return function (this: Knex.QueryBuilder) {
     for (const word of words) {
       for (const col of columns) this.orWhereILike(col, `%${word}%`);
+    }
+  };
+}
+
+/**
+ * Every word must hit SOME column — the AND twin of anyKeywordILike.
+ *
+ * "water engineering" under OR-matching returned the one water course and then padded the page
+ * with everything whose name merely says "engineering": Aerospace BSc, PERFORM 3D, SAFE. Ranking
+ * could not save it, because rank only ORDERS a result set the WHERE had already filled with
+ * one-word matches, and the limit was reached long before the good ones ran out.
+ */
+export function everyKeywordILike(columns: string[], query: string) {
+  const words = query.split(/\s+/).filter(Boolean);
+  return function (this: Knex.QueryBuilder) {
+    for (const word of words) {
+      this.andWhere(function (this: Knex.QueryBuilder) {
+        for (const col of columns) this.orWhereILike(col, `%${word}%`);
+      });
     }
   };
 }
@@ -262,6 +281,28 @@ export async function jobIdsByInstitutionDomain(domain: string): Promise<string[
     .whereILike("institution_url", `%${domain}%`)
     .select("id");
   return rows.map((r: { id: string }) => r.id);
+}
+
+/**
+ * Match strictly, widen once if that found nothing. The one definition of how every keyword search
+ * in this file behaves, so the surfaces cannot drift apart:
+ *
+ * - strict: EVERY word must hit one of the `strong` columns — the ones that NAME the thing. Without
+ *   this, any one word in any column was enough, and a query's best match was padded out to the
+ *   limit by rows sharing only its most common word.
+ * - widen: the old flat OR across `all` columns (descriptions, answers, long prose included), used
+ *   only when strict found nothing at all — a loose answer beats none.
+ * - no words: neither predicate applies; the caller's own filters carry the query (browse mode).
+ */
+async function strictThenWiden<T>(
+  build: (where: ReturnType<typeof anyKeywordILike>) => Promise<T[]>,
+  strong: string[],
+  all: string[],
+  query: string,
+): Promise<T[]> {
+  if (!query.split(/\s+/).filter(Boolean).length) return build(anyKeywordILike(all, query));
+  const strict = await build(everyKeywordILike(strong, query));
+  return strict.length ? strict : build(anyKeywordILike(all, query));
 }
 
 export async function searchCourses(opts: {
@@ -285,14 +326,21 @@ export async function searchCourses(opts: {
     .filter((w) => !STOP_WORDS.has(w.toLowerCase()));
   const cleanQuery = words.join(" ");
 
-  // Rank by how many keywords hit the strong columns (name/subject), so a match
-  // on every word beats a single stray word matched in a long description.
+  // Rank by how many keywords hit the strong columns, NAME first: a one-word subject search
+  // ("engineering") matches every course tagged with that subject_area, so without the extra
+  // weight a software short course called SAFE sorted above the Aerospace Engineering MEng.
+  // Same three bindings per word, so rankBindings below is unchanged.
   const rankSql = words
-    .map(() => "(CASE WHEN c.name ILIKE ? OR c.subject_area ILIKE ? OR i.country ILIKE ? THEN 1 ELSE 0 END)")
+    .map(() => "(CASE WHEN c.name ILIKE ? THEN 2 WHEN c.subject_area ILIKE ? OR i.country ILIKE ? THEN 1 ELSE 0 END)")
     .join(" + ");
   const rankBindings = words.flatMap((w) => [`%${w}%`, `%${w}%`, `%${w}%`]);
 
-  const courses = await masterKnex(`${SA}.extraction_courses as c`)
+  // Strict pass: every word, and only against the columns that NAME the course. A word found in a
+  // long description is the weakest possible evidence — it is how "engineering" dragged SAFE,
+  // ETABS and PERFORM 3D onto a page of engineering degrees.
+  const STRONG_COLUMNS = ["c.name", "c.subject_area"];
+  const ALL_COLUMNS = [...STRONG_COLUMNS, "c.description"];
+  const fetch = (where: ReturnType<typeof anyKeywordILike>) => masterKnex(`${SA}.extraction_courses as c`)
     .join(`${SA}.extraction_institution_overview as i`, "c.job_id", "i.job_id")
     .select(
       "c.id", "c.job_id", "c.name", "c.short_name", "c.degree_level",
@@ -300,7 +348,7 @@ export async function searchCourses(opts: {
       "c.country_code", "c.source_url",
       "i.name as institution_name", "i.country as institution_country",
     )
-    .where(anyKeywordILike(["c.name", "c.subject_area", "c.description"], cleanQuery))
+    .where(where)
     // An owner's draft course isn't public yet, and an unapproved one isn't vetted — the
     // counsellor must recommend neither. Unlike the export gate below, both stay unconditional:
     // they apply to the embed widget's own catalogue too (extracted courses default to
@@ -324,6 +372,8 @@ export async function searchCourses(opts: {
       if (opts.jobIds) q.whereIn("c.job_id", opts.jobIds);
     })
     .limit(limit);
+
+  const courses = await strictThenWiden<{ id: string } & Record<string, unknown>>(fetch, STRONG_COLUMNS, ALL_COLUMNS, cleanQuery);
 
   // Batch-load fees and study options for returned courses
   const courseIds = courses.map((c: { id: string }) => c.id);
@@ -383,13 +433,14 @@ export async function searchInstitutions(opts: {
   country?: string;
   limit?: number;
 }): Promise<InstitutionResult[]> {
-  return masterKnex(`${SA}.extraction_institution_overview`)
+  return strictThenWiden((where) => masterKnex(`${SA}.extraction_institution_overview`)
     .select("id", "job_id", "name", "website", "phone", "email", "address", "city", "state", "country", "description", "logo_url")
-    .where(anyKeywordILike(["name", "country", "description"], opts.query))
+    .where(where)
     .modify((q) => {
       if (opts.country) q.whereILike("country", `%${opts.country}%`);
     })
-    .limit(opts.limit ?? DEFAULT_LIMIT);
+    .limit(opts.limit ?? DEFAULT_LIMIT),
+    ["name", "country"], ["name", "country", "description"], opts.query);
 }
 
 /**
@@ -448,18 +499,22 @@ export async function searchVisas(opts: {
   country?: string;
   limit?: number;
 }): Promise<VisaResult[]> {
-  return masterKnex(`${SA}.extraction_visas`)
+  // Every column here names the visa — there is no prose column to demote, so strict and wide
+  // differ only in AND vs OR.
+  const VISA_COLUMNS = ["name", "visa_stream", "category", "country_code"];
+  return strictThenWiden((where) => masterKnex(`${SA}.extraction_visas`)
     .select(
       "id", "country_code", "subclass_code", "visa_stream", "category", "name",
       "description", "duration_months", "is_permanent", "work_rights", "study_rights",
       "application_fee_amount", "application_fee_currency",
       "processing_time_min_days", "processing_time_max_days", "official_url",
     )
-    .where(anyKeywordILike(["name", "visa_stream", "category", "country_code"], opts.query))
+    .where(where)
     .modify((q) => {
       if (opts.country) q.whereILike("country_code", `%${opts.country}%`);
     })
-    .limit(opts.limit ?? DEFAULT_LIMIT);
+    .limit(opts.limit ?? DEFAULT_LIMIT),
+    VISA_COLUMNS, VISA_COLUMNS, opts.query);
 }
 
 export async function searchAgents(opts: {
@@ -467,33 +522,37 @@ export async function searchAgents(opts: {
   country?: string;
   limit?: number;
 }): Promise<AgentResult[]> {
-  return masterKnex(`${SA}.extraction_agents as a`)
+  const AGENT_COLUMNS = ["a.name", "a.country", "a.city"];
+  return strictThenWiden((where) => masterKnex(`${SA}.extraction_agents as a`)
     .leftJoin(`${SA}.extraction_agent_locations as loc`, "a.id", "loc.agent_id")
     .select(
       "a.id", "a.name", "a.country", "a.email", "a.phone", "a.website",
       "a.city", "a.state", "a.logo_url", "a.location_count",
     )
-    .where(anyKeywordILike(["a.name", "a.country", "a.city"], opts.query))
+    .where(where)
     .modify((q) => {
       if (opts.country) q.whereILike("a.country", `%${opts.country}%`);
     })
     .groupBy("a.id")
-    .limit(opts.limit ?? DEFAULT_LIMIT);
+    .limit(opts.limit ?? DEFAULT_LIMIT),
+    AGENT_COLUMNS, AGENT_COLUMNS, opts.query);
 }
 
 export async function searchMaraAgents(opts: {
   query: string;
   limit?: number;
 }): Promise<MaraAgentResult[]> {
-  return masterKnex(`${SA}.extraction_mara_agents`)
+  const MARA_COLUMNS = ["agent_name", "business_name", "marn"];
+  return strictThenWiden((where) => masterKnex(`${SA}.extraction_mara_agents`)
     .select(
       "id", "marn", "agent_name", "business_name", "registration_status",
       "registration_date", "expiry_date", "email", "phone", "website",
       "practice_areas", "languages_spoken",
       "office_country", "office_state", "office_city",
     )
-    .where(anyKeywordILike(["agent_name", "business_name", "marn"], opts.query))
-    .limit(opts.limit ?? DEFAULT_LIMIT);
+    .where(where)
+    .limit(opts.limit ?? DEFAULT_LIMIT),
+    MARA_COLUMNS, MARA_COLUMNS, opts.query);
 }
 
 // ── Curated knowledge (superadmin.ai_knowledge_*) — Phase 4 ──
@@ -549,34 +608,38 @@ export interface KnowledgeChunkResult {
 }
 
 export async function searchKnowledgeVisas(opts: { query: string; limit?: number }): Promise<KnowledgeVisaResult[]> {
-  return masterKnex(`${SA}.ai_knowledge_visa`)
+  const KV_COLUMNS = ["destination_country", "visa_type", "post_study_visa"];
+  return strictThenWiden((where) => masterKnex(`${SA}.ai_knowledge_visa`)
     .select(
       "id", "destination_country", "visa_type", "requirements", "required_documents",
       "processing_time_days", "application_fee_usd", "work_rights_hours",
       "post_study_visa", "common_rejections",
     )
     .where("active", true)
-    .where(anyKeywordILike(["destination_country", "visa_type", "post_study_visa"], opts.query))
-    .limit(opts.limit ?? DEFAULT_LIMIT);
+    .where(where)
+    .limit(opts.limit ?? DEFAULT_LIMIT),
+    KV_COLUMNS, KV_COLUMNS, opts.query);
 }
 
 export async function searchKnowledgeFaqs(opts: { query: string; limit?: number }): Promise<KnowledgeFaqResult[]> {
-  return masterKnex(`${SA}.ai_knowledge_faqs`)
+  return strictThenWiden((where) => masterKnex(`${SA}.ai_knowledge_faqs`)
     .select("id", "question", "answer")
     .where("active", true)
-    .where(anyKeywordILike(["question", "answer"], opts.query))
-    .limit(opts.limit ?? DEFAULT_LIMIT);
+    .where(where)
+    .limit(opts.limit ?? DEFAULT_LIMIT),
+    ["question"], ["question", "answer"], opts.query);
 }
 
 export async function searchCountryGuides(opts: { query: string; limit?: number }): Promise<CountryGuideResult[]> {
-  return masterKnex(`${SA}.ai_knowledge_country_guides`)
+  return strictThenWiden((where) => masterKnex(`${SA}.ai_knowledge_country_guides`)
     .select(
       "id", "country", "education_system", "popular_cities",
       "cost_of_living_monthly_usd", "culture_notes", "student_life", "climate",
     )
     .where("active", true)
-    .where(anyKeywordILike(["country"], opts.query))
-    .limit(opts.limit ?? DEFAULT_LIMIT);
+    .where(where)
+    .limit(opts.limit ?? DEFAULT_LIMIT),
+    ["country"], ["country"], opts.query);
 }
 
 /** Semantic search over the Knowledge Rack via the migration's match function.

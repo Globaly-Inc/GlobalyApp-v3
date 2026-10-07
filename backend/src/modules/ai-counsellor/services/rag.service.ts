@@ -109,6 +109,43 @@ export function resolveQuery(query: string, priorQuestion?: string | null): stri
   return fromPriorQuestion ? `${priorQuestion} ${query}`.trim() : query;
 }
 
+/**
+ * A degree level is a FILTER, never a keyword.
+ *
+ * "I am looking for a Master's degree" extracted to ["looking","masters","degree"] and matched
+ * NOTHING: no course name contains "masters" (they read MSc, MEng, MBA), and the degree_level
+ * column holds "Master's", which ILIKE '%masters%' cannot reach either. The institution had twelve
+ * master's courses published and the widget said it had none.
+ *
+ * Mapped to a PREFIX of what extraction_courses.degree_level stores, because searchCourses matches
+ * it with ILIKE: "Master" hits "Master's". Deliberately literal — "postgraduate" is not here, since
+ * narrowing it to Master would hide the doctorates it also means.
+ */
+const DEGREE_LEVELS: Array<[RegExp, string]> = [
+  [/\b(ph\.?d|doctoral|doctorate|dba|d\.?b\.?a)\b/i, "Doctoral"],
+  [/\b(master'?s?|msc|m\.?sc|m\.?eng|mba|m\.?b\.?a)\b/i, "Master"],
+  [/\b(bachelor'?s?|bsc|b\.?sc|b\.?eng|undergraduate)\b/i, "Bachelor"],
+  [/\b(diploma|certificate)\b/i, "Diploma"],
+];
+
+/** Words that survive extractKeywords but say nothing about WHICH course — they only ever dilute
+ *  a level-filtered search, and on a level-only turn they are the whole query. */
+const FILLER = new Set(["looking", "degree", "degrees", "course", "courses", "program", "programs",
+  "programme", "programmes", "study", "studies", "studying", "offer", "offered"]);
+
+export function detectDegreeLevel(query: string): string | null {
+  return DEGREE_LEVELS.find(([re]) => re.test(query))?.[1] ?? null;
+}
+
+/** The keywords left once the level has been lifted out into its own filter. Empty is a real
+ *  answer — searchCourses browses the filtered set rather than matching noise. */
+export function courseKeywordsFor(keywords: string[], degreeLevel: string | null): string {
+  if (!degreeLevel) return keywords.join(" ");
+  return keywords
+    .filter((w) => !FILLER.has(w) && !DEGREE_LEVELS.some(([re]) => re.test(w)))
+    .join(" ");
+}
+
 // ── Country detection (scopes Knowledge Rack retrieval to country-specific categories) ──
 
 const COUNTRY_ALIASES: Record<string, string> = { uk: "GB", usa: "US", america: "US", uae: "AE" };
@@ -284,6 +321,22 @@ export function pinnedCourseIdsFrom(messages: Array<{ role: string; cards: unkno
     .slice(0, 3);
 }
 
+/**
+ * Drops cards for courses that are already on screen. The same pinned ids that keep a follow-up
+ * answerable ("is it online?" about the course just shown) also put those courses back in front of
+ * the model every turn, and it re-cards them — so a question ABOUT a course was answered with the
+ * same two cards again, pushing the actual answer off screen. The prompt tells the model not to;
+ * this makes it so regardless.
+ *
+ * Only the last carded turn's ids are passed, not the whole conversation: a course the student
+ * circles back to twenty turns later is worth showing again.
+ */
+export function dropShownCards<T extends { id?: string | null }>(cards: T[], alreadyShown: string[]): T[] {
+  if (!alreadyShown.length) return cards;
+  const shown = new Set(alreadyShown);
+  return cards.filter((c) => !(typeof c.id === "string" && shown.has(c.id)));
+}
+
 /** The gate: a money question with no context evidence on ANY topic it asks about.
  *  Overlap, not equality — "what are the fees and is there a scholarship" is answerable
  *  the moment either one is grounded, and the model still only says what its context holds. */
@@ -337,6 +390,10 @@ export async function searchAll(opts: {
 
   // The reply first, the question it answers only as a fallback — see detectCountryCode.
   const countryCode = await detectCountryCode(opts.query, fromPriorQuestion ? opts.priorQuestion : null);
+  // "a Master's degree" is a filter plus an empty keyword set, not three keywords to ILIKE.
+  const degreeLevel = detectDegreeLevel(resolvedQuery);
+  const courseQuery = courseKeywordsFor(keywords, degreeLevel);
+  if (degreeLevel) trace(`Degree level: ${degreeLevel}${courseQuery ? "" : " (browsing that level)"}`);
   if (countryCode) trace(`Country detected: ${countryCode}`);
 
   // ── Parallel searches — each wrapped so one failure doesn't kill the rest ──
@@ -347,7 +404,7 @@ export async function searchAll(opts: {
     : await runSearches();
   async function runSearches() { return Promise.all([
     opts.skipCourses ? none.then(r => { trace("Courses: skipped (discovery turn)"); return r; })
-      : knowledge.searchCourses({ query: searchQuery, limit: 8, jobIds: opts.jobIds })
+      : knowledge.searchCourses({ query: courseQuery, degreeLevel: degreeLevel ?? undefined, limit: 8, jobIds: opts.jobIds })
         .then(r => { trace(`Courses: ${r.length} found`); return r; })
         .catch(err => { logger.warn("Course search failed", { err: String(err) }); trace("Course search failed"); return []; }),
     knowledge.searchVisas({ query: searchQuery, limit: 5 })

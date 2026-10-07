@@ -1,48 +1,26 @@
 "use client";
 
-import { useState, type KeyboardEvent } from "react";
-import { ArrowUp } from "lucide-react";
+import { useState } from "react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import type { ResponseBlock } from "../../apis/types";
 
 type QuickRepliesBlockProps = {
   block: Extract<ResponseBlock, { type: "quick_replies" }>;
-  /** Sends the composed answer. There is deliberately no draft-change callback: this block owns
-   *  its own input, and every caller wires a send handler here. Handing one out as well meant the
-   *  widget fired a turn on each keystroke and then again on Send. */
+  /** Sends the tapped answer. There is deliberately no draft-change callback: a tap IS the reply,
+   *  which is also what the prompt promises the model ("the tapped value is sent as their reply").
+   *  Handing out a draft callback as well meant the widget fired a turn on each keystroke. */
   onSend?: (value: string) => void;
 };
 
-/** Tappable answer options for a question the counsellor asked. Multi-select populates the input below. */
+/** Tappable answer options for a question the counsellor asked. One tap sends — the student who
+ *  wants to say something else types in the composer below the thread, not in a second input here. */
 export function QuickRepliesBlock({ block, onSend }: QuickRepliesBlockProps) {
-  const [selected, setSelected] = useState<string[]>([]);
-  const [text, setText] = useState("");
+  const [sent, setSent] = useState<string | null>(null);
 
-  const toggle = (value: string) => {
-    const next = selected.includes(value)
-      ? selected.filter((v) => v !== value)
-      : [...selected, value];
-    setSelected(next);
-    const composed =
-      next.length === 0 ? "" : next.length === 1 ? next[0]! : next.map((v) => `• ${v}`).join("\n");
-    setText(composed);
-  };
-
-  const handleTextChange = (value: string) => {
-    setText(value);
-    setSelected([]);
-  };
-
-  const submit = () => {
-    if (!text.trim()) return;
-    onSend?.(text.trim());
-    setText("");
-    setSelected([]);
-  };
-
-  const handleKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
-    if (e.key === "Enter") { e.preventDefault(); submit(); }
+  const send = (value: string) => {
+    if (sent) return; // a second tap would fire a second turn
+    setSent(value);
+    onSend?.(value);
   };
 
   return (
@@ -52,26 +30,15 @@ export function QuickRepliesBlock({ block, onSend }: QuickRepliesBlockProps) {
         {block.options.map((option) => (
           <Button
             key={option.label}
-            variant={selected.includes(option.value) ? "default" : "secondary"}
+            variant={sent === option.value ? "default" : "secondary"}
             size="sm"
             className="rounded-full"
-            onClick={() => toggle(option.value)}
+            disabled={sent !== null && sent !== option.value}
+            onClick={() => send(option.value)}
           >
             {option.label}
           </Button>
         ))}
-      </div>
-      <div className="flex gap-2">
-        <Input
-          value={text}
-          onChange={(e) => handleTextChange(e.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Type your answer or select from above…"
-          className="text-sm"
-        />
-        <Button size="icon" onClick={submit} disabled={!text.trim()} aria-label="Send" className="shrink-0 rounded-full">
-          <ArrowUp className="size-4" />
-        </Button>
       </div>
     </div>
   );

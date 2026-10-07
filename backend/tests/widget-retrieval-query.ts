@@ -14,7 +14,7 @@
  */
 
 import {
-  isCourtesyTurn, lastAssistantQuestion, resolveQuery, retrievalKeywords,
+  courseKeywordsFor, detectDegreeLevel, isCourtesyTurn, lastAssistantQuestion, resolveQuery, retrievalKeywords,
 } from "../src/modules/ai-counsellor/services/rag.service.js";
 
 let passed = 0;
@@ -115,6 +115,33 @@ function main() {
     const { keywords, fromPriorQuestion } = retrievalKeywords("yes", null);
     assert(!fromPriorQuestion, "nothing to borrow when the counsellor asked nothing");
     assertEqual(keywords.join(" "), "yes", "falls back to the student's own words");
+  }
+
+  console.log("\ndetectDegreeLevel — a level is a filter, not a keyword");
+  {
+    // The turn that reported this: an institution with twelve published master's courses answered
+    // "I don't have the specific list", because "masters" matches no course NAME (they read MSc,
+    // MEng, MBA) and ILIKE '%masters%' cannot reach the stored "Master's" either.
+    const asked = "I am looking for a Master's degree";
+    assertEqual(detectDegreeLevel(asked), "Master", "a master's turn filters to Master");
+    const { keywords } = retrievalKeywords(asked, null);
+    assertEqual(courseKeywordsFor(keywords, "Master"), "",
+      "nothing is left to keyword-match, so the level is browsed");
+    // Prefixes, because searchCourses matches degree_level with ILIKE: "Master" hits "Master's".
+    assertEqual(detectDegreeLevel("do you have a PhD"), "Doctoral", "PhD");
+    assertEqual(detectDegreeLevel("is there an MBA"), "Master", "MBA is a master's");
+    assertEqual(detectDegreeLevel("bachelor of nursing"), "Bachelor", "bachelor");
+    assertEqual(detectDegreeLevel("water engineering"), null, "a subject turn has no level");
+    // "postgraduate" means master's AND doctoral — narrowing it to one would hide the other.
+    assertEqual(detectDegreeLevel("postgraduate options"), null, "postgraduate stays unfiltered");
+    // A subject alongside the level still discriminates; only the level and filler words go.
+    assertEqual(courseKeywordsFor(["masters", "engineering"], "Master"), "engineering",
+      "the subject survives the level lift");
+    assertEqual(courseKeywordsFor(["looking", "courses", "nursing"], "Master"), "nursing",
+      "filler words never reach the query");
+    // With no level detected the keywords are passed through exactly as before.
+    assertEqual(courseKeywordsFor(["water", "engineering"], null), "water engineering",
+      "no level, no change");
   }
 
   console.log("\nresolveQuery — what the semantic searches (rack, country, memory) see");
