@@ -1,11 +1,16 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
+import { switchAccount } from "@/app/auth/store/auth-slice";
 import { aiWidgetApi } from "../apis";
 import { mergeSentRecipients } from "../utils";
 import type {
   CreateEmbedConfigInput, EmbedConfig, EnsureEmbedResult, SendSnippetInput, UpdateEmbedConfigInput,
 } from "../apis/types";
 
-export const fetchEmbedConfigs = createAsyncThunk("aiWidget/fetchConfigs", () => aiWidgetApi.listConfigs());
+// `condition` drops a second fetch while one is in flight — Strict Mode's double effect, or the
+// Inbox and the widget page mounting together, would otherwise race two identical requests.
+export const fetchEmbedConfigs = createAsyncThunk("aiWidget/fetchConfigs", () => aiWidgetApi.listConfigs(), {
+  condition: (_, { getState }) => (getState() as { aiWidget: AiWidgetState }).aiWidget.status !== "loading",
+});
 
 export const createEmbedConfig = createAsyncThunk("aiWidget/createConfig", (input: CreateEmbedConfigInput) =>
   aiWidgetApi.createConfig(input),
@@ -63,6 +68,8 @@ export const forgetEmbedDeveloper = createAsyncThunk(
 type AiWidgetState = {
   configs: EmbedConfig[];
   status: "idle" | "loading" | "failed";
+  /** A fetch has succeeded for this org — "no configs" is only an answer once this is true. */
+  loaded: boolean;
   createStatus: "idle" | "loading" | "failed";
   error: string | null;
   handoff: EnsureEmbedResult | null;
@@ -73,6 +80,7 @@ type AiWidgetState = {
 const initialState: AiWidgetState = {
   configs: [],
   status: "idle",
+  loaded: false,
   createStatus: "idle",
   error: null,
   handoff: null,
@@ -86,12 +94,15 @@ const aiWidgetSlice = createSlice({
   reducers: {},
   extraReducers: (builder) => {
     builder
+      // Configs belong to the org; another org's widget must not answer "is one set up?".
+      .addCase(switchAccount.pending, () => initialState)
       .addCase(fetchEmbedConfigs.pending, (state) => {
         state.status = "loading";
         state.error = null;
       })
       .addCase(fetchEmbedConfigs.fulfilled, (state, action) => {
         state.status = "idle";
+        state.loaded = true;
         state.configs = action.payload;
       })
       .addCase(fetchEmbedConfigs.rejected, (state, action) => {

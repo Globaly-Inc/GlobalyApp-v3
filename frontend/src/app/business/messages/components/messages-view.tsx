@@ -10,6 +10,7 @@ import { fetchEmbedChats } from "../store/embed-chats-slice";
 import { EmbedConversationView } from "./embed-conversation-view";
 import { InboxChannelBar } from "./inbox-channel-bar";
 import { InboxListSidebar } from "./inbox-list-sidebar";
+import { WidgetSetupDialog } from "./widget-setup-dialog";
 import type { InboxKind } from "./inbox-kind-tabs";
 import type { WidgetVisitor } from "@/app/business/ai-widget/apis/types";
 import { aiWidgetApi } from "@/app/business/ai-widget/apis";
@@ -175,6 +176,7 @@ export function MessagesView() {
         )}
       >
         <InboxChannelBar />
+        <WidgetSetupDialog />
         <div className="flex min-h-0 flex-1">
         <div className={cn("w-full shrink-0 md:w-80 lg:w-[22rem]", mainOpen && "hidden md:block")}>
           {kind !== "enquiry" ? (

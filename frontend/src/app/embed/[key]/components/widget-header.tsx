@@ -38,34 +38,56 @@ export function WidgetHeader({
     return () => window.parent.postMessage({ type: READY_MESSAGE, ready: false }, "*");
   }, [framed]);
 
+  // Floating: the brand owns the header surface (staging's design) — --primary is the brand and
+  // --primary-foreground its measured readable ink (widgetTheme.onAccent), so any hex is legible.
+  // Expanded: a plain white bar over the page, like a dialog, with a labelled way back out.
+  const ctrl = expanded
+    ? "text-muted-foreground hover:bg-muted hover:text-foreground"
+    : "text-primary-foreground hover:bg-white/15 hover:text-primary-foreground";
+
   return (
-    // The brand owns the header surface (staging's design): --primary is the brand and
-    // --primary-foreground its measured readable ink (widgetTheme.onAccent), so any hex is legible.
-    // Aly sits on a white disc so a brand-tinted orb never vanishes into its own colour.
-    <header className="flex shrink-0 items-center gap-2.5 bg-primary px-4 py-3 text-primary-foreground">
-      <span className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white">
-        <AlyOrbIcon className="size-7" color={brandColor} />
+    <header
+      className={
+        expanded
+          ? "flex shrink-0 items-center gap-3 border-b bg-background px-5 py-3 text-foreground"
+          : "flex shrink-0 items-center gap-2.5 bg-primary px-4 py-3 text-primary-foreground"
+      }
+    >
+      {/* Aly sits on a white disc so a brand-tinted orb never vanishes into its own colour. */}
+      <span
+        className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-white ${
+          expanded ? "size-12 ring-2 ring-primary/20" : "size-10"
+        }`}
+      >
+        <AlyOrbIcon className={expanded ? "size-11" : "size-9"} color={brandColor} />
       </span>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold">{name}</p>
-        <p className="truncate text-xs opacity-80">{subtitle}</p>
+        <p className={`truncate text-xs ${expanded ? "text-muted-foreground" : "opacity-80"}`}>{subtitle}</p>
       </div>
       {framed && (
         <>
+          {expanded ? (
+            <Button variant="ghost" size="sm" className={ctrl} onClick={toggleExpanded}>
+              <Shrink className="h-4 w-4" />
+              Exit full screen
+            </Button>
+          ) : (
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              className={ctrl}
+              aria-label="Expand chat"
+              title="Full screen"
+              onClick={toggleExpanded}
+            >
+              <Expand className="h-4 w-4" />
+            </Button>
+          )}
           <Button
             variant="ghost"
             size="icon-sm"
-            className="text-primary-foreground hover:bg-white/15 hover:text-primary-foreground"
-            aria-label={expanded ? "Collapse chat" : "Expand chat"}
-            title={expanded ? "Collapse" : "Expand"}
-            onClick={toggleExpanded}
-          >
-            {expanded ? <Shrink className="h-4 w-4" /> : <Expand className="h-4 w-4" />}
-          </Button>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            className="text-primary-foreground hover:bg-white/15 hover:text-primary-foreground"
+            className={ctrl}
             aria-label="Close chat"
             title="Close"
             // The host page's origin is unknown here (any partner site); embed.js checks that the

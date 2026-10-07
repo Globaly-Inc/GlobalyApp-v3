@@ -67,9 +67,9 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
   const pathname = usePathname();
   const isFullBleed = FULL_BLEED_ROUTES.some((route) => pathname?.startsWith(route)) ?? false;
   const searchParams = useSearchParams();
-  // Business profile tabs (services, branches, scholarships, team…) are mostly wide tables —
-  // give the whole profile area the full content width.
-  const isWide = /^\/business\/profile\/\d/.test(pathname ?? "");
+  // Business profile tabs (services, branches, scholarships, team…) and the visitors list are
+  // wide tables — give them the full content width.
+  const isWide = /^\/business\/profile\/\d/.test(pathname ?? "") || pathname === "/business/contacts/visitors";
   const dispatch = useAppDispatch();
   const { user } = useAuthState();
   const { profile, status, error } = useAppSelector((state) => state.businessOnboarding);
