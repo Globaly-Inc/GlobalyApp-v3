@@ -372,16 +372,23 @@ export async function guestRoutes(app: FastifyInstance) {
           jobIds: embed?.jobIds,
           rackInstitutionId: embed?.rackInstitutionId,
           pinnedCourseIds: rag.pinnedCourseIdsFrom(prevMessages),
+          priorQuestion: rag.lastAssistantQuestion(prevMessages),
           onTrace: trace,
         }),
+        // Courtesy turns skip the memory EMBEDDING for the same reason searchAll skips its
+        // searches: there is nothing in "thanks" to retrieve guidance for. The pinned rules still
+        // come back — they are institution-wide and must not depend on how the student phrased the
+        // turn, least of all on a closing reply (Greptile).
         embed?.rackInstitutionId
           ? retrieveMemories({
               institutionId: embed.rackInstitutionId,
               institutionName: embed.config.display_name,
-              query: asked,
+              // Resolved, not raw: this embeds the question too (see rag.resolveQuery).
+              query: rag.resolveQuery(asked, rag.lastAssistantQuestion(prevMessages)),
               // Situation-bound guidance could never match before: the query carried the
               // message and nothing about who was asking.
               situation,
+              pinnedOnly: rag.isCourtesyTurn(asked, rag.lastAssistantQuestion(prevMessages)),
               onTrace: trace,
             })
           : null,

@@ -84,6 +84,15 @@ export function buildSystemPrompt(opts: {
   visitorLocation?: string | null;
 }): string {
   const sections: string[] = [];
+  /**
+   * Everything whose text changes DURING a conversation — retrieved institution memory, what the
+   * session has learned, this turn's money verdict, this turn's CONTEXT. It is emitted after every
+   * static rule, so the long rules prefix stays byte-identical turn to turn and Gemini's implicit
+   * context cache keeps hitting it; a volatile section in the middle would invalidate every rule
+   * below it on every turn. Relative order within the tail is unchanged — in particular the
+   * institution memory block's HARD LIMITS line still lands immediately before the student data.
+   */
+  const tail: string[] = [];
   // Every instruction that pointed at the pasted CONTEXT block has to point at tool
   // results instead — same rules, different delivery.
   const src = opts.toolMode ? "your tool results" : "the CONTEXT section below";
@@ -256,10 +265,10 @@ export function buildSystemPrompt(opts: {
   // Configuration outranks anything the system learned about style, and says so itself. It is
   // placed before the memory block deliberately: that block closes with HARD LIMITS STILL
   // APPLY, which must remain the last instruction before the student's own data.
-  if (opts.rackProfile) sections.push(opts.rackProfile);
+  if (opts.rackProfile) tail.push(opts.rackProfile);
 
   // ── Institution counselling memory (embed) ──
-  if (opts.institutionGuidance) sections.push(opts.institutionGuidance);
+  if (opts.institutionGuidance) tail.push(opts.institutionGuidance);
 
   // ── Profile ──
   if (opts.profile?.profile) {
@@ -298,11 +307,11 @@ export function buildSystemPrompt(opts: {
     if (p.expected_start_date) lines.push(`  Expected Start: ${p.expected_start_date}`);
 
     lines.push("NEVER ask the student for data already in the profile. Greet by first name on first turn.");
-    sections.push(lines.join("\n"));
+    tail.push(lines.join("\n"));
 
     // ── Eligibility check — only useful when there are grades/tests to compare ──
     if (opts.profile.qualifications.length || opts.profile.language_tests.length) {
-      sections.push(
+      tail.push(
         "ELIGIBILITY CHECK:\n" +
         "- When recommending a course, compare the student's grades (GPA) and English test scores from " +
         `the profile against that course's eligibility and English requirements in ${srcShort}.\n` +
@@ -320,7 +329,7 @@ export function buildSystemPrompt(opts: {
       ? missingProfileFields(opts.profile)
       : [];
     if (missing.length) {
-      sections.push(
+      tail.push(
         `PROFILE COMPLETION (student profile is incomplete — missing: ${missing.join(", ")}):\n` +
         "- Fill these opportunistically, within the QUESTION BUDGET — a profile question IS your one " +
         "question for that reply, never an extra one bolted onto a complete answer. Only ask when it's " +
@@ -336,17 +345,17 @@ export function buildSystemPrompt(opts: {
   // ── Counselling context (this session) ──
   const learned = renderCounsellingContext(opts.counsellingContext);
   if (learned) {
-    sections.push(
+    tail.push(
       "WHAT THIS CONVERSATION HAS ESTABLISHED (from earlier turns — treat as known, never re-ask):\n" +
       learned,
     );
   }
 
   // ── Visitor location (embed) ── an enhancement only: absent, and nothing else changes.
-  if (opts.visitorLocation) sections.push(opts.visitorLocation);
+  if (opts.visitorLocation) tail.push(opts.visitorLocation);
 
   if (opts.counsellingContext?.stage) {
-    sections.push(
+    tail.push(
       "STAGE: " + {
         exploring: "They are still exploring. Widen the field, ask about goals, do not push a shortlist.",
         narrowing: "They are narrowing down. Compare two or three concrete options on the trade-offs that matter to them.",
@@ -375,9 +384,25 @@ export function buildSystemPrompt(opts: {
 
   // ── Response rules ──
   sections.push(
-    "Keep responses SHORT: 3-5 sentences for conversational replies. " +
-    "Use markdown. Be warm, professional, encouraging. Write like a counsellor talking to one student " +
-    "across the table — contractions are fine, stock phrases ('It is wonderful to meet you') are not.",
+    "Write like a counsellor talking to one student across the table: warm, direct, and done in " +
+    "a few lines. Use markdown.\n" +
+    // Every rule here exists because the model did the opposite: opened with "Great question!",
+    // re-stated the question, narrated its own search, then closed with "Hope this helps!".
+    "- Lead with the ANSWER in the first line. No opener, no restating what they asked, no " +
+    "narrating what you are about to look up.\n" +
+    "- 3-5 sentences for a conversational reply. If two facts answer it, send two facts — length " +
+    "is not helpfulness.\n" +
+    "- Contractions, plain words, 'you' and 'we'. No stock phrases ('It is wonderful to meet you'), " +
+    "no sign-offs ('Hope this helps!', 'Feel free to ask!') — the follow-up chips already cover what is next.\n" +
+    // A wall of prose is unreadable in a chat bubble. The renderer is a flat markdown
+    // parser (no nested lists), so bullets must stay one level deep.
+    "- Anything with more than one part — requirements, fees, steps, options, dates, pros and cons — " +
+    "goes in a markdown bullet list ('- ' per line), one fact per bullet, not one running paragraph. " +
+    "Keep bullets flat (never indent one under another) and a line each; bold the label when a bullet " +
+    "is a label/value pair.\n" +
+    "- A single-fact answer or a plain conversational turn stays as prose — never pad one into a list.\n" +
+    "- Never repeat what you already told them this conversation — refer back to it in a few words " +
+    "and add what is new.",
   );
 
   // ── Course card format ──
@@ -459,7 +484,7 @@ export function buildSystemPrompt(opts: {
   // guidance the student did not ask about can still inform the reply. Framed as a
   // briefing, not context: the model must judge relevance, not report it.
   if (opts.proactiveKnowledge) {
-    sections.push(
+    tail.push(
       "KNOWLEDGE BRIEFING (retrieved for this student's profile and situation — NOT because they asked):\n" +
       opts.proactiveKnowledge +
       "\nHow to use the briefing:\n" +
@@ -481,7 +506,7 @@ export function buildSystemPrompt(opts: {
   // specific information" and dropped the duration and the intakes with it.
   if (opts.withheldMoneyTopics?.length) {
     const named = opts.withheldMoneyTopics.map((t) => MONEY_TOPIC_WORDS[t]).join(" and ");
-    sections.push(
+    tail.push(
       `NO MONEY DATA THIS TURN: this question touches ${named}, ` +
       `and ${srcShort} holds nothing to ground that part of it.\n` +
       `- ANSWER THE REST OF THE QUESTION IN FULL. Everything that is not ${named} is unaffected — ` +
@@ -499,12 +524,12 @@ export function buildSystemPrompt(opts: {
 
   // ── RAG context ──
   if (opts.ragContext) {
-    sections.push("CONTEXT:\n" + opts.ragContext);
+    tail.push("CONTEXT:\n" + opts.ragContext);
   }
 
   // ── First message greeting ──
   if (opts.isFirstMessage && !opts.embedConfig) {
-    sections.push(
+    tail.push(
       opts.returning
         ? "GREETING: This student has chatted with you before — this is a fresh session. Open with a brief, " +
           "warm 'Welcome back' before addressing their message. One line — don't make the greeting the whole reply."
@@ -513,7 +538,7 @@ export function buildSystemPrompt(opts: {
     );
   }
   if (opts.discoveryTurn) {
-    sections.push(
+    tail.push(
       "THIS IS A DISCOVERY TURN — the first message of the conversation. " +
       (opts.toolMode
         ? "You have no course-search tools this turn: "
@@ -537,10 +562,10 @@ export function buildSystemPrompt(opts: {
       "Course recommendations begin on the next turn.",
     );
   } else if (opts.isFirstMessage) {
-    sections.push(
+    tail.push(
       "This is the first message in the conversation. Greet the student warmly and offer to help with their education journey.",
     );
   }
 
-  return sections.join("\n\n");
+  return [...sections, ...tail].join("\n\n");
 }

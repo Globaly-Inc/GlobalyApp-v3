@@ -208,10 +208,14 @@ export const aiMockApi = {
       await delay(100);
     }
 
-    onEvent({ type: "trace", step: "Understanding your question..." });
+    // Shaped like the backend's real trace strings so the thinking indicator maps them
+    // (see thinkingPhase in ../utils) instead of falling back to its generic label.
+    onEvent({ type: "trace", step: "Keywords: nursing, canada" });
     await delay(400);
-    onEvent({ type: "trace", step: "Searching course database..." });
+    onEvent({ type: "trace", step: "Courses: 3 found" });
     await delay(500);
+    onEvent({ type: "trace", step: "Context: 4820 chars, 6 sources" });
+    await delay(300);
 
     const words = "Based on your query, I found several relevant programs. Here are some options that match your criteria well.".split(" ");
     for (const word of words) {

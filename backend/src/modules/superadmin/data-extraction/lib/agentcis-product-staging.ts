@@ -4,7 +4,7 @@
 // agentcis-product-mappers.ts.
 
 import { masterKnex } from "../../../../core/db/master-pool.js";
-import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
+import { INGESTED_COURSE_STATUS, SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { coerceLabel } from "./agentcis-mappers.js";
 import {
   extractIntakes, extractStudyOptions, extractEligibility,
@@ -110,7 +110,7 @@ export async function stageProduct(
         awarding_institution: (p.awarding_institution as string) || institutionName,
         duration_weeks: durationWeeks,
         source_url: sourceUrl,
-        verification_status: "pending",
+        verification_status: INGESTED_COURSE_STATUS,
       })
       .returning("id");
     courseId = course.id as string;

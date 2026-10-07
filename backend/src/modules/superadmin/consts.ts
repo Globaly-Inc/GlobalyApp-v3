@@ -5,11 +5,26 @@ export const SUPERADMIN_SCHEMA = "superadmin";
  * counsellor and the embed widget. 'confirmed' is what Approve / bulk approve write — by a platform
  * admin OR the org's own owner (POST /services/approve, canApproveCourses: a product decision, the
  * owner vouches for their own catalog); 'manual' is a course an admin created by hand. Everything
- * else ('unverified' and 'pending' imports, owner-added courses, the auto-verifier's
- * 'verified'/'mismatch', rejected 'flagged') waits for approval — except business-portal
- * extractions, which skip it for now (SELF_SERVICE_SKIPS_APPROVAL).
+ * else (owner-added courses, the auto-verifier's 'mismatch', rejected 'flagged') is not approved —
+ * except business-portal extractions, which skip approval entirely (SELF_SERVICE_SKIPS_APPROVAL).
  */
 export const APPROVED_COURSE_STATUSES = ["confirmed", "manual"] as const;
+
+/**
+ * What every INGEST path writes for a course the moment it lands (the extraction staging writer,
+ * the AgentCIS import, and the verifier when the live site still matches). Approval is opt-OUT now:
+ * a course is live as soon as it is extracted, and an admin's Reject ('flagged') or a verification
+ * 'mismatch' is what takes it back out. Set this to "unverified" to go back to opt-in approval —
+ * the Approve / bulk-approve / approve-all endpoints are untouched and still work either way.
+ */
+export const INGESTED_COURSE_STATUS = "confirmed";
+
+/**
+ * "an admin has not rejected this", for a WHERE on an unaliased extraction_courses query. Must stay
+ * coalesce-wrapped: a plain `verification_status <> 'flagged'` is NULL — i.e. false — for the
+ * null-status rows the business portal writes, which would quietly exclude them.
+ */
+export const NOT_REJECTED_SQL = "coalesce(verification_status, 'unverified') <> 'flagged'";
 
 /**
  * ponytail: for now a course from the BUSINESS PORTAL (BUSINESS_PORTAL_SOURCE_TYPES — the owner's own

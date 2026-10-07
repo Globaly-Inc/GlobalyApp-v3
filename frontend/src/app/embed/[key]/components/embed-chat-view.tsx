@@ -239,7 +239,7 @@ export function EmbedChatView({ embedKey, initialConfig = null }: EmbedChatViewP
             ? `${agentName} from the admissions team is replying`
             : waiting
               ? "Waiting for the admissions team"
-              : config?.subtitle ?? "AI counsellor · powered by Globaly"
+              : config?.subtitle ?? "AI counsellor"
         }
       />
 

@@ -1,4 +1,5 @@
 import { Building2, Globe, MapPin } from "lucide-react";
+import { FallbackImage } from "@/components/fallback-image";
 import { Badge } from "@/components/ui/badge";
 import { SocialIcon } from "../social-icon";
 import { VerifiedTick } from "../verified-tick";
@@ -14,11 +15,11 @@ export function ProfileHero({ data }: Readonly<{ data: ProfileData }>) {
   return (
     <div className="overflow-hidden rounded-xl border border-border bg-card">
       <div className="relative h-44 select-none">
-        {data.coverUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={data.coverUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
-        ) : (
-          <div className="absolute inset-0 bg-gradient-to-r from-primary/80 via-primary/60 to-primary/40" />
+        {/* Gradient underneath, cover on top: a cover URL that 403s hides itself and leaves the
+            gradient, instead of a broken-image icon across the hero. */}
+        <div className="absolute inset-0 bg-gradient-to-r from-primary/80 via-primary/60 to-primary/40" />
+        {data.coverUrl && (
+          <FallbackImage src={data.coverUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
         )}
         <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/20" />
       </div>
@@ -29,14 +30,12 @@ export function ProfileHero({ data }: Readonly<{ data: ProfileData }>) {
         {/* The logo overlaps the cover, so the details column carries its own top padding to
             line its text up beside the taller logo box. */}
         <div className="-mt-14 flex flex-col items-start gap-4 sm:flex-row">
-          <div className="h-28 w-28 shrink-0 overflow-hidden rounded-lg border-4 border-background bg-muted shadow-lg">
-            {data.logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={data.logoUrl} alt={data.name} className="h-full w-full object-contain p-2" />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary to-primary/70">
-                <span className="text-3xl font-bold text-primary-foreground">{initials || "?"}</span>
-              </div>
+          <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-lg border-4 border-background bg-muted shadow-lg">
+            <div className="absolute inset-0 flex items-center justify-center bg-gradient-to-br from-primary to-primary/70">
+              <span className="text-3xl font-bold text-primary-foreground">{initials || "?"}</span>
+            </div>
+            {data.logoUrl && (
+              <FallbackImage src={data.logoUrl} alt={data.name} className="relative h-full w-full bg-background object-contain p-2" />
             )}
           </div>
 

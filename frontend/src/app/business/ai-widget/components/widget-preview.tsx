@@ -40,7 +40,7 @@ export function WidgetPreview({ form, ownerKind }: Readonly<{ form: WidgetFormVa
           <AlyOrbIcon className="size-6" color={form.brand_color} />
           <div className="min-w-0 flex-1">
             <p className="truncate text-xs font-semibold">{form.display_name || "AI Counsellor"}</p>
-            <p className="truncate text-[10px] text-muted-foreground">{form.subtitle || "AI counsellor · powered by Globaly"}</p>
+            <p className="truncate text-[10px] text-muted-foreground">{form.subtitle || "AI counsellor"}</p>
           </div>
           <Expand className="size-3.5 text-muted-foreground" aria-hidden />
           <Minus className="size-3.5 text-muted-foreground" aria-hidden />

@@ -5,7 +5,7 @@ import type { CounsellingContext } from "../repositories/sessions.repository.js"
 // One card mapping and one chunk-budget rule for both retrieval paths — a divergence
 // here would mean the legacy path and the tool path emitting different course-card
 // shapes, or handing the model different amounts of rack context for the same question.
-import { capPerDocument, courseCardFields, feeLine, rankFees } from "../lib/tools.js";
+import { selectChunks, courseCardFields, feeLine, rankFees } from "../lib/tools.js";
 // Same cross-module import the ai-knowledge crawl worker uses — one embedding client for the platform.
 import { embed, isEmbedConfigured as embeddingConfigured } from "../../superadmin/data-extraction/lib/llm-client.js";
 
@@ -29,6 +29,86 @@ function extractKeywords(query: string): string[] {
     .filter(w => w.length > 2 && !STOPWORDS.has(w));
 }
 
+/** Turns that close the conversation. `extractKeywords` keeps every one of these (none is a
+ * stopword and all are >2 chars), so until now a goodbye cost a ten-way search plus a rack
+ * embedding to answer one word. They still see the courses already on screen — they fall
+ * through to the pinned-only path in searchAll. */
+const CLOSING_RE =
+  /^(thanks?|thank you|ty|no thanks?|nope|nothing( else)?|that'?s (it|all)|bye|goodbye|see you|cheers)[\s!.,]*$/i;
+
+/** Words that only POINT at something already on screen — an ordinal or a count answering
+ * "which one?". Like an acknowledgement they carry no subject, but extractKeywords keeps them,
+ * and "the second one" keeps TWO of them, which is enough to look like a question of its own. */
+const POINTER_RE = /^(first|second|third|fourth|fifth|sixth|seventh|last|one|two|three|four|five|number|option)$/i;
+
+/** Acknowledgements, which are closers ONLY when nothing was asked. After the counsellor's own
+ * question these are the student saying YES — "yep" to "shall I show you Melbourne courses?"
+ * must retrieve those courses, not end the turn with nothing to show. */
+const ACK_RE =
+  /^(ok(ay)?|k|cool|great|nice|perfect|awesome|lovely|got it|understood|sure|yep|yup|yeah|alright)[\s!.,]*$/i;
+
+export function isCourtesyTurn(message: string, priorQuestion?: string | null): boolean {
+  const text = message.trim();
+  return CLOSING_RE.test(text) || (!priorQuestion && ACK_RE.test(text));
+}
+
+/** The counsellor's own last question, when its answer is what the student just sent.
+ * A short reply ("yes", "the second one", "September") carries no searchable subject of
+ * its own — the subject is in the question it answers, so that is what we search. */
+export function lastAssistantQuestion(
+  messages: Array<{ role: string; content: string }>,
+): string | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === "user") continue;
+    const text = messages[i].content;
+    return text.includes("?") ? text : null;
+  }
+  return null;
+}
+
+/**
+ * What this turn should actually search for.
+ *
+ * Two turns searched badly before this existed, both because `extractKeywords` keeps any word
+ * over two letters that isn't a stopword:
+ * - "thanks" / "no thanks" / "bye" searched for themselves — a ten-way search plus a rack
+ *   embedding spent on a goodbye.
+ * - "yes", "September", "the second one" searched for themselves too, which matches nothing,
+ *   so "yes" answering "shall I show you Melbourne courses?" left the counsellor with no
+ *   courses to show. The subject of a short reply lives in the question it answers.
+ *
+ * Empty keywords are not a dead end: searchAll still answers from the courses already on screen.
+ */
+export function retrievalKeywords(
+  query: string,
+  priorQuestion?: string | null,
+): { keywords: string[]; fromPriorQuestion: boolean } {
+  // A closing turn searches nothing, whatever is available to borrow.
+  if (isCourtesyTurn(query, priorQuestion)) return { keywords: [], fromPriorQuestion: false };
+  const own = extractKeywords(query);
+  // Counting keywords was the wrong proxy for "this turn has a subject of its own" (Greptile):
+  // "ok" survives extractKeywords as NOTHING (<= 2 letters) and used to search nothing at all,
+  // while "the second one" survives as two pointer words and used to search for them literally.
+  // What matters is whether any word names a subject, not how many words there are.
+  const subject = own.filter((w) => !POINTER_RE.test(w) && !ACK_RE.test(w));
+  if (subject.length > 1 || !priorQuestion) return { keywords: own, fromPriorQuestion: false };
+  const borrowed = extractKeywords(priorQuestion);
+  if (!borrowed.length) return { keywords: own, fromPriorQuestion: false };
+  return { keywords: [...new Set([...borrowed, ...own])], fromPriorQuestion: true };
+}
+
+/**
+ * What a MEANING-based search should see this turn. The keyword searches borrow the question a
+ * short reply answers; the searches that embed or scan the text — the rack, country detection,
+ * institution memory — were still reading the reply itself, so "yes" to "shall I explain the
+ * refund policy?" searched the meaning of the word "yes" (Greptile). Both halves are kept: the
+ * question carries the subject, the reply carries which one ("the second", "September").
+ */
+export function resolveQuery(query: string, priorQuestion?: string | null): string {
+  const { fromPriorQuestion } = retrievalKeywords(query, priorQuestion);
+  return fromPriorQuestion ? `${priorQuestion} ${query}`.trim() : query;
+}
+
 // ── Country detection (scopes Knowledge Rack retrieval to country-specific categories) ──
 
 const COUNTRY_ALIASES: Record<string, string> = { uk: "GB", usa: "US", america: "US", uae: "AE" };
@@ -39,7 +119,16 @@ const wordRe = (name: string) =>
 // ponytail: cached forever — the countries table is effectively static pre-launch
 let countryMatchers: Array<{ re: RegExp; iso2: string }> | null = null;
 
-async function detectCountryCode(query: string): Promise<string | null> {
+/**
+ * The country this turn is about, or null.
+ *
+ * `fallback` is the question a short reply answers, and is read ONLY when the reply itself names no
+ * country: the student's own words always win. Order matters because matching is first-hit over an
+ * unordered list (listCountryNames has no ORDER BY), so a text holding two country names resolves
+ * to whichever the table happens to list first — "Canada" answering "Australia or Canada?" would
+ * otherwise scope the search to Australia and drop the Canada passages (Greptile).
+ */
+export async function detectCountryCode(query: string, fallback?: string | null): Promise<string | null> {
   if (!countryMatchers) {
     const rows = await knowledge.listCountryNames().catch(err => {
       logger.warn("Country list load failed", { err: String(err) });
@@ -51,8 +140,8 @@ async function detectCountryCode(query: string): Promise<string | null> {
       ...Object.entries(COUNTRY_ALIASES).map(([alias, iso2]) => ({ re: wordRe(alias), iso2 })),
     ];
   }
-  const q = query.toLowerCase();
-  return countryMatchers.find(m => m.re.test(q))?.iso2 ?? null;
+  const hit = (text: string) => countryMatchers!.find(m => m.re.test(text.toLowerCase()))?.iso2 ?? null;
+  return hit(query) ?? (fallback ? hit(fallback) : null);
 }
 
 // Higher-trust sources lead the context so the model anchors on them (AC-09).
@@ -88,7 +177,7 @@ async function matchRack(
   trace: (step: string) => void,
   institutionId?: number | null,
 ): Promise<knowledge.KnowledgeChunkResult[]> {
-  const capped = capPerDocument(await knowledge.matchKnowledgeChunks(vector, 8, countryCode, institutionId));
+  const capped = selectChunks(await knowledge.matchKnowledgeChunks(vector, 8, countryCode, institutionId));
   trace(institutionId ? `This website: ${capped.length} passages found` : `Knowledge rack: ${capped.length} chunks found`);
   return capped;
 }
@@ -213,6 +302,9 @@ export async function searchAll(opts: {
   /** Discovery turn: skip course retrieval so the model counsels instead of
    * recommending — it cannot list courses it never saw. */
   skipCourses?: boolean;
+  /** The counsellor's last question, when the student's message is the answer to it —
+   * see lastAssistantQuestion. Searched in place of a reply too thin to search. */
+  priorQuestion?: string | null;
   /** Embed mode: read THIS institution's own crawled website instead of the global rack.
    *  Unset for a business widget, which keeps the rack switched off entirely. */
   rackInstitutionId?: number | null;
@@ -223,8 +315,10 @@ export async function searchAll(opts: {
   onTrace?: (step: string) => void;
 }): Promise<RagOutput> {
   const embedScoped = opts.jobIds != null;
-  const keywords = extractKeywords(opts.query);
+  const { keywords, fromPriorQuestion } = retrievalKeywords(opts.query, opts.priorQuestion);
   const searchQuery = keywords.join(" ");
+  // See resolveQuery: the semantic searches below must not be handed a bare "yes".
+  const resolvedQuery = fromPriorQuestion ? `${opts.priorQuestion} ${opts.query}`.trim() : opts.query;
   const pinned = opts.pinnedCourseIds ?? [];
   const trace = (step: string) => {
     traceSteps.push(step);
@@ -233,14 +327,16 @@ export async function searchAll(opts: {
   const traceSteps: string[] = [];
 
   if (!searchQuery && !pinned.length) {
-    trace("No searchable keywords extracted");
+    trace("Nothing to search this turn");
     return { contextText: "", sources: [], traceSteps, moneyTopics: [] };
   }
 
-  if (searchQuery) trace(`Keywords: ${keywords.join(", ")}`);
-  else trace("No searchable keywords; answering from the courses already shown");
+  if (searchQuery && fromPriorQuestion) trace(`Keywords (from the question it answers): ${keywords.join(", ")}`);
+  else if (searchQuery) trace(`Keywords: ${keywords.join(", ")}`);
+  else trace("Nothing to search; answering from the courses already shown");
 
-  const countryCode = await detectCountryCode(opts.query);
+  // The reply first, the question it answers only as a fallback — see detectCountryCode.
+  const countryCode = await detectCountryCode(opts.query, fromPriorQuestion ? opts.priorQuestion : null);
   if (countryCode) trace(`Country detected: ${countryCode}`);
 
   // ── Parallel searches — each wrapped so one failure doesn't kill the rest ──
@@ -296,7 +392,7 @@ export async function searchAll(opts: {
     // policies, scholarships, eligibility prose — that structured extraction never captured.
     // Global rack content stays out of embed answers, and the owner's site stays out of
     // global ones; the SQL function enforces both directions.
-    !embeddingConfigured() || (embedScoped && !opts.rackInstitutionId) ? none : embed(opts.query)
+    !embeddingConfigured() || (embedScoped && !opts.rackInstitutionId) ? none : embed(resolvedQuery)
       .then(v => matchRack(v, countryCode, trace, opts.rackInstitutionId))
       .catch(err => { logger.warn("Knowledge rack search failed", { err: String(err) }); trace("Knowledge rack search failed"); return []; }),
   ]); }
@@ -610,7 +706,7 @@ export async function counsellorBriefing(opts: {
     const query = situation ? `${opts.message}\nStudent situation: ${situation}` : opts.message;
     const countryCode = await detectCountryCode(query);
     const vector = await embed(query);
-    const hits = capPerDocument(await knowledge.matchKnowledgeChunks(vector, 6, countryCode));
+    const hits = selectChunks(await knowledge.matchKnowledgeChunks(vector, 6, countryCode));
     opts.onTrace?.(`Knowledge rack briefing: ${hits.length} passages`);
     if (!hits.length) return empty;
     return renderRackHits(hits);

@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { FallbackImage } from "@/components/fallback-image";
 import { GraduationCap } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
@@ -28,9 +29,10 @@ export function CourseHero({ course }: Readonly<{ course: CourseDetail }>) {
   return (
     <div className="relative isolate rounded-xl border border-border bg-card">
       <div className="relative z-0 h-32 overflow-hidden rounded-t-xl bg-gradient-to-br from-primary/20 via-primary/10 to-background md:h-40">
+        {/* The wrapper's gradient is the fallback: a cover that 403s hides its img rather than
+            painting a broken-image icon. */}
         {cover && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={cover} alt="" className="absolute inset-0 h-full w-full object-cover" />
+          <FallbackImage src={cover} alt="" className="absolute inset-0 h-full w-full object-cover" />
         )}
       </div>
 
@@ -39,11 +41,9 @@ export function CourseHero({ course }: Readonly<{ course: CourseDetail }>) {
           <div className="min-w-0 flex-1">
             <div className="flex items-end gap-4">
               <div className="relative z-20 -mt-14 flex h-28 w-28 shrink-0 items-center justify-center rounded-xl border-4 border-card bg-background p-3 shadow-lg">
-                {logo ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={logo} alt={name ?? course.name} className="max-h-full max-w-full object-contain" />
-                ) : (
-                  <span className="text-lg font-bold text-primary">{initials || "?"}</span>
+                <span className="absolute text-lg font-bold text-primary">{initials || "?"}</span>
+                {logo && (
+                  <FallbackImage src={logo} alt={name ?? course.name} className="relative h-full w-full bg-background object-contain" />
                 )}
               </div>
               <div className="min-w-0 flex-1 space-y-1.5">
