@@ -59,7 +59,8 @@ export function DetailTabs({
   const setTab = (next: Tab) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("tab", next);
-    router.push(`${pathname}?${params.toString()}`);
+    // replace, not push: a tab switch isn't a page — Back should return to the list, not step through tabs.
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
   return (

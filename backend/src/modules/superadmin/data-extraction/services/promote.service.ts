@@ -27,6 +27,7 @@ import * as repo from "../repositories/promote.repository.js";
 import type { OverviewRow, AgentRow } from "../repositories/promote.repository.js";
 import { baseProfileFieldsFrom, institutionExtrasFrom, businessExtrasFrom, localizeImages } from "../lib/overview-sync.js";
 import { PROMOTABLE_JOB_STATUSES } from "../schemas/jobs.schema.js";
+import { writeJobEvent } from "../lib/staging-writer.js";
 
 /**
  * RFC 2606 reserved TLD — guaranteed unroutable, so a synthetic owner address can never
@@ -41,13 +42,14 @@ const PLACEHOLDER_EMAIL_DOMAIN = "unclaimed.globalyhub.invalid";
  */
 const KEEP_EXISTING = new Set(["currency", "gallery_images", "cover_url"]);
 
-export function repatch(existing: Record<string, unknown>, fields: Record<string, unknown>): Record<string, unknown> {
+export function repatch(existing: Record<string, unknown>, fields: Record<string, unknown>, onlyBlanks = false): Record<string, unknown> {
   const patch: Record<string, unknown> = {};
   for (const [k, v] of Object.entries(fields)) {
     if (v === null || v === undefined || v === "") continue;
     // Derived, not extracted — the country's currency, homepage photos, cover — so never replaces what the
     // org already has (an emptied gallery, [], counts as set: the owner removed those photos).
-    if (KEEP_EXISTING.has(k) && existing[k] != null && existing[k] !== "") continue;
+    // `onlyBlanks` (auto-publish of the owner's own run): nothing the owner already filled is replaced.
+    if ((onlyBlanks ? k !== "meta" : KEEP_EXISTING.has(k)) && existing[k] != null && existing[k] !== "") continue;
     patch[k] = k === "meta" && existing.meta && typeof existing.meta === "object"
       ? { ...(existing.meta as Record<string, unknown>), ...(v as Record<string, unknown>) }
       : v;
@@ -113,7 +115,7 @@ async function resolveListingOwnerFromAgents(jobId: string) {
   return resolveAgentOwner(named.name!.trim(), named.email, named.phone, seedFrom(named.id));
 }
 
-async function promoteInstitution(job: any, overview: OverviewRow | undefined) {
+async function promoteInstitution(job: any, overview: OverviewRow | undefined, onlyBlanks = false) {
   const name = overview?.name ?? job.institution_name ?? "Untitled institution";
   const seed = seedFrom(job.id);
   const existing = await repo.findInstitutionByJobId(job.id);
@@ -138,7 +140,7 @@ async function promoteInstitution(job: any, overview: OverviewRow | undefined) {
   };
 
   if (existing) {
-    return { row: await repo.updateInstitution(existing.id, repatch(existing, fields)), created: false };
+    return { row: await repo.updateInstitution(existing.id, repatch(existing, fields, onlyBlanks)), created: false };
   }
 
   // Owner only when an extracted agent gives a real name; otherwise platform_user_id,
@@ -162,7 +164,7 @@ async function promoteInstitution(job: any, overview: OverviewRow | undefined) {
   return { row, created: true };
 }
 
-async function promoteBusiness(job: any, overview: OverviewRow | undefined) {
+async function promoteBusiness(job: any, overview: OverviewRow | undefined, onlyBlanks = false) {
   const name = overview?.name ?? job.institution_name ?? "Untitled business";
   const seed = seedFrom(job.id);
   const existing = await repo.findPrimaryBusinessByJobId(job.id);
@@ -183,7 +185,7 @@ async function promoteBusiness(job: any, overview: OverviewRow | undefined) {
   };
 
   if (existing) {
-    return { row: await repo.updateBusiness(existing.id, repatch(existing, fields)), created: false };
+    return { row: await repo.updateBusiness(existing.id, repatch(existing, fields, onlyBlanks)), created: false };
   }
 
   // Same rule as promoteInstitution — the two tables publish identically.
@@ -288,7 +290,8 @@ async function resolveIsInstitution(job: any): Promise<boolean> {
   );
 }
 
-export async function promoteJob(jobId: string, adminId: number) {
+/** `onlyBlanks`: fill the listing's empty fields only (auto-publish of an owner's run, see autoPublishOwnerRun). */
+export async function promoteJob(jobId: string, adminId: number, { onlyBlanks = false } = {}) {
   const job = await jobsRepo.findJobById(jobId);
   if (!job) throw new NotFoundError("Extraction job not found");
 
@@ -301,7 +304,7 @@ export async function promoteJob(jobId: string, adminId: number) {
   const overview = await repo.findOverviewByJobId(jobId);
   const isInstitution = await resolveIsInstitution(job);
 
-  const listing = isInstitution ? await promoteInstitution(job, overview) : await promoteBusiness(job, overview);
+  const listing = isInstitution ? await promoteInstitution(job, overview, onlyBlanks) : await promoteBusiness(job, overview, onlyBlanks);
   // Extracted photos are hot-linked until copied into our storage (best-effort, never fails promote).
   await localizeImages(isInstitution ? "institutions" : "businesses", Number(listing.row.id), jobId).catch(() => {});
 
@@ -354,3 +357,32 @@ export async function promoteJobs(jobIds: string[], adminId: number) {
   }
   return { promoted: results.filter((r) => r.ok).length, failed: results.filter((r) => !r.ok).length, results };
 }
+
+/** Jobs an owner starts from their own portal (businesses / institution-profile startExtraction). */
+const OWNER_SOURCE_TYPES = new Set(["business_self_service", "institution_self_service"]);
+
+/**
+ * Publishes an owner's portal-started extraction to their own listing as soon as it finishes — the
+ * admin's "Publish to Business" (promoteJob), run for them. Only a finished run (`review`) of an owner
+ * source type; fills the listing's BLANK fields only, so nothing the owner typed is replaced. Called
+ * after the completion email, which reads the job before promote moves it to `exported`. Never throws:
+ * a failure leaves the job in review for an admin to publish.
+ */
+export async function autoPublishOwnerRun(jobId: string): Promise<void> {
+  const job = await jobsRepo.findJobById(jobId);
+  if (!job || job.status !== "review" || !OWNER_SOURCE_TYPES.has(job.source_type as string)) return;
+  try {
+    const result = await promoteJob(jobId, Number(job.created_by_platform_user_id), { onlyBlanks: true });
+    await writeJobEvent(jobId, "auto_published", {
+      phase: "verification",
+      message: `Published to the owner's ${result.listing_type} automatically`,
+      data: result,
+    });
+  } catch (err) {
+    await writeJobEvent(jobId, "auto_publish_failed", {
+      level: "warn", phase: "verification",
+      message: `Auto-publish failed — publish from the job page: ${err instanceof Error ? err.message : String(err)}`,
+    }).catch(() => {});
+  }
+}
+

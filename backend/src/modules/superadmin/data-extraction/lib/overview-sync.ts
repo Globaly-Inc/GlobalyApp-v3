@@ -2,9 +2,9 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { countryCurrency } from "../../../../shared/country-currency.js";
 import { readSnapshot } from "./page-store.js";
-import { pickGalleryImages } from "./gallery-images.js";
+import { mediaPatch, pickGalleryImages, type OverviewMedia } from "./gallery-images.js";
 import { copyExternalImage } from "./image-copy.js";
-import { isExternalUrl } from "../../../../shared/storage/storageService.js";
+import { isConfigured as storageConfigured, isExternalUrl } from "../../../../shared/storage/storageService.js";
 import { generateSubdomain } from "../../../../shared/subdomain.js";
 import { findOverviewByJobId, findCountryId } from "../repositories/promote.repository.js";
 import type { OverviewRow } from "../repositories/promote.repository.js";
@@ -13,7 +13,7 @@ const logger = createChildLogger("overview-sync");
 
 const OWNERSHIP_TYPE_MAP: Record<string, "Public" | "Private"> = { public: "Public", private: "Private" };
 
-/** Photos scraped from the overview's page snapshot — up to 3, logo and icons skipped. Tries the
+/** Photos scraped from the overview's page snapshot — up to MAX_GALLERY_IMAGES (10), logo and icons skipped. Tries the
  * overview's source page then the homepage, each main-content snapshot then the full one: the
  * main-content cut often drops a homepage's hero/banner photos. */
 async function scrapeGallery(overview: OverviewRow | undefined): Promise<string[] | null> {
@@ -36,16 +36,22 @@ async function galleryFrom(overview: OverviewRow | undefined): Promise<string[] 
 }
 
 /**
- * Stores the cover and up to 3 media photos on the job's overview, picked from its homepage —
- * only while they're unset (null), so an admin's correction or clearing ([] / "" cover) is never redone.
+ * Stores the cover and up to 10 media photos on the job's overview — site analysis's classified
+ * picks (`media`) when it made any, else the guarded fallback over the homepage snapshot. Each field
+ * only while it's unset (null), so an admin's correction or clearing ([] / "" cover) is never redone.
  */
-export async function pickOverviewMedia(jobId: string): Promise<void> {
+export async function pickOverviewMedia(jobId: string, media?: OverviewMedia): Promise<void> {
   const overview = await findOverviewByJobId(jobId);
-  if (!overview || overview.gallery_images != null) return;
-  const gallery = await scrapeGallery(overview);
-  if (!gallery) return; // homepage not snapshotted yet / no photos — a later write tries again
-  await masterKnex("superadmin.extraction_institution_overview").where({ job_id: jobId }).whereNull("gallery_images")
-    .update({ gallery_images: JSON.stringify(gallery), cover_url: overview.cover_url ?? gallery[0], updated_at: masterKnex.fn.now() });
+  if (!overview) return;
+  const needsGallery = overview.gallery_images == null;
+  if (!needsGallery && overview.cover_url != null) return;
+  const gallery = !needsGallery ? null : media?.gallery.length ? media.gallery : await scrapeGallery(overview);
+  const patch = mediaPatch(overview, { cover: media?.cover ?? null, gallery });
+  // Nothing yet (homepage not snapshotted, no usable photos) — a later write tries again.
+  const table = () => masterKnex("superadmin.extraction_institution_overview").where({ job_id: jobId });
+  // Each guarded by its own IS NULL, so a concurrent admin edit or clear in between still wins.
+  if (patch.gallery_images) await table().whereNull("gallery_images").update({ gallery_images: JSON.stringify(patch.gallery_images), updated_at: masterKnex.fn.now() });
+  if (patch.cover_url) await table().whereNull("cover_url").update({ cover_url: patch.cover_url, updated_at: masterKnex.fn.now() });
 }
 
 export async function baseProfileFieldsFrom(overview: OverviewRow | undefined) {
@@ -152,7 +158,7 @@ export async function backfillSelfServiceProfile(jobId: string): Promise<void> {
       const subdomain = await applyPatch("institutions", institution.id, patch, "institution_name");
       logger.info("Backfilled self-service institution profile", { jobId, institutionId: institution.id, fields: Object.keys(patch), subdomain });
     }
-    await localizeImages("institutions", Number(institution.id), jobId);
+    await localizeImages("institutions", Number(institution.id), jobId, { dropUncopyable: true });
     return;
   }
 
@@ -170,7 +176,7 @@ export async function backfillSelfServiceProfile(jobId: string): Promise<void> {
     const subdomain = await applyPatch("businesses", business.id, patch, "business_name");
     logger.info("Backfilled self-service business profile", { jobId, businessId: business.id, fields: Object.keys(patch), subdomain });
   }
-  await localizeImages("businesses", Number(business.id), jobId);
+  await localizeImages("businesses", Number(business.id), jobId, { dropUncopyable: true });
 }
 
 /** Overview column → the org column it fills, where the names differ. */
@@ -226,22 +232,31 @@ export const extractedMediaDir = (jobId: string) => `public/extracted/${jobId}/g
 
 /**
  * Swaps any hot-linked (external) gallery/cover image on this org for a copy in our storage
- * (copyExternalImage), so it survives the site removing it and the crop tool can load it. One that
- * can't be copied keeps its URL. Also migrates rows extracted before copies were made.
+ * (copyExternalImage), so it survives the site removing it and the crop tool can load it. Also
+ * migrates rows extracted before copies were made. One that can't be copied keeps its URL — unless
+ * `dropUncopyable` (the extraction backfill): an image our cookie-less, no-redirect fetch can't get
+ * is not public (login-only, signed, gone), so it is removed rather than hot-linked on a public
+ * profile. An admin's own edit keeps its URL. Nothing is dropped while storage isn't configured,
+ * since then no copy can succeed.
  */
-export async function localizeImages(table: "institutions" | "businesses", id: number, jobId: string): Promise<void> {
+export async function localizeImages(
+  table: "institutions" | "businesses", id: number, jobId: string, { dropUncopyable = false } = {},
+): Promise<void> {
   const row = await masterKnex(table).where({ id }).first("gallery_images", "cover_url");
   if (!row) return;
-  const copies = new Map<string, string>();
-  const local = async (url: string) => {
+  const drop = dropUncopyable && storageConfigured();
+  const copies = new Map<string, string | null>();
+  const local = async (url: string): Promise<string | null> => {
     if (!isExternalUrl(url)) return url;
-    if (!copies.has(url)) copies.set(url, (await copyExternalImage(url, extractedMediaDir(jobId))) ?? url);
+    if (!copies.has(url)) copies.set(url, (await copyExternalImage(url, extractedMediaDir(jobId))) ?? (drop ? null : url));
     return copies.get(url)!;
   };
-  const gallery: string[] | null = row.gallery_images ? await Promise.all((row.gallery_images as string[]).map(local)) : row.gallery_images;
+  const gallery: string[] | null = row.gallery_images
+    ? (await Promise.all((row.gallery_images as string[]).map(local))).filter((g): g is string => !!g)
+    : row.gallery_images;
   const cover: string | null = row.cover_url ? await local(row.cover_url) : row.cover_url;
-  const changed = cover !== row.cover_url || (gallery ?? []).some((g, i) => g !== row.gallery_images[i]);
+  const changed = cover !== row.cover_url || JSON.stringify(gallery) !== JSON.stringify(row.gallery_images);
   if (!changed) return;
   await masterKnex(table).where({ id }).update({ gallery_images: gallery, cover_url: cover, updated_at: masterKnex.fn.now() });
-  logger.info("Copied extracted images into storage", { table, id, jobId, copied: [...copies.values()].filter((v) => !isExternalUrl(v)).length });
+  logger.info("Copied extracted images into storage", { table, id, jobId, copied: [...copies.values()].filter((v) => v && !isExternalUrl(v)).length, dropped: [...copies.values()].filter((v) => v === null).length });
 }
