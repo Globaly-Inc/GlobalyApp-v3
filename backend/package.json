@@ -23,6 +23,7 @@
     "users:backfill-personal-account": "node --import tsx scripts/backfill-personal-accounts.ts",
     "orgs:backfill-currency": "node --import tsx scripts/backfill-org-currency.ts",
     "listings:backfill-claimed": "node --import tsx scripts/backfill-signup-listings-claimed.ts",
+    "courses:approve-ingested": "node --import tsx scripts/approve-ingested-courses.ts",
     "courses:revert-unreviewed-approvals": "node --import tsx scripts/revert-unreviewed-course-approvals.ts",
     "jobs:backfill-category": "node --import tsx scripts/backfill-job-category.ts",
     "backfill:institution-branches": "node --import tsx scripts/backfill-institution-branches.ts",

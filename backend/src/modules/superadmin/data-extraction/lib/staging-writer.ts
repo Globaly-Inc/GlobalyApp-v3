@@ -4,7 +4,7 @@ import type { Knex } from "knex";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { geocodeAddress } from "../../../../shared/google-places/placesService.js";
-import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
+import { INGESTED_COURSE_STATUS, SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { parseInstallments, type Installment } from "./installment-parser.js";
 import {
   loadLookupLists, resolveAreaOfStudy, resolveDegreeLevel,
@@ -2313,7 +2313,9 @@ export async function writeCourse(
       // The public course search joins on upper(countries.iso2) = upper(country_code), so an
       // unresolvable country stays null rather than storing text that can never match.
       country_code: course.country_code ?? null,
-      verification_status: "unverified",
+      // Approved on arrival (INGESTED_COURSE_STATUS) — an extracted course is live without an
+      // admin approving it; Reject is what takes it back out.
+      verification_status: INGESTED_COURSE_STATUS,
       // is_published (migration 20260925_003) defaults to false — that draft state is for
       // self-service institution courses (institution-courses.repository.ts's createService
       // explicitly opts in to it). A scraped course's public visibility has always been driven
