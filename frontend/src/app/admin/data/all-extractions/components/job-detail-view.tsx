@@ -58,7 +58,8 @@ export function JobDetailView({ jobId }: Readonly<{ jobId: string }>) {
   const setTab = (tab: JobTab) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("tab", tab);
-    router.push(`${pathname}?${params.toString()}`);
+    // replace, not push: a tab switch isn't a page — Back should return to the list, not step through tabs.
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
   const full = jobFull?.job.id === jobId ? jobFull : null;

@@ -21,11 +21,18 @@ export const SITE_ANALYSIS_SYSTEM = `You are a data extraction specialist for ed
 You analyze institution websites and extract structured information.
 Always respond in valid JSON. Never include markdown or explanation outside the JSON.`;
 
-export function siteAnalysisPrompt(url: string, pageText: string, guidanceNotes?: string | null) {
+/** Homepage photos the model may pick a cover and media from — url + alt, already filtered by
+ * gallery-images.ts isPublicCampusPhoto. Empty → no image section, and the prompt is unchanged. */
+export function siteAnalysisPrompt(url: string, pageText: string, guidanceNotes?: string | null, images: { url: string; alt: string }[] = []) {
   return `Analyze this educational institution's homepage and extract overview information.
 
 URL: ${url}
-${guidanceNotes ? `\nAdmin notes: ${guidanceNotes}` : ""}
+${guidanceNotes ? `\nAdmin notes: ${guidanceNotes}` : ""}${images.length ? `
+
+Image candidates (choose cover_url and media_images ONLY from these exact URLs — never invent or edit one):
+${images.map((i) => `- ${i.url}${i.alt ? ` — alt: "${i.alt}"` : ""}`).join("\n")}
+
+Classify each candidate you use by what it shows: campus (grounds, aerial, outdoor views), building (exterior or interior architecture), facility (library, lab, studio, sports, accommodation), group_activity (students or people in a class, event or campus life where no single person is the subject), portrait (one identifiable person — staff, faculty, student or alumni profile, headshot), logo (a logo, crest, badge or wordmark), advert (a banner promoting a third party, ranking badge, app-store button), other. Only campus, building, facility and group_activity are ever shown publicly.` : ""}
 
 Page content:
 ${pageText}
@@ -44,7 +51,9 @@ Extract this JSON structure:
     "zip_code": "postal code or null",
     "ownership_type": "\"public\" or \"private\" — ONLY if explicitly stated (e.g. \"a public research university\", \"private college\"); null if the page doesn't say",
     "description": "brief description of the institution",
-    "logo_url": "logo image URL or null",
+    "logo_url": "logo image URL or null",${images.length ? `
+    "cover_url": "the single image candidate that best represents the institution (a wide campus or building photo), or null",
+    "media_images": [{ "url": "an image candidate URL", "kind": "campus|building|facility|group_activity|portrait|logo|advert|other" }],` : ""}
     "facebook_url": "a facebook.com link, or null — never put a link to a different platform here just because it was near a Facebook icon",
     "instagram_url": "an instagram.com link, or null",
     "twitter_url": "a twitter.com or x.com link, or null — do NOT put tiktok.com, threads.net or any other domain here",

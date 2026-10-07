@@ -274,6 +274,8 @@ export async function startExtraction(orgId: string, platformUserId: number, inp
       );
     } catch (err) {
       if (err instanceof ConflictError) {
+        // The owner isn't told whose job it is; support needs it to decline or relink that job.
+        logger.warn("Start extraction blocked by an existing job for this website", { businessId: locked.id, website, existing: err.details });
         throw new ConflictError("An extraction for this website already exists. Contact support.");
       }
       throw err;

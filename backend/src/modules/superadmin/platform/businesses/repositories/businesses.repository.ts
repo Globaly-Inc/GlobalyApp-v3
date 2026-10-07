@@ -86,6 +86,8 @@ function applyBusinessFilters<T extends ReturnType<typeof businessListQuery>>(
   origin?: string,
   ownership?: string,
 ) {
+  // Branches the parent created are listed under the parent's Branches tab, not top-level.
+  q.whereNull("b.parent_business_id");
   if (search) {
     q.where((b) =>
       b.whereILike("b.business_name", `%${search}%`)
@@ -207,6 +209,8 @@ function applyInstitutionFilters<T extends ReturnType<typeof institutionListQuer
   origin?: string,
   ownership?: string,
 ) {
+  // Same as applyBusinessFilters: branch institutions show under their parent only.
+  q.whereNull("i.parent_institution_id");
   if (search) {
     q.where((b) =>
       b.whereILike("i.institution_name", `%${search}%`)

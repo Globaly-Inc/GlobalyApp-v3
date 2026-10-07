@@ -16,6 +16,7 @@ import { resolveCourse, type CandidateRow } from "./course-resolver.js";
 import { classifyEntity, type EntityClassification } from "./entity-classifier.js";
 import { parseAddress } from "./address-parser.js";
 import { backfillSelfServiceProfile, pickOverviewMedia } from "./overview-sync.js";
+import type { OverviewMedia } from "./gallery-images.js";
 
 const logger = createChildLogger("staging-writer");
 /** Every course's lookup binding lands here, linked or not; the verify worker totals them per job. */
@@ -440,7 +441,9 @@ const OVERVIEW_MERGE_COLUMNS = [
   "facebook_url", "instagram_url", "twitter_url", "linkedin_url", "youtube_url",
 ] as const;
 
-export async function writeInstitutionOverview(jobId: string, data: InstitutionOverview) {
+/** `media`: site analysis's classified cover + photos (gallery-images.ts chooseOverviewMedia); other
+ * writers pass none and pickOverviewMedia falls back to the guarded homepage pick. */
+export async function writeInstitutionOverview(jobId: string, data: InstitutionOverview, media?: OverviewMedia) {
   const mergeSet: Record<string, unknown> = { updated_at: masterKnex.fn.now() };
   for (const col of OVERVIEW_MERGE_COLUMNS) {
     mergeSet[col] = masterKnex.raw(
@@ -458,7 +461,7 @@ export async function writeInstitutionOverview(jobId: string, data: InstitutionO
   logger.info("Upserted institution overview", { jobId, id: row.id });
 
   // Before the profile backfill, which then copies these stored photos onto the org.
-  await pickOverviewMedia(jobId).catch((err) =>
+  await pickOverviewMedia(jobId, media).catch((err) =>
     logger.warn("Overview media pick failed", { jobId, err: err instanceof Error ? err.message : String(err) }),
   );
   await backfillSelfServiceProfile(jobId).catch((err) =>

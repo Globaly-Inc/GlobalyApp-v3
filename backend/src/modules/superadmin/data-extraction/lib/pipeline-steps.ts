@@ -16,7 +16,8 @@ import { queueService } from "../../../../shared/queue/queueService.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { NEXT_STEP, type PipelineStep } from "../schemas/step.schema.js";
-import { discoverUrlsForCrawl, scrapeFailureText } from "./scraper.js";
+import { discoverUrlsForCrawl, scrapeFailureText, scrapeRenderedHtml } from "./scraper.js";
+import { chooseOverviewMedia, imageCandidates, metaImages } from "./gallery-images.js";
 import { SNAPSHOT_BATCH_SIZE, jobHalted } from "./site-snapshot.js";
 import { CRAWL_BUDGET, crawlSeeds, crawlSite } from "./site-crawl.js";
 import { _urlClassifyDeps, jevCategorise, jevVerdicts } from "./jev-url-classify.js";
@@ -63,6 +64,8 @@ export const _stepDeps = {
   loadJob: async (jobId: string): Promise<JobRow | undefined> => masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).first(),
   publish: async (queue: string, payload: Record<string, unknown>): Promise<void> => { await queueService.publish(queue, payload); },
   crawl: crawlSite,
+  /** The homepage's HTML, for og:image / twitter:image — the markdown snapshot drops <meta>. */
+  renderedHtml: scrapeRenderedHtml,
   // ONE atomic jsonb merge, never read-modify-write: snapshot batches land concurrently and the
   // successor hand-off writes in the same window, so two readers of the whole blob overwrite each
   // other and a freshly written "site_analysis: processing" vanishes while its message is already
@@ -256,6 +259,17 @@ export async function dispatchSnapshotBatches(jobId: string, urls: string[], pag
 
 // ── Step 3: site_analysis ───────────────────────────────────────────────────
 
+/** og:image / twitter:image of the homepage, [] when its HTML can't be read — a cover candidate
+ * only, never a reason to fail the step. */
+async function homepageMetaImages(url: string): Promise<string[]> {
+  try {
+    const { html } = await _stepDeps.renderedHtml(url);
+    return html ? metaImages(html, url) : [];
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Homepage → Gemini → institution overview + site intelligence. The homepage is read in FULL mode
  * (its footer IS the data) while the snapshot step stores MAIN mode, so this is the one page the
@@ -273,11 +287,13 @@ export async function runSiteAnalysis(jobId: string, job: JobRow): Promise<strin
   });
 
   const pageText = truncateMarkdown(homepage.markdown);
+  // Institution media: the homepage's own photos, pre-filtered, for the model to classify.
+  const images = isVisaService ? [] : imageCandidates(homepage.markdown, job.institution_url, null);
   const analysis = await extractJson<SiteAnalysisResult>({
     system: SITE_ANALYSIS_SYSTEM,
     prompt: isVisaService
       ? visaServiceSiteAnalysisPrompt(job.institution_url, pageText, job.guidance_notes)
-      : siteAnalysisPrompt(job.institution_url, pageText, job.guidance_notes),
+      : siteAnalysisPrompt(job.institution_url, pageText, job.guidance_notes, images),
   });
 
   // Both keys are the model's to supply, and a model that answers with valid JSON of the WRONG
@@ -304,12 +320,16 @@ export async function runSiteAnalysis(jobId: string, job: JobRow): Promise<strin
   }
 
   // The prompt's response key is `other_social_urls`; the DB column is `other_social_links`.
-  const { other_social_urls, ...institutionRest } = isSection(analysis.institution) ? analysis.institution : {};
+  // cover_url / media_images are the model's picks, not overview columns: they go through
+  // chooseOverviewMedia (candidates only, campus kinds, guard re-checked) to pickOverviewMedia.
+  const { other_social_urls, cover_url, media_images, ...institutionRest } = isSection(analysis.institution) ? analysis.institution : {};
+  const media = isVisaService ? undefined
+    : chooseOverviewMedia(images, { cover_url, media_images }, await homepageMetaImages(job.institution_url), job.institution_url);
   await writeInstitutionOverview(jobId, {
     ...institutionRest,
     ...(Array.isArray(other_social_urls) && other_social_urls.length ? { other_social_links: other_social_urls } : {}),
     source_url: job.institution_url,
-  } as any);
+  } as any, media);
   // SKIPPED, not defaulted, when the model omits it. writeSiteIntelligence upserts with a bare
   // .merge() — a wholesale column replace — unlike writeInstitutionOverview's fill-blanks
   // COALESCE(NULLIF(...)) above, which is why `?? {}` is harmless there and destructive here:

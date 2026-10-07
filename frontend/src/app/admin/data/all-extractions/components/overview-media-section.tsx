@@ -3,7 +3,8 @@
 import { Image as ImageIcon, ImagePlus } from "lucide-react";
 import { EditableField } from "./editable-field";
 
-const MAX_MEDIA = 3;
+/** Same cap as the backend picker (MAX_GALLERY_IMAGES). */
+const MAX_MEDIA = 10;
 
 function Thumb({ src }: Readonly<{ src: string | null }>) {
   return (
@@ -19,7 +20,7 @@ function Thumb({ src }: Readonly<{ src: string | null }>) {
 }
 
 /**
- * The overview's cover photo and up to 3 media photos (picked from the homepage during extraction),
+ * The overview's cover photo and up to 10 media photos (picked from the homepage during extraction),
  * each with a preview and an editable URL. Copied onto the institution's profile cover and Media
  * section when it's created or backfilled.
  */
@@ -48,7 +49,8 @@ export function OverviewMediaSection({
           <Thumb src={coverUrl} />
           <EditableField label="Cover image URL" value={coverUrl} onSave={onSaveCover} className="flex-1" />
         </div>
-        {Array.from({ length: MAX_MEDIA }, (_, i) => (
+        {/* The filled slots plus one empty one to add to, up to the cap — not ten blank rows. */}
+        {Array.from({ length: Math.min(MAX_MEDIA, gallery.length + 1) }, (_, i) => (
           <div key={i} className="flex items-center gap-3">
             <Thumb src={gallery[i] ?? null} />
             <EditableField label={`Media ${i + 1} URL`} value={gallery[i] ?? null} onSave={(v) => saveSlot(i, v)} className="flex-1" />
