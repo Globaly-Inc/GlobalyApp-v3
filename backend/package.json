@@ -103,6 +103,7 @@
     "test:subscribers": "node --import tsx tests/subscribers.ts",
     "test:blog-generation": "node --import tsx tests/blog-generation.ts",
     "test:gallery-images": "node --import tsx tests/gallery-images.ts",
+    "test:widget-country-detection": "node --import tsx tests/widget-country-detection.ts",
     "test:course-approval": "node --import tsx tests/course-approval.ts",
     "test:image-copy": "node --import tsx tests/image-copy.ts",
     "job:extraction": "node --import tsx src/modules/superadmin/data-extraction/workers/extraction-job.worker.ts",

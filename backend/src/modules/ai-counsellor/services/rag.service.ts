@@ -119,7 +119,16 @@ const wordRe = (name: string) =>
 // ponytail: cached forever — the countries table is effectively static pre-launch
 let countryMatchers: Array<{ re: RegExp; iso2: string }> | null = null;
 
-async function detectCountryCode(query: string): Promise<string | null> {
+/**
+ * The country this turn is about, or null.
+ *
+ * `fallback` is the question a short reply answers, and is read ONLY when the reply itself names no
+ * country: the student's own words always win. Order matters because matching is first-hit over an
+ * unordered list (listCountryNames has no ORDER BY), so a text holding two country names resolves
+ * to whichever the table happens to list first — "Canada" answering "Australia or Canada?" would
+ * otherwise scope the search to Australia and drop the Canada passages (Greptile).
+ */
+export async function detectCountryCode(query: string, fallback?: string | null): Promise<string | null> {
   if (!countryMatchers) {
     const rows = await knowledge.listCountryNames().catch(err => {
       logger.warn("Country list load failed", { err: String(err) });
@@ -131,8 +140,8 @@ async function detectCountryCode(query: string): Promise<string | null> {
       ...Object.entries(COUNTRY_ALIASES).map(([alias, iso2]) => ({ re: wordRe(alias), iso2 })),
     ];
   }
-  const q = query.toLowerCase();
-  return countryMatchers.find(m => m.re.test(q))?.iso2 ?? null;
+  const hit = (text: string) => countryMatchers!.find(m => m.re.test(text.toLowerCase()))?.iso2 ?? null;
+  return hit(query) ?? (fallback ? hit(fallback) : null);
 }
 
 // Higher-trust sources lead the context so the model anchors on them (AC-09).
@@ -326,7 +335,8 @@ export async function searchAll(opts: {
   else if (searchQuery) trace(`Keywords: ${keywords.join(", ")}`);
   else trace("Nothing to search; answering from the courses already shown");
 
-  const countryCode = await detectCountryCode(resolvedQuery);
+  // The reply first, the question it answers only as a fallback — see detectCountryCode.
+  const countryCode = await detectCountryCode(opts.query, fromPriorQuestion ? opts.priorQuestion : null);
   if (countryCode) trace(`Country detected: ${countryCode}`);
 
   // ── Parallel searches — each wrapped so one failure doesn't kill the rest ──
