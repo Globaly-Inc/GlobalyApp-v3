@@ -14,7 +14,7 @@
  */
 
 import {
-  isCourtesyTurn, lastAssistantQuestion, retrievalKeywords,
+  isCourtesyTurn, lastAssistantQuestion, resolveQuery, retrievalKeywords,
 } from "../src/modules/ai-counsellor/services/rag.service.js";
 
 let passed = 0;
@@ -84,6 +84,24 @@ function main() {
     assert(keywords.includes("september") && keywords.includes("nursing"), "keeps both the answer and its subject", keywords);
   }
 
+  console.log("\nretrievalKeywords — a reply that only points at what is on screen borrows too");
+  {
+    const prior = "Would you like to see nursing courses in Melbourne?";
+    // "ok" is one syllable shorter than "okay" and extractKeywords drops it entirely (<= 2 letters),
+    // so it used to leave the turn with nothing at all to search (Greptile).
+    const bare = retrievalKeywords("ok", prior);
+    assert(bare.fromPriorQuestion, "an acknowledgement with no surviving keyword still borrows");
+    assert(bare.keywords.includes("nursing"), "'ok' searches what was offered", bare.keywords);
+    // Two words survive here, which used to look like a subject of its own — but both only point
+    // back at the list the counsellor just showed.
+    const pick = retrievalKeywords("the second one", prior);
+    assert(pick.fromPriorQuestion, "a selection borrows the question it answers");
+    assert(pick.keywords.includes("nursing"), "'the second one' searches the offered courses", pick.keywords);
+    assert(!retrievalKeywords("ok", null).keywords.length, "an acknowledgement with nothing to borrow searches nothing");
+    // A closing turn is still a closing turn, however much context is available to borrow.
+    assert(!retrievalKeywords("thanks!", prior).keywords.length, "a goodbye never borrows");
+  }
+
   console.log("\nretrievalKeywords — a real question searches its own words");
   {
     const prior = "Would you like to see nursing courses in Melbourne?";
@@ -97,6 +115,22 @@ function main() {
     const { keywords, fromPriorQuestion } = retrievalKeywords("yes", null);
     assert(!fromPriorQuestion, "nothing to borrow when the counsellor asked nothing");
     assertEqual(keywords.join(" "), "yes", "falls back to the student's own words");
+  }
+
+  console.log("\nresolveQuery — what the semantic searches (rack, country, memory) see");
+  {
+    const refund = "Would you like me to explain our refund policy?";
+    // The keyword searches already borrowed this; the rack embedding, country detection and
+    // institution-memory search were still being handed the bare reply (Greptile).
+    assert(resolveQuery("yes", refund).includes("refund"), "a yes carries the policy it agreed to", resolveQuery("yes", refund));
+    assert(resolveQuery("yes", refund).includes("yes"), "the reply itself is kept too");
+    const offer = "Would you like to see nursing courses in Melbourne?";
+    assert(resolveQuery("the second one", offer).includes("nursing"), "a selection carries the subject");
+    // A turn with its own subject is searched as the student wrote it — no prior-question leak.
+    assertEqual(resolveQuery("what are the tuition fees in Sydney?", offer), "what are the tuition fees in Sydney?",
+      "a real question is passed through untouched");
+    assertEqual(resolveQuery("thanks!", offer), "thanks!", "a goodbye is not rewritten into a search");
+    assertEqual(resolveQuery("yes", null), "yes", "nothing to resolve against");
   }
 
   console.log("\nlastAssistantQuestion — only the counsellor's newest turn, and only if it asked");

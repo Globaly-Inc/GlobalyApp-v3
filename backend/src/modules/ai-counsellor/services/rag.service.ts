@@ -36,6 +36,11 @@ function extractKeywords(query: string): string[] {
 const CLOSING_RE =
   /^(thanks?|thank you|ty|no thanks?|nope|nothing( else)?|that'?s (it|all)|bye|goodbye|see you|cheers)[\s!.,]*$/i;
 
+/** Words that only POINT at something already on screen — an ordinal or a count answering
+ * "which one?". Like an acknowledgement they carry no subject, but extractKeywords keeps them,
+ * and "the second one" keeps TWO of them, which is enough to look like a question of its own. */
+const POINTER_RE = /^(first|second|third|fourth|fifth|sixth|seventh|last|one|two|three|four|five|number|option)$/i;
+
 /** Acknowledgements, which are closers ONLY when nothing was asked. After the counsellor's own
  * question these are the student saying YES — "yep" to "shall I show you Melbourne courses?"
  * must retrieve those courses, not end the turn with nothing to show. */
@@ -78,11 +83,30 @@ export function retrievalKeywords(
   query: string,
   priorQuestion?: string | null,
 ): { keywords: string[]; fromPriorQuestion: boolean } {
-  const own = isCourtesyTurn(query, priorQuestion) ? [] : extractKeywords(query);
-  if (own.length > 1 || !own.length || !priorQuestion) return { keywords: own, fromPriorQuestion: false };
+  // A closing turn searches nothing, whatever is available to borrow.
+  if (isCourtesyTurn(query, priorQuestion)) return { keywords: [], fromPriorQuestion: false };
+  const own = extractKeywords(query);
+  // Counting keywords was the wrong proxy for "this turn has a subject of its own" (Greptile):
+  // "ok" survives extractKeywords as NOTHING (<= 2 letters) and used to search nothing at all,
+  // while "the second one" survives as two pointer words and used to search for them literally.
+  // What matters is whether any word names a subject, not how many words there are.
+  const subject = own.filter((w) => !POINTER_RE.test(w) && !ACK_RE.test(w));
+  if (subject.length > 1 || !priorQuestion) return { keywords: own, fromPriorQuestion: false };
   const borrowed = extractKeywords(priorQuestion);
   if (!borrowed.length) return { keywords: own, fromPriorQuestion: false };
   return { keywords: [...new Set([...borrowed, ...own])], fromPriorQuestion: true };
+}
+
+/**
+ * What a MEANING-based search should see this turn. The keyword searches borrow the question a
+ * short reply answers; the searches that embed or scan the text — the rack, country detection,
+ * institution memory — were still reading the reply itself, so "yes" to "shall I explain the
+ * refund policy?" searched the meaning of the word "yes" (Greptile). Both halves are kept: the
+ * question carries the subject, the reply carries which one ("the second", "September").
+ */
+export function resolveQuery(query: string, priorQuestion?: string | null): string {
+  const { fromPriorQuestion } = retrievalKeywords(query, priorQuestion);
+  return fromPriorQuestion ? `${priorQuestion} ${query}`.trim() : query;
 }
 
 // ── Country detection (scopes Knowledge Rack retrieval to country-specific categories) ──
@@ -284,6 +308,8 @@ export async function searchAll(opts: {
   const embedScoped = opts.jobIds != null;
   const { keywords, fromPriorQuestion } = retrievalKeywords(opts.query, opts.priorQuestion);
   const searchQuery = keywords.join(" ");
+  // See resolveQuery: the semantic searches below must not be handed a bare "yes".
+  const resolvedQuery = fromPriorQuestion ? `${opts.priorQuestion} ${opts.query}`.trim() : opts.query;
   const pinned = opts.pinnedCourseIds ?? [];
   const trace = (step: string) => {
     traceSteps.push(step);
@@ -300,7 +326,7 @@ export async function searchAll(opts: {
   else if (searchQuery) trace(`Keywords: ${keywords.join(", ")}`);
   else trace("Nothing to search; answering from the courses already shown");
 
-  const countryCode = await detectCountryCode(opts.query);
+  const countryCode = await detectCountryCode(resolvedQuery);
   if (countryCode) trace(`Country detected: ${countryCode}`);
 
   // ── Parallel searches — each wrapped so one failure doesn't kill the rest ──
@@ -356,7 +382,7 @@ export async function searchAll(opts: {
     // policies, scholarships, eligibility prose — that structured extraction never captured.
     // Global rack content stays out of embed answers, and the owner's site stays out of
     // global ones; the SQL function enforces both directions.
-    !embeddingConfigured() || (embedScoped && !opts.rackInstitutionId) ? none : embed(opts.query)
+    !embeddingConfigured() || (embedScoped && !opts.rackInstitutionId) ? none : embed(resolvedQuery)
       .then(v => matchRack(v, countryCode, trace, opts.rackInstitutionId))
       .catch(err => { logger.warn("Knowledge rack search failed", { err: String(err) }); trace("Knowledge rack search failed"); return []; }),
   ]); }

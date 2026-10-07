@@ -20,6 +20,13 @@ export const APPROVED_COURSE_STATUSES = ["confirmed", "manual"] as const;
 export const INGESTED_COURSE_STATUS = "confirmed";
 
 /**
+ * "an admin has not rejected this", for a WHERE on an unaliased extraction_courses query. Must stay
+ * coalesce-wrapped: a plain `verification_status <> 'flagged'` is NULL — i.e. false — for the
+ * null-status rows the business portal writes, which would quietly exclude them.
+ */
+export const NOT_REJECTED_SQL = "coalesce(verification_status, 'unverified') <> 'flagged'";
+
+/**
  * ponytail: for now a course from the BUSINESS PORTAL (BUSINESS_PORTAL_SOURCE_TYPES — the owner's own
  * extraction, or the courses they add by hand) needs no approval — it's public once published on a published
  * institution; only a rejected ('flagged') one stays hidden. Superadmin-extracted courses still need

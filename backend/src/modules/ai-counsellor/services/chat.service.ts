@@ -240,14 +240,18 @@ export async function handleMessage(opts: {
           priorQuestion: rag.lastAssistantQuestion(prevMessages),
           onTrace: trace,
         }),
-        // Courtesy turns skip the memory embedding for the same reason searchAll skips its
-        // searches: there is nothing in "thanks" to retrieve guidance for.
-        institutionId && !rag.isCourtesyTurn(opts.content, rag.lastAssistantQuestion(prevMessages))
+        // Courtesy turns skip the memory EMBEDDING for the same reason searchAll skips its
+        // searches: there is nothing in "thanks" to retrieve guidance for. The pinned rules still
+        // come back — they are institution-wide and must not depend on how the student phrased the
+        // turn, least of all on a closing reply (Greptile).
+        institutionId
           ? retrieveMemories({
               institutionId,
               institutionName: opts.embed?.config.display_name,
-              query: opts.content,
+              // Resolved, not raw: this embeds the question too (see rag.resolveQuery).
+              query: rag.resolveQuery(opts.content, rag.lastAssistantQuestion(prevMessages)),
               situation: rag.situationText(profileContext, session.counselling_context),
+              pinnedOnly: rag.isCourtesyTurn(opts.content, rag.lastAssistantQuestion(prevMessages)),
               onTrace: trace,
             })
           : null,

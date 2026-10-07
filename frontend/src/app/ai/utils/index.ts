@@ -50,9 +50,13 @@ export function splitQuote(content: string): { quote: string | null; body: strin
 const PHASES: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
   // Keywords arrive comma-joined; the search itself uses them space-joined, which is
   // also what reads like a query the student would recognise.
-  [/^Keywords: (.+)/, (m) => `Looking up "${(m[1] ?? "").split(", ").slice(0, 4).join(" ")}" in our records`],
-  [/^No searchable keywords extracted/, () => "Reading your question"],
-  [/^No searchable keywords;/, () => "Re-reading the courses we just showed you"],
+  // Two spellings: a turn that searches its own words, and a short reply that borrowed the
+  // question it answers ("Keywords (from the question it answers): …"). Same label — the student
+  // cares what is being looked up, not where the words came from.
+  [/^Keywords(?: \(from the question it answers\))?: (.+)/, (m) => `Looking up "${(m[1] ?? "").split(", ").slice(0, 4).join(" ")}" in our records`],
+  [/^Nothing to search this turn/, () => "Reading your question"],
+  [/^Nothing to search;/, () => "Re-reading the courses we just showed you"],
+  [/^Institution memory: /, () => "Checking our counselling notes"],
   [/^Country detected:/, () => "Narrowing down by country"],
   [/^Courses: skipped/, () => "Getting a feel for what you're after"],
   [/^Courses: 0 found/, () => "No course match yet — checking everything else"],

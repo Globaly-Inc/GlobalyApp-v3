@@ -16,8 +16,11 @@ import { thinkingPhase } from "./index.ts";
 const cases: Array<[string | undefined, string]> = [
   [undefined, "Getting started"],
   ["Keywords: nursing, canada", 'Looking up "nursing canada" in our records'],
-  ["No searchable keywords extracted", "Reading your question"],
-  ["No searchable keywords; answering from the courses already shown", "Re-reading the courses we just showed you"],
+  ["Keywords (from the question it answers): nursing, melbourne, yes", 'Looking up "nursing melbourne yes" in our records'],
+  ["Nothing to search this turn", "Reading your question"],
+  ["Nothing to search; answering from the courses already shown", "Re-reading the courses we just showed you"],
+  ["Institution memory: 2 rules, 3 relevant", "Checking our counselling notes"],
+  ["Institution memory: 1 rules, 0 relevant (no question to match)", "Checking our counselling notes"],
   ["Country detected: CA", "Narrowing down by country"],
   ["Courses: skipped (discovery turn)", "Getting a feel for what you're after"],
   ["Courses: 0 found", "No course match yet — checking everything else"],
