@@ -2,7 +2,11 @@
 
 import { useSyncExternalStore } from "react";
 import Image from "next/image";
-import { MessageSquare } from "lucide-react";
+import Link from "next/link";
+import { Bot, MessageSquare } from "lucide-react";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { WIDGET_SETTINGS_HREF } from "@/app/business/ai-widget/const";
 import { useAppSelector } from "@/lib/hooks";
 import { ICON } from "@/lib/public-assets";
 
@@ -47,6 +51,8 @@ export function ChatEmptyState({
   const businessName = useAppSelector((s) => s.businessOnboarding.profile?.business_name);
   // Withheld until hydrated so the first client render matches the server's HTML.
   const name = hydrated ? businessName : undefined;
+  // `loaded` first: an empty list before the fetch answers means "not asked yet", not "no widget".
+  const needsWidget = useAppSelector((s) => s.aiWidget.loaded && s.aiWidget.configs.length === 0);
 
   return (
     <div className="flex h-full flex-col items-center justify-center px-4 py-8">
@@ -65,6 +71,22 @@ export function ChatEmptyState({
       <p className="text-center text-muted-foreground">
         {embed ? "Chats visitors had with your AI assistant" : "Your conversations with students who enquired"}
       </p>
+
+      {/* The way back to setup once the onboarding pop-up has been dismissed for the session. */}
+      {needsWidget && (
+        <div className="mt-6 flex w-full max-w-md items-center gap-3 rounded-xl border bg-card p-3.5 shadow-sm">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <Bot className="size-4" aria-hidden />
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">AI Embed isn&apos;t set up yet</p>
+            <p className="text-xs text-muted-foreground">Website visitor chats will land here once it is.</p>
+          </div>
+          <Link href={WIDGET_SETTINGS_HREF} className={cn(buttonVariants({ size: "sm" }), "shrink-0")}>
+            Configure Widget
+          </Link>
+        </div>
+      )}
 
       {!embed && (
         <div className="mt-8 flex flex-wrap justify-center gap-2">

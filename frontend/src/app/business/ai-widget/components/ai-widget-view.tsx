@@ -11,8 +11,8 @@ import { WidgetCard } from "./widget-card";
 import { WidgetEditor } from "./widget-editor-view";
 
 /**
- * The org's one widget. Before it exists: the editor in create mode. After: the embed code,
- * usage and key controls, with the same editor below for its appearance and settings. There is
+ * The org's one widget. Before it exists: the editor in create mode. After: the same editor, with
+ * the embed code and key controls across the top of its settings. There is
  * no "New widget" — one per business or institution, which the backend enforces too.
  */
 export function AiWidgetView() {
@@ -27,33 +27,43 @@ export function AiWidgetView() {
     dispatch(fetchEmbedConfigs());
   }, [dispatch]);
 
-  return (
-    <div className="mx-auto flex w-full max-w-6xl flex-col gap-6">
+  const heading = (
+    <div className="flex items-center gap-3">
+      <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+        <Bot className="size-5" aria-hidden />
+      </span>
       <div>
-        <h1 className="flex items-center gap-2 text-xl font-semibold">
-          <Bot className="size-5" /> AI Widget
-        </h1>
+        <h1 className="text-2xl font-semibold">AI Widget</h1>
         <p className="text-sm text-muted-foreground">
           Embed a branded AI counsellor on your website, scoped to your courses.
         </p>
       </div>
+    </div>
+  );
 
+  // The editor draws the heading itself, so the Create/Save buttons can sit on the same row.
+  return (
+    <div className="flex min-h-0 w-full flex-1 flex-col gap-4">
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       {status === "loading" && !config ? (
-        <Skeleton className="h-96 w-full" />
-      ) : config ? (
         <>
-          <WidgetCard
-            config={config}
-            onRotateKey={(id) => dispatch(rotateEmbedKey(id))}
-          />
-          {/* Keyed so a saved change re-seeds the form from what the server now holds. */}
-          <WidgetEditor key={`${config.id}-${config.updated_at}`} initial={config} />
+          {heading}
+          <Skeleton className="h-96 w-full" />
         </>
+      ) : config ? (
+        // Keyed so a saved change re-seeds the form from what the server now holds.
+        <WidgetEditor
+          key={`${config.id}-${config.updated_at}`}
+          initial={config}
+          heading={heading}
+          card={<WidgetCard config={config} onRotateKey={(id) => dispatch(rotateEmbedKey(id))} />}
+        />
       ) : status !== "failed" ? (
-        <WidgetEditor />
-      ) : null}
+        <WidgetEditor heading={heading} />
+      ) : (
+        heading
+      )}
     </div>
   );
 }

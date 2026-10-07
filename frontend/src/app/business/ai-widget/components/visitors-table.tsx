@@ -61,7 +61,7 @@ export function VisitorsTable({
   // free-text columns (name/email and study preference) absorb whatever width is left, and
   // the per-visitor demographics drop out below lg rather than pushing a horizontal scroll.
   return (
-    <div className="overflow-hidden rounded-lg border">
+    <div className="overflow-hidden border-t">
       <Table className="table-fixed">
         <TableHeader className="bg-muted/40">
           <TableRow className="hover:bg-transparent">

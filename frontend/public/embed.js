@@ -110,13 +110,21 @@
   var expanded = false;
   // Explicit size: an iframe is a replaced element, so `inset` alone doesn't stretch it — it falls
   // back to its 300x150 default in the top-left corner.
-  var PANEL_EXPANDED = "display:none;position:fixed;top:16px;left:16px;width:calc(100vw - 32px);height:calc(100vh - 32px);" +
-    "border:0;border-radius:24px;" +
-    "background:#fff;color-scheme:normal;box-shadow:0 12px 48px rgba(0,0,0,.25)";
+  // Centred over a dimmed page, capped at 1280px wide so a big monitor doesn't stretch it edge to edge.
+  var PANEL_EXPANDED = "display:none;position:fixed;top:24px;left:max(24px,calc(50vw - 640px));" +
+    "width:min(1280px,calc(100vw - 48px));height:calc(100vh - 48px);border:0;border-radius:20px;" +
+    "background:#fff;color-scheme:normal;box-shadow:0 24px 64px rgba(0,0,0,.3)";
+  // Behind the expanded panel only. It has no click handler: the header's own button collapses, and
+  // the panel's toggle state lives in the iframe, which a host-side click couldn't update.
+  var backdrop = document.createElement("div");
+  backdrop.style.cssText = "display:none;position:fixed;inset:0;background:rgba(15,23,42,.45)";
   var panelCss = function () { return isMobile() ? PANEL_MOBILE : expanded ? PANEL_EXPANDED : panelDesktop(); };
   var panelReady = false;
   // Full-screen or expanded, the launcher would sit on the composer; the header has collapse + close.
-  var syncButton = function () { button.style.display = open && (isMobile() || expanded) && panelReady ? "none" : "flex"; };
+  var syncButton = function () {
+    button.style.display = open && (isMobile() || expanded) && panelReady ? "none" : "flex";
+    backdrop.style.display = open && expanded && !isMobile() ? "block" : "none";
+  };
   panel.style.cssText = panelDesktop();
 
   var button = document.createElement("button");
@@ -378,6 +386,7 @@
 
   button.appendChild(orb);
   button.appendChild(chevron);
+  root.appendChild(backdrop);
   root.appendChild(panel);
   root.appendChild(teaser);
   root.appendChild(button);

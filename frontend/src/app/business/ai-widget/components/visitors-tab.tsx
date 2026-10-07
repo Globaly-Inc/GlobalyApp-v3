@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { visitorHref } from "@/app/business/ai-widget/const";
 import { useRouter } from "next/navigation";
 import { Download, Loader2, Search, Users, X } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
 import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs";
@@ -62,91 +62,100 @@ export function VisitorsTab() {
   };
 
   return (
-    <div>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Users className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-semibold">Visitors &amp; Leads</span>
-          <Badge variant="secondary">{counts.all}</Badge>
-        </div>
-        <div className="relative w-full sm:w-64">
-          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            className="h-10 pl-8"
-            placeholder="Search name, email or programme"
-            value={search}
-            onChange={(e) => changeQuery(() => setSearch(e.target.value))}
-          />
-        </div>
-      </div>
-
-      <AdminSegmentedTabs
-        options={VISITOR_TABS.map((t) => ({ ...t, count: counts[t.value] }))}
-        value={tab}
-        onChange={(next) => changeQuery(() => setTab(next))}
-      />
-
-      {selectedIds.size > 0 && (
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/40 p-2.5">
-          <span className="text-sm font-medium">{selectedIds.size} selected</span>
-          <div className="flex items-center gap-1.5">
-            <Button size="sm" variant="outline" onClick={exportSelected}>
-              <Download className="mr-1.5 h-3.5 w-3.5" /> Export CSV
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
-              <X className="mr-1.5 h-3.5 w-3.5" /> Clear
-            </Button>
+    <Card>
+      <CardContent>
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <h1 className="text-2xl font-bold">Visitors &amp; Leads</h1>
+            <p className="text-muted-foreground">Everyone who has chatted with your AI widget.</p>
+          </div>
+          <div className="relative w-full sm:w-64">
+            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              className="h-10 pl-8"
+              placeholder="Search name, email or programme"
+              value={search}
+              onChange={(e) => changeQuery(() => setSearch(e.target.value))}
+            />
           </div>
         </div>
-      )}
 
-      {status === "loading" && (
-        <div className="flex justify-center py-8">
-          <Loader2 className="h-5 w-5 animate-spin text-primary" />
-        </div>
-      )}
+        <AdminSegmentedTabs
+          options={VISITOR_TABS.map((t) => ({ ...t, count: counts[t.value] }))}
+          value={tab}
+          onChange={(next) => changeQuery(() => setTab(next))}
+        />
 
-      {status === "failed" && (
-        <div className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">
-          {error ?? "Couldn't load visitors."}
-        </div>
-      )}
+        {selectedIds.size > 0 && (
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/40 p-2.5">
+            <span className="text-sm font-medium">{selectedIds.size} selected</span>
+            <div className="flex items-center gap-1.5">
+              <Button size="sm" variant="outline" onClick={exportSelected}>
+                <Download className="mr-1.5 h-3.5 w-3.5" /> Export CSV
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
+                <X className="mr-1.5 h-3.5 w-3.5" /> Clear
+              </Button>
+            </div>
+          </div>
+        )}
 
-      {status === "idle" && items.length === 0 && (
-        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-12 text-center">
-          <Users className="h-10 w-10 text-muted-foreground/40" />
-          <p className="text-sm font-medium">
-            {search || tab !== "all" ? "Nothing matches these filters" : "No one has used your AI widget yet"}
-          </p>
-          {!search && tab === "all" && (
-            <p className="max-w-sm text-xs text-muted-foreground">
-              Visitors appear here as soon as someone sends their first message, and become leads
-              when they share their name and email.
+        {status === "loading" && (
+          <div className="flex justify-center py-8">
+            <Loader2 className="h-5 w-5 animate-spin text-primary" />
+          </div>
+        )}
+
+        {status === "failed" && (
+          <div className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">
+            {error ?? "Couldn't load visitors."}
+          </div>
+        )}
+
+        {status === "idle" && items.length === 0 && (
+          <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-12 text-center">
+            <Users className="h-10 w-10 text-muted-foreground/40" />
+            <p className="text-sm font-medium">
+              {search || tab !== "all" ? "Nothing matches these filters" : "No one has used your AI widget yet"}
             </p>
-          )}
-        </div>
-      )}
+            {!search && tab === "all" && (
+              <p className="max-w-sm text-xs text-muted-foreground">
+                Visitors appear here as soon as someone sends their first message, and become leads
+                when they share their name and email.
+              </p>
+            )}
+          </div>
+        )}
 
-      {status === "idle" && items.length > 0 && (
-        <VisitorsTable
-          visitors={items}
-          selectedIds={selectedIds}
-          onSelectedIdsChange={setSelectedIds}
-          // The table stays routing-agnostic: it reports which row was picked, this decides
-          // that picking one means opening that visitor's page.
-          onView={(v) => router.push(visitorHref(v.id))}
-        />
-      )}
+        {status === "idle" && items.length > 0 && (
+          <Card>
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base">
+                {VISITOR_TABS.find((t) => t.value === tab)?.label} ({total})
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="p-0">
+              <VisitorsTable
+                visitors={items}
+                selectedIds={selectedIds}
+                onSelectedIdsChange={setSelectedIds}
+                // The table stays routing-agnostic: it reports which row was picked, this decides
+                // that picking one means opening that visitor's page.
+                onView={(v) => router.push(visitorHref(v.id))}
+              />
+            </CardContent>
+          </Card>
+        )}
 
-      {total > 0 && (
-        <Pagination
-          page={page}
-          total={total}
-          limit={VISITORS_PAGE_SIZE}
-          onPageChange={(p) => { setSelectedIds(new Set()); setPage(p); }}
-        />
-      )}
-
-    </div>
+        {total > 0 && (
+          <Pagination
+            page={page}
+            total={total}
+            limit={VISITORS_PAGE_SIZE}
+            onPageChange={(p) => { setSelectedIds(new Set()); setPage(p); }}
+          />
+        )}
+      </CardContent>
+    </Card>
   );
 }
