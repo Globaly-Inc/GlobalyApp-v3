@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import { embedStarters, type EmbedOwnerKind } from "@/app/embed/[key]/const";
 import { widgetTheme } from "@/app/embed/[key]/utils";
 import type { WidgetFormValues } from "./widget-form";
+import { radioGroupKeyDown } from "../utils";
 
 /**
  * The widget as a visitor will see it, redrawn from the form on every keystroke. A static copy of
@@ -32,13 +33,14 @@ export function WidgetPreview({ form, ownerKind }: Readonly<{ form: WidgetFormVa
         <span className="flex flex-1 items-center gap-1.5 text-xs text-muted-foreground">
           <Lock className="size-3" aria-hidden /> yourwebsite.com
         </span>
-        <div role="radiogroup" aria-label="Preview state" className="inline-flex rounded-lg bg-muted p-0.5">
+        <div role="radiogroup" aria-label="Preview state" className="inline-flex rounded-lg bg-muted p-0.5" onKeyDown={radioGroupKeyDown}>
           {([true, false] as const).map((v) => (
             <button
               key={String(v)}
               type="button"
               role="radio"
               aria-checked={open === v}
+              tabIndex={open === v ? 0 : -1}
               onClick={() => setOpen(v)}
               className={cn(
                 "rounded-md px-3 py-1 text-xs font-medium transition-colors",
@@ -83,7 +85,7 @@ export function WidgetPreview({ form, ownerKind }: Readonly<{ form: WidgetFormVa
         data-widget-brand
         style={theme.vars}
         className={cn(
-          "absolute bottom-24 flex h-[500px] max-h-[calc(100%-7rem)] w-[340px] flex-col overflow-hidden rounded-2xl border bg-background shadow-2xl",
+          "absolute bottom-24 flex h-[500px] max-h-[calc(100%-7rem)] w-[340px] max-w-[calc(100%-2.5rem)] flex-col overflow-hidden rounded-2xl border bg-background shadow-2xl",
           left ? "left-5" : "right-5",
         )}
       >

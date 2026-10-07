@@ -104,17 +104,18 @@ function readDismissed(orgId: string): boolean {
 export function WidgetSetupDialog() {
   const orgId = useAuthState().user?.orgId ?? "";
   const needsWidget = useAppSelector((s) => s.aiWidget.loaded && s.aiWidget.configs.length === 0);
-  // Bumped on dismiss so the read below runs again; the stored flag is the source of truth.
-  const [, setDismissedAt] = useState(0);
-  const open = needsWidget && !readDismissed(orgId);
+  // The dismissal lives here, per org; sessionStorage only carries it to later Inbox visits. Were
+  // storage the source of truth, a browser that blocks it would make the dialog impossible to close.
+  const [dismissedOrgs, setDismissedOrgs] = useState<ReadonlySet<string>>(() => new Set());
+  const open = needsWidget && !dismissedOrgs.has(orgId) && !readDismissed(orgId);
 
   const dismiss = () => {
+    setDismissedOrgs((prev) => new Set(prev).add(orgId));
     try {
       sessionStorage.setItem(dismissKey(orgId), "1");
     } catch {
-      // storage blocked: it stays closed until the next reload, which is the best we can do
+      // storage blocked: still closed for this visit, just not remembered across the next one
     }
-    setDismissedAt(Date.now());
   };
 
   return (

@@ -1,3 +1,4 @@
+import type { KeyboardEvent } from "react";
 import type { DeveloperContact, VisitorProfileEntry, WidgetVisitor } from "../apis/types";
 
 /**
@@ -117,4 +118,29 @@ export function downloadCsv(filename: string, csv: string): void {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+const RADIO_STEP: Record<string, number> = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
+
+/**
+ * Keyboard for a hand-built `role="radiogroup"` (WAI-ARIA radio pattern): put it on the group's
+ * onKeyDown and give only the checked radio `tabIndex={0}` (the rest -1), so the group is one Tab
+ * stop and the arrow keys move focus *and* selection, wrapping at the ends. Selecting is a
+ * `click()`, so each radio's own onClick stays the only place that changes state.
+ */
+export function radioGroupKeyDown(e: KeyboardEvent<HTMLElement>): void {
+  const step = RADIO_STEP[e.key];
+  if (!step) return;
+  const radios = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]'));
+  const i = radios.indexOf(document.activeElement as HTMLElement);
+  if (i < 0) return;
+  e.preventDefault();
+  const next = radios[(i + step + radios.length) % radios.length];
+  next?.focus();
+  next?.click();
+}
+
+/** The roving tabIndex for radio `index`: the checked one, or the first when none is (a custom hex). */
+export function radioTabIndex(checked: boolean, index: number, anyChecked: boolean): 0 | -1 {
+  return checked || (!anyChecked && index === 0) ? 0 : -1;
 }

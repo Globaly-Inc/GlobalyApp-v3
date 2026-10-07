@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { radioGroupKeyDown, radioTabIndex } from "../utils";
 import type {
   CreateEmbedConfigInput,
   EmbedConfig,
@@ -111,6 +112,7 @@ export function WidgetFormFields({
       setForm((f) => ({ ...f, [key]: e.target.value }));
   const setColor = (hex: string) => setForm((f) => ({ ...f, brand_color: hex }));
   const isHex = /^#[0-9a-f]{6}$/i.test(form.brand_color);
+  const swatchChecked = SWATCHES.some((hex) => hex.toLowerCase() === form.brand_color.toLowerCase());
 
   const identity = (
     <Section icon={UserRound} title="Identity" hint="How the counsellor introduces itself in the header.">
@@ -139,8 +141,8 @@ export function WidgetFormFields({
           </label>
           <Input id="widget-color-hex" value={form.brand_color} onChange={set("brand_color")} maxLength={7} className="w-36 font-mono uppercase" aria-invalid={!isHex} />
         </div>
-        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Preset colours">
-          {SWATCHES.map((hex) => {
+        <div className="flex flex-wrap gap-2" role="radiogroup" aria-label="Preset colours" onKeyDown={radioGroupKeyDown}>
+          {SWATCHES.map((hex, i) => {
             const on = form.brand_color.toLowerCase() === hex.toLowerCase();
             return (
               <button
@@ -148,6 +150,7 @@ export function WidgetFormFields({
                 type="button"
                 role="radio"
                 aria-checked={on}
+                tabIndex={radioTabIndex(on, i, swatchChecked)}
                 aria-label={hex}
                 onClick={() => setColor(hex)}
                 className={cn("flex size-8 items-center justify-center rounded-full text-white transition-transform hover:scale-110", on && "ring-2 ring-offset-2 ring-offset-card")}
@@ -161,7 +164,7 @@ export function WidgetFormFields({
       </div>
       <div className="flex flex-col gap-2">
         <FieldLabel id="widget-position">Position on your website</FieldLabel>
-        <div role="radiogroup" aria-labelledby="widget-position" className="grid grid-cols-2 gap-3">
+        <div role="radiogroup" aria-labelledby="widget-position" className="grid grid-cols-2 gap-3" onKeyDown={radioGroupKeyDown}>
           {(["left", "right"] as const).map((side) => {
             const on = form.position === side;
             return (
@@ -170,6 +173,7 @@ export function WidgetFormFields({
                 type="button"
                 role="radio"
                 aria-checked={on}
+                tabIndex={on ? 0 : -1}
                 onClick={() => setForm((f) => ({ ...f, position: side }))}
                 className={cn("flex flex-col gap-2 rounded-xl border p-3 text-left transition-colors", on ? "border-2 border-primary bg-primary/5" : "hover:bg-muted/50")}
               >
