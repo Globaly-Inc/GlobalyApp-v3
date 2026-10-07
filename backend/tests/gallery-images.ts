@@ -92,7 +92,19 @@ const media = chooseOverviewMedia(candidates, {
   ],
 }, [], SITE);
 eq(media.gallery, ["https://www.uni.edu/images/campus.jpg"], "only candidate URLs of campus kinds survive");
-eq(media.cover, "https://www.uni.edu/img/lab.jpg", "model cover used when it is a candidate");
+eq(media.cover, "https://www.uni.edu/images/campus.jpg", "a cover the model classified as a portrait is refused — first photo instead");
+eq(chooseOverviewMedia(candidates, { cover_url: "https://www.uni.edu/img/lab.jpg", media_images: [] }, [], SITE).cover,
+  "https://www.uni.edu/img/lab.jpg", "model cover used when it is an unrejected candidate");
+eq(chooseOverviewMedia(candidates, { media_images: [{ url: "https://www.uni.edu/img/lab.jpg", kind: "advert" }] },
+  ["https://www.uni.edu/img/lab.jpg"], SITE).cover, null, "an og:image the model called an advert is not the cover");
+const rejectedAll = chooseOverviewMedia(candidates, { media_images: candidates.map((c) => ({ url: c.url, kind: "portrait" })) }, [], SITE);
+eq([rejectedAll.gallery, rejectedAll.classified], [[], true], "every candidate rejected → empty, but classified");
+eq(mediaPatch({ cover_url: null, gallery_images: null }, { cover: null, gallery: [], classified: true }),
+  { gallery_images: [] }, "a classified empty gallery is stored as [] so nothing refills it");
+eq(chooseOverviewMedia([], {}, [], SITE).classified, false, "no candidates → not classified (fallback may run)");
+eq(isPublicCampusPhoto("https://www.uni.edu/images/photo%zz.jpg", "", SITE), false, "malformed %-escape skipped, not thrown");
+eq(imageCandidates("![](/images/photo%zz.jpg)\n![](/images/ok.jpg)", SITE, null).map((c) => c.url),
+  ["https://www.uni.edu/images/ok.jpg"], "one malformed link doesn't stop the others");
 const manyCands = Array.from({ length: 15 }, (_, i) => ({ url: `https://www.uni.edu/img/photo-${i}.jpg`, alt: "" }));
 eq(chooseOverviewMedia(manyCands, { media_images: manyCands.map((c) => ({ url: c.url, kind: "building" })) }, [], SITE).gallery.length,
   MAX_GALLERY_IMAGES, "model picks capped at 10");

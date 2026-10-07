@@ -278,6 +278,13 @@ async function promoteAgent(agent: AgentRow, jobId: string) {
  * files education agencies as institutions. Keeping the two tables clean is the entire reason
  * they are separate.
  */
+/** Which table holds the owner's own listing for this job; refuses rather than let promote create one. */
+async function ownerListingIsInstitution(jobId: string): Promise<boolean> {
+  if (await repo.findInstitutionByJobId(jobId)) return true;
+  if (await repo.findPrimaryBusinessByJobId(jobId)) return false;
+  throw new BadRequestError("No listing is linked to this job, so there is nothing to publish to — publish it from the job page");
+}
+
 async function resolveIsInstitution(job: any): Promise<boolean> {
   if (job.business_category_id) return repo.isInstitutionCategory(Number(job.business_category_id));
   // Self-service jobs are created FROM an institutions row (institution-profile.service
@@ -290,8 +297,12 @@ async function resolveIsInstitution(job: any): Promise<boolean> {
   );
 }
 
-/** `onlyBlanks`: fill the listing's empty fields only (auto-publish of an owner's run, see autoPublishOwnerRun). */
-export async function promoteJob(jobId: string, adminId: number, { onlyBlanks = false } = {}) {
+/**
+ * `ownerRun` (autoPublishOwnerRun): publish to the listing the job is ALREADY linked to — whichever
+ * table holds it, not the one the category implies (the business portal extracts institution-category
+ * BUSINESSES) — fill only its empty fields, and never create a listing.
+ */
+export async function promoteJob(jobId: string, adminId: number, { ownerRun = false } = {}) {
   const job = await jobsRepo.findJobById(jobId);
   if (!job) throw new NotFoundError("Extraction job not found");
 
@@ -302,9 +313,9 @@ export async function promoteJob(jobId: string, adminId: number, { onlyBlanks = 
   }
 
   const overview = await repo.findOverviewByJobId(jobId);
-  const isInstitution = await resolveIsInstitution(job);
+  const isInstitution = ownerRun ? await ownerListingIsInstitution(jobId) : await resolveIsInstitution(job);
 
-  const listing = isInstitution ? await promoteInstitution(job, overview, onlyBlanks) : await promoteBusiness(job, overview, onlyBlanks);
+  const listing = isInstitution ? await promoteInstitution(job, overview, ownerRun) : await promoteBusiness(job, overview, ownerRun);
   // Extracted photos are hot-linked until copied into our storage (best-effort, never fails promote).
   await localizeImages(isInstitution ? "institutions" : "businesses", Number(listing.row.id), jobId).catch(() => {});
 
@@ -372,7 +383,7 @@ export async function autoPublishOwnerRun(jobId: string): Promise<void> {
   const job = await jobsRepo.findJobById(jobId);
   if (!job || job.status !== "review" || !OWNER_SOURCE_TYPES.has(job.source_type as string)) return;
   try {
-    const result = await promoteJob(jobId, Number(job.created_by_platform_user_id), { onlyBlanks: true });
+    const result = await promoteJob(jobId, Number(job.created_by_platform_user_id), { ownerRun: true });
     await writeJobEvent(jobId, "auto_published", {
       phase: "verification",
       message: `Published to the owner's ${result.listing_type} automatically`,

@@ -3,8 +3,8 @@ import { createChildLogger } from "../../../../shared/logger.js";
 import { countryCurrency } from "../../../../shared/country-currency.js";
 import { readSnapshot } from "./page-store.js";
 import { mediaPatch, pickGalleryImages, type OverviewMedia } from "./gallery-images.js";
-import { copyExternalImage } from "./image-copy.js";
-import { isConfigured as storageConfigured, isExternalUrl } from "../../../../shared/storage/storageService.js";
+import { copyExternalImageOutcome } from "./image-copy.js";
+import { isExternalUrl } from "../../../../shared/storage/storageService.js";
 import { generateSubdomain } from "../../../../shared/subdomain.js";
 import { findOverviewByJobId, findCountryId } from "../repositories/promote.repository.js";
 import type { OverviewRow } from "../repositories/promote.repository.js";
@@ -45,8 +45,10 @@ export async function pickOverviewMedia(jobId: string, media?: OverviewMedia): P
   if (!overview) return;
   const needsGallery = overview.gallery_images == null;
   if (!needsGallery && overview.cover_url != null) return;
-  const gallery = !needsGallery ? null : media?.gallery.length ? media.gallery : await scrapeGallery(overview);
-  const patch = mediaPatch(overview, { cover: media?.cover ?? null, gallery });
+  // A classified result stands even when empty (the model rejected every candidate); the guarded
+  // fallback runs only when nothing was classified (other writers, no homepage images, model silent).
+  const gallery = !needsGallery ? null : media?.classified ? media.gallery : await scrapeGallery(overview);
+  const patch = mediaPatch(overview, { cover: media?.cover ?? null, gallery, classified: media?.classified });
   // Nothing yet (homepage not snapshotted, no usable photos) — a later write tries again.
   const table = () => masterKnex("superadmin.extraction_institution_overview").where({ job_id: jobId });
   // Each guarded by its own IS NULL, so a concurrent admin edit or clear in between still wins.
@@ -234,9 +236,9 @@ export const extractedMediaDir = (jobId: string) => `public/extracted/${jobId}/g
  * Swaps any hot-linked (external) gallery/cover image on this org for a copy in our storage
  * (copyExternalImage), so it survives the site removing it and the crop tool can load it. Also
  * migrates rows extracted before copies were made. One that can't be copied keeps its URL — unless
- * `dropUncopyable` (the extraction backfill): an image our cookie-less, no-redirect fetch can't get
- * is not public (login-only, signed, gone), so it is removed rather than hot-linked on a public
- * profile. An admin's own edit keeps its URL. Nothing is dropped while storage isn't configured,
+ * `dropUncopyable` (the extraction backfill): an image our cookie-less, no-redirect fetch is
+ * REFUSED (login-only, signed, gone, not an image) is not public, so it is removed rather than
+ * hot-linked on a public profile; a temporary failure (timeout, 5xx, storage error) keeps the URL. An admin's own edit keeps its URL. Nothing is dropped while storage isn't configured,
  * since then no copy can succeed.
  */
 export async function localizeImages(
@@ -244,11 +246,15 @@ export async function localizeImages(
 ): Promise<void> {
   const row = await masterKnex(table).where({ id }).first("gallery_images", "cover_url");
   if (!row) return;
-  const drop = dropUncopyable && storageConfigured();
+  const drop = dropUncopyable;
   const copies = new Map<string, string | null>();
   const local = async (url: string): Promise<string | null> => {
     if (!isExternalUrl(url)) return url;
-    if (!copies.has(url)) copies.set(url, (await copyExternalImage(url, extractedMediaDir(jobId))) ?? (drop ? null : url));
+    if (!copies.has(url)) {
+      const o = await copyExternalImageOutcome(url, extractedMediaDir(jobId));
+      // Only a confirmed refusal drops the image; a timeout or storage error keeps the URL to retry.
+      copies.set(url, typeof o === "string" ? (drop && o === "refused" ? null : url) : o.path);
+    }
     return copies.get(url)!;
   };
   const gallery: string[] | null = row.gallery_images

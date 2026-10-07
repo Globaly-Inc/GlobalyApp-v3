@@ -14,7 +14,9 @@ export const MAX_IMAGE_CANDIDATES = 40;
 export const PHOTO_KINDS = new Set(["campus", "building", "facility", "group_activity"]);
 
 export type ImageCandidate = { url: string; alt: string };
-export type OverviewMedia = { cover: string | null; gallery: string[] };
+/** `classified`: the model judged the candidates — its gallery stands even when empty (it rejected
+ * them all), and no fallback may pick those same images again. */
+export type OverviewMedia = { cover: string | null; gallery: string[]; classified: boolean };
 
 /** URLs whose path or extension marks them as chrome, not photos. */
 const NOT_A_PHOTO = /\.(svg|gif|ico)(\?|$)|logo|icon|favicon|sprite|avatar|badge|flag|placeholder|spinner|loader|pixel|tracking|emoji/i;
@@ -45,7 +47,13 @@ export function isPublicCampusPhoto(url: string, alt: string, siteUrl: string): 
   }
   if (!isSameSite(u.hostname, site) && !IMAGE_CDNS.test(u.hostname)) return false;
   if ([...u.searchParams.keys()].some((k) => SIGNED.test(k))) return false;
-  if (PERSONAL.test(decodeURIComponent(u.pathname).replace(/[-_/]/g, " ")) || PERSONAL.test(alt)) return false;
+  let path: string;
+  try {
+    path = decodeURIComponent(u.pathname);
+  } catch {
+    return false; // a malformed %-escape: skip this image, never fail the caller
+  }
+  if (PERSONAL.test(path.replace(/[-_/]/g, " ")) || PERSONAL.test(alt)) return false;
   // Thumbnails: ?w=150 / ?width=300, and WordPress's "-150x150." resized copies.
   if (SIZE_PARAMS.some((k) => { const n = Number(u.searchParams.get(k)); return n > 0 && n < MIN_PHOTO_PX; })) return false;
   const wp = /-(\d{2,4})x(\d{2,4})\.\w+$/.exec(u.pathname);
@@ -98,10 +106,11 @@ export function metaImages(html: string, pageUrl: string): string[] {
  */
 export function mediaPatch(
   stored: { cover_url?: string | null; gallery_images?: string[] | null },
-  picked: { cover: string | null; gallery: string[] | null },
+  picked: { cover: string | null; gallery: string[] | null; classified?: boolean },
 ): { cover_url?: string; gallery_images?: string[] } {
   const patch: { cover_url?: string; gallery_images?: string[] } = {};
-  if (stored.gallery_images == null && picked.gallery?.length) patch.gallery_images = picked.gallery;
+  // A classified empty gallery is written as [] — a decision, so later writers don't refill it.
+  if (stored.gallery_images == null && picked.gallery && (picked.gallery.length || picked.classified)) patch.gallery_images = picked.gallery;
   const cover = picked.cover ?? picked.gallery?.[0];
   if (stored.cover_url == null && cover) patch.cover_url = cover;
   return patch;
@@ -120,7 +129,11 @@ export function chooseOverviewMedia(
   siteUrl: string,
 ): OverviewMedia {
   const byUrl = new Map(candidates.map((c) => [c.url, c]));
+  const classified = candidates.length > 0 && Array.isArray(model.media_images);
   const picks = Array.isArray(model.media_images) ? model.media_images : [];
+  // What the model called a portrait / logo / advert / other may not be the cover either.
+  const rejected = new Set(picks.filter((p) => typeof p?.url === "string" && !PHOTO_KINDS.has(String(p.kind))).map((p) => p.url as string));
+  const coverOk = (url: string, alt: string) => !rejected.has(url) && isPublicCampusPhoto(url, alt, siteUrl);
   const gallery: string[] = [];
   for (const p of picks) {
     const url = typeof p?.url === "string" ? p.url : null;
@@ -130,9 +143,9 @@ export function chooseOverviewMedia(
     if (gallery.length === MAX_GALLERY_IMAGES) break;
   }
   const modelCover = typeof model.cover_url === "string" ? byUrl.get(model.cover_url) : undefined;
-  const cover = meta.find((u) => isPublicCampusPhoto(u, "", siteUrl))
-    ?? (modelCover && isPublicCampusPhoto(modelCover.url, modelCover.alt, siteUrl) ? modelCover.url : undefined)
+  const cover = meta.find((u) => coverOk(u, ""))
+    ?? (modelCover && coverOk(modelCover.url, modelCover.alt) ? modelCover.url : undefined)
     ?? gallery[0]
     ?? null;
-  return { cover, gallery };
+  return { cover, gallery, classified };
 }
