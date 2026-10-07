@@ -325,8 +325,11 @@ const LEVEL_SYNONYMS: Array<[RegExp, string[]]> = [
   [/\b(graduate|postgraduate|grad|pg)[\s.-]*(certificate|cert\b)/i, ["graduate certificate", "postgraduate certificate"]],
   [/\b(graduate|postgraduate|grad|pg)[\s.-]*(diploma|dip\b)/i, ["graduate diploma", "postgraduate diploma"]],
   [/\badvanced?[\s.-]*(diploma|dip\b)/i, ["advanced diploma", "advance diploma"]],
-  // No "Master (Research)" rule: the extractor has no such value — research master's are stored as
-  // "Master", so narrowing one would return nothing the broad rule does not already answer.
+  // "Master (Research)" is a degree_levels row NAME, and resolveCourseLookups writes that name
+  // straight into this free-text column — so a research master's is stored distinctly and must not
+  // drag in every taught master's and MBA. A bare "Master" request still reaches them: %master%.
+  [/\bm\.?res\b|\bm\.?phil\b|master.{0,12}(research|philosophy)|research\s+master/i,
+    ["master (research)", "mres", "mphil"]],
   [/doctor|ph\.?d|d\.?b\.?a/i, ["doctoral", "doctorate", "phd"]],
   [/master|m\.?b\.?a|m\.?sc|m\.?eng/i, ["master", "mba"]],
   [/bachelor|undergrad|b\.?sc|b\.?eng/i, ["bachelor"]],

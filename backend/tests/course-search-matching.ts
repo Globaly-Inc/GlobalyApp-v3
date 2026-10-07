@@ -49,6 +49,14 @@ assert.deepEqual(levelPatterns("Diploma"), ["diploma"]);
 assert.deepEqual(levelPatterns("Graduate Certificate"), ["graduate certificate", "postgraduate certificate"]);
 assert.deepEqual(levelPatterns("Postgraduate Diploma"), ["graduate diploma", "postgraduate diploma"]);
 assert.deepEqual(levelPatterns("Advanced Diploma"), ["advanced diploma", "advance diploma"]);
+// "Master (Research)" is a degree_levels ROW NAME, and resolveCourseLookups writes that name into
+// the free-text degree_level column — so research master's are stored distinctly after all, and a
+// request for one must not pull in every taught master's and MBA.
+assert.deepEqual(levelPatterns("Master (Research)"), ["master (research)", "mres", "mphil"]);
+assert.deepEqual(levelPatterns("MPhil"), ["master (research)", "mres", "mphil"]);
+assert.ok(!levelPatterns("Master by Research").includes("master"), "a research master is not every master");
+// A bare master request still reaches them: %master% covers "Master (Research)" too.
+assert.deepEqual(levelPatterns("Master"), ["master", "mba"]);
 for (const qualified of ["Graduate Diploma", "Advanced Diploma"]) {
   assert.ok(!levelPatterns(qualified).includes("diploma"), `${qualified} must not widen to every diploma`);
 }
