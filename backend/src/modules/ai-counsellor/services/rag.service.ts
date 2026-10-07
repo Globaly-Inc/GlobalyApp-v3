@@ -127,18 +127,46 @@ const DEGREE_LEVELS: Array<[RegExp, string]> = [
   [/\b(bachelor'?s?|bsc|b\.?sc|b\.?eng|undergraduate)\b/i, "Bachelor"],
   // Separate levels: lumping certificates in with diplomas filtered a certificate request to the
   // 151 diplomas and hid all 213 certificates (Greptile).
-  [/\b(diploma)\b/i, "Diploma"],
+  [/\b(diplomas?)\b/i, "Diploma"],
   [/\b(certificates?)\b/i, "Certificate"],
 
 ];
 
+/**
+ * Named qualifications, not levels. The degree_level column says "Master" for an MBA and "PHD" for a
+ * DBA, so the level filter cannot express either — the word is the only thing that says BUSINESS.
+ * Dropping "mba" as a level word left an empty query, which browsed eight master's courses in
+ * alphabetical order in place of the MBA the student asked for (Greptile). The generic abbreviations
+ * stay out: a course named "Master of Science in X" never says "msc", so keeping that one would turn
+ * a browsable level into zero results.
+ */
+const NAMED_QUALIFICATION = /^(m\.?b\.?a|d\.?b\.?a)\.?$/i;
+
 /** Words that survive extractKeywords but say nothing about WHICH course — they only ever dilute
  *  a level-filtered search, and on a level-only turn they are the whole query. */
 const FILLER = new Set(["looking", "degree", "degrees", "course", "courses", "program", "programs",
-  "programme", "programmes", "study", "studies", "studying", "offer", "offered"]);
+  "programme", "programmes", "study", "studies", "studying", "offer", "offered",
+  // What the visitor is doing, not what they want to study. These only ever reached the query on a
+  // turn that states a qualification ("I have X and want Y"), where every word must hit a course
+  // NAME — "want nursing" matched nothing and fell back to loose matching.
+  "want", "wants", "need", "needs", "interested", "seeking", "hold", "holds", "completed",
+  "there", "after", "planning"]);
+
+/**
+ * What the visitor already HOLDS, which is never what they are asking for. The level was read from
+ * the whole sentence and decided by LIST ORDER, so "I have a bachelor's degree and want a diploma in
+ * nursing" filtered to Bachelor — bachelor is tested before diploma — and excluded every diploma
+ * (Greptile). The clause runs from the possession words to the next thing they ask for, or to the
+ * next punctuation. Dropped before the level is read; if nothing is left to read, the whole query is
+ * used as before, so "I have a diploma" still filters to diplomas.
+ */
+const HELD_CLAUSE =
+  /\b(?:i\s*(?:have|'ve|hold|completed|finished|did|studied)|my\s+(?:current\s+|highest\s+)?(?:degree|qualification|background))\b.*?(?=\b(?:want|wanting|need|looking|interested|seeking|apply|applying|study|studying|do\s+you|is\s+there|any|now)\b|[,.;!?]|$)/gis;
 
 export function detectDegreeLevel(query: string): string | null {
-  return DEGREE_LEVELS.find(([re]) => re.test(query))?.[1] ?? null;
+  const asked = query.replace(HELD_CLAUSE, " ");
+  const search = DEGREE_LEVELS.some(([re]) => re.test(asked)) ? asked : query;
+  return DEGREE_LEVELS.find(([re]) => re.test(search))?.[1] ?? null;
 }
 
 /** The keywords left once the level has been lifted out into its own filter. Empty is a real
@@ -146,7 +174,7 @@ export function detectDegreeLevel(query: string): string | null {
 export function courseKeywordsFor(keywords: string[], degreeLevel: string | null): string {
   if (!degreeLevel) return keywords.join(" ");
   return keywords
-    .filter((w) => !FILLER.has(w) && !DEGREE_LEVELS.some(([re]) => re.test(w)))
+    .filter((w) => NAMED_QUALIFICATION.test(w) || (!FILLER.has(w) && !DEGREE_LEVELS.some(([re]) => re.test(w))))
     .join(" ");
 }
 
@@ -400,6 +428,13 @@ export async function searchAll(opts: {
   if (degreeLevel) trace(`Degree level: ${degreeLevel}${courseQuery ? "" : " (browsing that level)"}`);
   if (countryCode) trace(`Country detected: ${countryCode}`);
 
+  // Keeping "mba" in the query means a school that writes its MBA out in full can now match
+  // nothing where the level alone used to browse. Fall back to that browse instead of reporting
+  // none — only when the qualification WAS the whole query, so "mba finance" finding nothing still
+  // means nothing rather than eight unrelated master's. Same widen-once shape as the tool path.
+  const qualificationOnly = !!degreeLevel && !!courseQuery
+    && courseQuery.split(" ").every((w) => NAMED_QUALIFICATION.test(w));
+
   // ── Parallel searches — each wrapped so one failure doesn't kill the rest ──
   const none = Promise.resolve([]);
   const noOwner = { overview: [], campuses: [], accreditations: [] };
@@ -409,6 +444,8 @@ export async function searchAll(opts: {
   async function runSearches() { return Promise.all([
     opts.skipCourses ? none.then(r => { trace("Courses: skipped (discovery turn)"); return r; })
       : knowledge.searchCourses({ query: courseQuery, degreeLevel: degreeLevel ?? undefined, limit: 8, jobIds: opts.jobIds })
+        .then(r => r.length || !qualificationOnly ? r
+          : knowledge.searchCourses({ query: "", degreeLevel: degreeLevel ?? undefined, limit: 8, jobIds: opts.jobIds }))
         .then(r => { trace(`Courses: ${r.length} found`); return r; })
         .catch(err => { logger.warn("Course search failed", { err: String(err) }); trace("Course search failed"); return []; }),
     knowledge.searchVisas({ query: searchQuery, limit: 5 })

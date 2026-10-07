@@ -139,6 +139,24 @@ function main() {
     assertEqual(detectDegreeLevel("a certificate course"), "Certificate", "certificate is its own level");
     assertEqual(detectDegreeLevel("graduate diploma"), "Diploma", "diploma stays diploma");
     assertEqual(detectDegreeLevel("any doctorate programs"), "Doctoral", "doctorate is doctoral");
+    // A level the visitor says they ALREADY HOLD is not the level they are asking for. List order,
+    // not the sentence, used to decide: "bachelor" is tested before "diploma", so this filtered to
+    // Bachelor and excluded every nursing diploma on offer.
+    assertEqual(detectDegreeLevel("I have a bachelor's degree and want a diploma in nursing"), "Diploma",
+      "the requested level wins over the held one");
+    assertEqual(detectDegreeLevel("I have a bachelor in nursing, do you have master's programs"), "Master",
+      "held clause ends at the comma");
+    assertEqual(detectDegreeLevel("I've completed a diploma, looking for a bachelor now"), "Bachelor",
+      "however the visitor words what they hold");
+    // The plural matched no level at all, so this one asked for diplomas and got an unfiltered search.
+    assertEqual(detectDegreeLevel("my degree is a bachelor of arts, do you have diplomas"), "Diploma",
+      "plural diplomas is still a diploma");
+    // What the visitor is DOING is not what they want to study — every word has to hit a course name.
+    assertEqual(courseKeywordsFor(["want", "nursing"], "Diploma"), "nursing", "intent verbs never reach the query");
+    // Single-intent turns are untouched: there is no held clause to lift out.
+    assertEqual(detectDegreeLevel("I have been looking for a diploma"), "Diploma", "'I have been' is not holding one");
+    // Only a held level and nothing asked for: that is still the level this turn is about.
+    assertEqual(detectDegreeLevel("I have a diploma"), "Diploma", "a lone held level still filters");
     // A subject alongside the level still discriminates; only the level and filler words go.
     assertEqual(courseKeywordsFor(["masters", "engineering"], "Master"), "engineering",
       "the subject survives the level lift");
@@ -147,6 +165,16 @@ function main() {
     // With no level detected the keywords are passed through exactly as before.
     assertEqual(courseKeywordsFor(["water", "engineering"], null), "water engineering",
       "no level, no change");
+    // An MBA is a NAMED qualification, not a level: the degree_level column says "Master" for it,
+    // so dropping the word left an empty query and browsed eight master's courses alphabetically
+    // in place of the MBA that was asked for. It stays in the query; "masters" still goes.
+    assertEqual(courseKeywordsFor(["mba"], "Master"), "mba", "mba names the qualification");
+    assertEqual(courseKeywordsFor(["masters", "mba"], "Master"), "mba", "the level word still goes");
+    assertEqual(courseKeywordsFor(["mba", "finance"], "Master"), "mba finance", "with its subject");
+    assertEqual(courseKeywordsFor(["dba"], "Doctoral"), "dba", "same for a DBA");
+    // The generic ones stay out — a course named "Master of Science in X" never says "msc", so
+    // keeping it would turn a browsable level into zero results.
+    assertEqual(courseKeywordsFor(["msc", "looking"], "Master"), "", "msc is still just the level");
   }
 
   console.log("\nresolveQuery — what the semantic searches (rack, country, memory) see");
