@@ -15,8 +15,8 @@ import { cn } from "@/lib/utils";
 
 type ChatMessageProps = {
   message: Message;
-  onChipClick?: (chip: string) => void;
-  onSend?: (value: string) => void;
+  onChipClick?: (chip: string) => boolean | void;
+  onSend?: (value: string) => boolean | void;
 };
 
 /** Cards size themselves to the container, not the viewport — the same grid has to
@@ -104,13 +104,13 @@ function Attachments({ paths }: { paths: string[] }) {
 
 /** Follow-up suggestions. One tap sends — picking several and pressing a second Send button was
  *  two clicks for what reads as one choice, and nobody expects a suggestion chip to need confirming. */
-function Chips({ chips, onChipClick }: { chips: string[]; onChipClick?: (chip: string) => void }) {
+function Chips({ chips, onChipClick }: { chips: string[]; onChipClick?: (chip: string) => boolean | void }) {
   const [sent, setSent] = useState<string | null>(null);
 
   const send = (chip: string) => {
     if (sent) return; // a second tap would fire a second turn
+    if (onChipClick?.(chip) === false) return; // refused mid-stream: leave every chip tappable
     setSent(chip);
-    onChipClick?.(chip);
   };
 
   return (
@@ -187,8 +187,8 @@ function AssistantTurn({
   cards: CourseCardType[];
   chips: string[];
   blocks: ResponseBlock[];
-  onChipClick?: (chip: string) => void;
-  onSend?: (value: string) => void;
+  onChipClick?: (chip: string) => boolean | void;
+  onSend?: (value: string) => boolean | void;
   footer?: React.ReactNode;
 }) {
   // The model routinely answers its own question twice — once as a quick_replies
@@ -277,8 +277,8 @@ export function StreamingMessage({
   cards: CourseCardType[];
   chips: string[];
   blocks?: ResponseBlock[];
-  onChipClick?: (chip: string) => void;
-  onSend?: (value: string) => void;
+  onChipClick?: (chip: string) => boolean | void;
+  onSend?: (value: string) => boolean | void;
 }) {
   return (
     <AssistantTurn content={content} cards={cards} chips={chips} blocks={blocks} onChipClick={onChipClick} onSend={onSend} />

@@ -8,7 +8,7 @@
  */
 import assert from "node:assert/strict";
 import { masterKnex } from "../src/core/db/master-pool.js";
-import { anyKeywordILike, everyKeywordILike } from "../src/modules/ai-counsellor/repositories/knowledge.repository.js";
+import { anyKeywordILike, everyKeywordILike, levelPatterns } from "../src/modules/ai-counsellor/repositories/knowledge.repository.js";
 
 const COLUMNS = ["c.name", "c.subject_area"];
 const sqlFor = (where: ReturnType<typeof anyKeywordILike>) =>
@@ -33,6 +33,22 @@ assert.equal(sqlFor(everyKeywordILike(COLUMNS, "nursing")).replace(/[()]/g, ""),
 
 // Browse mode: no words, no predicate — the filters (level, country, job scope) carry the query.
 assert.ok(!sqlFor(everyKeywordILike(COLUMNS, "")).includes("ilike"), "empty query adds no matching");
+
+// degree_level is free text with 28 spellings of five levels, and degree_level_code is populated on
+// 1,130 of 19,088 rows — so a requested level has to expand to every spelling that level is stored as.
+assert.deepEqual(levelPatterns("Doctoral"), ["doctoral", "doctorate", "phd"], "a doctorate is stored four ways");
+assert.deepEqual(levelPatterns("PhD"), ["doctoral", "doctorate", "phd"], "however the caller words it");
+// The tool path passes whatever word the model picked, so it goes through the same table.
+assert.deepEqual(levelPatterns("Doctorate"), ["doctoral", "doctorate", "phd"]);
+// A certificate must never resolve to diplomas — that hid 213 rows and returned 151 unrelated ones.
+assert.deepEqual(levelPatterns("Certificate"), ["certificate"]);
+assert.deepEqual(levelPatterns("Graduate Certificate"), ["certificate"]);
+assert.deepEqual(levelPatterns("Diploma"), ["diploma"]);
+assert.ok(!levelPatterns("Certificate").includes("diploma"), "certificate is not a diploma");
+// "Post-Doctoral Certificate" is a doctorate, and the doctoral rule claims it first.
+assert.deepEqual(levelPatterns("Post-Doctoral Certificate"), ["doctoral", "doctorate", "phd"]);
+// Anything unrecognised is matched as written rather than silently dropped.
+assert.deepEqual(levelPatterns("Associate Degree"), ["Associate Degree"]);
 
 console.log("course-search-matching: ok");
 await masterKnex.destroy();

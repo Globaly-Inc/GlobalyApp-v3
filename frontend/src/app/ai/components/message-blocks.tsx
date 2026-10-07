@@ -12,8 +12,8 @@ import { LinkBlock } from "./blocks/link-block";
 type MessageBlocksProps = {
   blocks: ResponseBlock[];
   /** Block actions and quick replies send their value as the user's next message. */
-  onAction?: (value: string) => void;
-  onSend?: (value: string) => void;
+  onAction?: (value: string) => boolean | void;
+  onSend?: (value: string) => boolean | void;
 };
 
 /**

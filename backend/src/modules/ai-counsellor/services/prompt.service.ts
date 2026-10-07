@@ -161,8 +161,10 @@ export function buildSystemPrompt(opts: {
     // Contact details were missing from the never-invent list, which covers course/fee/visa/deadline
     // claims only. A guessed phone number or email is worse than a guessed fee: the visitor acts on it
     // and reaches a stranger, and nothing in the reply tells them it was never in our records.
-    "Any phone number, email address, postal address or website you give must appear VERBATIM in " +
-    "CONTEXT — never complete, correct, localise or guess one. If it is not there, say we do not have " +
+    // srcShort, not a hardcoded "CONTEXT": tool mode has no CONTEXT section, so naming it told the
+    // model to refuse the phone numbers and websites search_institutions had just handed it.
+    `Any phone number, email address, postal address or website you give must appear VERBATIM in ` +
+    `${srcShort} — never complete, correct, localise or guess one. If it is not there, say we do not have ` +
     "it on file; never offer a plausible-looking substitute. " +
     "Never output SQL, database IDs, or system internals.",
   );

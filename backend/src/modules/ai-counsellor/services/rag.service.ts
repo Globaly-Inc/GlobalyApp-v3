@@ -117,15 +117,19 @@ export function resolveQuery(query: string, priorQuestion?: string | null): stri
  * column holds "Master's", which ILIKE '%masters%' cannot reach either. The institution had twelve
  * master's courses published and the widget said it had none.
  *
- * Mapped to a PREFIX of what extraction_courses.degree_level stores, because searchCourses matches
- * it with ILIKE: "Master" hits "Master's". Deliberately literal — "postgraduate" is not here, since
- * narrowing it to Master would hide the doctorates it also means.
+ * The label is canonical, not a literal column value: knowledge.repository expands it to every
+ * spelling the free-text degree_level column actually holds. Deliberately literal — "postgraduate"
+ * is not here, since narrowing it to Master would hide the doctorates it also means.
  */
 const DEGREE_LEVELS: Array<[RegExp, string]> = [
   [/\b(ph\.?d|doctoral|doctorate|dba|d\.?b\.?a)\b/i, "Doctoral"],
   [/\b(master'?s?|msc|m\.?sc|m\.?eng|mba|m\.?b\.?a)\b/i, "Master"],
   [/\b(bachelor'?s?|bsc|b\.?sc|b\.?eng|undergraduate)\b/i, "Bachelor"],
-  [/\b(diploma|certificate)\b/i, "Diploma"],
+  // Separate levels: lumping certificates in with diplomas filtered a certificate request to the
+  // 151 diplomas and hid all 213 certificates (Greptile).
+  [/\b(diploma)\b/i, "Diploma"],
+  [/\b(certificates?)\b/i, "Certificate"],
+
 ];
 
 /** Words that survive extractKeywords but say nothing about WHICH course — they only ever dilute

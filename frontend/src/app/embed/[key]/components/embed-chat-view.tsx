@@ -118,7 +118,12 @@ export function EmbedChatView({ embedKey, initialConfig = null }: EmbedChatViewP
       setStreamBlocks([]);
     }
   };
-  const send = (content: string) => run(content, false);
+  // Returns false when a reply is still streaming, so a tapped chip stays tappable.
+  const send = (content: string) => {
+    if (sending) return false;
+    void run(content, false);
+    return true;
+  };
   // Called by the thread reads above; the reply streams like any other, minus a visitor bubble.
   const resume = useEffectEvent(() => void run("", true));
 

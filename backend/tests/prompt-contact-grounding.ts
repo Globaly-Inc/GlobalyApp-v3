@@ -12,10 +12,13 @@ import { buildSystemPrompt } from "../src/modules/ai-counsellor/services/prompt.
 const base = { profile: null, ragContext: "", isFirstMessage: false, toolMode: true } as const;
 const widget = buildSystemPrompt({ ...base, embedConfig: { display_name: "AIT", custom_instructions: null } });
 const dashboard = buildSystemPrompt({ ...base });
+// App chat runs tool-mode with no CONTEXT section at all: the search tools ARE the source. A rule
+// naming CONTEXT there told the model to refuse a phone number its own tool had just returned.
+const ragOnly = buildSystemPrompt({ ...base, toolMode: false, ragContext: "CONTEXT ROWS" });
 
 // Both surfaces: a contact detail is only ever repeated from context, never constructed.
 for (const [name, prompt] of [["widget", widget], ["dashboard", dashboard]] as const) {
-  assert.match(prompt, /must appear VERBATIM in CONTEXT/, `${name} lost the verbatim rule`);
+  assert.match(prompt, /must appear VERBATIM in your tool results/, `${name} lost the verbatim rule`);
   assert.match(prompt, /never complete, correct, localise or guess one/, `${name} lost the no-guessing rule`);
   assert.match(prompt, /say we do not have it on file/, `${name} lost the fallback wording`);
 }
@@ -31,5 +34,7 @@ assert.match(widget, /if\s+that section has none, say we do not have it on file/
 assert.match(widget, /are that organisation's own and may be shared/);
 // A person's details are still never quoted, on either surface.
 for (const prompt of [widget, dashboard]) assert.match(prompt, /Never quote an individual's personal contact details/);
+
+assert.match(ragOnly, /must appear VERBATIM in CONTEXT/, "rag-only surface lost the verbatim rule");
 
 console.log("prompt-contact-grounding: ok");

@@ -82,12 +82,13 @@ export function AiChatView({ initialQuery, redirectIfAuthenticated = false, fp }
   const handleSend = useCallback(
     (content: string, files?: File[]) => {
       const trimmed = content.trim();
-      if (!trimmed || sendStatus === "loading") return;
+      // Tappable options read the result: a refused tap must not look answered.
+      if (!trimmed || sendStatus === "loading") return false;
       if (!user) {
         guestFingerprint.current ??= crypto.randomUUID();
         dispatch(sendGuestMessage({ content: trimmed, fingerprint: guestFingerprint.current }));
         setDraft("");
-        return;
+        return true;
       }
       if (activeSessionId && activeSessionId !== GUEST_SESSION_ID) {
         dispatch(addOptimisticUserMessage({
@@ -98,6 +99,7 @@ export function AiChatView({ initialQuery, redirectIfAuthenticated = false, fp }
       }
       dispatch(sendMessage({ sessionId: activeSessionId, content: trimmed, files }));
       setDraft("");
+      return true;
     },
     [dispatch, activeSessionId, user, sendStatus],
   );

@@ -134,6 +134,11 @@ function main() {
     assertEqual(detectDegreeLevel("water engineering"), null, "a subject turn has no level");
     // "postgraduate" means master's AND doctoral — narrowing it to one would hide the other.
     assertEqual(detectDegreeLevel("postgraduate options"), null, "postgraduate stays unfiltered");
+    // A certificate is not a diploma: lumping them together filtered certificate requests to the
+    // 151 diplomas and hid all 213 certificates.
+    assertEqual(detectDegreeLevel("a certificate course"), "Certificate", "certificate is its own level");
+    assertEqual(detectDegreeLevel("graduate diploma"), "Diploma", "diploma stays diploma");
+    assertEqual(detectDegreeLevel("any doctorate programs"), "Doctoral", "doctorate is doctoral");
     // A subject alongside the level still discriminates; only the level and filler words go.
     assertEqual(courseKeywordsFor(["masters", "engineering"], "Master"), "engineering",
       "the subject survives the level lift");

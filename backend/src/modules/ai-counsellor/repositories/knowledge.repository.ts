@@ -305,6 +305,29 @@ async function strictThenWiden<T>(
   return strict.length ? strict : build(anyKeywordILike(all, query));
 }
 
+/**
+ * degree_level is free text and holds 28 spellings of five levels — "Doctoral (PhD)", "Doctorate",
+ * "doctorate" and "PhD" are all doctorates, "Graduate Certificate" and "Certificate" are both
+ * certificates. A single ILIKE on the requested word therefore hides most of a level: '%Doctoral%'
+ * reached 43 of 95 doctorates, and a request for a certificate matched none of the 213 (Greptile).
+ *
+ * degree_level_code would be the clean answer and is NOT usable: it is populated on 1,130 of 19,088
+ * rows. Expanded here rather than at the callers so the tool path, which passes whatever word the
+ * model chose, is covered by the same table. An unrecognised level is used as written.
+ */
+const LEVEL_SYNONYMS: Array<[RegExp, string[]]> = [
+  [/doctor|ph\.?d|d\.?b\.?a/i, ["doctoral", "doctorate", "phd"]],
+  [/master|m\.?b\.?a|m\.?sc|m\.?eng/i, ["master", "mba"]],
+  [/bachelor|undergrad|b\.?sc|b\.?eng/i, ["bachelor"]],
+  // Before certificate: "Post-Doctoral Certificate" is a doctorate, and the doctoral rule above
+  // already claimed it. Certificate before diploma only for readability — they do not overlap.
+  [/certificate|cert\b/i, ["certificate"]],
+  [/diploma/i, ["diploma"]],
+];
+
+export const levelPatterns = (level: string): string[] =>
+  LEVEL_SYNONYMS.find(([re]) => re.test(level))?.[1] ?? [level];
+
 export async function searchCourses(opts: {
   query: string;
   country?: string;
@@ -368,7 +391,12 @@ export async function searchCourses(opts: {
       if (words.length) q.orderByRaw(`${rankSql} DESC`, rankBindings);
       else q.orderBy("c.name", "asc");
       if (opts.country) q.whereILike("i.country", `%${opts.country}%`);
-      if (opts.degreeLevel) q.whereILike("c.degree_level", `%${opts.degreeLevel}%`);
+      if (opts.degreeLevel) {
+        const patterns = levelPatterns(opts.degreeLevel);
+        q.where(function () {
+          for (const pattern of patterns) this.orWhereILike("c.degree_level", `%${pattern}%`);
+        });
+      }
       if (opts.jobIds) q.whereIn("c.job_id", opts.jobIds);
     })
     .limit(limit);
