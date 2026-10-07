@@ -397,9 +397,9 @@ const DROP_SAMPLE_SIZE = 5;
 export function redactUrlForSample(url: string): string {
   try {
     const u = new URL(url);
-    for (const key of [...u.searchParams.keys()]) u.searchParams.set(key, "[redacted]");
+    for (const key of [...u.searchParams.keys()]) u.searchParams.set(key, "redacted");
     u.hash = "";
-    return decodeURIComponent(u.toString());
+    return u.toString();
   } catch {
     return "[unparseable url]";
   }
