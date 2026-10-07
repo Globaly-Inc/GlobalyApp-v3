@@ -1,11 +1,13 @@
 "use client";
 
+import { useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Bot, MessageSquare } from "lucide-react";
-import { buttonVariants } from "@/components/ui/button";
+import { Button, buttonVariants } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
 import { useAppSelector } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
+import { useAuthState } from "@/app/auth/store/auth-slice";
 import { WIDGET_SETTINGS_HREF } from "@/app/business/ai-widget/const";
 
 /** A placeholder line in the illustration — shapes only, never text a visitor could have sent. */
@@ -78,21 +80,46 @@ function WidgetIllustration() {
   );
 }
 
+/** Per org, so dismissing it for one campus doesn't hide it for another the same person manages. */
+const dismissKey = (orgId: string) => `ai-widget-setup-dismissed:${orgId}`;
+
+function readDismissed(orgId: string): boolean {
+  try {
+    return sessionStorage.getItem(dismissKey(orgId)) === "1";
+  } catch {
+    return false; // storage blocked (private window, previews): just show it
+  }
+}
+
 /**
- * Shown over the Inbox while the org has no AI Embed widget. Deliberately not dismissible — no X,
- * no "Maybe later", and Escape/outside clicks are ignored because `open` is controlled with no
- * `onOpenChange` — so the only way on is the existing widget setup page. It goes away by itself
+ * Shown over the Inbox while the org has no AI Embed widget. X, "Maybe later", Escape and an
+ * outside click all dismiss it for the rest of the browser session (sessionStorage), so it doesn't
+ * reappear on every visit to the Inbox but does come back next session. It goes away for good
  * once a widget exists, since `configs` is what decides it.
  *
  * Waits for `loaded`: before the first fetch answers, an empty `configs` means "not asked yet",
- * and showing the modal then would flash it at every org that does have a widget.
+ * and showing the modal then would flash it at every org that does have a widget. That also keeps
+ * the sessionStorage read off the server render — `loaded` is never true there.
  */
 export function WidgetSetupDialog() {
-  const open = useAppSelector((s) => s.aiWidget.loaded && s.aiWidget.configs.length === 0);
+  const orgId = useAuthState().user?.orgId ?? "";
+  const needsWidget = useAppSelector((s) => s.aiWidget.loaded && s.aiWidget.configs.length === 0);
+  // Bumped on dismiss so the read below runs again; the stored flag is the source of truth.
+  const [, setDismissedAt] = useState(0);
+  const open = needsWidget && !readDismissed(orgId);
+
+  const dismiss = () => {
+    try {
+      sessionStorage.setItem(dismissKey(orgId), "1");
+    } catch {
+      // storage blocked: it stays closed until the next reload, which is the best we can do
+    }
+    setDismissedAt(Date.now());
+  };
 
   return (
-    <Dialog open={open} disablePointerDismissal>
-      <DialogContent showCloseButton={false} className="w-[calc(100%-2rem)] max-w-[560px] gap-0 overflow-hidden rounded-2xl p-0">
+    <Dialog open={open} onOpenChange={(next) => { if (!next) dismiss(); }}>
+      <DialogContent className="w-[calc(100%-2rem)] max-w-[560px] gap-0 overflow-hidden rounded-2xl p-0">
         <WidgetIllustration />
         <div className="px-6 pb-2 pt-6 sm:px-7">
           <span className="inline-flex h-6 items-center gap-1.5 rounded-full bg-primary/10 px-2.5 text-xs font-semibold text-primary">
@@ -104,7 +131,8 @@ export function WidgetSetupDialog() {
             engaging with visitors and manage their conversations from this inbox.
           </DialogDescription>
         </div>
-        <div className="flex justify-end px-6 pb-6 pt-4 sm:px-7">
+        <div className="flex justify-end gap-2 px-6 pb-6 pt-4 sm:px-7">
+          <Button variant="outline" className="h-10 px-4" onClick={dismiss}>Maybe later</Button>
           <Link href={WIDGET_SETTINGS_HREF} className={cn(buttonVariants(), "h-10 gap-2 px-4")}>
             Configure Widget <ArrowRight className="size-4" aria-hidden />
           </Link>
