@@ -7,7 +7,7 @@ import { ArrowRight, Check, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useAppDispatch } from "@/lib/hooks";
 import { fetchMe, verifySignInOtp } from "@/app/auth/store/auth-slice";
-import { SETUP_HANDOFF_KEY, type SetupHandoff } from "@/app/auth/use-onboarding-invite";
+import { INVITE_SOURCE, SETUP_HANDOFF_KEY, type SetupHandoff } from "@/app/auth/use-onboarding-invite";
 import { ICON } from "@/lib/public-assets";
 import { inviteApi } from "./apis";
 
@@ -79,6 +79,7 @@ export function OnboardingSetupView({ orgName }: Readonly<{ orgName?: string }>)
   /** The address the invite was for, known once accept answers — it names whose account this is. */
   const [account, setAccount] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
+  const [retryHref, setRetryHref] = useState("/auth/sign-in");
   const started = useRef(false);
 
   useEffect(() => {
@@ -91,6 +92,7 @@ export function OnboardingSetupView({ orgName }: Readonly<{ orgName?: string }>)
       return;
     }
     const { token, type, otp } = handoff;
+    setRetryHref(`/auth/sign-in?source=${INVITE_SOURCE}&token=${encodeURIComponent(token)}&type=${type}`);
     inviteApi
       .acceptOnboardingInvite({ token, type, otp })
       .then(async ({ email }) => {
@@ -162,8 +164,10 @@ export function OnboardingSetupView({ orgName }: Readonly<{ orgName?: string }>)
                 <p className="text-xs text-muted-foreground">{failed}</p>
               </div>
               <div className="flex flex-wrap gap-2">
-                {/* A spent code can't be replayed, so trying again means asking for a fresh one. */}
-                <Button size="sm" className="h-8 cursor-pointer gap-1.5" onClick={() => router.replace("/auth/sign-in")}>
+                {/* A spent code can't be replayed, so trying again means asking for a fresh one —
+                    which is why this goes back with the invitation, not to a bare sign-in. If the
+                    invite itself is what lapsed, that page's lookup sends them on to ask for a new link. */}
+                <Button size="sm" className="h-8 cursor-pointer gap-1.5" onClick={() => router.replace(retryHref)}>
                   Try again
                   <ArrowRight className="h-3.5 w-3.5" aria-hidden />
                 </Button>

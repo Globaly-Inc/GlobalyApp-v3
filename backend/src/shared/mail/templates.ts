@@ -1236,6 +1236,7 @@ export function extractionCompleteEmail(options: {
   const site = options.website ? ` from <strong>${esc(options.website)}</strong>` : "";
   const found = options.coverage.filter((c) => c.count > 0);
   const coverage = found.map((c) => `${c.count} ${c.label}`);
+  const review = reviewBlock(options.itemCount, options.coverage);
   // Internal, like the other deep links in this file (see `web`): the caller already builds
   // portalUrl from the same WEB_APP_URL, so a second parameter would only be a way to disagree.
   const widgetUrl = web("/business/ai-widget");
@@ -1268,7 +1269,7 @@ export function extractionCompleteEmail(options: {
              <strong>GlobalyApp</strong> — the platform connecting students with verified institutions, agents, and
              education services worldwide.</p>
              ${coverageBlock(options.itemCount, `${options.itemLabel} found`, found)}
-             ${reviewBlock(options.itemCount, found)}
+             ${review}
              <p style="margin:20px 0 0">Take a look and make sure everything is right, so students find accurate
              information about ${entityName}.</p>`,
       size: "wide",
@@ -1283,7 +1284,7 @@ export function extractionCompleteEmail(options: {
       }),
       // Only when nothing was flagged above: with the "Needs your review" table on the page, a
       // footnote hinting that some details may need review is the same sentence, said worse.
-      footnote: reviewBlock(options.itemCount, found)
+      footnote: review
         ? undefined
         : "Some details may need your review before students see them. You can edit anything from your portal.",
     }),
