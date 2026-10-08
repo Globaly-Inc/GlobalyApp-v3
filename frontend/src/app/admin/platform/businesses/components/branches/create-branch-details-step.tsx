@@ -1,14 +1,17 @@
 "use client";
 
 import { Combobox, type ComboboxOption } from "@/components/combobox";
-import { Button } from "@/components/ui/button";
+import { Building, Check, GitBranch, Mail, MapPin } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { FieldError } from "@/components/field-error";
 import { PhoneInput } from "@/components/ui/phone-input";
 import { AddressAutocomplete } from "@/components/address-autocomplete";
+import { Reveal } from "@/components/reveal";
 import { cn } from "@/lib/utils";
-import { BRANCH_TYPE_OPTIONS } from "../../const";
+import { FormSection } from "./form-section";
+import { BranchTypeCards } from "./branch-type-cards";
+import { HowBranchesWork } from "./how-branches-work";
 import type { BranchType } from "../../apis/types";
 
 export type BranchForm = {
@@ -22,6 +25,9 @@ export const EMPTY_BRANCH_FORM: BranchForm = {
   name: "", countryId: "", city: "", address: "", state: "",
   email: "", phone: "", websiteMode: "same", website: "",
 };
+
+/** Soft filled input that glows in the brand colour on focus. */
+const FIELD = "h-10 border-transparent bg-muted/60 transition-[background-color,border-color,box-shadow] hover:border-border focus-visible:border-primary focus-visible:bg-background focus-visible:ring-4 focus-visible:ring-primary/15";
 
 /** "example.edu" → "https://example.edu", so a bare domain passes the backend's URL check. */
 const withScheme = (url: string) => (/^https?:\/\//i.test(url) ? url : `https://${url}`);
@@ -78,6 +84,7 @@ export function CreateBranchDetailsStep({
   branchType,
   onBranchTypeChange,
   showWebsite = false,
+  showHowItWorks = true,
   countryIso2,
 }: Readonly<{
   form: BranchForm;
@@ -91,150 +98,136 @@ export function CreateBranchDetailsStep({
   onBranchTypeChange: (value: BranchType) => void;
   /** On create, and on edit of a branch this org created (the website is saved on that org). */
   showWebsite?: boolean;
+  /** The branch page shows this note in its side column instead. */
+  showHowItWorks?: boolean;
   /** Biases address suggestions to the picked country. */
   countryIso2?: string | null;
 }>) {
+  const nameValid = form.name.trim().length >= 2;
   return (
     <>
-      <div className="flex flex-col gap-2">
-        <Label>
-          Branch name <span className="text-destructive">*</span>
-        </Label>
-        <Input className="h-10" aria-invalid={!!errors.name} value={form.name} onChange={(e) => onChange("name", e.target.value)} placeholder="e.g. Sydney campus" />
-        <FieldError message={errors.name} />
-      </div>
+      <FormSection icon={Building} title="Identity" hint="The name people see in search and on your profile.">
+        <div className="flex flex-col gap-2">
+          <Label>
+            Branch name <span className="text-destructive">*</span>
+          </Label>
+          <div className="relative">
+            <Input className={cn(FIELD, "pr-9")} aria-invalid={!!errors.name} value={form.name} onChange={(e) => onChange("name", e.target.value)} placeholder="e.g. Sydney campus" />
+            <Check
+              aria-hidden
+              className={cn(
+                "absolute right-3 top-1/2 size-4 -translate-y-1/2 text-emerald-600 transition-[opacity,transform] duration-300 ease-[cubic-bezier(.34,1.56,.64,1)] dark:text-emerald-400",
+                nameValid ? "scale-100 opacity-100" : "scale-50 opacity-0",
+              )}
+            />
+          </div>
+          <FieldError message={errors.name} />
+        </div>
+      </FormSection>
 
-      <div className="flex flex-col gap-2">
-        <Label>
-          Address <span className="text-destructive">*</span>
-        </Label>
-        <div className="grid grid-cols-[130px_1fr] gap-3">
-          <Combobox
-            value={form.countryId}
-            onChange={(v) => {
-              onChange("countryId", v);
-              onChange("city", "");
+      <FormSection icon={MapPin} title="Location" hint="Pick a country first, then the city." required>
+        <div className="flex flex-col gap-2">
+          <div className="grid grid-cols-[130px_1fr] gap-3">
+            <Combobox
+              value={form.countryId}
+              onChange={(v) => {
+                onChange("countryId", v);
+                onChange("city", "");
+              }}
+              options={countryOptions}
+              placeholder="Country"
+              searchPlaceholder="Search countries..."
+              aria-invalid={!!errors.countryId}
+            />
+            <Combobox
+              value={form.city}
+              onChange={onCityChange}
+              options={cityOptions}
+              placeholder={form.countryId ? "Select a city" : "Select a country first"}
+              searchPlaceholder="Search cities..."
+              loading={citiesLoading}
+              disabled={!form.countryId}
+            />
+          </div>
+          <FieldError message={errors.countryId} />
+          <Input className={FIELD} value={form.state} onChange={(e) => onChange("state", e.target.value)} placeholder="State / Province" />
+          {/* Same Places autocomplete as the other address forms — picking a suggestion fills
+              State and, when it's in this country's list, City. */}
+          <AddressAutocomplete
+            value={form.address}
+            onChange={(v) => onChange("address", v)}
+            countryIso2={countryIso2}
+            onResolved={(details) => {
+              if (details.state) onChange("state", details.state);
+              const city = details.city && cityOptions.find((o) => o.value.toLowerCase() === details.city!.toLowerCase());
+              if (city) onCityChange(city.value);
             }}
-            options={countryOptions}
-            placeholder="Country"
-            searchPlaceholder="Search countries..."
-            aria-invalid={!!errors.countryId}
-          />
-          <Combobox
-            value={form.city}
-            onChange={onCityChange}
-            options={cityOptions}
-            placeholder={form.countryId ? "Select a city" : "Select a country first"}
-            searchPlaceholder="Search cities..."
-            loading={citiesLoading}
-            disabled={!form.countryId}
           />
         </div>
-        <FieldError message={errors.countryId} />
-        <Input className="h-10" value={form.state} onChange={(e) => onChange("state", e.target.value)} placeholder="State / Province" />
-        {/* Same Places autocomplete as the other address forms — picking a suggestion fills
-            State and, when it's in this country's list, City. */}
-        <AddressAutocomplete
-          value={form.address}
-          onChange={(v) => onChange("address", v)}
-          countryIso2={countryIso2}
-          onResolved={(details) => {
-            if (details.state) onChange("state", details.state);
-            const city = details.city && cityOptions.find((o) => o.value.toLowerCase() === details.city!.toLowerCase());
-            if (city) onCityChange(city.value);
-          }}
-        />
-      </div>
+      </FormSection>
 
-      <div className="flex flex-col gap-2">
-        <Label>Email</Label>
-        <Input
-          className="h-10"
-          type="email"
-          aria-invalid={!!errors.email}
-          value={form.email}
-          onChange={(e) => onChange("email", e.target.value)}
-          placeholder="branch@example.com"
-        />
-        <FieldError message={errors.email} />
-      </div>
-
-      <div className="flex flex-col gap-2">
-        <Label>Phone</Label>
-        <PhoneInput value={form.phone} onChange={(v) => onChange("phone", v)} placeholder="(201) 555-0123" />
-      </div>
-
-      {showWebsite && (
-        <div className="flex flex-col gap-2">
-          <Label>Does this branch use the same website as the parent?</Label>
-          <div className="flex gap-2">
-            {([["same", "Yes, same website"], ["own", "No, it has its own"]] as const).map(([mode, label]) => (
-              <Button
-                key={mode}
-                type="button"
-                size="sm"
-                variant={form.websiteMode === mode ? "default" : "outline"}
-                onClick={() => onChange("websiteMode", mode)}
-              >
-                {label}
-              </Button>
-            ))}
+      <FormSection icon={Mail} title="Contact" hint="Optional. Students reach this branch directly.">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="flex min-w-0 flex-col gap-2">
+            <Label>Email</Label>
+            <Input
+              className={FIELD}
+              type="email"
+              aria-invalid={!!errors.email}
+              value={form.email}
+              onChange={(e) => onChange("email", e.target.value)}
+              placeholder="branch@example.com"
+            />
+            <FieldError message={errors.email} />
           </div>
-          {form.websiteMode === "own" && (
-            <>
+          <div className="flex min-w-0 flex-col gap-2">
+            <Label>Phone</Label>
+            <PhoneInput value={form.phone} onChange={(v) => onChange("phone", v)} placeholder="(201) 555-0123" />
+          </div>
+        </div>
+
+        {showWebsite && (
+          <div className="flex flex-col gap-2">
+            <Label>Does this branch use the same website as the parent?</Label>
+            <div role="group" className="relative grid w-fit grid-cols-2 rounded-lg bg-muted/60 p-[3px]">
+              <span
+                aria-hidden
+                className={cn(
+                  "absolute inset-y-[3px] left-[3px] w-[calc(50%-3px)] rounded-md bg-primary shadow-sm transition-transform duration-300 ease-[cubic-bezier(.3,1.3,.5,1)]",
+                  form.websiteMode === "own" && "translate-x-full",
+                )}
+              />
+              {([["same", "Yes, same website"], ["own", "No, it has its own"]] as const).map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  aria-pressed={form.websiteMode === mode}
+                  onClick={() => onChange("websiteMode", mode)}
+                  className="relative z-10 whitespace-nowrap rounded-md px-3.5 py-2 text-xs font-semibold text-muted-foreground transition-colors aria-pressed:text-primary-foreground focus-visible:outline-2 focus-visible:outline-primary"
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+            <Reveal open={form.websiteMode === "own"} className="flex flex-col gap-2 p-0.5">
               <Input
-                className="h-10"
+                className={FIELD}
                 aria-invalid={!!errors.website}
                 value={form.website}
                 onChange={(e) => onChange("website", e.target.value)}
                 placeholder="https://branch.example.com"
               />
               <FieldError message={errors.website} />
-            </>
-          )}
-        </div>
-      )}
+            </Reveal>
+          </div>
+        )}
+      </FormSection>
 
-      <div className="rounded-lg border border-border bg-muted/50 p-3 space-y-1">
-        <p className="text-sm font-medium text-foreground">How branches work</p>
-        <p className="text-xs text-muted-foreground leading-relaxed">
-          A branch is a new office linked to your primary business. It shares your business category and can access
-          shared services from other offices. Each branch operates as its own entity with separate contact details,
-          media, and team.
-        </p>
-      </div>
+      {showHowItWorks && <HowBranchesWork />}
 
-      <div className="flex flex-col gap-3">
-        <Label>
-          Branch type <span className="text-destructive">*</span>
-        </Label>
-        <div className="grid gap-2">
-          {BRANCH_TYPE_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              type="button"
-              onClick={() => onBranchTypeChange(opt.value)}
-              className={cn(
-                "flex items-start gap-3 rounded-lg border p-3 text-left transition-colors",
-                branchType === opt.value ? "border-primary bg-primary/5" : "border-border hover:border-primary/40",
-              )}
-            >
-              <div
-                className={cn(
-                  "mt-0.5 h-4 w-4 shrink-0 rounded-full border-2 flex items-center justify-center",
-                  branchType === opt.value ? "border-primary" : "border-muted-foreground/40",
-                )}
-              >
-                {branchType === opt.value && <div className="h-2 w-2 rounded-full bg-primary" />}
-              </div>
-              <div>
-                <p className="text-sm font-medium text-foreground">{opt.label}</p>
-                <p className="text-xs text-muted-foreground">{opt.desc}</p>
-              </div>
-            </button>
-          ))}
-        </div>
-      </div>
+      <FormSection icon={GitBranch} title="Branch type" hint="How this branch relates to your registered company." required>
+        <BranchTypeCards value={branchType} onChange={onBranchTypeChange} />
+      </FormSection>
     </>
   );
 }

@@ -4,10 +4,11 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthState } from "@/app/auth/store/auth-slice";
 import { toast } from "sonner";
-import { Loader2, Package, Plus, Search } from "lucide-react";
+import { Package, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { ServiceFilters, type ServiceFilterValues } from "../services/service-filters";
+import type { ServiceFilterValues } from "../services/service-filters";
+import { ServiceToolbar, type CourseCategory } from "../services/service-toolbar";
+import { ServiceTableSkeleton } from "../services/service-table-skeleton";
 import { Pagination } from "@/components/ui/pagination";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { businessApi } from "@/app/business/apis";
@@ -24,13 +25,6 @@ const DEFAULT_COLUMNS: ColumnKey[] = ["category", "degree_level", "area_of_study
 // Short courses have no degree_level/area_of_study (those are academic-course fields only —
 // see courseToService) — showing them here would just be an empty "—" in every row.
 const SHORT_COURSE_COLUMNS: ColumnKey[] = ["category", "price", "status"];
-// Institutions only — extraction_courses.course_category splits their catalog into degree
-// programs and standalone offerings, so the tab shows one or the other rather than a single
-// list where a workshop sits next to a Bachelor's degree with no way to tell them apart.
-const COURSE_CATEGORY_TABS = [
-  { value: "academic", label: "Academic Courses" },
-  { value: "short_course", label: "Short Courses" },
-] as const;
 
 export function ServicesTab({
   businessId, readOnly = false, isInstitution = false,
@@ -45,7 +39,7 @@ export function ServicesTab({
   const [deleting, setDeleting] = useState(false);
   const [search, setSearch] = useState("");
   const [filters, setFilters] = useState<ServiceFilterValues>({});
-  const [courseCategory, setCourseCategory] = useState<"academic" | "short_course">("academic");
+  const [courseCategory, setCourseCategory] = useState<CourseCategory>("academic");
   const [page, setPage] = useState(1);
   const [sort, setSort] = useState<SortState>({ column: null, direction: "asc" });
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
@@ -169,67 +163,54 @@ export function ServicesTab({
   });
   const { scope, selectedRows, pageAllSelected, clearSelection } = bulk;
 
+  const filtering = !!(search.trim() || filters.published || filters.origin || filters.degree_level);
+
   return (
     <div>
-      <div className="mb-4 flex items-center justify-between">
+      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div>
-          <h2 className="text-2xl font-bold">{readOnly ? "Courses" : "Service management"}</h2>
+          <h2 className="flex items-center gap-2.5 text-2xl font-bold">
+            {readOnly ? "Courses" : "Service management"}
+            {hasLoaded && <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-xs tabular-nums text-primary">{total}</span>}
+          </h2>
           <p className="text-muted-foreground">
             {readOnly ? "Courses extracted for this institution." : "Manage your service listings."}
           </p>
         </div>
         {!readOnly && (
-          <Button className="h-10" onClick={() => router.push(`/business/profile/${businessId}/services/add${orgQuery}`)}>
-            <Plus className="mr-1.5 h-3.5 w-3.5" /> Add service
+          <Button
+            className="group/add h-10 transition-[transform,box-shadow] hover:-translate-y-px hover:shadow-[0_6px_18px_-6px_var(--color-primary)] active:translate-y-0 active:scale-[.98]"
+            onClick={() => router.push(`/business/profile/${businessId}/services/add${orgQuery}`)}
+          >
+            <Plus className="mr-1.5 h-3.5 w-3.5 transition-transform duration-300 ease-[cubic-bezier(.34,1.56,.64,1)] group-hover/add:rotate-90" /> Add service
           </Button>
         )}
       </div>
 
-      {isInstitution && (
-        <div className="mb-3 flex gap-1 rounded-lg border bg-muted/40 p-1 w-fit">
-          {COURSE_CATEGORY_TABS.map((t) => (
-            <button
-              key={t.value}
-              type="button"
-              className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-                courseCategory === t.value ? "bg-background shadow-sm" : "text-muted-foreground hover:text-foreground"
-              }`}
-              onClick={() => setCourseCategory(t.value)}
-            >
-              {t.label}
-            </button>
-          ))}
-        </div>
-      )}
-
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="flex items-center gap-2">
-          {!readOnly && selectedIds.size > 0 && (
-            <ServiceBulkBar
-              selected={selectedRows}
-              canApprove={canApprove}
-              onApprove={bulk.handleBulkApprove}
-              onPublish={() => bulk.handleBulkPublish(true)}
-              onUnpublish={() => bulk.handleBulkPublish(false)}
-              onDelete={bulk.handleBulkDelete}
-            />
-          )}
-        </div>
-        <div className="flex items-center gap-2">
-          <div className="relative w-56">
-            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input className="h-10 pl-9" placeholder={readOnly ? "Search courses..." : "Search services..."} value={search} onChange={(e) => setSearch(e.target.value)} />
-          </div>
-          {!readOnly && <ServiceFilters value={filters} onChange={setFilters} isInstitution={isInstitution} />}
-        </div>
-      </div>
+      <ServiceToolbar
+        readOnly={readOnly}
+        isInstitution={isInstitution}
+        courseCategory={courseCategory}
+        onCourseCategoryChange={setCourseCategory}
+        search={search}
+        onSearchChange={setSearch}
+        filters={filters}
+        onFiltersChange={setFilters}
+      />
 
       {!hasLoaded || status === "loading" ? (
-        <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
+        <ServiceTableSkeleton columns={visibleColumns.size} />
       ) : pageRows.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-12 text-center">
+        <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed py-12 text-center">
           <Package className="h-10 w-10 text-muted-foreground/40" />
-          <p className="text-sm font-medium">{readOnly ? "No courses yet" : "No services yet"}</p>
+          {filtering ? (
+            <>
+              <p className="text-sm font-medium">{readOnly ? "No courses match these filters" : "No services match these filters"}</p>
+              <Button variant="link" size="sm" className="h-auto p-0" onClick={() => { setSearch(""); setFilters({}); }}>Clear all filters</Button>
+            </>
+          ) : (
+            <p className="text-sm font-medium">{readOnly ? "No courses yet" : "No services yet"}</p>
+          )}
         </div>
       ) : (
         <>
@@ -260,11 +241,24 @@ export function ServicesTab({
           onDelete={setDeletingService}
           readOnly={readOnly}
           isInstitution={isInstitution}
+          query={search.trim()}
         />
         </>
       )}
 
       {total > 0 && <Pagination page={page} total={total} limit={PAGE_SIZE} onPageChange={handlePageChange} />}
+
+      {!readOnly && (
+        <ServiceBulkBar
+          selected={selectedRows}
+          canApprove={canApprove}
+          onApprove={bulk.handleBulkApprove}
+          onPublish={() => bulk.handleBulkPublish(true)}
+          onUnpublish={() => bulk.handleBulkPublish(false)}
+          onDelete={bulk.handleBulkDelete}
+          onClear={clearSelection}
+        />
+      )}
 
       <DeleteServiceDialog
         service={deletingService}

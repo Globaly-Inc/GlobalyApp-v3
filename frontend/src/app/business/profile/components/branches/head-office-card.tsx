@@ -31,26 +31,29 @@ export function HeadOfficeCard({ countries }: Readonly<{ countries: Country[] }>
   const location = [address, ...rest].filter(Boolean).join(", ");
 
   return (
-    <div className="mb-3 flex items-center justify-between rounded-lg border border-primary/40 bg-primary/5 p-3">
-      <div className="flex items-center gap-3">
-        <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg bg-primary/10 text-primary">
-          {profile.logo_url
-            // eslint-disable-next-line @next/next/no-img-element -- signed storage URL, not a static asset
-            ? <img src={profile.logo_url} alt="" className="size-full object-contain p-0.5" />
-            : <Building2 className="h-4 w-4" />}
-        </div>
-        <div>
-          <span className="text-sm font-medium">{profile.business_name}</span>
-          {parentId != null && (
-            <span className="ml-1.5 text-xs text-muted-foreground">· Branch of {parent ?? "another organisation"}</span>
-          )}
-          <p className="flex items-center gap-1 text-xs text-muted-foreground">
-            <MapPin className="h-3 w-3" /> {location || "No address yet — add it in Business Profile"}
-          </p>
-        </div>
+    <div className="relative flex items-center gap-3.5 overflow-hidden rounded-xl border border-primary/30 bg-gradient-to-r from-primary/10 via-primary/[0.03] to-card p-4">
+      {/* One light sweep on mount — draws the eye to the root of the tree. */}
+      <span aria-hidden className="animate-sheen pointer-events-none absolute inset-0 bg-gradient-to-r from-transparent via-background/60 to-transparent" />
+      <div className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-primary text-primary-foreground shadow-[0_6px_16px_-6px_var(--color-primary)]">
+        {profile.logo_url
+          // eslint-disable-next-line @next/next/no-img-element -- signed storage URL, not a static asset
+          ? <img src={profile.logo_url} alt="" className="size-full bg-background object-contain p-0.5" />
+          : <Building2 className="h-5 w-5" />}
+      </div>
+      <div className="min-w-0 flex-1">
+        <span className="text-[15px] font-bold">{profile.business_name}</span>
+        {parentId != null && (
+          <span className="ml-1.5 text-xs text-muted-foreground">· Branch of {parent ?? "another organisation"}</span>
+        )}
+        <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-muted-foreground">
+          <MapPin className="h-3 w-3 shrink-0" /> {location || "No address yet — add it in Business Profile"}
+        </p>
       </div>
       {/* The org being viewed heads the branches listed under it — even when it's itself a branch. */}
-      <Badge>Head office</Badge>
+      <Badge className="shrink-0 gap-1.5">
+        <span className="animate-ai-pulse size-1.5 rounded-full bg-current" />
+        Head office
+      </Badge>
     </div>
   );
 }

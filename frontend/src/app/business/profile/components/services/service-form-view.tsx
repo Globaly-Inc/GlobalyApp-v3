@@ -212,27 +212,27 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
   };
 
   return (
-    <div className="mx-auto max-w-5xl space-y-4 pb-20">
+    <div className="service-form stagger-in mx-auto max-w-5xl space-y-4 pb-20">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <Button
           variant="ghost"
-          className="h-10 cursor-pointer gap-1 px-1 text-muted-foreground"
+          className="group/back h-10 cursor-pointer gap-1 px-1 text-muted-foreground"
           onClick={() => router.push(`/business/profile/${businessId}?tab=services`)}
         >
-          <ArrowLeft className="h-4 w-4" />
+          <ArrowLeft className="h-4 w-4 transition-transform group-hover/back:-translate-x-0.5" />
           Back to services
         </Button>
-        <Button className="cursor-pointer gap-1.5" disabled={!canSave || saving} onClick={handleSubmit}>
+        <Button className="cursor-pointer gap-1.5 transition-[transform,box-shadow] hover:-translate-y-px hover:shadow-[0_6px_18px_-6px_var(--color-primary)] active:translate-y-0 active:scale-[.98]" disabled={!canSave || saving} onClick={handleSubmit}>
           <Save className="h-3.5 w-3.5" />
           {saving ? (isEdit ? "Saving…" : "Creating…") : isEdit ? "Save changes" : "Create service"}
         </Button>
       </div>
 
       <div className="overflow-hidden rounded-lg border">
-        <div className="relative h-32 bg-linear-to-br from-primary/15 to-primary/5" />
+        <div className="relative h-32 overflow-hidden bg-linear-to-br from-primary/15 to-primary/5"><span aria-hidden className="animate-sheen absolute inset-0 bg-linear-to-r from-transparent via-background/50 to-transparent" /></div>
         <CardContent>
           <div className="flex items-start gap-4 -mt-14 ml-8">
-            <Avatar className="size-28 shrink-0 rounded-xl border-4 border-background shadow-sm">
+            <Avatar className="animate-pop-in size-28 shrink-0 rounded-xl border-4 border-background shadow-sm [animation-delay:200ms] [animation-fill-mode:both]">
               {profile?.logo_url && <AvatarImage src={profile.logo_url} alt={profile.business_name} className="rounded-lg object-contain p-1" />}
               <AvatarFallback className="rounded-lg bg-background text-xl font-bold text-primary">
                 {(profile?.business_name ?? "B").charAt(0).toUpperCase()}
@@ -255,7 +255,7 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
                 value={form.name}
                 onChange={(e) => set("name", e.target.value)}
                 placeholder="Untitled service"
-                className="h-10 border-none p-0 text-xl font-bold text-foreground shadow-none focus-visible:ring-0"
+                className="h-10 rounded-none border-none bg-[linear-gradient(var(--color-primary),var(--color-primary))] bg-[length:0%_2px] bg-[position:0_100%] bg-no-repeat p-0 text-xl font-bold text-foreground shadow-none transition-[background-size] duration-300 focus-visible:bg-[length:100%_2px] focus-visible:ring-0"
               />
               <p className="text-sm text-muted-foreground">{profile?.business_name ?? "Business"}</p>
             </div>
@@ -267,7 +267,7 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
         <>
           <AdminSegmentedTabs options={DETAIL_TABS} value={detailTab} onChange={setDetailTab} />
           <Card>
-            <CardContent>
+            <CardContent key={detailTab} className="animate-step-forward">
               {detailTab === "summary" && (
                 <SummaryTab
                   serviceId={serviceId}

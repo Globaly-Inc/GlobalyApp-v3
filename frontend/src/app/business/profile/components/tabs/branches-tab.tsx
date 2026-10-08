@@ -3,12 +3,9 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Building2, GitBranch, Link2, Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { OriginChip } from "../origin-chip";
+import { Building2, GitBranch, Link2, Loader2, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Combobox } from "@/components/combobox";
 import { Pagination } from "@/components/ui/pagination";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchMe, useAuthState } from "@/app/auth/store/auth-slice";
@@ -17,6 +14,7 @@ import type { Branch, BranchFilter } from "../../apis/types";
 import { LinkBranchDialog } from "../branches/link-branch-dialog";
 import { DeleteBranchDialog } from "../branches/delete-branch-dialog";
 import { HeadOfficeCard } from "../branches/head-office-card";
+import { BranchRow } from "../branches/branch-row";
 import type { Country } from "@/app/geo/apis";
 
 const PAGE_SIZE = 10;
@@ -24,7 +22,7 @@ const PAGE_SIZE = 10;
 const FILTER_OPTIONS: { value: BranchFilter; label: string }[] = [
   { value: "all", label: "All" },
   { value: "branches_only", label: "Branches only" },
-  { value: "linked_branches", label: "Linked branches" },
+  { value: "linked_branches", label: "Linked" },
 ];
 
 export function BranchesTab({
@@ -73,6 +71,20 @@ export function BranchesTab({
   const [search, setSearch] = useState("");
   const [filterBranch, setFilterBranch] = useState<BranchFilter>("all");
   const [page, setPage] = useState(1);
+  const [leavingId, setLeavingId] = useState<string | null>(null);
+  const searchRef = useRef<HTMLInputElement>(null);
+
+  // "/" jumps to search, unless the user is already typing somewhere.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement;
+      if (e.key !== "/" || t.isContentEditable || ["INPUT", "TEXTAREA", "SELECT"].includes(t.tagName)) return;
+      e.preventDefault();
+      searchRef.current?.focus();
+    };
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+  }, []);
 
   // Listing converts any extracted campuses into real branch orgs server-side — refresh /auth/me
   // once after the first load so the org switcher shows them without a reload.
@@ -100,14 +112,19 @@ export function BranchesTab({
 
   const handleDelete = async () => {
     if (!deletingBranch) return;
+    const id = deletingBranch.id;
     setDeleting(true);
     try {
-      await dispatch(deleteBranch({ id: businessId, branchId: deletingBranch.id })).unwrap();
-      toast.success("Branch removed");
+      // Slide the row out behind the closing dialog before the reducer drops it from the list.
       setDeletingBranch(null);
+      setLeavingId(id);
+      await new Promise((r) => setTimeout(r, 300));
+      await dispatch(deleteBranch({ id: businessId, branchId: id })).unwrap();
+      toast.success("Branch removed");
     } catch (e) {
       toast.error("Couldn't remove branch", { description: (e as Error).message });
     } finally {
+      setLeavingId(null);
       setDeleting(false);
     }
   };
@@ -121,88 +138,64 @@ export function BranchesTab({
     );
   } else if (branches.length === 0) {
     list = (
-      <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-12 text-center">
+      <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed py-10 text-center">
         <Building2 className="h-10 w-10 text-muted-foreground/40" />
-        <p className="text-sm font-medium">No branches yet</p>
+        <p className="text-sm font-medium">{search ? `No branches match “${search}”` : "No branches yet"}</p>
         <p className="text-xs text-muted-foreground">
-          {isInstitution ? "Create a branch to get started." : "Link an existing business or create a branch to get started."}
+          {search || filterBranch !== "all"
+            ? "Try a shorter name, or switch the filter to All."
+            : isInstitution ? "Create a branch to get started." : "Link an existing business or create a branch to get started."}
         </p>
       </div>
     );
   } else {
     list = (
-      <div className="space-y-2">
-        {branches.map((b) => (
-          <div key={b.id} className="flex items-center justify-between rounded-lg border p-3">
-            <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 items-center justify-center overflow-hidden rounded-lg bg-muted text-xs font-semibold uppercase">
-                {logoFor(b) ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- signed storage URL, not a static asset
-                  <img src={logoFor(b)!} alt="" className="size-full object-contain p-0.5" />
-                ) : b.name.slice(0, 2)}
-              </div>
-              <div>
-                <div className="flex items-center gap-2">
-                  <span className="text-sm font-medium">{b.name}</span>
-                  {b.is_primary && <Badge className="text-[10px]">Head Office</Badge>}
-                  {b.origin && <OriginChip origin={b.origin} />}
-                  {(b.linked_business_id != null || b.linked_institution_id != null) && (
-                    <Badge variant="outline" className="text-[10px] capitalize">{b.branch_type.replaceAll("_", " ")}</Badge>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground">{[b.city, b.state, b.country].filter(Boolean).join(", ") || "—"}</p>
-              </div>
-            </div>
-            {b.extracted && (
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                disabled={convertingId !== null}
-                onClick={() => editExtracted(b.id)}
-                aria-label="Edit branch"
-                title="Edit — sets this extracted branch up so you can complete its details"
-              >
-                {convertingId === b.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Pencil className="h-4 w-4" />}
-              </Button>
-            )}
-            {!b.extracted && <div className="flex items-center gap-1">
-              {/* A branch this org created opens the full edit form (details are written to the branch
-                 org itself). One linked from elsewhere is someone else's org — only the link
-                 (type, shared services) is edited here. */}
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                onClick={() => {
-                  if ((b.linked_business_id != null || b.linked_institution_id != null) && !b.owned) {
-                    setEditingLinkedBranch(b);
-                    setLinkOpen(true);
-                  } else {
-                    router.push(`/business/profile/${businessId}/branches/${b.id}/edit${orgQuery}`);
-                  }
-                }}
-                aria-label="Edit branch"
-              >
-                <Pencil className="h-4 w-4" />
-              </Button>
-              {!b.is_primary && (
-                <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => setDeletingBranch(b)} aria-label="Remove branch">
-                  <Trash2 className="h-4 w-4" />
-                </Button>
-              )}
-            </div>}
-          </div>
+      // Branches hang off the head office card above: a connector line with a stub into each row.
+      <div className="relative flex flex-col gap-2 pl-7 max-sm:pl-5">
+        <span aria-hidden className="animate-grow-y absolute -top-2.5 bottom-7 left-3 w-0.5 rounded-full bg-border max-sm:left-2" />
+        {branches.map((b, i) => (
+          <BranchRow
+            key={b.id}
+            branch={b}
+            index={i}
+            logo={logoFor(b)}
+            query={search.trim()}
+            leaving={leavingId === b.id}
+            converting={convertingId === b.id}
+            convertBusy={convertingId !== null}
+            onEdit={() => {
+              if (b.extracted) editExtracted(b.id);
+              // A branch this org created opens the full edit form (details are written to the branch
+              // org itself). One linked from elsewhere is someone else's org — only the link
+              // (type, shared services) is edited here.
+              else if ((b.linked_business_id != null || b.linked_institution_id != null) && !b.owned) {
+                setEditingLinkedBranch(b);
+                setLinkOpen(true);
+              } else router.push(`/business/profile/${businessId}/branches/${b.id}/edit${orgQuery}`);
+            }}
+            onDelete={() => setDeletingBranch(b)}
+          />
         ))}
       </div>
     );
   }
 
+  const filterIndex = FILTER_OPTIONS.findIndex((o) => o.value === filterBranch);
+
   return (
-    <div>
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <GitBranch className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-semibold">Branches</span>
-          <Badge variant="secondary">{branchesTotal}</Badge>
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+            <GitBranch className="h-[18px] w-[18px]" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-base font-bold">Branches</h2>
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[11px] tabular-nums text-primary">{branchesTotal}</span>
+            </div>
+            <p className="text-xs text-muted-foreground">Campuses and offices under your head office</p>
+          </div>
         </div>
         <div className="flex gap-2">
           {/* Linking another registered business as a branch has no institution twin (see
@@ -213,33 +206,53 @@ export function BranchesTab({
               <Link2 className="mr-1.5 h-3.5 w-3.5" /> Link existing
             </Button>
           )}
-          <Button className="h-10" onClick={() => router.push(`/business/profile/${businessId}/branches/add${orgQuery}`)}>
-            <Plus className="mr-1.5 h-3.5 w-3.5" /> Create branch
+          <Button
+            className="group/create h-10 transition-[transform,box-shadow] hover:-translate-y-px hover:shadow-[0_6px_18px_-6px_var(--color-primary)] active:translate-y-0 active:scale-[.98]"
+            onClick={() => router.push(`/business/profile/${businessId}/branches/add${orgQuery}`)}
+          >
+            <Plus className="mr-1.5 h-3.5 w-3.5 transition-transform duration-300 ease-[cubic-bezier(.34,1.56,.64,1)] group-hover/create:rotate-90" /> Create branch
           </Button>
         </div>
       </div>
 
-      <div className="mb-3 flex items-center justify-end gap-2">
-        <div className="relative w-1/4">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+      <div className="flex flex-wrap items-center gap-2">
+        <div className="relative min-w-0 flex-[1_1_260px]">
+          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            className="h-10 pl-9"
+            ref={searchRef}
+            type="search"
+            className="h-10 border-transparent bg-muted/60 pl-9 transition-[background-color,border-color,box-shadow] focus-visible:border-primary focus-visible:bg-background focus-visible:ring-4 focus-visible:ring-primary/15"
             placeholder="Search branches by name..."
+            aria-label="Search branches"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
         </div>
-        <Combobox
-          className="w-48"
-          value={filterBranch}
-          onChange={(v) => setFilterBranch(v as BranchFilter)}
-          options={FILTER_OPTIONS}
-          placeholder="Filter"
-        />
+        {/* Three fixed options — a segmented control reads faster than a dropdown here. */}
+        <div role="group" aria-label="Filter branches" className="relative grid grid-cols-3 rounded-lg bg-muted/60 p-[3px] max-sm:w-full">
+          <span
+            aria-hidden
+            className="absolute inset-y-[3px] left-[3px] w-[calc((100%-6px)/3)] rounded-md bg-background shadow-sm transition-transform duration-300 ease-[cubic-bezier(.3,1.3,.5,1)]"
+            style={{ transform: `translateX(${filterIndex * 100}%)` }}
+          />
+          {FILTER_OPTIONS.map((o) => (
+            <button
+              key={o.value}
+              type="button"
+              aria-pressed={o.value === filterBranch}
+              onClick={() => setFilterBranch(o.value)}
+              className="relative z-10 whitespace-nowrap rounded-md px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors aria-pressed:text-foreground focus-visible:outline-2 focus-visible:outline-primary"
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <HeadOfficeCard countries={countries} />
-      {list}
+      <div className="flex flex-col gap-2.5">
+        <HeadOfficeCard countries={countries} />
+        {list}
+      </div>
 
       {branchesTotal > 0 && (
         <Pagination page={page} total={branchesTotal} limit={PAGE_SIZE} onPageChange={handlePageChange} />

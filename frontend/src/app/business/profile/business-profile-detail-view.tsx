@@ -177,7 +177,8 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
   };
 
   return (
-    <div className="space-y-4 md:space-y-6">
+    // Keyed on the tab so each switch replays the entrance stagger.
+    <div key={tab} className="stagger-in space-y-4 md:space-y-6">
       {/* V1's profile body is a column of bordered cards, not one card wrapping everything — so
           only the other tabs, which are tables and lists, keep the outer <Card>. */}
       {tab === "profile" ? (
@@ -231,7 +232,7 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
         <SiteUrlsCard sharedFrom={profile?.extraction_parent_name ?? null} />
       ) : (
         <Card>
-          <CardContent>
+          <CardContent className="stagger-in-deep">
             {tab === "branches" && <BranchesTab businessId={businessId} isInstitution={isViewingInstitution} countries={countries} />}
             {tab === "partners" && (
               <PartnersTab businessId={businessId} businessName={profile.business_name} isInstitution={isViewingInstitution} />
