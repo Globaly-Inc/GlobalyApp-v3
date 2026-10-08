@@ -23,6 +23,10 @@ const STOPWORDS = new Set([
 function extractKeywords(query: string): string[] {
   return query
     .toLowerCase()
+    // "planning" is a subject (Master of Planning, financial planning) in every form but the verb
+    // "planning to", so only the PHRASE can be dropped — the word itself is a real course name
+    // (Greptile). Here, not in FILLER, because by then the next word is gone.
+    .replace(/\bplanning\s+to\b/g, " ")
     .split(/\s+/)
     // Strip punctuation — "australia?" must search as "australia"
     .map(w => w.replace(/[^\p{L}\p{N}]/gu, ""))
@@ -150,7 +154,7 @@ const FILLER = new Set(["looking", "degree", "degrees", "course", "courses", "pr
   // turn that states a qualification ("I have X and want Y"), where every word must hit a course
   // NAME — "want nursing" matched nothing and fell back to loose matching.
   "want", "wants", "need", "needs", "interested", "seeking", "hold", "holds", "completed",
-  "there", "after", "planning"]);
+  "there", "after"]);
 
 /**
  * What the visitor already HOLDS, which is never what they are asking for. The level was read from

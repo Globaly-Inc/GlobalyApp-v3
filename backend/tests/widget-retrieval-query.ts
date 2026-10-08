@@ -175,6 +175,12 @@ function main() {
     // The generic ones stay out — a course named "Master of Science in X" never says "msc", so
     // keeping it would turn a browsable level into zero results.
     assertEqual(courseKeywordsFor(["msc", "looking"], "Master"), "", "msc is still just the level");
+    // "planning" is a SUBJECT (Master of Planning, financial planning) everywhere except the verb
+    // "planning to", so the word cannot be filler — only the phrase can (Greptile).
+    assertEqual(courseKeywordsFor(retrievalKeywords("masters in urban planning", null).keywords, "Master"),
+      "urban planning", "planning names the subject");
+    assertEqual(courseKeywordsFor(retrievalKeywords("I am planning to do a master's degree", null).keywords, "Master"),
+      "", "the verb leaves the level to browse");
   }
 
   console.log("\nresolveQuery — what the semantic searches (rack, country, memory) see");
