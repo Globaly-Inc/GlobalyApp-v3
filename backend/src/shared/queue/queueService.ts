@@ -48,6 +48,7 @@ class QueueService {
   private scalingIntervals: Map<string, NodeJS.Timeout> = new Map();
   // Store consumer callbacks so addWorker can register real consumers
   private consumerCallbacks: Map<string, (msg: amqp.ConsumeMessage | null) => Promise<void>> = new Map();
+  private assertedQueues = new Set<string>();
 
   constructor(config: QueueConfig) {
     this.config = config;
@@ -65,6 +66,7 @@ class QueueService {
     try {
       this.connection = await amqp.connect(this.config.url);
       this.channel = await this.connection.createChannel();
+      this.assertedQueues.clear();
       logger.info("Connected to LavinMQ");
 
       this.connection.on("error", async (err: unknown) => {
@@ -88,6 +90,7 @@ class QueueService {
   private async reconnect(): Promise<void> {
     this.connection = null;
     this.channel = null;
+    this.assertedQueues.clear();
     await new Promise((resolve) => setTimeout(resolve, 5000));
     logger.info("Reconnecting...");
     await this.connect();
@@ -284,7 +287,7 @@ class QueueService {
 
   async publish(queue: string, message: unknown, options: amqp.Options.Publish = { persistent: true }): Promise<void> {
     const channel = await this.getChannel();
-    await channel.assertQueue(queue, { durable: true });
+    await this.assertOnce(channel, queue);
 
     const buffer = Buffer.from(JSON.stringify(message));
     const sent = channel.sendToQueue(queue, buffer, options);
@@ -295,9 +298,23 @@ class QueueService {
     logger.info(`Message published to ${queue}`);
   }
 
-  async consume(queue: string, callback: (msg: amqp.ConsumeMessage | null) => Promise<void>, options: amqp.Options.Consume = { noAck: false }): Promise<void> {
-    const channel = await this.getChannel();
+  private async assertOnce(channel: Channel, queue: string): Promise<void> {
+    if (this.assertedQueues.has(queue)) return;
     await channel.assertQueue(queue, { durable: true });
+    this.assertedQueues.add(queue);
+  }
+
+  static readonly DEFAULT_PREFETCH = 10;
+
+  async consume(
+    queue: string,
+    callback: (msg: amqp.ConsumeMessage | null) => Promise<void>,
+    options: amqp.Options.Consume = { noAck: false },
+    prefetch: number = QueueService.DEFAULT_PREFETCH,
+  ): Promise<void> {
+    const channel = await this.getChannel();
+    await this.assertOnce(channel, queue);
+    await channel.prefetch(prefetch);
 
     // Store callback so addWorker can register additional consumers
     this.consumerCallbacks.set(queue, callback);
@@ -345,6 +362,7 @@ class QueueService {
       await this.channel.close();
       this.channel = null;
     }
+    this.assertedQueues.clear();
     if (this.connection) {
       await this.connection.close();
       this.connection = null;

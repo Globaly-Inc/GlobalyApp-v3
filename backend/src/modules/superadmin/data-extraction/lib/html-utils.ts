@@ -385,7 +385,41 @@ export function isRegistrySuffix(site: string): boolean {
  * and the site canonicalised to www (a 100% loss), and it discarded the catalogue
  * subdomains where universities actually publish courses.
  */
-export function filterUrls(urls: string[], base: string): string[] {
+export type FilterDropReason = "invalid_url" | "off_site" | "non_content_host" | "asset" | "blocked_path" | "duplicate";
+export type FilterUrlsReport = {
+  kept: string[];
+  dropped: Record<FilterDropReason, { count: number; sample: string[] }>;
+  droppedTotal: number;
+};
+
+const DROP_SAMPLE_SIZE = 5;
+
+export function redactUrlForSample(url: string): string {
+  try {
+    const u = new URL(url);
+    for (const key of [...u.searchParams.keys()]) u.searchParams.set(key, "redacted");
+    u.hash = "";
+    return u.toString();
+  } catch {
+    return "[unparseable url]";
+  }
+}
+
+export function filterUrlsDetailed(urls: string[], base: string): FilterUrlsReport {
+  const dropped = {
+    invalid_url: { count: 0, sample: [] as string[] },
+    off_site: { count: 0, sample: [] as string[] },
+    non_content_host: { count: 0, sample: [] as string[] },
+    asset: { count: 0, sample: [] as string[] },
+    blocked_path: { count: 0, sample: [] as string[] },
+    duplicate: { count: 0, sample: [] as string[] },
+  };
+  const drop = (reason: FilterDropReason, url: string) => {
+    const d = dropped[reason];
+    d.count++;
+    if (d.sample.length < DROP_SAMPLE_SIZE) d.sample.push(redactUrlForSample(url));
+  };
+
   const seen = new Set<string>();
   const result: string[] = [];
 
@@ -393,16 +427,18 @@ export function filterUrls(urls: string[], base: string): string[] {
   try {
     site = siteOf(base);
   } catch {
-    return [];
+    for (const raw of urls) drop("invalid_url", raw);
+    return { kept: [], dropped, droppedTotal: urls.length };
   }
 
   for (const raw of urls) {
     try {
       const u = new URL(raw);
-      if (!isSameSite(u.hostname, site) || NON_CONTENT_HOST.test(u.hostname)) continue;
+      if (!isSameSite(u.hostname, site)) { drop("off_site", raw); continue; }
+      if (NON_CONTENT_HOST.test(u.hostname)) { drop("non_content_host", raw); continue; }
       // Skip assets
       const ext = u.pathname.slice(u.pathname.lastIndexOf(".")).toLowerCase();
-      if (ASSET_EXTS.has(ext)) continue;
+      if (ASSET_EXTS.has(ext)) { drop("asset", raw); continue; }
       // Skip common non-course paths. `search` is deliberately absent: course
       // catalogues are routinely served from /search (explorecourses.stanford.edu),
       // and the course heuristic is what narrows the list afterwards.
@@ -412,17 +448,21 @@ export function filterUrls(urls: string[], base: string): string[] {
       // per program merely named in passing (seen live: one ranking article produced
       // 17 invented "Graduate X Programs" courses across job b290bd10-...-3bcccb).
       const path = u.pathname.toLowerCase();
-      if (/\/(login|signin|register|cart|checkout|privacy|cookie|terms|sitemap|feed|api|news|press-room|media|blog)\b/.test(path)) continue;
+      if (/\/(login|signin|register|cart|checkout|privacy|cookie|terms|sitemap|feed|api|news|press-room|media|blog)\b/.test(path)) { drop("blocked_path", raw); continue; }
 
       u.hash = "";
       const normalized = u.href.replace(/\/+$/, "");
-      if (!seen.has(normalized)) {
-        seen.add(normalized);
-        result.push(normalized);
-      }
-    } catch { /* invalid URL */ }
+      if (seen.has(normalized)) { drop("duplicate", raw); continue; }
+      seen.add(normalized);
+      result.push(normalized);
+    } catch { drop("invalid_url", raw); }
   }
-  return result;
+  const droppedTotal = Object.values(dropped).reduce((n, d) => n + d.count, 0);
+  return { kept: result, dropped, droppedTotal };
+}
+
+export function filterUrls(urls: string[], base: string): string[] {
+  return filterUrlsDetailed(urls, base).kept;
 }
 
 /**

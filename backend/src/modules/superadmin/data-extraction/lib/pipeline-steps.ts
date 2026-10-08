@@ -23,7 +23,7 @@ import { CRAWL_BUDGET, crawlSeeds, crawlSite } from "./site-crawl.js";
 import { _urlClassifyDeps, jevCategorise, jevVerdicts } from "./jev-url-classify.js";
 import { getPage, normaliseUrl, readSnapshot } from "./page-store.js";
 import {
-  looksLikeCourseUrl, looksLikeVisaServiceUrl, filterUrls, truncateMarkdown, collectGuidedUrls, compileBlocklist,
+  looksLikeCourseUrl, looksLikeVisaServiceUrl, filterUrls, filterUrlsDetailed, truncateMarkdown, collectGuidedUrls, compileBlocklist,
   classifierDistrusted, MIN_CLASSIFIER_KEEP_RATIO,
 } from "./html-utils.js";
 import { extractJson } from "./llm-client.js";
@@ -153,7 +153,24 @@ async function readJsonList(jobId: string, key: string): Promise<string[]> {
 export async function runSiteMap(jobId: string, job: JobRow): Promise<{ total: number; crawlStopped: boolean }> {
   const discovery = await discoverUrlsForCrawl(job.institution_url, { limit: 10000 });
   const origin = new URL(job.institution_url).origin;
-  let found: { url: string; source: string }[] = filterUrls(discovery.urls, origin).map((url) => ({ url, source: discovery.method }));
+  const filtered = filterUrlsDetailed(discovery.urls, origin);
+  let found: { url: string; source: string }[] = filtered.kept.map((url) => ({ url, source: discovery.method }));
+  if (filtered.droppedTotal > 0) {
+    const byReason = Object.entries(filtered.dropped).filter(([, d]) => d.count > 0);
+    await _stepDeps.writeEvent(jobId, "urls_discarded", {
+      level: filtered.droppedTotal > filtered.kept.length ? "warn" : "info",
+      phase: "course_discovery",
+      message: `${filtered.droppedTotal} of ${discovery.urls.length} discovered URLs discarded before the site list `
+        + `(${byReason.map(([r, d]) => `${r}: ${d.count}`).join(", ")})`,
+      data: {
+        discovered: discovery.urls.length,
+        kept: filtered.kept.length,
+        discarded: filtered.droppedTotal,
+        by_reason: Object.fromEntries(byReason.map(([r, d]) => [r, d.count])),
+        samples: Object.fromEntries(byReason.map(([r, d]) => [r, d.sample])),
+      },
+    });
+  }
 
   // Related domains: an admin-curated hint for a multi-campus institution whose country site is a
   // genuinely different registrable domain (monash.edu.my vs monash.edu). Opt-in config, not
@@ -243,8 +260,8 @@ export async function runSiteMap(jobId: string, job: JobRow): Promise<{ total: n
  */
 /** `fresh` re-fetches every page even if a snapshot within the window exists — the admin's
  *  "re-snapshot" after a scraper fix. Default false: a rerun on an unchanged site stays free. */
-export async function dispatchSnapshotBatches(jobId: string, urls: string[], pageCap: number, fresh = false): Promise<number> {
-  const capped = urls.slice(0, pageCap || 500);
+export async function dispatchSnapshotBatches(jobId: string, urls: string[], pageCap: number | null, fresh = false): Promise<number> {
+  const capped = pageCap == null ? urls : urls.slice(0, pageCap);
   const batches = Math.ceil(capped.length / SNAPSHOT_BATCH_SIZE);
   const runId = randomUUID();
   for (let i = 0; i < batches; i++) {
@@ -363,7 +380,8 @@ export async function runSiteAnalysis(jobId: string, job: JobRow): Promise<strin
 const CLASSIFIER_BATCH = 200;
 const EXCERPT_CHARS = 300;
 const EXCERPT_CONCURRENCY = 8;
-const CLASSIFY_ALL_CAP = 3200;
+const CLASSIFY_CAP_ENV = Number(process.env.EXTRACTION_CLASSIFY_CAP);
+const CLASSIFY_ALL_CAP = Number.isInteger(CLASSIFY_CAP_ENV) && CLASSIFY_CAP_ENV > 0 ? CLASSIFY_CAP_ENV : 25_000;
 
 /** First EXCERPT_CHARS of each snapshotted page, keyed by normalised URL. Pages not yet snapshotted are absent.
  *  One file read per URL, a few at a time — never a scrape. */
@@ -578,7 +596,7 @@ export async function runQueuePages(jobId: string, job: JobRow): Promise<{ queue
       phase: "course_discovery",
       message: `${courseUrls.length} course URLs: ${parts.join(", ")}.`
         + (cappedOut > 0 ? " Raise page_cap or use Deep Scrape to cover the rest." : ""),
-      data: { queued, duplicates, discarded_at_cap: cappedOut, course_urls: courseUrls.length, at_page_cap: cappedOut > 0, page_cap: Number(job.page_cap) || 500 },
+      data: { queued, duplicates, discarded_at_cap: cappedOut, course_urls: courseUrls.length, at_page_cap: cappedOut > 0, page_cap: job.page_cap ?? null },
     });
   }
 

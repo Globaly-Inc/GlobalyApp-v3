@@ -215,6 +215,7 @@ async function extractSecondaryPageInner(opts: {
   }
 }
 
+const PAGES_PREFETCH = 1;
 await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
   let jobId: string, queueItemId: string, url: string, forceFirecrawl: boolean | undefined, mobile: boolean | undefined,
     proxy: "stealth" | "auto" | undefined, expandCollapsed: boolean | undefined, adminRetry: boolean | undefined;
@@ -1060,10 +1061,10 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
 
     await checkAllPagesDone(jobId);
   }
-});
+}, { noAck: false }, PAGES_PREFETCH);
 
 await queueService.startScaling(EXTRACTION_QUEUES.PAGES, {
-  prefetch: 1,
+  prefetch: PAGES_PREFETCH,
   queueSize: { scaleUpThreshold: 10, scaleDownThreshold: 2, maxWorkers: 10 },
   processingTime: { threshold: 30_000, windowSize: 10 },
   errorRate: { threshold: 0.2, windowSize: 20 },

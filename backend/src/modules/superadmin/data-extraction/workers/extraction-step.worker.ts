@@ -160,7 +160,7 @@ async function handleSiteMapStep(jobId: string): Promise<"done" | "pending"> {
   if (await gate(jobId, "site_map")) {
     const urls = (await listActiveSiteUrls(jobId)).map((r) => r.url);
     await setProgress(jobId, { site_snapshot: "processing" });
-    await dispatchSnapshotBatches(jobId, urls, Number(job.page_cap) || 500);
+    await dispatchSnapshotBatches(jobId, urls, job.page_cap ?? null);
   }
   return "done";
 }
@@ -182,7 +182,7 @@ async function handleSiteSnapshotStep(
       list = rows.map((r: { url: string }) => r.url);
     }
     if (!list.length) throw new Error("Nothing to snapshot — run site_map first");
-    await dispatchSnapshotBatches(jobId, list, Number(job?.page_cap) || list.length, fresh);
+    await dispatchSnapshotBatches(jobId, list, job?.page_cap ?? null, fresh);
     return "pending";
   }
   await snapshotSite(jobId, urls, batch, fresh);
@@ -1968,6 +1968,7 @@ async function linkEntities(jobId: string) {
 }
 
 // ── Main consumer ───────────────────────────────────────────────────────────
+const STEPS_PREFETCH = 1;
 
 await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
   let jobId: string, step: string, courseId: string | undefined, dataType: string | undefined, visaServiceId: string | undefined,
@@ -2040,6 +2041,14 @@ await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
   // this step succeeded or failed, so a failed campus or scholarship pass never strands the job.
   const chain = parseChain(then);
   if (chain.length) await continueChain(jobId, chain).catch((err) => logger.error("Failed to continue post-extraction chain", { jobId, step, chain, error: String(err) }));
-});
+}, { noAck: false }, STEPS_PREFETCH);
+
+await queueService.startScaling(EXTRACTION_QUEUES.STEPS, {
+  prefetch: STEPS_PREFETCH,
+  queueSize: { scaleUpThreshold: 10, scaleDownThreshold: 2, maxWorkers: 8 },
+  processingTime: { threshold: 120_000, windowSize: 10 },
+  errorRate: { threshold: 0.2, windowSize: 20 },
+  systemLoad: { cpuThreshold: 80, memoryThreshold: 85 },
+}, 4);
 
 logger.info(`Extraction step worker started — consuming "${EXTRACTION_QUEUES.STEPS}" queue`);
