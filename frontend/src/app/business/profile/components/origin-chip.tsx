@@ -1,3 +1,4 @@
+import { Sparkles } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 
 export type Origin = "extracted" | "manual";
@@ -7,6 +8,7 @@ export type Origin = "extracted" | "manual";
 export function OriginChip({ origin }: Readonly<{ origin: Origin }>) {
   return origin === "extracted" ? (
     <Badge variant="outline" className="shrink-0 border-sky-200 bg-sky-50 text-[10px] text-sky-700 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-300" title="Found by the website extraction">
+      <Sparkles className="animate-twinkle size-2.5" />
       Extracted
     </Badge>
   ) : (

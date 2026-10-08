@@ -394,14 +394,14 @@ export function InstitutionServiceFormView({ businessId, serviceId }: Readonly<{
   const socialLinks = [profile?.linkedin_url, profile?.facebook_url, profile?.instagram_url, profile?.twitter_url].filter(Boolean) as string[];
 
   return (
-    <div className="space-y-4 pb-20">
+    <div className="service-form stagger-in space-y-4 pb-20">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <Button
           variant="ghost"
-          className="h-10 cursor-pointer gap-1 px-1 text-muted-foreground"
+          className="group/back h-10 cursor-pointer gap-1 px-1 text-muted-foreground"
           onClick={() => router.push(`/business/profile/${businessId}?tab=services`)}
         >
-          <ArrowLeft className="h-4 w-4" />
+          <ArrowLeft className="h-4 w-4 transition-transform group-hover/back:-translate-x-0.5" />
           Back to services
         </Button>
         <div className="flex items-center gap-3">
@@ -423,13 +423,13 @@ export function InstitutionServiceFormView({ businessId, serviceId }: Readonly<{
                 Preview
               </Button>
               <div className="flex items-center gap-2">
-                <Label className="text-sm text-muted-foreground">{isPublished ? "Published" : "Draft"}</Label>
+                <Label key={String(isPublished)} className="animate-pop-in text-sm text-muted-foreground">{isPublished ? "Published" : "Draft"}</Label>
                 <Switch checked={isPublished} disabled={publishing} onCheckedChange={handleTogglePublish} />
               </div>
             </>
           )}
           {!isEdit && (
-            <Button className="cursor-pointer gap-1.5" disabled={!canSave || saving} onClick={handleSubmit}>
+            <Button className="cursor-pointer gap-1.5 transition-[transform,box-shadow] hover:-translate-y-px hover:shadow-[0_6px_18px_-6px_var(--color-primary)] active:translate-y-0 active:scale-[.98]" disabled={!canSave || saving} onClick={handleSubmit}>
               <Save className="h-3.5 w-3.5" />
               {saving ? "Creating…" : "Create service"}
             </Button>
@@ -438,10 +438,10 @@ export function InstitutionServiceFormView({ businessId, serviceId }: Readonly<{
       </div>
 
       <div className="overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm">
-        <div className="relative h-40 bg-linear-to-br from-primary to-primary/60 sm:h-48" />
+        <div className="relative h-40 overflow-hidden bg-linear-to-br from-primary to-primary/60 sm:h-48"><span aria-hidden className="animate-sheen absolute inset-0 bg-linear-to-r from-transparent via-white/25 to-transparent" /></div>
         <CardContent className="ml-8 mb-8 flex flex-col gap-1.5 pt-16">
           <div className="relative">
-            <Avatar className="absolute -top-24 left-0 size-24 rounded-xl border-4 border-background bg-white shadow-lg">
+            <Avatar className="animate-pop-in absolute -top-24 left-0 size-24 rounded-xl border-4 border-background bg-white shadow-lg [animation-delay:200ms] [animation-fill-mode:both]">
               {profile?.logo_url && (
                 <AvatarImage src={profile.logo_url} alt={profile.business_name} className="rounded-lg object-contain p-1" />
               )}
@@ -468,7 +468,7 @@ export function InstitutionServiceFormView({ businessId, serviceId }: Readonly<{
             onChange={(e) => set("name", e.target.value)}
             onBlur={handleNameBlur}
             placeholder="Untitled service"
-            className="h-10 border-none p-0 text-xl font-bold text-foreground shadow-none focus-visible:ring-0"
+            className="h-10 rounded-none border-none bg-[linear-gradient(var(--color-primary),var(--color-primary))] bg-[length:0%_2px] bg-[position:0_100%] bg-no-repeat p-0 text-xl font-bold text-foreground shadow-none transition-[background-size] duration-300 focus-visible:bg-[length:100%_2px] focus-visible:ring-0"
           />
           <div className="mt-1.5 flex flex-wrap items-center gap-2">
             <p className="text-sm text-muted-foreground">{profile?.business_name ?? "Institution"}</p>
@@ -510,7 +510,7 @@ export function InstitutionServiceFormView({ businessId, serviceId }: Readonly<{
       )}
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <div className="flex flex-col gap-4 lg:col-span-2">
+        <div key={tab} className="stagger-in flex flex-col gap-4 lg:col-span-2">
           {tab === "summary" ? (
             <>
               <Card className="gap-0 overflow-hidden">
@@ -528,7 +528,7 @@ export function InstitutionServiceFormView({ businessId, serviceId }: Readonly<{
                 </div>
                 <CardContent className="p-5">
                   {editingDescription ? (
-                    <div className="space-y-3">
+                    <div className="animate-row-rise space-y-3">
                       <div className="flex justify-end">
                         <Button
                           variant="ghost"
@@ -585,7 +585,7 @@ export function InstitutionServiceFormView({ businessId, serviceId }: Readonly<{
           )}
         </div>
 
-        <div className="flex flex-col gap-4">
+        <div className="stagger-in flex flex-col gap-4">
           {isCourse && (
           <CourseDetailsCard
             degreeLevelValue={schemaFieldIdByKey.degree_level != null && fieldValues[schemaFieldIdByKey.degree_level] != null ? String(fieldValues[schemaFieldIdByKey.degree_level]) : ""}

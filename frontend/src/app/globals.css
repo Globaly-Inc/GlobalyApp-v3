@@ -441,6 +441,115 @@
     );
   }
 
+  /* Branches tab: the connector line under the head office draws down, the head-office card
+     gets one sheen pass, and a removed row slides out before it is deleted. */
+  @keyframes grow-y {
+    from { transform: scaleY(0); }
+  }
+  .animate-grow-y {
+    transform-origin: top;
+    animation: grow-y 0.6s 0.15s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  @keyframes sheen {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(100%); }
+  }
+  .animate-sheen {
+    animation: sheen 1.4s 0.3s ease-out both;
+  }
+  @keyframes row-rise {
+    from { opacity: 0.001; transform: translateY(8px); }
+  }
+  .animate-row-rise {
+    animation: row-rise 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  @keyframes row-leave {
+    to { opacity: 0; transform: translateX(24px); }
+  }
+  .animate-row-leave {
+    animation: row-leave 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+  @keyframes twinkle {
+    0%, 80%, 100% { transform: scale(1); }
+    90% { transform: scale(1.35) rotate(20deg); }
+  }
+  .animate-twinkle {
+    animation: twinkle 2.4s infinite;
+  }
+  /* Branch form: steps slide in from the side they came from, the live preview card pulses when
+     a field it shows changes, and a field that fails validation shakes once. */
+  @keyframes step-from-right {
+    from { opacity: 0.001; transform: translateX(18px); }
+  }
+  @keyframes step-from-left {
+    from { opacity: 0.001; transform: translateX(-18px); }
+  }
+  .animate-step-forward {
+    animation: step-from-right 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .animate-step-back {
+    animation: step-from-left 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  @keyframes bump {
+    50% { transform: scale(1.03); }
+  }
+  .animate-bump {
+    animation: bump 0.3s ease-out;
+  }
+  @keyframes pop-in {
+    from { transform: scale(0); }
+  }
+  .animate-pop-in {
+    animation: pop-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  @keyframes shake {
+    20%, 60% { transform: translateX(-4px); }
+    40%, 80% { transform: translateX(4px); }
+  }
+  .branch-form [aria-invalid="true"] {
+    animation: shake 0.35s;
+    background-color: color-mix(in oklab, var(--destructive) 6%, transparent);
+  }
+  /* Blocks rise in one after another when a page or tab mounts: .stagger-in staggers its
+     children, .stagger-in-deep its grandchildren (a tab's header, toolbar, list inside its card).
+     Fill is `backwards`, not `both`: a filled transform would keep making the parent the
+     containing block for fixed descendants (the Services bulk bar) after the animation ends. */
+  .stagger-in > *,
+  .stagger-in-deep > * > * {
+    animation: row-rise 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  }
+  .stagger-in > :nth-child(2), .stagger-in-deep > * > :nth-child(2) { animation-delay: 60ms; }
+  .stagger-in > :nth-child(3), .stagger-in-deep > * > :nth-child(3) { animation-delay: 120ms; }
+  .stagger-in > :nth-child(4), .stagger-in-deep > * > :nth-child(4) { animation-delay: 180ms; }
+  .stagger-in > :nth-child(5), .stagger-in-deep > * > :nth-child(5) { animation-delay: 240ms; }
+  .stagger-in > :nth-child(n + 6), .stagger-in-deep > * > :nth-child(n + 6) { animation-delay: 300ms; }
+  /* Cards lift slightly on hover (service add/edit page, profile tab). */
+  .service-form [data-slot="card"],
+  .card-hover [data-slot="card"] {
+    transition: box-shadow 0.25s, border-color 0.25s;
+  }
+  .service-form [data-slot="card"]:hover,
+  .card-hover [data-slot="card"]:hover {
+    border-color: color-mix(in oklab, var(--primary) 22%, var(--border));
+    box-shadow: 0 10px 28px -16px color-mix(in oklab, var(--primary) 45%, transparent);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .stagger-in > *, .stagger-in-deep > * > * { animation: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-step-forward, .animate-step-back, .animate-bump, .animate-pop-in, .branch-form [aria-invalid="true"] {
+      animation: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-grow-y, .animate-sheen, .animate-row-rise, .animate-row-leave, .animate-twinkle, .animate-ai-pulse {
+      animation: none;
+    }
+    .animate-sheen { display: none; }
+  }
+
   @keyframes float {
     0%, 100% { transform: translate(0, 0) rotate(var(--float-rotate, 0deg)); }
     50% { transform: translate(6px, -32px) rotate(var(--float-rotate, 0deg)); }
