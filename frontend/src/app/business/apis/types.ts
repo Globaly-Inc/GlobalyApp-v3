@@ -155,10 +155,18 @@ export type ExtractionCounts = {
 };
 
 /** null when no extraction has been started (source_job_id unset, or only the placeholder). */
+export type ExtractionStageState = "waiting" | "processing" | "done";
+
+/** The three stages the portal names, derived server-side from the job's pipeline progress. */
+export type ExtractionStages = Record<"crawling" | "organising" | "flagging", ExtractionStageState>;
+
 export type ExtractionStatus = {
   status: string;
   progress_pct: number;
   counts: ExtractionCounts;
+  stages: ExtractionStages;
+  pages_found: number;
+  started_at: string | null;
 } | null;
 
 /** Mirrors backend lib/url-categories.ts SITE_URL_CATEGORIES exactly. */

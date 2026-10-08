@@ -7,15 +7,18 @@ import { cn } from "@/lib/utils";
 import { APP_ICON_ATTR } from "@/lib/public-assets";
 import { useAppDispatch } from "@/lib/hooks";
 import { markWelcomeSeen } from "@/app/business/store/business-onboarding-slice";
-import { WelcomeFeatureCards } from "./welcome-feature-cards";
+import { WelcomeFeatureCards, WelcomeFeatureSpread } from "./welcome-feature-cards";
 import { WelcomeStage } from "./welcome-stage";
 import styles from "./welcome-tour.module.css";
 
 const CLOSE_MS = 2250;
 /** Below this scale the text gets too small to read, so the page scrolls at its natural size instead. */
 const MIN_FIT = 0.7;
-/** How long the splash stays before handing over to the dashboard; the countdown bar uses the same value. */
-export const AUTO_CLOSE_MS = 5000;
+/**
+ * Nothing is on a timer. The 5s auto-close used to kill the screen a quarter of the way into the
+ * feature cards' own 8s demo loops, so the counsellor's reply and the Lead badge were never seen.
+ * Skip and the dashboard button are the only exits.
+ */
 const css = (vars: Record<string, string | number>) => vars as React.CSSProperties;
 
 /** Deterministic (index-derived, not random) so server and client render the same sky. */
@@ -79,11 +82,6 @@ export function WelcomeTour({ orgName, show }: Readonly<{ orgName: string; show:
     cancelAnimationFrame(frame.current);
   }, []);
 
-  useEffect(() => {
-    if (!open) return;
-    const auto = setTimeout(dismiss, AUTO_CLOSE_MS);
-    return () => clearTimeout(auto);
-  }, [open, dismiss]);
 
   useEffect(() => {
     const main = mainRef.current;
@@ -150,8 +148,11 @@ export function WelcomeTour({ orgName, show }: Readonly<{ orgName: string; show:
 
       <main ref={mainRef} className={cn(styles.stage, "relative flex min-h-0 flex-1 px-6 max-lg:overflow-y-auto max-lg:pt-12 lg:items-center lg:justify-center lg:overflow-hidden lg:data-[fit=scroll]:items-start lg:data-[fit=scroll]:overflow-y-auto lg:data-[fit=scroll]:pt-12")}>
         {/* Stacked below lg. From lg: hero + button on the left, the three cards beside them, so the screen fits a laptop without scrolling. */}
-        <div ref={fitRef} className="grid w-full max-w-7xl max-lg:m-auto lg:origin-center items-center gap-x-10 gap-y-6 py-4 max-lg:grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1.75fr)_minmax(0,1fr)]">
-          <div className="flex flex-col items-center text-center lg:col-start-1 lg:row-start-1 lg:self-end">
+        {/* Act two plays over the whole stage, so it sits outside the grid. */}
+        <WelcomeFeatureSpread />
+
+        <div ref={fitRef} className={cn("grid w-full max-w-7xl max-lg:m-auto lg:origin-center items-center gap-x-10 gap-y-6 py-4 max-lg:grid-cols-[minmax(0,1fr)] lg:grid-cols-[minmax(0,1.75fr)_minmax(0,1fr)]")}>
+          <div className={cn(styles.heroWrap, "flex flex-col items-center text-center lg:col-start-1 lg:row-start-1 lg:self-end")}>
             <WelcomeStage ref={stageRef} />
 
             <h1 className="mt-6 max-w-4xl font-heading text-3xl font-bold leading-[1.1] sm:text-5xl xl:text-6xl">
@@ -180,7 +181,7 @@ export function WelcomeTour({ orgName, show }: Readonly<{ orgName: string; show:
             <WelcomeFeatureCards />
           </div>
 
-          <div className="flex justify-center lg:col-start-1 lg:row-start-2 lg:self-start">
+          <div className={cn(styles.ctaCell, "flex justify-center lg:col-start-1 lg:row-start-2 lg:self-start")}>
             <Button
               ref={ctaRef}
               onClick={dismiss}
@@ -194,13 +195,6 @@ export function WelcomeTour({ orgName, show }: Readonly<{ orgName: string; show:
         </div>
       </main>
 
-      {/* Says what the auto-close is, instead of an unlabeled line along the edge. The bar fills over the same 5s. */}
-      <footer className={cn(styles.footerFade, "relative flex flex-col items-center gap-1.5 px-6 pb-3 pt-0")}>
-        <p className="text-xs text-white/60">Taking you to your dashboard…</p>
-        <div aria-hidden className="h-1 w-44 overflow-hidden rounded-full bg-white/15">
-          <div className={cn(styles.countdown, "h-full origin-left rounded-full bg-[#23DDF6]")} style={css({ "--auto": `${AUTO_CLOSE_MS}ms` })} />
-        </div>
-      </footer>
     </div>
   );
 }

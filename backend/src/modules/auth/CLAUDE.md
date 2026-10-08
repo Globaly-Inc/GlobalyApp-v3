@@ -198,14 +198,26 @@ Invitations use POST (not GET) to prevent side effects from link scanners:
 
 Email links point to frontend pages (`/invite/admin/accept`, `/invite/agent/accept`) which render a confirmation button that POSTs to the API.
 
-**Onboarding invites are the one exception to "invited users verify by OTP".** An admin sends
-`/invite/onboarding?token=…&type=institution` to an email with no account;
-`POST /api/v3/onboarding-invitations/accept` (public module, not `publicPaths`) creates the
-personal account + institution as soon as the link opens, but returns **no session** — the page
-then sends them to sign-in with their email pre-filled, and the OTP to their own inbox is the proof.
-A mail scanner that opens the link first can only use it up, never get in; the recipient then sees
-"already set up" and signs in. An accepted token never works again. See
-`platform-users/services/onboarding-invitations.service.ts`.
+**Onboarding invites verify by OTP like everyone else — the invite row stands in for the account
+that does not exist yet.** The mail points at
+`/auth/sign-in?token=…&type=institution&source=onboard-invitation`, and that page runs on three
+public endpoints (public module, not `publicPaths`):
+
+| Endpoint | Creates | Notes |
+|---|---|---|
+| `POST /onboarding-invitations/lookup` | nothing | the invited address, so sign-in can fill it in |
+| `POST /onboarding-invitations/send-code` | an OTP challenge | authorised by the live invite row, not by an account (`issueOtpChallenge`) |
+| `POST /onboarding-invitations/accept` | the account + the org | requires `otp`; `assertOtpChallenge` runs **before** anything is claimed |
+
+Accept still returns no session: the setup page (`/invite/setup`) calls the ordinary
+`POST /auth/verify-otp` afterwards, against the account it has just created. So a link on its own —
+in a scanner, a forwarded mail, a browser history — creates nothing and spends nothing; only the
+code sent to that inbox does. An accepted token never works again. Links issued before this moved
+still land on `/invite/onboarding`, which now only looks the invite up and forwards it to sign-in.
+See `platform-users/services/onboarding-invitations.service.ts`.
+
+`assertOtpChallenge` is the half of `verifyOtp` that judges a code without spending it, which is why
+the accept can check it and the verify-otp call right after can still consume it.
 
 On agent invitation acceptance:
 - `is_business_account` set to `true` on the platform_user

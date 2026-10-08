@@ -3,11 +3,13 @@
 import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { ArrowRight, Check, MessagesSquare } from "lucide-react";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardAction, CardContent, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { ensureEmbedConfig } from "@/app/business/ai-widget/store/ai-widget-slice";
+import { cn } from "@/lib/utils";
+import type { PortalStage } from "./portal-hero";
 import { EmbedDeveloperHandoff } from "./embed-developer-handoff";
 import { EmbedSnippetBox } from "./embed-snippet-box";
 import { EmbedWidgetPreview } from "./embed-widget-preview";
@@ -46,22 +48,31 @@ function Step({ n, title, children }: Readonly<{ n: number; title: string; child
  * "not installed yet" pill is a negative label on someone's own dashboard, and it is redundant:
  * a card full of installation instructions already says the thing is not installed.
  */
-export function AiEmbedCard({ installed }: Readonly<{ installed: boolean }>) {
+export function AiEmbedCard({ installed, stage = "built" }: Readonly<{ installed: boolean; stage?: PortalStage }>) {
   const dispatch = useAppDispatch();
   const handoff = useAppSelector((s) => s.aiWidget.handoff);
   const status = useAppSelector((s) => s.aiWidget.handoffStatus);
+  // It answers from their own pages, so before those pages are read there is nothing worth
+  // installing — the card says what it is waiting on instead of handing over a tag that would
+  // answer nothing.
+  const waiting = stage !== "built";
+  // Board 11 names the assistant and says what it answers from — both are real: the name is the
+  // widget's own display_name, the number is the crawl's course count. "A visitor last opened it
+  // 6 minutes ago" is NOT built: nothing in the handoff or the analytics reports a last-seen time.
+  const assistantName = handoff?.config.display_name?.trim();
+  const courses = useAppSelector((s) => s.businessOnboarding.extractionStatus?.counts.courses ?? 0);
 
   // Strict mode double-invokes effects; without this the org's widget is minted twice on mount.
   const ensuredRef = useRef(false);
   useEffect(() => {
-    if (ensuredRef.current) return;
+    if (ensuredRef.current || waiting) return;
     ensuredRef.current = true;
     dispatch(ensureEmbedConfig());
-  }, [dispatch]);
+  }, [dispatch, waiting]);
 
   return (
-    <Card>
-      <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
+    <Card className={cn(stage === "new" && "border-dashed bg-muted/20 shadow-none")}>
+      <CardHeader className={cn("gap-3", waiting && "items-center pb-6")}>
         <div className="flex items-start gap-3">
           <span
             aria-hidden
@@ -70,28 +81,68 @@ export function AiEmbedCard({ installed }: Readonly<{ installed: boolean }>) {
             <MessagesSquare className="h-4.5 w-4.5" />
           </span>
           <div className="space-y-1">
-            <h2 className="text-balance text-sm font-semibold">Your AI chat widget</h2>
+            <div className="flex flex-wrap items-center gap-2.5">
+              <h2 className="font-heading text-xl leading-tight font-semibold text-balance">
+                {stage === "new"
+                  ? "Your AI counsellor comes next"
+                  : stage === "extracting"
+                    ? "Your AI counsellor is being built"
+                    : assistantName || "Your AI chat widget"}
+              </h2>
+              {installed && !waiting && (
+                <span
+                  role="status"
+                  className="flex shrink-0 items-center gap-1.5 rounded-full border border-emerald-600/30 bg-emerald-600/10 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-400"
+                >
+                  <Check className="h-3.5 w-3.5" aria-hidden />
+                  Live on your site
+                </span>
+              )}
+            </div>
             <p className="text-pretty text-sm text-muted-foreground">
-              Answers visitors&apos; questions around the clock, in your own branding. Already created —
-              it just needs to go on your site.
+              {stage === "new"
+                ? "It answers students from your own pages, so it needs them first. Run the extraction above and the one line that puts it on your site appears here."
+                : stage === "extracting"
+                  ? "It learns from the pages we are reading right now. The one line that puts it on your site appears here as soon as the crawl finishes — nothing for you to do until then."
+                  : courses > 0
+                    ? `Answers students around the clock, in your own branding. It answers from all ${courses.toLocaleString()} courses.`
+                    : "Answers visitors' questions around the clock, in your own branding. Already created — it just needs to go on your site."}
             </p>
           </div>
         </div>
 
         {/* Only the positive state is worth a badge. Shape as well as colour, so the meaning is
             never carried by hue alone. */}
-        {installed && (
+        {/* Day one, the only thing to offer is the step this card waits on; mid-crawl, not even
+            that — so the right-hand slot states the wait instead. */}
+        {stage === "new" && (
+          <CardAction>
+          <a
+            href="#extraction-card"
+            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3.5 text-[13px] font-semibold text-primary-foreground hover:bg-primary/90"
+          >
+            Start with my website
+            <ArrowRight className="h-3.5 w-3.5" aria-hidden />
+          </a>
+          </CardAction>
+        )}
+
+        {stage === "extracting" && (
+          <CardAction>
           <span
             role="status"
-            className="flex shrink-0 items-center gap-1.5 rounded-full border border-emerald-600/30 bg-emerald-600/10 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-400"
+            className="flex h-[30px] shrink-0 items-center gap-[7px] rounded-full border border-primary/20 bg-primary/5 px-3 text-xs font-semibold text-primary"
           >
-            <Check className="h-3.5 w-3.5" aria-hidden />
-            Live on your site
+            <span aria-hidden className="size-[7px] rounded-full bg-[#23DDF6]" />
+            Waiting on the crawl
           </span>
+          </CardAction>
         )}
+
       </CardHeader>
 
-      <CardContent className="space-y-4">
+
+      <CardContent className={cn("space-y-4", waiting && "hidden")} aria-hidden={waiting || undefined}>
         {/* Mirrors the loaded grid so nothing jumps when the config lands. */}
         {status === "loading" && !handoff && (
           <div className={`grid gap-5 ${COLUMNS} lg:items-start`}>
@@ -151,10 +202,9 @@ export function AiEmbedCard({ installed }: Readonly<{ installed: boolean }>) {
 
             <Link
               href="/business/ai-widget"
-              className="inline-flex items-center text-xs font-medium text-primary hover:underline"
+              className="inline-flex h-9 items-center rounded-lg border px-3.5 text-[13px] font-semibold transition-colors hover:bg-muted"
             >
-              Change its name, greeting and colour
-              <ArrowRight className="ml-1 h-3.5 w-3.5" aria-hidden />
+              Change its look
             </Link>
           </>
         )}

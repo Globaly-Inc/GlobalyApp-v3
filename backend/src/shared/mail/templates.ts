@@ -110,7 +110,9 @@ export function emailLayout({ heading, body, cta, afterCta, footnote, size = "de
     : "";
 
   const small = footnote
-    ? `<tr><td align="center" style="padding-top:24px"><p style="margin:0;color:${BRAND.faint};font-size:13px;line-height:20px">${footnote}</p></td></tr>`
+    // padding-bottom matches the footer rule's own 20px, so the small print sits between two equal
+    // gaps instead of resting on the line.
+    ? `<tr><td align="center" style="padding:24px 0 20px"><p style="margin:0;color:${BRAND.faint};font-size:13px;line-height:20px">${footnote}</p></td></tr>`
     : "";
 
   return `<!DOCTYPE html>
@@ -133,12 +135,16 @@ export function emailLayout({ heading, body, cta, afterCta, footnote, size = "de
               <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
                 <tr>
                   <td align="center" style="padding-bottom:20px">
-                    <img src="${logoUrl()}" alt="Globaly" width="56" height="56" style="display:block" />
+                    <img src="${logoUrl()}" alt="GlobalyApp" width="56" height="56" style="display:block" />
                   </td>
                 </tr>
                 <tr>
                   <td align="center" style="padding-bottom:${wide ? "10px" : "20px"}">
-                    <h1 style="margin:0;color:${BRAND.ink};font-family:${HEADING_FONT};font-size:${wide ? "25px" : "23px"};line-height:32px;font-weight:700">${heading}</h1>
+                    <!-- Capped rather than run to the card's full width: a 540px single line of
+                         25px serif reads as a banner, not a headline. 420px breaks the long ones
+                         over two balanced lines and leaves every short heading on one. Word-engine
+                         Outlook ignores max-width and renders the full width, as it did before. -->
+                    <h1 style="margin:0 auto;max-width:420px;color:${BRAND.ink};font-family:${HEADING_FONT};font-size:${wide ? "25px" : "23px"};line-height:32px;font-weight:700">${heading}</h1>
                   </td>
                 </tr>
                 <tr>
@@ -800,9 +806,6 @@ export function onboardingInviteEmail(options: {
   const org = options.kind === "institution" ? "institution" : "business";
   const orgName = options.orgName?.trim();
   const what = options.kind === "business" && options.categoryName ? `your ${esc(options.categoryName)} business` : `your ${org}`;
-  const manage = options.kind === "institution"
-    ? "your listing, courses, and student enquiries"
-    : "your listing, services, and enquiries";
 
   const card = orgName
     ? `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 22px">
@@ -817,9 +820,25 @@ export function onboardingInviteEmail(options: {
        </table>`
     : "";
 
-  const body = `${card}<p style="margin:0 0 20px">You've been invited to join <strong>GlobalyApp</strong>, the platform connecting students with
-         verified institutions, agents, and education services worldwide. Set up ${what}'s portal to manage ${manage}.</p>
-         <p style="margin:0 0 14px;color:${BRAND.ink};font-size:14px;line-height:20px;font-weight:700">What happens next</p>
+  // Led by the assistant rather than by "join our platform": the reader has never heard of us, and
+  // a listing on someone else's site is not a reason to click.
+  const benefits: Array<[string, string]> = options.kind === "institution"
+    ? [
+        ["An AI counsellor on your own site.", "One line of code, added once. It answers students and parents in a simple chat, around the clock, in your branding."],
+        ["It answers from your pages, not ours.", "We read your public site and build your profile from it — courses, branches, fees, intakes, scholarships."],
+        ["The data stays yours to change.", "Review every course and branch we found, correct it, add what we missed. Nothing goes live until you say so."],
+      ]
+    : [
+        ["An AI assistant on your own site.", "One line of code, added once. It answers visitors in a simple chat, around the clock, in your branding."],
+        ["It answers from your pages, not ours.", "We read your public site and build your profile from it — your services, what they cost, and how they work."],
+        ["The data stays yours to change.", "Review everything we found, correct it, add what we missed. Nothing goes live until you say so."],
+      ];
+  const benefitRows = benefits
+    .map(([lead, rest]) => `<p style="margin:0 0 16px"><strong style="color:${BRAND.ink}">${lead}</strong> ${rest}</p>`)
+    .join("");
+
+  const body = `${card}${benefitRows}
+         <p style="margin:4px 0 14px;color:${BRAND.ink};font-size:14px;line-height:20px;font-weight:700">What happens next</p>
          <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
            ${stepRow(1, `Click <strong>Set up my ${org}</strong> below. It takes one click.`)}
            ${stepRow(2, `We create your account and ${what}'s portal.`)}
@@ -833,7 +852,7 @@ export function onboardingInviteEmail(options: {
     text: [
       "Hi there,",
       "",
-      `You've been invited to join GlobalyApp${orgName ? ` as ${orgName}` : ` as a${org === "institution" ? "n" : ""} ${org}`}.`,
+      ...benefits.map(([lead, rest]) => `${lead.toUpperCase()} ${rest}`),
       "",
       `Set up your account: ${options.acceptUrl}`,
       "",
@@ -845,7 +864,9 @@ export function onboardingInviteEmail(options: {
       "This link expires in 72 hours. If you weren't expecting this, you can safely ignore this email.",
     ].join("\n"),
     html: emailLayout({
-      heading: `You are invited to set up your ${org} on GlobalyApp`,
+      heading: options.kind === "institution"
+        ? "Your website, answering students around the clock"
+        : "Your website, answering visitors around the clock",
       body,
       align: "left",
       size: "wide",
@@ -974,9 +995,21 @@ export function embedSnippetEmail(options: {
        </td></tr>
      </table>`;
 
+  // Who the tag is from, above the tag itself: this reader is a stranger being asked to paste a
+  // third-party script onto a live site, and that is a decision they make before they scroll.
+  const about = `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 18px;border:1px solid #CFE0F7;border-radius:12px;background-color:${BRAND.soft}">
+       <tr><td style="padding:14px 16px">
+         <p style="margin:0 0 5px;color:${BRAND.primary};font-size:11px;line-height:15px;font-weight:700;letter-spacing:.08em;text-transform:uppercase">About GlobalyApp</p>
+         <p style="margin:0;color:${BRAND.body};font-size:13.5px;line-height:20px">GlobalyApp is the education platform that connects students with verified institutions,
+           agents and education services worldwide. ${org} keeps its courses, fees and intakes with us — this script puts that same information on their own
+           site, as a chat assistant their visitors can ask.</p>
+       </td></tr>
+     </table>`;
+
   const body = `<p style="margin:0 0 18px;line-height:24px">${greeting}</p>
      <p style="margin:0 0 18px;line-height:24px"><strong>${org}</strong> asked us to send you the code for their GlobalyApp chat assistant.
        It is one script tag — nothing to install, no stylesheet to load.</p>
+     ${about}
      ${snippetBlock}
      <p style="margin:0 0 24px;color:${BRAND.muted};font-size:13px;line-height:20px">Pasting it more than once is harmless; the second tag does nothing.</p>
 
@@ -996,6 +1029,8 @@ export function embedSnippetEmail(options: {
       "",
       `${options.orgName} asked us to send you the code for their GlobalyApp chat assistant.`,
       "It is one script tag — nothing to install, no stylesheet to load.",
+      "",
+      `ABOUT GLOBALYAPP — the education platform that connects students with verified institutions, agents and education services worldwide. ${options.orgName} keeps its courses, fees and intakes with us; this script puts that same information on their own site, as a chat assistant their visitors can ask.`,
       "",
       options.snippet,
       "",
@@ -1033,6 +1068,9 @@ export function embedSnippetEmail(options: {
  * `of` is per row because not every figure is a share of the total: campuses are a count in their
  * own right, and "16 / 184 campuses" would be nonsense.
  */
+/** Four-figure counts are the normal case here, and "1284 courses" reads as a part number. */
+const num = (n: number) => n.toLocaleString("en-US");
+
 function coverageBlock(
   count: number,
   label: string,
@@ -1040,17 +1078,46 @@ function coverageBlock(
 ): string {
   const cells = rows.map((r, i) => {
     const edge = i ? `border-top:1px solid ${BRAND.line};` : "";
-    const denominator = r.of ? `<span style="color:${BRAND.faint};font-weight:400"> / ${r.of}</span>` : "";
+    const denominator = r.of ? `<span style="color:${BRAND.faint};font-weight:400"> / ${num(r.of)}</span>` : "";
     return `<tr>
       <td style="${edge}padding:11px 20px;color:${BRAND.body};font-size:15px;line-height:21px">${esc(r.label.charAt(0).toUpperCase() + r.label.slice(1))}</td>
-      <td align="right" style="${edge}padding:11px 20px;color:${BRAND.ink};font-size:15px;line-height:21px;font-weight:700;white-space:nowrap">${r.count}${denominator}</td>
+      <td align="right" style="${edge}padding:11px 20px;color:${BRAND.ink};font-size:15px;line-height:21px;font-weight:700;white-space:nowrap">${num(r.count)}${denominator}</td>
     </tr>`;
   }).join("");
 
   return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;border:1px solid ${BRAND.line};border-radius:12px">
     <tr><td colspan="2" style="padding:18px 20px;background-color:${BRAND.soft};border-radius:12px 12px 0 0">
-      <span style="color:${BRAND.primary};font-size:34px;line-height:38px;font-weight:700">${count}</span>
+      <span style="color:${BRAND.primary};font-size:34px;line-height:38px;font-weight:700">${num(count)}</span>
       <span style="color:${BRAND.body};font-size:15px;line-height:21px">&nbsp;${esc(label)}</span>
+    </td></tr>
+    ${cells}
+  </table>`;
+}
+
+/**
+ * The other half of the coverage table: what was NOT found. The shares above state it by implication
+ * — 1,102 of 1,284 have fees — but the gap is the part the owner can act on, and a footnote saying
+ * "some details may need your review" never says which. Only rows with a real shortfall are shown,
+ * so a complete crawl prints no block at all rather than an empty reassurance.
+ */
+function reviewBlock(total: number, rows: Array<{ label: string; count: number; of?: number }>): string {
+  const gaps = rows
+    .filter((r) => r.of !== undefined && r.of > r.count)
+    .map((r) => ({ label: r.label.replace(/^courses with /i, "No "), count: (r.of as number) - r.count }));
+  if (!gaps.length || total === 0) return "";
+
+  const cells = gaps.map((g, i) => {
+    const edge = i ? "border-top:1px solid #F2D8AE;" : "";
+    return `<tr>
+      <td style="${edge}padding:9px 20px;color:${BRAND.body};font-size:15px;line-height:21px">${esc(g.label)}</td>
+      <td align="right" style="${edge}padding:9px 20px;color:#B45309;font-size:15px;line-height:21px;font-weight:700;white-space:nowrap">${num(g.count)}</td>
+    </tr>`;
+  }).join("");
+
+  return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;margin-top:14px;border:1px solid #F2D8AE;border-radius:12px">
+    <tr><td colspan="2" style="padding:13px 20px;background-color:#FEF7EC;border-radius:12px 12px 0 0">
+      <span style="color:#92400E;font-size:15px;line-height:21px;font-weight:700">Needs your review</span>
+      <span style="color:${BRAND.body};font-size:13px;line-height:20px">&nbsp;&mdash; nothing is hidden from students because of it</span>
     </td></tr>
     ${cells}
   </table>`;
@@ -1201,6 +1268,7 @@ export function extractionCompleteEmail(options: {
              <strong>GlobalyApp</strong> — the platform connecting students with verified institutions, agents, and
              education services worldwide.</p>
              ${coverageBlock(options.itemCount, `${options.itemLabel} found`, found)}
+             ${reviewBlock(options.itemCount, found)}
              <p style="margin:20px 0 0">Take a look and make sure everything is right, so students find accurate
              information about ${entityName}.</p>`,
       size: "wide",
@@ -1213,7 +1281,11 @@ export function extractionCompleteEmail(options: {
         href: widgetUrl,
         snippet: options.snippet ?? null,
       }),
-      footnote: "Some details may need your review before students see them. You can edit anything from your portal.",
+      // Only when nothing was flagged above: with the "Needs your review" table on the page, a
+      // footnote hinting that some details may need review is the same sentence, said worse.
+      footnote: reviewBlock(options.itemCount, found)
+        ? undefined
+        : "Some details may need your review before students see them. You can edit anything from your portal.",
     }),
   };
 }
