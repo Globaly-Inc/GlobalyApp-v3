@@ -15,6 +15,7 @@
 
 import {
   courseKeywordsFor, detectDegreeLevel, isCourtesyTurn, lastAssistantQuestion, resolveQuery, retrievalKeywords,
+  withoutContactDetails,
 } from "../src/modules/ai-counsellor/services/rag.service.js";
 
 let passed = 0;
@@ -115,6 +116,17 @@ function main() {
     const { keywords, fromPriorQuestion } = retrievalKeywords("yes", null);
     assert(!fromPriorQuestion, "nothing to borrow when the counsellor asked nothing");
     assertEqual(keywords.join(" "), "yes", "falls back to the student's own words");
+
+    // "yes" borrows, but "yes, please" did NOT: two words that both survive extractKeywords read as
+    // a subject of their own, so the turn searched for the literal words "yes please" and found no
+    // courses — the counsellor then said the course it had just recommended was not in our system.
+    for (const reply of ["yes, please", "yes please", "tell me more", "yes tell me more", "sure, show me"]) {
+      const r = retrievalKeywords(reply, "Would you like more details on these programs?");
+      assert(r.fromPriorQuestion, `"${reply}" answers the question it follows`, r.keywords);
+    }
+    // A reply that carries a subject of its own still keeps it.
+    assert(!retrievalKeywords("yes, what about the fees and intakes", "Would you like more details?").fromPriorQuestion,
+      "a reply with its own subject is not a bare yes");
   }
 
   console.log("\ndetectDegreeLevel — a level is a filter, not a keyword");
@@ -165,6 +177,16 @@ function main() {
     // With no level detected the keywords are passed through exactly as before.
     assertEqual(courseKeywordsFor(["water", "engineering"], null), "water engineering",
       "no level, no change");
+    // The filler strip used to run ONLY on a level turn, so the commonest question a widget gets —
+    // "What courses do you offer?" — searched for the literal words "courses offer", matched none of
+    // the institution's 33 published courses, and was answered "I don't have the course listings in
+    // our system". Empty is the right query here: searchCourses browses the catalogue.
+    assertEqual(courseKeywordsFor(retrievalKeywords("What courses do you offer?", null).keywords, null), "",
+      "a bare offer question browses rather than searching for the word 'offer'");
+    assertEqual(courseKeywordsFor(retrievalKeywords("what programs do you have", null).keywords, null), "",
+      "same for programs");
+    assertEqual(courseKeywordsFor(retrievalKeywords("do you offer engineering courses", null).keywords, null),
+      "engineering", "the subject still decides when there is one");
     // An MBA is a NAMED qualification, not a level: the degree_level column says "Master" for it,
     // so dropping the word left an empty query and browsed eight master's courses alphabetically
     // in place of the MBA that was asked for. It stays in the query; "masters" still goes.
@@ -183,7 +205,24 @@ function main() {
       "", "the verb leaves the level to browse");
   }
 
-  console.log("\nresolveQuery — what the semantic searches (rack, country, memory) see");
+  console.log("\nwithoutContactDetails — a widget reply hands out no way to contact anybody");
+{
+  const red = (t: string) => withoutContactDetails(t);
+  // A crawled site brings its own staff directory, and the model cannot tell a department inbox
+  // from someone's desk line — so neither is allowed through.
+  assert(!red("Write to j.smith@ait.ac.th for details").includes("@ait.ac.th"), "a personal email goes");
+  assert(!red("Email admissions@ait.ac.th").includes("admissions@"), "and so does the department inbox");
+  assert(!red("Call +66 2 524 5032 to apply").includes("5032"), "an international number goes");
+  assert(!red("Tel: 02 524 5032").includes("5032"), "so does a labelled local one");
+  // The money guard depends on fees surviving the redactor verbatim: over-redaction here would
+  // silently delete the figure the answer is about.
+  assertEqual(red("Tuition is THB 950,000 total"), "Tuition is THB 950,000 total", "a fee is not a phone number");
+  assertEqual(red("1 200 000 THB per year"), "1 200 000 THB per year", "nor is a spaced-out figure");
+  assertEqual(red("Applications close 2026-10-08"), "Applications close 2026-10-08", "nor is a date");
+  assertEqual(red("IELTS 6.5 with 6.0 in writing"), "IELTS 6.5 with 6.0 in writing", "nor a test score");
+}
+
+console.log("\nresolveQuery — what the semantic searches (rack, country, memory) see");
   {
     const refund = "Would you like me to explain our refund policy?";
     // The keyword searches already borrowed this; the rack embedding, country detection and

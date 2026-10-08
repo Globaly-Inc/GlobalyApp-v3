@@ -51,6 +51,13 @@ const POINTER_RE = /^(first|second|third|fourth|fifth|sixth|seventh|last|one|two
 const ACK_RE =
   /^(ok(ay)?|k|cool|great|nice|perfect|awesome|lovely|got it|understood|sure|yep|yup|yeah|alright)[\s!.,]*$/i;
 
+/** Word-level: a YES plus the words people pad one with. "yes" alone borrowed the question it
+ *  answered, but "yes, please" is two words that both survive extractKeywords, so it read as a
+ *  subject of its own and searched for the literal words — the counsellor then reported the course
+ *  it had just recommended as missing from our system. None of these ever names a course. */
+const AFFIRM_RE =
+  /^(yes|yea|yeah|yep|yup|sure|please|thanks?|more|tell|show|send|give|also|too|definitely|absolutely)$/i;
+
 export function isCourtesyTurn(message: string, priorQuestion?: string | null): boolean {
   const text = message.trim();
   return CLOSING_RE.test(text) || (!priorQuestion && ACK_RE.test(text));
@@ -94,7 +101,7 @@ export function retrievalKeywords(
   // "ok" survives extractKeywords as NOTHING (<= 2 letters) and used to search nothing at all,
   // while "the second one" survives as two pointer words and used to search for them literally.
   // What matters is whether any word names a subject, not how many words there are.
-  const subject = own.filter((w) => !POINTER_RE.test(w) && !ACK_RE.test(w));
+  const subject = own.filter((w) => !POINTER_RE.test(w) && !ACK_RE.test(w) && !AFFIRM_RE.test(w));
   if (subject.length > 1 || !priorQuestion) return { keywords: own, fromPriorQuestion: false };
   const borrowed = extractKeywords(priorQuestion);
   if (!borrowed.length) return { keywords: own, fromPriorQuestion: false };
@@ -173,12 +180,21 @@ export function detectDegreeLevel(query: string): string | null {
   return DEGREE_LEVELS.find(([re]) => re.test(search))?.[1] ?? null;
 }
 
-/** The keywords left once the level has been lifted out into its own filter. Empty is a real
- *  answer — searchCourses browses the filtered set rather than matching noise. */
+/**
+ * The keywords left once the level has been lifted out into its own filter. Empty is a real
+ * answer — searchCourses browses the filtered set rather than matching noise.
+ *
+ * The filler strip is UNCONDITIONAL. Gating it on a detected level left the commonest question a
+ * widget gets — "What courses do you offer?" — searching for the literal words "courses offer",
+ * which matched none of the institution's 33 published courses and was answered "I don't have the
+ * course listings in our system". A word that says nothing about WHICH course says nothing whether
+ * or not a level was named. The level words themselves still go only when a level WAS detected,
+ * since that is what proves the word was read as a filter.
+ */
 export function courseKeywordsFor(keywords: string[], degreeLevel: string | null): string {
-  if (!degreeLevel) return keywords.join(" ");
   return keywords
-    .filter((w) => NAMED_QUALIFICATION.test(w) || (!FILLER.has(w) && !DEGREE_LEVELS.some(([re]) => re.test(w))))
+    .filter((w) => NAMED_QUALIFICATION.test(w)
+      || (!FILLER.has(w) && !(degreeLevel && DEGREE_LEVELS.some(([re]) => re.test(w)))))
     .join(" ");
 }
 
@@ -529,21 +545,22 @@ export async function searchAll(opts: {
       "--- THIS INSTITUTION (you represent it; answer questions about it from here) ---",
       `Name: ${own.name ?? "Unknown"}`,
       own.description ? `About: ${own.description.slice(0, 1200)}` : "",
-      [own.address, own.city, own.state, own.country].filter(Boolean).length
-        ? `Location: ${[own.address, own.city, own.state, own.country].filter(Boolean).join(", ")}`
+      [own.city, own.state, own.country].filter(Boolean).length
+        ? `Location: ${[own.city, own.state, own.country].filter(Boolean).join(", ")}`
         : "",
-      // Its own published contact details, from its own website — safe to quote, unlike a
-      // person's. The privacy rule in the system prompt is narrowed to match.
-      own.phone ? `Phone: ${own.phone}` : "",
-      own.email ? `Email: ${own.email}` : "",
+      // No phone, no email, no street address — not even the institution's own. A widget reply
+      // never hands a visitor a way to contact anybody (owner decision, 2026-10-08); the contact
+      // details belong to the staff who set the widget up, in the portal. Withheld HERE rather
+      // than by a prompt rule, so there is nothing in the window to leak. City and country stay:
+      // "where are your campuses" is a question about the place, not a way to reach a person.
       own.website ? `Website: ${own.website}` : "",
     ];
 
     if (ownerProfile.campuses.length) {
       lines.push(`Campuses (${ownerProfile.campuses.length}):`);
       for (const c of ownerProfile.campuses) {
-        const where = [c.address, c.city, c.state, c.country].filter(Boolean).join(", ");
-        lines.push(`  - ${c.name ?? "Campus"}${where ? `: ${where}` : ""}${c.phone ? ` (${c.phone})` : ""}`);
+        const where = [c.city, c.state, c.country].filter(Boolean).join(", ");
+        lines.push(`  - ${c.name ?? "Campus"}${where ? `: ${where}` : ""}`);
       }
     }
     if (ownerProfile.accreditations.length) {
@@ -704,7 +721,7 @@ export async function searchAll(opts: {
   }
 
   if (rackHits.length) {
-    const rendered = renderRackHits(rackHits);
+    const rendered = renderRackHits(rackHits, embedScoped);
     parts.push(rendered.text);
     sources.push(...rendered.sources);
   }
@@ -729,8 +746,28 @@ export async function searchAll(opts: {
   return { contextText, sources, traceSteps, moneyTopics: topics };
 }
 
+/**
+ * Contact routes a widget reply must never carry — stripped from passage text before the prompt
+ * sees it, because a crawled site brings its own staff directory with it and the model has no way
+ * to tell a department inbox from a person's desk line.
+ *
+ * Deliberately narrow on phone numbers: an international number always starts "+", and a local one
+ * is only taken when the page labels it. A bare digit run is left alone — the money guard depends
+ * on fees surviving this verbatim, and "1 200 000" is a tuition figure far more often than a phone.
+ * ponytail: label-or-plus only; widen it if a real unlabelled number gets through.
+ */
+const CONTACT_RE: Array<[RegExp, string]> = [
+  [/[\w.+-]+@[\w-]+\.[\w.-]+/g, "[contact withheld]"],
+  [/\+\d[\d\s().-]{7,}\d/g, "[contact withheld]"],
+  [/\b(?:tel|phone|call|mobile|fax|whatsapp)\b[:.\s]*[\d(][\d\s().-]{6,}\d/gi, "[contact withheld]"],
+];
+
+export function withoutContactDetails(text: string): string {
+  return CONTACT_RE.reduce((out, [re, mask]) => out.replace(re, mask), text);
+}
+
 /** Rack chunks as prompt text + deduped sources — one format for every retrieval path. */
-function renderRackHits(rackHits: knowledge.KnowledgeChunkResult[]): {
+function renderRackHits(rackHits: knowledge.KnowledgeChunkResult[], hideContacts = false): {
   text: string;
   sources: RagOutput["sources"];
 } {
@@ -751,7 +788,7 @@ function renderRackHits(rackHits: knowledge.KnowledgeChunkResult[]): {
     // point of chunking — no truncation, so the answer can't be cut off.
     lines.push(
       `Passage: ${where || origin} (${origin}, ${d.category_label}, ${tier}${freshnessOf(d)})`,
-      ...d.content.split("\n").map((line) => `  ${line}`),
+      ...(hideContacts ? withoutContactDetails(d.content) : d.content).split("\n").map((line) => `  ${line}`),
       `  Source: ${d.url ?? d.file_name ?? origin}${page}`,
       "",
     );
