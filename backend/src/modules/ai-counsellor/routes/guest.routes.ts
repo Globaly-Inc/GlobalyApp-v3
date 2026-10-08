@@ -435,9 +435,14 @@ export async function guestRoutes(app: FastifyInstance) {
       });
 
       // Same logo/cover/city enrichment as the app chat, so widget cards show the institution's logo.
-      const cards = await withInstitutionMedia(parseCards(result.fullText));
+      // Already-shown courses are dropped, not re-carded — see rag.dropShownCards.
+      const cards = await withInstitutionMedia(
+        rag.dropShownCards(parseCards(result.fullText), rag.pinnedCourseIdsFrom(prevMessages)),
+      );
       const chips = parseChips(result.fullText);
-      const blocks = parseBlocks(result.fullText);
+      // The widget compares in prose (see prompt.service): a comparison table is unreadable in a
+      // 380px panel, so a stray one is dropped rather than rendered. The reply text carries it.
+      const blocks = parseBlocks(result.fullText).filter((b) => b.type !== "comparison");
       const cleanText = stripBlocks(result.fullText);
 
       if (cards.length) writeEvent(reply, "cards", cards);

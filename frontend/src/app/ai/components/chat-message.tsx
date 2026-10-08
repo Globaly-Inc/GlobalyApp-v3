@@ -15,8 +15,8 @@ import { cn } from "@/lib/utils";
 
 type ChatMessageProps = {
   message: Message;
-  onChipClick?: (chip: string) => void;
-  onSend?: (value: string) => void;
+  onChipClick?: (chip: string) => boolean | void;
+  onSend?: (value: string) => boolean | void;
 };
 
 /** Cards size themselves to the container, not the viewport — the same grid has to
@@ -102,29 +102,28 @@ function Attachments({ paths }: { paths: string[] }) {
   );
 }
 
-function Chips({ chips, onChipClick }: { chips: string[]; onChipClick?: (chip: string) => void }) {
-  const [selected, setSelected] = useState<string[]>([]);
+/** Follow-up suggestions. One tap sends — picking several and pressing a second Send button was
+ *  two clicks for what reads as one choice, and nobody expects a suggestion chip to need confirming. */
+function Chips({ chips, onChipClick }: { chips: string[]; onChipClick?: (chip: string) => boolean | void }) {
+  const [sent, setSent] = useState<string | null>(null);
 
-  const toggle = (chip: string) =>
-    setSelected((prev) => (prev.includes(chip) ? prev.filter((c) => c !== chip) : [...prev, chip]));
-
-  const sendSelected = () => {
-    if (!selected.length) return;
-    // Single chip sends as-is; multiple chips sent as a bullet list so the AI sees distinct questions.
-    onChipClick?.(selected.length === 1 ? selected[0]! : selected.map((c) => `• ${c}`).join("\n"));
-    setSelected([]);
+  const send = (chip: string) => {
+    if (sent) return; // a second tap would fire a second turn
+    if (onChipClick?.(chip) === false) return; // refused mid-stream: leave every chip tappable
+    setSent(chip);
   };
 
   return (
     <div className="flex flex-col gap-2.5 pt-1">
       <div className="flex flex-wrap gap-1.5">
         {chips.map((chip) => {
-          const active = selected.includes(chip);
+          const active = sent === chip;
           return (
             <button
               key={chip}
               type="button"
-              onClick={() => toggle(chip)}
+              disabled={sent !== null && !active}
+              onClick={() => send(chip)}
               className={cn(
                 "rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-150",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
@@ -139,11 +138,6 @@ function Chips({ chips, onChipClick }: { chips: string[]; onChipClick?: (chip: s
           );
         })}
       </div>
-      {selected.length > 0 && (
-        <Button size="sm" className="self-start rounded-full px-4 h-7 text-xs gap-1.5" onClick={sendSelected}>
-          Send {selected.length > 1 && `(${selected.length})`}
-        </Button>
-      )}
     </div>
   );
 }
@@ -193,8 +187,8 @@ function AssistantTurn({
   cards: CourseCardType[];
   chips: string[];
   blocks: ResponseBlock[];
-  onChipClick?: (chip: string) => void;
-  onSend?: (value: string) => void;
+  onChipClick?: (chip: string) => boolean | void;
+  onSend?: (value: string) => boolean | void;
   footer?: React.ReactNode;
 }) {
   // The model routinely answers its own question twice — once as a quick_replies
@@ -283,8 +277,8 @@ export function StreamingMessage({
   cards: CourseCardType[];
   chips: string[];
   blocks?: ResponseBlock[];
-  onChipClick?: (chip: string) => void;
-  onSend?: (value: string) => void;
+  onChipClick?: (chip: string) => boolean | void;
+  onSend?: (value: string) => boolean | void;
 }) {
   return (
     <AssistantTurn content={content} cards={cards} chips={chips} blocks={blocks} onChipClick={onChipClick} onSend={onSend} />

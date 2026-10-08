@@ -298,7 +298,8 @@ export async function handleMessage(opts: {
     }
 
     // 7. Parse structured blocks
-    const cards = await withInstitutionMedia(parseCards(result.fullText));
+    // Already-shown courses are dropped, not re-carded — see rag.dropShownCards.
+    const cards = await withInstitutionMedia(rag.dropShownCards(parseCards(result.fullText), pinnedCourseIds));
     const chips = parseChips(result.fullText);
     const blocks = parseBlocks(result.fullText);
     const cleanText = stripBlocks(result.fullText);

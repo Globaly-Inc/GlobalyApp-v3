@@ -30,9 +30,9 @@ export function ThreadMessages({
   joinedAgent,
 }: Readonly<{
   messages: WidgetMessage[];
-  onChipClick: (chip: string) => void;
+  onChipClick: (chip: string) => boolean | void;
   /** Sends the text composed inside a quick_replies block. */
-  onSend?: (value: string) => void;
+  onSend?: (value: string) => boolean | void;
   joinedAgent?: string | null;
 }>) {
   // The visitor's own turns don't change who is answering, so look back past them.
