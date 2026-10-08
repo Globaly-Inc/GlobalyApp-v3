@@ -82,7 +82,7 @@ function StatusPanel({ job }: Readonly<{ job: ExtractionJob }>) {
         </div>
         <Link
           href={`/admin/data/all-extractions/${job.id}?tab=overview`}
-          className="flex w-fit items-center gap-1.5 self-end rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100"
+          className="flex w-fit items-center gap-1.5 self-end rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 dark:border-red-900 dark:bg-transparent dark:text-red-300 dark:hover:bg-red-950"
         >
           <FileText className="h-3.5 w-3.5" />
           View Logs

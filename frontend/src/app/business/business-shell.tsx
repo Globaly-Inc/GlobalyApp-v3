@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Bell, ChevronDown, Coins, Loader2 } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { ThemeToggle } from "@/components/theme-toggle";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -225,6 +226,7 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
           </div>
 
           <div className="flex items-center gap-2 ml-auto pr-3 sm:pr-4 md:pr-2">
+            <ThemeToggle />
             {SHOW_HEADER_EXTRAS && (
               <>
                 <Link
