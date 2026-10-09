@@ -115,14 +115,40 @@ console.log("\nPrompt section");
   const text = loc.renderLocationSection(l, "Australia", loc.rankBranches(l, all)!);
   assert(text.startsWith("VISITOR LOCATION"), "section heading");
   assert(text.includes("Region: Victoria") && text.includes("Country: Australia"), "country and region shown");
-  assert(text.includes("Melbourne Campus · 120 Collins St, Melbourne VIC 3000, Victoria, Australia · +61 3 9000 0000"),
-    "branch line: address not repeated by city", text.split("\n")[4]);
+  assert(text.includes("Melbourne Campus · Melbourne, Victoria, Australia"), "branch line names the place", text.split("\n")[4]);
+  // The override in the static prefix forbids every contact route and this section renders BELOW
+  // it, so an address or a phone here is not a capability — it is a contradiction the model has
+  // to resolve, and it resolves it by saying nothing useful.
+  assert(!text.includes("Collins") && !text.includes("9000"), "no street address or phone in the prompt section", text);
   assert(text.includes("Sydney Campus (main), Brisbane Campus"), "other branches listed");
-  assert(!/\b(is|the) (nearest|closest)\b/i.test(text.replace(/Never call it the nearest or closest/, "")), "never asserts nearest");
+  // Branches carry no coordinates anywhere in the schema, so "nearest" is not computable and the
+  // counsellor must never claim it. It may still HEAR the word — the visitor asks it constantly —
+  // so the property is not "the word is absent" (the old proxy, which broke the moment the
+  // explicit-ask instructions were added) but "every line carrying it is a trigger or a denial,
+  // never a claim".
+  // Per SENTENCE, not per line: the state-tier line carries the prohibition and the answer
+  // instruction together, so a line-level check would let any claim ride along on that line.
+  // ponytail: a claim worded INSIDE a hedged sentence ("Asked for the nearest, say it is the
+  // nearest") still passes — that one is caught by the per-tier assertions below, not here.
+  const nearLines = (t: string) =>
+    t.split(/(?<=\.)\s+|\n/).filter((l) => /nearest|closest/i.test(l));
+  const hedged = (t: string) => nearLines(t).every((l) => /\bNever\b|\bcannot\b|\bnone\b|\basks?\b|\bAsked\b/.test(l));
+  assert(nearLines(text).length > 0 && hedged(text), "never asserts nearest", nearLines(text).filter((l) => !hedged(l)));
 
   const waL = at("AU", "Western Australia", "WA");
   const waText = loc.renderLocationSection(waL, "Australia", loc.rankBranches(waL, all)!);
   assert(waText.includes("No branch is in their state"), "country-tier match says so");
+  assert(hedged(waText), "country tier keeps nearest hedged", nearLines(waText));
+
+  // Asked outright — the path that matters most and was answered worst.
+  assert(text.includes("ANSWER") && text.includes("Never refuse"), "explicit ask must be answered, not stonewalled");
+  assert(text.includes("nearest or closest to them"), "the trigger list names the nearest-office question");
+  assert(/name this one and say plainly that it is the one in their state or area/.test(text),
+    "state tier: the nearest question gets this branch plus the honest caveat");
+  assert(text.includes("No street address and no phone number, even if the visitor asks"),
+    "a direct ask for the address is still refused");
+  assert(waText.includes("say none is in their state, name the ones in their country"),
+    "country tier: the nearest question gets the list, not a refusal");
 
   const noRegion = at("AU");
   const noRegionText = loc.renderLocationSection(noRegion, "Australia", loc.rankBranches(noRegion, all)!);
@@ -130,11 +156,55 @@ console.log("\nPrompt section");
   assert(!noRegionText.includes("No branch is in their state") && !noRegionText.includes("not their state"),
     "region unknown → never claims no branch is in their state", noRegionText);
   assert(noRegionText.includes("Their state is unknown"), "region unknown → says the state is unknown");
+  assert(hedged(noRegionText), "state-unknown tier keeps nearest hedged", nearLines(noRegionText));
+  assert(noRegionText.includes("say you cannot tell which is closest"),
+    "region unknown: the nearest question gets an honest 'cannot tell' plus the list");
 
   const base = { profile: null, ragContext: "", isFirstMessage: false, embedConfig: { display_name: "SCI", custom_instructions: null } };
   assert(prompt.buildSystemPrompt({ ...base, visitorLocation: text }).includes("RECOMMENDED BRANCH"), "buildSystemPrompt includes it when passed");
   assert(prompt.buildSystemPrompt({ ...base, visitorLocation: null }) === prompt.buildSystemPrompt(base), "null location → prompt identical to before");
   assert(!prompt.buildSystemPrompt({ profile: null, ragContext: "", isFirstMessage: false }).includes("VISITOR LOCATION"), "authenticated counsellor never gets it");
+}
+
+console.log("\nWrap-up invite (the card's optional in-person next step)");
+{
+  const vic = at("AU", "Victoria", "VIC");
+  const invite = loc.branchInvite(loc.rankBranches(vic, all)!);
+  assert(invite?.name === "Melbourne Campus", "state match → that branch is offered", invite);
+  // The owner's 2026-10-08 rule reaches this card too: the visitor is told WHERE the office is,
+  // never how to contact it. The branch has both a street address and a phone; neither appears.
+  assert(invite?.place === "Melbourne, Victoria, Australia", "place is city/state/country", invite);
+  assert(!JSON.stringify(invite).includes("Collins"), "street address never leaves the server", invite);
+  assert(!JSON.stringify(invite).includes("9000"), "phone number never leaves the server", invite);
+
+  const area = at("AU", "Brisbane");
+  assert(loc.branchInvite(loc.rankBranches(area, all)!)?.name === "Brisbane Campus", "area match (region name in the city) → offered");
+  const singapore = branch({ name: "Singapore Office", country: "Singapore", iso2: "SG", state: null, city: "Singapore" });
+  assert(loc.branchInvite(loc.rankBranches(at("SG", "Singapore"), [singapore])!)?.place === "Singapore",
+    "city-state is not repeated");
+
+  // The reasonable-location check: a branch somewhere in a country the visitor happens to be in
+  // is not proximity, so nothing is volunteered. The prompt section still lists them if asked.
+  assert(loc.branchInvite(loc.rankBranches(at("AU", "Western Australia", "WA"), all)!) === null,
+    "country tier (wrong state) → no invite");
+  assert(loc.branchInvite(loc.rankBranches(at("AU"), all)!) === null, "country tier (state unknown) → no invite");
+
+  const placeless = branch({ name: "Head Office", state: "Victoria", city: null, address: null, country: null });
+  assert(loc.branchInvite(loc.rankBranches(vic, [placeless])!) === null, "matched branch with no city → no invite (a state is not somewhere to visit)");
+  const addressOnly = branch({ name: "Head Office", state: "Victoria", city: null, address: "120 Collins St" });
+  assert(loc.branchInvite(loc.rankBranches(vic, [addressOnly])!) === null, "address but no city → no invite, rather than printing the address");
+  const unnamed = branch({ name: null, state: "Victoria", city: "Melbourne" });
+  assert(loc.branchInvite(loc.rankBranches(vic, [unnamed])!) === null, "matched branch with no name → no invite");
+
+  // An international student in a country the owner has an office in is the point of this, not an
+  // exception to it: the office in THEIR country is the one they can walk into.
+  const kathmandu = branch({ name: "Kathmandu Office", country: "Nepal", iso2: "NP", state: "Bagmati", city: "Kathmandu", phone: "+977 1 555 0000" });
+  const np = at("NP", "Bagmati", "P3");
+  assert(loc.branchInvite(loc.rankBranches(np, [...all, kathmandu])!)?.name === "Kathmandu Office",
+    "visitor abroad from the campuses → the office in their own country is offered");
+  assert(loc.branchInvite(loc.rankBranches(np, [...all, kathmandu])!)?.place === "Kathmandu, Bagmati, Nepal",
+    "…and told the city, not the phone number it carries");
+  assert(loc.rankBranches(at("NP", "Bagmati"), all) === null, "owner has nothing in their country → no match at all");
 }
 
 console.log("\nWidget flow fallbacks");

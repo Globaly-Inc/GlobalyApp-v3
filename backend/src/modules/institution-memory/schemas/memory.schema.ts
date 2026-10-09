@@ -127,6 +127,7 @@ export const FREE_TEXT_METADATA_KEYS: ReadonlySet<string> = new Set([
   "prefer", "avoid",               // COURSE_RECOMMENDATION_RULE
   "term", "meaning", "use_instead_of", // TERMINOLOGY
   "concern", "approach",           // STUDENT_CONCERN_PATTERN
+  "topic",                         // GENERAL_KNOWLEDGE
 ]);
 
 /** One atomic statement. 600 chars is a paragraph, not a document. */

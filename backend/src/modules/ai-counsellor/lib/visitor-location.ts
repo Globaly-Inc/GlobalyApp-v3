@@ -136,15 +136,55 @@ const tierLabel = (location: VisitorLocation, tier: MatchTier) =>
     ? "in the visitor's country; their state is unknown"
     : TIER_LABEL[tier];
 
-function describe(b: BranchLike): string {
-  const address = clean(b.address);
-  // An address often already contains the city/state; don't repeat what it says.
-  const inAddress = ` ${normalizePlace(address)} `;
-  const rest = [b.city, b.state, b.country]
+/**
+ * Where a branch is, as a place: "Melbourne, Victoria, Australia".
+ *
+ * The street address and the phone are deliberately NOT here, on either path. The owner decision
+ * of 2026-10-08 (prompt.service: "Give NO contact route of any kind ... ours included. This
+ * overrides every instruction below") sits in the static prefix, and `buildSystemPrompt` emits
+ * this section in the volatile `tail` — i.e. BELOW the override. Rendering an address and a phone
+ * here therefore never gave the model something it could use; it gave it a contradiction, and a
+ * model told to recommend a branch and forbidden to say where it is answers neither well. The
+ * same line rag.service already draws: a city is a place, not a contact route.
+ *
+ * Duplicates collapse, so a city-state ("Singapore, Singapore") says it once.
+ */
+function placeOf(b: BranchLike): string {
+  const seen = new Set<string>();
+  return [b.city, b.state, b.country]
     .map((v) => clean(v))
-    .filter((p): p is string => !!p && !inAddress.includes(` ${normalizePlace(p)} `));
-  const place = [address, ...rest].filter(Boolean).join(", ");
-  return [clean(b.name) ?? "Unnamed branch", place, clean(b.phone, 40)].filter(Boolean).join(" · ");
+    .filter((v): v is string => !!v && !seen.has(normalizePlace(v)) && !!seen.add(normalizePlace(v)))
+    .join(", ");
+}
+
+function describe(b: BranchLike): string {
+  return [clean(b.name) ?? "Unnamed branch", placeOf(b)].filter(Boolean).join(" · ");
+}
+
+export interface BranchInvite {
+  name: string;
+  /** City, state and country — never the street address. See branchInvite. */
+  place: string;
+}
+
+/**
+ * The branch to offer as an optional in-person visit when the conversation is wrapping up, or
+ * null when the location is too coarse for the offer to mean anything.
+ *
+ * Country tier is exactly that case: "we have an office somewhere in your country" is not
+ * proximity, and the visitor may be two thousand kilometres from it. The prompt section still
+ * lists those branches if they ask — this is only about volunteering one unprompted.
+ *
+ * Carries no street address and no phone — see placeOf. The gate is a CITY, not an address: a
+ * branch whose only place text is "Victoria, Australia" names a region, and an invite to visit a
+ * region is one nobody can act on. The prompt section is laxer, because a branch the visitor
+ * ASKED about is worth naming even when its city is missing.
+ */
+export function branchInvite(match: BranchMatch): BranchInvite | null {
+  if (match.tier === "country") return null;
+  const name = clean(match.branch.name);
+  if (!name || !clean(match.branch.city)) return null;
+  return { name, place: placeOf(match.branch) };
 }
 
 /** The prompt section. `countryName` is the visitor's country as a name, for readability. */
@@ -158,13 +198,27 @@ export function renderLocationSection(location: VisitorLocation, countryName: st
     `RECOMMENDED BRANCH (${tierLabel(location, match.tier)}):`,
     `  ${describe(match.branch)}`,
     ...(others.length ? [`  Other branches in ${clean(countryName)}: ${others.join(", ")}`] : []),
-    "- Mention a branch only when the visitor asks about visiting, campuses, where you are, or " +
-      "studying or meeting someone in person. Otherwise ignore this section.",
+    "- Mention a branch only when the visitor asks about visiting, campuses, where you are, which " +
+      "office is nearest or closest to them, or studying or meeting someone in person. Otherwise " +
+      "ignore this section.",
+    // Asked outright, the one thing the counsellor must not do is stonewall. It knows the office
+    // and the city; "we do not have that on file" is false, and a vague "we have several offices"
+    // when the visitor asked which one is theirs is the same failure in a politer register.
+    "- When they ask outright, ANSWER: name the branch above and the place it is in. Never refuse " +
+      "this or claim it is not on file — it is, immediately above.",
     match.tier !== "country"
-      ? "- You may say the branch is in their state or area. Never call it the nearest or closest — distance is unknown."
+      ? "- You may say the branch is in their state or area. Never call it the nearest or closest — distance is unknown. " +
+        "Asked outright for the nearest, name this one and say plainly that it is the one in their state or area, " +
+        "and that you cannot measure the distance."
       : location.region || location.regionCode
-        ? "- No branch is in their state. Do not imply one is close to them; list the branches in their country instead."
-        : "- Their state is unknown. Do not say whether any branch is in or near their state; list the branches in their country instead.",
+        ? "- No branch is in their state. Do not imply one is close to them; list the branches in their country instead. " +
+          "Asked outright for the nearest, say none is in their state, name the ones in their country, and let them pick."
+        : "- Their state is unknown. Do not say whether any branch is in or near their state; list the branches in their country instead. " +
+          "Asked outright for the nearest, say you cannot tell which is closest, name the ones in their country, and let them pick.",
+    // The override in the static prefix already forbids every contact route; this says what is
+    // LEFT, so the model does not read that rule as covering the branch's existence too.
+    "- Give the place only — the office and its city. No street address and no phone number, even " +
+      "if the visitor asks for one directly; offer to put them in touch with the team instead.",
     "- Do not tell the visitor you know where they are unless they ask how you know; then say it is an " +
       "approximate guess from their connection.",
   ].join("\n");

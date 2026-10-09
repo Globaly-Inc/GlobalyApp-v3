@@ -51,6 +51,22 @@ const POINTER_RE = /^(first|second|third|fourth|fifth|sixth|seventh|last|one|two
 const ACK_RE =
   /^(ok(ay)?|k|cool|great|nice|perfect|awesome|lovely|got it|understood|sure|yep|yup|yeah|alright)[\s!.,]*$/i;
 
+/** Word-level: a YES plus the words people pad one with. "yes" alone borrowed the question it
+ *  answered, but "yes, please" is two words that both survive extractKeywords, so it read as a
+ *  subject of its own and searched for the literal words — the counsellor then reported the course
+ *  it had just recommended as missing from our system. None of these ever names a course. */
+const AFFIRM_RE =
+  /^(yes|yea|yeah|yep|yup|sure|please|thanks?|more|tell|show|send|give|also|too|definitely|absolutely)$/i;
+
+/** Values an answer can BE rather than subjects it can be about: a month, a year, a figure.
+ * "September" answering "which intake?" has to borrow that question like "yes" does — but it is
+ * the only kind of one-word answer we can recognise, which is why the test below asks the
+ * question in terms of shape, not count.
+ * ponytail: a one-word answer naming a place ("Melbourne") reads as a subject and keeps its own
+ * words — widen this only if a real conversation shows that losing the borrow hurts. */
+const ANSWER_RE =
+  /^(jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|jun(e)?|jul(y)?|aug(ust)?|sep(t|tember)?|oct(ober)?|nov(ember)?|dec(ember)?|\d+)$/i;
+
 export function isCourtesyTurn(message: string, priorQuestion?: string | null): boolean {
   const text = message.trim();
   return CLOSING_RE.test(text) || (!priorQuestion && ACK_RE.test(text));
@@ -94,8 +110,17 @@ export function retrievalKeywords(
   // "ok" survives extractKeywords as NOTHING (<= 2 letters) and used to search nothing at all,
   // while "the second one" survives as two pointer words and used to search for them literally.
   // What matters is whether any word names a subject, not how many words there are.
-  const subject = own.filter((w) => !POINTER_RE.test(w) && !ACK_RE.test(w));
-  if (subject.length > 1 || !priorQuestion) return { keywords: own, fromPriorQuestion: false };
+  // FOLLOW_UP joins the four regexes for the same reason they are here: "details" answering
+  // "would you like details about our nursing diploma?" names no topic, so counting it as a
+  // subject suppressed the borrow and left courseKeywordsFor an empty query, which browsed
+  // unrelated courses (Greptile). It is a filter, not a count — see below.
+  const subject = own.filter((w) =>
+    !POINTER_RE.test(w) && !ACK_RE.test(w) && !AFFIRM_RE.test(w) && !ANSWER_RE.test(w)
+    && !FOLLOW_UP.has(w));
+  // ONE surviving subject word is still a subject (Greptile): "show engineering" loses "show" to
+  // AFFIRM_RE, and borrowing on a count of one meant an engineering request also searched the
+  // nursing question before it. Borrow only when nothing of the visitor's own names a topic.
+  if (subject.length || !priorQuestion) return { keywords: own, fromPriorQuestion: false };
   const borrowed = extractKeywords(priorQuestion);
   if (!borrowed.length) return { keywords: own, fromPriorQuestion: false };
   return { keywords: [...new Set([...borrowed, ...own])], fromPriorQuestion: true };
@@ -146,15 +171,46 @@ const DEGREE_LEVELS: Array<[RegExp, string]> = [
  */
 const NAMED_QUALIFICATION = /^(m\.?b\.?a|d\.?b\.?a)\.?$/i;
 
+/**
+ * Words that are never a topic: what the visitor is DOING, and how they are ASKING for it.
+ *
+ * Two jobs, and they are not the same job — which is what made "details" a bug. These are filler
+ * for the course query AND non-subjects for the borrowing test below, because a turn made only of
+ * them ("details", "options", "I'm interested") is a request to continue the counsellor's last
+ * question, not a topic of its own. Borrowing is the only way such a turn keeps its subject.
+ *
+ * "info" is here but "information" is NOT: Information Technology and Information Systems are real
+ * course names, while no course is called "Info". "info on information technology" therefore keeps
+ * the words that name the subject and loses only the one that asks for it.
+ */
+const FOLLOW_UP = new Set([
+  // What the visitor is doing. These only ever reached the query on a turn that states a
+  // qualification ("I have X and want Y"), where every word must hit a course NAME — "want
+  // nursing" matched nothing and fell back to loose matching.
+  "looking", "want", "wants", "need", "needs", "interested", "seeking", "hold", "holds",
+  "completed", "there", "after",
+  // How a visitor ASKS — never covered before, and the opening message is almost always phrased
+  // this way. "can you tell me about studying nursing" reached searchCourses as "tell nursing",
+  // whose strict pass needs BOTH words in a course name, matches nothing, and drops to the loose
+  // OR the strict pass exists to avoid.
+  "tell", "know", "explain", "describe", "show", "find", "learn", "help", "like", "more",
+  "available", "options", "option", "details", "detail", "info", "please",
+  "recommend", "recommendation", "recommendations", "suggest", "suggestion", "suggestions",
+]);
+
+/**
+ * The catalogue itself. Filler for a course query — "what courses do you offer" must reach
+ * searchCourses as the EMPTY query that means browse, not as a search for the word "offer" — but
+ * a SUBJECT for the borrowing test, because asking what exists is a broad new question rather than
+ * a request to continue. Borrowing here would narrow "what courses do you offer?" back to whatever
+ * the counsellor last asked about, which is the opposite of what was asked.
+ */
+const CATALOGUE = new Set(["degree", "degrees", "course", "courses", "program", "programs",
+  "programme", "programmes", "study", "studies", "studying", "offer", "offered"]);
+
 /** Words that survive extractKeywords but say nothing about WHICH course — they only ever dilute
  *  a level-filtered search, and on a level-only turn they are the whole query. */
-const FILLER = new Set(["looking", "degree", "degrees", "course", "courses", "program", "programs",
-  "programme", "programmes", "study", "studies", "studying", "offer", "offered",
-  // What the visitor is doing, not what they want to study. These only ever reached the query on a
-  // turn that states a qualification ("I have X and want Y"), where every word must hit a course
-  // NAME — "want nursing" matched nothing and fell back to loose matching.
-  "want", "wants", "need", "needs", "interested", "seeking", "hold", "holds", "completed",
-  "there", "after"]);
+const FILLER = new Set([...FOLLOW_UP, ...CATALOGUE]);
 
 /**
  * What the visitor already HOLDS, which is never what they are asking for. The level was read from
@@ -173,12 +229,21 @@ export function detectDegreeLevel(query: string): string | null {
   return DEGREE_LEVELS.find(([re]) => re.test(search))?.[1] ?? null;
 }
 
-/** The keywords left once the level has been lifted out into its own filter. Empty is a real
- *  answer — searchCourses browses the filtered set rather than matching noise. */
+/**
+ * The keywords left once the level has been lifted out into its own filter. Empty is a real
+ * answer — searchCourses browses the filtered set rather than matching noise.
+ *
+ * The filler strip is UNCONDITIONAL. Gating it on a detected level left the commonest question a
+ * widget gets — "What courses do you offer?" — searching for the literal words "courses offer",
+ * which matched none of the institution's 33 published courses and was answered "I don't have the
+ * course listings in our system". A word that says nothing about WHICH course says nothing whether
+ * or not a level was named. The level words themselves still go only when a level WAS detected,
+ * since that is what proves the word was read as a filter.
+ */
 export function courseKeywordsFor(keywords: string[], degreeLevel: string | null): string {
-  if (!degreeLevel) return keywords.join(" ");
   return keywords
-    .filter((w) => NAMED_QUALIFICATION.test(w) || (!FILLER.has(w) && !DEGREE_LEVELS.some(([re]) => re.test(w))))
+    .filter((w) => NAMED_QUALIFICATION.test(w)
+      || (!FILLER.has(w) && !(degreeLevel && DEGREE_LEVELS.some(([re]) => re.test(w)))))
     .join(" ");
 }
 
@@ -259,6 +324,11 @@ export interface RagOutput {
   contextText: string;
   sources: Array<{ type: string; id: string; title: string }>;
   traceSteps: string[];
+  /** Whether any search actually ran this turn. False on a courtesy or closing reply ("thanks",
+   *  "bye"), whose keywords are all filler — there is nothing in it to retrieve for. Empty
+   *  `contextText` means two different things, and only this tells them apart: searched and found
+   *  nothing, versus never searched. The prompt's empty-retrieval rule needs the first. */
+  searched: boolean;
   /** Which money topics the CONTEXT can actually ground an answer in. The gate compares this
    *  with the topics the QUESTION asks about: a course fee row is evidence for "fees", never
    *  for "refund". Empty = nothing in context an unapproximatable money claim can rest on. */
@@ -417,7 +487,7 @@ export async function searchAll(opts: {
 
   if (!searchQuery && !pinned.length) {
     trace("Nothing to search this turn");
-    return { contextText: "", sources: [], traceSteps, moneyTopics: [] };
+    return { contextText: "", sources: [], traceSteps, moneyTopics: [], searched: false };
   }
 
   if (searchQuery && fromPriorQuestion) trace(`Keywords (from the question it answers): ${keywords.join(", ")}`);
@@ -529,21 +599,22 @@ export async function searchAll(opts: {
       "--- THIS INSTITUTION (you represent it; answer questions about it from here) ---",
       `Name: ${own.name ?? "Unknown"}`,
       own.description ? `About: ${own.description.slice(0, 1200)}` : "",
-      [own.address, own.city, own.state, own.country].filter(Boolean).length
-        ? `Location: ${[own.address, own.city, own.state, own.country].filter(Boolean).join(", ")}`
+      [own.city, own.state, own.country].filter(Boolean).length
+        ? `Location: ${[own.city, own.state, own.country].filter(Boolean).join(", ")}`
         : "",
-      // Its own published contact details, from its own website — safe to quote, unlike a
-      // person's. The privacy rule in the system prompt is narrowed to match.
-      own.phone ? `Phone: ${own.phone}` : "",
-      own.email ? `Email: ${own.email}` : "",
+      // No phone, no email, no street address — not even the institution's own. A widget reply
+      // never hands a visitor a way to contact anybody (owner decision, 2026-10-08); the contact
+      // details belong to the staff who set the widget up, in the portal. Withheld HERE rather
+      // than by a prompt rule, so there is nothing in the window to leak. City and country stay:
+      // "where are your campuses" is a question about the place, not a way to reach a person.
       own.website ? `Website: ${own.website}` : "",
     ];
 
     if (ownerProfile.campuses.length) {
       lines.push(`Campuses (${ownerProfile.campuses.length}):`);
       for (const c of ownerProfile.campuses) {
-        const where = [c.address, c.city, c.state, c.country].filter(Boolean).join(", ");
-        lines.push(`  - ${c.name ?? "Campus"}${where ? `: ${where}` : ""}${c.phone ? ` (${c.phone})` : ""}`);
+        const where = [c.city, c.state, c.country].filter(Boolean).join(", ");
+        lines.push(`  - ${c.name ?? "Campus"}${where ? `: ${where}` : ""}`);
       }
     }
     if (ownerProfile.accreditations.length) {
@@ -704,7 +775,7 @@ export async function searchAll(opts: {
   }
 
   if (rackHits.length) {
-    const rendered = renderRackHits(rackHits);
+    const rendered = renderRackHits(rackHits, embedScoped);
     parts.push(rendered.text);
     sources.push(...rendered.sources);
   }
@@ -726,11 +797,77 @@ export async function searchAll(opts: {
 
   const topics = [...moneyTopics];
   trace(`Context: ${contextText.length} chars, ${sources.length} sources${topics.length ? `, money evidence: ${topics.join(", ")}` : ""}`);
-  return { contextText, sources, traceSteps, moneyTopics: topics };
+  // `searchQuery` is the gate every search above sits behind, so it is also the honest answer to
+  // "did we look": a pinned-courses-only turn hydrates context without searching for anything.
+  return { contextText, sources, traceSteps, moneyTopics: topics, searched: !!searchQuery };
+}
+
+/**
+ * Contact routes a widget reply must never carry — stripped from passage text before the prompt
+ * sees it, because a crawled site brings its own staff directory with it and the model has no way
+ * to tell a department inbox from a person's desk line.
+ *
+ * Deliberately narrow on phone numbers: an international number always starts "+", and a local one
+ * is only taken when the page labels it. A bare digit run is left alone — the money guard depends
+ * on fees surviving this verbatim, and "1 200 000" is a tuition figure far more often than a phone.
+ * ponytail: label-or-plus only; widen it if a real unlabelled number gets through.
+ */
+/** Words that never sit between a house number and its street word. The trailing lookahead makes
+ *  each one a whole token, so "A'Beckett" in "45 A'Beckett Street" is not read as the article. */
+const NOT_IN_ADDRESS = [
+  "per", "at", "in", "on", "of", "for", "the", "a", "an", "and", "or", "to", "from", "with",
+  "our", "your", "its", "is", "are", "was", "were", "each", "every", "about", "approximately",
+  "over", "under", "up", "plus", "only", "total", "overall", "required", "minimum", "maximum",
+  "year", "years", "semester", "semesters", "term", "terms", "month", "months", "week", "weeks",
+  "intake", "intakes", "band", "score", "scores", "fee", "fees", "tuition", "cost", "costs",
+  "deposit", "discount", "scholarship", "scholarships",
+];
+
+const STREET_WORDS = "road|rd|street|st|avenue|ave|lane|drive|boulevard|blvd|highway|parade|place|terrace|square|crescent";
+
+function buildAddressRe(): RegExp {
+  const notAddress = `(?!(?:${NOT_IN_ADDRESS.join("|")})(?:[\\s,.-]|$))`;
+  return new RegExp(
+    `\\b\\d{1,5}[a-z]?(?![,.]\\d)(?:[\\s,.-]+${notAddress}[\\p{L}\\p{N}'()-]+){0,3}[\\s,]+(?:${STREET_WORDS})\\b\\.?`,
+    "giu",
+  );
+}
+
+const CONTACT_RE: Array<[RegExp, string]> = [
+  [/[\w.+-]+@[\w-]+\.[\w.-]+/g, "[contact withheld]"],
+  [/\+\d[\d\s().-]{7,}\d/g, "[contact withheld]"],
+  [/\b(?:tel|phone|call|mobile|fax|whatsapp)\b[:.\s]*[\d(][\d\s().-]{6,}\d/gi, "[contact withheld]"],
+  // A street address is a contact route as much as a phone number is, and the prompt rule alone
+  // left one sitting in the context for the model to resist (Greptile). Anchored on a HOUSE NUMBER
+  // followed by a street word, so the city, state and country around it survive — "where are your
+  // campuses" is a question about a place.
+  //
+  // The span between the two is the whole difficulty. Five unconstrained words reached from a FEE
+  // to an unrelated street-named campus — "Tuition is 4000 per semester at King Street" masked as
+  // "[address withheld]", deleting the figure the answer was about (Greptile P1). Worse, the
+  // "950,000" lookahead does not reject such a figure, it only moves the anchor: "AUD 24,500 per
+  // year at our Oxford Street campus" re-anchored on 500 and rendered "AUD 24,[address withheld]",
+  // and "IELTS 6.5 overall ... Collins Street" re-anchored on 5.
+  //
+  // So the span is three words at most, and none of them may be a word that cannot appear inside a
+  // street address but is everywhere in money and score prose. That is the real difference between
+  // "45 George Street" and "4000 per semester at King Street", and it holds however the sentence is
+  // worded — an address never says "per", "at" or "year".
+  //
+  // ponytail: a street named with no number ("on College Road") still gets through, and so does a
+  // figure that reaches a street through three pure name words ("IELTS 6.5 overall Collins
+  // Street"). Both widenings risk eating a fee, which is the worse failure: the money guard
+  // depends on figures surviving this verbatim, while a missed address only fails to redact.
+  [buildAddressRe(), "[address withheld]"],
+  [/\bp\.?\s?o\.?\s*box\s*\d+/gi, "[address withheld]"],
+];
+
+export function withoutContactDetails(text: string): string {
+  return CONTACT_RE.reduce((out, [re, mask]) => out.replace(re, mask), text);
 }
 
 /** Rack chunks as prompt text + deduped sources — one format for every retrieval path. */
-function renderRackHits(rackHits: knowledge.KnowledgeChunkResult[]): {
+function renderRackHits(rackHits: knowledge.KnowledgeChunkResult[], hideContacts = false): {
   text: string;
   sources: RagOutput["sources"];
 } {
@@ -751,7 +888,7 @@ function renderRackHits(rackHits: knowledge.KnowledgeChunkResult[]): {
     // point of chunking — no truncation, so the answer can't be cut off.
     lines.push(
       `Passage: ${where || origin} (${origin}, ${d.category_label}, ${tier}${freshnessOf(d)})`,
-      ...d.content.split("\n").map((line) => `  ${line}`),
+      ...(hideContacts ? withoutContactDetails(d.content) : d.content).split("\n").map((line) => `  ${line}`),
       `  Source: ${d.url ?? d.file_name ?? origin}${page}`,
       "",
     );

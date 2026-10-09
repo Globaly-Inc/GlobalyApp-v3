@@ -422,7 +422,8 @@ export async function guestRoutes(app: FastifyInstance) {
         rackProfile,
         institutionGuidance: memory?.text,
         withheldMoneyTopics,
-        visitorLocation,
+        visitorLocation: visitorLocation?.section ?? null,
+        retrievalSkipped: !ragOutput.searched,
       });
 
       const result = await streamChat({
@@ -592,6 +593,14 @@ export async function guestRoutes(app: FastifyInstance) {
           covered: concluded?.covered ?? null,
           body: "I can email you a summary of everything we discussed, or we can keep going.",
           email: current?.email ?? null,
+          // An optional in-person next step, at the one moment it is a next step rather than an
+          // interruption. Null unless the visitor's location is specific enough to mean it (see
+          // branchInvite) — including for students heading abroad, who are offered the owner's
+          // office in THEIR country, which is the one they can actually walk into.
+          //
+          // Not repeated: end_prompt_count is terminal, so this card is shown once per visitor
+          // ever, whether they accept it or keep chatting.
+          branch: visitorLocation?.invite ?? null,
         });
       }
 

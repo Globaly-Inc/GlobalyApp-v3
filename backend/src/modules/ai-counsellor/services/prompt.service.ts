@@ -79,6 +79,9 @@ export function buildSystemPrompt(opts: {
   /** Money topics this turn asked about that retrieval could NOT ground: withhold those, don't
    *  guess — and answer everything else. Empty or absent means nothing is withheld. */
   withheldMoneyTopics?: MoneyTopic[];
+  /** No search ran this turn — a courtesy or closing reply ("thanks", "bye") has nothing in it to
+   *  retrieve for. Suppresses the empty-retrieval rule below, whose premise is that we DID look. */
+  retrievalSkipped?: boolean;
   /** Embed mode: Cloudflare-derived visitor location + the most relevant branch, already rendered
    *  by lib/visitor-location. Absent when location is unknown or no branch is in their country. */
   visitorLocation?: string | null;
@@ -131,11 +134,19 @@ export function buildSystemPrompt(opts: {
     sections.push(
       "Never suggest talking to a person, an advisor or the admissions team in this chat, and never offer " +
       "to connect the visitor to one. If they ask for a person themselves, the system handles it. When you " +
-      // This line used to end at "point them to our published contact details instead", which sent the
-      // model looking for a number it might not have — and a widget that invents a phone number sends
-      // the visitor to a stranger.
-      "lack information, point them to the published contact details in the THIS INSTITUTION section; if " +
-      "that section has none, say we do not have it on file.",
+      // This line used to point at "the published contact details in the THIS INSTITUTION section".
+      // There are none now — rag.service withholds every phone, email and street address from a
+      // widget's context — so the fallback has to end where the knowledge does.
+      "lack information, say we do not have it on file.",
+    );
+    // The visitor is already ON our website, so "check our website at <homepage>" is the one
+    // pointer that tells them nothing. Every retrieved passage carries its own `Source:` line
+    // (renderRackHits), which is the page that actually holds the answer.
+    sections.push(
+      `Never send the visitor to ${name}'s own homepage or tell them to "visit our website" — they are ` +
+      "already on it. When a retrieved passage is about what they asked, link ITS `Source:` URL as the " +
+      "page to read, copied verbatim. With no such passage, say plainly that we do not have it on file " +
+      "and stop there — a bare homepage link is not an answer.",
     );
     const custom = sanitizeCustomInstructions(opts.embedConfig.custom_instructions);
     if (custom) sections.push(`Additional guidance from ${name}: ${custom}`);
@@ -156,7 +167,14 @@ export function buildSystemPrompt(opts: {
   sections.push(
     "Never reveal another person's profile. Never quote an individual's personal contact details. " +
     (opts.embedConfig
-      ? "The published phone, email and address in the THIS INSTITUTION section are that organisation's own and may be shared. "
+      // Owner decision, 2026-10-08: a widget reply hands the visitor no way to contact anybody, not
+      // even this organisation's own switchboard. Contact details belong to the staff who set the
+      // widget up, in the portal. rag.service strips them from the context as well, so this rule and
+      // the data agree; it OVERRIDES the "published contact details" fallback in the money rule below.
+      ? "Give NO contact route of any kind: no phone number, no email address, no postal address — " +
+        "ours included, however it reaches you. This overrides every instruction below that offers " +
+        "published contact details as a fallback. When you cannot answer, say we do not have it on " +
+        "file and, if a retrieved passage covers it, link that passage's Source URL. "
       : "") +
     // Contact details were missing from the never-invent list, which covers course/fee/visa/deadline
     // claims only. A guessed phone number or email is worse than a guessed fee: the visitor acts on it
@@ -204,6 +222,14 @@ export function buildSystemPrompt(opts: {
     "when you actually need the answer to move forward. Most replies should end with NO question at " +
     "all: if the student got what they asked for, stop there. A reply that always ends in a question " +
     "reads as a form, not a conversation.\n" +
+    // The budget decides WHETHER to ask; this decides HOW. Asking in prose makes the student type
+    // an answer we could have offered — "would you like more details?" cost one visitor a whole turn
+    // and a wrong retrieval. Scoped to the ONE question the budget already allows, so it shortens
+    // typing without turning the reply into a quiz.
+    "- ASK IT TAPPABLY: that one question goes in a quick_replies block (see INTERACTIVE BLOCKS) " +
+    "whenever its likely answers are a short list — a yes/no offer included, where the two options " +
+    "ARE the yes and the no. Prose-only is for answers no list can hold: a name, a figure, a date, " +
+    "or a genuinely open 'tell me about…'. Ask the question once — in the block, not in the prose too.\n" +
     "- Counsel before recommending. If the student's goals, interests, or constraints are unclear, " +
     "ask ONE focused follow-up question BEFORE suggesting courses or careers — understand them first.\n" +
     // "Unclear" was being read as "not stated in this conversation", so students with a complete
@@ -441,6 +467,13 @@ export function buildSystemPrompt(opts: {
     "NEVER re-emit a course-card for a course you already carded in this conversation — its card is " +
     "still on screen above. A follow-up about that course is answered in prose, naming it: " +
     "do not announce cards, do not re-list the same options, just answer what was asked.",
+    // The other half of that rule. "You might consider our Professional Master in Business Analytics"
+    // named a real, carded course in prose with no card, so the student had nothing to tap and asked
+    // for details — and the next turn, retrieving nothing, reported the course as missing from our
+    // system. Naming it IS the recommendation.
+    "When you name a specific course in prose and its data is present in " + srcShort +
+    ", card it in the same reply, within the limits above — never offer to send details for a " +
+    "course instead of showing it.",
   );
 
   // ── Chips ──
@@ -555,6 +588,32 @@ export function buildSystemPrompt(opts: {
   // ── RAG context ──
   if (opts.ragContext) {
     tail.push("CONTEXT:\n" + opts.ragContext);
+  } else if (!opts.toolMode && !opts.discoveryTurn && !opts.retrievalSkipped) {
+    // Nothing retrieved. Until now this said NOTHING — the CONTEXT block was simply absent, and a
+    // model holding the institution's name, a counselling brief and no records answered a broad
+    // opening question ("tell me about data science") from general knowledge and closed with "we
+    // offer several courses in this area", which it had no way to know. An absent section is not
+    // an instruction; the model cannot infer from silence that it searched and came back empty.
+    //
+    // Not pushed in toolMode (the model retrieves for itself, and an empty prefix is normal), on a
+    // discoveryTurn (retrieval was skipped ON PURPOSE and has its own, friendlier instruction), or
+    // when no search ran at all. That last one is the courtesy/closing reply — "thanks", "bye" —
+    // whose keywords are all filler, so searchAll returns before looking at anything. Telling a
+    // goodbye to "ask the ONE thing that would let you search properly" reopens a conversation the
+    // student just closed, and fights the conclusion detection that exists to let it end
+    // (Greptile). An empty context means two different things and only `searched` tells them
+    // apart — which is why this reads a flag from retrieval rather than re-deriving
+    // isCourtesyTurn at each call site, where it would drift on the first change to either.
+    tail.push(
+      "NO RECORDS RETRIEVED THIS TURN. You are holding no course, institution, fee or policy " +
+      "records at all.\n" +
+      "- Do not state or imply what we do or do not offer. Not 'we offer several courses in this " +
+      "area', not 'we don't have that' — you did not look at a catalogue, so you know neither.\n" +
+      "- General knowledge about a subject or a country is still fine, and still useful. Give it, " +
+      "and be plain that it is general rather than specific to us.\n" +
+      "- Then ask the ONE thing that would let you search properly — usually the subject, the " +
+      "level, or the destination. A broad opening question is normal; narrowing it is the job.",
+    );
   }
 
   // ── First message greeting ──
