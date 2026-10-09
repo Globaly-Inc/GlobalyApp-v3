@@ -70,19 +70,19 @@ function Stepper({
 function StatusPanel({ job }: Readonly<{ job: ExtractionJob }>) {
   if (job.status === "failed") {
     return (
-      <div className="flex w-full flex-col gap-2 border border-red-200 bg-red-50 p-2.5 rounded-md">
+      <div className="flex w-full flex-col gap-2 border border-red-200 bg-red-50 p-2.5 rounded-md dark:border-red-900 dark:bg-red-950">
         <div className="flex items-start gap-2">
-          <AlertCircle className="h-4 w-4 shrink-0 text-red-600 mt-0.5" />
+          <AlertCircle className="h-4 w-4 shrink-0 text-red-600 mt-0.5 dark:text-red-400" />
           <div>
-            <p className="text-sm font-medium text-red-800">Job failed</p>
-            <p className="text-xs text-red-700">
+            <p className="text-sm font-medium text-red-800 dark:text-red-200">Job failed</p>
+            <p className="text-xs text-red-700 dark:text-red-300">
               {job.error_message ? summarizeError(job.error_message) : `The job failed on ${formatDateTime(job.updated_at)}.`} Please re-run the job or check the logs for more details.
             </p>
           </div>
         </div>
         <Link
           href={`/admin/data/all-extractions/${job.id}?tab=overview`}
-          className="flex w-fit items-center gap-1.5 self-end rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 dark:border-red-900 dark:bg-transparent dark:text-red-300 dark:hover:bg-red-950"
+          className="flex w-fit items-center gap-1.5 self-end rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 dark:border-red-900 dark:bg-transparent dark:text-red-300 dark:hover:bg-red-900"
         >
           <FileText className="h-3.5 w-3.5" />
           View Logs
