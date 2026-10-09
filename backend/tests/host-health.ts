@@ -19,10 +19,15 @@ process.env.HOST_THROTTLE_MIN_MS = "8";
 process.env.SCRAPLING_BASE_URL = "https://scrapling.test";
 process.env.CRAWL4AI_BASE_URL = "";
 process.env.FIRECRAWL_API_KEY = "";
-process.env.DB_USERNAME = process.env.DB_USERNAME || "x";
-process.env.DB_PASSWORD = process.env.DB_PASSWORD || "x";
-process.env.DB_NAME = process.env.DB_NAME || "x";
-process.env.JWT_SECRET = process.env.JWT_SECRET || "x";
+// Deliberately UNCONDITIONAL dummies, not `|| "x"`. throttleForHost reserves a slot in the shared
+// extraction_host_slots table, so inheriting real credentials — anyone running this after sourcing
+// .env, which is how it gets run — made the test write example.com's pacing into the real database
+// and shift live crawls. Bad creds make reserveSharedHostSlot fail and fall back to the in-process
+// map, which is the path under test anyway.
+process.env.DB_USERNAME = "test-host-health";
+process.env.DB_PASSWORD = "test-host-health";
+process.env.DB_NAME = "test-host-health";
+process.env.JWT_SECRET = "x";
 
 let passed = 0;
 let failed = 0;
@@ -134,6 +139,55 @@ async function main() {
   const unarmed = await scrapeMarkdown("https://example.com/next");
   assertEqual(toolCalls > beforeUnarmed, true, "an UNARMED caller still reaches the scraper on a tripped host");
   assertEqual(/circuit open/.test(unarmed.error ?? ""), false, "and is never short-circuited");
+
+  // ── §3b review findings: recovery, probing, and what counts as a result ───
+  // A response of ANY kind proves the host is up, so it must clear the circuit — not just reset
+  // the count. Another caller in this process (site-crawl, site_analysis) does not arm the
+  // breaker, so it can fetch a host the snapshot is skipping and is the evidence of recovery.
+  resetHostHealth();
+  for (let i = 0; i < TRIP_AFTER; i++) noteHostOutcome("recov.edu", "failed", t0);
+  assertEqual(isHostCircuitOpen("recov.edu", t0), true, "host is tripped");
+  noteHostOutcome("recov.edu", "ok", t0);
+  assertEqual(isHostCircuitOpen("recov.edu", t0), false, "a success CLEARS the circuit, not just the fail count");
+
+  resetHostHealth();
+  for (let i = 0; i < TRIP_AFTER; i++) noteHostOutcome("slow.edu", "failed", t0);
+  noteHostOutcome("slow.edu", "throttled", t0);
+  assertEqual(isHostCircuitOpen("slow.edu", t0), false, "a 429 is a response too — it clears the circuit");
+
+  // Old failures must not survive a response: four fails, a 429, one more fail is not five
+  // consecutive failures at a host that demonstrably answered in between.
+  resetHostHealth();
+  for (let i = 0; i < TRIP_AFTER - 1; i++) noteHostOutcome("mix.edu", "failed", t0);
+  noteHostOutcome("mix.edu", "throttled", t0);
+  noteHostOutcome("mix.edu", "failed", t0);
+  assertEqual(isHostCircuitOpen("mix.edu", t0), false, "a response resets the failure streak");
+
+  // Only ONE caller probes on expiry. 16 fetchers are in flight during a snapshot, and releasing
+  // them all at a host we believe is down is a thundering herd.
+  resetHostHealth();
+  for (let i = 0; i < TRIP_AFTER; i++) noteHostOutcome("probe.edu", "failed", t0);
+  const after = t0 + TRIP_FOR_MS;
+  assertEqual(isHostCircuitOpen("probe.edu", after), false, "the first caller after expiry probes");
+  assertEqual(isHostCircuitOpen("probe.edu", after), true, "every other caller is still held back");
+  assertEqual(isHostCircuitOpen("probe.edu", after + TRIP_FOR_MS), false, "a probe that never reports re-probes next window, never stuck open");
+
+  // Backoff must never shrink the gap. With HOST_THROTTLE_MS above a fixed 8s ceiling, the min()
+  // clamped a 429's backoff to BELOW the current gap.
+  assertEqual(CEILING_GAP_MS >= BASE_GAP_MS, true, "the backoff ceiling is never below the base gap");
+
+  // ── §3c a 404 is not a verdict on the host ────────────────────────────────
+  // Recorded as neither: as a failure it would trip a healthy catalogue for having dead links; as
+  // a success its wall of 404s earned speed-up credit and could halve the gap straight back down
+  // after a 429 had just widened it.
+  resetHostHealth();
+  (Client.prototype as any).callTool = async function () {
+    return { structuredContent: { status: 404, content: [""], url: "https://example.com/gone" } };
+  };
+  const gapBefore = hostGapMs("example.com");
+  for (let i = 0; i < SPEEDUP_AFTER * 2; i++) await scrapeMarkdown(`https://example.com/gone-${i}`);
+  assertEqual(hostGapMs("example.com"), gapBefore, "a wall of 404s earns no speed-up credit");
+  assertEqual(isHostCircuitOpen("example.com"), false, "and never trips the host either");
 
   // ── §4 a tripped host must not mark its pages DEAD ────────────────────────
   const err = circuitOpenError("example.com");

@@ -21,8 +21,10 @@
 export const BASE_GAP_MS = Math.max(1, Math.floor(Number(process.env.HOST_THROTTLE_MS) || 800));
 /** Never go below this however well a host behaves. */
 export const FLOOR_GAP_MS = Math.max(1, Math.floor(Number(process.env.HOST_THROTTLE_MIN_MS) || 200));
-/** Never back off past this however badly it behaves. */
-export const CEILING_GAP_MS = 8_000;
+/** Never back off past this however badly it behaves. Derived from the base, never a bare
+ *  constant: with HOST_THROTTLE_MS set above a fixed 8s, the min() below clamped a backoff to
+ *  BELOW the current gap, so a 429 SPED UP the very host that had just asked us to slow down. */
+export const CEILING_GAP_MS = Math.max(8_000, BASE_GAP_MS);
 /** Clean fetches in a row before the gap halves. */
 export const SPEEDUP_AFTER = 20;
 /** Unusable results in a row before we stop asking this host. */
@@ -75,7 +77,12 @@ export function isHostCircuitOpen(host: string, now = Date.now()): boolean {
   const s = hosts.get(host);
   if (!s?.openUntil) return false;
   if (now < s.openUntil) return true;
-  s.openUntil = 0;
+  // Let exactly ONE caller through to probe, by pushing the window out before returning false.
+  // Clearing openUntil here released every concurrent fetcher at once — 16 of them mid-snapshot —
+  // a thundering herd at a host we already believe is down. Pushing it also means a probe that
+  // never reports (thrown before recordHostOutcome) costs one more quiet window instead of
+  // leaving the host skipped forever, which a `probing` flag would.
+  s.openUntil = now + TRIP_FOR_MS;
   s.fails = TRIP_AFTER - 1;
   return false;
 }
@@ -83,19 +90,28 @@ export function isHostCircuitOpen(host: string, now = Date.now()): boolean {
 /**
  * Record what a host just did.
  *
- * `throttled` (a real 429/503) widens the gap but never counts toward the trip: a host saying
- * "slower" is alive and worth crawling, and tripping on it would stop the one site that told us
- * exactly how to succeed.
+ * Any non-failure CLEARS an open circuit, not just the failure count. A host is only skipped on
+ * the belief that it is down, and a response is proof that it is not — leaving `openUntil` set
+ * kept a recovered host skipped for the rest of the window even when another caller in this
+ * process (site-crawl, site_analysis — neither arms the breaker) had just fetched it fine.
+ *
+ * `throttled` (a real 429/503) is a RESPONSE: it widens the gap, clears the circuit and resets
+ * the failure streak, because a host saying "slower" is alive and worth crawling. Leaving old
+ * failures counted across it meant four failures, a 429, then one more failure tripped a host
+ * that had demonstrably just answered.
  */
 export function noteHostOutcome(host: string, outcome: HostOutcome, now = Date.now()): void {
   const s = stateOf(host);
+  if (outcome !== "failed") {
+    s.fails = 0;
+    s.openUntil = 0;
+  }
   if (outcome === "throttled") {
     s.oks = 0;
     s.gapMs = Math.min(CEILING_GAP_MS, Math.max(BASE_GAP_MS, s.gapMs * 2));
     return;
   }
   if (outcome === "ok") {
-    s.fails = 0;
     s.oks++;
     if (s.oks >= SPEEDUP_AFTER && s.gapMs > FLOOR_GAP_MS) {
       s.gapMs = Math.max(FLOOR_GAP_MS, Math.floor(s.gapMs / 2));

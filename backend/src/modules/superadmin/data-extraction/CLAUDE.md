@@ -1201,9 +1201,23 @@ Three changes, each tested red-then-green (`npm run test:host-health`, 25 assert
 - **A 429 must not short-circuit the ladder.** A browser tier frequently clears what plain HTTP was
   refused, so a 429 sets a `throttled` signal and KEEPS escalating. An earlier cut returned on it
   and both skipped a tier that works and stamped live URLs dead.
-- **A throttle is not a failure.** It widens the gap and never counts toward the trip — otherwise
-  the one site telling us exactly how to succeed is the one we stop crawling. A `notFound` is not a
-  failure either: a real 404 returns in milliseconds, and a catalogue always has dead links.
+- **Any RESPONSE clears the circuit, not just the failure count.** A host is skipped only on the
+  belief that it is down, so an answer is proof it is not. Leaving `openUntil` set after a success
+  kept a recovered host skipped for the whole window even though another caller in the same process
+  (site-crawl, site_analysis — neither arms the breaker) had just fetched it. A 429 counts as a
+  response too: it widens the gap, clears the circuit and resets the streak, or four failures, a
+  429 and one more failure would trip a host that demonstrably answered in between.
+- **A `notFound` records NOTHING.** As a failure it would trip a healthy catalogue for having dead
+  links; as a success its wall of 404s earned speed-up credit and could halve the gap straight back
+  down after a 429 had just widened it. A `blocked` result with a non-empty body (Firecrawl handing
+  back a challenge wall) is a FAILURE — body length alone read it as a success.
+- **Only one caller probes on expiry.** `isHostCircuitOpen` pushes the window out before returning
+  false, so the other 15 in-flight fetchers stay held rather than all stampeding a host we believe
+  is down. Pushing the window (rather than a `probing` flag) also means a probe that never reports
+  costs one more quiet window instead of leaving the host skipped forever.
+- **`CEILING_GAP_MS` is derived from the base, never a bare constant.** With `HOST_THROTTLE_MS` set
+  above a fixed 8s, the backoff's `min()` clamped to BELOW the current gap — so a 429 SPED UP the
+  host that had just asked us to slow down.
 - **`forceFirecrawl` (admin Retry) bypasses an open circuit** — the operator is asking for this one
   page, and it is also the only way to test a trip before it expires. Note `assertPublicUrl` runs
   FIRST, so an unresolvable host never reaches host-health at all.

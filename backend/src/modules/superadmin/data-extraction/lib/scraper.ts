@@ -721,18 +721,24 @@ interface ScrapeSignals { throttled: boolean }
 /**
  * Feed the result back to host-health so the gap can adapt and the breaker can trip.
  *
- * `notFound` is deliberately NOT a failure: a real 404 returns from the first tier in
- * milliseconds, so counting it would trip a perfectly healthy host purely for having dead links —
- * which a university catalogue always does.
+ * `notFound` records NOTHING. A real 404 returns from the first tier in milliseconds, so counting
+ * it as a failure would trip a healthy host purely for having dead links — which a university
+ * catalogue always does — while counting it as a success let that same wall of dead links earn
+ * speed-up credit it never justified.
  *
- * A throttle outranks both — it widens the gap without counting toward the trip, even when the
- * page then succeeded on a browser tier, because being asked to slow down is the signal whether
- * or not we got the page in the end.
+ * A throttle outranks the rest: it widens the gap even when the page then succeeded on a browser
+ * tier, because being asked to slow down is the signal whether or not we got the page in the end.
  */
 function recordHostOutcome(host: string | null, r: ScrapeResult, signals: ScrapeSignals): ScrapeResult {
   if (!host) return r;
   if (signals.throttled) noteHostOutcome(host, "throttled");
-  else noteHostOutcome(host, r.notFound || r.markdown.length > 0 ? "ok" : "failed");
+  // A real 404 says nothing about the host's HEALTH, so it records as neither. Counting it as a
+  // success was worse than it looked: a catalogue's wall of dead links earned speed-up credit and
+  // could halve the gap straight back down after a 429 had just widened it.
+  else if (r.notFound) return r;
+  // `blocked` with a non-empty body is the Firecrawl path handing back an unusable page (a
+  // challenge wall, a soft 404). Length alone read that as a success.
+  else noteHostOutcome(host, !r.blocked && r.markdown.length > 0 ? "ok" : "failed");
   return r;
 }
 
