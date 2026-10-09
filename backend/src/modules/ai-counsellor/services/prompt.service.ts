@@ -79,6 +79,9 @@ export function buildSystemPrompt(opts: {
   /** Money topics this turn asked about that retrieval could NOT ground: withhold those, don't
    *  guess — and answer everything else. Empty or absent means nothing is withheld. */
   withheldMoneyTopics?: MoneyTopic[];
+  /** No search ran this turn — a courtesy or closing reply ("thanks", "bye") has nothing in it to
+   *  retrieve for. Suppresses the empty-retrieval rule below, whose premise is that we DID look. */
+  retrievalSkipped?: boolean;
   /** Embed mode: Cloudflare-derived visitor location + the most relevant branch, already rendered
    *  by lib/visitor-location. Absent when location is unknown or no branch is in their country. */
   visitorLocation?: string | null;
@@ -585,15 +588,22 @@ export function buildSystemPrompt(opts: {
   // ── RAG context ──
   if (opts.ragContext) {
     tail.push("CONTEXT:\n" + opts.ragContext);
-  } else if (!opts.toolMode && !opts.discoveryTurn) {
+  } else if (!opts.toolMode && !opts.discoveryTurn && !opts.retrievalSkipped) {
     // Nothing retrieved. Until now this said NOTHING — the CONTEXT block was simply absent, and a
     // model holding the institution's name, a counselling brief and no records answered a broad
     // opening question ("tell me about data science") from general knowledge and closed with "we
     // offer several courses in this area", which it had no way to know. An absent section is not
     // an instruction; the model cannot infer from silence that it searched and came back empty.
     //
-    // Not pushed in toolMode (the model retrieves for itself, and an empty prefix is normal) or on
-    // a discoveryTurn (retrieval was skipped ON PURPOSE and has its own, friendlier instruction).
+    // Not pushed in toolMode (the model retrieves for itself, and an empty prefix is normal), on a
+    // discoveryTurn (retrieval was skipped ON PURPOSE and has its own, friendlier instruction), or
+    // when no search ran at all. That last one is the courtesy/closing reply — "thanks", "bye" —
+    // whose keywords are all filler, so searchAll returns before looking at anything. Telling a
+    // goodbye to "ask the ONE thing that would let you search properly" reopens a conversation the
+    // student just closed, and fights the conclusion detection that exists to let it end
+    // (Greptile). An empty context means two different things and only `searched` tells them
+    // apart — which is why this reads a flag from retrieval rather than re-deriving
+    // isCourtesyTurn at each call site, where it would drift on the first change to either.
     tail.push(
       "NO RECORDS RETRIEVED THIS TURN. You are holding no course, institution, fee or policy " +
       "records at all.\n" +

@@ -15,6 +15,7 @@
 
 import {
   courseKeywordsFor, detectDegreeLevel, isCourtesyTurn, lastAssistantQuestion, resolveQuery, retrievalKeywords,
+  searchAll,
   withoutContactDetails,
 } from "../src/modules/ai-counsellor/services/rag.service.js";
 
@@ -36,7 +37,7 @@ const assertEqual = (actual: unknown, expected: unknown, label: string) =>
 
 const msg = (role: string, content: string) => ({ role, content });
 
-function main() {
+async function main() {
   const question = "Would you like to see nursing courses in Melbourne?";
 
   console.log("\nisCourtesyTurn — turns that ask for nothing");
@@ -304,6 +305,19 @@ function main() {
   assert(red("150 Great Portland Street, London").includes("London"), "the city still survives either way");
 }
 
+console.log("\nsearchAll.searched — empty context has two causes and the prompt needs them apart");
+{
+  // These inputs MUST be ones searchAll refuses before its first query — the early return is what
+  // keeps this file off the database. "thanks, that's all" is NOT one of them: CLOSING_RE is
+  // anchored and the comma breaks it, so that string runs the full ten-way search and this block
+  // would quietly start asserting against whatever the dev DB happens to hold.
+  const bye = await searchAll({ query: "thanks", userId: 0 });
+  assertEqual(bye.searched, false, "a closing reply never searched");
+  assertEqual(bye.contextText, "", "…and has no context either");
+  assertEqual((await searchAll({ query: "ok", userId: 0 })).searched, false, "nor does a bare acknowledgement");
+  assertEqual((await searchAll({ query: "bye", userId: 0 })).searched, false, "nor a goodbye");
+}
+
 console.log("\nresolveQuery — what the semantic searches (rack, country, memory) see");
   {
     const refund = "Would you like me to explain our refund policy?";
@@ -348,4 +362,4 @@ console.log("\nresolveQuery — what the semantic searches (rack, country, memor
   if (failed > 0) process.exit(1);
 }
 
-main();
+void main();

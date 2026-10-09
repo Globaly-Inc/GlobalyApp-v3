@@ -290,6 +290,7 @@ export async function handleMessage(opts: {
           rackProfile,
           institutionGuidance: memory?.text,
           withheldMoneyTopics,
+          retrievalSkipped: !ragOutput.searched,
         }),
         history,
         userMessage: opts.content,

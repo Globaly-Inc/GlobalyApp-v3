@@ -423,6 +423,7 @@ export async function guestRoutes(app: FastifyInstance) {
         institutionGuidance: memory?.text,
         withheldMoneyTopics,
         visitorLocation: visitorLocation?.section ?? null,
+        retrievalSkipped: !ragOutput.searched,
       });
 
       const result = await streamChat({

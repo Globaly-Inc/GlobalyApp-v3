@@ -43,4 +43,18 @@ assert.ok(
   "a deliberate discovery turn keeps its own instruction",
 );
 
+// A courtesy or closing reply — "thanks", "bye" — has no keywords to search, so searchAll returns
+// before looking at anything and the context is empty for a completely different reason. Telling a
+// goodbye to ask one more narrowing question reopens a conversation the student just closed, and
+// fights the conclusion detection that exists to let it end (Greptile).
+const closing = buildSystemPrompt({ ...base, ragContext: "", retrievalSkipped: true, embedConfig: widget });
+assert.ok(!closing.includes("NO RECORDS RETRIEVED"), "a turn that never searched is not a turn that found nothing");
+assert.ok(!closing.includes("ask the ONE thing"), "and is never told to ask a narrowing question");
+// The flag only speaks for itself: a turn that DID search still gets the rule.
+assert.match(
+  buildSystemPrompt({ ...base, ragContext: "", retrievalSkipped: false, embedConfig: widget }),
+  /NO RECORDS RETRIEVED THIS TURN/,
+  "searched-and-empty is unaffected",
+);
+
 console.log("prompt-empty-retrieval: ok");
