@@ -45,6 +45,7 @@
     "test:enquiry-messages": "node --import tsx tests/enquiries/messages.ts",
     "test:enquiry-email-queue": "node --import tsx tests/enquiries/email-queue.ts",
     "test:chat-summary": "node --import tsx tests/chat-summary.ts",
+    "test:host-health": "node --import tsx tests/host-health.ts",
     "test:scraper-cascade": "node --import tsx tests/scraper-cascade.ts",
     "test:eligibility-extraction": "node --import tsx tests/eligibility-extraction.ts",
     "test:partial-date": "node --import tsx tests/partial-date.ts",
