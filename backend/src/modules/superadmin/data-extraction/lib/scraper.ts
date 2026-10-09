@@ -547,7 +547,10 @@ async function scraplingScrape(
       // provider can change that; escalating only spends minutes per dead URL.
       if (status === 404 || status === 410) {
         logger.info(`scrapling mcp: tool "${tier.tool}" got HTTP ${status} for ${url} — dead URL, not escalating`);
-        return { content: "", tierUsed: tier.tool, notFound: true, error: `${tier.tool}: HTTP ${status} — source page does not exist` };
+        // `throttled` rides along: plain HTTP can answer 429 and a browser tier then confirm 404,
+        // and dropping the flag here recorded the page as a bare dead link — silently discarding
+        // the host's own request to slow down.
+        return { content: "", tierUsed: tier.tool, notFound: true, throttled, error: `${tier.tool}: HTTP ${status} — source page does not exist` };
       }
       if (status === 429 || status === 503) {
         throttled = true;
@@ -732,10 +735,11 @@ interface ScrapeSignals { throttled: boolean }
 function recordHostOutcome(host: string | null, r: ScrapeResult, signals: ScrapeSignals): ScrapeResult {
   if (!host) return r;
   if (signals.throttled) noteHostOutcome(host, "throttled");
-  // A real 404 says nothing about the host's HEALTH, so it records as neither. Counting it as a
-  // success was worse than it looked: a catalogue's wall of dead links earned speed-up credit and
-  // could halve the gap straight back down after a 429 had just widened it.
-  else if (r.notFound) return r;
+  // A real 404 is a RESPONSE — it proves the host is up, so it clears the circuit — but it says
+  // nothing about pace, so it earns no speed-up credit. Recording nothing at all was wrong in the
+  // other direction: the single probe that reopens a circuit often lands on a dead link, and
+  // leaving `openUntil` set then re-skipped a host that had just answered, every window.
+  else if (r.notFound) noteHostOutcome(host, "alive");
   // `blocked` with a non-empty body is the Firecrawl path handing back an unusable page (a
   // challenge wall, a soft 404). Length alone read that as a success.
   else noteHostOutcome(host, !r.blocked && r.markdown.length > 0 ? "ok" : "failed");

@@ -32,7 +32,12 @@ export const TRIP_AFTER = 5;
 /** How long the circuit stays open before one trial request is allowed through. */
 export const TRIP_FOR_MS = 10 * 60_000;
 
-export type HostOutcome = "ok" | "failed" | "throttled";
+/**
+ * `alive` is "the host answered, but the answer says nothing about how fast we may go" — a
+ * confirmed 404/410. It clears the circuit and the failure streak like any other response, and
+ * deliberately earns NO speed-up credit, so a catalogue's wall of dead links cannot halve the gap.
+ */
+export type HostOutcome = "ok" | "failed" | "throttled" | "alive";
 
 interface HostState {
   gapMs: number;
@@ -106,6 +111,7 @@ export function noteHostOutcome(host: string, outcome: HostOutcome, now = Date.n
     s.fails = 0;
     s.openUntil = 0;
   }
+  if (outcome === "alive") return;
   if (outcome === "throttled") {
     s.oks = 0;
     s.gapMs = Math.min(CEILING_GAP_MS, Math.max(BASE_GAP_MS, s.gapMs * 2));

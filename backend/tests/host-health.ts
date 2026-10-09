@@ -189,6 +189,44 @@ async function main() {
   assertEqual(hostGapMs("example.com"), gapBefore, "a wall of 404s earns no speed-up credit");
   assertEqual(isHostCircuitOpen("example.com"), false, "and never trips the host either");
 
+  // ── §3d a 404 still RECOVERS the host ─────────────────────────────────────
+  // The probe that reopens a circuit frequently lands on a dead link — that is the shape of a
+  // catalogue. Recording nothing left `openUntil` pushed out by the probe itself, so the host was
+  // re-skipped every window, indefinitely. A 404 proves the server answered.
+  // BOTH go through scrapeMarkdown on purpose. The defects were in recordHostOutcome and in
+  // scraplingScrape's 404 return, so a direct noteHostOutcome("alive") call passes whether or not
+  // the wiring is right — verified: it stayed green with both fixes reverted.
+  resetHostHealth();
+  (Client.prototype as any).callTool = async function () {
+    return { structuredContent: { status: 404, content: [""], url: "https://example.com/gone" } };
+  };
+  // Trip the host with the window ALREADY elapsed, so the next real call is the probe.
+  const elapsed = Date.now() - TRIP_FOR_MS - 1;
+  for (let i = 0; i < TRIP_AFTER; i++) noteHostOutcome("example.com", "failed", elapsed);
+  assertEqual(isHostCircuitOpen("example.com", elapsed + 1), true, "tripped while the window was live");
+  const probe = await scrapeMarkdown("https://example.com/gone", { breaker: true });
+  assertEqual(probe.notFound, true, "the probe got a 404");
+  assertEqual(isHostCircuitOpen("example.com"), false, "a 404 probe CLEARS the circuit — the host answered");
+
+  // ...and still buys no speed-up.
+  resetHostHealth();
+  const gap0 = hostGapMs("alive.edu");
+  for (let i = 0; i < SPEEDUP_AFTER * 3; i++) noteHostOutcome("alive.edu", "alive");
+  assertEqual(hostGapMs("alive.edu"), gap0, "a wall of 404s earns no speed-up credit");
+
+  // 429 on plain HTTP, then a browser tier confirming 404. The 404/410 return dropped the
+  // throttled flag, and the host's own request to slow down went with it.
+  resetHostHealth();
+  let tierCall = 0;
+  (Client.prototype as any).callTool = async function () {
+    tierCall++;
+    const status = tierCall === 1 ? 429 : 404;
+    return { structuredContent: { status, content: [""], url: "https://example.com/slow" } };
+  };
+  const gapBeforeMix = hostGapMs("example.com");
+  await scrapeMarkdown("https://example.com/slow");
+  assertEqual(hostGapMs("example.com") > gapBeforeMix, true, "a 429 then a confirmed 404 still widens the gap");
+
   // ── §4 a tripped host must not mark its pages DEAD ────────────────────────
   const err = circuitOpenError("example.com");
   assertEqual(isScraperInfraFailure(err), true, "the breaker's error is classified as OUR failure");
