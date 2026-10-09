@@ -18,6 +18,9 @@ export function feeTotal(fee: ServiceFee) {
   return Number(fee.total_amount) || installmentsOf(fee).reduce((sum, i) => sum + installmentSum(i), 0);
 }
 
+/** Exact saved amounts keep their decimals (AUD 100.50 stays 100.5, not 101). */
+export const formatAmount = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 2 });
+
 const STUDENT_CHIP: Record<ServiceFee["student_type"], [string, string]> = {
   both: ["All students", "bg-primary/10 text-primary"],
   domestic: ["Domestic", "bg-emerald-500/10 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300"],
@@ -35,7 +38,7 @@ export function FeeCard({
   const n = installments.length;
   const total = feeTotal(fee);
   const [studentLabel, studentClass] = STUDENT_CHIP[fee.student_type] ?? STUDENT_CHIP.both;
-  const money = (v: number) => `${fee.currency} ${Math.round(v).toLocaleString()}`;
+  const money = (v: number) => `${fee.currency} ${formatAmount(v)}`;
 
   return (
     <article
@@ -52,11 +55,11 @@ export function FeeCard({
           <div className="mt-2.5 flex flex-wrap items-baseline gap-x-4 gap-y-1">
             <span className="font-heading text-[28px] leading-none font-bold tracking-[-0.015em]">
               <small className="mr-1.5 align-[4px] font-mono text-xs font-semibold tracking-normal text-muted-foreground">{fee.currency}</small>
-              <CountUp value={total} />
+              <CountUp value={total} format={formatAmount} />
             </span>
             <span className="text-[12.5px] text-muted-foreground">
               <b className="text-foreground">{n}</b> installment{n === 1 ? "" : "s"}
-              {n > 1 && <> · about <b className="text-foreground">{money(total / n)}</b> each</>}
+              {n > 1 && <> · about <b className="text-foreground">{fee.currency} {Math.round(total / n).toLocaleString()}</b> each</>}
             </span>
           </div>
         </div>

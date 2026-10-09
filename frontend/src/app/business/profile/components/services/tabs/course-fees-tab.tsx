@@ -7,7 +7,7 @@ import { CountUp } from "@/components/count-up";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { businessProfileDetailApi } from "../../../apis";
 import { ServiceFeeForm } from "./service-fee-form";
-import { FeeCard, feeTotal } from "./fee-card";
+import { FeeCard, feeTotal, formatAmount } from "./fee-card";
 import { TabSection } from "./tab-section";
 import type { ServiceFee, ServiceFeeInput } from "../../../apis/types";
 
@@ -82,22 +82,35 @@ export function CourseFeesTab({ serviceId, isCourse = true }: Readonly<{ service
     }
   };
 
-  const currencies = new Set(fees.map((f) => f.currency));
   const label = isCourse ? "course fee" : "service fee";
+  // A student pays the fees for their own group plus the "both" ones — never domestic AND
+  // international together. So one total per group (just "All students" when no fee is
+  // group-specific), and no total for a group whose fees mix currencies.
+  const split = fees.some((f) => f.student_type !== "both");
+  const groups = (split ? (["domestic", "international"] as const) : (["both"] as const)).map((g) => {
+    const own = fees.filter((f) => f.student_type === "both" || f.student_type === g);
+    const currencies = new Set(own.map((f) => f.currency));
+    return { g, own, currency: currencies.size === 1 ? own[0]?.currency ?? null : null, total: own.reduce((sum, f) => sum + feeTotal(f), 0) };
+  }).filter((x) => x.own.length > 0);
+  const GROUP_LABEL = { both: "All students", domestic: "Domestic students", international: "International students" };
   const summary = (
-    <div className="rounded-xl border bg-card px-4 py-3.5 sm:px-[18px]">
-      <p className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">Estimated cost to study</p>
-      {currencies.size > 1 ? (
-        <p className="mt-1 font-heading text-2xl font-bold">Mixed currencies</p>
-      ) : (
-        <p className="mt-1 font-heading text-[32px] leading-none font-bold tracking-[-0.015em]">
-          <small className="mr-1.5 align-[6px] font-mono text-xs font-semibold tracking-normal text-muted-foreground">{fees[0]?.currency}</small>
-          <CountUp value={fees.reduce((sum, f) => sum + feeTotal(f), 0)} />
-        </p>
-      )}
-      <p className="mt-1.5 text-xs text-muted-foreground">
-        {fees.length} fee structure{fees.length === 1 ? "" : "s"}{currencies.size > 1 ? " · totals are in different currencies" : " · all fees added together"}
-      </p>
+    <div className="grid gap-2.5 sm:grid-cols-2">
+      {groups.map(({ g, own, currency, total }) => (
+        <div key={g} className="rounded-xl border bg-card px-4 py-3.5 sm:px-[18px]">
+          <p className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">Estimated cost · {GROUP_LABEL[g]}</p>
+          {currency ? (
+            <p className="mt-1 font-heading text-[32px] leading-none font-bold tracking-[-0.015em]">
+              <small className="mr-1.5 align-[6px] font-mono text-xs font-semibold tracking-normal text-muted-foreground">{currency}</small>
+              <CountUp value={total} format={formatAmount} />
+            </p>
+          ) : (
+            <p className="mt-1 font-heading text-2xl font-bold">Mixed currencies</p>
+          )}
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            {own.length} fee structure{own.length === 1 ? "" : "s"} that apply to {GROUP_LABEL[g].toLowerCase()}
+          </p>
+        </div>
+      ))}
     </div>
   );
 
