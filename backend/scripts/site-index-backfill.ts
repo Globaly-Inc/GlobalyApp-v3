@@ -18,6 +18,7 @@ import "dotenv/config";
 import { masterKnex } from "../src/core/db/master-pool.js";
 import { ownerWebsite } from "../src/modules/ai-counsellor/repositories/embed.repository.js";
 import { ensureOwnerSiteIndex } from "../src/modules/ai-counsellor/services/site-index.service.js";
+import { queueService } from "../src/shared/queue/queueService.js";
 
 const dry = process.argv.includes("--dry");
 
@@ -51,4 +52,6 @@ async function main() {
 
 main()
   .catch((err) => { console.error(err); process.exitCode = 1; })
-  .finally(() => masterKnex.destroy());
+  // ensureOwnerSiteIndex opens an AMQP connection to queue each crawl; closing only the
+  // pool leaves the process alive. close() is a no-op when nothing ever connected (--dry).
+  .finally(async () => { await queueService.close(); await masterKnex.destroy(); });

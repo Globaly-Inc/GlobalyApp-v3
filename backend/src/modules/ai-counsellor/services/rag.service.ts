@@ -58,6 +58,15 @@ const ACK_RE =
 const AFFIRM_RE =
   /^(yes|yea|yeah|yep|yup|sure|please|thanks?|more|tell|show|send|give|also|too|definitely|absolutely)$/i;
 
+/** Values an answer can BE rather than subjects it can be about: a month, a year, a figure.
+ * "September" answering "which intake?" has to borrow that question like "yes" does — but it is
+ * the only kind of one-word answer we can recognise, which is why the test below asks the
+ * question in terms of shape, not count.
+ * ponytail: a one-word answer naming a place ("Melbourne") reads as a subject and keeps its own
+ * words — widen this only if a real conversation shows that losing the borrow hurts. */
+const ANSWER_RE =
+  /^(jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|jun(e)?|jul(y)?|aug(ust)?|sep(t|tember)?|oct(ober)?|nov(ember)?|dec(ember)?|\d+)$/i;
+
 export function isCourtesyTurn(message: string, priorQuestion?: string | null): boolean {
   const text = message.trim();
   return CLOSING_RE.test(text) || (!priorQuestion && ACK_RE.test(text));
@@ -101,8 +110,12 @@ export function retrievalKeywords(
   // "ok" survives extractKeywords as NOTHING (<= 2 letters) and used to search nothing at all,
   // while "the second one" survives as two pointer words and used to search for them literally.
   // What matters is whether any word names a subject, not how many words there are.
-  const subject = own.filter((w) => !POINTER_RE.test(w) && !ACK_RE.test(w) && !AFFIRM_RE.test(w));
-  if (subject.length > 1 || !priorQuestion) return { keywords: own, fromPriorQuestion: false };
+  const subject = own.filter((w) =>
+    !POINTER_RE.test(w) && !ACK_RE.test(w) && !AFFIRM_RE.test(w) && !ANSWER_RE.test(w));
+  // ONE surviving subject word is still a subject (Greptile): "show engineering" loses "show" to
+  // AFFIRM_RE, and borrowing on a count of one meant an engineering request also searched the
+  // nursing question before it. Borrow only when nothing of the visitor's own names a topic.
+  if (subject.length || !priorQuestion) return { keywords: own, fromPriorQuestion: false };
   const borrowed = extractKeywords(priorQuestion);
   if (!borrowed.length) return { keywords: own, fromPriorQuestion: false };
   return { keywords: [...new Set([...borrowed, ...own])], fromPriorQuestion: true };
@@ -161,7 +174,21 @@ const FILLER = new Set(["looking", "degree", "degrees", "course", "courses", "pr
   // turn that states a qualification ("I have X and want Y"), where every word must hit a course
   // NAME — "want nursing" matched nothing and fell back to loose matching.
   "want", "wants", "need", "needs", "interested", "seeking", "hold", "holds", "completed",
-  "there", "after"]);
+  "there", "after",
+  // How a visitor ASKS, which the list above never covered — and the opening message is almost
+  // always phrased this way. "can you tell me about studying nursing" reached searchCourses as
+  // "tell nursing", whose strict pass needs BOTH words in a course name, matches nothing, and
+  // drops to the loose OR the strict pass exists to avoid. Worse, "I want to know about your
+  // courses" reduced to the single word "know" and went looking for '%know%' in course
+  // descriptions, instead of the empty query that means BROWSE — which is the correct answer to
+  // "what do you offer".
+  //
+  // Each of these is a verb or a quantifier, never the name of a subject. Deliberately NOT here:
+  // "information" and "info", because Information Technology and Information Systems are real
+  // course names and dropping the word would blunt the one query that most needs it.
+  "tell", "know", "explain", "describe", "show", "find", "learn", "help",
+  "available", "options", "option", "details", "detail",
+  "recommend", "recommendation", "recommendations", "suggest", "suggestion", "suggestions"]);
 
 /**
  * What the visitor already HOLDS, which is never what they are asking for. The level was read from
@@ -760,6 +787,15 @@ const CONTACT_RE: Array<[RegExp, string]> = [
   [/[\w.+-]+@[\w-]+\.[\w.-]+/g, "[contact withheld]"],
   [/\+\d[\d\s().-]{7,}\d/g, "[contact withheld]"],
   [/\b(?:tel|phone|call|mobile|fax|whatsapp)\b[:.\s]*[\d(][\d\s().-]{6,}\d/gi, "[contact withheld]"],
+  // A street address is a contact route as much as a phone number is, and the prompt rule alone
+  // left one sitting in the context for the model to resist (Greptile). Anchored on a HOUSE NUMBER
+  // followed by a street word, so the city, state and country around it survive — "where are your
+  // campuses" is a question about a place. The lookahead keeps a formatted figure out: "950,000"
+  // is never a house number.
+  // ponytail: a street named with no number ("on College Road") still gets through; widen only if
+  // one shows up in a real passage, since every widening risks eating a fee.
+  [/\b\d{1,5}[a-z]?(?![,.]\d)(?:[\s,.-]+[\p{L}\p{N}'()-]+){0,5}[\s,]+(?:road|rd|street|st|avenue|ave|lane|drive|boulevard|blvd|highway|parade|place|terrace|square|crescent)\b\.?/giu, "[address withheld]"],
+  [/\bp\.?\s?o\.?\s*box\s*\d+/gi, "[address withheld]"],
 ];
 
 export function withoutContactDetails(text: string): string {

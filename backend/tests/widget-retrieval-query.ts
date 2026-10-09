@@ -103,6 +103,17 @@ function main() {
     assert(!retrievalKeywords("thanks!", prior).keywords.length, "a goodbye never borrows");
   }
 
+  {
+    // "show" is in AFFIRM_RE, so filtering it left ONE word and the count rule (> 1) borrowed the
+    // previous question — an engineering request also searched nursing (Greptile). A command word
+    // is not a subject: what matters is whether ANY subject word survives, not how many.
+    const prior = "Would you like to see nursing courses in Melbourne?";
+    const r = retrievalKeywords("show engineering", prior);
+    assert(!r.fromPriorQuestion, "a one-subject reply keeps its own words", r.keywords);
+    assert(!r.keywords.includes("nursing"), "the previous subject does not leak in", r.keywords);
+    // Same shape, opposite answer: a month is not a subject, so it still borrows (pinned above).
+  }
+
   console.log("\nretrievalKeywords — a real question searches its own words");
   {
     const prior = "Would you like to see nursing courses in Melbourne?";
@@ -187,6 +198,21 @@ function main() {
       "same for programs");
     assertEqual(courseKeywordsFor(retrievalKeywords("do you offer engineering courses", null).keywords, null),
       "engineering", "the subject still decides when there is one");
+    // Same defect, one phrasing further out: how a visitor ASKS was never filtered, and the
+    // opening message is almost always phrased that way. "tell"/"know" are not subjects, but they
+    // reached the query and the STRICT pass needs every word in a course NAME — so a question with
+    // a perfectly good subject in it matched nothing and fell to the loose OR, and a question with
+    // no subject at all searched descriptions for '%know%' instead of browsing.
+    const cq = (q: string) => courseKeywordsFor(retrievalKeywords(q, null).keywords, null);
+    assertEqual(cq("can you tell me about studying nursing"), "nursing", "an asking verb never reaches the query");
+    assertEqual(cq("tell me about data science"), "data science", "…and the subject survives intact");
+    assertEqual(cq("hi, I want to know about your courses"), "", "a bare 'what do you have' browses, never searches '%know%'");
+    assertEqual(cq("what options are available"), "", "same for options/available");
+    assertEqual(cq("can you recommend a business course"), "business", "recommend/suggest are how they ask, not what they want");
+    // The words deliberately left OUT of FILLER, because they name real courses. If either of
+    // these ever reduces to "technology" or "machine", the filter has gone too far.
+    assertEqual(cq("I want to study information technology"), "information technology", "'information' is a course name, not filler");
+    assertEqual(cq("I want to learn machine learning"), "machine learning", "'learning' survives even though 'learn' does not");
     // An MBA is a NAMED qualification, not a level: the degree_level column says "Master" for it,
     // so dropping the word left an empty query and browsed eight master's courses alphabetically
     // in place of the MBA that was asked for. It stays in the query; "masters" still goes.
@@ -220,6 +246,15 @@ function main() {
   assertEqual(red("1 200 000 THB per year"), "1 200 000 THB per year", "nor is a spaced-out figure");
   assertEqual(red("Applications close 2026-10-08"), "Applications close 2026-10-08", "nor is a date");
   assertEqual(red("IELTS 6.5 with 6.0 in writing"), "IELTS 6.5 with 6.0 in writing", "nor a test score");
+  // A postal address is a contact route too (owner decision, 2026-10-08) — the prompt rule alone
+  // left it to the model, with the street still sitting in the context window (Greptile).
+  assert(!red("Visit us at 123 College Road, Pathumthani").includes("College Road"), "a street address goes");
+  assert(red("Visit us at 123 College Road, Pathumthani").includes("Pathumthani"), "but the city stays — a place is not a contact route");
+  assert(!red("Level 6, 579 Harris St, Ultimo").includes("579"), "a unit-and-number address goes");
+  assert(!red("58 Moo 9, km. 42 Paholyothin Road, Klong Luang").includes("Paholyothin"), "and a long one");
+  assert(!red("P.O. Box 4, Klong Luang").includes("Box 4"), "so does a PO box");
+  assertEqual(red("Tuition is 950,000 THB at the Bangkok campus"), "Tuition is 950,000 THB at the Bangkok campus",
+    "a fee followed by a place is not an address");
 }
 
 console.log("\nresolveQuery — what the semantic searches (rack, country, memory) see");

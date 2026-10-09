@@ -17,7 +17,7 @@ import { PROFILE_KEYS, PROFILE_SCALAR_COLUMNS, type ProfileKey, type VisitorProf
 import { config as appConfig } from "../../../config.js";
 import { resolveCountryCode, resolveCountryName } from "../../superadmin/data-extraction/lib/lookup-catalog.js";
 import * as branchService from "../../superadmin/platform/business-branches/services/business-branches.service.js";
-import { readVisitorLocation, rankBranches, renderLocationSection, type BranchLike } from "../lib/visitor-location.js";
+import { readVisitorLocation, rankBranches, renderLocationSection, branchInvite, type BranchLike, type BranchInvite } from "../lib/visitor-location.js";
 
 const logger = createChildLogger("widget-visitor");
 
@@ -698,18 +698,24 @@ export async function recordContact(
  * their reply. Every call site in the streaming path goes through this.
  */
 /**
- * The VISITOR LOCATION prompt section for this turn, or null when there is nothing to say.
+ * What this turn knows about where the visitor is: the VISITOR LOCATION prompt `section`, and
+ * the `invite` the wrap-up card may offer as an in-person visit. Null when there is nothing to
+ * say at all.
  *
  * Reads Cloudflare's location headers (names from config) and the owner's existing branches,
  * plus the extracted campuses an unclaimed owner has instead. Stores nothing. Null for: no or
  * unknown country header (local dev, not behind Cloudflare), no branches, or a visitor outside
  * every branch's country. Callers wrap it in `attempt`, so a failure costs the section, not the turn.
+ *
+ * `invite` is null more often than `section`: the prompt may list branches in the visitor's
+ * country when they ask, but only a state- or area-level match is specific enough to volunteer
+ * unprompted. See lib/visitor-location.branchInvite.
  */
 // ponytail: ~4 small queries per 100 branches per widget message; cache per owner for a minute if that ever shows up.
 export async function branchRecommendationFor(
   config: Pick<EmbedConfigRow, "institution_id" | "business_id">,
   headers: Record<string, string | string[] | undefined>,
-): Promise<string | null> {
+): Promise<{ section: string; invite: BranchInvite | null } | null> {
   const location = readVisitorLocation(headers, {
     country: appConfig.CLOUDFLARE_COUNTRY_HEADER,
     region: appConfig.CLOUDFLARE_REGION_HEADER,
@@ -740,7 +746,7 @@ export async function branchRecommendationFor(
   const match = rankBranches(location, branches);
   if (!match) return null;
   const countryName = (await resolveCountryName(location.country)) ?? location.country;
-  return renderLocationSection(location, countryName, match);
+  return { section: renderLocationSection(location, countryName, match), invite: branchInvite(match) };
 }
 
 export async function attempt<T>(label: string, fn: () => Promise<T>): Promise<T | null> {

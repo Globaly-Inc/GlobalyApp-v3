@@ -111,6 +111,7 @@ export const embedMockApi = {
         covered: "we've covered the Master of Data Science, its fees and the February intake",
         body: "I can email you a summary of everything we discussed, or we can keep going.",
         email: "visitor@example.com",
+        branch: { name: "Melbourne Campus", place: "Melbourne, Victoria, Australia" },
       },
     });
     onEvent({ type: "done" });

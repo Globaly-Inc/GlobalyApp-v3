@@ -585,6 +585,25 @@ export function buildSystemPrompt(opts: {
   // ── RAG context ──
   if (opts.ragContext) {
     tail.push("CONTEXT:\n" + opts.ragContext);
+  } else if (!opts.toolMode && !opts.discoveryTurn) {
+    // Nothing retrieved. Until now this said NOTHING — the CONTEXT block was simply absent, and a
+    // model holding the institution's name, a counselling brief and no records answered a broad
+    // opening question ("tell me about data science") from general knowledge and closed with "we
+    // offer several courses in this area", which it had no way to know. An absent section is not
+    // an instruction; the model cannot infer from silence that it searched and came back empty.
+    //
+    // Not pushed in toolMode (the model retrieves for itself, and an empty prefix is normal) or on
+    // a discoveryTurn (retrieval was skipped ON PURPOSE and has its own, friendlier instruction).
+    tail.push(
+      "NO RECORDS RETRIEVED THIS TURN. You are holding no course, institution, fee or policy " +
+      "records at all.\n" +
+      "- Do not state or imply what we do or do not offer. Not 'we offer several courses in this " +
+      "area', not 'we don't have that' — you did not look at a catalogue, so you know neither.\n" +
+      "- General knowledge about a subject or a country is still fine, and still useful. Give it, " +
+      "and be plain that it is general rather than specific to us.\n" +
+      "- Then ask the ONE thing that would let you search properly — usually the subject, the " +
+      "level, or the destination. A broad opening question is normal; narrowing it is the job.",
+    );
   }
 
   // ── First message greeting ──

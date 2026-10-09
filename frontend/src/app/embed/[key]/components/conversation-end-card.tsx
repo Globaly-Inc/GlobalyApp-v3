@@ -40,6 +40,15 @@ function asSentence(covered: string): string {
  * is treated as "continue" by the server without the visitor having to say so.
  */
 export function ConversationEndCard({ prompt, onEnd, onContinue, onRate }: ConversationEndCardProps) {
+  // Shown in both states: it is an offer while they decide, and still the useful next step once
+  // they have ended the chat. The server sends it at most once per visitor — and sends a city,
+  // never a street address or a phone number, so this stays a place, not a contact route.
+  const invite = prompt.branch ? (
+    <p className="mt-2 text-xs text-muted-foreground">
+      If you&apos;d rather talk in person, we have an office in {prompt.branch.place} —{" "}
+      <span className="font-medium text-foreground">{prompt.branch.name}</span>.
+    </p>
+  ) : null;
   const [status, setStatus] = useState<"idle" | "ending" | "ended">("idle");
   const [queued, setQueued] = useState(false);
   const [failed, setFailed] = useState<string | null>(null);
@@ -74,6 +83,7 @@ export function ConversationEndCard({ prompt, onEnd, onContinue, onRate }: Conve
             <>Ask me anything else whenever you like.</>
           )}
         </p>
+        {invite}
       </div>
       <RatingCard onRate={onRate} />
       </div>
@@ -87,6 +97,7 @@ export function ConversationEndCard({ prompt, onEnd, onContinue, onRate }: Conve
         {prompt.covered ? asSentence(prompt.covered) : ""}
         {prompt.body}
       </p>
+      {invite && <div className="mb-3 -mt-2">{invite}</div>}
 
       {failed && <p className="mb-2 text-xs text-destructive">{failed}</p>}
 

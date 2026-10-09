@@ -56,6 +56,10 @@ export type EmbedEndPrompt = {
   body: string;
   covered: string | null;
   email: string | null;
+  /** An office the visitor could visit, when their approximate location is specific enough for
+   *  one to be meaningful. Absent far more often than present. `place` is a city, never a street
+   *  address, and there is no phone number — a widget hands the visitor no contact route. */
+  branch?: { name: string; place: string } | null;
 };
 
 export type EmbedChatEvent =
