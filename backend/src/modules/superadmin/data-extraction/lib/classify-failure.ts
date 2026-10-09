@@ -39,6 +39,7 @@ export function isScraperInfraFailure(error?: string | null): boolean {
     || e.includes("crawl4ai network error")
     || e.includes("firecrawl network error")
     || e.includes("scrapling mcp connection error")
+    || e.includes("scraper circuit open")
   );
   if (ours) return true;
   // Ambiguous: a healthy scraper fetching a dead target produces these too.

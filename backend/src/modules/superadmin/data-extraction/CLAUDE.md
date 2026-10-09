@@ -1156,6 +1156,77 @@ rows already `pending`, because `queue_pages` sees them as duplicates and publis
 paused job with pending pages needs RESUME. Known gap, accepted: there is now no action that
 rediscovers a site while keeping completed queue work — Re-run wipes the queue first.
 
+## A host sets its own pace, and a dead one stops being asked (2026-10-09)
+
+`lib/host-health.ts`, wired into `scrapeMarkdown`. Not a V2 behaviour — a wall-clock fix, and the
+direct follow-on to uncapping above: snapshot used to be clamped at 500 pages (~6.7 min) and is now
+the whole site, so a 10,001-URL Princeton run dispatches 101 batches. Measured before changing
+anything — two regimes, nothing else close:
+
+- **Throttle-bound.** The 800ms gap is reserved GLOBALLY per host via `extraction_host_slots`, so
+  16–32 fetchers in flight buy nothing when one catalogue host owns the URLs. CSU Ohio 500 pages
+  /356s, Aalto 500/402s, UConn 500/409s — 1.2–1.4 pages/s, exactly that gap's ceiling. Dartmouth
+  managed 3.4/s only because its URLs span several hosts.
+- **Failure-bound.** Caltech: 531 pages/6,447s = 0.08/s, 307 of them `scraper_down`, each walking
+  get (22s) → stealthy_fetch (30s) → fetch (35s) → Firecrawl. ~1.7h re-proving that three
+  caltech.edu subdomains were down.
+
+Three changes, each tested red-then-green (`npm run test:host-health`, 25 assertions):
+
+- **The gap adapts per host.** Starts at `HOST_THROTTLE_MS` (800), halves after `SPEEDUP_AFTER`
+  (20) consecutive clean fetches down to `HOST_THROTTLE_MIN_MS` (200), snaps back to base and
+  doubles to an 8s ceiling on a real 429/503. The 800ms was precautionary — nothing has ever
+  rate-limited us — so it earns the right to shrink on evidence. Purdue's 13,611 URLs: 3.0h at
+  800ms, 1.0h at 250ms.
+- **A failing host trips.** `TRIP_AFTER` (5) consecutive unusable results and `scrapeMarkdown`
+  returns instantly for `TRIP_FOR_MS` (10 min) without touching a provider. **Half-open on
+  expiry** — the fail count is left one short of the threshold, so one more failure re-trips;
+  closing to a clean slate would re-spend five full-ladder failures every window, which is the
+  cost this exists to avoid.
+  **OPT-IN via `ScrapeOptions.breaker`, and ONLY `snapshotSite` opts in.** The page worker must
+  never arm it: a `scraper_down` failure there republishes the retry with `forceFirecrawl: false`,
+  which would hit the open circuit, answer instantly, and burn all three attempts in milliseconds
+  — so on a catalogue-concentrated job (Yale: 983 of 1,013 URLs on one host) a single five-failure
+  blip would permanently fail the whole remaining queue in seconds, where today those pages fail
+  slowly and a container that recovers mid-run still rescues the later ones. The snapshot step has
+  no per-item retry budget to corrupt, which is exactly why it is the one that may arm it.
+  Outcomes are RECORDED from every caller either way, so the adaptive gap keeps learning
+  everywhere. `test:host-health` pins the default-off behaviour.
+**Four traps, all of them live:**
+- **The breaker's error MUST classify as infra.** `isScraperInfraFailure` gained
+  `"scraper circuit open"`. Without it `deadReasonOf` takes the `blocked` branch, every URL under a
+  host that wobbled for ten minutes is stamped DEAD, and `listActiveSiteUrls` skips them from then
+  on — the same shape as the 222 live Purdue pages lost to `scraper_down` in 2026-09-30.
+  Regression-tested; verified it returns `"blocked"` with the phrase removed.
+- **A 429 must not short-circuit the ladder.** A browser tier frequently clears what plain HTTP was
+  refused, so a 429 sets a `throttled` signal and KEEPS escalating. An earlier cut returned on it
+  and both skipped a tier that works and stamped live URLs dead.
+- **Any RESPONSE clears the circuit, not just the failure count.** A host is skipped only on the
+  belief that it is down, so an answer is proof it is not. Leaving `openUntil` set after a success
+  kept a recovered host skipped for the whole window even though another caller in the same process
+  (site-crawl, site_analysis — neither arms the breaker) had just fetched it. A 429 counts as a
+  response too: it widens the gap, clears the circuit and resets the streak, or four failures, a
+  429 and one more failure would trip a host that demonstrably answered in between.
+- **A `notFound` records NOTHING.** As a failure it would trip a healthy catalogue for having dead
+  links; as a success its wall of 404s earned speed-up credit and could halve the gap straight back
+  down after a 429 had just widened it. A `blocked` result with a non-empty body (Firecrawl handing
+  back a challenge wall) is a FAILURE — body length alone read it as a success.
+- **Only one caller probes on expiry.** `isHostCircuitOpen` pushes the window out before returning
+  false, so the other 15 in-flight fetchers stay held rather than all stampeding a host we believe
+  is down. Pushing the window (rather than a `probing` flag) also means a probe that never reports
+  costs one more quiet window instead of leaving the host skipped forever.
+- **`CEILING_GAP_MS` is derived from the base, never a bare constant.** With `HOST_THROTTLE_MS` set
+  above a fixed 8s, the backoff's `min()` clamped to BELOW the current gap — so a 429 SPED UP the
+  host that had just asked us to slow down.
+- **`forceFirecrawl` (admin Retry) bypasses an open circuit** — the operator is asking for this one
+  page, and it is also the only way to test a trip before it expires. Note `assertPublicUrl` runs
+  FIRST, so an unresolvable host never reaches host-health at all.
+
+ponytail: the state is per PROCESS while `extraction_host_slots` paces across them, so five workers
+each learn a host separately and the effective gap is their average. Move `gapMs` into that table
+if the divergence ever shows up in a run. **Workers load code once — restart the step and page
+workers after deploying this.**
+
 ## Stale queue-item reclaim (2026-09-15)
 
 Root cause of jobs found stuck at `status: "processing"` forever (seen live, both local and
