@@ -40,6 +40,13 @@ export const HERO_WIDGET_KEY = "business-home-widget";
 export const TIMEZONE_KEY = "business-timezone";
 export const WORLD_CLOCKS_KEY = "business-world-clocks";
 
+/** What a crawl collects. Named in the same order wherever it is listed, so the promise made before
+ *  it runs and the counts reported while it runs read as one list. */
+export const EXTRACTION_CATEGORIES = [
+  "Courses", "Branches", "Fees", "Intakes", "Eligibility",
+  "Scholarships", "Study units", "Study options", "Accreditations", "Agents",
+] as const;
+
 export const EXTRACTION_POLL_INTERVAL_MS = 4000;
 export const EXTRACTION_MAX_POLLS = 150;
 /** Job statuses after which the crawl is over — the portal unlocks on any of them. */

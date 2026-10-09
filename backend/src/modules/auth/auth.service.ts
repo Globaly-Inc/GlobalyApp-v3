@@ -302,12 +302,12 @@ async function requireLoginNotSuspended(user: {
   }
 }
 
-export async function sendOtp(email: string) {
-  const user = await platformUserRepo.findByEmail(email);
-  if (!user) throw new NotFoundError("Account not found");
-  await requireLoginNotSuspended(user);
-
-  // Check lockout from existing challenge
+/**
+ * Mints a code and emails it, without asking whether an account exists: the caller has already
+ * established that this address may receive one. Sign-in gets there through an account; an
+ * onboarding invitation gets there through the invite row addressed to that same inbox.
+ */
+export async function issueOtpChallenge(email: string): Promise<string> {
   const existing = await authRepo.findOtpChallenge(email);
   if (existing?.locked_until && new Date() < new Date(existing.locked_until)) {
     throw new UnauthorizedError("Too many attempts. Try again later.");
@@ -316,24 +316,16 @@ export async function sendOtp(email: string) {
   const otp = String(randomInt(100_000, 999_999));
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
   await authRepo.createOtpChallenge(email, hashOtp(otp), expiresAt);
-
-  await queueEmail({ to: user.email, ...otpEmail(otp) });
-
-  // The plaintext OTP is a bearer credential — never let it reach production logs.
-  logger.info("OTP sent", {
-    userId: user.id,
-    ...(config.NODE_ENV === "production" ? {} : { otp }),
-  });
-  return { message: "OTP sent" };
+  await queueEmail({ to: email, ...otpEmail(otp) });
+  return otp;
 }
 
-export async function verifyOtp(email: string, otp: string, meta?: { ip?: string; userAgent?: string }) {
-  const user = await platformUserRepo.findByEmail(email);
-  if (!user) throw new NotFoundError("Account not found");
-  // Re-checked here too (not just sendOtp) — a suspension landing between "code sent" and
-  // "code entered" must still block completing the login, not just requesting a fresh code.
-  await requireLoginNotSuspended(user);
-
+/**
+ * Everything that decides whether a code is right — lockout, expiry, the hash, the attempt counter
+ * — and nothing that spends it. `verifyOtp` consumes the challenge afterwards; the invitation
+ * accept calls this first, so a wrong code can never create an account.
+ */
+export async function assertOtpChallenge(email: string, otp: string) {
   const challenge = await authRepo.findOtpChallenge(email);
   if (!challenge) throw new UnauthorizedError("No OTP requested");
 
@@ -356,6 +348,33 @@ export async function verifyOtp(email: string, otp: string, meta?: { ip?: string
     }
     throw new UnauthorizedError("Invalid OTP");
   }
+
+  return challenge;
+}
+
+export async function sendOtp(email: string) {
+  const user = await platformUserRepo.findByEmail(email);
+  if (!user) throw new NotFoundError("Account not found");
+  await requireLoginNotSuspended(user);
+
+  const otp = await issueOtpChallenge(user.email);
+
+  // The plaintext OTP is a bearer credential — never let it reach production logs.
+  logger.info("OTP sent", {
+    userId: user.id,
+    ...(config.NODE_ENV === "production" ? {} : { otp }),
+  });
+  return { message: "OTP sent" };
+}
+
+export async function verifyOtp(email: string, otp: string, meta?: { ip?: string; userAgent?: string }) {
+  const user = await platformUserRepo.findByEmail(email);
+  if (!user) throw new NotFoundError("Account not found");
+  // Re-checked here too (not just sendOtp) — a suspension landing between "code sent" and
+  // "code entered" must still block completing the login, not just requesting a fresh code.
+  await requireLoginNotSuspended(user);
+
+  const challenge = await assertOtpChallenge(email, otp);
 
   // OTP valid — clean up challenge
   await authRepo.deleteOtpChallenge(challenge.id);

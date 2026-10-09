@@ -9,10 +9,17 @@ export function NeedAHandCard() {
           <CircleHelp className="h-4 w-4" />
         </span>
         <div className="min-w-0">
-          <p className="text-sm font-medium">Need a hand?</p>
-          <p className="text-xs text-muted-foreground">Book a free 20-minute onboarding call with our team.</p>
-          <a href="mailto:support@globalyapp.com" className="mt-1 inline-block text-xs font-medium text-primary hover:underline">
-            Book a call →
+          <p className="text-sm font-medium">Rather be walked through it?</p>
+          <p className="text-xs text-muted-foreground">
+            Book 20 minutes with our onboarding team — we&apos;ll set it up with you.
+          </p>
+          {/* A bordered control, as the boards draw it — the aside's one offer, not a buried link.
+              A mailto, so it asks for a time rather than claiming to be a calendar. */}
+          <a
+            href="mailto:support@globalyapp.com"
+            className="mt-2.5 inline-flex h-9 items-center rounded-lg border bg-background px-3.5 text-[13px] font-semibold transition-colors hover:bg-muted"
+          >
+            Ask for a time
           </a>
         </div>
       </CardContent>

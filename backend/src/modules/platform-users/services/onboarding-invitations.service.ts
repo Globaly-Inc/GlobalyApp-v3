@@ -5,7 +5,7 @@ import { AppError, BadRequestError, ConflictError, NotFoundError } from "../../.
 import { createChildLogger } from "../../../shared/logger.js";
 import { onboardingInviteEmail, onboardingLinkRequestEmail } from "../../../shared/mail/templates.js";
 import { mailerService } from "../../../shared/mail/mailerService.js";
-import { queueEmail } from "../../auth/auth.service.js";
+import { assertOtpChallenge, issueOtpChallenge, queueEmail } from "../../auth/auth.service.js";
 import { registerBusiness } from "../../businesses/services/businesses.service.js";
 import { issueCode } from "../../referrals/services/codes.service.js";
 import * as jobsRepo from "../../superadmin/data-extraction/repositories/jobs.repository.js";
@@ -26,6 +26,14 @@ type InviteDelivery = { id: string; email: string; type: InviteType; orgName: st
 
 const hashToken = (token: string) => createHash("sha256").update(token).digest("hex");
 
+/**
+ * The button in the invitation goes to sign-in, not to a page that sets things up on open: the
+ * token rides along so that page can name the inbox and ask for its code, and `source` is what
+ * tells it to read the invite rather than behave as the ordinary sign-in.
+ */
+const inviteUrl = (token: string, type: InviteType) =>
+  `${config.WEB_APP_URL}/auth/sign-in?token=${token}&type=${type}&source=onboard-invitation`;
+
 function mintToken() {
   const token = randomBytes(32).toString("hex");
   return { token, token_hash: hashToken(token), expires_at: new Date(Date.now() + INVITE_TTL_MS) };
@@ -42,7 +50,7 @@ export function withTimeout<T>(work: Promise<T>, ms: number): Promise<T> {
 /** Sends within the admin's request and records the outcome; a failure is shown as "Email failed"
  *  and fixed with Resend, never thrown — the invite itself was created. */
 async function sendInviteEmail(d: InviteDelivery): Promise<"sent" | "failed"> {
-  const acceptUrl = `${config.WEB_APP_URL}/invite/onboarding?token=${d.token}&type=${d.type}`;
+  const acceptUrl = inviteUrl(d.token, d.type);
   try {
     await withTimeout(
       mailerService.sendMail({ to: d.email, ...onboardingInviteEmail({ acceptUrl, kind: d.type, orgName: d.orgName, categoryName: d.categoryName }) }),
@@ -55,6 +63,24 @@ async function sendInviteEmail(d: InviteDelivery): Promise<"sent" | "failed"> {
     await repo.markEmailFailed(d.id, err.message ?? "Unknown error").catch(() => {});
     return "failed";
   }
+}
+
+/**
+ * The exact mail `sendInvitation` would compose, for the admin to read before sending. No row and
+ * no token: the link keeps its real shape with a dead placeholder where the token goes, so a
+ * preview can never hand out a working invite.
+ */
+export async function previewInvitation(businessCategoryId: number, orgName?: string) {
+  const category = await repo.findCategory(businessCategoryId);
+  if (!category) throw new BadRequestError("Unknown business category");
+  const type: InviteType = category.slug === "institutions" ? "institution" : "business";
+  const { subject, html } = onboardingInviteEmail({
+    acceptUrl: inviteUrl("…", type),
+    kind: type,
+    orgName: orgName ?? null,
+    categoryName: category.name,
+  });
+  return { subject, html };
 }
 
 export async function sendInvitation(email: string, orgName: string, businessCategoryId: number, invitedBy: number, contactName?: string) {
@@ -120,10 +146,47 @@ export async function revokeInvitation(id: string) {
   }
 }
 
-/** Creates the account and org but deliberately returns no session: a mail scanner that opens the
- *  link can only use it up, never sign in — the recipient signs in with an OTP to their own inbox. */
-export async function acceptInvitation(token: string, type: InviteType) {
+/**
+ * Who the link is for, so the sign-in page can fill their address in. Read-only and side-effect
+ * free: opening the link — a mail scanner included — creates nothing and uses nothing up.
+ */
+export async function lookupInvitation(token: string, type: InviteType) {
   const tokenHash = hashToken(token);
+  const invite = await repo.findByTokenHash(tokenHash);
+  if (!invite || invite.type !== type) throw new NotFoundError("This invite link isn't valid.");
+  if (invite.status === "accepted") {
+    throw new ConflictError("Your account is already set up. Sign in with your email to continue.", { email: invite.email });
+  }
+  const lapsed = await lapsedReason(tokenHash, type);
+  if (lapsed?.reason === "revoked") throw new AppError("This invite was cancelled.", 410, "INVITE_REVOKED");
+  if (lapsed?.reason === "expired") throw new AppError("This invite link has expired.", 410, "INVITE_EXPIRED");
+  return { email: invite.email, org_name: invite.org_name, type: invite.type };
+}
+
+/**
+ * The code that signs an invited person in, before they have an account to sign into. The live
+ * invite row is the authority: it names the inbox, so a code sent there proves the same thing a
+ * password-less login proves for everyone else.
+ */
+export async function sendInvitationCode(token: string, type: InviteType) {
+  const { email } = await lookupInvitation(token, type);
+  const otp = await issueOtpChallenge(email);
+  logger.info("Invitation sign-in code sent", { email, ...(config.NODE_ENV === "production" ? {} : { otp }) });
+  return { email };
+}
+
+/**
+ * Creates the account and the org, and only ever after the code mailed to that inbox comes back
+ * right: the proof of control comes first, so a link on its own — in a scanner, a forwarded mail,
+ * a browser history — creates nothing. The session is minted afterwards by the ordinary
+ * /auth/verify-otp call, against the account this just created.
+ */
+export async function acceptInvitation(token: string, type: InviteType, otp: string) {
+  const tokenHash = hashToken(token);
+  // Against the invite's own address, not one the caller supplied, and before anything is claimed.
+  const pending = await repo.findByTokenHash(tokenHash);
+  if (pending?.status === "pending" && pending.type === type) await assertOtpChallenge(pending.email, otp);
+
   const invite = await repo.claimPending(tokenHash, type);
   if (!invite) {
     // An accepted link never signs anyone in again — otherwise it's a password-free login forever.

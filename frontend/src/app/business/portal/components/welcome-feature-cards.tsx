@@ -77,38 +77,96 @@ function LeadsDemo() {
 
 const DEMOS = { autofill: AutoFillDemo, counsellor: CounsellorDemo, leads: LeadsDemo } as const;
 
+type Feature = (typeof WELCOME_FEATURES)[number];
+
+/** The act-three card: the panelled one the splash settles into, three to a column. */
+function StackCard({ feature, index }: Readonly<{ feature: Feature; index: number }>) {
+  const { id, icon: Icon, tag, label, description } = feature;
+  const Demo = DEMOS[id];
+  return (
+    <li
+      className={cn(
+        styles.rise, styles.stackCard,
+        "group rounded-3xl bg-gradient-to-b from-white/30 via-white/5 to-transparent p-px transition-[translate] duration-300 hover:-translate-y-1.5 lg:w-[90%]",
+        index % 2 === 1 ? "lg:self-end" : "lg:self-start",
+      )}
+      style={css({ "--delay": `${2.1 + index * 0.2}s`, "--cycle-delay": `${2.7 + index * 0.2}s`, "--i": index })}
+    >
+      <div className={cn("relative h-full overflow-hidden rounded-[calc(1.5rem-1px)] bg-[#031a55]/80 p-4 text-left backdrop-blur-xl lg:flex lg:items-center lg:gap-4", index % 2 === 1 && "lg:flex-row-reverse")}>
+        <span aria-hidden className="pointer-events-none absolute -right-1 -top-3 select-none text-6xl font-black text-white/[0.05]">0{index + 1}</span>
+
+        <div aria-hidden className="flex h-[8.5rem] flex-col justify-center overflow-hidden rounded-2xl border border-white/10 bg-[#021440]/70 p-3 shadow-inner lg:h-28 lg:w-40 lg:shrink-0 xl:w-48">
+          <Demo />
+        </div>
+
+        <div className="lg:min-w-0 lg:flex-1">
+          <div className="mt-4 flex items-center gap-2 lg:mt-0">
+            <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#23DDF6]/15 text-[#23DDF6]">
+              <Icon className="h-4 w-4" aria-hidden />
+            </span>
+            <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#23DDF6]">{tag}</span>
+          </div>
+          <h2 className="mt-2 text-lg font-semibold leading-snug lg:mt-1.5 lg:text-base">{label}</h2>
+          <p className="mt-1.5 text-sm leading-relaxed text-white/70 lg:text-[13px] lg:leading-snug">{description}</p>
+        </div>
+      </div>
+    </li>
+  );
+}
+
+/**
+ * The act-two card: an editorial spread, not a bigger panel. No border, no backdrop — the splash's
+ * own gradient is the page — with an oversized ghost numeral for a drop cap and the demo carrying
+ * the weight. Only the block moves; everything else is the demo's own loop.
+ */
+function SpreadCard({ feature, index }: Readonly<{ feature: Feature; index: number }>) {
+  const { id, icon: Icon, tag, label, description } = feature;
+  const Demo = DEMOS[id];
+  return (
+    <li className={styles.spreadCard} style={css({ "--cycle-delay": "0s" })}>
+      <div className="relative flex items-center justify-center gap-12">
+        <span aria-hidden className="pointer-events-none absolute -top-20 -left-4 select-none text-[9.875rem] leading-none font-black tracking-tighter text-white/[0.07]">
+          0{index + 1}
+        </span>
+
+        <div
+          aria-hidden
+          className="flex h-68 w-96 shrink-0 flex-col justify-center overflow-hidden rounded-[1.375rem] border border-white/20 bg-[#021440]/80 p-5 shadow-[0_34px_80px_rgba(2,12,45,0.55),0_0_70px_rgba(35,221,246,0.14)]"
+        >
+          <Demo />
+        </div>
+
+        <div className="min-w-0 max-w-md text-left">
+          <div className="flex items-center gap-2.5">
+            <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#23DDF6]/15 text-[#23DDF6]">
+              <Icon className="h-5 w-5" aria-hidden />
+            </span>
+            <span className="text-xs font-bold tracking-[0.22em] text-[#23DDF6] uppercase">{tag}</span>
+          </div>
+          <h2 className="mt-3.5 max-w-[16ch] font-heading text-4xl leading-tight font-semibold tracking-tight text-balance">{label}</h2>
+          <p className="mt-3 max-w-[44ch] text-[17px] leading-relaxed text-white/80">{description}</p>
+        </div>
+      </div>
+    </li>
+  );
+}
+
+/** Act two: each feature alone at centre stage, one after another, over the whole splash. */
+export function WelcomeFeatureSpread() {
+  return (
+    <div aria-hidden className={cn(styles.bigpager, "pointer-events-none absolute inset-0 flex-col items-center justify-center px-10")}>
+      <ul className={cn(styles.pstage, "relative h-120 w-full max-w-[58rem] list-none overflow-hidden py-24")}>
+        {WELCOME_FEATURES.map((f, i) => <SpreadCard key={f.id} feature={f} index={i} />)}
+      </ul>
+    </div>
+  );
+}
+
+/** Act three: the three exactly as the splash ships them. */
 export function WelcomeFeatureCards() {
   return (
     <ul className="grid w-full max-w-4xl gap-4 sm:grid-cols-3 lg:flex lg:max-w-md lg:flex-col lg:gap-3">
-      {WELCOME_FEATURES.map(({ id, icon: Icon, tag, label, description }, i) => {
-        const Demo = DEMOS[id];
-        return (
-          <li
-            key={id}
-            className={cn(styles.rise, "group rounded-3xl bg-gradient-to-b from-white/30 via-white/5 to-transparent p-px transition-[translate] duration-300 hover:-translate-y-1.5 lg:w-[90%]", i % 2 === 1 ? "lg:self-end" : "lg:self-start")}
-            style={css({ "--delay": `${2.1 + i * 0.2}s`, "--cycle-delay": `${2.7 + i * 0.2}s` })}
-          >
-            <div className={cn("relative h-full overflow-hidden rounded-[calc(1.5rem-1px)] bg-[#031a55]/80 p-4 text-left backdrop-blur-xl lg:flex lg:items-center lg:gap-4", i % 2 === 1 && "lg:flex-row-reverse")}>
-              <span aria-hidden className="pointer-events-none absolute -right-1 -top-3 select-none text-6xl font-black text-white/[0.05]">0{i + 1}</span>
-
-              <div aria-hidden className="flex h-[8.5rem] flex-col justify-center overflow-hidden rounded-2xl border border-white/10 bg-[#021440]/70 p-3 shadow-inner lg:h-28 lg:w-40 lg:shrink-0 xl:w-48">
-                <Demo />
-              </div>
-
-              <div className="lg:min-w-0 lg:flex-1">
-              <div className="mt-4 flex items-center gap-2 lg:mt-0">
-                <span className="flex h-7 w-7 items-center justify-center rounded-lg bg-[#23DDF6]/15 text-[#23DDF6]">
-                  <Icon className="h-4 w-4" aria-hidden />
-                </span>
-                <span className="text-[11px] font-bold uppercase tracking-[0.14em] text-[#23DDF6]">{tag}</span>
-              </div>
-              <h2 className="mt-2 text-lg font-semibold leading-snug lg:mt-1.5 lg:text-base">{label}</h2>
-              <p className="mt-1.5 text-sm leading-relaxed text-white/70 lg:text-[13px] lg:leading-snug">{description}</p>
-              </div>
-            </div>
-          </li>
-        );
-      })}
+      {WELCOME_FEATURES.map((f, i) => <StackCard key={f.id} feature={f} index={i} />)}
     </ul>
   );
 }

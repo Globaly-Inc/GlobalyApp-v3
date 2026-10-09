@@ -1,6 +1,7 @@
 import { OnboardingAcceptView } from "@/app/invite/onboarding-accept-view";
 
-// The URL the onboarding invite email points at — see onboarding-invitations.service.ts's acceptUrl.
+// Where invitations sent before the flow moved still land. Today's mail points at
+// /auth/sign-in?...&source=onboard-invitation — see onboarding-invitations.service.ts's inviteUrl.
 export default function OnboardingInvitePage() {
   return <OnboardingAcceptView />;
 }

@@ -16,6 +16,7 @@ import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { sendSignInOtp, resendSignInOtp, verifySignInOtp, resetSignInError, fetchMe } from "./store/auth-slice";
 import { LOGO } from "@/lib/public-assets";
 import { SIGN_UP_ENABLED } from "@/app/auth/const";
+import { useOnboardingInvite } from "./use-onboarding-invite";
 
 const emailSchema = z.string().trim().max(255).pipe(z.email("Invalid email address"));
 const otpSchema = z.string().trim().length(6, "Please enter the 6-digit code").regex(/^\d+$/, "Code must be numeric");
@@ -33,12 +34,21 @@ export function SignInView() {
   const redirectQuery = redirectPath ? `?redirect=${encodeURIComponent(redirectPath)}` : "";
   const signUpHref = `/auth/sign-up${redirectQuery}`;
 
-  const [email, setEmail] = useState(() => searchParams.get("email") ?? "");
+  // Someone arriving from an invitation has no account yet: the invite row supplies the address and
+  // authorises the code, and the setup page is where the accounts are actually made.
+  const onboarding = useOnboardingInvite(searchParams);
+  const [typedEmail, setTypedEmail] = useState(() => searchParams.get("email") ?? "");
+  // Invited: the address belongs to the invitation, so it is read from it rather than kept in step
+  // with it — there is nothing for the person to type.
+  const email = onboarding.invited ? (onboarding.invite?.email ?? "") : typedEmail;
   const [otpCode, setOtpCode] = useState("");
   const [otpSent, setOtpSent] = useState(false);
   const [fieldError, setFieldError] = useState<string | null>(null);
   const [otpFieldError, setOtpFieldError] = useState<string | null>(null);
   const [resendCooldown, setResendCooldown] = useState(0);
+  const [sendingInvited, setSendingInvited] = useState(false);
+  /** Invited, but the invite hasn't answered yet — there is no address to send a code to. */
+  const waitingOnInvite = onboarding.invited && !onboarding.invite;
 
   const dispatch = useAppDispatch();
   const { status } = useAppSelector((state) => state.auth);
@@ -51,7 +61,7 @@ export function SignInView() {
   }, [resendCooldown]);
 
   const handleEmailChange = (value: string) => {
-    setEmail(value);
+    setTypedEmail(value);
     if (fieldError && emailSchema.safeParse(value).success) setFieldError(null);
   };
 
@@ -60,8 +70,26 @@ export function SignInView() {
     if (otpFieldError && otpSchema.safeParse(value).success) setOtpFieldError(null);
   };
 
+  /** The invited code is authorised by the invite row — there is no account to send it to yet. */
+  const sendInvitedCode = async () => {
+    setFieldError(null);
+    setSendingInvited(true);
+    try {
+      await onboarding.sendCode();
+      setOtpSent(true);
+      setResendCooldown(60);
+      setOtpCode("");
+      toast.success("Code sent!", { description: "Check your email for the 6-digit code." });
+    } catch (err) {
+      toast.error("Failed to send code", { description: (err as Error).message || "Please try again." });
+    } finally {
+      setSendingInvited(false);
+    }
+  };
+
   const handleSendOtp = async (e: FormEvent) => {
     e.preventDefault();
+    if (onboarding.invited) return sendInvitedCode();
     const result = emailSchema.safeParse(email);
     if (!result.success) {
       setFieldError(result.error.issues[0]?.message ?? "Invalid email address");
@@ -81,6 +109,7 @@ export function SignInView() {
 
   const handleResendOtp = async () => {
     if (resendCooldown > 0) return;
+    if (onboarding.invited) return sendInvitedCode();
     const outcome = await dispatch(resendSignInOtp({ email }));
     if (resendSignInOtp.fulfilled.match(outcome)) {
       setResendCooldown(60);
@@ -99,6 +128,9 @@ export function SignInView() {
       return;
     }
     setOtpFieldError(null);
+    // Invited: the code is carried to the setup page, which creates the account and org with it and
+    // only then signs them in. Nothing exists to sign into from here.
+    if (onboarding.invited) return onboarding.goToSetup(result.data);
     const outcome = await dispatch(verifySignInOtp({ email, otp: otpCode }));
     if (verifySignInOtp.fulfilled.match(outcome)) {
       toast.success("Welcome back!", { description: "You have been signed in." });
@@ -144,7 +176,9 @@ export function SignInView() {
         </div>
         <Card>
           <CardHeader className="text-center">
-            <CardTitle className="text-2xl">Welcome back</CardTitle>
+            <CardTitle className="text-2xl">
+              {onboarding.invited ? `Set up ${onboarding.invite?.orgName || "your institution"}` : "Welcome back"}
+            </CardTitle>
             <CardDescription>
               {otpSent ? `Enter the 6-digit code sent to ${email}` : "Sign in with a 6-digit code sent to your email"}
             </CardDescription>
@@ -165,13 +199,22 @@ export function SignInView() {
                     value={email}
                     onChange={(e) => handleEmailChange(e.target.value)}
                     aria-invalid={!!fieldError}
+                    // The invitation decides the address: changing it here would point the code at
+                    // an inbox the invite was never sent to.
+                    readOnly={onboarding.invited}
+                    aria-describedby={onboarding.invited ? "invited-email-hint" : undefined}
                     autoFocus
                     required
                   />
+                  {onboarding.invited && (
+                    <p id="invited-email-hint" className="text-xs text-muted-foreground">
+                      The address your invitation was sent to. We&apos;ll email the code there.
+                    </p>
+                  )}
                   {fieldError && <p className="text-sm text-destructive">{fieldError}</p>}
                 </div>
-                <Button type="submit" className="h-10 w-full cursor-pointer" disabled={loading}>
-                  {loading ? (
+                <Button type="submit" className="h-10 w-full cursor-pointer" disabled={loading || waitingOnInvite}>
+                  {loading || sendingInvited ? (
                     <>
                       <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                       Sending code…

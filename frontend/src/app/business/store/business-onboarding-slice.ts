@@ -53,13 +53,14 @@ export const markWelcomeSeen = createAsyncThunk("businessOnboarding/markWelcomeS
 type BusinessOnboardingState = {
   profile: BusinessProfile | null;
   onboardingProgress: OnboardingProgress | null;
+  onboardingProgressFailed: boolean;
   /** undefined = not fetched yet; null = no extraction job. */
   extractionStatus?: ExtractionStatus;
   status: "idle" | "loading" | "saving" | "failed";
   error: string | null;
 };
 
-const initialState: BusinessOnboardingState = { profile: null, onboardingProgress: null, status: "idle", error: null };
+const initialState: BusinessOnboardingState = { profile: null, onboardingProgress: null, onboardingProgressFailed: false, status: "idle", error: null };
 
 const businessOnboardingSlice = createSlice({
   name: "businessOnboarding",
@@ -109,8 +110,15 @@ const businessOnboardingSlice = createSlice({
       .addCase(fetchExtractionStatus.rejected, (state) => {
         if (state.extractionStatus === undefined) state.extractionStatus = null;
       })
+      .addCase(fetchOnboardingProgress.pending, (state) => {
+        state.onboardingProgressFailed = false;
+      })
       .addCase(fetchOnboardingProgress.fulfilled, (state, action) => {
         state.onboardingProgress = action.payload;
+        state.onboardingProgressFailed = false;
+      })
+      .addCase(fetchOnboardingProgress.rejected, (state) => {
+        state.onboardingProgressFailed = true;
       })
       // Locally too, not just on the server: the portal fetches progress once per mount, so without
       // this a remount inside the same session would replay the splash from stale state.

@@ -55,6 +55,7 @@ const linkFor = (key: string, businessId: number | null) => {
 
 export function GetSetUpChecklist({ progress }: Readonly<{ progress: OnboardingProgress }>) {
   const businessId = useAppSelector((st) => st.businessOnboarding.profile?.id ?? null);
+  const crawling = useAppSelector((st) => (st.businessOnboarding.extractionStatus?.status === "processing" ? st.businessOnboarding.extractionStatus : null));
   const byKey = new Map(progress.steps.map((s) => [s.key, s]));
   const blockerOf = (key: string) => {
     const req = byKey.get(REQUIRES[key] ?? "");
@@ -112,8 +113,13 @@ export function GetSetUpChecklist({ progress }: Readonly<{ progress: OnboardingP
                     </Link>
                   )}
                 </div>
-                {step.detail && !step.done && <p className="text-xs text-muted-foreground">{step.detail}</p>}
-                {!step.done && href && (isCurrent ? (
+                {/* While the crawl runs, this is the only place that says how far along it is. */}
+                {crawling && step.key === "extract_website" && !step.done ? (
+                  <p className="text-xs text-muted-foreground">Running on its own — {crawling.progress_pct}% read so far</p>
+                ) : (
+                  step.detail && !step.done && <p className="text-xs text-muted-foreground">{step.detail}</p>
+                )}
+                {!step.done && href && (crawling && step.key === "extract_website" ? null : isCurrent ? (
                   <Link href={href} className={STEP_BUTTON_PRIMARY}>Start now</Link>
                 ) : blocker ? (
                   // Locked, but never a dead end: the unlocking step's name links straight to it.

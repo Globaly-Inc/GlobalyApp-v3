@@ -93,7 +93,8 @@ export function EmbedDeveloperHandoff({ developers }: Readonly<{ developers: Dev
         <div className="min-w-0">
           <p className="text-sm font-medium">Please send this to the people who look after your website.</p>
           <p className="text-sm text-muted-foreground">
-            They get the code and where to put it. No account, no invitation in GlobalyApp.
+            They get the line, where it goes on each platform, and a way to check it worked. No account
+            needed, and they never see student enquiries.
           </p>
         </div>
         <Button size="sm" onClick={() => setMailOpen(true)} className="shrink-0 cursor-pointer">

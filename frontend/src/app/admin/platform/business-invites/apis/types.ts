@@ -43,6 +43,11 @@ export type PaginatedInvites = {
 
 export type SendInviteParams = { email: string; name: string; full_name: string; business_category_id: number };
 
+/** The mail a send would compose, rendered by the backend so the preview can't drift from it. */
+export type InvitePreview = { subject: string; html: string };
+
+export type InvitePreviewParams = { business_category_id: number; name?: string };
+
 export type SendInviteResult = { email: string; type: InviteType; email_status: Exclude<EmailStatus, "queued"> };
 
 export type ResendInviteResult = { expires_at: string; email_status: Exclude<EmailStatus, "queued"> };
