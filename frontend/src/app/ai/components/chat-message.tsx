@@ -7,6 +7,7 @@ import { CourseCard } from "./course-card";
 import { FeedbackButtons } from "./feedback-buttons";
 import { MessageBlocks } from "./message-blocks";
 import { MessageMarkdown } from "./message-markdown";
+import { ScrollRow } from "@/components/scroll-row";
 import { setReplyTo } from "../store/ai-chat-slice";
 import { splitQuote } from "../utils";
 import { useAppDispatch } from "@/lib/hooks";
@@ -19,11 +20,14 @@ type ChatMessageProps = {
   onSend?: (value: string) => boolean | void;
 };
 
-/** Cards size themselves to the container, not the viewport — the same grid has to
+/** Cards size themselves to the container, not the viewport — the same carousel has to
  * work in the 380px widget popover and on the full-width chat page. */
-// Inside a `@container/cards`: two per row while the chat column is narrow (the website widget,
-// the Ask Aly popover); from 30rem up, the original auto-fit grid, so wide views are unchanged.
-const CARD_GRID = "grid w-full grid-cols-2 gap-2.5 @min-[30rem]/cards:grid-cols-[repeat(auto-fit,minmax(240px,1fr))] @min-[30rem]/cards:gap-3";
+// Carousel = <ScrollRow> (chevron gutters, hidden scrollbar, wheel/touch still work) + CSS
+// scroll-snap on the rail. Inside a `@container/cards`: slides are ~3/4 of a narrow column
+// (widget / Ask Aly popover) so the next card peeks and invites the swipe; fixed 260px once the
+// column is wide. py-1 leaves room for the card's hover lift.
+const CARD_RAIL = "flex snap-x snap-mandatory gap-2.5 py-1 @min-[30rem]/cards:gap-3";
+const CARD_SLIDE = "w-[72%] shrink-0 snap-start @min-[30rem]/cards:w-[260px]";
 /** One card: half the row while narrow, so it matches a pair; capped at 300px when wide. */
 const SINGLE_CARD = "grid w-full grid-cols-2 gap-2.5 @min-[30rem]/cards:block @min-[30rem]/cards:max-w-[300px]";
 
@@ -150,11 +154,13 @@ function CourseCardList({ cards }: { cards: CourseCardType[] }) {
   return (
     <div className="flex flex-col gap-3">
       <div className="@container/cards w-full">
-        <div className={CARD_GRID}>
+        <ScrollRow rowClassName={CARD_RAIL}>
           {visible.map((card, i) => (
-            <CourseCard key={card.id ?? i} card={card} />
+            <div key={card.id ?? i} className={CARD_SLIDE}>
+              <CourseCard card={card} />
+            </div>
           ))}
-        </div>
+        </ScrollRow>
       </div>
       {cards.length > CARD_PAGE && (
         <button
@@ -203,13 +209,22 @@ function AssistantTurn({
         {content && <MessageMarkdown text={content} />}
         {blocks.length > 0 && <MessageBlocks blocks={blocks} onAction={onChipClick} onSend={onSend} />}
         {cards.length > 0 && (
-          // The container is the chat column, not the screen: a narrow column gets compact pairs.
+          // The container is the chat column, not the screen: slide width follows the column.
           <div className="@container/cards w-full">
-            <div className={cards.length === 1 ? SINGLE_CARD : CARD_GRID}>
-              {cards.map((card, i) => (
-                <CourseCard key={card.id ?? i} card={card} />
-              ))}
-            </div>
+            {/* One card is not a carousel — no rail, no chevron gutters. */}
+            {cards.length === 1 && cards[0] ? (
+              <div className={SINGLE_CARD}>
+                <CourseCard card={cards[0]} />
+              </div>
+            ) : (
+              <ScrollRow rowClassName={CARD_RAIL}>
+                {cards.map((card, i) => (
+                  <div key={card.id ?? i} className={CARD_SLIDE}>
+                    <CourseCard card={card} />
+                  </div>
+                ))}
+              </ScrollRow>
+            )}
           </div>
         )}
         {chips.length > 0 && !hasQuickReplies && <Chips chips={chips} onChipClick={onChipClick} />}
