@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ProfileLocationsCard } from "@/app/(web)/components/profile/profile-locations-card";
 import type { ProfileLocation } from "@/app/(web)/components/profile/profile-data";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import type { BusinessProfile } from "@/app/business/apis/types";
@@ -10,6 +9,7 @@ import { fetchBranches } from "../store/business-profile-detail-slice";
 import { LocationEditDialog, type LocationTarget } from "./location-edit-dialog";
 import { PrivacyBadge } from "@/components/privacy-badge";
 import { useSectionVisibility } from "./use-section-visibility";
+import { LocationsCard } from "./locations-card";
 
 /** One page is plenty for a card meant to be skimmed — V1 showed every branch it had loaded. */
 const BRANCH_LIMIT = 50;
@@ -19,8 +19,8 @@ const businessLocationId = (id: number) => `business-${id}`;
 
 /**
  * The portal's Locations card. V1 listed the business's own address first and every branch after
- * it, so the owner sees the same set a visitor does — hence the shared `<ProfileLocationsCard>`
- * rather than a portal-only list.
+ * it, so the owner sees the same set a visitor does — the same `ProfileLocation` rows the public
+ * `<ProfileLocationsCard>` renders, laid out by the portal's own `<LocationsCard>`.
  */
 export function ProfileLocationsSection({
   profile,
@@ -108,8 +108,9 @@ export function ProfileLocationsSection({
 
   return (
     <>
-      <ProfileLocationsCard
+      <LocationsCard
         locations={locations}
+        primaryId={businessLocationId(profile.id)}
         badge={<PrivacyBadge isPublic={isPublic("locations")} onToggle={canEditVisibility ? () => toggle("locations") : undefined} />}
         onEditLocation={readOnly ? undefined : startEditing}
       />

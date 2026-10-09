@@ -229,7 +229,7 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
       </div>
 
       <div className="overflow-hidden rounded-lg border">
-        <div className="relative h-32 overflow-hidden bg-linear-to-br from-primary/15 to-primary/5"><span aria-hidden className="animate-sheen absolute inset-0 bg-linear-to-r from-transparent via-background/50 to-transparent" /></div>
+        <div className="relative h-32 overflow-hidden bg-linear-to-br from-primary/15 to-primary/5">{profile?.cover_url && <img src={profile.cover_url} alt="" className="absolute inset-0 size-full object-cover" /> /* eslint-disable-line @next/next/no-img-element -- signed storage URL */}<span aria-hidden className="animate-sheen absolute inset-0 bg-linear-to-r from-transparent via-background/50 to-transparent" /></div>
         <CardContent>
           <div className="flex items-start gap-4 -mt-14 ml-8">
             <Avatar className="animate-pop-in size-28 shrink-0 rounded-xl border-4 border-background shadow-sm [animation-delay:200ms] [animation-fill-mode:both]">

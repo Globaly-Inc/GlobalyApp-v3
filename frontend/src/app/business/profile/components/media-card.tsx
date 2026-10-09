@@ -2,14 +2,14 @@
 
 import { useRef, useState } from "react";
 import { toast } from "sonner";
-import { ImageIcon, Loader2, Plus, X } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { ProfileSection } from "@/app/(web)/components/profile/profile-section";
+import { ImageIcon, ImagePlus, Loader2 } from "lucide-react";
 import { PrivacyBadge } from "@/components/privacy-badge";
 import { useAppDispatch } from "@/lib/hooks";
 import { businessApi } from "@/app/business/apis";
 import { fetchMyProfile } from "@/app/business/store/business-onboarding-slice";
 import type { BusinessProfile } from "@/app/business/apis/types";
+import { ProfileCard } from "./profile-card";
+import { MediaTile } from "./media-tile";
 
 export function MediaCard({ profile, readOnly }: Readonly<{ profile: BusinessProfile; readOnly: boolean }>) {
   const dispatch = useAppDispatch();
@@ -49,71 +49,56 @@ export function MediaCard({ profile, readOnly }: Readonly<{ profile: BusinessPro
     }
   };
 
+  const items = [
+    ...gallery.map((url) => ({ url, type: "gallery" as const })),
+    ...videos.map((url) => ({ url, type: "video" as const })),
+  ];
+  // The cover tile is the first photo — a video makes a poor 2×2 cover, and with one or two items
+  // a 2×2 tile just leaves a hole beside it.
+  const featured = items.length > 2 ? items.findIndex((m) => m.type === "gallery") : -1;
+
   // Fixed "Public", as in V1 — a gallery only exists to be shown on the public profile.
   return (
-    <ProfileSection
-      icon={ImageIcon}
-      title="Media"
-      badge={<PrivacyBadge isPublic />}
-      action={
-        readOnly ? null : (
-          <>
-            <Button size="sm" variant="outline" className="gap-1.5" disabled={uploading} onClick={() => inputRef.current?.click()}>
-              {uploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
-              Add media
-            </Button>
-            <input
-              ref={inputRef}
-              type="file"
-              accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime"
-              hidden
-              onChange={handleFile}
+    <ProfileCard id="profile-media" icon={ImageIcon} title="Media" count={items.length || undefined} badge={<PrivacyBadge isPublic />}>
+      {items.length === 0 && readOnly ? (
+        <p className="text-sm italic text-muted-foreground">No media added yet.</p>
+      ) : (
+        // Fixed-height rows, the cover spans 2×2, and dense flow back-fills any gap it leaves.
+        <div className="grid grid-flow-dense auto-rows-[110px] grid-cols-2 gap-2 sm:auto-rows-[130px] sm:grid-cols-4">
+          {items.map((m, i) => (
+            <MediaTile
+              key={m.url}
+              url={m.url}
+              type={m.type}
+              index={i}
+              featured={i === featured}
+              deleting={deletingUrl === m.url}
+              onRemove={readOnly ? undefined : () => handleDelete(m.url, m.type)}
             />
-          </>
-        )
-      }
-    >
-      <div>
-        {gallery.length === 0 && videos.length === 0 ? (
-          <p className="text-sm italic text-muted-foreground">No media added yet.</p>
-        ) : (
-          <div className="grid grid-cols-3 gap-2">
-            {gallery.map((url) => (
-              <div key={url} className="group relative aspect-square">
-                {/* eslint-disable-next-line @next/next/no-img-element -- externally stored gallery URL */}
-                <img src={url} alt="" className="h-full w-full rounded-lg border border-border object-cover" />
-                {!readOnly && (
-                  <button
-                    type="button"
-                    aria-label="Remove image"
-                    disabled={deletingUrl === url}
-                    onClick={() => handleDelete(url, "gallery")}
-                    className="absolute right-1 top-1 flex size-6 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100"
-                  >
-                    {deletingUrl === url ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
-                  </button>
-                )}
-              </div>
-            ))}
-            {videos.map((url) => (
-              <div key={url} className="group relative aspect-square">
-                <video src={url} className="h-full w-full rounded-lg border border-border bg-black object-cover" muted />
-                {!readOnly && (
-                  <button
-                    type="button"
-                    aria-label="Remove video"
-                    disabled={deletingUrl === url}
-                    onClick={() => handleDelete(url, "video")}
-                    className="absolute right-1 top-1 flex size-6 items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity group-hover:opacity-100"
-                  >
-                    {deletingUrl === url ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <X className="h-3.5 w-3.5" />}
-                  </button>
-                )}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-    </ProfileSection>
+          ))}
+          {!readOnly && (
+            <button
+              type="button"
+              disabled={uploading}
+              onClick={() => inputRef.current?.click()}
+              className="flex animate-row-rise cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-[1.5px] border-dashed border-border text-xs font-semibold text-muted-foreground transition-colors hover:border-primary hover:text-primary disabled:cursor-wait"
+              style={{ animationDelay: `${items.length * 50}ms` }}
+            >
+              {uploading ? <Loader2 className="size-5 animate-spin" /> : <ImagePlus className="size-5" />}
+              {uploading ? "Uploading…" : "Add media"}
+            </button>
+          )}
+        </div>
+      )}
+      {!readOnly && (
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/jpeg,image/png,image/webp,image/gif,video/mp4,video/webm,video/quicktime"
+          hidden
+          onChange={handleFile}
+        />
+      )}
+    </ProfileCard>
   );
 }

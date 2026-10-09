@@ -16,7 +16,7 @@ export function DegreeBadge({ level, fallback }: Readonly<{ level: string | null
     <span
       title={level ?? undefined}
       className={cn(
-        "flex h-8 w-10 shrink-0 items-center justify-center rounded-lg font-mono text-[10.5px] font-semibold transition-transform duration-300 ease-[cubic-bezier(.34,1.56,.64,1)] group-hover:scale-105",
+        "flex h-[30px] w-10 shrink-0 items-center justify-center rounded-lg font-mono text-[10.5px] font-semibold transition-transform duration-300 ease-[cubic-bezier(.34,1.56,.64,1)] group-hover/row:scale-105",
         TONES[badge?.tone ?? "other"],
       )}
     >

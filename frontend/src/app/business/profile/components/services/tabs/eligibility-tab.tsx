@@ -2,18 +2,27 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Pencil, ShieldCheck, Trash2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Pencil, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { OneToManySection } from "@/app/personal/profile/section-card";
+import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
 import { businessProfileDetailApi } from "../../../apis";
 import type { Lookup } from "@/app/admin/platform/categories/apis/types";
 import { ServiceEligibilityForm } from "./service-eligibility-form";
-import { minScoreLabel, type EligibilityExtras } from "../eligibility-requirement-card";
+import { TabSection } from "./tab-section";
+import { EnglishTestBlock } from "./english-test-block";
+import {
+  APPLICABLE_TO_CHIP,
+  academicTestValue,
+  minScoreLabel,
+  readAcademicTest,
+  type EligibilityExtras,
+} from "../eligibility-requirement-card";
 import type { ServiceEligibility, ServiceEligibilityInput } from "../../../apis/types";
 
-type LanguageTestRow = { test_type_name?: string; overall_score?: string };
+const BLOCK = "grid content-start gap-2 rounded-xl border p-3";
+const BLOCK_LABEL = "text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground";
+const KV = "flex items-baseline justify-between gap-2 text-[13px]";
 
 export function EligibilityTab({ serviceId }: Readonly<{ serviceId: string }>) {
   const [degreeLevels, setDegreeLevels] = useState<Lookup[]>([]);
@@ -64,81 +73,88 @@ export function EligibilityTab({ serviceId }: Readonly<{ serviceId: string }>) {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center py-10">
-        <Loader2 className="h-5 w-5 animate-spin text-primary" />
-      </div>
-    );
-  }
-
   return (
     <>
-      <OneToManySection icon={ShieldCheck} title="Eligibility" count={rows.length} onAdd={openAdd} emptyText="No eligibility requirements configured yet.">
-        <div className="space-y-3">
-          {rows.map((row) => {
-            const languageTests = (row.language_tests as LanguageTestRow[]) ?? [];
-            const academicTests = (row.academic_tests as LanguageTestRow[]) ?? [];
-            // Extracted rows often carry only the scraped text forms — same fallbacks as the summary card.
-            const degree = row.degree_level_id
-              ? degreeLevels.find((d) => d.id === row.degree_level_id)?.name
-              : (row as EligibilityExtras).min_degree_level;
-            const score = minScoreLabel(row);
-            return (
-              <div key={row.id} className="rounded-lg border p-3">
-                <div className="mb-3 flex items-start justify-between">
+      <TabSection
+        icon={ShieldCheck}
+        title="Eligibility"
+        count={rows.length}
+        addLabel="Add requirement"
+        onAdd={openAdd}
+        loading={loading}
+        emptyTitle="No eligibility requirements yet"
+        emptyHint="Set the academic minimums and English tests applicants need to meet."
+        summary={
+          <p className={BLOCK_LABEL}>
+            {rows.length} requirement {rows.length === 1 ? "set" : "sets"}
+          </p>
+        }
+      >
+        {rows.map((row) => {
+          const chip = APPLICABLE_TO_CHIP[row.applicable_to] ?? APPLICABLE_TO_CHIP.both;
+          const academicTests = (row.academic_tests ?? []).map(readAcademicTest);
+          // Extracted rows often carry only the scraped text forms — same fallbacks as the summary card.
+          const degree = row.degree_level_id
+            ? degreeLevels.find((d) => d.id === row.degree_level_id)?.name
+            : (row as EligibilityExtras).min_degree_level;
+          const score = minScoreLabel(row);
+          const hasBlocks = Boolean(degree || score || academicTests.length || row.language_tests?.length);
+          return (
+            <article
+              key={row.id}
+              className="group/card rounded-xl border bg-card transition-[background-color,box-shadow] hover:bg-primary/[0.02] hover:shadow-md"
+            >
+              <div className="flex items-start gap-3 p-4">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-[11px] bg-primary/10 text-primary">
+                  <ShieldCheck className="size-[18px]" />
+                </span>
+                <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
-                    <ShieldCheck className="h-4 w-4 text-primary" />
-                    <span className="text-sm font-semibold">{row.name || "Untitled requirement"}</span>
-                    <Badge variant="secondary" className="capitalize">{row.applicable_to === "both" ? "All Students" : row.applicable_to}</Badge>
+                    <h3 className="text-[15px] font-semibold">{row.name || "Untitled requirement"}</h3>
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${chip.className}`}>{chip.label}</span>
                   </div>
-                  <div className="flex gap-1">
-                    <Button size="icon-sm" variant="ghost" onClick={() => openEdit(row)} aria-label="Edit requirement">
-                      <Pencil className="h-4 w-4" />
-                    </Button>
-                    <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(row.id)} aria-label="Delete requirement">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
+                  {row.description && <p className="mt-2 line-clamp-3 text-[13px] leading-relaxed text-muted-foreground">{row.description}</p>}
                 </div>
-
-                {row.description && <p className="mb-3 line-clamp-3 text-xs text-muted-foreground">{row.description}</p>}
-
-                {(degree || score || academicTests.length > 0) && (
-                  <div className="mb-3 flex flex-wrap gap-1.5">
-                    {degree && (
-                      <Badge variant="outline" className="gap-1 font-normal">
-                        Min. degree <span className="font-semibold">{degree}</span>
-                      </Badge>
-                    )}
-                    {score && (
-                      <Badge variant="outline" className="gap-1 font-normal">
-                        Min score <span className="font-semibold">{score}</span>
-                      </Badge>
-                    )}
-                    {academicTests.map((t, i) => (
-                      <Badge key={`${t.test_type_name}-${i}`} variant="outline" className="gap-1 font-normal">
-                        {t.test_type_name}{t.overall_score != null && <span className="font-semibold">≥ {t.overall_score}</span>}
-                      </Badge>
-                    ))}
-                  </div>
-                )}
-
-                {languageTests.length > 0 && (
-                  <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-                    {languageTests.map((t, i) => (
-                      <div key={`${t.test_type_name}-${i}`} className="rounded-lg border p-2.5">
-                        <p className="text-[10px] uppercase text-muted-foreground">{t.test_type_name}</p>
-                        <p className="text-base font-bold">{t.overall_score}</p>
-                      </div>
-                    ))}
-                  </div>
-                )}
+                <div className="flex shrink-0 items-center gap-1 opacity-55 transition-opacity focus-within:opacity-100 group-hover/card:opacity-100">
+                  <Button size="icon-sm" variant="ghost" onClick={() => openEdit(row)} aria-label="Edit requirement">
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                  <ConfirmDeleteButton onConfirm={() => handleDelete(row.id)} />
+                </div>
               </div>
-            );
-          })}
-        </div>
-      </OneToManySection>
+
+              {hasBlocks && (
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-2.5 px-4 pb-4">
+                  {(degree || score) && (
+                    <div className={BLOCK}>
+                      <p className={BLOCK_LABEL}>Academic</p>
+                      {degree && <div className={KV}><span className="text-muted-foreground">Minimum degree</span><span className="font-mono font-semibold">{degree}</span></div>}
+                      {score && <div className={KV}><span className="text-muted-foreground">Minimum score</span><span className="font-mono font-semibold">{score}</span></div>}
+                    </div>
+                  )}
+                  {academicTests.length > 0 && (
+                    <div className={BLOCK}>
+                      <p className={BLOCK_LABEL}>Admission tests</p>
+                      {academicTests.map((t, i) => (
+                        <div key={`${t.name}-${i}`} className={KV}>
+                          <span className="text-muted-foreground">
+                            {t.name}
+                            {t.optional && <span className="ml-1.5 rounded bg-muted px-1.5 py-px text-[10.5px] font-medium">optional</span>}
+                          </span>
+                          <span className="font-mono font-semibold">{academicTestValue(t) ?? "—"}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {(row.language_tests ?? []).map((t, i) => (
+                    <EnglishTestBlock key={`${String(t.test_type_name)}-${i}`} test={t} />
+                  ))}
+                </div>
+              )}
+            </article>
+          );
+        })}
+      </TabSection>
 
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto border-0 bg-transparent p-0 shadow-none sm:max-w-2xl">

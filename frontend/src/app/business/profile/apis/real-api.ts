@@ -68,6 +68,7 @@ function toServiceSearchQuery(params: ServiceSearchParams): string {
   if (params.published) q.set("published", params.published);
   if (params.origin) q.set("origin", params.origin);
   if (params.degree_level) q.set("degree_level", params.degree_level);
+  if (params.attention) q.set("attention", params.attention);
   const qs = q.toString();
   return qs ? `?${qs}` : "";
 }

@@ -2,10 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { ExternalLink, GraduationCap, Loader2, Pencil, Plus, Search, Trash2, UploadCloud } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
+import { Loader2, UploadCloud } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchScholarships, deleteScholarship, toggleScholarshipPublished } from "../../store/business-profile-detail-slice";
@@ -13,19 +11,15 @@ import type { Scholarship } from "../../apis/types";
 import { CreateScholarshipDialog } from "../scholarships/create-scholarship-dialog";
 import { DeleteScholarshipDialog } from "../scholarships/delete-scholarship-dialog";
 import { ScholarshipImportDialog } from "../scholarships/scholarship-import-dialog";
+import { BusinessScholarshipsTable } from "../scholarships/business-scholarships-table";
+import { PortalPageHeader } from "../portal-ui/portal-page-header";
+import { PortalAddButton } from "../portal-ui/portal-add-button";
+import { PortalStats } from "../portal-ui/portal-stats";
+import { PortalStatTile } from "../portal-ui/portal-stat-tile";
+import { ScholarshipSearch } from "../scholarships/scholarship-search";
+import { ScholarshipsEmptyState } from "../scholarships/scholarships-empty-state";
 
 const PAGE_SIZE = 10;
-
-function StatCard({ label, value }: Readonly<{ label: string; value: number }>) {
-  return (
-    <Card className="gap-1 py-3">
-      <CardContent className="px-4">
-        <p className="text-xs text-muted-foreground">{label}</p>
-        <p className="text-2xl font-bold">{value}</p>
-      </CardContent>
-    </Card>
-  );
-}
 
 export function ScholarshipsTab({ businessId }: Readonly<{ businessId: number }>) {
   const dispatch = useAppDispatch();
@@ -82,100 +76,43 @@ export function ScholarshipsTab({ businessId }: Readonly<{ businessId: number }>
     }
   };
 
-  const publishedCount = scholarships.filter((s) => s.is_published).length;
-  const draftCount = scholarships.length - publishedCount;
+  // Tiles count the rows on this page — the API only totals the list.
+  const onPage = total > scholarships.length ? " (this page)" : "";
+  const count = (f: (s: Scholarship) => boolean) => scholarships.filter(f).length;
+  const missing = scholarships.filter((s) => s.coverage_amount == null || !s.deadline).length;
+  const openEdit = (s: Scholarship) => { setEditing(s); setCreateOpen(true); };
 
   return (
-    <div>
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h2 className="text-2xl font-bold">Scholarships</h2>
-          <p className="text-muted-foreground">Offer scholarships to attract prospective students.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" className="h-10" onClick={() => setImportOpen(true)}>
-            <UploadCloud className="mr-1.5 h-3.5 w-3.5" /> Bulk import
-          </Button>
-          <Button className="h-10" onClick={() => { setEditing(null); setCreateOpen(true); }}>
-            <Plus className="mr-1.5 h-3.5 w-3.5" /> New scholarship
-          </Button>
-        </div>
+    <div className="flex flex-col gap-4">
+      <PortalPageHeader title="Scholarships" count={total} subtitle="Offer scholarships to attract prospective students.">
+        <Button variant="outline" className="h-10 gap-1.5 rounded-[10px] font-semibold" onClick={() => setImportOpen(true)}>
+          <UploadCloud className="h-4 w-4" /> Bulk import
+        </Button>
+        <PortalAddButton onClick={() => { setEditing(null); setCreateOpen(true); }}>New scholarship</PortalAddButton>
+      </PortalPageHeader>
+
+      <PortalStats>
+        <PortalStatTile label={`Full tuition${onPage}`} value={count((s) => s.coverage_type === "full_tuition")} />
+        <PortalStatTile label={`Stipends${onPage}`} value={count((s) => s.coverage_type === "stipend" || s.coverage_type === "living_allowance")} />
+        <PortalStatTile label={`Published${onPage}`} value={count((s) => s.is_published)} />
+        <PortalStatTile label={`Missing amount or deadline${onPage}`} value={missing} warn />
+      </PortalStats>
+
+      {/* The business list API filters by search only, so no dropdowns here. */}
+      <div className="flex flex-wrap items-center gap-2">
+        <ScholarshipSearch value={search} onChange={setSearch} />
       </div>
 
-      <div className="mb-4 grid grid-cols-3 gap-3">
-        <StatCard label="Total" value={total} />
-        <StatCard label="Published" value={publishedCount} />
-        <StatCard label="Drafts" value={draftCount} />
+      <div>
+        {status === "loading" ? (
+          <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
+        ) : scholarships.length === 0 ? (
+          <ScholarshipsEmptyState onClear={search ? () => setSearch("") : undefined} />
+        ) : (
+          <BusinessScholarshipsTable rows={scholarships} onEdit={openEdit} onDelete={setDeleting} onTogglePublished={handleTogglePublished} />
+        )}
+        {total > 0 && <Pagination page={page} total={total} limit={PAGE_SIZE} onPageChange={handlePageChange} />}
       </div>
-
-      <div className="relative mb-3">
-        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-        <Input className="h-10 pl-9" placeholder="Search your scholarships..." value={search} onChange={(e) => setSearch(e.target.value)} />
-      </div>
-
-      {status === "loading" ? (
-        <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
-      ) : scholarships.length === 0 ? (
-        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-12 text-center">
-          <GraduationCap className="h-10 w-10 text-muted-foreground/40" />
-          <p className="text-sm font-medium">No scholarships yet</p>
-          <p className="text-xs text-muted-foreground">Create a scholarship to list it for students.</p>
-        </div>
-      ) : (
-        <div className="overflow-x-auto rounded-lg border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b bg-muted/40 text-xs text-muted-foreground">
-                <th className="p-3 text-left">Title</th>
-                <th className="p-3 text-left">Country</th>
-                <th className="p-3 text-left">Basis</th>
-                <th className="p-3 text-left">Coverage</th>
-                <th className="p-3 text-left">Deadline</th>
-                <th className="p-3 text-left">Status</th>
-                <th className="p-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {scholarships.map((s) => (
-                <tr key={s.id} className="border-b last:border-0 hover:bg-muted/20">
-                  <td className="p-3 font-medium">{s.title}</td>
-                  <td className="p-3 text-muted-foreground">{s.country ?? "—"}</td>
-                  <td className="p-3 text-muted-foreground capitalize">{s.basis?.replaceAll("_", " ") ?? "—"}</td>
-                  <td className="p-3 capitalize">{s.coverage_type.replaceAll("_", " ")}</td>
-                  <td className="p-3 whitespace-nowrap">{s.deadline ? new Date(s.deadline).toLocaleDateString() : "—"}</td>
-                  <td className="p-3">
-                    <span className={`rounded-full px-2.5 py-1 text-xs font-medium ${s.is_published ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
-                      {s.is_published ? "Published" : "Draft"}
-                    </span>
-                  </td>
-                  <td className="p-3">
-                    <div className="flex items-center justify-end gap-1">
-                      <Button variant="ghost" size="sm" className="text-xs" onClick={() => handleTogglePublished(s, !s.is_published)}>
-                        {s.is_published ? "Unpublish" : "Publish"}
-                      </Button>
-                      <Button size="icon-sm" variant="ghost" onClick={() => { setEditing(s); setCreateOpen(true); }} aria-label="Edit scholarship">
-                        <Pencil className="h-4 w-4" />
-                      </Button>
-                      <Button
-                        size="icon-sm"
-                        variant="ghost"
-                        render={<a href={`/scholarships/${s.slug}`} target="_blank" rel="noopener noreferrer" aria-label="Preview scholarship" />}
-                      >
-                        <ExternalLink className="h-4 w-4" />
-                      </Button>
-                      <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => setDeleting(s)} aria-label="Remove scholarship">
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {total > 0 && <Pagination page={page} total={total} limit={PAGE_SIZE} onPageChange={handlePageChange} />}
 
       <CreateScholarshipDialog open={createOpen} onOpenChange={setCreateOpen} businessId={businessId} editing={editing} />
       <DeleteScholarshipDialog scholarship={deleting} onOpenChange={(open) => { if (!open) setDeleting(null); }} onConfirm={handleDelete} deleting={removing} />

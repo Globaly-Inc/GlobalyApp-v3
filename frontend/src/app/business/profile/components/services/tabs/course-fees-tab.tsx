@@ -2,88 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Copy, Loader2, Pencil, Plus, Trash2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Wallet } from "lucide-react";
+import { CountUp } from "@/components/count-up";
+import { cn } from "@/lib/utils";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { businessProfileDetailApi } from "../../../apis";
 import { ServiceFeeForm } from "./service-fee-form";
+import { FeeCard, feeTotal, formatAmount } from "./fee-card";
+import { TabSection } from "./tab-section";
 import type { ServiceFee, ServiceFeeInput } from "../../../apis/types";
-
-type FeeInstallmentLine = { fee_type: string; amount: number };
-type FeeInstallment = { label: string; lines: FeeInstallmentLine[] };
-const installmentsOf = (fee: ServiceFee) => fee.installments as unknown as FeeInstallment[];
-
-function feeTotal(fee: ServiceFee) {
-  return installmentsOf(fee).reduce((sum, i) => sum + i.lines.reduce((s, l) => s + l.amount, 0), 0);
-}
-
-function FeeCard({
-  fee, onEdit, onDuplicate, onDelete,
-}: Readonly<{ fee: ServiceFee; onEdit: () => void; onDuplicate: () => void; onDelete: () => void }>) {
-  const installmentCount = fee.installments.length;
-  const total = Number(fee.total_amount) || feeTotal(fee);
-  const avg = installmentCount > 0 ? total / installmentCount : total;
-  const installments = installmentsOf(fee);
-
-  return (
-    <Card className="overflow-hidden">
-      <div className="flex items-center justify-between border-b bg-muted/20 px-4 py-3">
-        <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-semibold">{fee.name || "Unnamed fee"}</span>
-          <Badge className="text-xs capitalize">{fee.student_type}</Badge>
-          <Badge variant="outline" className="text-xs">{fee.period_type}</Badge>
-        </div>
-        <div className="flex items-center gap-1">
-          <Button variant="ghost" size="icon-sm" title="Duplicate fee" onClick={onDuplicate}>
-            <Copy className="h-3.5 w-3.5" />
-          </Button>
-          <Button variant="ghost" size="icon-sm" title="Edit fee" onClick={onEdit}>
-            <Pencil className="h-3.5 w-3.5" />
-          </Button>
-          <Button variant="ghost" size="icon-sm" className="text-destructive" title="Delete fee" onClick={onDelete}>
-            <Trash2 className="h-3.5 w-3.5" />
-          </Button>
-        </div>
-      </div>
-      <CardContent className="flex flex-col gap-4 p-4">
-        <div className="grid grid-cols-3 gap-3 text-center">
-          <div>
-            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Total fees</p>
-            <p className="text-lg font-bold">{fee.currency} {total.toLocaleString()}</p>
-          </div>
-          <div>
-            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Installments</p>
-            <p className="text-lg font-bold">{installmentCount}</p>
-          </div>
-          <div>
-            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Avg / installment</p>
-            <p className="text-lg font-bold">~{fee.currency} {Math.round(avg).toLocaleString()}</p>
-          </div>
-        </div>
-
-        {installments.length > 0 && (
-          <div>
-            <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Breakdown</p>
-            <div className="space-y-1.5">
-              {installments.map((installment, i) => (
-                <div key={`${installment.label}-${i}`} className="flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2 text-sm">
-                  <span className="font-medium">{installment.label}</span>
-                  <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                    {installment.lines.map((l, li) => (
-                      <span key={`${l.fee_type}-${li}`}>{l.fee_type}: {fee.currency} {l.amount.toLocaleString()}</span>
-                    ))}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-      </CardContent>
-    </Card>
-  );
-}
 
 export function CourseFeesTab({ serviceId, isCourse = true }: Readonly<{ serviceId: string; isCourse?: boolean }>) {
   const [fees, setFees] = useState<ServiceFee[]>([]);
@@ -156,46 +83,77 @@ export function CourseFeesTab({ serviceId, isCourse = true }: Readonly<{ service
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center py-10">
-        <Loader2 className="h-5 w-5 animate-spin text-primary" />
-      </div>
-    );
-  }
+  const label = isCourse ? "course fee" : "service fee";
+  // A student pays the fees for their own group plus the "both" ones — never domestic AND
+  // international together — so one card per group ("All students" when nothing is group-specific).
+  // Within a group only like is added to like: one amount per payment period and currency, so a
+  // "Per Year" tuition is never summed with a one-off "Total" application fee.
+  const split = fees.some((f) => f.student_type !== "both");
+  const groups = (split ? (["domestic", "international"] as const) : (["both"] as const)).map((g) => {
+    const own = fees.filter((f) => f.student_type === "both" || f.student_type === g);
+    const byPeriod = new Map<string, { period: string; currency: string; total: number }>();
+    for (const f of own) {
+      const key = `${f.period_type}|${f.currency}`;
+      const row = byPeriod.get(key) ?? { period: f.period_type, currency: f.currency, total: 0 };
+      row.total += feeTotal(f);
+      byPeriod.set(key, row);
+    }
+    return { g, own, amounts: [...byPeriod.values()] };
+  }).filter((x) => x.own.length > 0);
+  const GROUP_LABEL = { both: "All students", domestic: "Domestic students", international: "International students" };
+  const summary = (
+    <div className="grid gap-2.5 sm:grid-cols-2">
+      {groups.map(({ g, own, amounts }) => (
+        <div key={g} className="rounded-xl border bg-card px-4 py-3.5 sm:px-[18px]">
+          <p className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">Estimated cost · {GROUP_LABEL[g]}</p>
+          <div className="mt-1 flex flex-col gap-1">
+            {amounts.map((a) => (
+              <p key={`${a.period}|${a.currency}`} className="flex flex-wrap items-baseline gap-x-2">
+                <span className={cn("font-heading leading-none font-bold tracking-[-0.015em]", amounts.length === 1 ? "text-[32px]" : "text-2xl")}>
+                  <small className="mr-1.5 align-[4px] font-mono text-xs font-semibold tracking-normal text-muted-foreground">{a.currency}</small>
+                  <CountUp value={a.total} format={formatAmount} />
+                </span>
+                <span className="text-xs font-medium text-muted-foreground">{a.period.toLowerCase()}</span>
+              </p>
+            ))}
+          </div>
+          <p className="mt-1.5 text-xs text-muted-foreground">
+            {own.length} fee structure{own.length === 1 ? "" : "s"} that apply to {GROUP_LABEL[g].toLowerCase()}
+          </p>
+        </div>
+      ))}
+    </div>
+  );
 
   return (
-    <div className="flex flex-col gap-3">
-      <div className="flex items-center justify-between">
-        <p className="text-sm text-muted-foreground">{fees.length} {isCourse ? "course fee" : "service fee"} structure{fees.length === 1 ? "" : "s"}</p>
-        <Button className="gap-1.5" onClick={openAdd}>
-          <Plus className="h-3.5 w-3.5" /> Add fee
-        </Button>
-      </div>
-
-      {fees.length === 0 ? (
-        <Card>
-          <CardContent className="py-10 text-center text-sm text-muted-foreground">No fees configured yet.</CardContent>
-        </Card>
-      ) : (
-        <div className="flex flex-col gap-3">
-          {fees.map((fee) => (
-            <FeeCard
-              key={fee.id}
-              fee={fee}
-              onEdit={() => openEdit(fee)}
-              onDuplicate={() => handleDuplicate(fee)}
-              onDelete={() => handleDelete(fee.id)}
-            />
-          ))}
-        </div>
-      )}
+    <>
+      <TabSection
+        icon={Wallet}
+        title={isCourse ? "Course fees" : "Service fees"}
+        count={fees.length}
+        addLabel="Add fee"
+        onAdd={openAdd}
+        loading={loading}
+        emptyTitle={`No ${label}s yet`}
+        emptyHint="Add a fee structure with its installments so students can see what they'll pay and when."
+        summary={summary}
+      >
+        {fees.map((fee) => (
+          <FeeCard
+            key={fee.id}
+            fee={fee}
+            onEdit={() => openEdit(fee)}
+            onDuplicate={() => handleDuplicate(fee)}
+            onDelete={() => handleDelete(fee.id)}
+          />
+        ))}
+      </TabSection>
 
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto border-0 bg-transparent p-0 shadow-none sm:max-w-2xl">
           <ServiceFeeForm fee={editing ?? undefined} saving={saving} isCourse={isCourse} onCancel={() => setFormOpen(false)} onSave={handleSave} />
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }
