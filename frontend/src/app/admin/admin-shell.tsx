@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { ChevronDown, Loader2 } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -127,6 +128,7 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
         </div>
 
         <div className="flex items-center gap-2 shrink-0">
+          <ThemeToggle />
           <AdminMobileNav />
 
           <DropdownMenu>

@@ -27,6 +27,7 @@ import { logout, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchFullProfile } from "./store/profile-slice";
 import { PortalSidebar } from "@/components/portal-sidebar";
 import { NAV_ITEMS, PERSONAL_PORTAL_HOME, SHOW_HEADER_EXTRAS, SHOW_PERSONAL_PORTAL } from "./const";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { PersonalMobileNav } from "./components/personal-mobile-nav";
 import { ICON } from "@/lib/public-assets";
 import { SIGN_IN_HREF } from "@/app/auth/const";
@@ -111,6 +112,7 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
           </span>
 
           <div className="flex items-center gap-2 ml-auto pr-3 sm:pr-4 md:pr-6">
+            <ThemeToggle />
             {SHOW_HEADER_EXTRAS && (
               <>
                 <Link

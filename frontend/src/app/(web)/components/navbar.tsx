@@ -6,6 +6,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Menu, X, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ThemeToggle } from "@/components/theme-toggle";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -83,6 +84,7 @@ export function Navbar() {
         </nav>
 
         <div className="flex items-center gap-2 flex-shrink-0 ml-auto">
+          <ThemeToggle />
           {!initializing && (
             user ? (
               <DropdownMenu>

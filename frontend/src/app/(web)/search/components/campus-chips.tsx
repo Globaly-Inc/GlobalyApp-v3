@@ -6,7 +6,8 @@ const MAX_CHIPS = 4;
 
 // Slate, not the `secondary` variant's pale blue: a campus city is neutral metadata, and the
 // brand tint made these read as status. twMerge drops the variant's bg-secondary for bg-slate-100.
-const CHIP = "border-slate-200 bg-slate-100 font-normal text-slate-700";
+const CHIP =
+  "border-slate-200 bg-slate-100 font-normal text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300";
 
 /**
  * The campus cities of an institution, as chips — `campus_locations`, aggregated per extraction
