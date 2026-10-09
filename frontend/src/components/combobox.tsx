@@ -64,7 +64,15 @@ export function Combobox({
   const [activeIndex, setActiveIndex] = useState(0);
   const triggerRef = useRef<HTMLButtonElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
-  const selected = options.find((o) => o.value === value);
+  // A typed (created) value isn't in `options`; list it so it shows ticked when reopened.
+  const allOptions = useMemo(
+    () =>
+      creatable && !multiple && value && !options.some((o) => o.value === value)
+        ? [{ value, label: value }, ...options]
+        : options,
+    [options, value, creatable, multiple]
+  );
+  const selected = allOptions.find((o) => o.value === value);
 
   // autoFocus scrolls the page to wherever this input mounts (0,0 in the
   // portal) before floating-ui finishes positioning the popup, jumping the
@@ -74,13 +82,13 @@ export function Combobox({
   }, [open]);
 
   const filtered = useMemo(
-    () => options.filter((o) => o.label.toLowerCase().includes(query.toLowerCase())),
-    [options, query]
+    () => allOptions.filter((o) => o.label.toLowerCase().includes(query.toLowerCase())),
+    [allOptions, query]
   );
 
   const trimmedQuery = query.trim();
   const showCreateOption =
-    creatable && trimmedQuery.length > 0 && !options.some((o) => o.label.toLowerCase() === trimmedQuery.toLowerCase());
+    creatable && trimmedQuery.length > 0 && !allOptions.some((o) => o.label.toLowerCase() === trimmedQuery.toLowerCase());
 
   function select(option: ComboboxOption) {
     onChange(option.value);

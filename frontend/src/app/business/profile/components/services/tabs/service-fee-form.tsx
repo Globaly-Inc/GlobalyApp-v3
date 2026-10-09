@@ -32,12 +32,15 @@ export function ServiceFeeForm({
   fee,
   saving,
   isCourse,
+  usedFeeTypes = [],
   onCancel,
   onSave,
 }: Readonly<{
   fee?: ServiceFee;
   saving: boolean;
   isCourse: boolean;
+  /** Fee types on this service's other fees, so typed (custom) ones stay pickable. */
+  usedFeeTypes?: string[];
   onCancel: () => void;
   /** One entry normally; two — domestic then international — when the split toggle is on. */
   onSave: (values: ServiceFeeInput[]) => void;
@@ -58,11 +61,13 @@ export function ServiceFeeForm({
     const inUse = toFormInstallments(fee).flatMap((i) => i.lines.map((l) => l.fee_type));
     businessProfileDetailApi.getFeeTypes({ limit: 100 })
       .then((res) => setFeeTypes(
-        res.data
-          .filter((f) => ENABLED_FEE_TYPES.includes(f.name) || inUse.includes(f.name))
-          .map((f) => ({ value: f.name, label: f.name })),
+        [...new Set([
+          ...res.data.filter((f) => ENABLED_FEE_TYPES.includes(f.name) || inUse.includes(f.name)).map((f) => f.name),
+          ...inUse,
+          ...usedFeeTypes,
+        ])].filter(Boolean).map((n) => ({ value: n, label: n })),
       ))
-      .catch(() => setFeeTypes([]));
+      .catch(() => setFeeTypes([...new Set([...inUse, ...usedFeeTypes])].map((n) => ({ value: n, label: n }))));
     // eslint-disable-next-line react-hooks/exhaustive-deps -- the fee's own types, read once on mount
   }, []);
 

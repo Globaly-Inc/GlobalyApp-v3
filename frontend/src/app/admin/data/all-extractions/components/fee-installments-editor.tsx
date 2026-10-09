@@ -30,6 +30,12 @@ export function FeeInstallmentsEditor({
   error?: string;
   onDirty: () => void;
 }>) {
+  // Fee types typed into any line are offered on every other line too.
+  const typed = installments
+    .flatMap((i) => i.lines.map((l) => l.fee_type.trim()))
+    .filter((t, i, all) => t && all.indexOf(t) === i && !feeTypes.some((f) => f.value === t));
+  const options = [...feeTypes, ...typed.map((t) => ({ value: t, label: t }))];
+
   const patchInstallment = (index: number, patch: Partial<FeeFormInstallment>) => {
     onDirty();
     setInstallments((list) => list.map((item, i) => (i === index ? { ...item, ...patch } : item)));
@@ -75,7 +81,7 @@ export function FeeInstallmentsEditor({
           {installment.lines.map((line, lineIndex) => (
             <div key={lineIndex} className="flex items-center gap-2 pl-3">
               <Combobox
-                options={feeTypes}
+                options={options}
                 value={line.fee_type}
                 onChange={(v) => patchLine(index, lineIndex, { fee_type: v })}
                 placeholder="Fee type"

@@ -151,7 +151,9 @@ export function CourseFeesTab({ serviceId, isCourse = true }: Readonly<{ service
 
       <Dialog open={formOpen} onOpenChange={setFormOpen}>
         <DialogContent className="max-h-[90vh] overflow-y-auto border-0 bg-transparent p-0 shadow-none sm:max-w-2xl">
-          <ServiceFeeForm fee={editing ?? undefined} saving={saving} isCourse={isCourse} onCancel={() => setFormOpen(false)} onSave={handleSave} />
+          <ServiceFeeForm fee={editing ?? undefined} saving={saving} isCourse={isCourse}
+            usedFeeTypes={fees.flatMap((f) => ((f.installments ?? []) as unknown as { lines?: { fee_type: string }[] }[]).flatMap((i) => i.lines?.map((l) => l.fee_type) ?? []))}
+            onCancel={() => setFormOpen(false)} onSave={handleSave} />
         </DialogContent>
       </Dialog>
     </>
