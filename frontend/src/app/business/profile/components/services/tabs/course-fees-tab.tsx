@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { Wallet } from "lucide-react";
 import { CountUp } from "@/components/count-up";
+import { cn } from "@/lib/utils";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { businessProfileDetailApi } from "../../../apis";
 import { ServiceFeeForm } from "./service-fee-form";
@@ -84,28 +85,38 @@ export function CourseFeesTab({ serviceId, isCourse = true }: Readonly<{ service
 
   const label = isCourse ? "course fee" : "service fee";
   // A student pays the fees for their own group plus the "both" ones — never domestic AND
-  // international together. So one total per group (just "All students" when no fee is
-  // group-specific), and no total for a group whose fees mix currencies.
+  // international together — so one card per group ("All students" when nothing is group-specific).
+  // Within a group only like is added to like: one amount per payment period and currency, so a
+  // "Per Year" tuition is never summed with a one-off "Total" application fee.
   const split = fees.some((f) => f.student_type !== "both");
   const groups = (split ? (["domestic", "international"] as const) : (["both"] as const)).map((g) => {
     const own = fees.filter((f) => f.student_type === "both" || f.student_type === g);
-    const currencies = new Set(own.map((f) => f.currency));
-    return { g, own, currency: currencies.size === 1 ? own[0]?.currency ?? null : null, total: own.reduce((sum, f) => sum + feeTotal(f), 0) };
+    const byPeriod = new Map<string, { period: string; currency: string; total: number }>();
+    for (const f of own) {
+      const key = `${f.period_type}|${f.currency}`;
+      const row = byPeriod.get(key) ?? { period: f.period_type, currency: f.currency, total: 0 };
+      row.total += feeTotal(f);
+      byPeriod.set(key, row);
+    }
+    return { g, own, amounts: [...byPeriod.values()] };
   }).filter((x) => x.own.length > 0);
   const GROUP_LABEL = { both: "All students", domestic: "Domestic students", international: "International students" };
   const summary = (
     <div className="grid gap-2.5 sm:grid-cols-2">
-      {groups.map(({ g, own, currency, total }) => (
+      {groups.map(({ g, own, amounts }) => (
         <div key={g} className="rounded-xl border bg-card px-4 py-3.5 sm:px-[18px]">
           <p className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">Estimated cost · {GROUP_LABEL[g]}</p>
-          {currency ? (
-            <p className="mt-1 font-heading text-[32px] leading-none font-bold tracking-[-0.015em]">
-              <small className="mr-1.5 align-[6px] font-mono text-xs font-semibold tracking-normal text-muted-foreground">{currency}</small>
-              <CountUp value={total} format={formatAmount} />
-            </p>
-          ) : (
-            <p className="mt-1 font-heading text-2xl font-bold">Mixed currencies</p>
-          )}
+          <div className="mt-1 flex flex-col gap-1">
+            {amounts.map((a) => (
+              <p key={`${a.period}|${a.currency}`} className="flex flex-wrap items-baseline gap-x-2">
+                <span className={cn("font-heading leading-none font-bold tracking-[-0.015em]", amounts.length === 1 ? "text-[32px]" : "text-2xl")}>
+                  <small className="mr-1.5 align-[4px] font-mono text-xs font-semibold tracking-normal text-muted-foreground">{a.currency}</small>
+                  <CountUp value={a.total} format={formatAmount} />
+                </span>
+                <span className="text-xs font-medium text-muted-foreground">{a.period.toLowerCase()}</span>
+              </p>
+            ))}
+          </div>
           <p className="mt-1.5 text-xs text-muted-foreground">
             {own.length} fee structure{own.length === 1 ? "" : "s"} that apply to {GROUP_LABEL[g].toLowerCase()}
           </p>
