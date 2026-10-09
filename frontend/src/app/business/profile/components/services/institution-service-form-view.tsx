@@ -2,9 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Eye, FileText, Link2, Loader2, Pencil, Save, Sparkles } from "lucide-react";
+import { ArrowLeft, Building2, Eye, FileText, Link2, Loader2, Pencil, Save, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { SocialIcon, socialNameForUrl } from "@/app/(web)/components/social-icon";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -438,55 +439,58 @@ export function InstitutionServiceFormView({ businessId, serviceId }: Readonly<{
       </div>
 
       <div className="overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm">
-        <div className="relative h-40 overflow-hidden bg-linear-to-br from-primary to-primary/60 sm:h-48"><span aria-hidden className="animate-sheen absolute inset-0 bg-linear-to-r from-transparent via-white/25 to-transparent" /></div>
-        <CardContent className="ml-8 mb-8 flex flex-col gap-1.5 pt-16">
-          <div className="relative">
-            <Avatar className="animate-pop-in absolute -top-24 left-0 size-24 rounded-xl border-4 border-background bg-white shadow-lg [animation-delay:200ms] [animation-fill-mode:both]">
+        <div className="relative h-40 overflow-hidden bg-linear-to-br from-primary to-primary/60 sm:h-48">{profile?.cover_url && <img src={profile.cover_url} alt="" className="absolute inset-0 size-full object-cover" /> /* eslint-disable-line @next/next/no-img-element -- signed storage URL */}<span aria-hidden className="animate-sheen absolute inset-0 bg-linear-to-r from-transparent via-white/25 to-transparent" /></div>
+        {/* Logo overlaps the cover; beside it (stacked on phones) one column — category, course name,
+            then the institution and its links — so the name and institution share a left edge. */}
+        <CardContent className="px-5 pb-5 sm:px-8 sm:pb-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:gap-5">
+            <Avatar className="animate-pop-in -mt-12 size-24 shrink-0 rounded-2xl border-4 border-background bg-white shadow-lg [animation-delay:200ms] [animation-fill-mode:both]">
               {profile?.logo_url && (
-                <AvatarImage src={profile.logo_url} alt={profile.business_name} className="rounded-lg object-contain p-1" />
+                <AvatarImage src={profile.logo_url} alt={profile.business_name} className="rounded-xl object-contain p-1" />
               )}
-              <AvatarFallback className="rounded-lg bg-primary text-2xl font-medium text-primary-foreground">
+              <AvatarFallback className="rounded-xl bg-primary text-3xl font-semibold text-primary-foreground">
                 {(profile?.business_name ?? "I").charAt(0).toUpperCase()}
               </AvatarFallback>
             </Avatar>
-          </div>
-          <Combobox
-            options={serviceCategories.map((c) => ({
-              value: String(c.id),
-              label: c.name,
-              icon: <DynamicIcon name={c.icon} fallback="GraduationCap" className="h-3.5 w-3.5" />,
-            }))}
-            value={form.service_category_id ? String(form.service_category_id) : ""}
-            onChange={(v) => handleCategoryChange(v ? Number(v) : null)}
-            disabled={savingCategory}
-            placeholder="Select category"
-            searchPlaceholder="Search categories..."
-            className="h-7 w-fit min-w-0 rounded-full border-primary/30 bg-primary/5 px-3 text-xs font-medium text-primary"
-          />
-          <Input
-            value={form.name}
-            onChange={(e) => set("name", e.target.value)}
-            onBlur={handleNameBlur}
-            placeholder="Untitled service"
-            className="h-10 rounded-none border-none bg-[linear-gradient(var(--color-primary),var(--color-primary))] bg-[length:0%_2px] bg-[position:0_100%] bg-no-repeat p-0 text-xl font-bold text-foreground shadow-none transition-[background-size] duration-300 focus-visible:bg-[length:100%_2px] focus-visible:ring-0"
-          />
-          <div className="mt-1.5 flex flex-wrap items-center gap-2">
-            <p className="text-sm text-muted-foreground">{profile?.business_name ?? "Institution"}</p>
-            {socialLinks.length > 0 && (
-              <div className="ml-1 flex items-center gap-1.5">
-                {socialLinks.map((url) => (
-                  <a
-                    key={url}
-                    href={url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex h-7 w-7 items-center justify-center rounded-full border text-muted-foreground transition-colors hover:text-foreground"
-                  >
-                    <Link2 className="h-3.5 w-3.5" />
-                  </a>
-                ))}
+            <div className="flex min-w-0 flex-1 flex-col items-start gap-2 sm:pt-4">
+              <Combobox
+                options={serviceCategories.map((c) => ({
+                  value: String(c.id),
+                  label: c.name,
+                  icon: <DynamicIcon name={c.icon} fallback="GraduationCap" className="h-3.5 w-3.5" />,
+                }))}
+                value={form.service_category_id ? String(form.service_category_id) : ""}
+                onChange={(v) => handleCategoryChange(v ? Number(v) : null)}
+                disabled={savingCategory}
+                placeholder="Select category"
+                searchPlaceholder="Search categories..."
+                className="h-7 w-fit min-w-0 rounded-full border-primary/30 bg-primary/5 px-3 text-xs font-medium text-primary"
+              />
+              {/* md:text-2xl overrides the shared Input's md:text-sm, which shrank the title. */}
+              <Input
+                value={form.name}
+                onChange={(e) => set("name", e.target.value)}
+                onBlur={handleNameBlur}
+                placeholder="Untitled service"
+                aria-label="Course name"
+                className="h-auto rounded-none border-none bg-[linear-gradient(var(--color-primary),var(--color-primary))] bg-[length:0%_2px] bg-[position:0_100%] bg-no-repeat px-0 py-0.5 font-heading text-2xl font-bold leading-tight text-foreground shadow-none transition-[background-size] duration-300 focus-visible:bg-[length:100%_2px] focus-visible:ring-0 md:text-2xl"
+              />
+              <div className="flex w-full flex-wrap items-center gap-x-4 gap-y-2">
+                <p className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                  <Building2 className="size-4 shrink-0" /> {profile?.business_name ?? "Institution"}
+                </p>
+                {socialLinks.length > 0 && (
+                  <div className="flex items-center gap-1.5 sm:ml-auto">
+                    {socialLinks.map((url) => { const brand = socialNameForUrl(url); return (
+                      <a key={url} href={url} target="_blank" rel="noopener noreferrer" title={brand ? brand.charAt(0).toUpperCase() + brand.slice(1) : url} aria-label={brand ?? url}
+                        className="flex size-8 items-center justify-center rounded-full border text-muted-foreground transition-[color,border-color,transform] hover:-translate-y-px hover:border-primary/40 hover:text-primary">
+                        {brand ? <SocialIcon name={brand} className="size-3.5" /> : <Link2 className="size-3.5" />}
+                      </a>
+                    ); })}
+                  </div>
+                )}
               </div>
-            )}
+            </div>
           </div>
         </CardContent>
       </div>

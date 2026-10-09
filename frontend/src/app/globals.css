@@ -510,6 +510,32 @@
     animation: shake 0.35s;
     background-color: color-mix(in oklab, var(--destructive) 6%, transparent);
   }
+  /* Progress ring: --ring-p sweeps from 0 to the element's --ring-pct (registered so the
+     conic-gradient stop can animate). Without the animation it sits at --ring-pct. */
+  .animate-ring-fill {
+    --ring-p: var(--ring-pct, 0%);
+    animation: ring-fill 0.9s cubic-bezier(0.65, 0, 0.35, 1) 0.2s backwards;
+  }
+  @keyframes ring-fill {
+    from { --ring-p: 0%; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .animate-ring-fill { animation: none; }
+  }
+
+  /* A bar/meter that grows in from the left; set --fill-delay to stagger siblings. */
+  @keyframes fill-x {
+    from { transform: scaleX(0); }
+  }
+  .animate-fill-x {
+    transform-origin: left;
+    animation: fill-x 0.7s cubic-bezier(0.65, 0, 0.35, 1) backwards;
+    animation-delay: var(--fill-delay, 250ms);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .animate-fill-x { animation: none; }
+  }
+
   /* Blocks rise in one after another when a page or tab mounts: .stagger-in staggers its
      children, .stagger-in-deep its grandchildren (a tab's header, toolbar, list inside its card).
      Fill is `backwards`, not `both`: a filled transform would keep making the parent the
@@ -721,4 +747,11 @@
   .animate-ai-pulse {
     animation: none !important;
   }
+}
+
+/* Registered so the progress ring's conic-gradient stop can be animated (.animate-ring-fill). */
+@property --ring-p {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 0%;
 }

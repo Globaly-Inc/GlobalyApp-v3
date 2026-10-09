@@ -3,10 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { Eye, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Switch } from "@/components/ui/switch";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { geoApi, type Country } from "@/app/geo/apis";
 import { fetchMe, useAuthState, switchAccount } from "@/app/auth/store/auth-slice";
@@ -25,6 +23,7 @@ import { InstitutionScholarshipsTab } from "./components/scholarships/institutio
 import { ActivityTab } from "./components/tabs/activity-tab";
 import { ProfileTab } from "./components/tabs/profile-tab";
 import { ProfileHeaderCard } from "./components/profile-header-card";
+import { ProfilePublishBar } from "./components/profile-publish-bar";
 import { SiteUrlsCard } from "../portal/components/site-urls-card";
 import { isInstitutionOrg } from "./utils";
 // Lives in the ai-widget feature because that is whose data it is — the same reason
@@ -183,37 +182,29 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
           only the other tabs, which are tables and lists, keep the outer <Card>. */}
       {tab === "profile" ? (
         <>
-          <div className="flex flex-wrap items-center justify-end gap-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                if (!isViewingInstitution) {
-                  window.open(`/business/${profile.subdomain}`, "_blank");
-                  return;
-                }
-                // Mints a short-lived, single-purpose preview token (never the caller's own
-                // session access token) so an unpublished institution's owner can still preview
-                // it — see issuePreviewToken (backend) and the matching bypass in
-                // findPublicInstitutionBySlug. Opens the tab synchronously (inside the click
-                // gesture) so popup blockers don't catch it, then redirects once the token
-                // comes back.
-                const path = `/institution/${institutionPublicSlug(profile.business_name, profile.id)}`;
-                const tab = window.open("", "_blank");
-                authApi.mintPreviewToken()
-                  .then(({ preview_token }) => {
-                    if (tab) tab.location.href = `${path}?preview_token=${encodeURIComponent(preview_token)}`;
-                  })
-                  .catch(() => { if (tab) tab.location.href = path; });
-              }}
-            >
-              <Eye className="mr-1.5 h-3.5 w-3.5" /> Preview
-            </Button>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">{profile.is_published ? "Published" : "Unpublished"}</span>
-              <Switch checked={profile.is_published} onCheckedChange={handleTogglePublished} />
-            </div>
-          </div>
+          <ProfilePublishBar
+            profile={profile}
+            onTogglePublished={handleTogglePublished}
+            onPreview={() => {
+              if (!isViewingInstitution) {
+                window.open(`/business/${profile.subdomain}`, "_blank");
+                return;
+              }
+              // Mints a short-lived, single-purpose preview token (never the caller's own
+              // session access token) so an unpublished institution's owner can still preview
+              // it — see issuePreviewToken (backend) and the matching bypass in
+              // findPublicInstitutionBySlug. Opens the tab synchronously (inside the click
+              // gesture) so popup blockers don't catch it, then redirects once the token
+              // comes back.
+              const path = `/institution/${institutionPublicSlug(profile.business_name, profile.id)}`;
+              const tab = window.open("", "_blank");
+              authApi.mintPreviewToken()
+                .then(({ preview_token }) => {
+                  if (tab) tab.location.href = `${path}?preview_token=${encodeURIComponent(preview_token)}`;
+                })
+                .catch(() => { if (tab) tab.location.href = path; });
+            }}
+          />
 
           <ProfileHeaderCard
             profile={profile}
@@ -231,8 +222,8 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
       ) : tab === "site_mapping" ? (
         <SiteUrlsCard sharedFrom={profile?.extraction_parent_name ?? null} />
       ) : (
-        <Card>
-          <CardContent className="stagger-in-deep">
+        <Card className="rounded-[18px]">
+          <CardContent className="stagger-in-deep px-[22px]">
             {tab === "branches" && <BranchesTab businessId={businessId} isInstitution={isViewingInstitution} countries={countries} />}
             {tab === "partners" && (
               <PartnersTab businessId={businessId} businessName={profile.business_name} isInstitution={isViewingInstitution} />

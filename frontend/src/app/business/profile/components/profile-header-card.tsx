@@ -14,8 +14,8 @@ import type { Country } from "@/app/geo/apis";
 import { businessLocationLine, businessTypeLabel } from "../utils";
 
 /**
- * V1's hero card (`BusinessProfilePage`'s Hero + `ProfileHero` on the public side): a 176px cover,
- * a square logo overlapping it by half, then category badge / name / location stacked beside the
+ * V1's hero card (`BusinessProfilePage`'s Hero + `ProfileHero` on the public side): a cover with a
+ * one-time sheen, a rounded logo overlapping it by half, then category badge / name / location stacked beside the
  * logo with the social links as bordered circles on the far right.
  *
  * Kept as the portal's own component rather than reusing `<ProfileHero>` because every surface
@@ -39,7 +39,12 @@ const SOCIALS: { key: keyof SocialLinks; name: SocialName }[] = [
 ];
 
 const ICON_LINK =
-  "flex h-9 w-9 items-center justify-center rounded-full border border-border text-muted-foreground transition-colors hover:text-foreground";
+  "flex size-8 items-center justify-center rounded-full border border-border text-muted-foreground transition-[color,border-color,background-color,transform] duration-200 hover:-translate-y-0.5 hover:border-primary/40 hover:bg-primary/5 hover:text-primary";
+
+// CoverLogoEditor owns the "Edit cover" button; restyle it from outside as a light pill that
+// firms up when the hero is hovered or the button is focused.
+const COVER_EDITOR =
+  "h-44 sm:h-48 [&>button]:rounded-full [&>button]:bg-background/85 [&>button]:shadow-sm [&>button]:backdrop-blur [&>button]:opacity-80 [&>button]:transition-opacity group-hover/hero:[&>button]:opacity-100 [&>button:focus-visible]:opacity-100";
 
 export function ProfileHeaderCard({
   profile,
@@ -77,106 +82,112 @@ export function ProfileHeaderCard({
     </div>
   );
 
-  const logoBox = "h-28 w-28 shrink-0 overflow-hidden rounded-lg border-4 border-background bg-muted shadow-lg";
+  const logoBox =
+    "animate-pop-in relative block size-24 shrink-0 overflow-hidden rounded-2xl border-4 border-background bg-muted shadow-lg";
 
   return (
-    <div className="overflow-hidden rounded-xl border border-border bg-card">
-      {previewMode ? (
-        <div className="relative h-44 select-none">
-          {profile.cover_url ? (
-            // eslint-disable-next-line @next/next/no-img-element -- signed storage URL, not a static asset
-            <img src={profile.cover_url} alt="" className="absolute inset-0 h-full w-full object-cover" />
-          ) : (
-            <div className="absolute inset-0 bg-gradient-to-r from-primary/80 via-primary/60 to-primary/40" />
-          )}
-          <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/20" />
+    <div id="profile-hero" className="group/hero scroll-mt-24 overflow-hidden rounded-2xl border border-border bg-card">
+      <div className="relative">
+        {previewMode ? (
+          <div className="relative h-44 select-none sm:h-48">
+            {profile.cover_url ? (
+              // eslint-disable-next-line @next/next/no-img-element -- signed storage URL, not a static asset
+              <img src={profile.cover_url} alt="" className="absolute inset-0 h-full w-full object-cover" />
+            ) : (
+              <div className="absolute inset-0 bg-gradient-to-r from-primary/80 via-primary/60 to-primary/40" />
+            )}
+            <div className="absolute inset-0 bg-gradient-to-b from-transparent to-black/20" />
+          </div>
+        ) : (
+          <CoverLogoEditor
+            className={COVER_EDITOR}
+            coverUrl={profile.cover_url}
+            onCoverFile={onCoverFile}
+            coverUploading={coverUploading}
+            logoUrl={profile.logo_url}
+            logoFallback={initials || "B"}
+            onLogoFile={onLogoFile}
+            hideLogo
+          />
+        )}
+        {/* One light pass across the cover on mount; pointer-events-none keeps "Edit cover" clickable. */}
+        <div aria-hidden className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="animate-sheen absolute inset-0 bg-gradient-to-r from-transparent via-white/25 to-transparent" />
         </div>
-      ) : (
-        <CoverLogoEditor
-          className="h-44 sm:h-44"
-          coverUrl={profile.cover_url}
-          onCoverFile={onCoverFile}
-          coverUploading={coverUploading}
-          logoUrl={profile.logo_url}
-          logoFallback={initials || "B"}
-          onLogoFile={onLogoFile}
-          hideLogo
-        />
-      )}
+      </div>
 
       {/* `relative` is load-bearing: the cover above is positioned, so without a stacking context
           of its own this row paints *under* the part of the cover the logo overlaps. */}
-      <div className="relative px-6 py-6">
-        <div className="-mt-14 flex flex-col items-start gap-4 sm:flex-row">
+      <div className="relative flex flex-col gap-3 px-5 pb-5 sm:flex-row sm:gap-5 sm:px-6">
+        <div className="-mt-12 shrink-0">
           {previewMode ? (
             <div className={logoBox}>{logoImage}</div>
           ) : (
-            <button type="button" className={`group relative ${logoBox} cursor-pointer`} onClick={() => logoPickerRef.current?.pick()} aria-label="Edit logo">
+            <button type="button" className={`group cursor-pointer ${logoBox}`} onClick={() => logoPickerRef.current?.pick()} aria-label="Change logo">
               {logoImage}
-              <span className="absolute inset-0 flex items-center justify-center bg-black/50 opacity-0 transition-opacity group-hover:opacity-100">
-                {logoUploading ? <Loader2 className="h-6 w-6 animate-spin text-white" /> : <Camera className="h-6 w-6 text-white" />}
+              <span
+                className={`absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/55 text-xs font-semibold text-white transition-opacity ${logoUploading ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100"}`}
+              >
+                {logoUploading ? <Loader2 className="size-5 animate-spin" /> : <><Camera className="size-4" />Change</>}
               </span>
             </button>
           )}
           <CroppedFileInput ref={logoPickerRef} cropShape="square" onCropped={onLogoFile} isSaving={logoUploading} />
+        </div>
 
-          {/* The logo overlaps the cover, so the details column carries its own top padding to
-              line its text up beside the taller logo box. */}
-          <div className="min-w-0 flex-1 pt-2 sm:pt-10">
-            <div className="flex items-start justify-between gap-4">
-              <div className="min-w-0 pt-0.5">
-                {categoryLabel && (
-                  <Badge variant="secondary" className="mb-1.5 gap-1.5">
-                    <DynamicIcon name={profile.business_category_icon} fallback="Building2" className="h-3 w-3" />
-                    {categoryLabel}
-                  </Badge>
-                )}
-                <h1 className="text-2xl font-bold text-foreground">{profile.business_name}</h1>
-                {locationLabel && (
-                  <span className="mt-1 flex items-center gap-1.5 text-sm text-muted-foreground">
-                    <MapPin className="h-3.5 w-3.5 shrink-0" />{locationLabel}
-                  </span>
-                )}
-              </div>
+        <div className="flex min-w-0 flex-1 flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:pt-4">
+          <div className="flex min-w-0 flex-col items-start gap-1.5">
+            {categoryLabel && (
+              <Badge variant="secondary" className="gap-1.5">
+                <DynamicIcon name={profile.business_category_icon} fallback="Building2" className="h-3 w-3" />
+                {categoryLabel}
+              </Badge>
+            )}
+            <h1 className="font-heading text-2xl leading-tight font-bold text-foreground">{profile.business_name}</h1>
+            {locationLabel && (
+              <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+                <MapPin className="h-3.5 w-3.5 shrink-0" />{locationLabel}
+              </span>
+            )}
+          </div>
 
-              {/* V1 faded the edit pencil in only when the social row is hovered, so the icons
-                  read as links first and an editable field second. */}
-              <div className="group/social flex shrink-0 items-center gap-2 pt-1">
-                {!previewMode && (
-                  <Button
-                    variant="ghost"
-                    size="icon-sm"
-                    className="opacity-0 transition-opacity group-hover/social:opacity-100 focus-visible:opacity-100"
-                    onClick={onEditSocials}
-                    aria-label="Edit social links"
-                  >
-                    <Pencil className="h-3.5 w-3.5" />
-                  </Button>
-                )}
-                {profile.website && (
-                  <a href={externalUrl(profile.website)} target="_blank" rel="noopener noreferrer" aria-label="Website" className={ICON_LINK}>
-                    <Globe className="h-4 w-4" />
-                  </a>
-                )}
-                {socials.map((s) => (
-                  <a key={s.key} href={externalUrl(profile[s.key]!)} target="_blank" rel="noopener noreferrer" aria-label={s.name} className={ICON_LINK}>
-                    <SocialIcon name={s.name} className="h-4 w-4" />
-                  </a>
-                ))}
-                {/* Its brand icon when we have one (TikTok, Threads…), else a link glyph; the label on hover. */}
-                {(profile.other_social_links ?? []).map((l) => {
-                  const brand = socialNameForUrl(l.url);
-                  return (
-                    <a key={l.url} href={externalUrl(l.url)} target="_blank" rel="noopener noreferrer" aria-label={l.label} title={l.label} className={ICON_LINK}>
-                      {brand ? <SocialIcon name={brand} className="h-4 w-4" /> : <Link2 className="h-4 w-4" />}
-                    </a>
-                  );
-                })}
-              </div>
-            </div>
+          {/* V1 faded the edit pencil in only when the social row is hovered, so the icons
+              read as links first and an editable field second. */}
+          <div className="group/social flex shrink-0 flex-wrap items-center gap-1.5">
+            {!previewMode && (
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                className="opacity-0 transition-opacity group-hover/social:opacity-100 focus-visible:opacity-100"
+                onClick={onEditSocials}
+                aria-label="Edit social links"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </Button>
+            )}
+            {profile.website && (
+              <a href={externalUrl(profile.website)} target="_blank" rel="noopener noreferrer" aria-label="Website" className={ICON_LINK}>
+                <Globe className="h-4 w-4" />
+              </a>
+            )}
+            {socials.map((s) => (
+              <a key={s.key} href={externalUrl(profile[s.key]!)} target="_blank" rel="noopener noreferrer" aria-label={s.name} className={ICON_LINK}>
+                <SocialIcon name={s.name} className="h-4 w-4" />
+              </a>
+            ))}
+            {/* Its brand icon when we have one (TikTok, Threads…), else a link glyph; the label on hover. */}
+            {(profile.other_social_links ?? []).map((l) => {
+              const brand = socialNameForUrl(l.url);
+              return (
+                <a key={l.url} href={externalUrl(l.url)} target="_blank" rel="noopener noreferrer" aria-label={l.label} title={l.label} className={ICON_LINK}>
+                  {brand ? <SocialIcon name={brand} className="h-4 w-4" /> : <Link2 className="h-4 w-4" />}
+                </a>
+              );
+            })}
           </div>
         </div>
       </div>
+
     </div>
   );
 }

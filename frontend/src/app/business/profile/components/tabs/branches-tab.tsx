@@ -10,7 +10,7 @@ import { Pagination } from "@/components/ui/pagination";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchMe, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchBranches, deleteBranch, convertCampus } from "../../store/business-profile-detail-slice";
-import type { Branch, BranchFilter } from "../../apis/types";
+import type { Branch } from "../../apis/types";
 import { LinkBranchDialog } from "../branches/link-branch-dialog";
 import { DeleteBranchDialog } from "../branches/delete-branch-dialog";
 import { HeadOfficeCard } from "../branches/head-office-card";
@@ -18,12 +18,6 @@ import { BranchRow } from "../branches/branch-row";
 import type { Country } from "@/app/geo/apis";
 
 const PAGE_SIZE = 10;
-
-const FILTER_OPTIONS: { value: BranchFilter; label: string }[] = [
-  { value: "all", label: "All" },
-  { value: "branches_only", label: "Branches only" },
-  { value: "linked_branches", label: "Linked" },
-];
 
 export function BranchesTab({
   businessId,
@@ -69,7 +63,6 @@ export function BranchesTab({
   const [deleting, setDeleting] = useState(false);
   const [linkOpen, setLinkOpen] = useState(false);
   const [search, setSearch] = useState("");
-  const [filterBranch, setFilterBranch] = useState<BranchFilter>("all");
   const [page, setPage] = useState(1);
   const [leavingId, setLeavingId] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -90,7 +83,7 @@ export function BranchesTab({
   // once after the first load so the org switcher shows them without a reload.
   const meRefreshedRef = useRef(false);
   const fetchPage = (p: number) => {
-    dispatch(fetchBranches({ id: businessId, params: { search: search || undefined, filter_branch: filterBranch, page: p, limit: PAGE_SIZE } }))
+    dispatch(fetchBranches({ id: businessId, params: { search: search || undefined, page: p, limit: PAGE_SIZE } }))
       .then(() => {
         if (meRefreshedRef.current) return;
         meRefreshedRef.current = true;
@@ -103,7 +96,7 @@ export function BranchesTab({
     const timer = setTimeout(() => fetchPage(1), 300);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [dispatch, businessId, search, filterBranch]);
+  }, [dispatch, businessId, search]);
 
   const handlePageChange = (p: number) => {
     setPage(p);
@@ -142,8 +135,8 @@ export function BranchesTab({
         <Building2 className="h-10 w-10 text-muted-foreground/40" />
         <p className="text-sm font-medium">{search ? `No branches match “${search}”` : "No branches yet"}</p>
         <p className="text-xs text-muted-foreground">
-          {search || filterBranch !== "all"
-            ? "Try a shorter name, or switch the filter to All."
+          {search
+            ? "Try a shorter name."
             : isInstitution ? "Create a branch to get started." : "Link an existing business or create a branch to get started."}
         </p>
       </div>
@@ -179,8 +172,6 @@ export function BranchesTab({
       </div>
     );
   }
-
-  const filterIndex = FILTER_OPTIONS.findIndex((o) => o.value === filterBranch);
 
   return (
     <div className="flex flex-col gap-4">
@@ -227,25 +218,6 @@ export function BranchesTab({
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-        </div>
-        {/* Three fixed options — a segmented control reads faster than a dropdown here. */}
-        <div role="group" aria-label="Filter branches" className="relative grid grid-cols-3 rounded-lg bg-muted/60 p-[3px] max-sm:w-full">
-          <span
-            aria-hidden
-            className="absolute inset-y-[3px] left-[3px] w-[calc((100%-6px)/3)] rounded-md bg-background shadow-sm transition-transform duration-300 ease-[cubic-bezier(.3,1.3,.5,1)]"
-            style={{ transform: `translateX(${filterIndex * 100}%)` }}
-          />
-          {FILTER_OPTIONS.map((o) => (
-            <button
-              key={o.value}
-              type="button"
-              aria-pressed={o.value === filterBranch}
-              onClick={() => setFilterBranch(o.value)}
-              className="relative z-10 whitespace-nowrap rounded-md px-3 py-2 text-xs font-semibold text-muted-foreground transition-colors aria-pressed:text-foreground focus-visible:outline-2 focus-visible:outline-primary"
-            >
-              {o.label}
-            </button>
-          ))}
         </div>
       </div>
 

@@ -4,7 +4,6 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthState } from "@/app/auth/store/auth-slice";
 import { toast } from "sonner";
-import { Package, Plus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { ServiceFilterValues } from "../services/service-filters";
 import { ServiceToolbar, type CourseCategory } from "../services/service-toolbar";
@@ -17,8 +16,12 @@ import type { BusinessService } from "../../apis/types";
 import { DeleteServiceDialog } from "../services/delete-service-dialog";
 import { ServiceManagementTable, type ColumnKey, type SortColumn, type SortState } from "../services/service-management-table";
 import { useCourseApproval } from "../services/use-course-approval";
-import { SelectAllBanner, ServiceBulkBar } from "../services/service-bulk-bar";
+import { ServiceBulkBar } from "../services/service-bulk-bar";
+import { SelectAllBanner } from "../services/select-all-banner";
 import { useServiceBulkActions } from "../services/use-service-bulk-actions";
+import { ServiceStatsStrip } from "../services/service-stats-strip";
+import { PortalPageHeader } from "../portal-ui/portal-page-header";
+import { PortalAddButton } from "../portal-ui/portal-add-button";
 
 const PAGE_SIZE = 10;
 const DEFAULT_COLUMNS: ColumnKey[] = ["category", "degree_level", "area_of_study", "price", "status"];
@@ -166,26 +169,19 @@ export function ServicesTab({
   const filtering = !!(search.trim() || filters.published || filters.origin || filters.degree_level);
 
   return (
-    <div>
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h2 className="flex items-center gap-2.5 text-2xl font-bold">
-            {readOnly ? "Courses" : "Service management"}
-            {hasLoaded && <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-xs tabular-nums text-primary">{total}</span>}
-          </h2>
-          <p className="text-muted-foreground">
-            {readOnly ? "Courses extracted for this institution." : "Manage your service listings."}
-          </p>
-        </div>
+    <div className="grid gap-4">
+      <PortalPageHeader
+        title={readOnly ? "Courses" : "Service management"}
+        count={hasLoaded ? total : null}
+        subtitle={readOnly ? "Courses extracted for this institution." : "Manage your service listings."}
+      >
         {!readOnly && (
-          <Button
-            className="group/add h-10 transition-[transform,box-shadow] hover:-translate-y-px hover:shadow-[0_6px_18px_-6px_var(--color-primary)] active:translate-y-0 active:scale-[.98]"
-            onClick={() => router.push(`/business/profile/${businessId}/services/add${orgQuery}`)}
-          >
-            <Plus className="mr-1.5 h-3.5 w-3.5 transition-transform duration-300 ease-[cubic-bezier(.34,1.56,.64,1)] group-hover/add:rotate-90" /> Add service
-          </Button>
+          <PortalAddButton onClick={() => router.push(`/business/profile/${businessId}/services/add${orgQuery}`)}>Add service</PortalAddButton>
         )}
-      </div>
+      </PortalPageHeader>
+
+      {/* Read-only "Courses" view has no publish states to summarise. Refreshes when the list changes (publish toggles, deletes). */}
+      {!readOnly && <ServiceStatsStrip courseCategory={isInstitution ? courseCategory : undefined} isInstitution={isInstitution} refreshKey={services} />}
 
       <ServiceToolbar
         readOnly={readOnly}
@@ -201,15 +197,15 @@ export function ServicesTab({
       {!hasLoaded || status === "loading" ? (
         <ServiceTableSkeleton columns={visibleColumns.size} />
       ) : pageRows.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-xl border-2 border-dashed py-12 text-center">
-          <Package className="h-10 w-10 text-muted-foreground/40" />
+        <div className="grid justify-items-center gap-1.5 rounded-[14px] border-[1.5px] border-dashed p-[30px] text-center text-muted-foreground">
           {filtering ? (
             <>
-              <p className="text-sm font-medium">{readOnly ? "No courses match these filters" : "No services match these filters"}</p>
+              <b className="text-foreground">{readOnly ? "No courses match these filters" : "No services match these filters"}</b>
+              <span>Try another search or clear a filter.</span>
               <Button variant="link" size="sm" className="h-auto p-0" onClick={() => { setSearch(""); setFilters({}); }}>Clear all filters</Button>
             </>
           ) : (
-            <p className="text-sm font-medium">{readOnly ? "No courses yet" : "No services yet"}</p>
+            <b className="text-foreground">{readOnly ? "No courses yet" : "No services yet"}</b>
           )}
         </div>
       ) : (
@@ -246,7 +242,12 @@ export function ServicesTab({
         </>
       )}
 
-      {total > 0 && <Pagination page={page} total={total} limit={PAGE_SIZE} onPageChange={handlePageChange} />}
+      {/* Mockup footer: muted "Showing a–b of N" left, pager right. The grid gap spaces it, not Pagination's own mt-4. */}
+      {total > 0 && (
+        <div className="text-[12.5px] tabular-nums text-muted-foreground [&>div]:mt-0 [&_p]:text-[12.5px] [&_button]:size-[30px] [&_button]:rounded-lg">
+          <Pagination page={page} total={total} limit={PAGE_SIZE} onPageChange={handlePageChange} />
+        </div>
+      )}
 
       {!readOnly && (
         <ServiceBulkBar

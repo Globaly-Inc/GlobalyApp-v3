@@ -18,6 +18,10 @@ export type CourseListFilters = {
   published?: boolean;
   origin?: "extracted" | "manual";
   degreeLevel?: string;
+  /** Services tab summary counts: not approved yet (approvalStatus ≠ approved — coalesce so a NULL
+   * verdict counts as pending), or no fee (what getFeePricesForCourses + the legacy
+   * domestic_fee_total fallback would both leave empty). */
+  attention?: "needs_approval" | "missing_fee";
 };
 
 /**
@@ -41,7 +45,7 @@ export type CourseSort = "newest" | "oldest" | "name_asc" | "name_desc" | "recen
 
 function filteredCoursesQuery(
   jobId: string,
-  { search, status, scope, excluded, courseCategory, shared, approvedOnly, published, origin, degreeLevel }: CourseListFilters,
+  { search, status, scope, excluded, courseCategory, shared, approvedOnly, published, origin, degreeLevel, attention }: CourseListFilters,
 ) {
   const q = masterKnex(T).where((b) => applyCourseScope(b, "", jobId, shared));
   if (approvedOnly) q.whereRaw(approvedCourseSql(T));
@@ -55,6 +59,15 @@ function filteredCoursesQuery(
   if (published !== undefined) q.where("is_published", published);
   if (origin) q[origin === "extracted" ? "whereNull" : "whereNotNull"]("created_by_platform_user_id");
   if (degreeLevel) q.where("degree_level_code", degreeLevel);
+  if (attention === "needs_approval") q.whereRaw(`not coalesce(${approvedCourseSql(T)}, false)`);
+  if (attention === "missing_fee") {
+    q.whereNull("domestic_fee_total").whereNotExists(
+      masterKnex(`${S}.extraction_course_fee_assignments as a`)
+        .join(`${S}.extraction_course_fees as f`, "f.id", "a.course_fee_id")
+        .where("a.job_id", jobId).whereNotNull("f.total_amount")
+        .whereRaw("a.course_id = ??", [`${T}.id`]).select(masterKnex.raw("1")),
+    );
+  }
   if (scope && excluded) {
     // Mirrors isCourseInScope on a SCOPED job: the level must be resolved AND not excluded.
     const inScope = "(degree_level_code IS NOT NULL AND NOT (degree_level_code = ANY(?)))";

@@ -1,11 +1,5 @@
 "use client";
 
-// This view wants the description as PLAIN TEXT, and `/<[^>]*>/g` was a hand-rolled way to get
-// it. React escapes a JSX child, so that regex was never load-bearing for safety — but a
-// single-pass tag strip reads as a sanitiser, which is what CodeQL flagged, and it decodes no
-// entities. ALLOWED_TAGS: [] asks the real parser for the text instead.
-import DOMPurify from "isomorphic-dompurify";
-
 import { useRef, useState } from "react";
 import { toast } from "sonner";
 import { Building2, Loader2, Pencil, Save, Sparkles } from "lucide-react";
@@ -16,7 +10,6 @@ import { Textarea } from "@/components/ui/textarea";
 import { Combobox, type ComboboxOption } from "@/components/combobox";
 import { DynamicIcon } from "@/components/dynamic-icon";
 import { FieldError } from "@/components/field-error";
-import { ProfileSection } from "@/app/(web)/components/profile/profile-section";
 import { useAppDispatch } from "@/lib/hooks";
 import { businessApi } from "@/app/business/apis";
 import { updateMyProfile } from "@/app/business/store/business-onboarding-slice";
@@ -24,6 +17,8 @@ import type { BusinessCategoryOption, BusinessProfile } from "@/app/business/api
 import { HEADER_PENCIL, INSTITUTION_TYPE_OPTIONS } from "../const";
 import { businessTypeLabel } from "../utils";
 import { PrivacyBadge } from "@/components/privacy-badge";
+import { ProfileCard } from "./profile-card";
+import { AboutView } from "./about-view";
 
 /** The API sends the icon as a lucide icon NAME (e.g. "Building2"); render it, don't print it. */
 const toCategoryOptions = (cats: BusinessCategoryOption[]): ComboboxOption[] =>
@@ -171,9 +166,10 @@ export function GeneralInformationCard({
   // The badge takes no `onToggle`: V1 rendered this one as a fixed "Public" pill. The name and
   // description are what a listing *is* — hiding them would publish an empty card.
   return (
-    <ProfileSection
+    <ProfileCard
+      id="profile-about"
       icon={Building2}
-      title="General Information"
+      title="About"
       badge={<PrivacyBadge isPublic />}
       action={
         readOnly ? null : (
@@ -181,7 +177,7 @@ export function GeneralInformationCard({
             size="icon-sm"
             variant="ghost"
             className={HEADER_PENCIL}
-            aria-label={editing ? "Stop editing general information" : "Edit general information"}
+            aria-label={editing ? "Stop editing about" : "Edit about"}
             onClick={() => (editing ? setEditing(false) : startEditing())}
           >
             <Pencil className="h-4 w-4" />
@@ -275,13 +271,9 @@ export function GeneralInformationCard({
             </Button>
           </div>
         </div>
-      ) : profile.description ? (
-        <p className="whitespace-pre-line text-sm leading-relaxed text-foreground">
-          {DOMPurify.sanitize(profile.description, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] })}
-        </p>
       ) : (
-        <p className="text-sm italic text-muted-foreground">No description added yet.</p>
+        <AboutView profile={profile} isInstitution={isInstitution} />
       )}
-    </ProfileSection>
+    </ProfileCard>
   );
 }

@@ -1,7 +1,6 @@
 "use client";
 
 import { ArrowUp, CheckCircle2, BookOpen, Eye, EyeOff, Package, Pencil, Trash2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { PriceEditPopover } from "@/app/admin/platform/businesses/components/services/price-edit-popover";
@@ -12,6 +11,7 @@ import { OriginChip } from "../origin-chip";
 import { cn } from "@/lib/utils";
 import { ServiceStatusBadge } from "./service-status-badge";
 import { DegreeBadge } from "./degree-badge";
+import { ACTIONS, STICKY_TD, STICKY_TH, TABLE, TABLE_WRAP, TD, TH, TR, rowDelay } from "../portal-ui/portal-ui";
 
 export type SortColumn = "name" | "category" | "degree_level" | "area_of_study" | "price" | "status";
 export type SortState = { column: SortColumn | null; direction: "asc" | "desc" };
@@ -19,7 +19,7 @@ export type SortState = { column: SortColumn | null; direction: "asc" | "desc" }
 export type ColumnKey = "category" | "degree_level" | "area_of_study" | "price" | "status";
 
 export const COLUMN_LABELS: Record<ColumnKey, string> = {
-  category: "Category", degree_level: "Degree Level", area_of_study: "Subject Area",
+  category: "Category", degree_level: "Degree level", area_of_study: "Subject area",
   price: "Fee", status: "Status",
 };
 
@@ -90,7 +90,7 @@ export function ServiceManagementTable({
     return (
       <button
         type="button"
-        className={cn("-mx-1 flex items-center gap-1 rounded-md px-1 py-0.5 transition-colors hover:bg-muted hover:text-foreground", sort.column === col && "text-foreground")}
+        className={cn("-mx-1 -my-0.5 inline-flex items-center gap-[5px] rounded-md px-1 py-0.5 transition-colors hover:bg-background hover:text-foreground", sort.column === col && "text-foreground")}
         onClick={() => onSortChange(col)}
       >
         {label} {sortArrow(col)}
@@ -100,42 +100,35 @@ export function ServiceManagementTable({
 
   return (
     // Own scroll box, so the header can stick and a narrow screen scrolls the table, not the page.
-    <div className="max-h-[640px] overflow-auto rounded-xl border">
-      <table className="w-full text-sm">
-        <thead className="sticky top-0 z-10">
-          <tr className="text-xs text-muted-foreground [&>th]:border-b [&>th]:bg-muted [&>th]:font-semibold">
-            {!readOnly && <th className="w-10 p-3"><Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label="Select all" /></th>}
-            <th className="p-3 text-left">{headerButton("name", "Service Name")}</th>
+    <div className={TABLE_WRAP}>
+      {/* Every column needs room to read; the sticky Actions column stays in view while it scrolls. */}
+      <table className={cn(TABLE, visibleColumns.size > 3 && "min-w-[1180px]")}>
+        <thead>
+          <tr>
+            {!readOnly && <th className={cn(TH, "w-11")}><Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label="Select all" /></th>}
+            <th className={TH}>{headerButton("name", "Service name")}</th>
             {[...visibleColumns].map((col) => (
-              <th key={col} className="p-3 text-left whitespace-nowrap">{headerButton(SORTABLE[col], COLUMN_LABELS[col])}</th>
+              <th key={col} className={TH}>{headerButton(SORTABLE[col], COLUMN_LABELS[col])}</th>
             ))}
-            {!readOnly && <th className="w-px p-3 text-right">Actions</th>}
+            {!readOnly && <th className={cn(TH, STICKY_TH)}>Actions</th>}
           </tr>
         </thead>
         <tbody>
           {services.map((s, i) => {
             const selected = selectedIds.has(s.id);
+            // Opaque tint (not /alpha) — the sticky Actions cell must hide the cells scrolling under it.
+            const td = cn(TD, selected && "bg-[color-mix(in_srgb,var(--color-primary)_7%,var(--color-card))] group-hover/row:bg-[color-mix(in_srgb,var(--color-primary)_7%,var(--color-card))]");
             return (
-            <tr
-              key={s.id}
-              // Mount-only animation: rows rise in when a page loads, not when a checkbox toggles.
-              className={cn("group animate-row-rise border-b transition-colors last:border-0", selected ? "bg-primary/5" : "hover:bg-muted/40")}
-              style={{ animationDelay: `${Math.min(i, 10) * 35}ms` }}
-            >
+            // Mount-only animation: rows rise in when a page loads, not when a checkbox toggles.
+            <tr key={s.id} className={TR} style={rowDelay(i)}>
               {!readOnly && (
-                <td className={cn("p-3", selected && "shadow-[inset_3px_0_0_var(--color-primary)]")}>
+                <td className={cn(td, selected && "shadow-[inset_3px_0_0_var(--color-primary)]")}>
                   <Checkbox checked={selected} onCheckedChange={() => toggleOne(s.id)} aria-label={`Select ${s.name}`} />
                 </td>
               )}
-              <td className="max-w-96 p-3">
-                <div className="flex min-w-0 items-center gap-2.5">
-                  {isInstitution ? (
-                    <DegreeBadge level={s.degree_level} fallback={<BookOpen className="h-4 w-4" />} />
-                  ) : (
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-muted text-muted-foreground">
-                      <Package className="h-4 w-4" />
-                    </div>
-                  )}
+              <td className={td}>
+                <div className="flex min-w-60 max-w-100 items-center gap-2.5">
+                  <DegreeBadge level={s.degree_level} fallback={isInstitution ? <BookOpen className="h-3.5 w-3.5" /> : <Package className="h-3.5 w-3.5" />} />
                   <div className="min-w-0">
                   {isInstitution ? (
                     <button
@@ -155,7 +148,7 @@ export function ServiceManagementTable({
                     <span className="block truncate font-semibold" title={s.name}><Highlight text={s.name} query={query} /></span>
                   )}
                   {(s.origin || s.edited_by) && (
-                    <p className="mt-0.5 flex min-w-0 items-center gap-1.5 text-[11px] text-muted-foreground">
+                    <p className="mt-[3px] flex min-w-0 items-center gap-1.5 whitespace-nowrap text-[11.5px] text-muted-foreground">
                       {s.origin && <OriginChip origin={s.origin} />}
                       {s.edited_by && (
                         <span className="truncate" title={s.edited_at ? new Date(s.edited_at).toLocaleString() : undefined}>
@@ -168,57 +161,65 @@ export function ServiceManagementTable({
                 </div>
               </td>
               {visibleColumns.has("category") && (
-                <td className="p-3">
-                  {s.category_name ? <Badge variant="secondary" className="text-[10px]">{s.category_name}</Badge> : <span className="text-muted-foreground">—</span>}
+                <td className={td}>
+                  {s.category_name
+                    ? <span className="whitespace-nowrap rounded-full bg-primary/10 px-[9px] py-[3px] text-[11px] font-semibold text-primary">{s.category_name}</span>
+                    : <span className="text-muted-foreground">—</span>}
                 </td>
               )}
-              {visibleColumns.has("degree_level") && <td className="p-3 whitespace-nowrap">{s.degree_level ?? <span className="text-muted-foreground">—</span>}</td>}
+              {visibleColumns.has("degree_level") && <td className={cn(td, "whitespace-nowrap")}>{s.degree_level ?? <span className="text-muted-foreground">—</span>}</td>}
               {visibleColumns.has("area_of_study") && (
-                <td className="max-w-64 truncate p-3 text-muted-foreground" title={s.area_of_study ?? undefined}>{s.area_of_study ?? "—"}</td>
+                <td className={td}>
+                  {s.area_of_study
+                    ? <span className="block max-w-[260px] truncate" title={s.area_of_study}>{s.area_of_study}</span>
+                    : <span className="text-muted-foreground">—</span>}
+                </td>
               )}
               {visibleColumns.has("price") && (
-                <td className="p-3 whitespace-nowrap">
+                <td className={cn(td, "whitespace-nowrap")}>
                   {/* Institutions' price is whatever the Fees tab says (extraction_course_fees) —
                       there's no single editable price column to back this popover, so it would
                       silently do nothing (see institution-courses.repository.ts's getFeePricesForCourses). */}
                   {readOnly || isInstitution ? (
-                    s.price ?? <span className="text-muted-foreground">—</span>
+                    <FeeSummary price={s.price} />
                   ) : (
                     <div className="flex items-center gap-1">
-                      <span>{s.price ?? <span className="text-muted-foreground">—</span>}</span>
+                      <FeeSummary price={s.price} />
                       <PriceEditPopover price={s.price} onSave={(next) => onPriceSave(s.id, next)} />
                     </div>
                   )}
                 </td>
               )}
               {visibleColumns.has("status") && !readOnly && (
-                <td className="p-3">
+                <td className={td}>
                   <ServiceStatusBadge s={s} />
                 </td>
               )}
               {!readOnly && (
-                <td className="p-3">
+                // Sticky so Edit/Publish/Delete stay reachable when long fees push the table wide.
+                <td className={cn(td, STICKY_TD)}>
                   {/* Fixed slots, so every row's icons line up whether or not it still needs approval. */}
-                  <div className="flex items-center justify-end gap-0.5 whitespace-nowrap opacity-50 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100 [&_button]:active:scale-90">
+                  <div className={ACTIONS}>
                     {onApprove && (needsApproval(s) ? (
-                      <Button size="icon-sm" variant="ghost" className="text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700" onClick={() => onApprove(s.id)} aria-label="Approve course" title="Approve course">
-                        <CheckCircle2 className="h-3.5 w-3.5" />
+                      <Button size="icon-sm" variant="ghost" className={cn(ICON, "text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/40")} onClick={() => onApprove(s.id)} aria-label="Approve course" title="Approve course">
+                        <CheckCircle2 className="h-4 w-4" />
                       </Button>
-                    ) : <span className="inline-block size-7" aria-hidden />)}
-                    <Button size="icon-sm" variant="ghost" onClick={() => onEdit(s.id)} aria-label="Edit service" title="Edit"><Pencil className="h-3.5 w-3.5" /></Button>
+                    ) : <span className="inline-block size-[30px]" aria-hidden />)}
+                    <Button size="icon-sm" variant="ghost" className={ICON} onClick={() => onEdit(s.id)} aria-label="Edit service" title="Edit"><Pencil className="h-4 w-4" /></Button>
                     <Button
                       size="icon-sm"
                       variant="ghost"
+                      className={cn(ICON, "disabled:opacity-35")}
                       // Approve first — publishing an unapproved course is refused by the backend.
                       disabled={!s.is_published && needsApproval(s)}
                       title={!s.is_published && needsApproval(s) ? "Approve this course before publishing it" : undefined}
                       onClick={() => onTogglePublish(s.id, !s.is_published)}
                       aria-label={s.is_published ? "Unpublish service" : "Publish service"}
                     >
-                      {s.is_published ? <EyeOff className="h-3.5 w-3.5" /> : <Eye className="h-3.5 w-3.5" />}
+                      {s.is_published ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </Button>
-                    <Button size="icon-sm" variant="ghost" className="text-destructive hover:bg-destructive/10" onClick={() => onDelete(s)} aria-label="Delete service" title="Delete">
-                      <Trash2 className="h-3.5 w-3.5" />
+                    <Button size="icon-sm" variant="ghost" className={cn(ICON, "hover:bg-destructive/10 hover:text-destructive")} onClick={() => onDelete(s)} aria-label="Delete service" title="Delete">
+                      <Trash2 className="h-4 w-4" />
                     </Button>
                   </div>
                 </td>
@@ -229,6 +230,24 @@ export function ServiceManagementTable({
         </tbody>
       </table>
     </div>
+  );
+}
+
+/** Row icon button from the mockup: 30px, muted until hovered. */
+const ICON = "size-[30px] rounded-lg text-muted-foreground hover:bg-muted hover:text-foreground";
+
+/** An institution's price joins every fee ("USD 33,360 (Per Semester) · USD 75 (Total) · …"),
+ * which pushed the table wide. Show the first amount and a "+N" chip; the full list is the tooltip. */
+function FeeSummary({ price }: Readonly<{ price: string | null }>) {
+  if (!price) return <span className="text-muted-foreground">—</span>;
+  const [first, ...rest] = price.split(" · ");
+  return (
+    <span className="inline-flex items-center gap-1.5 whitespace-nowrap tabular-nums" title={[first, ...rest].join("\n")}>
+      {first}
+      {rest.length > 0 && (
+        <span className="rounded-full bg-muted px-1.5 py-px font-mono text-[10px] font-semibold text-muted-foreground">+{rest.length}</span>
+      )}
+    </span>
   );
 }
 

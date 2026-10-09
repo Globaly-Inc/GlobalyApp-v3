@@ -42,13 +42,14 @@ export async function getServiceListExtras(businessId: number, schemaName: strin
 }
 
 export async function searchServices(
-  businessId: number, schemaName: string, limit: number, offset: number, search?: string, published?: boolean,
+  businessId: number, schemaName: string, limit: number, offset: number, search?: string, published?: boolean, missingFee?: boolean,
 ) {
   const db = await getKnex(businessId, schemaName);
   const base = () => {
     const q = db("business_services as s").leftJoin("service_categories as cat", "cat.id", "s.service_category_id").whereNull("s.deleted_at");
     if (search) q.whereILike("s.name", `%${search}%`);
     if (published !== undefined) q.where("s.is_published", published);
+    if (missingFee) q.whereNull("s.price");
     return q;
   };
   const [{ count }] = await base().count<{ count: string }[]>("s.id as count");

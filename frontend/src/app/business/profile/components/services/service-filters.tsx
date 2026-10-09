@@ -4,6 +4,7 @@ import { Combobox } from "@/components/combobox";
 import { cn } from "@/lib/utils";
 import type { Lookup } from "@/app/admin/platform/categories/apis/types";
 import type { ServiceSearchParams } from "../../apis/types";
+import { FILTER, FILTER_ACTIVE } from "../portal-ui/portal-ui";
 
 /** The Services tab's server-side filters — every page, not just the loaded one. */
 export type ServiceFilterValues = Pick<ServiceSearchParams, "published" | "origin" | "degree_level">;
@@ -21,7 +22,7 @@ export const ORIGIN_OPTIONS = [
 ];
 
 /** A picker with a value set gets a tinted border so active filters stand out. */
-const active = (on: boolean) => cn("h-10", on && "border-primary bg-primary/5 text-primary");
+const active = (on: boolean) => cn(FILTER, on && FILTER_ACTIVE);
 
 export function ServiceFilters({ value, onChange, isInstitution, degreeLevels }: Readonly<{
   value: ServiceFilterValues;

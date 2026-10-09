@@ -2,17 +2,36 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Award, Globe2, Loader2, Plus, Trash2 } from "lucide-react";
+import { Award, ExternalLink, Plus, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
 import { Combobox } from "@/components/combobox";
+import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { OneToManySection } from "@/app/personal/profile/section-card";
 import { businessProfileDetailApi } from "../../../apis";
 import type { Accreditation } from "@/app/admin/platform/categories/apis/types";
 import { ServiceAccreditationForm } from "./service-accreditation-form";
+import { TabSection } from "./tab-section";
 import type { ServiceAccreditationLink } from "../../../apis/types";
+
+const CHIP = "rounded-full px-2 py-0.5 text-[11px] font-semibold";
+const STATUS = {
+  approved: { label: "Verified", chip: "bg-emerald-500/10 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300", seal: "" },
+  pending: { label: "Pending review", chip: "bg-amber-500/15 text-amber-700 dark:bg-amber-400/10 dark:text-amber-300", seal: "bg-amber-500/15 text-amber-700 dark:text-amber-300" },
+  rejected: { label: "Rejected", chip: "bg-destructive/10 text-destructive", seal: "bg-destructive/10 text-destructive" },
+  unknown: { label: null, chip: "", seal: "" },
+};
+/** Same rule as before the redesign: being in the approved catalog lookup means verified (a link
+ * row can still carry a stale "pending" from before approval). Otherwise the link's own
+ * pending/rejected status; with neither, no status is claimed. */
+const statusOf = (row: ServiceAccreditationLink, a?: Accreditation): keyof typeof STATUS => {
+  if (a) return "approved";
+  const s = row.accreditation_status;
+  return s === "pending" || s === "rejected" ? s : "unknown";
+};
+const initials = (name: string) => name.split(/\s+/).filter(Boolean).map((w) => w[0]).join("").slice(0, 3).toUpperCase();
+const SEAL_GRADIENT =
+  "bg-[conic-gradient(from_0deg,var(--color-primary),color-mix(in_oklab,var(--color-primary)_55%,white),var(--color-primary))] text-primary-foreground shadow-[inset_0_0_0_3px_color-mix(in_oklab,var(--color-card)_40%,transparent)]";
 
 export function AccreditationsTab({ serviceId }: Readonly<{ serviceId: string }>) {
   const [rows, setRows] = useState<ServiceAccreditationLink[]>([]);
@@ -83,58 +102,83 @@ export function AccreditationsTab({ serviceId }: Readonly<{ serviceId: string }>
     }
   };
 
-  if (loading) {
-    return (
-      <div className="flex justify-center py-10">
-        <Loader2 className="h-5 w-5 animate-spin text-primary" />
-      </div>
-    );
-  }
+  const statuses = rows.map((row) => statusOf(row, details[row.accreditation_id]));
+  const countOf = (s: string) => statuses.filter((x) => x === s).length;
 
   return (
     <>
-      <OneToManySection icon={Award} title="Accreditations" count={rows.length} onAdd={openAdd} emptyText="No accreditations linked yet.">
-        <div className="space-y-2">
+      <TabSection
+        icon={Award}
+        title="Accreditations"
+        count={rows.length}
+        addLabel="Link accreditation"
+        onAdd={openAdd}
+        loading={loading}
+        emptyTitle="No accreditations linked yet"
+        emptyHint="Link the bodies that accredit this course so students can trust it."
+        summary={
+          <p className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+            {countOf("approved")} verified · {countOf("pending")} in review
+          </p>
+        }
+      >
+        <div className="stagger-in grid gap-3 sm:grid-cols-2">
           {rows.map((row) => {
             const a = details[row.accreditation_id];
+            const name = a?.name ?? row.accreditation_name ?? `Accreditation #${row.accreditation_id}`;
+            const status = statusOf(row, a);
+            const st = STATUS[status];
             return (
-              <div key={row.id} className="rounded-lg border bg-primary/5 p-3">
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex items-start gap-2.5">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-                      <Award className="h-4 w-4" />
-                    </div>
-                    <div>
-                      <div className="flex flex-wrap items-center gap-2">
-                        <span className="text-sm font-semibold">{a?.name ?? row.accreditation_name ?? `Accreditation #${row.accreditation_id}`}</span>
-                        {a?.is_global && <Badge variant="outline" className="text-primary">Global</Badge>}
-                        {!a && row.accreditation_status === "pending" && <Badge variant="outline">Pending review</Badge>}
-                        {!a && row.accreditation_status === "rejected" && <Badge variant="destructive">Rejected — remove or replace</Badge>}
-                      </div>
-                      {a?.issuing_organization_name && (
-                        <p className="text-xs text-muted-foreground">{a.issuing_organization_name}</p>
-                      )}
-                      {a?.website && (
-                        <a
-                          href={a.website} target="_blank" rel="noreferrer"
-                          className="mt-1 inline-flex items-center gap-1 text-xs text-primary hover:underline"
-                        >
-                          <Globe2 className="h-3 w-3" /> Website
-                        </a>
-                      )}
-                    </div>
+              <article
+                key={row.id}
+                className={`group/card relative grid content-start gap-2.5 overflow-hidden rounded-xl border bg-card p-4 transition-[background-color,box-shadow] hover:bg-primary/[0.02] hover:shadow-md ${status === "rejected" ? "border-destructive/40" : ""}`}
+              >
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`grid size-12 shrink-0 place-items-center overflow-hidden rounded-full text-[13px] font-bold transition-transform duration-600 ease-[cubic-bezier(.34,1.56,.64,1)] group-hover/card:-rotate-12 group-hover/card:scale-105 ${a?.issuing_organization_logo_url ? "border bg-card" : st.seal || SEAL_GRADIENT}`}
+                  >
+                    {a?.issuing_organization_logo_url ? (
+                      // eslint-disable-next-line @next/next/no-img-element -- remote org logo, arbitrary host
+                      <img src={a.issuing_organization_logo_url} alt="" className="size-full object-contain p-1.5" />
+                    ) : (
+                      initials(name)
+                    )}
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate text-[14.5px] font-semibold">{name}</p>
+                    {a?.issuing_organization_name && <p className="truncate text-[12.5px] text-muted-foreground">{a.issuing_organization_name}</p>}
                   </div>
-                  <div className="flex shrink-0 gap-1">
-                    <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(row.id)} aria-label="Remove accreditation">
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
+                  <div className="shrink-0 opacity-55 transition-opacity focus-within:opacity-100 group-hover/card:opacity-100">
+                    <ConfirmDeleteButton onConfirm={() => handleDelete(row.id)} label="Unlink" question="Unlink?" />
                   </div>
                 </div>
-              </div>
+                {a?.description && <p className="line-clamp-2 text-[12.5px] leading-relaxed text-muted-foreground">{a.description}</p>}
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {st.label && <span className={`${CHIP} ${st.chip}`}>{st.label}</span>}
+                    {a?.is_global && <span className={`${CHIP} bg-muted text-muted-foreground`}>Global</span>}
+                  </div>
+                  {status === "rejected" ? (
+                    <Button size="sm" variant="outline" className="h-7 gap-1.5 px-2 text-xs" onClick={openAdd}>
+                      <RefreshCw className="h-3 w-3" /> Replace
+                    </Button>
+                  ) : (
+                    a?.website && (
+                      <a
+                        href={a.website} target="_blank" rel="noreferrer"
+                        className="inline-flex min-w-0 items-center gap-1 text-xs text-primary hover:underline"
+                      >
+                        <span className="truncate">{a.website.replace(/^https?:\/\/(www\.)?/, "").replace(/\/$/, "")}</span>
+                        <ExternalLink className="h-3 w-3 shrink-0" />
+                      </a>
+                    )
+                  )}
+                </div>
+              </article>
             );
           })}
         </div>
-      </OneToManySection>
+      </TabSection>
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent className={mode === "new" ? "max-h-[90vh] overflow-y-auto border-0 bg-transparent p-0 shadow-none" : undefined}>

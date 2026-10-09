@@ -2,16 +2,16 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Pencil, Save, ShieldCheck } from "lucide-react";
+import { Loader2, Pencil, Plus, Save, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ProfileSection } from "@/app/(web)/components/profile/profile-section";
 import { useAppDispatch } from "@/lib/hooks";
 import { updateMyProfile } from "@/app/business/store/business-onboarding-slice";
 import type { BusinessProfile } from "@/app/business/apis/types";
 import { HEADER_PENCIL } from "../const";
 import { PrivacyBadge } from "@/components/privacy-badge";
 import { useSectionVisibility } from "./use-section-visibility";
+import { ProfileCard } from "./profile-card";
 import { RegistrationLicensesFields, cleanRegistrationLicenses, type RegLicenses } from "./registration-licenses-fields";
 
 // No `countries` prop any more: the server resolves the country's registration types (and the
@@ -53,7 +53,8 @@ export function RegistrationLicensesCard({
   const hasSaved = !!registration.business_registration?.number || (registration.licenses?.length ?? 0) > 0;
 
   return (
-    <ProfileSection
+    <ProfileCard
+      id="profile-registration"
       icon={ShieldCheck}
       title="Registration & Licenses"
       badge={<PrivacyBadge isPublic={isPublic("registration")} onToggle={canEditVisibility ? () => toggle("registration") : undefined} />}
@@ -83,23 +84,37 @@ export function RegistrationLicensesCard({
           </Button>
         </div>
       ) : hasSaved ? (
-        <div className="space-y-2">
+        <dl>
           {registration.business_registration?.number && (
-            <div className="flex items-center gap-2">
-              <Badge variant="secondary">{registration.business_registration.type || "Registration"}</Badge>
-              <span className="text-sm font-medium">{registration.business_registration.number}</span>
-            </div>
+            <RegRow label="Business registration" type={registration.business_registration.type || "Registration"} number={registration.business_registration.number} />
           )}
           {registration.licenses?.map((license) => (
-            <div key={`${license.type}-${license.number}`} className="flex items-center gap-2">
-              <Badge variant="outline">{license.type || "License"}</Badge>
-              <span className="text-sm">{license.number}</span>
-            </div>
+            <RegRow key={`${license.type}-${license.number}`} label="Licence" type={license.type || "License"} number={license.number} />
           ))}
-        </div>
-      ) : (
+        </dl>
+      ) : readOnly ? (
         <p className="text-sm italic text-muted-foreground">No registration or license added yet.</p>
+      ) : (
+        <div className="grid justify-items-center gap-2 rounded-xl border-[1.5px] border-dashed p-[18px] text-center text-[12.5px] text-muted-foreground">
+          <p className="text-[13px] font-semibold text-foreground">No registration added</p>
+          <p>Add your registration number so students can trust this listing.</p>
+          <Button size="sm" className="mt-1 gap-1" onClick={startEditing}>
+            <Plus /> Add registration
+          </Button>
+        </div>
       )}
-    </ProfileSection>
+    </ProfileCard>
+  );
+}
+
+function RegRow({ label, type, number }: Readonly<{ label: string; type: string; number: string }>) {
+  return (
+    <div className="flex items-center gap-3 border-b py-2.5 first:pt-0 last:border-b-0 last:pb-0">
+      <div className="min-w-0 flex-1">
+        <dt className="text-[11.5px] text-muted-foreground">{label}</dt>
+        <dd className="break-all font-mono text-[13px] font-semibold">{number}</dd>
+      </div>
+      <Badge variant="secondary" className="shrink-0 text-[10px]">{type}</Badge>
+    </div>
   );
 }
