@@ -4,6 +4,7 @@ import {
   getRefreshToken,
   getSelectedOrgId,
   isTokenExpired,
+  saveAccessToken,
   saveSelectedOrgId,
   saveTokens,
 } from "@/lib/session";
@@ -30,14 +31,18 @@ type RefreshResult = "ok" | "rejected" | "transient";
 
 let refreshPromise: Promise<RefreshResult> | null = null;
 
+/**
+ * Sends the API's httpOnly refresh cookie (the API reads it when the body has no token). A
+ * pre-cookie session's localStorage token rides along once; the response sets the cookie.
+ */
 export function refreshAccessToken(): Promise<RefreshResult> {
-  const refreshToken = getRefreshToken();
-  if (!refreshToken) return Promise.resolve("rejected");
+  const legacyToken = getRefreshToken();
 
   refreshPromise ??= fetch(`${BASE_URL}/auth/refresh`, {
     method: "POST",
+    credentials: "include",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ refresh_token: refreshToken }),
+    body: JSON.stringify(legacyToken ? { refresh_token: legacyToken } : {}),
   })
     .then(async (res): Promise<RefreshResult> => {
       if (!res.ok) return res.status === 401 || res.status === 403 ? "rejected" : "transient";
@@ -54,6 +59,25 @@ export function refreshAccessToken(): Promise<RefreshResult> {
       refreshPromise = null;
     });
   return refreshPromise;
+}
+
+/**
+ * User-initiated sign-out: ends the session on the API (which clears its httpOnly refresh
+ * cookie and the hint, so web. and app. both see it) and drops the local tokens. keepalive
+ * lets the request finish while the page navigates away; it's fire-and-forget because a
+ * failed call must never keep someone signed in locally.
+ */
+export function endSession() {
+  const headers = { "Content-Type": "application/json", ...authHeaders() };
+  const legacyToken = getRefreshToken();
+  void fetch(`${BASE_URL}/auth/logout`, {
+    method: "POST",
+    credentials: "include",
+    keepalive: true,
+    headers,
+    body: JSON.stringify(legacyToken ? { refresh_token: legacyToken } : {}),
+  }).catch(() => undefined);
+  clearTokens();
 }
 
 function forceSignIn(): never {
@@ -143,8 +167,7 @@ export function ensureBusinessContext(force = false): Promise<boolean> {
   if (!force && currentOrgId !== null && currentOrgId === getSelectedOrgId()) return Promise.resolve(true);
 
   switchPromise ??= (async () => {
-    const refreshToken = getRefreshToken();
-    if (!refreshToken) return false;
+    const legacyToken = getRefreshToken();
 
     const meRes = await fetch(`${BASE_URL}/auth/me`, { headers: authHeaders() });
     if (!meRes.ok) return false;
@@ -177,14 +200,16 @@ export function ensureBusinessContext(force = false): Promise<boolean> {
     return runExclusiveSwitch(async () => {
       const res = await fetch(`${BASE_URL}/auth/switch-account`, {
         method: "POST",
+        credentials: "include",
         headers: { "Content-Type": "application/json", ...authHeaders() },
-        // Recorded on the session so /refresh keeps honoring it (see auth.service.ts).
-        body: JSON.stringify({ org_id: orgId, refresh_token: refreshToken }),
+        // Recorded on the session so /refresh keeps honoring it (see auth.service.ts); the API
+        // finds the session from its cookie when there's no legacy token to send.
+        body: JSON.stringify(legacyToken ? { org_id: orgId, refresh_token: legacyToken } : { org_id: orgId }),
       });
       if (!res.ok) return false;
 
       const { access_token } = (await res.json()) as { access_token: string };
-      saveTokens({ accessToken: access_token, refreshToken });
+      saveAccessToken(access_token);
       saveSelectedOrgId(orgId);
       return true;
     });
@@ -268,7 +293,7 @@ export function fieldErrorsFrom(err: unknown): Record<string, string> {
 
 export async function httpGet<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await withRefreshRetry(() =>
-    fetch(`${BASE_URL}${path}`, { ...init, headers: { ...authHeaders(), ...init?.headers } }),
+    fetch(`${BASE_URL}${path}`, { credentials: "include", ...init, headers: { ...authHeaders(), ...init?.headers } }),
   );
   if (!res.ok) throw await readError(res);
   return parseBody<T>(res);
@@ -287,6 +312,7 @@ async function httpWithBody<T>(
 ): Promise<T> {
   const attempt = () =>
     fetch(`${BASE_URL}${path}`, {
+      credentials: "include",
       ...init,
       method,
       headers: { "Content-Type": "application/json", ...authHeaders(), ...init?.headers },
@@ -313,7 +339,7 @@ export function httpPut<T>(path: string, body: unknown, init?: RequestInit): Pro
  */
 async function httpFormWithBody<T>(method: "POST" | "PATCH", path: string, form: FormData, init?: RequestInit): Promise<T> {
   const res = await withRefreshRetry(() =>
-    fetch(`${BASE_URL}${path}`, { ...init, method, headers: { ...authHeaders(), ...init?.headers }, body: form }),
+    fetch(`${BASE_URL}${path}`, { credentials: "include", ...init, method, headers: { ...authHeaders(), ...init?.headers }, body: form }),
   );
   if (!res.ok) throw await readError(res);
   return parseBody<T>(res);
@@ -331,6 +357,7 @@ export function httpPatchForm<T>(path: string, form: FormData, init?: RequestIni
 export async function httpPostNoContent(path: string, body?: unknown, init?: RequestInit): Promise<void> {
   const res = await withRefreshRetry(() =>
     fetch(`${BASE_URL}${path}`, {
+      credentials: "include",
       ...init,
       method: "POST",
       headers: { "Content-Type": "application/json", ...authHeaders(), ...init?.headers },
@@ -342,14 +369,14 @@ export async function httpPostNoContent(path: string, body?: unknown, init?: Req
 
 export async function httpDelete(path: string, init?: RequestInit): Promise<void> {
   const res = await withRefreshRetry(() =>
-    fetch(`${BASE_URL}${path}`, { ...init, method: "DELETE", headers: { ...authHeaders(), ...init?.headers } }),
+    fetch(`${BASE_URL}${path}`, { credentials: "include", ...init, method: "DELETE", headers: { ...authHeaders(), ...init?.headers } }),
   );
   if (!res.ok) throw await readError(res);
 }
 
 export async function httpBlob(path: string, init?: RequestInit): Promise<Blob> {
   const res = await withRefreshRetry(() =>
-    fetch(`${BASE_URL}${path}`, { ...init, headers: { ...authHeaders(), ...init?.headers } }),
+    fetch(`${BASE_URL}${path}`, { credentials: "include", ...init, headers: { ...authHeaders(), ...init?.headers } }),
   );
   if (!res.ok) throw await readError(res);
   return res.blob();
