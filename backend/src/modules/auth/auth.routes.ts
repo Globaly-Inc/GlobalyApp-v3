@@ -5,6 +5,7 @@ import { z } from "zod";
 import * as service from "./auth.service.js";
 import { RATE_LIMITS } from "./consts.js";
 import { requireInstitutionContext } from "../../core/plugins/auth.plugin.js";
+import { clearRefreshCookie, readRefreshCookie, setRefreshCookie } from "./refresh-cookie.js";
 
 const RegisterSchema = z.object({
   first_name: z.string().min(1).max(100),
@@ -24,8 +25,10 @@ const VerifyOtpSchema = z.object({
   otp: z.string().length(6),
 });
 
+// The body token is the legacy path (sessions from before the httpOnly cookie, other clients);
+// browsers now send the cookie instead.
 const RefreshSchema = z.object({
-  refresh_token: z.string().min(1),
+  refresh_token: z.string().min(1).optional(),
 });
 
 const SwitchAccountSchema = z.object({
@@ -58,26 +61,46 @@ export async function authRoutes(app: FastifyInstance) {
       ip: req.ip,
       userAgent: req.headers["user-agent"],
     });
+    setRefreshCookie(reply, result.refresh_token);
     return reply.send(result);
   });
 
   app.post("/refresh", {
     config: { rateLimit: RATE_LIMITS.refresh },
   }, async (req, reply) => {
-    const { refresh_token } = RefreshSchema.parse(req.body);
-    const result = await service.refreshAccessToken(refresh_token, {
-      ip: req.ip,
-      userAgent: req.headers["user-agent"],
-    });
-    return reply.send(result);
+    const { refresh_token: bodyToken } = RefreshSchema.parse(req.body ?? {});
+    // The cookie wins: a legacy body token may be one the cookie already rotated past.
+    const refreshToken = readRefreshCookie(req) ?? bodyToken;
+    if (!refreshToken) {
+      clearRefreshCookie(reply);
+      return reply.status(401).send({ error: "No session" });
+    }
+    try {
+      const result = await service.refreshAccessToken(refreshToken, {
+        ip: req.ip,
+        userAgent: req.headers["user-agent"],
+      });
+      // null inside the concurrent-refresh grace window: the winner already set the new cookie.
+      if (result.refresh_token) setRefreshCookie(reply, result.refresh_token);
+      return reply.send(result);
+    } catch (err) {
+      // A dead session must not leave its hint behind, or every page load retries it.
+      clearRefreshCookie(reply);
+      throw err;
+    }
   });
 
-  // Authenticated — invalidate session (pass refresh_token to logout single device, omit to logout all)
+  // Public (see auth.plugin.ts): ends the session named by the refresh cookie, or a body
+  // refresh_token from a pre-cookie client, and always clears both cookies. No token, no
+  // all-device logout — a missing or expired cookie must never sign out every device.
   app.post("/logout", {
     config: { rateLimit: RATE_LIMITS.logout },
   }, async (req, reply) => {
-    const body = (req.body ?? {}) as Record<string, string>;
-    await service.logout(Number(req.auth.sub), body.refresh_token);
+    const body = (req.body ?? {}) as Record<string, unknown>;
+    const bodyToken = typeof body.refresh_token === "string" ? body.refresh_token : undefined;
+    const refreshToken = readRefreshCookie(req) ?? bodyToken;
+    if (refreshToken) await service.logoutSession(refreshToken);
+    clearRefreshCookie(reply);
     return reply.status(204).send();
   });
 
@@ -86,7 +109,7 @@ export async function authRoutes(app: FastifyInstance) {
     config: { rateLimit: RATE_LIMITS.switchAccount },
   }, async (req, reply) => {
     const { org_id, refresh_token } = SwitchAccountSchema.parse(req.body);
-    const result = await service.switchAccount(Number(req.auth.sub), org_id, refresh_token);
+    const result = await service.switchAccount(Number(req.auth.sub), org_id, readRefreshCookie(req) ?? refresh_token);
     return reply.send(result);
   });
 

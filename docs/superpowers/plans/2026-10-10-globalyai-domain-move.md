@@ -69,11 +69,12 @@ The `/business/` folder list is generated from `frontend/src/app/business/*` at 
 # frontend
 NEXT_PUBLIC_WEB_URL=https://web.globalyai.com
 NEXT_PUBLIC_APP_URL=https://app.globalyai.com
-NEXT_PUBLIC_API_URL=<unchanged, or api.globalyai.com if the API moves too>
+NEXT_PUBLIC_API_URL=https://api.globalyai.com
 # backend
 WEB_APP_URL=https://app.globalyai.com
 CORS_ORIGINS=https://web.globalyai.com,https://app.globalyai.com
 MAIL_FROM=noreply@globalyai.com
+SESSION_HINT_COOKIE_DOMAIN=.globalyai.com
 ```
 
 ## Rollout
@@ -88,10 +89,13 @@ MAIL_FROM=noreply@globalyai.com
 - Manual: OTP sign-in on app.; the web navbar knows the session (option A); an old `www.globalyapp.com/for-students?x=1` link lands on web. with the query; an old embed snippet still opens its chat.
 
 ## As built (2026-10-10, branch dev-feat-globalyai-domain-move)
-- **Login sharing:** the code map showed public pages make authenticated API calls (saved items, eligibility, compare, checkout), so web. needs the real tokens, not a "signed in" flag. An httpOnly cookie would force every API call through a Next.js server proxy. Built instead:
-  - `src/lib/session.ts` keeps the tokens in cookies on `NEXT_PUBLIC_SESSION_COOKIE_DOMAIN` (`.globalyai.com`), with `Secure; SameSite=Lax`, a 30-day Max-Age, and no httpOnly.
-  - Exposure to page scripts is the same as today's localStorage. What's new is that the cookie also goes to every `*.globalyai.com` server.
-  - When the env var is unset, tokens stay in localStorage.
+- **Login sharing (revised after the security review):** the refresh token no longer lives in the page at all.
+  - `verify-otp` and `refresh` set it as an httpOnly cookie on the API host (`globaly_rt`, Path `/api/v3/auth`, no Domain attribute). `refresh`, `switch-account` and `logout` read it when the body has no token, and `logout` clears it. See `backend/src/modules/auth/refresh-cookie.ts`.
+  - The API also sets a readable, secret-free hint cookie (`globaly_session=1`) on `SESSION_HINT_COOKIE_DOMAIN` (`.globalyai.com`).
+  - The frontend keeps the access token in per-host localStorage and stops storing the refresh token. `StoreProvider` calls `/auth/refresh` (credentials included) only when the hint is present, so app. and web. share one sign-in and anonymous visitors cost nothing.
+  - Sign-out goes through `endSession()`, which calls `/auth/logout` and so clears the cookie for both hosts.
+  - A pre-cookie localStorage refresh token is sent once in the body and then dropped, so existing sessions survive the deploy.
+  - This closes both open review items: no subdomain can read or plant the refresh token, and the access token is never shared through a cookie.
 - **Cross-host links:** not rewritten. `src/proxy.ts` 308s any path that lands on the wrong host, so the ~53 relative links cost one extra redirect hop. Rewrite the hot ones (navbar Sign in) only if the hop shows up in metrics.
 - **Business portal folders** now include `ai-knowledge` and `contacts` (from staging). `tests/hosts.ts` fails if a new `src/app/business/*` route folder isn't listed in `BUSINESS_PORTAL_FOLDERS`, and the Cloudflare rule below must list the same folders.
 - **app.'s bare root** 307s to `/auth/sign-in`.
@@ -101,13 +105,20 @@ MAIL_FROM=noreply@globalyai.com
   - `MAIL_FROM` is a validated env var with default `noreply@globalyai.com`. The local `backend/.env` sets `MAIL_FROM=support@globalyapp.com`, which is now actually used; change it once Resend has verified globalyai.com.
 
 ### Security review (2026-10-10)
-- **Fixed, HIGH (cookie tossing):** a sibling subdomain could plant a same-named cookie with a longer Path and sign the victim in as the attacker. `store.get` now rejects any name that appears more than once, so the worst case is a forced re-login. The fix is tested in `tests/session-cookies.ts`.
+- **Fixed, HIGH (cookie tossing):** a sibling subdomain could plant a same-named cookie with a longer Path and sign the victim in as the attacker. Superseded by the revised design: there is no shared JS-readable token cookie any more, and the API's `readCookie` refuses duplicate `globaly_rt` cookies (tested in `backend/tests/refresh-cookie.ts`).
 - **Fixed, MEDIUM:** a malformed planted value no longer crashes every page (the decode is guarded).
 - **Fixed, LOW:** the static-file rule in `isSharedPath` no longer lets portal routes ending in an extension through on web.
 - **Fixed, LOW:** the broader cookie-tossing note is covered by the HIGH fix above.
-- **Open, MEDIUM, decision needed:** the 30-day refresh token is now readable by JavaScript on every `*.globalyai.com` host (including the apex marketing site and its third-party scripts) and is sent to their servers.
-  - Proper fix: the API sets the refresh token as an `HttpOnly; Secure; SameSite=Lax; Path=/api/v3/auth/refresh` cookie on api.globalyai.com, refresh reads the cookie instead of the request body, and only the short-lived access token stays JS-readable. This is a backend auth change.
-  - Until then, either accept the risk or ship PR 2 without `NEXT_PUBLIC_SESSION_COOKIE_DOMAIN`. Without it, login isn't shared across hosts but everything else works.
+- **Closed, MEDIUM (refresh token exposure) and the remaining fixation case:** the refresh token moved to an API-set httpOnly cookie, and the JS-readable shared token cookie is gone (see "Login sharing" above).
+- **Second review (refresh cookie), all fixed:**
+  - HIGH: sign-out failed silently when the access token had expired. `/logout` is now public and authenticated by the refresh cookie, and it always clears both cookies.
+  - HIGH: a stale legacy body token could trip reuse detection. Every route now prefers the cookie over the body token.
+  - HIGH: concurrent refreshes from tabs on both hosts wiped all sessions. There is now a 30s grace window (migration `20261010_001_auth_sessions_rotation_grace`): the old token gets an access token for the same session and no new cookie.
+  - MEDIUM: logout without a token no longer logs out every device.
+  - Refresh failures clear the hint, so dead sessions don't retry on every page.
+  - `Secure` is keyed off HTTPS origins as well as NODE_ENV.
+  - Boot fails if `CORS_ORIGINS` lists both hosts without `SESSION_HINT_COOKIE_DOMAIN`.
+- **Deploy order:** run the globalyapp migration before the new API starts, since `/refresh` writes `previous_refresh_token_hash`.
 - **Ops:** cookie bombs on the parent domain can 431 every host. Verify SPF and DKIM before switching `MAIL_FROM`.
 
 ## Decisions (2026-10-10)

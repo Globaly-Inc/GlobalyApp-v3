@@ -19,6 +19,9 @@ const envSchema = z.object({
   OTP_MAX_ATTEMPTS: z.coerce.number().default(5),
   OTP_LOCKOUT_MINUTES: z.coerce.number().default(30),
   SESSION_EXPIRY_DAYS: z.coerce.number().default(30),
+  // Parent domain for the readable "a session may exist" hint cookie (production: ".globalyai.com"),
+  // so web. and app. both see it. Unset = the API's own host. See modules/auth/refresh-cookie.ts.
+  SESSION_HINT_COOKIE_DOMAIN: z.string().optional(),
 
   // Server
   NODE_ENV: z.string().default("development"),
@@ -135,5 +138,11 @@ export const config = {
   CORS_ORIGIN_LIST: parseOriginList(parsed.CORS_ORIGINS),
   MASTER_DB_URL: `postgresql://${parsed.DB_USERNAME}:${parsed.DB_PASSWORD}@${parsed.DB_HOST}:${parsed.DB_PORT}/${parsed.DB_NAME}`,
 };
+
+// Two browser origins means the web./app. split: without the hint on their parent domain the
+// shared sign-in silently never restores on the other host. Fail at boot, not in the field.
+if (config.CORS_ORIGIN_LIST.length > 1 && !config.SESSION_HINT_COOKIE_DOMAIN) {
+  throw new Error("SESSION_HINT_COOKIE_DOMAIN is required when CORS_ORIGINS lists more than one origin (e.g. .globalyai.com)");
+}
 
 export type Config = typeof config;

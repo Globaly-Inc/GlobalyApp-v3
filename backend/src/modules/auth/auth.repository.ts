@@ -73,10 +73,23 @@ export async function findSessionsByUserId(platformUserId: number) {
     .orderBy("last_used_at", "desc");
 }
 
-export async function rotateRefreshToken(sessionId: string, newHash: string) {
+export async function rotateRefreshToken(sessionId: string, newHash: string, previousHash: string) {
   await masterKnex("auth_sessions")
     .where({ id: sessionId })
-    .update({ refresh_token_hash: newHash, last_used_at: masterKnex.fn.now() });
+    .update({
+      refresh_token_hash: newHash,
+      previous_refresh_token_hash: previousHash,
+      rotated_at: masterKnex.fn.now(),
+      last_used_at: masterKnex.fn.now(),
+    });
+}
+
+/** A session whose PREVIOUS token is this one, rotated within the last `withinMs`. */
+export async function findSessionRotatedFrom(previousHash: string, withinMs: number) {
+  return masterKnex("auth_sessions")
+    .where({ previous_refresh_token_hash: previousHash })
+    .where("rotated_at", ">", new Date(Date.now() - withinMs))
+    .first();
 }
 
 export async function updateSessionMeta(sessionId: string, data: {
