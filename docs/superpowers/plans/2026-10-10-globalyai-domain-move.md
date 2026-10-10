@@ -87,6 +87,29 @@ MAIL_FROM=noreply@globalyai.com
 - Proxy: a request on web. for `/business/portal` gets a 308 to app.; `/business/acme` is not redirected; nothing happens with the env unset.
 - Manual: OTP sign-in on app.; the web navbar knows the session (option A); an old `www.globalyapp.com/for-students?x=1` link lands on web. with the query; an old embed snippet still opens its chat.
 
+## As built (2026-10-10, branch dev-feat-globalyai-domain-move)
+- **Login sharing:** the code map showed public pages make authenticated API calls (saved items, eligibility, compare, checkout), so web. needs the real tokens, not a "signed in" flag. An httpOnly cookie would force every API call through a Next.js server proxy. Built instead:
+  - `src/lib/session.ts` keeps the tokens in cookies on `NEXT_PUBLIC_SESSION_COOKIE_DOMAIN` (`.globalyai.com`), with `Secure; SameSite=Lax`, a 30-day Max-Age, and no httpOnly.
+  - Exposure to page scripts is the same as today's localStorage. What's new is that the cookie also goes to every `*.globalyai.com` server.
+  - When the env var is unset, tokens stay in localStorage.
+- **Cross-host links:** not rewritten. `src/proxy.ts` 308s any path that lands on the wrong host, so the ~53 relative links cost one extra redirect hop. Rewrite the hot ones (navbar Sign in) only if the hop shows up in metrics.
+- **Business portal folders** now include `ai-knowledge` and `contacts` (from staging). `tests/hosts.ts` fails if a new `src/app/business/*` route folder isn't listed in `BUSINESS_PORTAL_FOLDERS`, and the Cloudflare rule below must list the same folders.
+- **app.'s bare root** 307s to `/auth/sign-in`.
+- **Backend:**
+  - `CORS_ORIGIN_LIST` is parsed from `CORS_ORIGINS`; tested in `backend/tests/parse-origin-list.ts`.
+  - Admin invites use `WEB_APP_URL`.
+  - `MAIL_FROM` is a validated env var with default `noreply@globalyai.com`. The local `backend/.env` sets `MAIL_FROM=support@globalyapp.com`, which is now actually used; change it once Resend has verified globalyai.com.
+
+### Security review (2026-10-10)
+- **Fixed, HIGH (cookie tossing):** a sibling subdomain could plant a same-named cookie with a longer Path and sign the victim in as the attacker. `store.get` now rejects any name that appears more than once, so the worst case is a forced re-login. The fix is tested in `tests/session-cookies.ts`.
+- **Fixed, MEDIUM:** a malformed planted value no longer crashes every page (the decode is guarded).
+- **Fixed, LOW:** the static-file rule in `isSharedPath` no longer lets portal routes ending in an extension through on web.
+- **Fixed, LOW:** the broader cookie-tossing note is covered by the HIGH fix above.
+- **Open, MEDIUM, decision needed:** the 30-day refresh token is now readable by JavaScript on every `*.globalyai.com` host (including the apex marketing site and its third-party scripts) and is sent to their servers.
+  - Proper fix: the API sets the refresh token as an `HttpOnly; Secure; SameSite=Lax; Path=/api/v3/auth/refresh` cookie on api.globalyai.com, refresh reads the cookie instead of the request body, and only the short-lived access token stays JS-readable. This is a backend auth change.
+  - Until then, either accept the risk or ship PR 2 without `NEXT_PUBLIC_SESSION_COOKIE_DOMAIN`. Without it, login isn't shared across hosts but everything else works.
+- **Ops:** cookie bombs on the parent domain can 431 every host. Verify SPF and DKIM before switching `MAIL_FROM`.
+
 ## Decisions (2026-10-10)
 - **Login sharing: option A**, a shared httpOnly refresh-token cookie on `.globalyai.com`. Security review before merge: cookie flags, CSRF on `/api/session` (POST only, SameSite=Lax, Origin check against the two hosts), refresh rotation, logout clears the cookie on both hosts.
 - **API moves to `api.globalyai.com`.** Keep the old API host as a proxied alias until every client (apps, embed snippets, mail links) has moved. Set `NEXT_PUBLIC_API_URL=https://api.globalyai.com` and `API_URL`/`APP_URL` on the backend to match; add `api` to the globalyai.com DNS records.
@@ -103,6 +126,7 @@ MAIL_FROM=noreply@globalyai.com
     starts_with(http.request.uri.path, "/business/onboarding") or starts_with(http.request.uri.path, "/business/ai-widget") or
     starts_with(http.request.uri.path, "/business/lms") or starts_with(http.request.uri.path, "/business/social") or
     starts_with(http.request.uri.path, "/business/notifications") or starts_with(http.request.uri.path, "/business/credits") or
-    starts_with(http.request.uri.path, "/business/scribe"))
+    starts_with(http.request.uri.path, "/business/scribe") or starts_with(http.request.uri.path, "/business/contacts") or
+    starts_with(http.request.uri.path, "/business/ai-knowledge"))
   ```
   Caveat: `starts_with("/ai")` would also catch a future public `/aid…` path, and a public institution slug that starts with a portal folder name (e.g. `/business/portal-college`) would go to app. app.'s proxy sends such a path back to web., so it costs one extra redirect, never a broken page.

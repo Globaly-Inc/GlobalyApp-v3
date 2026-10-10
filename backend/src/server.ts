@@ -88,7 +88,7 @@ export async function buildServer() {
   const app = Fastify({ logger: true, trustProxy });
 
   // --- Framework plugins ---
-  await app.register(cors, { origin: config.CORS_ORIGINS, credentials: true });
+  await app.register(cors, { origin: config.CORS_ORIGIN_LIST, credentials: true });
   // ponytail: 100/min per IP could not survive a single portal page load (a dozen endpoints, ×2 for
   // Strict Mode, × every open tab) — and IP is the wrong key twice over: every dev tab is 127.0.0.1,
   // and in production a whole office behind one NAT shared one bucket. Brute-force protection is not
