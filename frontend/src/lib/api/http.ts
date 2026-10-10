@@ -46,8 +46,8 @@ export function refreshAccessToken(): Promise<RefreshResult> {
   })
     .then(async (res): Promise<RefreshResult> => {
       if (!res.ok) return res.status === 401 || res.status === 403 ? "rejected" : "transient";
-      const tokens = (await res.json()) as { access_token: string; refresh_token: string };
-      saveTokens({ accessToken: tokens.access_token, refreshToken: tokens.refresh_token });
+      const { access_token } = (await res.json()) as { access_token: string };
+      saveTokens({ accessToken: access_token }); // the rotated refresh token is in the cookie
       return "ok";
     })
     .catch((): RefreshResult => "transient")
