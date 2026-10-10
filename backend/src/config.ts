@@ -25,6 +25,8 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(3000),
   API_URL: z.string().optional(),
   APP_URL: z.string().default("http://localhost:3000"),
+  // Comma-separated browser origins, e.g. "https://web.globalyai.com,https://app.globalyai.com".
+  // Use CORS_ORIGIN_LIST below, never this raw string, as a URL or a cors `origin`.
   CORS_ORIGINS: z.string().default("http://localhost:3001"),
   /**
    * Fastify `trustProxy` — decides what `req.ip` means, and `req.ip` is the only
@@ -54,6 +56,8 @@ const envSchema = z.object({
   MAIL_PORT: z.coerce.number().default(587),
   MAIL_USERNAME: z.string().optional(),
   MAIL_PASSWORD: z.string().optional(),
+  // The sending domain must be verified with the SMTP provider (SPF/DKIM) before this changes.
+  MAIL_FROM: z.string().email().default("noreply@globalyai.com"),
   POSTMARK_SERVER_TOKEN: z.string().optional(),
   CHARGEBEE_SITE: z.string().optional(),
   CHARGEBEE_API_KEY: z.string().optional(),
@@ -120,9 +124,15 @@ const envSchema = z.object({
 
 const parsed = envSchema.parse(process.env);
 
+/** "a, b,,c" -> ["a","b","c"]; trailing slashes dropped, since browsers send Origin without one. */
+export function parseOriginList(raw: string): string[] {
+  return raw.split(",").map((o) => o.trim().replace(/\/+$/, "")).filter(Boolean);
+}
+
 export const config = {
   ...parsed,
   API_URL: parsed.API_URL ?? `http://localhost:${parsed.PORT}`,
+  CORS_ORIGIN_LIST: parseOriginList(parsed.CORS_ORIGINS),
   MASTER_DB_URL: `postgresql://${parsed.DB_USERNAME}:${parsed.DB_PASSWORD}@${parsed.DB_HOST}:${parsed.DB_PORT}/${parsed.DB_NAME}`,
 };
 

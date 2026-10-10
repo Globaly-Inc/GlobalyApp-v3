@@ -113,7 +113,7 @@ export function ReferralsView() {
                 Refresh
               </Button>
               <a
-                href="mailto:support@globalyhub.com?subject=Missing%20referral%20code"
+                href="mailto:support@globalyai.com?subject=Missing%20referral%20code"
                 className={cn(buttonVariants({ variant: "ghost" }), "cursor-pointer")}
               >
                 Contact support

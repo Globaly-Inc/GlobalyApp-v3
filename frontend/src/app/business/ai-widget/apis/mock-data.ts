@@ -100,7 +100,7 @@ export const aiWidgetMockApi = {
     // updateConfig mutates this same object, so edits show up here without a lookup.
     return {
       config: seedConfig,
-      snippet: `<script src="https://app.globalyapp.com/embed.js" data-key="${seedConfig.embed_key}" async></script>`,
+      snippet: `<script src="https://web.globalyai.com/embed.js" data-key="${seedConfig.embed_key}" async></script>`,
       developers: [...mockDevelopers],
     };
   },
