@@ -20,8 +20,8 @@ export function hasSessionHint(): boolean {
 const ACCESS_TOKEN_KEY = "globaly_access_token";
 const REFRESH_TOKEN_KEY = "globaly_refresh_token";
 
-/** The refresh token is accepted for the call sites' sake but never stored — the API's cookie holds it. */
-export function saveTokens(tokens: { accessToken: string; refreshToken?: string | null }) {
+/** Also drops a pre-cookie session's refresh token: once the API has answered, its cookie holds it. */
+export function saveTokens(tokens: { accessToken: string }) {
   if (typeof window === "undefined") return;
   localStorage.setItem(ACCESS_TOKEN_KEY, tokens.accessToken);
   localStorage.removeItem(REFRESH_TOKEN_KEY);

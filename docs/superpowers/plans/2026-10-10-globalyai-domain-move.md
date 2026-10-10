@@ -90,7 +90,7 @@ SESSION_HINT_COOKIE_DOMAIN=.globalyai.com
 
 ## As built (2026-10-10, branch dev-feat-globalyai-domain-move)
 - **Login sharing (revised after the security review):** the refresh token no longer lives in the page at all.
-  - `verify-otp` and `refresh` set it as an httpOnly cookie on the API host (`globaly_rt`, Path `/api/v3/auth`, no Domain attribute). `refresh`, `switch-account` and `logout` read it when the body has no token, and `logout` clears it. See `backend/src/modules/auth/refresh-cookie.ts`.
+  - `verify-otp` and `refresh` set it as an httpOnly cookie on the API host (`__Host-globaly_rt` over HTTPS, Path `/`, no Domain attribute, never in a response body). `refresh`, `switch-account` and `logout` read it when the body has no token, and `logout` clears it. See `backend/src/modules/auth/refresh-cookie.ts`.
   - The API also sets a readable, secret-free hint cookie (`globaly_session=1`) on `SESSION_HINT_COOKIE_DOMAIN` (`.globalyai.com`).
   - The frontend keeps the access token in per-host localStorage and stops storing the refresh token. `StoreProvider` calls `/auth/refresh` (credentials included) only when the hint is present, so app. and web. share one sign-in and anonymous visitors cost nothing.
   - Sign-out goes through `endSession()`, which calls `/auth/logout` and so clears the cookie for both hosts.
@@ -118,6 +118,10 @@ SESSION_HINT_COOKIE_DOMAIN=.globalyai.com
   - Refresh failures clear the hint, so dead sessions don't retry on every page.
   - `Secure` is keyed off HTTPS origins as well as NODE_ENV.
   - Boot fails if `CORS_ORIGINS` lists both hosts without `SESSION_HINT_COOKIE_DOMAIN`.
+- **Third review (commit scan), all fixed:**
+  - `verify-otp` and `refresh` no longer return `refresh_token` in the JSON body, which page script could read. It exists only as the cookie.
+  - Over HTTPS the cookie is `__Host-globaly_rt` (Path `/`). Browsers refuse a `__Host-` cookie that names a Domain, so a sibling subdomain can't plant one, which closes the signed-out fixation case.
+  - The 30s grace window applies only when the IP and user agent match the request that just rotated.
 - **Deploy order:** run the globalyapp migration before the new API starts, since `/refresh` writes `previous_refresh_token_hash`.
 - **Ops:** cookie bombs on the parent domain can 431 every host. Verify SPF and DKIM before switching `MAIL_FROM`.
 

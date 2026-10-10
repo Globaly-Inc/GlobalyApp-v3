@@ -189,10 +189,11 @@ carries it — authorisation itself is safe, because `requirePermission` and
 - **Rotation**: new hash on every refresh, same family
 - **Reuse detection**: replayed token → delete ALL sessions for that user (nuclear option) — except
   within 30s of a rotation (`previous_refresh_token_hash` + `rotated_at`), where the old token gets an
-  access token for the same session and `refresh_token: null`: that's two tabs/hosts refreshing at once
+  access token for the same session and `refresh_token: null` — only from the same IP and user agent
+  that just rotated: that's two tabs/hosts refreshing at once
 - **Logout**: single device only, by refresh cookie or body token; works with an expired access token
 - **Browser storage**: `verify-otp` and `refresh` also set the refresh token as an httpOnly cookie
-  (`globaly_rt`, Path `/api/v3/auth`, API host only) plus a readable `globaly_session` hint on
+  (`__Host-globaly_rt` over HTTPS — siblings can't plant it — `globaly_rt` on plain-http dev; Path `/`, API host only; never in a response body) plus a readable `globaly_session` hint on
   `SESSION_HINT_COOKIE_DOMAIN`. `refresh`, `switch-account` and `logout` prefer the cookie over a body
   `refresh_token` (a legacy body token may already be rotated past); `logout` and any failed `refresh` clear both. See `refresh-cookie.ts`. This is what lets
   web.globalyai.com and app.globalyai.com share a sign-in without a JS-readable token.

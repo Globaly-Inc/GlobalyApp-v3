@@ -61,8 +61,10 @@ export async function authRoutes(app: FastifyInstance) {
       ip: req.ip,
       userAgent: req.headers["user-agent"],
     });
-    setRefreshCookie(reply, result.refresh_token);
-    return reply.send(result);
+    const { refresh_token, ...body } = result;
+    setRefreshCookie(reply, refresh_token);
+    // The refresh token goes out only as the httpOnly cookie; in the body, page script could read it.
+    return reply.send(body);
   });
 
   app.post("/refresh", {
@@ -80,9 +82,10 @@ export async function authRoutes(app: FastifyInstance) {
         ip: req.ip,
         userAgent: req.headers["user-agent"],
       });
+      const { refresh_token, ...body } = result;
       // null inside the concurrent-refresh grace window: the winner already set the new cookie.
-      if (result.refresh_token) setRefreshCookie(reply, result.refresh_token);
-      return reply.send(result);
+      if (refresh_token) setRefreshCookie(reply, refresh_token);
+      return reply.send(body);
     } catch (err) {
       // A dead session must not leave its hint behind, or every page load retries it.
       clearRefreshCookie(reply);

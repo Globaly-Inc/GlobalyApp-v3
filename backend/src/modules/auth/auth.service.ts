@@ -507,6 +507,12 @@ async function accessTokenForSession(session: AuthSessionRow, meta?: { ip?: stri
   };
 }
 
+function sameClient(session: AuthSessionRow, meta?: { ip?: string; userAgent?: string }): boolean {
+  return Boolean(meta?.ip && meta.userAgent)
+    && session.ip_address === meta?.ip
+    && session.user_agent === meta?.userAgent;
+}
+
 /**
  * Rotates and returns `refresh_token`, except inside the reuse grace window, where it returns
  * `refresh_token: null`: the other request already rotated, its response set the new cookie,
@@ -530,8 +536,11 @@ export async function refreshAccessToken(refreshToken: string, meta?: { ip?: str
     return { ...minted, refresh_token: newRaw as string | null };
   }
 
+  // Grace only for the same browser on the same network as the request that just rotated
+  // (updateSessionMeta stored its IP and user agent): a copied token replayed from elsewhere in
+  // those 30 seconds still counts as reuse below.
   const justRotated = await authRepo.findSessionRotatedFrom(hashed, REFRESH_REUSE_GRACE_MS);
-  if (justRotated) {
+  if (justRotated && sameClient(justRotated, meta)) {
     return { ...(await accessTokenForSession(justRotated, meta)), refresh_token: null };
   }
 

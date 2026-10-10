@@ -1,8 +1,10 @@
 // The refresh token's home in the browser: an httpOnly cookie the API sets on its own host.
 //
-// Page scripts can't read it and a sibling subdomain can't plant one (no Domain attribute, so
-// only api.* ever receives or sets it), which is what keeps a shared sign-in across
-// web.globalyai.com and app.globalyai.com from becoming a token every subdomain can see.
+// Page scripts can't read it, and over HTTPS it is a __Host- cookie: browsers refuse any
+// __Host- cookie that names a Domain, so a sibling subdomain can't plant one for api.* (cookie
+// tossing / session fixation) — a plain name would accept `Domain=.globalyai.com` from any of
+// them. That's what keeps a sign-in shared across web. and app. from being a token every
+// subdomain can see or forge.
 // Both hosts are the same site as api.*, so SameSite=Lax still sends it on their fetches.
 //
 // The hint cookie is the opposite: readable, on the parent domain, carrying no secret. It only
@@ -12,10 +14,8 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { config } from "../../config.js";
 
-export const REFRESH_COOKIE = "globaly_rt";
 export const SESSION_HINT_COOKIE = "globaly_session";
 
-const PATH = "/api/v3/auth";
 const MAX_AGE = config.SESSION_EXPIRY_DAYS * 24 * 60 * 60;
 
 /** Reads one cookie from a raw Cookie header. Duplicates are refused: the API never sets two. */
@@ -37,6 +37,10 @@ export function readRefreshCookie(req: FastifyRequest): string | undefined {
 // Secure whenever the frontends are served over HTTPS (any deployed environment, whatever its
 // NODE_ENV); plain-http dev hosts other than localhost would drop a Secure cookie.
 const SECURE = config.NODE_ENV === "production" || config.CORS_ORIGIN_LIST.some((o) => o.startsWith("https://"));
+
+// __Host- requires Secure and Path=/; plain-http local dev gets the bare name instead.
+export const REFRESH_COOKIE = SECURE ? "__Host-globaly_rt" : "globaly_rt";
+const PATH = "/";
 
 function secure(): string {
   return SECURE ? "; Secure" : "";
