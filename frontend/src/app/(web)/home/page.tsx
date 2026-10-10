@@ -88,7 +88,7 @@ export default function HomePage() {
             <h1 className="mt-6 text-4xl sm:text-5xl md:text-6xl font-extrabold text-white leading-[1.05] animate-fade-up">
               Making Global Education
               <br />
-              <span className="text-amber-300">
+              <span className="text-white">
                 {displayText}
                 <span
                   className="text-amber-200"
@@ -356,7 +356,7 @@ export default function HomePage() {
               One Platform. <span className="highlight-text active">Global Reach.</span>
             </h2>
             <p className="text-muted-foreground max-w-xl mx-auto">
-              Whether you&apos;re a student, an institution, or an education counselor — Globalyapp connects you
+              Whether you&apos;re a student, an institution, or an education counselor — GlobalyAI connects you
               with the right people, at the right time.
             </p>
           </Reveal>
@@ -444,7 +444,7 @@ export default function HomePage() {
           <Reveal className="text-center max-w-2xl mx-auto">
             <h2 className="text-3xl md:text-4xl font-bold mb-6">Ready to start your education journey?</h2>
             <p className="text-white/70 mb-10 text-lg">
-              Join thousands of students, institutions, and education counselors already using Globalyapp to
+              Join thousands of students, institutions, and education counselors already using GlobalyAI to
               connect and grow.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">

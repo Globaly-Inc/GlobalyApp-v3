@@ -128,7 +128,7 @@ export function emailLayout({ heading, body, cta, footnote, size = "default", al
               <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
                 <tr>
                   <td align="center" style="padding-bottom:20px">
-                    <img src="${logoUrl()}" alt="Globaly" width="56" height="56" style="display:block" />
+                    <img src="${logoUrl()}" alt="GlobalyAI" width="56" height="56" style="display:block" />
                   </td>
                 </tr>
                 <tr>
@@ -433,7 +433,7 @@ export function enquiryUnlockedEmail(options: {
              }
              <p style="margin:22px 0 0;color:${BRAND.muted};font-size:14px;line-height:21px">${esc(contactLine)}</p>`,
       cta: { label: "Read & reply", href },
-      footnote: "You're receiving this because you sent this enquiry on Globaly.",
+      footnote: "You're receiving this because you sent this enquiry on GlobalyAI.",
     }),
   };
 }
@@ -646,7 +646,7 @@ export function enquiryClaimEmail(options: {
     "",
     more,
     more ? "" : null,
-    `Your ${noun} profile on Globaly is currently unclaimed. Claim it to:`,
+    `Your ${noun} profile on GlobalyAI is currently unclaimed. Claim it to:`,
     ...benefits.map((b) => `• ${b}`),
     "",
     `${cta.label} → ${cta.href}`,
@@ -674,7 +674,7 @@ export function enquiryClaimEmail(options: {
       cta,
       footnote: who
         ? `Sent to ${esc(who)} because these students enquired about courses it offers.`
-        : `You're receiving this because students enquired about courses your ${noun} offers on Globaly.`,
+        : `You're receiving this because students enquired about courses your ${noun} offers on GlobalyAI.`,
     }),
   };
 }
@@ -690,10 +690,10 @@ export function otpEmail(otp: string): { subject: string; html: string; text: st
     .join("");
 
   return {
-    subject: `Your Globaly sign-in code: ${otp}`,
-    text: `Your Globaly sign-in code is ${otp}. It expires in 10 minutes. If you didn't request it, ignore this email.`,
+    subject: `Your GlobalyAI sign-in code: ${otp}`,
+    text: `Your GlobalyAI sign-in code is ${otp}. It expires in 10 minutes. If you didn't request it, ignore this email.`,
     html: emailLayout({
-      heading: "Sign in to Globaly",
+      heading: "Sign in to GlobalyAI",
       body: `<p style="margin:0 0 18px">Use this 6-digit code to sign in:</p>
              <div style="background-color:#fdf6ec;border:1px solid #f6e2bd;border-radius:14px;padding:18px 10px">${digits}</div>
              <p style="margin:18px 0 0;color:${BRAND.muted};font-size:14px">This code expires in <strong>10 minutes</strong>.</p>`,
@@ -731,9 +731,9 @@ export function waitlistConfirmationEmail(
     : "";
 
   return {
-    subject: "You're on the Globaly waitlist ✨",
+    subject: "You're on the GlobalyAI waitlist ✨",
     text: trimmedName
-      ? `You're on the list, ${trimmedName}. Thanks for registering your interest in Globaly's AI Education Discovery agents. We launch ${LAUNCH_DATE_LABEL} — we'll email you the moment it's ready to explore. Registered as: ${typeLabel}.`
+      ? `You're on the list, ${trimmedName}. Thanks for registering your interest in GlobalyAI's AI Education Discovery agents. We launch ${LAUNCH_DATE_LABEL} — we'll email you the moment it's ready to explore. Registered as: ${typeLabel}.`
       : `Thanks for subscribing to our newsletter. We launch ${LAUNCH_DATE_LABEL} — we'll email you the moment it's ready to explore.`,
     html: emailLayout({
       heading: "You're on the list",
@@ -757,13 +757,13 @@ export function claimBusinessEmail(options: {
   const businessName = esc(options.businessName);
 
   return {
-    subject: `Claim your ${options.businessName} account on GlobalyApp`,
-    text: `Hi ${options.ownerName}, an account for ${options.businessName} has been created for you on GlobalyApp. Claim it here: ${options.claimUrl} (expires in 72 hours).`,
+    subject: `Claim your ${options.businessName} account on GlobalyAI`,
+    text: `Hi ${options.ownerName}, an account for ${options.businessName} has been created for you on GlobalyAI. Claim it here: ${options.claimUrl} (expires in 72 hours).`,
     html: emailLayout({
       heading: "Claim your business account",
       body: `<p style="margin:0 0 12px">Hi ${ownerName},</p>
              <p style="margin:0 0 12px">An account for <strong>${businessName}</strong> has been created for you on
-             <strong>GlobalyApp</strong> — the platform connecting students with verified institutions, agents, and
+             <strong>GlobalyAI</strong> — the platform connecting students with verified institutions, agents, and
              education services worldwide.</p>
              <p style="margin:0">If this is you, claim your account below to manage your listing, respond to student
              enquiries, and get discovered by prospective students.</p>`,

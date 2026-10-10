@@ -187,7 +187,7 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
         )}
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-semibold">{name}</p>
-          <p className="truncate text-xs text-muted-foreground">AI counsellor · powered by Globaly</p>
+          <p className="truncate text-xs text-muted-foreground">AI counsellor · powered by GlobalyAI</p>
         </div>
         {framed && (
           <Button

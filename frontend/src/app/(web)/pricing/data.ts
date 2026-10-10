@@ -75,7 +75,7 @@ export const globalyCosts = [
   { label: "Per enquiry unlock (20 credits)", value: "$4.00" },
   { label: "Annual listing fee", value: "$0 — always free" },
   { label: "Run an ad campaign", value: "From $10 (50 cr CPM)" },
-  { label: "Ad CPM on Globaly", value: "$10 per 1,000" },
+  { label: "Ad CPM on GlobalyAI", value: "$10 per 1,000" },
   { label: "Contract requirement", value: "None — cancel anytime" },
 ];
 
@@ -156,20 +156,20 @@ export const faqs = [
   { q: "Do subscription credits roll over each month?", a: "Subscription credits reset monthly — they don't accumulate. This keeps the economy healthy. However, purchased credits never expire — they stay in your wallet indefinitely regardless of plan changes. We always spend subscription credits before touching your purchased balance." },
   { q: "Can I upgrade or downgrade at any time?", a: "Upgrades are immediate — you're charged only the pro-rated difference for remaining days, and new credits and features activate instantly. Downgrades take effect at the end of your billing period — you keep your current plan until the cycle ends, then move to the new tier." },
   { q: "What happens if my payment fails?", a: "Stripe retries over 7 days. During that time your subscription stays fully active. After 7 days your account enters a 7-day grace period before dropping to Free. Your purchased credits are always safe — they are never affected by billing issues." },
-  { q: "Does Globaly take a commission on enrollments?", a: "No. Globaly does not charge per enrollment, per placement, or per application. You pay a flat subscription or buy credits. The value you generate from those leads is entirely yours." },
+  { q: "Does GlobalyAI take a commission on enrollments?", a: "No. GlobalyAI does not charge per enrollment, per placement, or per application. You pay a flat subscription or buy credits. The value you generate from those leads is entirely yours." },
   { q: "What currencies do you support?", a: "We support AUD, USD, GBP, EUR, CAD, INR, and NPR. Pricing is adjusted per region — India and Nepal receive significant purchasing-power-parity discounts, not just currency conversion. Your billing currency is set at account creation and can be changed by contacting support." },
   { q: "Can I cancel anytime? What's the refund policy?", a: "Yes — cancel monthly plans anytime, effective at the end of your billing period. Annual plans are non-refundable but you retain access for the full year. Purchased credits are refundable within 14 days of purchase if unspent. Spent credits are non-refundable." },
 ];
 
 export const studentFaqs = [
-  { q: "Is Globaly really free for students?", a: "Yes, always. You can search courses, send enquiries, and build your profile at no cost. There are no hidden charges or surprise fees — ever." },
-  { q: "What are Globaly credits and how do I use them?", a: "Credits unlock premium features like extended AI Counsellor sessions and priority support. You earn them for free through referrals, profile completion, and milestones — or top up if you'd like more." },
+  { q: "Is GlobalyAI really free for students?", a: "Yes, always. You can search courses, send enquiries, and build your profile at no cost. There are no hidden charges or surprise fees — ever." },
+  { q: "What are GlobalyAI credits and how do I use them?", a: "Credits unlock premium features like extended AI Counsellor sessions and priority support. You earn them for free through referrals, profile completion, and milestones — or top up if you'd like more." },
   { q: "How does the AI Counsellor work?", a: "Our AI Counsellor helps you shortlist courses, check your eligibility, compare destinations, and prepare your applications — all powered by AI trained on verified education data." },
   { q: "Do I need to pay to send enquiries?", a: "No. Sending enquiries to education counselors and institutions is always free for students. There is no limit on how many you can explore." },
   { q: "Can I earn credits without paying?", a: "Absolutely. Refer friends, complete your profile, hit milestones, or join ambassador programs — all of these reward you with free credits." },
-  { q: "What happens to my credits if I stop using Globaly?", a: "Purchased credits never expire. Earned credits stay in your wallet as long as your account is active. You can come back and use them anytime." },
+  { q: "What happens to my credits if I stop using GlobalyAI?", a: "Purchased credits never expire. Earned credits stay in your wallet as long as your account is active. You can come back and use them anytime." },
   { q: "Is my personal data safe?", a: "Yes. All data is encrypted and stored securely. We never share your personal information with third parties without your explicit consent." },
-  { q: "Can I use Globaly from any country?", a: "Yes. Globaly is available globally. Credit top-up pricing is adjusted by region so it's fair no matter where you are." },
+  { q: "Can I use GlobalyAI from any country?", a: "Yes. GlobalyAI is available globally. Credit top-up pricing is adjusted by region so it's fair no matter where you are." },
 ];
 
 const planNames = ["Free", "Starter", "Growth", "Pro", "Enterprise"];

@@ -137,7 +137,7 @@ export function OrderDetailView({ orderId }: Readonly<{ orderId: number }>) {
             // Says exactly what is true: the money sits with the platform, and the refund path is the only
             // way it moves back.
             <p className="rounded-md border border-border bg-muted/40 px-3 py-2 text-xs text-muted-foreground">
-              The payment is held by Globaly. If something goes wrong, report a problem and we&apos;ll look at
+              The payment is held by GlobalyAI. If something goes wrong, report a problem and we&apos;ll look at
               the order.
             </p>
           )}

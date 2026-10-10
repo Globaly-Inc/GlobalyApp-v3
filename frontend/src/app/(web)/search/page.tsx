@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { SearchView, type SearchViewParams } from "./search-view";
 
 export const metadata: Metadata = {
-  title: "Search Courses, Institutions & Jobs — Globaly",
+  title: "Search Courses, Institutions & Jobs — GlobalyAI",
   description: "Search verified courses, institutions, agencies, visa services, and student jobs worldwide.",
 };
 

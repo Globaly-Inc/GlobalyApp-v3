@@ -9,7 +9,7 @@ export default function MarketingPage() {
       description="Run campaigns, promote your services and see what's actually bringing students in."
       features={[
         "Create and schedule campaigns",
-        "Promote listings on Globaly search",
+        "Promote listings on GlobalyAI search",
         "Track reach, clicks and enquiries",
         "Manage budget and spend in one view",
       ]}

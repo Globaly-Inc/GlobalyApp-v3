@@ -343,7 +343,7 @@ function ChatBubble({
         side === "left" && "rounded-br-md",
         side === "right" && "rounded-bl-md",
         lit
-          ? "border-[var(--primary-bright)] shadow-[0_0_24px_-4px_rgb(56_189_248/0.45)]"
+          ? "border-[var(--primary-bright)] shadow-[0_0_24px_-4px_rgb(var(--glow)/0.35)]"
           : "border-[var(--border-strong)]",
       )}
     >

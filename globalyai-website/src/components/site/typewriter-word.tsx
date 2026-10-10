@@ -75,7 +75,7 @@ export function TypewriterWord({ words }: Readonly<{ words: readonly string[] }>
       </span>
       <span className="col-start-1 row-start-1" aria-hidden="true">
         {(words[index] ?? "").slice(0, count)}
-        {running && <Caret className="animate-caret text-[var(--accent)]" />}
+        {running && <Caret className="animate-caret text-[var(--foreground)]" />}
       </span>
       <span className="sr-only">{words.join(", ")}</span>
     </span>

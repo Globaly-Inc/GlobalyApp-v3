@@ -68,7 +68,7 @@ export function PaymentSuccessView() {
               <h2 className="text-xl font-bold text-foreground">Payment Successful!</h2>
               {/* States plainly what happens next. It does not claim the provider has been paid. */}
               <p className="text-sm text-muted-foreground">
-                Your payment is held by Globaly rather than passed straight to the provider, who has been
+                Your payment is held by GlobalyAI rather than passed straight to the provider, who has been
                 notified. Open the order to message them and agree the details.
               </p>
               <div className="mt-2 flex w-full flex-col gap-2 sm:flex-row">

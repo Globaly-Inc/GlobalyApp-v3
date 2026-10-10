@@ -11,7 +11,7 @@ import { BlogCta } from "./components/blog-cta";
 import { Reveal } from "../components/reveal";
 
 export const metadata: Metadata = {
-  title: "Blog — Globaly",
+  title: "Blog — GlobalyAI",
   description: "Insights on studying at your home country or overseas, with expert guides, tips, and real stories to help students, agents, and institutions navigate a new country with confidence.",
 };
 const COUNTRY_FLAGS: Record<string, string> = {
@@ -113,7 +113,7 @@ function PostCard({ post }: Readonly<{ post: PublicBlogPost }>) {
                 {(post.author_name ?? "G").charAt(0)}
               </div>
             )}
-            <span className="text-xs text-muted-foreground">{post.author_name ?? "Globaly Team"}</span>
+            <span className="text-xs text-muted-foreground">{post.author_name ?? "GlobalyAI Team"}</span>
           </div>
           <div className="flex items-center gap-3 text-xs text-muted-foreground">
             {post.published_at && (
@@ -197,7 +197,7 @@ export default async function BlogPage({
           <Reveal>
             <div className="mb-5 inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-semibold uppercase tracking-widest text-primary">
               <Globe className="h-3.5 w-3.5" />
-              Globaly Blog
+              GlobalyAI Blog
             </div>
           </Reveal>
           <Reveal delay={0.1}>

@@ -31,8 +31,8 @@ export async function generateMetadata({
 }: Readonly<{ params: Promise<{ id: string }> }>): Promise<Metadata> {
   const { id } = await params;
   const post = await getPostById(Number(id));
-  if (!post) return { title: "Post not found — Globaly Blog" };
-  const title = `${post.meta_title ?? post.title} — Globaly Blog`;
+  if (!post) return { title: "Post not found — GlobalyAI Blog" };
+  const title = `${post.meta_title ?? post.title} — GlobalyAI Blog`;
   const description = (post.meta_description ?? post.excerpt ?? "").slice(0, 160);
   return {
     title,
@@ -126,7 +126,7 @@ export default async function BlogPostPage({ params }: Readonly<{ params: Promis
               </div>
             )}
             <div>
-              <p className="text-sm font-medium text-foreground">{post.author_name ?? "Globaly Team"}</p>
+              <p className="text-sm font-medium text-foreground">{post.author_name ?? "GlobalyAI Team"}</p>
               <p className="text-xs text-muted-foreground">Author</p>
             </div>
           </div>

@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, type ComponentType, type CSSProperties } from "react";
-import { Clock, Filter, FolderSync, Languages, MessagesSquare, Moon, Plus, Quote, ScanText, ShieldCheck, Signpost, Target, TrendingUp } from "lucide-react";
+import { useState, type ComponentType } from "react";
+import { Plus } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { FAQS } from "@/lib/faqs";
 import { Reveal } from "@/components/site/primitives";
@@ -46,7 +46,7 @@ export function Proof() {
           <GlassPanel className="v6-soft grid grid-cols-1 gap-x-12 gap-y-10 px-8 py-10 sm:grid-cols-2 sm:px-10 sm:py-12 lg:grid-cols-4">
             {STATS.map(({ figure, label }) => (
               <div key={figure}>
-                <p className="v6-gradient-text text-[clamp(1.35rem,2.2vw,1.75rem)] font-bold leading-[1.15]">
+                <p className="v6-gradient-text font-display text-[clamp(1.35rem,2.2vw,1.75rem)] font-medium leading-[1.15] tracking-[-0.025em]">
                   {figure}
                 </p>
                 <p className="mt-3.5 max-w-[16rem] text-[13.5px] leading-[1.55] text-[var(--muted-foreground)]">
@@ -61,153 +61,6 @@ export function Proof() {
   );
 }
 
-/* ── The gap ────────────────────────────────────────────────────────────── */
-
-/**
- * A bento with exactly three cells for exactly three ideas, and real pictures
- * in two of them. Three equal cards of text with an icon on top is the shape
- * this section takes on every generated landing page; the sizes here are
- * deliberately unequal and the tallest cell is the one carrying the argument.
- */
-export function Gap() {
-  return (
-    <section id="product" className="px-3 py-20 sm:px-5 md:py-28">
-      <div className="mx-auto max-w-[1300px] px-2">
-        <Reveal>
-          <div className="flex justify-center">
-            <Eyebrow className="mb-5">The problem</Eyebrow>
-          </div>
-          <SectionHeading
-            align="center"
-            title={
-              <>
-                Too much information.{" "}
-                <span className="text-[var(--muted-foreground)]">Too little guidance.</span>
-              </>
-            }
-            lead="The pages are published, the traffic is paid for, and the answers are all there. What is missing is the part that turns a visitor into a name your team can call. Three things break it."
-          />
-        </Reveal>
-
-        <div className="mt-14 grid gap-4 lg:grid-cols-[1.35fr_1fr] lg:grid-rows-2">
-          <Reveal className="lg:row-span-2">
-            <GlassPanel className="group flex h-full flex-col overflow-hidden">
-              <div className="overflow-hidden rounded-t-[calc(var(--r-card)-1px)] border-b border-[var(--border)]">
-                <MockStage mock={MultiSiteMock} beats={MOCK_BEATS.tabs} />
-              </div>
-              <div className="p-7 lg:p-9">
-                <h3 className="text-[20px] leading-snug">5,000 pages, and they get lost</h3>
-                <p className="mt-3 text-[15px] leading-[1.7] text-[var(--body)]">
-                  Every answer a prospective student needs is already written down. The gap is not
-                  content. It is the distance between a question in someone&apos;s head and the page
-                  that answers it.
-                </p>
-              </div>
-            </GlassPanel>
-          </Reveal>
-
-          <Reveal delay={80}>
-            <GlassPanel className="h-full p-7 lg:p-9">
-              <h3 className="text-[19px] leading-snug">It answers. It never guides</h3>
-              <p className="mt-3 text-[15px] leading-[1.7] text-[var(--body)]">
-                A generic bot returns a snippet and waits. It never works out which program fits,
-                what the student is missing, or what they do next. The exchange ends where it
-                started.
-              </p>
-            </GlassPanel>
-          </Reveal>
-
-          <Reveal delay={160}>
-            <GlassPanel className="flex h-full min-h-[15rem] flex-col overflow-hidden">
-              <div className="border-b border-[var(--border)]">
-                <MockStage mock={FormMock} beats={MOCK_BEATS.form} />
-              </div>
-              <div className="p-7 lg:p-9">
-                <h3 className="text-[19px] leading-snug">And nobody leaves a name</h3>
-                <p className="mt-3 text-[15px] leading-[1.7] text-[var(--body)]">
-                  A conversation is not a conversion. The families who were interested leave without
-                  a name, an email or an inquiry, and admissions never learns they were there.
-                </p>
-              </div>
-            </GlassPanel>
-          </Reveal>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-/* ── The answer ─────────────────────────────────────────────────────────── */
-
-/**
- * The three cards answer the three in <Gap />, in order, under the same
- * numbers. Ported from variation 1 on 22 Sep 2026, where the section is three
- * pastel cards; here it is three glass panels, because this variation has one
- * surface and uses it everywhere.
- */
-const ANSWERS = [
-  {
-    index: "01",
-    title: "Trained on your content",
-    body: "It reads all 5,000 pages, so nobody else has to. Every program page, entry requirement, fee table, policy and FAQ becomes an answer it can give in one sentence, in the order the student needs it. It answers only from your material, and never improvises.",
-  },
-  {
-    index: "02",
-    title: "Guides, not just answers",
-    body: "It asks what it needs to know, works out which program actually fits, and names the next step.",
-  },
-  {
-    index: "03",
-    title: "Turns talk into an inquiry",
-    body: "The conversation ends as an inquiry rather than a form fill. Your team opens it already knowing who asked, what they wanted and what to say first, the same day it happened.",
-  },
-] as const;
-
-export function Answer() {
-  return (
-    <section id="answer" className="px-3 py-20 sm:px-5 md:py-28">
-      <div className="mx-auto max-w-[1300px] px-2">
-        <Reveal>
-          <div className="flex justify-center">
-            <Eyebrow className="mb-5">The solution</Eyebrow>
-          </div>
-          <SectionHeading
-            align="center"
-            title={
-              <>
-                Meet Aly. The most advanced AI agent that{" "}
-                <span className="v6-gradient-text">guides your visitors</span>
-              </>
-            }
-            lead="Trained on your content. Built to guide, not just answer. And built to turn the conversation into an inquiry your team can act on."
-          />
-        </Reveal>
-
-        <div className="mt-14 grid gap-4 md:grid-cols-3">
-          {ANSWERS.map(({ index, title, body }, position) => (
-            <Reveal key={index} delay={position * 80}>
-              <GlassPanel className="h-full p-7 lg:p-9">
-                {/* The number is the whole cross-reference: the card it answers
-                    is one section up, under the same numeral. */}
-                <p className="v6-gradient-text text-[15px] font-bold tracking-[0.14em]">{index}</p>
-                <h3 className="mt-5 text-[19px] leading-snug">{title}</h3>
-                <p className="mt-3 text-[15px] leading-[1.7] text-[var(--body)]">{body}</p>
-              </GlassPanel>
-            </Reveal>
-          ))}
-        </div>
-
-        <Reveal delay={120}>
-          <p className="mt-12 text-center text-[clamp(1.35rem,2.8vw,2rem)] leading-tight">
-            Trained on you.{" "}
-            <span className="text-[var(--muted-foreground)]">Built to convert.</span>
-          </p>
-        </Reveal>
-      </div>
-    </section>
-  );
-}
-
 /* ── Features ───────────────────────────────────────────────────────────── */
 
 /**
@@ -216,39 +69,48 @@ export function Answer() {
  * content you point it at" rather than naming formats, and the language line
  * describes the mechanism rather than counting languages.
  */
+/** A 3D object in the slot the icon well used to fill. Decorative: the card's
+    heading already says what it is. */
+function ObjectIcon({ name }: Readonly<{ name: string }>) {
+  return (
+    // eslint-disable-next-line @next/next/no-img-element -- 480px WebP shown at 44px; next/image adds nothing here
+    <img src={`/objects/${name}.webp`} alt="" width={44} height={44} loading="lazy" className="h-11 w-11 shrink-0 object-contain" />
+  );
+}
+
 const FEATURES = [
   {
-    Icon: ScanText,
+    object: "files",
     title: "Your site is the knowledge base",
     body: "It works from the content you point it at, so your pages stay the single source. Nobody on your team retypes the site into a second system to maintain.",
   },
   {
-    Icon: FolderSync,
+    object: "database",
     title: "Your data, managed",
     body: "Add a document, replace a policy, retire last year's fee schedule. It answers from the current version, not the one it learned first.",
   },
   {
-    Icon: Moon,
+    object: "moon",
     title: "It works while you sleep",
     body: "Evenings, weekends, and every time zone your applicants live in. The question at 9pm gets answered at 9pm.",
   },
   {
-    Icon: Languages,
+    object: "globe",
     title: "It speaks their language",
     body: "A student asks in English, a parent asks in their own. It replies in the language the question was asked in, from the same approved content.",
   },
   {
-    Icon: Quote,
+    object: "chat",
     title: "Every answer has a source",
     body: "It shows the page an answer came from. Your team can check any conversation, and a student can see it is not guesswork.",
   },
   {
-    Icon: Target,
+    object: "target",
     title: "It knows who you are looking for",
     body: "You describe the applicant you want: level, program, country, funding, intake. It asks the questions that establish fit, and marks the conversations that match.",
   },
   {
-    Icon: ShieldCheck,
+    object: "shield",
     title: "It never hallucinates",
     body: "It answers from your approved content or not at all. When a question falls outside what it was given, it says so and hands over rather than guessing.",
   },
@@ -271,7 +133,7 @@ export function Features() {
         </Reveal>
 
         <div className="mt-14 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {FEATURES.map(({ Icon, title, body }, index) => (
+          {FEATURES.map(({ object, title, body }, index) => (
             /* The seventh card was alone on a row of three. It runs the full
                width instead, with the icon beside the text rather than above
                it, which reads as a closing note on the list. */
@@ -286,9 +148,7 @@ export function Features() {
                   index === FEATURES.length - 1 && "sm:flex sm:items-center sm:gap-7",
                 )}
               >
-                <span className="v6-icon-well flex h-11 w-11 shrink-0 items-center justify-center rounded-[var(--r-chip)]">
-                  <Icon className="h-[18px] w-[18px] text-[var(--primary-bright)]" aria-hidden="true" />
-                </span>
+                <ObjectIcon name={object} />
                 <div className={cn(index === FEATURES.length - 1 ? "mt-5 sm:mt-0" : "mt-5")}>
                   <h3 className="text-[18px] leading-snug">{title}</h3>
                   <p className="mt-2.5 max-w-2xl text-[15px] leading-[1.7] text-[var(--body)]">{body}</p>
@@ -310,9 +170,6 @@ export function Features() {
  * numerals; here each failure sits beside its own fix and the numeral is a
  * label rather than a cross-reference.
  *
- * Both are still exported and neither is imported by the page. Restoring the
- * two-section version is two lines in variation6/page.tsx.
- *
  * Laid out as a bento rather than as two equal columns. The split between the
  * two cards of a pair alternates down the page, 5/7 then 7/5 then 5/7, so no
  * two rows share a shape, and the wider card of each row sets its copy and its
@@ -321,7 +178,6 @@ export function Features() {
 const PAIRS = [
   {
     index: "01",
-    hue: "47 107 224",
     problem: "5,000 pages, and they get lost",
     problemPoints: [
       "A student spends three minutes and reads five to ten pages",
@@ -345,7 +201,6 @@ const PAIRS = [
   },
   {
     index: "02",
-    hue: "121 94 236",
     problem: "A generic bot answers. It never guides",
     problemPoints: [
       "It guesses when it does not know",
@@ -369,7 +224,6 @@ const PAIRS = [
   },
   {
     index: "03",
-    hue: "25 198 230",
     problem: "It asks for a name before it earns one",
     problemPoints: [
       "Three required fields before a word of help",
@@ -402,8 +256,8 @@ const PAIRS = [
  * lines. The screen is flex-1, so whichever card of the pair has less copy
  * spends the difference on a taller screen instead of a band of nothing.
  *
- * The inset carries the row's hue in --fig, which <MockStage />'s mockups spend
- * on their own sweeps and grounds, so each row is its own colour.
+ * The inset's --fig is the one themed neutral (globals.css), which
+ * <MockStage />'s mockups spend on their own sweeps and grounds.
  */
 function PairCard({
   index,
@@ -412,7 +266,6 @@ function PairCard({
   points,
   mock,
   beats,
-  hue,
   wide = false,
   solution = false,
 }: Readonly<{
@@ -422,7 +275,6 @@ function PairCard({
   points: readonly string[];
   mock: ComponentType<MockProps>;
   beats: readonly number[];
-  hue: string;
   wide?: boolean;
   solution?: boolean;
 }>) {
@@ -470,11 +322,9 @@ function PairCard({
       </div>
 
       {/* The screen, inset into the card rather than bolted under it: the
-          rounding steps down from the card's own, and the hue comes from the
-          row. */}
+          rounding steps down from the card's own. */}
       <div
         className="v6-screen min-h-[17rem] flex-1 overflow-hidden rounded-[calc(var(--r-card)-0.75rem)] border"
-        style={{ "--fig": hue } as CSSProperties}
       >
         <MockStage mock={mock} beats={beats} />
       </div>
@@ -506,7 +356,7 @@ export function ProblemSolution() {
           />
         </Reveal>
 
-        <div className="mt-14 grid gap-4 lg:grid-cols-12 lg:gap-5">
+        <div className="mt-14 grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-12 lg:gap-5">
           {PAIRS.map((pair, position) => {
             const problemWide = position === 1;
             return [
@@ -518,7 +368,6 @@ export function ProblemSolution() {
                   points={pair.problemPoints}
                   mock={pair.ProblemMock}
                   beats={pair.problemBeats}
-                  hue={pair.hue}
                   wide={problemWide}
                 />
               </Reveal>,
@@ -531,7 +380,6 @@ export function ProblemSolution() {
                   points={pair.points}
                   mock={pair.SolutionMock}
                   beats={pair.solutionBeats}
-                  hue={pair.hue}
                   wide={!problemWide}
                 />
               </Reveal>,
@@ -544,107 +392,6 @@ export function ProblemSolution() {
             Trained on you.{" "}
             <span className="text-[var(--muted-foreground)]">Built to convert.</span>
           </p>
-        </Reveal>
-      </div>
-    </section>
-  );
-}
-
-/* ── How it works ───────────────────────────────────────────────────────── */
-
-const MOVES = [
-  {
-    verb: "Reads",
-    title: "It works out what is actually being asked",
-    body: "Not keyword matching. A student asking whether their degree is enough is asking about eligibility, and it answers that question rather than the one they typed.",
-  },
-  {
-    verb: "Retrieves",
-    title: "It answers from your content and nothing else",
-    body: "Programs, entry requirements, tuition, policies, deadlines. The material your institution provided and approved, with the pages it used named in the answer.",
-  },
-  {
-    verb: "Asks",
-    title: "It asks the one question it still needs",
-    body: "Prior study, grades, country, intake, budget. One at a time, the way a counselor does, instead of a form that demands all of it up front.",
-  },
-  {
-    verb: "Hands over",
-    title: "Knows when to bring in your team",
-    body: "An edge case in a policy goes to a person, with the whole conversation attached and the exact point it stopped marked.",
-  },
-] as const;
-
-/**
- * A step track rather than four cards: one row of controls, one panel that
- * changes under them. The point of the section is that these happen in order
- * inside one conversation, and four cards side by side say the opposite.
- */
-export function HowItWorks() {
-  const [active, setActive] = useState(0);
-  const move = MOVES[active] ?? MOVES[0];
-
-  return (
-    <section id="how-it-works" className="px-3 py-20 sm:px-5 md:py-28">
-      <div className="mx-auto max-w-[1300px] px-2">
-        <Reveal>
-          <SectionHeading
-            align="center"
-            title="What it does between the question and your inbox"
-            lead="The same four moves every time, whether it is one student at 9pm or forty across a weekend."
-          />
-        </Reveal>
-
-        <Reveal delay={80}>
-          <div className="mt-12 grid gap-3 sm:grid-cols-4" role="tablist" aria-label="How it works">
-            {MOVES.map((item, index) => {
-              const on = index === active;
-              return (
-                <button
-                  key={item.verb}
-                  type="button"
-                  role="tab"
-                  aria-selected={on}
-                  aria-controls="v6-move-panel"
-                  onClick={() => setActive(index)}
-                  onMouseEnter={() => setActive(index)}
-                  className={cn(
-                    "group relative overflow-hidden rounded-[var(--r-chip)] border px-4 py-3.5 text-left transition-all duration-300",
-                    on
-                      ? "border-[var(--primary-bright)] bg-[var(--surface)]"
-                      : "border-[var(--border)] bg-transparent hover:border-[var(--border-strong)]",
-                  )}
-                >
-                  <span
-                    className={cn(
-                      "text-[15px] font-semibold transition-colors duration-300",
-                      on ? "text-[var(--foreground)]" : "text-[var(--muted-foreground)]",
-                    )}
-                  >
-                    {item.verb}
-                  </span>
-                  {/* The rule under the active control, drawn rather than
-                      moved, so nothing has to measure anything. */}
-                  <span
-                    aria-hidden="true"
-                    className={cn(
-                      "v6-gradient absolute inset-x-0 bottom-0 h-[3px] origin-left transition-transform duration-500 ease-out motion-reduce:transition-none",
-                      on ? "scale-x-100" : "scale-x-0",
-                    )}
-                  />
-                </button>
-              );
-            })}
-          </div>
-        </Reveal>
-
-        <Reveal delay={140}>
-          <GlassPanel id="v6-move-panel" className="mt-4 p-8 sm:p-9">
-            <div key={active} className="animate-fade-up">
-              <h3 className="max-w-2xl text-[clamp(1.3rem,2.6vw,1.9rem)] leading-tight">{move.title}</h3>
-              <p className="mt-5 max-w-2xl text-[16px] leading-[1.75] text-[var(--body)]">{move.body}</p>
-            </div>
-          </GlassPanel>
         </Reveal>
       </div>
     </section>
@@ -664,49 +411,40 @@ export function HowItWorks() {
  */
 const RECEIVES = [
   {
-    Icon: Clock,
+    object: "clock",
     title: "Engages outside office hours",
     body: "Prospective students research in the evening, at weekends and across time zones. The assistant is there for the question at 9pm that would otherwise have waited until Monday, or not been asked at all.",
     span: "sm:col-span-2",
   },
   {
-    Icon: MessagesSquare,
+    object: "chat",
     title: "Answers the repetitive questions",
     body: "Entry requirements, deadlines, fees, intakes. The questions your team answers dozens of times a week.",
     span: "",
   },
   {
-    Icon: Filter,
+    object: "funnel",
     title: "Tells you who is serious",
     body: "It asks what a counselor would ask, so what reaches your team is a qualified student rather than a form fill. A visitor who worked through a full conversation is a different prospect entirely.",
     span: "",
   },
   {
-    Icon: Signpost,
+    object: "compass",
     title: "Shows where students get stuck",
     body: "The questions that keep stalling, like an unclear policy or a requirement nobody can interpret, become visible instead of invisible.",
     span: "sm:col-span-2",
   },
     {
-    Icon: TrendingUp,
+    object: "chart",
     title: "Shows what is actually being asked",
     body: "A view of what prospective students want to know, drawn from real conversations on your own site.",
     span: "",
   },
 ];
 
-/* Blue, lavender, mint, peach, green, blue — variation 1's own order on the
-   six cards of <ForAdmissions />, which is this section under another name.
-   One per card, cycling, so no row repeats a colour side by side. Kept beside
-   the component rather than in RECEIVES, which is shared shape. */
-const RECEIVES_TINTS = [
-  "v6-tint-blue",
-  "v6-tint-lavender",
-  "v6-tint-mint",
-  "v6-tint-peach",
-  "v6-tint-green",
-  "v6-tint-blue",
-];
+/* Two neutrals, alternating (plan P3.2): GlobalyOS-V2's band and its
+   one-step-darker tint. */
+const RECEIVES_TINTS = ["v6-tint-a", "v6-tint-b"];
 
 export function Institutions() {
   return (
@@ -724,12 +462,10 @@ export function Institutions() {
         </Reveal>
 
         <div className="mt-14 grid gap-4 sm:grid-cols-3">
-          {RECEIVES.map(({ Icon, title, body, span }, index) => (
+          {RECEIVES.map(({ object, title, body, span }, index) => (
             <Reveal key={title} delay={index * 70} className={cn(span)}>
               <GlassPanel className={cn("h-full p-7 lg:p-8", RECEIVES_TINTS[index % RECEIVES_TINTS.length])}>
-                <span className="v6-icon-well flex h-11 w-11 items-center justify-center rounded-[var(--r-chip)]">
-                  <Icon className="h-[18px] w-[18px] text-[var(--primary-bright)]" aria-hidden="true" />
-                </span>
+                <ObjectIcon name={object} />
                 <h3 className="mt-5 text-[17px] leading-snug">{title}</h3>
                 <p className="mt-2.5 text-[14.5px] leading-[1.65] text-[var(--body)]">{body}</p>
               </GlassPanel>
@@ -748,49 +484,6 @@ export function Institutions() {
             It answers the questions they answer twenty times a week, so their time goes to the
             students who need a person.
           </p>
-        </Reveal>
-      </div>
-    </section>
-  );
-}
-
-/* ── Control ────────────────────────────────────────────────────────────── */
-
-const COMMITMENTS = [
-  { k: "Scope", v: "You choose what it works from, how it speaks, and what it will not attempt." },
-  { k: "Review", v: "Your team tests the whole experience privately before a student ever sees it." },
-  { k: "Ownership", v: "Every inquiry, contact detail and transcript belongs to your institution." },
-  { k: "Training", v: "Conversation data is not used to train foundation models, sold, or used for ads." },
-  { k: "Retention", v: "You set the window. Removing the script tag ends collection immediately." },
-];
-
-export function Control() {
-  return (
-    <section id="privacy" className="px-3 py-20 sm:px-5 md:py-28">
-      <div className="mx-auto max-w-[1300px] px-2">
-        <Reveal>
-          <SectionHeading
-            align="center"
-            title="It will survive your procurement review"
-            lead="What your IT and legal teams ask, answered before they ask it, and written into the agreement."
-          />
-        </Reveal>
-
-        <Reveal delay={80}>
-          <dl className="mt-12 grid gap-x-12 sm:grid-cols-2">
-            {COMMITMENTS.map(({ k, v }, index) => (
-              <div
-                key={k}
-                className={cn(
-                  "grid grid-cols-[7rem_minmax(0,1fr)] items-baseline gap-4 border-t border-[var(--border)] py-5",
-                  index === COMMITMENTS.length - 1 && "border-b sm:border-b-0",
-                )}
-              >
-                <dt className="text-[14px] font-semibold text-[var(--primary-bright)]">{k}</dt>
-                <dd className="text-[15px] leading-[1.65] text-[var(--body)]">{v}</dd>
-              </div>
-            ))}
-          </dl>
         </Reveal>
       </div>
     </section>

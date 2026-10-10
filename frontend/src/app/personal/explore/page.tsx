@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { SearchView, type SearchViewParams } from "@/app/(web)/search/search-view";
 import { CompareTray } from "@/app/(web)/search/components/compare-tray";
 
-export const metadata: Metadata = { title: "Explore — Globaly" };
+export const metadata: Metadata = { title: "Explore — GlobalyAI" };
 
 /**
  * The public /search surface, pointed back at this route so searching, filtering and paging keep the

@@ -1,18 +1,18 @@
 "use client";
 
 import { Moon, Sun } from "lucide-react";
+import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 
-function toggle() {
-  const isDark = document.documentElement.classList.toggle("dark");
-  const theme = isDark ? "dark" : "light";
-  localStorage.setItem("theme", theme);
-  document.cookie = `theme=${theme}; path=/; max-age=31536000; samesite=lax`;
-}
-
 export function ThemeToggle() {
+  const { resolvedTheme, setTheme } = useTheme();
   return (
-    <Button variant="ghost" size="icon" aria-label="Toggle theme" onClick={toggle}>
+    <Button
+      variant="ghost"
+      size="icon"
+      aria-label="Toggle dark mode"
+      onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+    >
       <Sun className="dark:hidden" />
       <Moon className="hidden dark:block" />
     </Button>

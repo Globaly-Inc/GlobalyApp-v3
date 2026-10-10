@@ -1,7 +1,6 @@
 "use client";
 
 import Image from "next/image";
-import { cn } from "@/lib/utils";
 import { FOOTER_LINKS, siteConfig } from "@/lib/site";
 import { useThemeValue } from "./theme";
 
@@ -17,11 +16,12 @@ export function Footer() {
         <div className="grid gap-10 md:grid-cols-[1.6fr_1fr] md:gap-16">
           <div className="max-w-sm">
             <Image
-              src="/globalyai-logo.png"
+              src={dark ? "/globalyai-logo-white.svg" : "/globalyai-logo.svg"}
               alt={siteConfig.name}
-              width={1240}
-              height={313}
-              className={cn("h-[22px] w-auto transition-[filter] duration-300", dark && "brightness-0 invert")}
+              width={610}
+              height={157}
+              unoptimized
+            className="h-[26px] w-auto"
             />
             <p className="mt-5 text-[14.5px] leading-[1.7] text-[var(--body)]">{siteConfig.tagline}</p>
           </div>

@@ -220,7 +220,7 @@ export async function registerUser(
     // Anti-enumeration: return identical response, send "someone tried to register" email
     queueEmail({
       to: email,
-      subject: "Registration attempt on your GlobalyApp account",
+      subject: "Registration attempt on your GlobalyAI account",
       html: emailLayout({
         heading: "Someone tried to sign up with your email",
         body: `<p style="margin:0">An account already exists for this address. If that was you, sign in instead — no new account was created.</p>`,

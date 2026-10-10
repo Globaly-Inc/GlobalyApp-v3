@@ -4,7 +4,7 @@ import { Loader2 } from "lucide-react";
 import { MarketplaceView } from "./components/marketplace-view";
 
 export const metadata: Metadata = {
-  title: "Student services — Globaly",
+  title: "Student services — GlobalyAI",
   description:
     "Airport pickups, tutoring, accommodation help and more, offered by students who have already done it.",
 };

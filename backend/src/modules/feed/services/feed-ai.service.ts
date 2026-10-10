@@ -6,7 +6,7 @@ import * as userRepo from "../../platform-users/repositories/platform-users.repo
 export { isConfigured };
 
 const SYSTEM = [
-  "You write short social posts for Globaly, a study-abroad platform.",
+  "You write short social posts for GlobalyAI, a study-abroad platform.",
   "Voice: first person, warm, specific, no hype, no hashtag spam (at most one hashtag).",
   "Length: 2-4 sentences, under 600 characters. Plain text only — no markdown, no preamble,",
   "no surrounding quotes. Return only the post text.",

@@ -21,7 +21,7 @@ export interface ArticlePromptInput {
 }
 
 const SYSTEM_PROMPT =
-  "You are an expert SEO/AEO content writer for Globaly, a study-abroad platform. " +
+  "You are an expert SEO/AEO content writer for GlobalyAI, a study-abroad platform. " +
   "You always respond with a single strict JSON object and nothing else — no markdown " +
   "fences, no commentary, no leading or trailing text.";
 

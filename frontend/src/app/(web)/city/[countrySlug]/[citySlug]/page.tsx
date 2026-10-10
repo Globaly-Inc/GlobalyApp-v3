@@ -13,8 +13,8 @@ type Params = { countrySlug: string; citySlug: string };
 export async function generateMetadata({ params }: Readonly<{ params: Promise<Params> }>): Promise<Metadata> {
   const { countrySlug, citySlug } = await params;
   const city = await getCityBySlug(citySlug, countrySlug);
-  if (!city) return { title: "City not found — Globaly" };
-  const title = city.meta_title ?? `Study in ${city.name}, ${city.country.name} — Globaly`;
+  if (!city) return { title: "City not found — GlobalyAI" };
+  const title = city.meta_title ?? `Study in ${city.name}, ${city.country.name} — GlobalyAI`;
   const description = (city.meta_description ?? `Explore universities, courses and student life in ${city.name}, ${city.country.name}.`).slice(0, 160);
   return {
     title,

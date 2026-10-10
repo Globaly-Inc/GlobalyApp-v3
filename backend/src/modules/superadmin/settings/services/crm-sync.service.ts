@@ -1,4 +1,4 @@
-// CRM sync service — bulk-pushes all GlobalyApp businesses and institutions to
+// CRM sync service — bulk-pushes all GlobalyAI businesses and institutions to
 // GlobalyOS-V2 CRM as contacts. Called by POST /settings/crm/sync.
 
 import { masterKnex } from "../../../../core/db/master-pool.js";

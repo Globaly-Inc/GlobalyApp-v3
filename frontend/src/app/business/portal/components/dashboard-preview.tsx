@@ -58,10 +58,10 @@ export function DashboardPreview() {
     <Card>
       <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
         <div>
-          <CardTitle className="text-sm">Chat widget activity</CardTitle>
-          <p className="text-xs text-muted-foreground">How students are engaging with your AI assistant</p>
+          <CardTitle>Chat widget activity</CardTitle>
+          <p className="text-sm text-muted-foreground">How students are engaging with your AI assistant</p>
         </div>
-        <Badge variant="outline" className="shrink-0 font-normal">Last 6 months</Badge>
+        <Badge variant="secondary" className="shrink-0 font-normal">Last 6 months</Badge>
       </CardHeader>
       <CardContent>
         {data === null ? (
@@ -75,11 +75,11 @@ export function DashboardPreview() {
           <div className="space-y-5">
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               {statCards(data).map((s) => (
-                <div key={s.key} className="rounded-lg border border-border p-3">
+                <div key={s.key} className="rounded-lg border border-border bg-card px-4 py-3">
                   <p className="text-xs text-muted-foreground">{s.label}</p>
-                  <p className="mt-1 text-xl font-bold tabular-nums">{s.value}</p>
-                  <p className="mt-0.5 text-xs">
-                    <span className="font-medium text-emerald-600">{s.delta}</span>{" "}
+                  <p className="mt-1.5 font-heading text-2xl font-medium tracking-[-0.02em] tabular-nums">{s.value}</p>
+                  <p className="mt-1 text-xs">
+                    <span className="font-semibold text-success">{s.delta}</span>{" "}
                     <span className="text-muted-foreground">{s.note}</span>
                   </p>
                 </div>
@@ -87,17 +87,19 @@ export function DashboardPreview() {
             </div>
 
             <div>
-              <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="mb-3 flex flex-col items-start gap-2 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
                 <p className="text-xs font-medium text-muted-foreground">Growth over 6 months</p>
-                <div className="flex rounded-lg border border-border p-0.5 text-xs">
+                <div role="tablist" aria-label="Series" className="flex gap-0.5 rounded-md border border-border p-[3px] text-xs">
                   {(Object.keys(SERIES_LABELS) as SeriesKey[]).map((key) => (
                     <button
                       key={key}
                       type="button"
+                      role="tab"
+                      aria-selected={series === key}
                       onClick={() => setSeries(key)}
                       className={cn(
-                        "rounded-md px-2.5 py-1 font-medium transition-colors",
-                        series === key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted",
+                        "rounded-sm px-2.5 py-1 font-medium whitespace-nowrap transition-colors",
+                        series === key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-accent",
                       )}
                     >
                       {SERIES_LABELS[key]}
@@ -110,11 +112,11 @@ export function DashboardPreview() {
                 <AreaChart data={data.monthly} margin={{ top: 4, right: 4, left: -16, bottom: 0 }}>
                   <defs>
                     <linearGradient id="dashboard-preview-fill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.25} />
+                      <stop offset="0%" stopColor="var(--primary)" stopOpacity={0.22} />
                       <stop offset="95%" stopColor="var(--primary)" stopOpacity={0} />
                     </linearGradient>
                   </defs>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <CartesianGrid vertical={false} stroke="var(--border)" />
                   <XAxis dataKey="month" tick={{ fontSize: 11 }} className="text-muted-foreground" />
                   <YAxis tick={{ fontSize: 11 }} className="text-muted-foreground" width={48} allowDecimals={false} />
                   <Tooltip

@@ -41,7 +41,7 @@ export function RoleSelectModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>How will you use Globaly?</DialogTitle>
+          <DialogTitle>How will you use GlobalyAI?</DialogTitle>
           <DialogDescription>Choose your account type to get the right experience.</DialogDescription>
         </DialogHeader>
         <RoleOptionCards selected={selected} onSelect={setSelected} />

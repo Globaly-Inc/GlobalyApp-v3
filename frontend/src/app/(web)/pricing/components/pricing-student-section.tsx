@@ -29,7 +29,7 @@ export function PricingStudentSection() {
         <div className="container mx-auto max-w-3xl px-4 text-center">
           <Badge className="mb-4 border-0 bg-emerald-100 px-4 py-1 text-sm text-emerald-700">Free forever</Badge>
           <h2 className="mb-3 text-3xl font-bold md:text-4xl">
-            Study at home or overseas without paying a single cent to Globaly.
+            Study at home or overseas without paying a single cent to GlobalyAI.
           </h2>
           <p className="mx-auto mb-8 max-w-xl text-muted-foreground">
             We believe every student deserves access to the best education guidance — regardless of budget. Your
@@ -70,7 +70,7 @@ export function PricingStudentSection() {
       <section id="earn-credits" className="bg-muted/30 py-20">
         <div className="container mx-auto px-4">
           <div className="mb-10 text-center">
-            <p className="mb-3 text-xs tracking-[0.3em] text-muted-foreground uppercase">Globaly credits</p>
+            <p className="mb-3 text-xs tracking-[0.3em] text-muted-foreground uppercase">GlobalyAI credits</p>
             <h2 className="mb-2 text-3xl font-bold">Earn credits just by using the platform.</h2>
             <p className="mx-auto max-w-xl text-muted-foreground">
               Credits unlock AI tools that give you an edge in your application. You can earn them for free — or top

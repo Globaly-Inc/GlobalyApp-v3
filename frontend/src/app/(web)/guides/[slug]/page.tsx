@@ -8,8 +8,8 @@ export async function generateMetadata({
 }: Readonly<{ params: Promise<{ slug: string }> }>): Promise<Metadata> {
   const { slug } = await params;
   const guide = await getGuideBySlug(slug);
-  if (!guide) return { title: "Guide not found — Globaly" };
-  const title = `${guide.title} — Free Guide | Globaly`;
+  if (!guide) return { title: "Guide not found — GlobalyAI" };
+  const title = `${guide.title} — Free Guide | GlobalyAI`;
   const description = (guide.context ?? "").slice(0, 160);
   return {
     title,

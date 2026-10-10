@@ -26,10 +26,10 @@ export async function generateMetadata({ params, searchParams }: CoursePageProps
   const { slug } = await params;
   const { preview_token } = await searchParams;
   const course = await getCourseBySlug(slug, preview_token);
-  if (!course) return { title: "Course — Globaly" };
+  if (!course) return { title: "Course — GlobalyAI" };
   return {
-    title: `${course.name} — Globaly`,
-    description: course.description?.slice(0, 155) ?? `View ${course.name} details on Globaly.`,
+    title: `${course.name} — GlobalyAI`,
+    description: course.description?.slice(0, 155) ?? `View ${course.name} details on GlobalyAI.`,
   };
 }
 

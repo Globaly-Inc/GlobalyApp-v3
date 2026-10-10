@@ -13,8 +13,8 @@ import {
 import { useThemeSettings } from "@/lib/use-theme-settings";
 
 const FONTS = [
-  { name: "Inter", value: "var(--font-inter)" },
-  { name: "Fraunces", value: "var(--font-fraunces)" },
+  { name: "Geist", value: "var(--font-geist)" },
+  { name: "Space Grotesk", value: "var(--font-space-grotesk)" },
 ];
 
 export function ThemeSetupForm({ initialSettings }: Readonly<{ initialSettings: ThemeSettings }>) {

@@ -28,10 +28,10 @@ export async function generateMetadata({ params, searchParams }: InstitutionPage
   const { slug } = await params;
   const { preview_token } = await searchParams;
   const institution = await getInstitutionBySlug(slug, preview_token);
-  if (!institution) return { title: "Institution — Globaly" };
+  if (!institution) return { title: "Institution — GlobalyAI" };
   return {
-    title: `${institution.business_name} — Globaly`,
-    description: institution.description?.slice(0, 155) ?? `View ${institution.business_name} on Globaly.`,
+    title: `${institution.business_name} — GlobalyAI`,
+    description: institution.description?.slice(0, 155) ?? `View ${institution.business_name} on GlobalyAI.`,
   };
 }
 

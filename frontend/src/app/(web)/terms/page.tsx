@@ -20,7 +20,7 @@ import { LegalSection } from "../components/legal/legal-section";
 import { LegalContactCard } from "../components/legal/legal-contact-card";
 
 export const metadata: Metadata = {
-  title: "Terms of Service — Globaly",
+  title: "Terms of Service — GlobalyAI",
 };
 
 const SECTIONS = [
@@ -43,7 +43,7 @@ export default function TermsPage() {
       <LegalHero
         icon={FileText}
         title="Terms and Conditions"
-        description="The ground rules for using Globalyapp — plain, straightforward, and worth a read before you dive in."
+        description="The ground rules for using GlobalyAI — plain, straightforward, and worth a read before you dive in."
         lastUpdated="20 February 2026"
       />
 
@@ -57,7 +57,7 @@ export default function TermsPage() {
               globalyapp.com
             </a>
             . These Terms and Conditions outline the rules and regulations for using our website
-            (&quot;Globalyapp&quot;). By accessing or using the Website, you agree to be bound by these Terms.
+            (&quot;GlobalyAI&quot;). By accessing or using the Website, you agree to be bound by these Terms.
           </p>
 
           <LegalSection id="use-of-website" icon={Globe} title="Use of Website">
@@ -80,7 +80,7 @@ export default function TermsPage() {
           </LegalSection>
 
           <LegalSection id="user-accounts" icon={Users} title="User Accounts">
-            <p className="font-medium text-foreground">There are three types of user accounts on Globalyapp:</p>
+            <p className="font-medium text-foreground">There are three types of user accounts on GlobalyAI:</p>
             <ul>
               <li>
                 <strong>Students:</strong> Students can create profiles to search for educational opportunities,

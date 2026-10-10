@@ -1,8 +1,8 @@
 import { AiPublicHeader } from "./components/ai-public-header";
 
 export const metadata = {
-  title: "AI Counsellor — Globaly",
-  description: "Get personalised study abroad advice from Globaly's AI Counsellor.",
+  title: "AI Counsellor — GlobalyAI",
+  description: "Get personalised study abroad advice from GlobalyAI's AI Counsellor.",
 };
 
 export default function AiPublicLayout({ children }: { children: React.ReactNode }) {

@@ -34,7 +34,7 @@ export function HeroSection({
           <h1 className="mt-6 text-4xl sm:text-5xl md:text-6xl font-extrabold text-white leading-[1.05] animate-fade-up">
             Grow Your Agency
             <br />
-            <span className="text-amber-300 inline-block min-h-[1.2em]">
+            <span className="text-white inline-block min-h-[1.2em]">
               {displayText}
               <span
                 className="text-amber-200"

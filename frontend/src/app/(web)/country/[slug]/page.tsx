@@ -20,8 +20,8 @@ export async function generateMetadata({
 }: Readonly<{ params: Promise<{ slug: string }> }>): Promise<Metadata> {
   const { slug } = await params;
   const country = await getCountryBySlug(slug);
-  if (!country) return { title: "Country not found — Globaly" };
-  const title = country.meta_title ?? `Study in ${country.name} — Courses, Institutions & Costs | Globaly`;
+  if (!country) return { title: "Country not found — GlobalyAI" };
+  const title = country.meta_title ?? `Study in ${country.name} — Courses, Institutions & Costs | GlobalyAI`;
   const description = (country.meta_description ?? country.why_study_here ?? "").slice(0, 160);
   return {
     title,

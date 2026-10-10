@@ -83,11 +83,11 @@ export function RoleSelectView() {
       <div className="w-full max-w-2xl">
         <div className="flex justify-center mb-8">
           <Link href="/">
-            <Image src={LOGO.src} alt="Globalyapp" width={LOGO.width} height={LOGO.height} className="h-10 w-auto" />
+            <Image src={LOGO.src} alt="GlobalyAI" width={LOGO.width} height={LOGO.height} className="h-10 w-auto" />
           </Link>
         </div>
         <div className="text-center mb-10">
-          <h1 className="text-3xl font-bold mb-2">How will you use Globaly?</h1>
+          <h1 className="text-3xl font-bold mb-2">How will you use GlobalyAI?</h1>
           <p className="text-muted-foreground">Choose your account type to get started with the right experience.</p>
         </div>
         <div className="mb-8">

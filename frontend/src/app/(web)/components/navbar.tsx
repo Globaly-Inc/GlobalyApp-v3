@@ -63,7 +63,7 @@ export function Navbar() {
     <header className="sticky top-0 z-50 w-full border-b border-border bg-background/95 backdrop-blur-md print:hidden">
       <div className="container mx-auto flex h-16 items-center px-3 sm:px-4 gap-1">
         <Link href="/" className="flex items-center flex-shrink-0">
-          <Image src={LOGO.src} alt="Globalyapp" width={LOGO.width} height={LOGO.height} className="h-8 w-auto" priority />
+          <Image src={LOGO.src} alt="GlobalyAI" width={LOGO.width} height={LOGO.height} className="h-8 w-auto" priority />
         </Link>
 
         <nav className="hidden items-center gap-1 lg:flex flex-1 justify-start ml-8">
@@ -177,7 +177,7 @@ export function Navbar() {
               <SheetTitle className="sr-only">Menu</SheetTitle>
               <div className="flex items-center justify-between mb-6">
                 <Link href="/" onClick={() => setMobileOpen(false)}>
-                  <Image src={LOGO_WHITE.src} alt="Globalyapp" width={LOGO_WHITE.width} height={LOGO_WHITE.height} className="h-7 w-auto" />
+                  <Image src={LOGO_WHITE.src} alt="GlobalyAI" width={LOGO_WHITE.width} height={LOGO_WHITE.height} className="h-7 w-auto" />
                 </Link>
                 <Button
                   variant="ghost"

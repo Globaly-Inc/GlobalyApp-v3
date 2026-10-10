@@ -61,10 +61,10 @@ export function ExtractionProgressCard() {
     badgeVariant = "destructive";
     progressBarClassName = "[&_[data-slot=progress-track]]:bg-destructive/15 [&_[data-slot=progress-indicator]]:bg-destructive";
   } else if (done) {
-    statusIcon = <CheckCircle2 className="h-4 w-4 text-emerald-500" />;
+    statusIcon = <CheckCircle2 className="h-4 w-4 text-success" />;
     statusTitle = "Extraction complete";
     badgeVariant = "secondary";
-    progressBarClassName = "[&_[data-slot=progress-indicator]]:bg-emerald-500";
+    progressBarClassName = "[&_[data-slot=progress-indicator]]:bg-success";
   } else {
     statusIcon = <Loader2 className={cn("h-4 w-4 text-primary", processing && "animate-spin")} />;
     statusTitle = "Extracting your profile";

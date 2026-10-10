@@ -26,6 +26,7 @@ import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { logout, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchFullProfile } from "./store/profile-slice";
 import { PortalSidebar } from "@/components/portal-sidebar";
+import { ThemeMenuItem } from "@/components/theme-menu-item";
 import { NAV_ITEMS, PERSONAL_PORTAL_HOME } from "./const";
 import { PersonalMobileNav } from "./components/personal-mobile-nav";
 import { ICON } from "@/lib/public-assets";
@@ -88,17 +89,23 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
   const avatarPhotoUrl = mounted ? profile?.photo_url : null;
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
-      <header className="sticky top-0 z-40 h-16 shrink-0 border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
+    <div data-shell="portal" className="min-h-screen flex flex-col bg-background">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-card focus:px-3 focus:py-2 focus:text-sm focus:shadow-md"
+      >
+        Skip to content
+      </a>
+      <header className="sticky top-0 z-40 h-16 shrink-0 border-b border-border bg-card/95 backdrop-blur">
         <div className="flex h-16 items-center">
           <div className="flex h-16 shrink-0 items-center px-3 sm:px-4 md:w-20 md:justify-center md:px-0">
             <Link href="/" className="flex shrink-0 items-center">
               <Image
                 src={ICON.src}
-                alt="Globalyapp"
+                alt="GlobalyAI"
                 width={ICON.width}
                 height={ICON.height}
-                className="size-9 rounded-[10px]"
+                className="size-9 rounded-lg"
                 priority
               />
             </Link>
@@ -181,6 +188,7 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
                   </>
                 )}
                 <DropdownMenuSeparator />
+                <ThemeMenuItem />                <DropdownMenuSeparator />
                 <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" variant="destructive" onClick={handleSignOut}>
                   Sign Out
                 </DropdownMenuItem>
@@ -193,8 +201,10 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
       <div className="flex flex-1">
         <PortalSidebar groups={NAV_ITEMS} />
         <main
+          id="main-content"
+          tabIndex={-1}
           className={cn(
-            "min-w-0 flex-1 overflow-x-clip",
+            "min-w-0 flex-1 overflow-x-clip outline-none",
             isFullBleed ? "" : "py-4 md:py-6 pb-24 md:pb-6",
           )}
         >

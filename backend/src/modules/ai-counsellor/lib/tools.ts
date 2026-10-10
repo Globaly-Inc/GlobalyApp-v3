@@ -225,7 +225,7 @@ const DECLARATIONS: FunctionDeclaration[] = [
   {
     name: "search_courses",
     description:
-      "Search verified courses in the Globaly database. Use once you understand what the student " +
+      "Search verified courses in the GlobalyAI database. Use once you understand what the student " +
       "wants to study and at least one constraint (destination, budget, level) — or immediately, with " +
       "whatever you know, when the student explicitly asks to see courses or a list of options; an " +
       "explicit request overrides ask-first. Returns fees, intakes, entry requirements and a `card` " +

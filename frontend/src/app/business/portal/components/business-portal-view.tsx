@@ -34,17 +34,17 @@ export function BusinessPortalView() {
   }, [dispatch, profile]);
 
   return (
-    <div className="space-y-4 md:space-y-6">
+    <div className="space-y-6">
       <PortalHero orgName={profile?.business_name ?? ""} progress={onboardingProgress} />
 
-      <div className="flex flex-col gap-4 md:gap-6 lg:grid lg:grid-cols-3 lg:items-start">
-        <div className="order-1 space-y-4 lg:col-span-2">
+      <div className="flex flex-col gap-6 lg:grid lg:grid-cols-3 lg:items-start">
+        <div className="order-1 space-y-6 lg:col-span-2">
           {profile && <StartExtractionCard profile={profile} />}
           <DashboardPreview />
           <BusinessRecentEnquiries items={enquiries} />
         </div>
 
-        <div className="order-2 space-y-4 lg:col-span-1">
+        <div className="order-2 space-y-6 lg:col-span-1">
           {onboardingProgress && <GetSetUpChecklist progress={onboardingProgress} />}
           <BusinessQuickActions />
           <NeedAHandCard />

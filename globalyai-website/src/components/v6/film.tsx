@@ -79,7 +79,7 @@ export function ProductFilm() {
                       type="button"
                       onClick={toggle}
                       aria-label={playing ? "Pause the demo" : "Play the demo"}
-                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--primary)] text-white transition-transform hover:scale-105"
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-[var(--primary)] text-[var(--primary-foreground)] transition-transform hover:scale-105"
                     >
                       {playing ? (
                         <Pause className="h-3.5 w-3.5" aria-hidden="true" />

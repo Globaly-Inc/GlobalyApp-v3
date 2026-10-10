@@ -242,11 +242,11 @@ function TranscriptScene() {
 /** Beat 9: the closing card. */
 function FinalFrame() {
   return (
-    <div className="flex min-h-[400px] animate-fade-up flex-col items-center justify-center gap-6 rounded-[20px] border border-white/12 bg-[#141b2e] px-6 py-16 text-center sm:min-h-[704px]">
+    <div className="flex min-h-[400px] animate-fade-up flex-col items-center justify-center gap-6 rounded-[20px] border border-white/12 bg-[#1e2333] px-6 py-16 text-center sm:min-h-[704px]">
       <AlyOrb className="h-14 w-14" />
       <h3 className="max-w-lg text-[clamp(1.4rem,3.2vw,2.15rem)] font-semibold leading-tight text-white">
         Give your website an{" "}
-        <span className="text-[var(--accent)]">AI counselor</span>.
+        <span className="text-[#c9cdd6]">AI counselor</span>.
       </h3>
       <a
         href={CAL_BOOKING_URL}
@@ -270,7 +270,7 @@ function SourceTag({ size = "sm" }: Readonly<{ size?: "sm" | "md" }>) {
           size === "sm" ? "px-2 py-1 text-[10px]" : "px-2.5 py-1 text-[11.5px]",
         )}
       >
-        <span className="h-1 w-1 rounded-full bg-[var(--accent)]" aria-hidden="true" />
+        <span className="h-1 w-1 rounded-full bg-[var(--ok-text)]" aria-hidden="true" />
         From your admissions requirements page
       </span>
     </div>

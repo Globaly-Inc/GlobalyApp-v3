@@ -16,8 +16,8 @@ export async function generateMetadata({
 }: Readonly<{ params: Promise<{ slug: string }> }>): Promise<Metadata> {
   const { slug } = await params;
   const scholarship = await getScholarshipBySlug(slug);
-  if (!scholarship) return { title: "Scholarship not found — Globaly" };
-  const title = `${scholarship.title} — Scholarship | Globaly`;
+  if (!scholarship) return { title: "Scholarship not found — GlobalyAI" };
+  const title = `${scholarship.title} — Scholarship | GlobalyAI`;
   const description = (scholarship.description ?? scholarship.requirements_summary ?? "").slice(0, 160);
   return { title, description };
 }
