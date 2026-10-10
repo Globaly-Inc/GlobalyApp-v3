@@ -171,6 +171,7 @@ The centralized error handler maps these to HTTP responses.
    in the job header) raises the cap by 500 and re-dispatches the job worker —
    dedupe skips everything already queued, so only newly discovered pages bill.
    No V2 equivalent — cost guardrail, explicitly requested (V2 had no page cap).
+   **SUPERSEDED 2026-10-06 — the cap is OFF by default. See "Jobs are uncapped" below.**
    Exception: eligibility + intake storage repair (2026-09-04) — six changes to how
    entry requirements and intakes are stored, none a V2 behavior, all data-correctness
    fixes. See `docs/data-extraction/2026-09-04-eligibility-intake-storage-plan.md` for
@@ -744,7 +745,11 @@ dead page is retried is a `fresh` re-snapshot (`listActiveSiteUrls(jobId, { incl
 because liveness is only knowable by fetching. The exception is an admin re-adding the URL: `addSiteUrl`'s
 merge clears `dead_reason` along with `excluded`, otherwise the UI reported the add as successful while
 every active read still skipped the row (review fix, 2026-09-23). `siteUrlCounts.dead` feeds the tab's Inactive capsule;
-Active there is `total − excluded − dead`. Dead pages have no `extraction_pages` row (`getPage` does
+Active there is `total − excluded − dead`. **Our own scraper failing is not a dead page** (2026-09-30):
+`deadReasonOf` returns `"scraper_down"` when `isScraperInfraFailure(page.error)` (leaked Scrapling,
+no Firecrawl credits) — counted as failed for the batch, never stamped, so the next snapshot retries it
+(Purdue lost 222 live programme pages to this). `ScrapeResult.scraplingError` carries why Scrapling
+failed before a fallback ran; `scrapeFailureText` shows both, while classification still reads `error`. Dead pages have no `extraction_pages` row (`getPage` does
 not store an unreadable result), so they are absent from the snapshots table by construction. The
 snapshots list now also carries `site_url_id` + `category_source` so the visible table's Category
 picker can PATCH the site-list row; the old Details sheet is commented out in `site-tab.tsx`, not
@@ -1063,6 +1068,165 @@ Tests: `npm run test:agentcis-writecourse-guardrail` (the per-category add-only-
 DB integration) and `npm run test:agentcis-enrich-from-web` (the trigger's guard rails and queue
 dispatch, DB integration with `queueService.publish` mocked).
 
+## An AgentCIS job is a university: it re-runs in place and gets the institution steps (2026-10-05)
+
+User decisions, and the reason three separate things here looked broken on one afternoon.
+
+**Re-run restarts THIS job, for every source type.** `rerunJob` used to branch on
+`source_type === "agentcis"` and call `importAgentCIS`, which only queues a message — the worker
+then creates a FRESH job row, so the admin watched their own job's page never change while the work
+landed elsewhere. Worse, the new row carries only the feed: one live case replaced a 43-page,
+73-course enriched job with a 6-course import. The branch is gone; AgentCIS falls through to the
+normal reset-and-re-crawl path, against `institution_url`, which IS the website the feed supplied.
+**Re-pulling the feed is the AgentCIS Import page's job, not Re-run's.** `resumeExtraction` keeps
+its own AgentCIS branch — "nothing queued to resume" is a different question. Guarded by
+`tests/rerun-agentcis.ts` (no npm script; `node --import tsx tests/rerun-agentcis.ts`).
+*Known edge, accepted:* `agentcis-staging.ts` falls back to `https://agentcis.com/institution/<id>`
+when the feed record has no `website`, and Re-run on such a job would crawl that placeholder. No
+live occurrence (0 of 8 jobs); a review bot flags it on sight, so expect to re-explain it.
+
+**AgentCIS counts as an institution for the institution-family steps.** `checkAllPagesDone`'s
+`isInstitution` and `runSiteAnalysis`'s dispatch gate both read
+`!source_type || source_type === "institution"`, so an AgentCIS job's post-extraction chain was
+`["verify"]` alone — no `institution` step, no `branches`, and **no `scholarships` ever**. Both now
+include `"agentcis"`. An unknown source type still stays out: a new vertical opts in deliberately.
+`needsBranches` still requires the job to have no campuses, so the feed's campuses are not at risk
+from the chain — but note `replaceCampuses` DELETES and re-links by name, and the merge-for-feed
+variant (`mergeCampuses`/`campusesFromFeed`) is NOT in the tree, so a MANUAL branches run on a job
+that has campuses still wipes them.
+
+**Extraction OVERWRITES the staged overview, including a feed's own contact details.** The crawl is
+the source of truth: when the `institution` step reads a different email/phone/address on the
+website, that value replaces what the AgentCIS import staged. Deliberate (user decision, asked and
+answered three times) — do NOT "fix" it back to add-only, and expect a review bot to flag it on
+every pass, because it reads as data loss without this note. Two things bound it: a field the crawl
+found NOTHING for keeps its stored value (`extraction-step.worker.ts`, the loop before the update),
+and the LIVE `institutions` row is not touched on this path at all — `backfillSelfServiceProfile`
+hangs off `writeInstitutionOverview`, which the existing-row branch skips, and it is fill-blanks-only
+anyway. Publishing to a listing stays promote's job.
+
+**`pipeline_progress` is rebuilt at a run start, and `agentcis_id` must ride across.** That column
+is the only record of which AgentCIS institution a job is, and the two writers that assign a fresh
+literal — the job worker's admission write and `resetPipeline` — erased it, so one "Enrich from
+Website" permanently broke that job's Re-run with "no agentcis_id on record". Both now go through
+`freshProgress` (`lib/pipeline-progress.ts`), which rebuilds the bag and carries only that key.
+A plain `||` merge would be WRONG here: `completion_email` and `post_extraction_chain` must still be
+cleared at a run start. Guarded by `npm run test:agentcis-progress-merge`.
+
+**This module keeps losing these fixes to rebases.** `progressPatch`, `wantsInstitutionSteps`,
+`additiveOverviewUpdate`, `importedFromFeed`, `mergeCampuses` and `campusesFromFeed` were all
+written for the AgentCIS work and are all absent from `src/` today, while the inline checks they
+replaced came back. Before starting an AgentCIS defect, grep for the helper the docs name and
+confirm it still exists. **Still missing and not restored:** `additiveOverviewUpdate` protected the
+feed's email/phone/address from being overwritten by a crawled contact page during enrichment.
+
+## Jobs are uncapped: page_cap NULL = no limit (2026-10-06)
+
+User decision. A job now queues every course URL discovery approved, however many that is.
+Migration `20261006_001` drops the `NOT NULL DEFAULT 500` and clears the column on existing jobs.
+
+**Why the 500 default had to go:** it was discarding the majority of discovery on most sites.
+Measured over the live jobs — 6 of 11 had more than 500 active URLs, the largest 13,373, average
+3,186 — and one job found 4,969 course pages and queued 500 of them. That is a large part of why
+yields looked low; see [[page yield audit]] in the notes.
+
+**The limit still exists, it is just off by default.** Set `page_cap` to a number on one job and
+every reader honours it again (verified: a job capped at 30 queues 30 and refuses the rest). There
+is NO API or UI for it — no route or schema references the column, and `raisePageCap` only
+increments — so it is a SQL update today. A review bot reads "the cap was removed" as unbounded
+cost and files it as P1 on sight; the answer is that the default inverted, not that the lever went.
+
+**NULL broke three readers, and every one failed SILENTLY — check these before touching the cap:**
+- `insertQueueItemDetailed` — `count < NULL` is NULL, not TRUE, so the insert's WHERE queued NOTHING
+- `atPageCap` — `rows[0]?.capped ?? true` read NULL as "capped", stopping discovery immediately
+- `dispatchSnapshotBatches` — `Number(null) || 500` silently re-capped the snapshot at 500
+That last one is why the function takes `number | null` now: its internal `pageCap || 500` was a
+second place a silent 500 could come back, and callers pass `job.page_cap ?? null` rather than
+faking "unlimited" with `urls.length`.
+
+**What bounds a run now:** the `course` category (only those are queued), `CLASSIFY_ALL_CAP`
+(25,000, `EXTRACTION_CLASSIFY_CAP`), `CRAWL_BUDGET` (300), `MAX_TYPE_URLS` (10). Classification is
+~1% of LLM calls; `course_extraction` is the spend that removing the cap multiplies. Watch
+`extraction_llm_usage` after a big re-run — and note `LLM_MODEL_PRICES` must be set for costs to
+read as dollars rather than tokens.
+
+**Deep Scrape is hidden** (`job-header.tsx`), component and route left in place. With no cap it
+bought nothing, and it is NOT Resume: it re-runs discovery from `site_map` but does NOT re-dispatch
+rows already `pending`, because `queue_pages` sees them as duplicates and publishes nothing. A
+paused job with pending pages needs RESUME. Known gap, accepted: there is now no action that
+rediscovers a site while keeping completed queue work — Re-run wipes the queue first.
+
+## A host sets its own pace, and a dead one stops being asked (2026-10-09)
+
+`lib/host-health.ts`, wired into `scrapeMarkdown`. Not a V2 behaviour — a wall-clock fix, and the
+direct follow-on to uncapping above: snapshot used to be clamped at 500 pages (~6.7 min) and is now
+the whole site, so a 10,001-URL Princeton run dispatches 101 batches. Measured before changing
+anything — two regimes, nothing else close:
+
+- **Throttle-bound.** The 800ms gap is reserved GLOBALLY per host via `extraction_host_slots`, so
+  16–32 fetchers in flight buy nothing when one catalogue host owns the URLs. CSU Ohio 500 pages
+  /356s, Aalto 500/402s, UConn 500/409s — 1.2–1.4 pages/s, exactly that gap's ceiling. Dartmouth
+  managed 3.4/s only because its URLs span several hosts.
+- **Failure-bound.** Caltech: 531 pages/6,447s = 0.08/s, 307 of them `scraper_down`, each walking
+  get (22s) → stealthy_fetch (30s) → fetch (35s) → Firecrawl. ~1.7h re-proving that three
+  caltech.edu subdomains were down.
+
+Three changes, each tested red-then-green (`npm run test:host-health`, 25 assertions):
+
+- **The gap adapts per host.** Starts at `HOST_THROTTLE_MS` (800), halves after `SPEEDUP_AFTER`
+  (20) consecutive clean fetches down to `HOST_THROTTLE_MIN_MS` (200), snaps back to base and
+  doubles to an 8s ceiling on a real 429/503. The 800ms was precautionary — nothing has ever
+  rate-limited us — so it earns the right to shrink on evidence. Purdue's 13,611 URLs: 3.0h at
+  800ms, 1.0h at 250ms.
+- **A failing host trips.** `TRIP_AFTER` (5) consecutive unusable results and `scrapeMarkdown`
+  returns instantly for `TRIP_FOR_MS` (10 min) without touching a provider. **Half-open on
+  expiry** — the fail count is left one short of the threshold, so one more failure re-trips;
+  closing to a clean slate would re-spend five full-ladder failures every window, which is the
+  cost this exists to avoid.
+  **OPT-IN via `ScrapeOptions.breaker`, and ONLY `snapshotSite` opts in.** The page worker must
+  never arm it: a `scraper_down` failure there republishes the retry with `forceFirecrawl: false`,
+  which would hit the open circuit, answer instantly, and burn all three attempts in milliseconds
+  — so on a catalogue-concentrated job (Yale: 983 of 1,013 URLs on one host) a single five-failure
+  blip would permanently fail the whole remaining queue in seconds, where today those pages fail
+  slowly and a container that recovers mid-run still rescues the later ones. The snapshot step has
+  no per-item retry budget to corrupt, which is exactly why it is the one that may arm it.
+  Outcomes are RECORDED from every caller either way, so the adaptive gap keeps learning
+  everywhere. `test:host-health` pins the default-off behaviour.
+**Four traps, all of them live:**
+- **The breaker's error MUST classify as infra.** `isScraperInfraFailure` gained
+  `"scraper circuit open"`. Without it `deadReasonOf` takes the `blocked` branch, every URL under a
+  host that wobbled for ten minutes is stamped DEAD, and `listActiveSiteUrls` skips them from then
+  on — the same shape as the 222 live Purdue pages lost to `scraper_down` in 2026-09-30.
+  Regression-tested; verified it returns `"blocked"` with the phrase removed.
+- **A 429 must not short-circuit the ladder.** A browser tier frequently clears what plain HTTP was
+  refused, so a 429 sets a `throttled` signal and KEEPS escalating. An earlier cut returned on it
+  and both skipped a tier that works and stamped live URLs dead.
+- **Any RESPONSE clears the circuit, not just the failure count.** A host is skipped only on the
+  belief that it is down, so an answer is proof it is not. Leaving `openUntil` set after a success
+  kept a recovered host skipped for the whole window even though another caller in the same process
+  (site-crawl, site_analysis — neither arms the breaker) had just fetched it. A 429 counts as a
+  response too: it widens the gap, clears the circuit and resets the streak, or four failures, a
+  429 and one more failure would trip a host that demonstrably answered in between.
+- **A `notFound` records NOTHING.** As a failure it would trip a healthy catalogue for having dead
+  links; as a success its wall of 404s earned speed-up credit and could halve the gap straight back
+  down after a 429 had just widened it. A `blocked` result with a non-empty body (Firecrawl handing
+  back a challenge wall) is a FAILURE — body length alone read it as a success.
+- **Only one caller probes on expiry.** `isHostCircuitOpen` pushes the window out before returning
+  false, so the other 15 in-flight fetchers stay held rather than all stampeding a host we believe
+  is down. Pushing the window (rather than a `probing` flag) also means a probe that never reports
+  costs one more quiet window instead of leaving the host skipped forever.
+- **`CEILING_GAP_MS` is derived from the base, never a bare constant.** With `HOST_THROTTLE_MS` set
+  above a fixed 8s, the backoff's `min()` clamped to BELOW the current gap — so a 429 SPED UP the
+  host that had just asked us to slow down.
+- **`forceFirecrawl` (admin Retry) bypasses an open circuit** — the operator is asking for this one
+  page, and it is also the only way to test a trip before it expires. Note `assertPublicUrl` runs
+  FIRST, so an unresolvable host never reaches host-health at all.
+
+ponytail: the state is per PROCESS while `extraction_host_slots` paces across them, so five workers
+each learn a host separately and the effective gap is their average. Move `gapMs` into that table
+if the divergence ever shows up in a run. **Workers load code once — restart the step and page
+workers after deploying this.**
+
 ## Stale queue-item reclaim (2026-09-15)
 
 Root cause of jobs found stuck at `status: "processing"` forever (seen live, both local and
@@ -1101,6 +1265,130 @@ reclaim step in isolation.
 For staging: run `npm run job:extraction-queue-reclaim -- --once` once to clear whatever's
 currently stuck there, then deploy the reclaim worker as a standing process (or cron) alongside
 the existing `job:extraction*` workers so this doesn't recur.
+
+## Discovery is Scrapling-first; Firecrawl is the last resort (2026-09-30)
+
+Not a V2 behaviour — explicitly requested. Reported: re-running rochester.edu / csuohio.edu "stops at
+1 or up to 20 pages". Neither was resume: discovery lost the pages. Rochester: Firecrawl map
+(discovery step 1) was out of credits, no sitemap, crt.sh timed out → 38 homepage links.
+CSU: the www sitemap lists every page on `live-csu-mainsite.pantheonsite.io` (misset Drupal base
+URL), all dropped as off-site; the Acalog catalogue has no sitemap, answers plain HTTP with an AWS WAF
+challenge that was cached as content, and links programmes relatively; the classifier queued 345
+LibGuides pages. Fixes, each tested in `test:site-crawl` / `test:sitemap-parsing` /
+`test:scraper-cascade` (every one verified red with its fix removed):
+- **Alias sitemap hosts** (`noteForeignHost`/`rebaseLocs`, `fetchSitemapUrls({ rebaseAliases })`): a
+  foreign host listed by the SEED's own sitemap is rebased onto the seed origin once one of its paths
+  answers there. Seed only — cert-log/catalogue probes rebasing too minted mirror copies of the site.
+- **Own crawl** (`lib/site-crawl.ts`, called from `runSiteMap`): BFS through `getPage` (so the snapshot
+  later hits cache), follows hub links only, 2 hops, `CRAWL_BUDGET` 300 fetches, from the homepage when
+  discovery found < `CRAWL_THIN` URLs and from any catalogue host that gave only its root. Acalog:
+  only catoids the seed page links to (the archive page reaches every past year). `urls_crawled` event.
+- **Firecrawl map is step 3**, after sitemaps and page links; `mapUrlsUnderPath` tries Scrapling first.
+  The AI-knowledge crawler passes `preferMap: true` and keeps Firecrawl first (one site per source —
+  the cert-log / catalogue probes would pull every subdomain in). A crawl interrupted by pause/stop
+  leaves `site_map` "waiting", not "done", so Resume re-runs it instead of chaining on a partial list;
+  the crawl bumps the heartbeat at every stop check. Course-path ranking applies to `course` rows
+  only — the other categories keep admin-first discovery order for the entity steps' 10-URL cap.
+- **Hard retries are Scrapling browser tiers** (`hardRetryTiers`: no `get`, 8s `wait`, mobile UA on the
+  mobile retry), Firecrawl only after. The flag is still called `forceFirecrawl` so queued messages keep
+  working; it no longer means "skip Scrapling".
+- **Challenge pages** (`isChallengePage`, < 2k chars) are unusable: Scrapling escalates past them and
+  page-store neither stores nor serves them.
+- **Relative links** in markdown resolve against the page (`extractLinksFromMarkdown(md, url)`).
+- **Ranking before every cap** (`rankForCrawl` in both site-URL reads): admin/guided/homepage, catalogue
+  host, course path, rest — page_cap, the snapshot and the classifier's 3,200 all keep the first N.
+  Library/news/events hosts (`NON_CONTENT_HOST`) are off the site list.
+Measured with Firecrawl unset: rochester 38 → 3,830 URLs; csuohio catalogue 1 → 795 current programme pages.
+**Workers load code once — restart the step and page workers after deploying this.**
+
+Jev page gate (`lib/jev-page-gate.ts`, `test:jev-page-gate`): one pinned `jev-1.13.0` yes/no before
+the full-model course extraction. ON whenever `TYPESAFE_API_KEY` is set (default threshold below);
+pick the threshold with `scripts/eval-jev-page-gate.ts` (read-only, labels from
+`extracted_data.courses_found`). Skips are `extracted_data.reason = "jev_not_programme"` + a
+`page_skipped_jev` event; admin retries, intake and visa pages are never gated.
+
+Same pass, also 2026-09-30:
+- **Jev value pickers** (`lib/jev-pickers.ts`, `test:jev-pickers`): on a ONE-course page, for a course the
+  model left without duration or tuition, a regex over-finds candidate spans and Jev `choice` picks one
+  (or none); code copies it verbatim (a bare "$" keeps currency null). On with the key (`JEV_PICK_MIN_CONF` overrides) — it is
+  set; `fields_picked_jev` event. Both Jev features share `lib/jev-client.ts` (model pinned there).
+- **Acalog curriculum** (`parseAcalogProgram`, via `curriculumFromMarkup` at both page-worker markup
+  sites, `test:courselist`): `li.acalog-course` anchors under `div.acalog-core` headings; each titled
+  "or" alternative is its own unit, credits stay null (they are behind a click).
+- **Scholarships**: new site category `scholarships` (path rule ahead of fees/branches — 46 scholarship
+  URLs had been filed under branches), guided key `scholarships_urls`, and step `scholarships`
+  (`scholarshipsPagePrompt`, lite tier, `upsertScholarship`, unlinked — the admin links awards to
+  courses). Dispatched by `checkAllPagesDone` when the job has scholarship pages — as a CHAIN
+  (`postExtractionChain`): branches (if no campuses) → scholarships (if any pages) → VERIFY, each step
+  handing on via the message's `then` whether it succeeded or failed (`continueChain`), so the linker
+  that verification dispatches sees the campuses and awards (`test:post-extraction-chain`).
+  The remaining chain is saved as `pipeline_progress.post_extraction_chain` BEFORE each hand-off and the
+  publish is tried 3 times; if it still fails, the reclaim sweep's stale-`extracting` pass resumes
+  `pendingChain(progress)` — never straight to VERIFY, which skipped the campus/scholarship steps.
+  A chained step holds `keepAlive` (heartbeat every 5 min, failures logged, stopped in `finally`), so
+  the sweep only resumes a chain whose worker died — never a second copy of a slow `branches` run.
+  `SCHOLARSHIP_ITEM_SCHEMA` is shared with the course prompt, which still renders byte-identical.
+- **LLM cache expires** after `LLM_CACHE_MAX_AGE_DAYS` (30); an expired row is refreshed on the next
+  save, a fresh one never overwritten. OpenRouter fallback calls now write an
+  `openrouter:<model>` usage row.
+- **Stuck verification**: the reclaim sweep re-dispatches an incremental VERIFY for an `extracting` job
+  whose heartbeat is 20+ min stale (claimed by bumping the heartbeat). Verified live.
+- **`field_coverage_verified`** event at the end of verification: per-field fill %, weakest first.
+- Measured and NOT built: schema.org Program/Course JSON-LD (0 of 40 institutions' productive pages).
+- **Jev everywhere a wrong decision lands in the DB.** `TYPESAFE_API_KEY` alone turns on every feature
+  that can only ADD data, at the strict `JEV_DEFAULTS` in `lib/jev-client.ts` (URL 0.7, picks 0.85,
+  report suspects 0.9, lookup 0.85, link 0.85). The two that can take data away — the page gate (skips a
+  page's extraction) and item deletion — default OFF and need `JEV_PAGE_GATE_MIN` / `JEV_VERIFY_DROP_MIN`
+  set on purpose (review 2026-09-30: key-only defaults "missed course pages and removed valid course
+  details"). URL classification is additive for courses — Jev may promote, never demote, a heuristic
+  course page, and a URL Jev is unsure of still gets the lite-model pass. The course check only judges
+  items whose own value is on the page Jev reads (fees/units merged from linked pages are never asked).
+  Each env var overrides its default; "0"/"off" switches that feature off (`test:jev-client`). Any failure
+  keeps the non-Jev path:
+  | Env | Where | Decision |
+  |---|---|---|
+  | `JEV_URL_CLASSIFY_MIN` | `jev-url-classify.ts` ← `runUrlClassify` | one `choice` per URL over `SITE_URL_CATEGORY_DESCRIPTIONS` (40/request); replaces both lite-model passes; `category_source = "jev"`; guided/admin still win, unconfident URLs keep the heuristic |
+  | `JEV_PAGE_GATE_MIN` | `jev-page-gate.ts` ← page worker | skip the full-model call on a non-programme page |
+  | `JEV_PICK_MIN_CONF` | `jev-pickers.ts` ← page worker | pick duration / tuition spans the model left empty (single-course pages) |
+  | `JEV_VERIFY_DROP_MIN` | `jev-course-check.ts` ← page worker, before `writeCourse` | per-item noul "wrong for THIS course" on fees, intakes, eligibility, English scores, units — drops only items at/above it (`course_checked_jev` event lists each); flags not-a-programme, never deletes for it |
+  | `JEV_LOOKUP_MIN` | same | `choice` over the seeded degree levels / areas when the resolvers leave a course unlinked |
+  | `JEV_LINK_MIN` | `jev-linker.ts` ← step `link_entities` (dispatched by the verify worker; also runnable alone) | links campuses, intakes, units, fees, requirements, scholarships, accreditations to courses: code finds candidates (name/code/amount on the course's OWN page; every scholarship/accreditation), Jev confirms the page states the relationship. Units and requirements: orphans only; listing pages (one URL, several courses): orphans only; AgentCIS: only a kind the course has none of. Re-runs skip linked pairs; `dryRun` counts candidates (one real job: 11,706 → 360 after the orphan rules). Study options (6 orphans) and agents (no course junction) are not linked. Courses with no stored page snapshot get nothing — there is no evidence to link from. |
+  `scripts/eval-jev-page-gate.ts` measures the page gate and the URL classifier on labelled pages;
+  the course check and pickers have no offline labels yet — start their thresholds high.
+
+## Extraction-complete email (2026-09-30)
+
+Not a V2 behaviour — explicitly requested. `lib/completion-email.ts` `sendCompletionEmail` mails the
+OWNER when a BUSINESS USER'S OWN extraction finishes (user decision: "no need to send email if it's run by
+an admin"). GENERIC across business categories (chosen when the admin sends the invitation) — nothing keys
+on the category; portal extraction is institutions-only today, and opening another category means mapping
+it to a pipeline in `businesses.startExtraction` + the portal's start-extraction card, not touching this.
+- **Business user's run only** (`isOwnerRun`): the job's `created_by_platform_user_id` is a member of the
+  listing it feeds (owner, or `user_institution_index` / `user_business_index`), is not a platform admin
+  (`superadmin.admin_users`), and `updated_by_platform_user_id` is null. Every admin action that starts or
+  continues a run stamps that column — rerun, resume, deep scrape, reset, and `dispatchStep` (before
+  publishing; the portal's page-correction re-extraction passes `actor: "owner"` and does not). Ceiling:
+  job-level, so an admin pausing or editing the owner's run also suppresses it.
+- **Claimed listing only** (`isOwned`). Sign-up creates listings claimed; the script
+  `npm run listings:backfill-claimed -- --apply` (scripts/backfill-signup-listings-claimed.ts) backfills the sign-ups made before 2026-08-31, which kept the
+  "unclaimed" default — only rows that really have their owner (owner row, provisioned tenant, owner in
+  the member index); ownerless `signup` rows stay unclaimed, since a claimed listing can never be claimed. The owner first, else the listing's own `email`; `.invalid` addresses refused.
+- **Content follows the pipeline** (`source_type`), not the category: `visa_service` → services found,
+  otherwise courses + campus/fee/intake/eligibility/unit coverage.
+- **Once per run, retryable**: `pipeline_progress.completion_email`, cleared by the job worker's wholesale
+  rewrite at every run start. `"sent"` is taken just before `queueEmail` and RELEASED if the send fails;
+  `"skipped"` only dedupes the timeline event and does not block a later send in the same run.
+- **After linking**: sent from `handleLinkEntitiesStep` when Jev linking runs (even if it fails), otherwise
+  (or if the link dispatch fails) from the verify worker; only while the job is `review`.
+Invited (admin-created) institutions can start extraction from the portal: their `manual` job counts as
+a placeholder while it holds no course or branch (`jobsRepo.isPlaceholderJob`, which the portal's
+`withPublicSourceJobId` masks exactly like sign-up's `self_service` job). `startExtraction` passes it to
+`createJob({ ignoreJobId })` so the duplicate-site check doesn't match the listing's own placeholder, and
+declines the replaced manual job so it stops answering that check. A manual job WITH data still blocks —
+replacing it would detach the hand-built catalogue.
+Template `extractionCompleteEmail` (`shared/mail/templates.ts`, shared `emailLayout`, CTA to
+`WEB_APP_URL/business/portal`); timeline events `completion_email_sent` (masked address) / `_skipped` /
+`_failed`. Never throws. `test:completion-email`.
 
 ## External FK columns
 
@@ -1167,3 +1455,53 @@ names, and units go to the table that already exists for them.
 - **Tests.** `npm run test:course-entity-resolution` — 47 labelled pairs in
   `tests/fixtures/course-entity-resolution.json`; any `identical` verdict on a pair not labelled
   identical fails the run. Add a case whenever a reviewer overturns a pipeline decision.
+
+## Spreadsheet institution import (2026-09-29)
+
+Not a V2 behaviour — explicitly requested. Admin uploads a workbook (one tab per institution, one
+row per course), maps columns onto system fields in the browser, and each institution becomes its
+own `source_type: "spreadsheet"` job. `POST /spreadsheet/check-names` + `POST /spreadsheet/import`
+(one institution per request, 20 MB body limit) → `EXTRACTION_QUEUES.SPREADSHEET` →
+`npm run job:extraction-spreadsheet`.
+
+- **No second writer.** `lib/spreadsheet-mappers.ts` `rowToProduct` reshapes a mapped row into the
+  AgentCIS product shape and `lib/spreadsheet-staging.ts` hands it to `stageProduct`, so fees,
+  intakes, eligibility (exact-match sharing), English requirements, duration and course identity all
+  go through the AgentCIS path. The sheet's fee amount is PER PERIOD (user decision: "per semester
+  fee"), stored as amount × instalments — the same arithmetic AgentCIS's fee_items already use.
+- **Never merges into an existing institution** (user decision): a name already used by an
+  extraction job or a live institution is refused (409); the wizard asks for a rename or a skip.
+- Imported courses land `pending` → "Awaiting approval", invisible until approved.
+- A bad row is recorded in `pipeline_progress.errors` (first 50) and skipped, not fatal.
+- **Multi-tab template** (`frontend/public/templates/institution-import-template.xlsx`): tabs named
+  Institution, Courses, Eligibility, Branches, Agents, Fees, Intakes, Scholarships, Study Units,
+  Study Options, Accreditations — ONE institution per file, named only in the Institution tab's
+  Institution Name column (never a tab name, so Excel's 31-char tab limit can't cut it; an
+  Institution tab listing several is refused). The wizard detects it (Institution + Courses tabs), skips Map, folds
+  Eligibility into the course rows, and sends the rest as `extras`; `lib/spreadsheet-extras-staging.ts`
+  stages them AFTER the courses through the shared upserts, linking by the Course Names cell (";"-
+  separated, blank = every course). An accreditation with no linked course is not written —
+  `extraction_accreditations` has no job_id, so it would be unreachable.
+- **Any tab-per-section workbook, not just ours.** The wizard's Map step maps each tab onto a section
+  and each column onto that section's fields (frontend `const/template-sections.ts`,
+  `utils/template-mapping.ts`), auto-matched by name/aliases — our template maps itself. Mapped
+  rows reach the backend in the same `rows` + `extras` shape, so nothing server-side changed.
+- **Course rows may carry several fees and branches.** `fee_amount` is international tuition;
+  `domestic_fee_amount` and `application_fee_*` become their own fee lines — each fee_item may state
+  its own `student_type` and `period`, which `stageProduct` honours (AgentCIS items state neither,
+  so that path is unchanged). `branch_names` links the course to campuses: `stageBranches` creates
+  every named campus (plus the Branches tab) BEFORE any course, so stageProduct's campusMap links
+  them by name. A heading used twice ("INSTALLMENT TYPE") is kept as "… (2)" by parseWorkbook.
+- **English score cells** (IELTS/TOEFL/PTE/Duolingo) take one number (overall) or a comma list in
+  the fixed order Overall, Listening, Reading, Writing, Speaking (`englishBands`,
+  spreadsheet-mappers.ts); the wizard validates each band.
+- **A fee line is a RATE × count**, stored as that many installments at the rate
+  (`repeatInstallments`, installment-parser.ts) — never the total re-split by `parseInstallments`,
+  which halved a one-semester fee into two payments and turned 8 semesters into 2. Applies to the
+  AgentCIS path too (`stageProduct`), whose fee_items have the same amount × instalment meaning.
+- **A failed spreadsheet import doesn't hold its name.** Such jobs can't be rerun, so
+  `findExistingNames` ignores them and `startImport` deletes the failed job (rows cascade) before
+  creating the new one. The wizard polls each job (`GET /jobs/:id`) until done/failed before
+  reporting success, so a staging failure keeps the admin's file and fixes for "Retry failed".
+- Guarded by `npm run test:spreadsheet-import` (pure, real rows). Verified over the first real
+  workbook: all 3,771 rows parse duration, every intake month, degree level and fee.

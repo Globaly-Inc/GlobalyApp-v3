@@ -183,7 +183,7 @@ export interface MappedStudyOption {
   duration_unit: string | null;
 }
 
-const MODE_MAP: Record<string, string> = {
+export const MODE_MAP: Record<string, string> = {
   "on campus": "on_campus", "on-campus": "on_campus", "campus": "on_campus",
   "classroom": "on_campus", "offline": "on_campus", "in person": "on_campus",
   "online": "online", "distance": "online", "remote": "online",

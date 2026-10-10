@@ -22,7 +22,7 @@
  *   node --import tsx tests/courselist-parser.ts
  */
 import {
-  parseCourseList, looksLikeCourseList, courseLinksByName, parseCreditHours } from "../src/modules/superadmin/data-extraction/lib/courselist-parser.js";
+  parseCourseList, looksLikeCourseList, courseLinksByName, parseCreditHours, parseAcalogProgram, curriculumFromMarkup } from "../src/modules/superadmin/data-extraction/lib/courselist-parser.js";
 
 let passed = 0;
 let failed = 0;
@@ -177,6 +177,31 @@ eq(parseCreditHours("4.5"), null, "a fraction an integer column cannot hold");
 eq(parseCreditHours("Variable"), null, "no figure at all");
 eq(parseCreditHours(""), null, "empty");
 eq(parseCreditHours("0"), null, "zero is not a credit value");
+
+
+// ── Acalog (catalog.csuohio.edu, trimmed from the live Psychology, B.A. page 2026-09-30) ──
+{
+  const li = (inner: string) => `<li class="acalog-course"><span>${inner}</span></li>`;
+  const a = (t: string) => `<a href="#" onclick="showCourse('50','1',this,''); return false;">${t}</a>`;
+  const acalog = `
+    <div class="acalog-core"><h2><a name="x"></a>Hours Required for Degree</h2><hr><p>120</p></div>
+    <div class="acalog-core"><h3><a name="RequiredCourses"></a>Required Courses</h3><hr><ul>
+      ${li(a("PSY 101 - Introduction to Psychology"))}
+      ${li(`${a("PSY 200 - A Major&rsquo;s Guide to Psychology at CSU")} or ${a("INQ 112 - Creating Your Identity")}`)}
+      ${li(`${a("PSY 217 - Behavioral Science Statistics: Description")} or ${a("STA 145")}`)}
+    </ul></div>
+    <div class="acalog-core"><h3>Electives - Additional Psychology Courses</h3><hr><ul>${li(a("PSY 345 - Abnormal Psychology"))}</ul></div>
+    <div class="acalog-core"><h4>Neuroscience</h4><hr><ul>${li(a("PSY 482 - Biological Basis of Behavior"))}${li(a("PSY 101 - Introduction to Psychology"))}</ul></div>`;
+  const units = parseAcalogProgram(acalog);
+  eq(units.map((u) => u.unit_code), ["PSY 101", "PSY 200", "INQ 112", "PSY 217", "PSY 345", "PSY 482"],
+    "Acalog: each titled anchor is a unit, a titled 'or' alternative too, bare 'or STA 145' and repeats are not");
+  eq(units[1].unit_name, "A Major's Guide to Psychology at CSU", "Acalog: title stops at its own anchor, entities decoded");
+  eq(units.map((u) => u.unit_type), ["compulsory", "compulsory", "compulsory", "compulsory", "elective", null],
+    "Acalog: unit_type from the block heading, null when the heading says nothing");
+  eq(units[0].credit_points, null, "Acalog: credits are behind a click, never guessed");
+  eq(curriculumFromMarkup(acalog).length, 6, "curriculumFromMarkup falls through to Acalog");
+  eq(curriculumFromMarkup("<p>no catalogue here</p>"), [], "curriculumFromMarkup: neither shape → []");
+}
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

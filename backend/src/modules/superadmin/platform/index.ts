@@ -15,6 +15,7 @@ import businessBranchesModule from "./business-branches/index.js";
 import businessServicesModule from "./business-services/index.js";
 import businessPartnersModule from "./business-partners/index.js";
 import businessRepresentationsModule from "./business-representations/index.js";
+import { adminOnboardingInvitationRoutes } from "./routes/onboarding-invitations.routes.js";
 
 export default async function platformModule(app: FastifyInstance) {
   // Guard: super_admin or data_admin
@@ -35,4 +36,5 @@ export default async function platformModule(app: FastifyInstance) {
   app.register(businessServicesModule);
   app.register(businessPartnersModule);
   app.register(businessRepresentationsModule);
+  app.register(adminOnboardingInvitationRoutes);
 }

@@ -25,6 +25,19 @@ export async function businessBranchesRoutes(app: FastifyInstance) {
     return reply.status(201).send(branch);
   });
 
+  app.get("/branches/:subId", { preHandler: requireBusinessContext }, async (req, reply) => {
+    const { subId } = SubIdSchema.parse(req.params);
+    return reply.send(await service.getBranch(Number(req.business!.id), subId));
+  });
+
+  // An extracted campus (read-only in the list) the owner wants to edit — becomes a real branch now.
+  app.post("/branches/campuses/:subId/convert", { preHandler: requireBusinessContext }, async (req, reply) => {
+    const { subId } = SubIdSchema.parse(req.params);
+    const result = await service.convertCampusOnDemand("businesses", Number(req.business!.id), subId);
+    await activityService.logActivity(req.db, Number(req.auth.sub), "BRANCH_CREATED", "branch", result.branch_id, { from_campus: subId });
+    return reply.status(201).send(result);
+  });
+
   app.post("/branches/link-existing", { preHandler: requireBusinessContext }, async (req, reply) => {
     const data = LinkExistingBranchInputSchema.parse(req.body);
     const result = await service.linkExistingBranch(Number(req.business!.id), data);

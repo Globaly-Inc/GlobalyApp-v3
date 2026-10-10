@@ -2,6 +2,7 @@
 
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { deleteSiteUrls } from "./site-urls.repository.js";
+import { freshProgress } from "../lib/pipeline-progress.js";
 
 const T = "superadmin.extraction_queue";
 const T_JOBS = "superadmin.extraction_jobs";
@@ -56,6 +57,8 @@ export async function stopAll(jobId: string) {
 // in this UPDATE, not in a prior SELECT — a concurrent promotion could flip the job to
 // exported between a check and the increment, mutating a job the worker will then ignore.
 // undefined = job is exported (or gone); the caller must refuse, not report success.
+// Only called for a job that HAS a cap: NULL means unlimited and there is nothing to raise —
+// that path uses claimJobUnlessExported below, which carries the same guard without the increment.
 export async function raisePageCap(jobId: string, by: number, adminId: number) {
   const [row] = await masterKnex(T_JOBS)
     .where({ id: jobId })
@@ -66,12 +69,24 @@ export async function raisePageCap(jobId: string, by: number, adminId: number) {
   return row?.page_cap as number | undefined;
 }
 
-// Rerun (resume path): pending/failed items are real, already-queued work worth retrying
-// without wiping the job — 0 means there's nothing to resume from.
+/** Stamp the admin on a job unless it is exported. False = exported or gone; the caller must refuse.
+ *  The uncapped-job half of deepScrape: same atomic guard as raisePageCap, nothing to increment. */
+export async function claimJobUnlessExported(jobId: string, adminId: number): Promise<boolean> {
+  const n = await masterKnex(T_JOBS)
+    .where({ id: jobId })
+    .whereNot("status", "exported")
+    .update({ updated_by_platform_user_id: adminId, updated_at: masterKnex.fn.now() });
+  return n > 0;
+}
+
+// Resume: pending/failed/paused items are real, already-queued work worth retrying without
+// wiping the job — 0 means there's nothing to resume from. "paused" is included because
+// stopAll/pauseAllPendingQueue flips in-flight items to that status, not pending/failed — a
+// job stopped mid-crawl and then resumed must pick those back up too, not just failures.
 export async function countRetryableQueueItems(jobId: string) {
   const row = await masterKnex(T)
     .where({ job_id: jobId })
-    .whereIn("status", ["pending", "failed"])
+    .whereIn("status", ["pending", "failed", "paused"])
     .count("id as count")
     .first();
   return Number(row?.count ?? 0);
@@ -85,7 +100,12 @@ export async function reactivateJob(jobId: string, adminId: number) {
   return masterKnex(T_JOBS)
     .where({ id: jobId })
     .update({
-      status: masterKnex.raw("CASE WHEN status IN ('paused', 'failed', 'declined') THEN 'processing' ELSE status END"),
+      // "stalled" belongs here too — the frontend's RESUMABLE_STATUSES (job-header.tsx) shows
+      // Resume for a stalled job same as a paused one, but leaving it out here meant Resume never
+      // actually reactivated it: checkAllPagesDone's own transition only matches status
+      // "processing", so a stalled job's pages could finish and it would STILL never reach
+      // verification (Greptile).
+      status: masterKnex.raw("CASE WHEN status IN ('paused', 'stalled', 'failed', 'declined') THEN 'processing' ELSE status END"),
       processing_heartbeat_at: masterKnex.fn.now(),
       updated_at: masterKnex.fn.now(),
       updated_by_platform_user_id: adminId,
@@ -119,7 +139,7 @@ export async function resetPipeline(jobId: string, adminId: number) {
       pages_scraped: 0,
       pages_failed: 0,
       processing_heartbeat_at: null,
-      pipeline_progress: JSON.stringify({
+      pipeline_progress: freshProgress({
         site_mapping: "waiting",
         course_discovery: "waiting",
         data_extraction: "waiting",

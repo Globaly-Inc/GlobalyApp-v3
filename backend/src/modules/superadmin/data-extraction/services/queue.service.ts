@@ -9,8 +9,19 @@ import * as repo from "../repositories/queue.repository.js";
 import { findJobById, updateJob } from "../repositories/jobs.repository.js";
 import { importAgentCIS } from "./agentcis.service.js";
 import { dispatchStep } from "./step.service.js";
+import { reclassifyUnits, mergeDuplicateCourses, flagQualifierGapDuplicates } from "../lib/course-dedup.js";
+import { republishRetryableQueueItems, setProgress } from "../lib/pipeline-steps.js";
+import { writeJobEvent } from "../lib/staging-writer.js";
+import { DISCOVERY_STEP_ORDER, type PipelineStep } from "../schemas/step.schema.js";
 
 const logger = createChildLogger("extraction-queue-service");
+
+function firstIncompleteDiscoveryStep(progress: Record<string, unknown>): PipelineStep | null {
+  for (const step of DISCOVERY_STEP_ORDER) {
+    if (progress[step] !== "done") return step;
+  }
+  return null;
+}
 
 export async function listQueue(jobId: string, status?: string) {
   return { queue: await repo.listQueueByJob(jobId, status) };
@@ -100,51 +111,123 @@ export async function resetPipeline(jobId: string, adminId: number) {
   return { updated: true };
 }
 
-// Resumes a job's existing pending/failed work where possible, falling back to a full
-// resetPipeline + re-crawl only when there's nothing queued yet to resume (see below).
-//
-// An AgentCIS-sourced job was never crawled from the institution's own website — it was
-// imported wholesale from the AgentCIS API — so re-crawling its institution_url (the real
-// site, e.g. concordia.ab.ca) is wrong on its face and was hitting Firecrawl rate limits for
-// no reason. Re-run it the same way it was created: re-dispatch the AgentCIS import for the
-// same institution (importAgentCIS creates a fresh job row; resetPipeline never applies here).
+// Resumes a job's existing pending/failed/paused queue items (via the same "courses" step the
+// Context tab's per-step Re-run uses) without wiping anything — the job-level Resume action,
+// shown when a job is paused (or stalled). This used to be folded into rerunJob as its
+// "retryable > 0" branch; it's now a dedicated action so Re-run can always mean a clean-slate
+// restart and Resume can always mean "pick up the pages that were found but never scraped".
+export async function resumeExtraction(jobId: string, adminId: number) {
+  const job = await findJobById(jobId);
+  if (!job) throw new NotFoundError("Extraction job not found");
+
+  const progress = typeof job.pipeline_progress === "string"
+    ? JSON.parse(job.pipeline_progress) : (job.pipeline_progress || {});
+
+  // An AgentCIS job that never went through the crawl pipeline (no "Enrich from Website" run yet
+  // — pipeline_progress carries only {phase, current, total, agentcis_id}, none of the discovery-
+  // step keys) has no queue-side work to resume: firstIncompleteDiscoveryStep below would
+  // otherwise read it as "site_map incomplete" and dispatch a crawl of institution_url —
+  // unrelated website work, not the interrupted AgentCIS import (Greptile). Mirrors rerunJob's own
+  // AgentCIS branch exactly: importAgentCIS re-dispatches the SAME institution import (it creates
+  // a fresh job row; this stalled/paused row is simply superseded, same as Re-run already does).
+  // Once enrichment HAS run, pipeline_progress carries real discovery keys and the job falls
+  // through to the normal logic below like any other crawled job.
+  if (job.source_type === "agentcis" && !DISCOVERY_STEP_ORDER.some((s) => progress[s] !== undefined)) {
+    const agentcisId = progress.agentcis_id;
+    if (!agentcisId) {
+      throw new BadRequestError("This AgentCIS job has no agentcis_id on record — cannot resume the import");
+    }
+    await importAgentCIS([agentcisId], adminId);
+    await logAudit(adminId, "JOB_RESUME", { entityType: "extraction_jobs", entityId: jobId, details: { reimport: true } });
+    return { updated: true, retryable: 0, step: null, reimport: true };
+  }
+
+  const retryable = await repo.countRetryableQueueItems(jobId);
+  const incomplete = firstIncompleteDiscoveryStep(progress);
+  const step: PipelineStep = incomplete ?? "courses";
+
+  // Reactivate BEFORE dispatching — the page worker skips paused/failed/declined jobs,
+  // so the reverse order would race it into silently dropping the re-dispatched pages.
+  await repo.reactivateJob(jobId, adminId);
+  await logAudit(adminId, "JOB_RESUME", { entityType: "extraction_jobs", entityId: jobId, details: { retryable, step } });
+  let republished = 0;
+  try {
+    if (retryable > 0 && step !== "courses") {
+      const r = await republishRetryableQueueItems(jobId);
+      republished = r.dispatched;
+      if (r.error) throw r.error;
+    }
+    await dispatchStep(jobId, { step }, adminId);
+  } catch (err) {
+    // Push queue: nothing consumes the reactivated job unless the step message actually
+    // published. Without this rollback a failed dispatch (LavinMQ down) leaves the job
+    // showing "processing" with a fresh heartbeat and no work queued — stalled until
+    // someone notices. Restore the pre-resume status so the failure state stays truthful.
+    //
+    // BUT only when nothing was actually published: extraction-page.worker.ts drops a PAGES
+    // message outright for a paused/failed/declined job ("job not active, skipping"), and a
+    // successful republish also clears awaiting_publish on those rows — so a row already
+    // republished before dispatchStep failed would go back to "pending" with its message
+    // silently dropped and no tag left for the reclaim sweep to ever pick it up again (Greptile).
+    // Leaving the job active lets the already in-flight pages still get processed even though the
+    // step dispatch itself failed; the step alone can be re-run for that.
+    if (republished === 0) {
+      await updateJob(jobId, { status: job.status }, adminId);
+    } else if ((DISCOVERY_STEP_ORDER as string[]).includes(step)) {
+      // dispatchStep's own setProgress({[step]: "processing"}) ran before its publish failed, so
+      // this discovery step would otherwise sit stuck showing "processing" forever with no message
+      // ever coming — and because we're deliberately NOT rolling the job back above, its already-
+      // republished pages will still finish and checkAllPagesDone would read the queue as fully
+      // resolved and start verification, even though the URLs this step was meant to find were
+      // never discovered (Greptile). Marking it "failed" (a definitive dead state, unlike
+      // "processing" which a still-in-flight run could legitimately hold) is what
+      // checkAllPagesDone's own guard checks for before it will auto-transition.
+      await setProgress(jobId, { [step]: "failed" });
+      await writeJobEvent(jobId, "step_error", {
+        level: "warn", phase: step,
+        message: `Resume dispatched ${republished} already-queued page(s), but failed to re-dispatch the "${step}" discovery step — run it again to find the rest`,
+        data: { step, republished, error: err instanceof Error ? err.message : String(err) },
+      });
+    }
+    throw err;
+  }
+  return { updated: true, retryable, step };
+}
+
+// Every job always restarts from a clean slate — no partial "resume" branch here any more (see
+// resumeExtraction above for that; it's a dedicated action, not folded into Re-run).
 export async function rerunJob(jobId: string, adminId: number) {
   const job = await findJobById(jobId);
   if (!job) throw new NotFoundError("Extraction job not found");
 
-  if (job.source_type === "agentcis") {
-    const progress = typeof job.pipeline_progress === "string"
-      ? JSON.parse(job.pipeline_progress) : (job.pipeline_progress || {});
-    const agentcisId = progress.agentcis_id;
-    if (!agentcisId) {
-      throw new BadRequestError("This AgentCIS job has no agentcis_id on record — cannot re-import");
-    }
-    await importAgentCIS([agentcisId], adminId);
-    return { updated: true, reimport: true };
+  // A spreadsheet job's rows exist only in the file it came from — and its institution_url may be a
+  // synthetic placeholder the web crawler must never be pointed at.
+  if (job.source_type === "spreadsheet") {
+    throw new BadRequestError("This extraction came from a spreadsheet — delete it and import the sheet again to refresh it");
   }
 
-  // Resume instead of restart: if this job already has pending/failed queue items, retry
-  // just those (via the same "courses" step the Context tab's per-step Re-run uses) instead
-  // of wiping the queue and re-billing Gemini to re-scrape + re-extract every page the job
-  // already finished successfully. "Reset Pipeline" stays the explicit full-recrawl action
-  // for when a genuine from-scratch redo is wanted.
-  const retryable = await repo.countRetryableQueueItems(jobId);
-  if (retryable > 0) {
-    // Reactivate BEFORE dispatching — the page worker skips paused/failed/declined jobs,
-    // so the reverse order would race it into silently dropping the re-dispatched pages.
-    await repo.reactivateJob(jobId, adminId);
-    await logAudit(adminId, "JOB_RERUN", { entityType: "extraction_jobs", entityId: jobId, details: { mode: "resume", retryable } });
-    try {
-      await dispatchStep(jobId, { step: "courses" }, adminId);
-    } catch (err) {
-      // Push queue: nothing consumes the reactivated job unless the step message actually
-      // published. Without this rollback a failed dispatch (LavinMQ down) leaves the job
-      // showing "processing" with a fresh heartbeat and no work queued — stalled until
-      // someone notices. Restore the pre-rerun status so the failure state stays truthful.
-      await updateJob(jobId, { status: job.status }, adminId);
-      throw err;
+  // Bring this job's EXISTING courses into line with the current pipeline before wiping the
+  // queue and re-crawling. writeCourse's parse/classify/resolve path (course-name.ts,
+  // course-resolver.ts, entity-classifier.ts) only guards what it writes GOING FORWARD — it
+  // never revisits rows an older crawl already staged, so a job extracted before a classifier
+  // or dedup fix stayed wrong forever unless someone remembered to run
+  // scripts/merge-duplicate-courses.ts by hand. Re-run is the admin explicitly asking for this
+  // job's data to be current, so it's the natural place to apply the same cleanup
+  // automatically. Best-effort: a cleanup failure must not block the re-run the admin
+  // actually asked for.
+  try {
+    const units = await reclassifyUnits(job, { apply: true });
+    const merged = await mergeDuplicateCourses(job, { apply: true });
+    const flagged = await flagQualifierGapDuplicates(job, { apply: true });
+    if (units.reclassified || merged.losers || flagged.flagged) {
+      logger.info("Rerun cleanup reclassified/merged/flagged existing courses", {
+        jobId, reclassified: units.reclassified, merged: merged.losers, flagged: flagged.flagged,
+      });
     }
-    return { updated: true, mode: "resume" };
+  } catch (err) {
+    logger.warn("Rerun cleanup failed, continuing with rerun", {
+      jobId, error: err instanceof Error ? err.message : String(err),
+    });
   }
 
   const found = await repo.resetPipeline(jobId, adminId);
@@ -160,8 +243,9 @@ export async function rerunJob(jobId: string, adminId: number) {
   return { updated: true, mode: "full" };
 }
 
-// Deep scrape: the default page_cap (500) covers the course catalogue on most sites; this
-// raises the budget by another 500 and re-dispatches the job worker, whose discovery then
+// Deep scrape: re-dispatches the job worker so discovery runs again over the whole site; on a job
+// that still carries a page_cap it also raises that budget by 500. Jobs are uncapped by default
+// (migration 20261006_001), so for most the value is the re-discovery, and its discovery then
 // finds and queues the pages the cap refused (insertQueueItem dedupes the rest, so nothing
 // already extracted is re-billed). Re-running the job worker also refreshes the institution
 // overview (email/phone/logo) from the homepage. Explicit admin action = explicit extra spend.
@@ -175,8 +259,19 @@ export async function deepScrape(jobId: string, adminId: number) {
   // doesn't revive them) — raising the cap would mutate state, report success, and run
   // nothing. The guard is inside raisePageCap's UPDATE (not a check here) so a promotion
   // landing mid-request can't slip an increment onto a freshly exported job.
-  const pageCap = await repo.raisePageCap(jobId, 500, adminId);
-  if (pageCap == null) {
+  // An uncapped job (page_cap NULL, the default) has no budget to raise — incrementing NULL yields
+  // NULL, which would read as the exported case below and report the wrong reason. Re-dispatching
+  // discovery is the other half of what this action does, so that part still runs.
+  let pageCap: number | null | undefined = job.page_cap;
+  if (job.page_cap != null) {
+    pageCap = await repo.raisePageCap(jobId, 500, adminId);
+    if (pageCap == null) {
+      throw new BadRequestError("This job is already exported — use Reset Pipeline to re-crawl it from scratch");
+    }
+  } else if (!(await repo.claimJobUnlessExported(jobId, adminId))) {
+    // Atomic, not `job.status === "exported"` on the row loaded above: a promotion landing between
+    // that read and this point would otherwise record the action and report success while the
+    // worker skips the job. The route stays callable even with its button hidden.
     throw new BadRequestError("This job is already exported — use Reset Pipeline to re-crawl it from scratch");
   }
   await repo.reactivateJob(jobId, adminId);

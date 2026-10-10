@@ -196,6 +196,17 @@ export async function bulkVerifyCourses(ids: string[], approve: boolean, adminId
   return { updated };
 }
 
+/** Approves every not-yet-approved course of a job. Flagged ones stay flagged — "approve all" must
+ * not silently undo a rejection an admin made course by course. */
+export async function approveAllCourses(jobId: string, adminId: number) {
+  const updated = await repo.approveAllCoursesForJob(jobId, adminId);
+  await logAudit(adminId, "COURSE_APPROVE", {
+    entityType: "extraction_courses",
+    details: { job_id: jobId, all: true, count: updated },
+  });
+  return { updated };
+}
+
 export async function rejectCourse(id: string, adminId: number) {
   const found = await repo.updateCourse(id, { verification_status: "flagged" }, adminId);
   if (!found) throw new NotFoundError("Course not found");

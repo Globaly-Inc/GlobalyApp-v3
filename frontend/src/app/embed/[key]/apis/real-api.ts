@@ -1,11 +1,11 @@
 // Plain fetch throughout — the widget runs on partner sites with no auth
 // session, so it must never import the token/refresh HTTP client.
 
-import type { CourseCard } from "@/app/ai/apis/types";
+import type { CourseCard, ResponseBlock } from "@/app/ai/apis/types";
 import type {
   EmbedChatEvent, EmbedContactPrompt, EmbedEndPrompt, EmbedPublicConfig, EmbedThread,
   GuestContactRequest, GuestConversationEndRequest, GuestConversationEndResponse,
-  GuestMessageRequest, WireCourseCard,
+  GuestMessageRequest, GuestRatingRequest, WireCourseCard,
 } from "./types";
 
 const RAW_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
@@ -62,7 +62,8 @@ export const embedRealApi = {
   toCourseCards: (cards: WireCourseCard[]): CourseCard[] => cards.map(toCourseCard),
 
   resolveConfig: async (key: string): Promise<EmbedPublicConfig> => {
-    const res = await fetch(`${BASE_URL}/embed/resolve?key=${encodeURIComponent(key)}`);
+    // no-store: also runs on the server (page.tsx), where a cached copy would keep old branding.
+    const res = await fetch(`${BASE_URL}/embed/resolve?key=${encodeURIComponent(key)}`, { cache: "no-store" });
     if (!res.ok) throw new Error(res.status === 404 ? "This counsellor is unavailable." : "Failed to load.");
     return res.json();
   },
@@ -115,10 +116,16 @@ export const embedRealApi = {
         onEvent({ type: "cards", cards: (parsed as WireCourseCard[]).map(toCourseCard) });
       } else if (eventType === "chips") {
         onEvent({ type: "chips", chips: parsed as string[] });
+      } else if (eventType === "blocks") {
+        onEvent({ type: "blocks", blocks: parsed as ResponseBlock[] });
       } else if (eventType === "contact-prompt") {
         onEvent({ type: "contact-prompt", prompt: parsed as EmbedContactPrompt });
       } else if (eventType === "end-prompt") {
         onEvent({ type: "end-prompt", prompt: parsed as EmbedEndPrompt });
+      } else if (eventType === "handoff") {
+        onEvent({ type: "handoff", agentName: (parsed as { agent_name?: string | null }).agent_name ?? null });
+      } else if (eventType === "handover") {
+        onEvent({ type: "handover" });
       }
       // session / guest-meta / sources / usage — nothing to render in the widget
     };
@@ -177,5 +184,14 @@ export const embedRealApi = {
       throw new Error((body as { error?: string } | null)?.error ?? "Something went wrong. Please try again.");
     }
     return res.json();
+  },
+
+  /** The end-of-chat faces. Best-effort: a lost rating isn't worth an error in front of the visitor. */
+  submitRating: async (input: GuestRatingRequest): Promise<void> => {
+    await fetch(`${BASE_URL}/guest/rating`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }).catch(() => {});
   },
 };

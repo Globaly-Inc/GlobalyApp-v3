@@ -18,6 +18,8 @@ export type ProfileLocation = {
   phone: string | null;
   latitude: number | null;
   longitude: number | null;
+  /** False hides this card's edit pencil even when the list is editable. */
+  editable?: boolean;
 };
 
 export type ProfileSocial = { name: SocialName; url: string };

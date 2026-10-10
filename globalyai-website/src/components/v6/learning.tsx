@@ -161,7 +161,7 @@ export function Learning() {
   const lit = active ?? arriving;
 
   return (
-    <section id="learning" className="px-3 py-20 sm:px-5 md:py-28">
+    <section id="learning" className="px-3 py-14 sm:px-5 sm:py-20 md:py-28">
       <div className="mx-auto max-w-[1300px] px-2">
         <Reveal>
           <SectionHeading
@@ -178,7 +178,7 @@ export function Learning() {
         </Reveal>
 
         <Reveal delay={90}>
-          <GlassPanel spotlight={false} className="mt-14 p-6 sm:p-8 lg:px-10 lg:py-14">
+          <GlassPanel spotlight={false} className="mt-10 p-5 sm:mt-14 sm:p-8 lg:px-10 lg:py-14">
             {/* One observer for both layouts. The desktop figure is display:none
                 below lg, where it can never intersect, so observing it there left
                 the stacked version parked on its first six questions. */}

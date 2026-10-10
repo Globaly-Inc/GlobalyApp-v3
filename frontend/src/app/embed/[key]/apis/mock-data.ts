@@ -1,7 +1,7 @@
 import type {
   EmbedChatEvent, EmbedPublicConfig, EmbedThread, GuestContactRequest,
   GuestConversationEndRequest, GuestConversationEndResponse, GuestMessageRequest,
-  WireCourseCard,
+  GuestRatingRequest, WireCourseCard,
 } from "./types";
 import type { CourseCard } from "@/app/ai/apis/types";
 
@@ -17,7 +17,10 @@ export const embedMockApi = {
       messages: [
         { id: 1, role: "user", content: "Do you offer data science?", cards: [], chips: [], created_at: new Date().toISOString() },
         { id: 2, role: "assistant", content: "Yes — we run a Master of Data Science.", cards: [], chips: [], created_at: new Date().toISOString() },
+        { id: 3, role: "agent", sender_name: "Alex Morgan", content: "Hi, I'm Alex from admissions. Happy to help with your application.", cards: [], chips: [], created_at: new Date().toISOString() },
       ],
+      agent_name: "Alex Morgan",
+      waiting: false,
     };
   },
 
@@ -27,7 +30,10 @@ export const embedMockApi = {
   resolveConfig: async (key: string): Promise<EmbedPublicConfig> => {
     console.log("[mock] GET /embed/resolve", key);
     await delay(300);
-    return { display_name: "Acme University", logo_url: null, brand_color: "#4f46e5", owner_kind: "institution" };
+    return {
+      display_name: "Acme University", logo_url: null, brand_color: "#4f46e5",
+      greeting: "Hi! Ask me anything about studying at Acme.", subtitle: "Usually replies in seconds", owner_kind: "institution",
+    };
   },
 
   sendMessage: async (
@@ -63,12 +69,36 @@ export const embedMockApi = {
       ],
     });
     onEvent({ type: "chips", chips: ["What are the entry requirements?", "When is the next intake?"] });
+    // One of each shape the widget now renders — the visible check that the `blocks`
+    // event is still wired end to end. Dropping it is how the channel died the first time.
+    onEvent({
+      type: "blocks",
+      blocks: [
+        {
+          type: "comparison",
+          title: "Side by side",
+          columns: ["Data Science", "Information Technology"],
+          rows: [
+            { label: "Duration", values: ["104 weeks", "78 weeks"] },
+            { label: "Intakes", values: ["Feb, Jul", "Feb"] },
+          ],
+        },
+        {
+          type: "quick_replies",
+          question: "Which matters most to you?",
+          options: [
+            { label: "💰 Fees", value: "Fees matter most to me" },
+            { label: "📅 Start date", value: "The start date matters most to me" },
+          ],
+        },
+      ],
+    });
     // Emitted on every mock turn so the card is reachable without counting to three —
     // the real threshold lives on the embed config and is decided server-side.
     onEvent({
       type: "contact-prompt",
       prompt: {
-        heading: "Want a copy of this conversation?",
+        heading: "Want a summary of this conversation?",
         body: "Share your name and email and we'll send you a summary of everything we've covered about Acme University — the programs, the details, and what to do next.",
       },
     });
@@ -81,6 +111,7 @@ export const embedMockApi = {
         covered: "we've covered the Master of Data Science, its fees and the February intake",
         body: "I can email you a summary of everything we discussed, or we can keep going.",
         email: "visitor@example.com",
+        branch: { name: "Melbourne Campus", place: "Melbourne, Victoria, Australia" },
       },
     });
     onEvent({ type: "done" });
@@ -97,5 +128,10 @@ export const embedMockApi = {
     console.log("[mock] POST /guest/conversation-end", input);
     await delay(400);
     return { ok: true, summary_queued: input.action === "end" };
+  },
+
+  submitRating: async (input: GuestRatingRequest): Promise<void> => {
+    console.log("[mock] POST /guest/rating", input);
+    await delay(300);
   },
 };

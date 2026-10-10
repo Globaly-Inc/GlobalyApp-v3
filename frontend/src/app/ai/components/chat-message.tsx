@@ -7,6 +7,7 @@ import { CourseCard } from "./course-card";
 import { FeedbackButtons } from "./feedback-buttons";
 import { MessageBlocks } from "./message-blocks";
 import { MessageMarkdown } from "./message-markdown";
+import { ScrollRow } from "@/components/scroll-row";
 import { setReplyTo } from "../store/ai-chat-slice";
 import { splitQuote } from "../utils";
 import { useAppDispatch } from "@/lib/hooks";
@@ -15,13 +16,20 @@ import { cn } from "@/lib/utils";
 
 type ChatMessageProps = {
   message: Message;
-  onChipClick?: (chip: string) => void;
-  onSend?: (value: string) => void;
+  onChipClick?: (chip: string) => boolean | void;
+  onSend?: (value: string) => boolean | void;
 };
 
-/** Cards size themselves to the container, not the viewport — the same grid has to
+/** Cards size themselves to the container, not the viewport — the same carousel has to
  * work in the 380px widget popover and on the full-width chat page. */
-const CARD_GRID = "grid w-full grid-cols-[repeat(auto-fit,minmax(240px,1fr))] gap-3";
+// Carousel = <ScrollRow> (chevron gutters, hidden scrollbar, wheel/touch still work) + CSS
+// scroll-snap on the rail. Inside a `@container/cards`: slides are ~3/4 of a narrow column
+// (widget / Ask Aly popover) so the next card peeks and invites the swipe; fixed 260px once the
+// column is wide. py-1 leaves room for the card's hover lift.
+const CARD_RAIL = "flex snap-x snap-mandatory gap-2.5 py-1 @min-[30rem]/cards:gap-3";
+const CARD_SLIDE = "w-[72%] shrink-0 snap-start @min-[30rem]/cards:w-[260px]";
+/** One card: half the row while narrow, so it matches a pair; capped at 300px when wide. */
+const SINGLE_CARD = "grid w-full grid-cols-2 gap-2.5 @min-[30rem]/cards:block @min-[30rem]/cards:max-w-[300px]";
 
 function CopyButton({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
@@ -98,29 +106,28 @@ function Attachments({ paths }: { paths: string[] }) {
   );
 }
 
-function Chips({ chips, onChipClick }: { chips: string[]; onChipClick?: (chip: string) => void }) {
-  const [selected, setSelected] = useState<string[]>([]);
+/** Follow-up suggestions. One tap sends — picking several and pressing a second Send button was
+ *  two clicks for what reads as one choice, and nobody expects a suggestion chip to need confirming. */
+function Chips({ chips, onChipClick }: { chips: string[]; onChipClick?: (chip: string) => boolean | void }) {
+  const [sent, setSent] = useState<string | null>(null);
 
-  const toggle = (chip: string) =>
-    setSelected((prev) => (prev.includes(chip) ? prev.filter((c) => c !== chip) : [...prev, chip]));
-
-  const sendSelected = () => {
-    if (!selected.length) return;
-    // Single chip sends as-is; multiple chips sent as a bullet list so the AI sees distinct questions.
-    onChipClick?.(selected.length === 1 ? selected[0]! : selected.map((c) => `• ${c}`).join("\n"));
-    setSelected([]);
+  const send = (chip: string) => {
+    if (sent) return; // a second tap would fire a second turn
+    if (onChipClick?.(chip) === false) return; // refused mid-stream: leave every chip tappable
+    setSent(chip);
   };
 
   return (
     <div className="flex flex-col gap-2.5 pt-1">
       <div className="flex flex-wrap gap-1.5">
         {chips.map((chip) => {
-          const active = selected.includes(chip);
+          const active = sent === chip;
           return (
             <button
               key={chip}
               type="button"
-              onClick={() => toggle(chip)}
+              disabled={sent !== null && !active}
+              onClick={() => send(chip)}
               className={cn(
                 "rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-150",
                 "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
@@ -135,11 +142,6 @@ function Chips({ chips, onChipClick }: { chips: string[]; onChipClick?: (chip: s
           );
         })}
       </div>
-      {selected.length > 0 && (
-        <Button size="sm" className="self-start rounded-full px-4 h-7 text-xs gap-1.5" onClick={sendSelected}>
-          Send {selected.length > 1 && `(${selected.length})`}
-        </Button>
-      )}
     </div>
   );
 }
@@ -151,10 +153,14 @@ function CourseCardList({ cards }: { cards: CourseCardType[] }) {
   const visible = expanded ? cards : cards.slice(0, CARD_PAGE);
   return (
     <div className="flex flex-col gap-3">
-      <div className={CARD_GRID}>
-        {visible.map((card, i) => (
-          <CourseCard key={card.id ?? i} card={card} />
-        ))}
+      <div className="@container/cards w-full">
+        <ScrollRow rowClassName={CARD_RAIL}>
+          {visible.map((card, i) => (
+            <div key={card.id ?? i} className={CARD_SLIDE}>
+              <CourseCard card={card} />
+            </div>
+          ))}
+        </ScrollRow>
       </div>
       {cards.length > CARD_PAGE && (
         <button
@@ -187,8 +193,8 @@ function AssistantTurn({
   cards: CourseCardType[];
   chips: string[];
   blocks: ResponseBlock[];
-  onChipClick?: (chip: string) => void;
-  onSend?: (value: string) => void;
+  onChipClick?: (chip: string) => boolean | void;
+  onSend?: (value: string) => boolean | void;
   footer?: React.ReactNode;
 }) {
   // The model routinely answers its own question twice — once as a quick_replies
@@ -203,10 +209,22 @@ function AssistantTurn({
         {content && <MessageMarkdown text={content} />}
         {blocks.length > 0 && <MessageBlocks blocks={blocks} onAction={onChipClick} onSend={onSend} />}
         {cards.length > 0 && (
-          <div className={cards.length === 1 ? "w-full max-w-[300px]" : CARD_GRID}>
-            {cards.map((card, i) => (
-              <CourseCard key={card.id ?? i} card={card} />
-            ))}
+          // The container is the chat column, not the screen: slide width follows the column.
+          <div className="@container/cards w-full">
+            {/* One card is not a carousel — no rail, no chevron gutters. */}
+            {cards.length === 1 && cards[0] ? (
+              <div className={SINGLE_CARD}>
+                <CourseCard card={cards[0]} />
+              </div>
+            ) : (
+              <ScrollRow rowClassName={CARD_RAIL}>
+                {cards.map((card, i) => (
+                  <div key={card.id ?? i} className={CARD_SLIDE}>
+                    <CourseCard card={card} />
+                  </div>
+                ))}
+              </ScrollRow>
+            )}
           </div>
         )}
         {chips.length > 0 && !hasQuickReplies && <Chips chips={chips} onChipClick={onChipClick} />}
@@ -274,8 +292,8 @@ export function StreamingMessage({
   cards: CourseCardType[];
   chips: string[];
   blocks?: ResponseBlock[];
-  onChipClick?: (chip: string) => void;
-  onSend?: (value: string) => void;
+  onChipClick?: (chip: string) => boolean | void;
+  onSend?: (value: string) => boolean | void;
 }) {
   return (
     <AssistantTurn content={content} cards={cards} chips={chips} blocks={blocks} onChipClick={onChipClick} onSend={onSend} />

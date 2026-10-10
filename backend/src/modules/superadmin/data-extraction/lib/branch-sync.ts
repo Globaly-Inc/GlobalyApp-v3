@@ -1,3 +1,4 @@
+import { syncConvertedCampusToBranch } from "../../platform/business-branches/services/business-branches.service.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { getKnex } from "../../../../core/db/pool-manager.js";
 import { createChildLogger } from "../../../../shared/logger.js";
@@ -32,12 +33,22 @@ export async function findCampusJobId(campusId: string): Promise<string | undefi
   return row?.job_id;
 }
 
-export async function syncBranchFromCampus(campusId: string): Promise<void> {
+/** `changed` = the fields the admin just edited — a converted campus syncs only those to its
+ * branch org (unknown → nothing is written to it). */
+export async function syncBranchFromCampus(campusId: string, changed?: Record<string, unknown>): Promise<void> {
   const campus = await masterKnex("superadmin.extraction_campuses").where({ id: campusId }).first();
-  if (!campus) return;
+  // A campus still being converted (claimed) is left alone — the conversion reads it as it stands.
+  if (!campus || campus.convert_claimed_at) return;
 
   const org = await findClaimedOrgForJob(campus.job_id);
   if (!org) return;
+
+  // Converted into a real branch org: that org's own profile is the branch now, so the edit goes
+  // there — a plain row under the campus id would list the campus twice.
+  if (campus.converted_branch_id) {
+    if (changed) await syncConvertedCampusToBranch(org, String(campus.converted_branch_id), changed);
+    return;
+  }
 
   const db = await getKnex(org.id, org.schema_name);
   const name = campus.name ?? "Unnamed campus";

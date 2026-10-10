@@ -78,6 +78,8 @@ export function mapCountry(c: unknown): string | null {
   if (typeof c === "number") return COUNTRY_MAP[c] || null;
   if (typeof c === "object" && c !== null) {
     const o = c as Record<string, unknown>;
+    // AgentCIS's `include=country` object names it `country_name`, not `name`.
+    if (typeof o.country_name === "string") return o.country_name;
     if (typeof o.name === "string") return o.name;
     if (typeof o.id === "number") return COUNTRY_MAP[o.id] || null;
   }
@@ -87,7 +89,9 @@ export function mapCountry(c: unknown): string | null {
 // ── Degree mapping ──
 
 const DEGREE_MAP: Record<string, string> = {
-  "high school": "certificate", "certificate": "certificate",
+  // High School is its own level (public.degree_levels "high_school"), not a Certificate — see
+  // lookup-catalog.ts COURSE_LEVEL_FOLDS on that transcription error.
+  "high school": "high_school", "secondary school": "high_school", "certificate": "certificate",
   "diploma": "diploma", "advanced diploma": "diploma",
   "associate degree": "associate",
   "bachelor": "bachelor", "bachelor's degree": "bachelor", "bachelors": "bachelor",
@@ -108,7 +112,7 @@ export function mapDegreeLevel(level: unknown): string | null {
 }
 
 const DEGREE_LEVEL_NAME: Record<string, string> = {
-  certificate: "Certificate", diploma: "Diploma", associate: "Associate Degree",
+  high_school: "High School", certificate: "Certificate", diploma: "Diploma", associate: "Associate Degree",
   bachelor: "Bachelor", graduate_certificate: "Graduate Certificate",
   graduate_diploma: "Graduate Diploma", master: "Master", doctoral: "PHD",
 };

@@ -1,55 +1,63 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Plus, ShieldCheck, Trash2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Pencil, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Combobox } from "@/components/combobox";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
 import { businessProfileDetailApi } from "../../../apis";
+import type { Lookup } from "@/app/admin/platform/categories/apis/types";
+import { ServiceEligibilityForm } from "./service-eligibility-form";
+import { TabSection } from "./tab-section";
+import { EnglishTestBlock } from "./english-test-block";
+import {
+  APPLICABLE_TO_CHIP,
+  academicTestValue,
+  minScoreLabel,
+  readAcademicTest,
+  type EligibilityExtras,
+} from "../eligibility-requirement-card";
 import type { ServiceEligibility, ServiceEligibilityInput } from "../../../apis/types";
 
-const APPLICABLE_TO_OPTIONS = [
-  { value: "both", label: "Domestic & International" },
-  { value: "domestic", label: "Domestic" },
-  { value: "international", label: "International" },
-];
-const SCORE_TYPE_OPTIONS = [
-  { value: "percentage", label: "Percentage" },
-  { value: "gpa_4", label: "GPA (4.0)" },
-  { value: "gpa_10", label: "GPA (10.0)" },
-  { value: "cgpa", label: "CGPA" },
-];
-
-const EMPTY: ServiceEligibilityInput = {
-  name: "", applicable_to: "both", degree_level_id: null, score_type: null, min_score: null,
-  description: "", academic_tests: [], language_tests: [],
-};
+const BLOCK = "grid content-start gap-2 rounded-xl border p-3";
+const BLOCK_LABEL = "text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground";
+const KV = "flex items-baseline justify-between gap-2 text-[13px]";
 
 export function EligibilityTab({ serviceId }: Readonly<{ serviceId: string }>) {
+  const [degreeLevels, setDegreeLevels] = useState<Lookup[]>([]);
   const [rows, setRows] = useState<ServiceEligibility[]>([]);
   const [loading, setLoading] = useState(true);
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<ServiceEligibilityInput>(EMPTY);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<ServiceEligibility | null>(null);
   const [saving, setSaving] = useState(false);
 
-  const load = () => businessProfileDetailApi.serviceEligibility.list(serviceId).then(setRows).finally(() => setLoading(false));
-  useEffect(() => { load(); }, [serviceId]);
+  const fetchedRef = useRef(false);
+  useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+    businessProfileDetailApi.getLookups("degree-levels").then((res) => setDegreeLevels(res.data));
+    businessProfileDetailApi.serviceEligibility.list(serviceId).then(setRows).finally(() => setLoading(false));
+  }, [serviceId]);
 
-  const handleAdd = async () => {
+  const openAdd = () => { setEditing(null); setFormOpen(true); };
+  const openEdit = (row: ServiceEligibility) => { setEditing(row); setFormOpen(true); };
+
+  const handleSave = async (input: ServiceEligibilityInput) => {
     setSaving(true);
     try {
-      await businessProfileDetailApi.serviceEligibility.create(serviceId, form);
-      toast.success("Eligibility requirement added");
-      setOpen(false);
-      setForm(EMPTY);
-      load();
+      if (editing) {
+        const updated = await businessProfileDetailApi.serviceEligibility.update(serviceId, editing.id, input);
+        setRows((r) => r.map((x) => (x.id === editing.id ? updated : x)));
+        toast.success("Eligibility requirement updated");
+      } else {
+        const created = await businessProfileDetailApi.serviceEligibility.create(serviceId, input);
+        setRows((r) => [...r, created]);
+        toast.success("Eligibility requirement added");
+      }
+      setFormOpen(false);
     } catch (e) {
-      toast.error("Couldn't add requirement", { description: (e as Error).message });
+      toast.error("Couldn't save requirement", { description: (e as Error).message });
     } finally {
       setSaving(false);
     }
@@ -59,79 +67,100 @@ export function EligibilityTab({ serviceId }: Readonly<{ serviceId: string }>) {
     try {
       await businessProfileDetailApi.serviceEligibility.remove(serviceId, id);
       setRows((r) => r.filter((x) => x.id !== id));
+      toast.success("Requirement removed");
     } catch (e) {
       toast.error("Couldn't remove requirement", { description: (e as Error).message });
     }
   };
 
   return (
-    <div>
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <ShieldCheck className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-semibold">Eligibility</span>
-          <Badge variant="secondary">{rows.length}</Badge>
-        </div>
-        <Button size="sm" onClick={() => setOpen(true)}>
-          <Plus className="mr-1.5 h-3.5 w-3.5" /> Add requirement
-        </Button>
-      </div>
+    <>
+      <TabSection
+        icon={ShieldCheck}
+        title="Eligibility"
+        count={rows.length}
+        addLabel="Add requirement"
+        onAdd={openAdd}
+        loading={loading}
+        emptyTitle="No eligibility requirements yet"
+        emptyHint="Set the academic minimums and English tests applicants need to meet."
+        summary={
+          <p className={BLOCK_LABEL}>
+            {rows.length} requirement {rows.length === 1 ? "set" : "sets"}
+          </p>
+        }
+      >
+        {rows.map((row) => {
+          const chip = APPLICABLE_TO_CHIP[row.applicable_to] ?? APPLICABLE_TO_CHIP.both;
+          const academicTests = (row.academic_tests ?? []).map(readAcademicTest);
+          // Extracted rows often carry only the scraped text forms — same fallbacks as the summary card.
+          const degree = row.degree_level_id
+            ? degreeLevels.find((d) => d.id === row.degree_level_id)?.name
+            : (row as EligibilityExtras).min_degree_level;
+          const score = minScoreLabel(row);
+          const hasBlocks = Boolean(degree || score || academicTests.length || row.language_tests?.length);
+          return (
+            <article
+              key={row.id}
+              className="group/card rounded-xl border bg-card transition-[background-color,box-shadow] hover:bg-primary/[0.02] hover:shadow-md"
+            >
+              <div className="flex items-start gap-3 p-4">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-[11px] bg-primary/10 text-primary">
+                  <ShieldCheck className="size-[18px]" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <h3 className="text-[15px] font-semibold">{row.name || "Untitled requirement"}</h3>
+                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${chip.className}`}>{chip.label}</span>
+                  </div>
+                  {row.description && <p className="mt-2 line-clamp-3 text-[13px] leading-relaxed text-muted-foreground">{row.description}</p>}
+                </div>
+                <div className="flex shrink-0 items-center gap-1 opacity-55 transition-opacity focus-within:opacity-100 group-hover/card:opacity-100">
+                  <Button size="icon-sm" variant="ghost" onClick={() => openEdit(row)} aria-label="Edit requirement">
+                    <Pencil className="h-3.5 w-3.5" />
+                  </Button>
+                  <ConfirmDeleteButton onConfirm={() => handleDelete(row.id)} />
+                </div>
+              </div>
 
-      {loading ? (
-        <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
-      ) : rows.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground italic">No eligibility requirements configured yet.</p>
-      ) : (
-        <div className="space-y-2">
-          {rows.map((r) => (
-            <div key={r.id} className="flex items-center justify-between rounded-lg border p-3">
-              <div>
-                <p className="text-sm font-medium">{r.name || "Requirement"} <span className="text-xs text-muted-foreground">({r.applicable_to})</span></p>
-                <p className="text-xs text-muted-foreground">
-                  {r.min_score != null ? `Min score: ${r.min_score}${r.score_type ? ` (${r.score_type})` : ""}` : r.description || "—"}
-                </p>
-              </div>
-              <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(r.id)} aria-label="Remove requirement">
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-          ))}
-        </div>
-      )}
+              {hasBlocks && (
+                <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-2.5 px-4 pb-4">
+                  {(degree || score) && (
+                    <div className={BLOCK}>
+                      <p className={BLOCK_LABEL}>Academic</p>
+                      {degree && <div className={KV}><span className="text-muted-foreground">Minimum degree</span><span className="font-mono font-semibold">{degree}</span></div>}
+                      {score && <div className={KV}><span className="text-muted-foreground">Minimum score</span><span className="font-mono font-semibold">{score}</span></div>}
+                    </div>
+                  )}
+                  {academicTests.length > 0 && (
+                    <div className={BLOCK}>
+                      <p className={BLOCK_LABEL}>Admission tests</p>
+                      {academicTests.map((t, i) => (
+                        <div key={`${t.name}-${i}`} className={KV}>
+                          <span className="text-muted-foreground">
+                            {t.name}
+                            {t.optional && <span className="ml-1.5 rounded bg-muted px-1.5 py-px text-[10.5px] font-medium">optional</span>}
+                          </span>
+                          <span className="font-mono font-semibold">{academicTestValue(t) ?? "—"}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {(row.language_tests ?? []).map((t, i) => (
+                    <EnglishTestBlock key={`${String(t.test_type_name)}-${i}`} test={t} />
+                  ))}
+                </div>
+              )}
+            </article>
+          );
+        })}
+      </TabSection>
 
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Add eligibility requirement</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Name</Label>
-              <Input className="h-10" value={form.name ?? ""} onChange={(e) => setForm((f) => ({ ...f, name: e.target.value }))} placeholder="Minimum academic score" />
-            </div>
-            <div className="flex flex-col gap-2">
-              <Label>Applies to</Label>
-              <Combobox options={APPLICABLE_TO_OPTIONS} value={form.applicable_to} onChange={(v) => setForm((f) => ({ ...f, applicable_to: v as ServiceEligibilityInput["applicable_to"] }))} />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-2">
-                <Label>Score type</Label>
-                <Combobox options={SCORE_TYPE_OPTIONS} value={form.score_type ?? ""} onChange={(v) => setForm((f) => ({ ...f, score_type: (v || null) as ServiceEligibilityInput["score_type"] }))} placeholder="None" />
-              </div>
-              <div className="space-y-2">
-                <Label>Minimum score</Label>
-                <Input className="h-10" inputMode="decimal" value={form.min_score ?? ""} onChange={(e) => setForm((f) => ({ ...f, min_score: e.target.value ? Number(e.target.value) : null }))} />
-              </div>
-            </div>
-            <div className="space-y-2">
-              <Label>Description</Label>
-              <Textarea rows={3} value={form.description ?? ""} onChange={(e) => setForm((f) => ({ ...f, description: e.target.value }))} />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)} disabled={saving}>Cancel</Button>
-            <Button onClick={handleAdd} disabled={saving}>{saving ? "Adding…" : "Add"}</Button>
-          </DialogFooter>
+      <Dialog open={formOpen} onOpenChange={setFormOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto border-0 bg-transparent p-0 shadow-none sm:max-w-2xl">
+          <ServiceEligibilityForm requirement={editing ?? undefined} degreeLevels={degreeLevels} saving={saving} onCancel={() => setFormOpen(false)} onSave={handleSave} />
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }

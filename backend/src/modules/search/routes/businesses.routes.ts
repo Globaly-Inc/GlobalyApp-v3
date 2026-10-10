@@ -1,3 +1,4 @@
+import { resolveSharedCourses } from "../../superadmin/platform/business-branches/repositories/business-branches.repository.js";
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { NotFoundError } from "../../../shared/errors.js";
@@ -65,10 +66,14 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
   // has no source_job_id — simply gets empty arrays and the page drops those sections.
   app.get("/search/institutions/:slug", async (req, reply) => {
     const { slug } = SlugParam.parse(req.params);
-    const institution = await repo.findPublicInstitutionBySlug(slug, resolvePreviewSchemaName(req));
+    const previewSchema = resolvePreviewSchemaName(req);
+    const institution = await repo.findPublicInstitutionBySlug(slug, previewSchema);
     if (!institution) throw new NotFoundError("Institution not found");
+    const previewSchemaNames = previewSchema ? [previewSchema] : undefined;
 
     const jobId = institution.job_id;
+    // A branch's public catalog includes what its parent shares with it, same as its Services tab.
+    const shared = jobId ? await resolveSharedCourses(Number(institution.id)) : null;
     // Same owner-controlled section toggles as a business profile — the two render through the
     // same page, so they have to honour the same map. Default public when the key is absent.
     const visibility = institution.public_visibility as Record<string, boolean> | null;
@@ -82,8 +87,8 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
       jobId && showLocations ? repo.listInstitutionCampuses(jobId) : [],
       jobId ? repo.listInstitutionRepresentatives(jobId) : [],
       showTeam ? repo.listInstitutionMembers(Number(institution.id)) : [],
-      jobId ? coursesRepo.listCourseFacets(jobId) : { subject_areas: [], degree_levels: [] },
-      jobId ? coursesRepo.countPublicCourses({ jobId }) : 0,
+      jobId ? coursesRepo.listCourseFacets(jobId, shared, previewSchemaNames) : { subject_areas: [], degree_levels: [] },
+      jobId ? coursesRepo.countPublicCourses({ jobId, shared, previewSchemaNames }) : 0,
     ]);
     const members = await Promise.all(rawMembers.map(async (m) => ({
       ...m, photo_url: await storage.resolvePreviewUrl(m.photo_url),
@@ -102,7 +107,8 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
 
   app.get("/search/institutions/:slug/courses", async (req, reply) => {
     const { slug } = SlugParam.parse(req.params);
-    const institution = await repo.findPublicInstitutionBySlug(slug, resolvePreviewSchemaName(req));
+    const previewSchema = resolvePreviewSchemaName(req);
+    const institution = await repo.findPublicInstitutionBySlug(slug, previewSchema);
     if (!institution) throw new NotFoundError("Institution not found");
 
     const { search, degree_level, ...pagination } = CourseListQuery.omit({ country: true, city: true }).parse(req.query);
@@ -112,7 +118,11 @@ export async function searchBusinessesRoutes(app: FastifyInstance) {
     if (!institution.job_id) return reply.send(buildPaginatedResponse([], 0, pagination));
 
     const { limit, offset } = paginationToOffset(pagination);
-    const filters = { jobId: institution.job_id, search, degreeLevel: degree_level };
+    const shared = await resolveSharedCourses(Number(institution.id));
+    const filters = {
+      jobId: institution.job_id, search, degreeLevel: degree_level, shared,
+      previewSchemaNames: previewSchema ? [previewSchema] : undefined,
+    };
     const [rows, total] = await Promise.all([
       coursesRepo.listPublicCourses(filters, undefined, limit, offset),
       coursesRepo.countPublicCourses(filters),

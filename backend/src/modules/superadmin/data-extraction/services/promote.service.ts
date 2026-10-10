@@ -25,14 +25,37 @@ import { logAudit } from "../shared/audit.js";
 import * as jobsRepo from "../repositories/jobs.repository.js";
 import * as repo from "../repositories/promote.repository.js";
 import type { OverviewRow, AgentRow } from "../repositories/promote.repository.js";
-import { baseProfileFieldsFrom, institutionExtrasFrom, businessExtrasFrom } from "../lib/overview-sync.js";
+import { baseProfileFieldsFrom, institutionExtrasFrom, businessExtrasFrom, localizeImages } from "../lib/overview-sync.js";
 import { PROMOTABLE_JOB_STATUSES } from "../schemas/jobs.schema.js";
+import { writeJobEvent } from "../lib/staging-writer.js";
 
 /**
  * RFC 2606 reserved TLD — guaranteed unroutable, so a synthetic owner address can never
  * accidentally deliver mail to a real person.
  */
 const PLACEHOLDER_EMAIL_DOMAIN = "unclaimed.globalyhub.invalid";
+
+/**
+ * What a re-publish may write over an EXISTING listing: only the columns extraction actually
+ * has data for. The overview is thinner than a claimed owner's portal profile (no email, phone,
+ * city…), and a full overwrite was nulling those. Meta is merged, not replaced, for the same reason.
+ */
+const KEEP_EXISTING = new Set(["currency", "gallery_images", "cover_url"]);
+
+export function repatch(existing: Record<string, unknown>, fields: Record<string, unknown>, onlyBlanks = false): Record<string, unknown> {
+  const patch: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(fields)) {
+    if (v === null || v === undefined || v === "") continue;
+    // Derived, not extracted — the country's currency, homepage photos, cover — so never replaces what the
+    // org already has (an emptied gallery, [], counts as set: the owner removed those photos).
+    // `onlyBlanks` (auto-publish of the owner's own run): nothing the owner already filled is replaced.
+    if ((onlyBlanks ? k !== "meta" : KEEP_EXISTING.has(k)) && existing[k] != null && existing[k] !== "") continue;
+    patch[k] = k === "meta" && existing.meta && typeof existing.meta === "object"
+      ? { ...(existing.meta as Record<string, unknown>), ...(v as Record<string, unknown>) }
+      : v;
+  }
+  return patch;
+}
 
 /** uuid → 8 hex chars, for disambiguating subdomains and synthetic emails. */
 function seedFrom(id: string): string {
@@ -92,7 +115,7 @@ async function resolveListingOwnerFromAgents(jobId: string) {
   return resolveAgentOwner(named.name!.trim(), named.email, named.phone, seedFrom(named.id));
 }
 
-async function promoteInstitution(job: any, overview: OverviewRow | undefined) {
+async function promoteInstitution(job: any, overview: OverviewRow | undefined, onlyBlanks = false) {
   const name = overview?.name ?? job.institution_name ?? "Untitled institution";
   const seed = seedFrom(job.id);
   const existing = await repo.findInstitutionByJobId(job.id);
@@ -104,6 +127,7 @@ async function promoteInstitution(job: any, overview: OverviewRow | undefined) {
 
   const fields = {
     institution_name: name,
+    business_category_id: job.business_category_id ?? (await repo.findCategoryIdBySlug("institutions")),
     email: emailFree ? email : null,
     phone: overview?.phone ?? null,
     ...(await baseProfileFieldsFrom(overview)),
@@ -116,7 +140,7 @@ async function promoteInstitution(job: any, overview: OverviewRow | undefined) {
   };
 
   if (existing) {
-    return { row: await repo.updateInstitution(existing.id, fields), created: false };
+    return { row: await repo.updateInstitution(existing.id, repatch(existing, fields, onlyBlanks)), created: false };
   }
 
   // Owner only when an extracted agent gives a real name; otherwise platform_user_id,
@@ -130,6 +154,7 @@ async function promoteInstitution(job: any, overview: OverviewRow | undefined) {
       : {}),
     subdomain: await repo.claimSubdomain(slugifyCourseName(name), seed),
     source_job_id: job.id,
+    origin: "seeded",
     status: "pending",
     claim_status: "unclaimed",
     // account_status stays 0 and schema_provisioned_at NULL until claim regardless of owner.
@@ -139,7 +164,7 @@ async function promoteInstitution(job: any, overview: OverviewRow | undefined) {
   return { row, created: true };
 }
 
-async function promoteBusiness(job: any, overview: OverviewRow | undefined) {
+async function promoteBusiness(job: any, overview: OverviewRow | undefined, onlyBlanks = false) {
   const name = overview?.name ?? job.institution_name ?? "Untitled business";
   const seed = seedFrom(job.id);
   const existing = await repo.findPrimaryBusinessByJobId(job.id);
@@ -160,7 +185,7 @@ async function promoteBusiness(job: any, overview: OverviewRow | undefined) {
   };
 
   if (existing) {
-    return { row: await repo.updateBusiness(existing.id, fields), created: false };
+    return { row: await repo.updateBusiness(existing.id, repatch(existing, fields, onlyBlanks)), created: false };
   }
 
   // Same rule as promoteInstitution — the two tables publish identically.
@@ -171,6 +196,7 @@ async function promoteBusiness(job: any, overview: OverviewRow | undefined) {
     ...(owner ? { owner_id: owner.id } : {}),
     subdomain: await repo.claimSubdomain(slugifyCourseName(name), seed),
     source_job_id: job.id,
+    origin: "seeded",
     status: "unverified",
     claim_status: "unclaimed",
     // Ownerless is rendered correctly already: the admin list computes
@@ -231,6 +257,7 @@ async function promoteAgent(agent: AgentRow, jobId: string) {
         subdomain: await repo.claimSubdomain(slugifyCourseName(name), seed),
         source_job_id: jobId,
         source_agent_id: agent.id,
+        origin: "seeded",
         status: "unverified",
         claim_status: "unclaimed",
       });
@@ -251,16 +278,31 @@ async function promoteAgent(agent: AgentRow, jobId: string) {
  * files education agencies as institutions. Keeping the two tables clean is the entire reason
  * they are separate.
  */
+/** Which table holds the owner's own listing for this job; refuses rather than let promote create one. */
+async function ownerListingIsInstitution(jobId: string): Promise<boolean> {
+  if (await repo.findInstitutionByJobId(jobId)) return true;
+  if (await repo.findPrimaryBusinessByJobId(jobId)) return false;
+  throw new BadRequestError("No listing is linked to this job, so there is nothing to publish to — publish it from the job page");
+}
+
 async function resolveIsInstitution(job: any): Promise<boolean> {
   if (job.business_category_id) return repo.isInstitutionCategory(Number(job.business_category_id));
-  if (job.source_type === "agentcis") return true;
+  // Self-service jobs are created FROM an institutions row (institution-profile.service
+  // startExtraction), so they are institutions by construction even when the job carries no
+  // category — older ones were created without it.
+  if (job.source_type === "agentcis" || job.source_type === "institution_self_service") return true;
 
   throw new BadRequestError(
     "This job has no business category, so it cannot be routed to the institutions or businesses table. Set a category on the job first.",
   );
 }
 
-export async function promoteJob(jobId: string, adminId: number) {
+/**
+ * `ownerRun` (autoPublishOwnerRun): publish to the listing the job is ALREADY linked to — whichever
+ * table holds it, not the one the category implies (the business portal extracts institution-category
+ * BUSINESSES) — fill only its empty fields, and never create a listing.
+ */
+export async function promoteJob(jobId: string, adminId: number, { ownerRun = false } = {}) {
   const job = await jobsRepo.findJobById(jobId);
   if (!job) throw new NotFoundError("Extraction job not found");
 
@@ -271,9 +313,11 @@ export async function promoteJob(jobId: string, adminId: number) {
   }
 
   const overview = await repo.findOverviewByJobId(jobId);
-  const isInstitution = await resolveIsInstitution(job);
+  const isInstitution = ownerRun ? await ownerListingIsInstitution(jobId) : await resolveIsInstitution(job);
 
-  const listing = isInstitution ? await promoteInstitution(job, overview) : await promoteBusiness(job, overview);
+  const listing = isInstitution ? await promoteInstitution(job, overview, ownerRun) : await promoteBusiness(job, overview, ownerRun);
+  // Extracted photos are hot-linked until copied into our storage (best-effort, never fails promote).
+  await localizeImages(isInstitution ? "institutions" : "businesses", Number(listing.row.id), jobId).catch(() => {});
 
   // Agents are scraped from institution directories, so they only ever accompany an
   // institution job — but promoting them is keyed on the rows existing, not on the category.
@@ -324,3 +368,32 @@ export async function promoteJobs(jobIds: string[], adminId: number) {
   }
   return { promoted: results.filter((r) => r.ok).length, failed: results.filter((r) => !r.ok).length, results };
 }
+
+/** Jobs an owner starts from their own portal (businesses / institution-profile startExtraction). */
+const OWNER_SOURCE_TYPES = new Set(["business_self_service", "institution_self_service"]);
+
+/**
+ * Publishes an owner's portal-started extraction to their own listing as soon as it finishes — the
+ * admin's "Publish to Business" (promoteJob), run for them. Only a finished run (`review`) of an owner
+ * source type; fills the listing's BLANK fields only, so nothing the owner typed is replaced. Called
+ * after the completion email, which reads the job before promote moves it to `exported`. Never throws:
+ * a failure leaves the job in review for an admin to publish.
+ */
+export async function autoPublishOwnerRun(jobId: string): Promise<void> {
+  const job = await jobsRepo.findJobById(jobId);
+  if (!job || job.status !== "review" || !OWNER_SOURCE_TYPES.has(job.source_type as string)) return;
+  try {
+    const result = await promoteJob(jobId, Number(job.created_by_platform_user_id), { ownerRun: true });
+    await writeJobEvent(jobId, "auto_published", {
+      phase: "verification",
+      message: `Published to the owner's ${result.listing_type} automatically`,
+      data: result,
+    });
+  } catch (err) {
+    await writeJobEvent(jobId, "auto_publish_failed", {
+      level: "warn", phase: "verification",
+      message: `Auto-publish failed — publish from the job page: ${err instanceof Error ? err.message : String(err)}`,
+    }).catch(() => {});
+  }
+}
+

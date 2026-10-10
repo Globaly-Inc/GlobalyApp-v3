@@ -7,8 +7,15 @@
  *                   same institution code. Merge.
  *   2 variant     — same qualification, subject and specialisation; only delivery flags differ
  *                   ("with Placement Year"). Link, keep both.
- *   2b/3 possible_duplicate — same qualification and subject with the specialisation missing on one
- *                   side, or a near-identical subject text. Flag for review, keep both.
+ *   2b/2c/3 possible_duplicate — same qualification and subject with the specialisation missing on
+ *                   one side, or a near-identical subject text (2b/3, same qualification on both
+ *                   sides); or same subject and specialisation with the QUALIFICATION missing on
+ *                   exactly one side (2c) — the shape of a subject/department hub mention ("Data
+ *                   Science" off an area-of-study index page) beside the actual qualified programme
+ *                   ("Data Science Graduate Certificate"). Flag for review, keep both — never merge:
+ *                   a bare mention can just as easily sit beside TWO different real qualified
+ *                   programmes (a subject's undergrad AND grad pages), and nothing about the bare
+ *                   name alone says which, if either, it duplicates.
  *   new           — nothing above.
  *
  * Similarity NEVER merges: on the live table 5,505 in-job pairs score >= 0.6 and nearly all are
@@ -42,7 +49,8 @@ export type ResolutionOutcome = "identical" | "variant" | "possible_duplicate" |
 export interface Resolution {
   outcome: ResolutionOutcome;
   match: CandidateRow | null;
-  tier: "1" | "2" | "2b" | "3" | null;
+  matches?: CandidateRow[];
+  tier: "1" | "2" | "2b" | "2c" | "3" | null;
   reason: string | null;
 }
 
@@ -105,6 +113,32 @@ export function resolveCourse(incoming: Incoming, candidates: CandidateRow[]): R
   for (const c of sameQualSubject) {
     const one = (c.specialisation_norm ?? null) === null !== ((p.specialisation ?? null) === null);
     if (one) return scoped({ outcome: "possible_duplicate", match: c, tier: "2b", reason: "specialisation_missing_one_side" });
+  }
+
+  // Tier 2c — same subject and specialisation, but only ONE side names a qualification at all. A
+  // subject/department hub page ("Data Science" off an area-of-study index) routinely produces a
+  // bare mention of a programme whose own page states an award ("Data Science Graduate
+  // Certificate") — same identity question as 2b, just on the qualifier instead of the
+  // specialisation, and gated shut everywhere else in this file by qualifier equality. Flag only:
+  // a bare mention can sit beside two DIFFERENT real qualified programmes (a subject's undergrad and
+  // grad pages both reducing to the same subject/specialisation), so nothing here may merge — and
+  // two candidates that both state a (different) qualifier never reach this loop at all.
+  // Collects EVERY qualifying candidate rather than stopping at the first: if both an undergrad and
+  // a grad programme for the same subject are already staged, the bare mention duplicates either
+  // (or neither) of them, and a reviewer needs to see both, not whichever happened to come first.
+  // Requires a non-empty subject: a name whose only content words are stopwords ("Online Courses",
+  // "Doctoral Program") parses to subject="" and must never anchor a match — every such name would
+  // otherwise look identical to every other one.
+  const bareQualifierMatches = p.subject ? candidates.filter((c) =>
+    !codeConflicts(c) &&
+    (c.qualifier_norm == null) !== (p.qualifier == null) &&
+    (c.subject_norm ?? "") === p.subject &&
+    (c.specialisation_norm ?? null) === (p.specialisation ?? null)) : [];
+  if (bareQualifierMatches.length) {
+    return scoped({
+      outcome: "possible_duplicate", match: bareQualifierMatches[0], matches: bareQualifierMatches,
+      tier: "2c", reason: "qualifier_missing_one_side",
+    });
   }
 
   // Tier 3 — fuzzy, flag only.

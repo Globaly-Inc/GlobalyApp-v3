@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { InstitutionLogo } from "@/components/institution-logo";
 import { useAuthState } from "@/app/auth/store/auth-slice";
 import { useCompareTray } from "../search/use-compare-tray";
+import { compareItemsFromHash } from "./compare-link";
 import { COMPARE_GROUPS } from "../search/compare-rows";
 import { getCourseBySlug } from "../search/api";
 import type { CourseDetail } from "../search/types";
@@ -26,20 +27,17 @@ export function ComparePageView({
   const { items, add, remove, clear } = useCompareTray();
 
   // Seed store when opened in a new tab — store is in-memory, doesn't survive tab boundary.
-  // Primary: localStorage (set by CompareTray before opening the tab — works for all courses).
-  // Fallback: ?slugs= param (for slug-based courses from the search page).
+  // Primary: #items= (set by CompareTray's link — carries every course, and works from the AI
+  // widget's iframe, whose storage a new tab can't read). Fallback: ?slugs= (a shared link).
   useEffect(() => {
     if (items.length > 0) return;
-    const stored = localStorage.getItem("compare_items");
-    if (stored) {
-      try {
-        const parsed = JSON.parse(stored);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          parsed.forEach((item) => add(item));
-          localStorage.removeItem("compare_items");
-          return;
-        }
-      } catch { /* fall through to slug param */ }
+    // A link anyone can craft: compareItemsFromHash type-checks every field it keeps.
+    const fromHash = compareItemsFromHash(window.location.hash);
+    if (fromHash.length > 0) {
+      fromHash.forEach((item) => add(item));
+      // Drop the payload from the address bar; ?slugs= stays for sharing.
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+      return;
     }
     const slugs = searchParams.get("slugs");
     if (!slugs) return;

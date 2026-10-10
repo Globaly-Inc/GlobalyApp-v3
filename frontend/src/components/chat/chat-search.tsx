@@ -50,10 +50,12 @@ export function ChatSearch({
   threads,
   messagesByThread,
   onOpenThread,
+  placeholder = "Search chat...",
 }: Readonly<{
   threads: ChatThread[];
   messagesByThread: Record<string, EnquiryMessage[]>;
   onOpenThread: (distributionId: string, messageId?: number) => void;
+  placeholder?: string;
 }>) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
@@ -110,7 +112,7 @@ export function ChatSearch({
           onKeyDown={(e) => {
             if (e.key === "Escape") setOpen(false);
           }}
-          placeholder="Search chat..."
+          placeholder={placeholder}
           aria-label="Search chat"
           className="h-9 w-full border-border bg-muted/50 pl-9 pr-8 focus-visible:bg-background"
         />

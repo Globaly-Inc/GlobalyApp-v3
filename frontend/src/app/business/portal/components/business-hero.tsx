@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useSyncExternalStore } from "react";
 import { Cloud, Globe, Pencil, Search } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -12,6 +12,8 @@ import { WeatherWidget } from "./weather-widget";
 import { WorldClocks } from "./world-clocks";
 
 type Widget = "weather" | "worldtime";
+
+const noopSubscribe = () => () => {};
 
 /** Intl provides the timezone list — no constants file, no date library. */
 function timezoneOptions() {
@@ -29,14 +31,8 @@ export function BusinessHero({ businessName }: { businessName: string }) {
   const [now, setNow] = useState(() => new Date());
   const browserZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
 
-  // `now` is real wall-clock time, so the server's render instant and the client's hydration instant
-  // are never the same millisecond — and `businessName` can already be loaded client-side (from an earlier
-  // navigation) while a fresh/cached SSR pass still has it empty. Both cause a genuine hydration mismatch,
-  // so nothing derived from either renders until mounted; a stable placeholder covers the first paint.
-  const [mounted, setMounted] = useState(false);
-  useEffect(() => setMounted(true), []);
+  const mounted = useSyncExternalStore(noopSubscribe, () => true, () => false);
 
-  // Both preferences survive a reload, and neither is read in an effect — see usePersistedChoice.
   const [widget, selectWidget] = usePersistedChoice<Widget>(HERO_WIDGET_KEY, "weather", isWidget);
   const [timezone, chooseTimezone] = usePersistedChoice<string>(TIMEZONE_KEY, browserZone, isTimezone);
 

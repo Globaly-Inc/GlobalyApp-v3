@@ -38,6 +38,12 @@ export interface AgentRow {
   /** Original third-party logo URL preserved when we rehost. */
   logo_source_url?: string | null;
   external_id?: string | null;
+  /**
+   * The id this row carried before a source changed how it synthesises one. Set only by a source
+   * that has changed algorithm (AscentOne, SHA-1 → SHA-256); upsertAgent uses it to adopt and
+   * re-key the existing row instead of inserting a second copy of the same agency.
+   */
+  legacy_external_id?: string | null;
   location_count?: number;
   locations?: AgentLocation[];
 }

@@ -4,7 +4,7 @@ import type { Knex } from "knex";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { geocodeAddress } from "../../../../shared/google-places/placesService.js";
-import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
+import { INGESTED_COURSE_STATUS, SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { parseInstallments, type Installment } from "./installment-parser.js";
 import {
   loadLookupLists, resolveAreaOfStudy, resolveDegreeLevel,
@@ -15,7 +15,8 @@ import { parseCourseName, canonicalCourseUrl } from "./course-name.js";
 import { resolveCourse, type CandidateRow } from "./course-resolver.js";
 import { classifyEntity, type EntityClassification } from "./entity-classifier.js";
 import { parseAddress } from "./address-parser.js";
-import { backfillSelfServiceProfile } from "./overview-sync.js";
+import { backfillSelfServiceProfile, pickOverviewMedia } from "./overview-sync.js";
+import type { OverviewMedia } from "./gallery-images.js";
 
 const logger = createChildLogger("staging-writer");
 /** Every course's lookup binding lands here, linked or not; the verify worker totals them per job. */
@@ -27,6 +28,9 @@ export interface ExtractedCourse {
   name: string;
   short_name?: string | null;
   degree_level?: string | null;
+  /** degree_level was stated by a person (a spreadsheet column), not guessed by a model — it then
+   * wins over a level read from the course name. See resolveCourseLookups. */
+  degree_level_explicit?: boolean;
   /** LLM-classified per course, not inherited from the job's service_category_id — a job
    * scoped to "Academic Courses" still surfaces short courses on the same pages. */
   course_category?: string | null;
@@ -437,7 +441,9 @@ const OVERVIEW_MERGE_COLUMNS = [
   "facebook_url", "instagram_url", "twitter_url", "linkedin_url", "youtube_url",
 ] as const;
 
-export async function writeInstitutionOverview(jobId: string, data: InstitutionOverview) {
+/** `media`: site analysis's classified cover + photos (gallery-images.ts chooseOverviewMedia); other
+ * writers pass none and pickOverviewMedia falls back to the guarded homepage pick. */
+export async function writeInstitutionOverview(jobId: string, data: InstitutionOverview, media?: OverviewMedia) {
   const mergeSet: Record<string, unknown> = { updated_at: masterKnex.fn.now() };
   for (const col of OVERVIEW_MERGE_COLUMNS) {
     mergeSet[col] = masterKnex.raw(
@@ -454,26 +460,41 @@ export async function writeInstitutionOverview(jobId: string, data: InstitutionO
     .returning("id");
   logger.info("Upserted institution overview", { jobId, id: row.id });
 
+  // Before the profile backfill, which then copies these stored photos onto the org.
+  await pickOverviewMedia(jobId, media).catch((err) =>
+    logger.warn("Overview media pick failed", { jobId, err: err instanceof Error ? err.message : String(err) }),
+  );
   await backfillSelfServiceProfile(jobId).catch((err) =>
     logger.warn("Self-service profile backfill failed", { jobId, err: err instanceof Error ? err.message : String(err) }),
   );
   return row;
 }
 
+// Upsert on job_id, not a plain insert: the table has UNIQUE(job_id) (one row per job), and
+// site_analysis now runs on every re-run (rerunJob always restarts from a clean slate), so a
+// job analysed more than once always hit "duplicate key value violates ...
+// extraction_site_intelligence_job_uniq" and the step — and the whole chain after it — failed
+// every time. Unlike writeInstitutionOverview's fill-blanks merge (admin-editable fields), this
+// table is pipeline-internal only, so a fresh analysis wholesale-replaces the old one rather
+// than merging with it.
 export async function writeSiteIntelligence(jobId: string, data: SiteIntelligence) {
   const insert: Record<string, unknown> = {
     job_id: jobId,
-    institution_name: data.institution_name,
-    institution_type: data.institution_type,
-    country: data.country,
-    currency: data.currency,
+    institution_name: data.institution_name ?? null,
+    institution_type: data.institution_type ?? null,
+    country: data.country ?? null,
+    currency: data.currency ?? null,
+    fee_structure: JSON.stringify(data.fee_structure ?? {}),
+    extraction_hints: data.extraction_hints ?? [],
+    navigation_patterns: JSON.stringify(data.navigation_patterns ?? {}),
   };
-  if (data.fee_structure) insert.fee_structure = JSON.stringify(data.fee_structure);
-  if (data.extraction_hints) insert.extraction_hints = data.extraction_hints;
-  if (data.navigation_patterns) insert.navigation_patterns = JSON.stringify(data.navigation_patterns);
 
-  const [row] = await masterKnex(`${S}.extraction_site_intelligence`).insert(insert).returning("id");
-  logger.info("Wrote site intelligence", { jobId, id: row.id });
+  const [row] = await masterKnex(`${S}.extraction_site_intelligence`)
+    .insert(insert)
+    .onConflict("job_id")
+    .merge()
+    .returning("id");
+  logger.info("Upserted site intelligence", { jobId, id: row.id });
   return row;
 }
 
@@ -1462,6 +1483,21 @@ export function eligibilityRowsAgree(
 }
 
 /**
+ * Strict twin of eligibilityRowsAgree for a structured source (AgentCIS): each product is a
+ * complete record, so a blank means "not required", not "not stated on this page" — sharing a row
+ * on a blank showed one course's GRE/GMAT/SAT minimums on courses that demand none.
+ */
+export function eligibilityRowsIdentical(
+  existing: Record<string, unknown>,
+  fields: Record<string, unknown>,
+): boolean {
+  const blank = (v: unknown) => v == null || v === "";
+  const sameValue = (a: unknown, b: unknown) => (blank(a) && blank(b)) || (!blank(a) && !blank(b) && eligValuesAgree(a, b));
+  return ELIG_GATE_FIELDS.every((f) => sameValue(existing[f], fields[f]))
+    && testRules(existing.academic_tests).join(" | ") === testRules(fields.academic_tests).join(" | ");
+}
+
+/**
  * Rows the model returned as eligibility that are not admission criteria: a scholarship's own
  * conditions, application paperwork, visa/accommodation notes, "inherent requirements". Named in
  * ELIGIBILITY_SCOPE_RULE, and re-checked here because the model does not always obey the rule and
@@ -1580,6 +1616,8 @@ export async function upsertEligibility(
   jobId: string,
   elig: ExtractedEligibility,
   fields: Record<string, unknown>,
+  /** Structured source — only an identical row may be shared (see eligibilityRowsIdentical). */
+  opts: { exact?: boolean } = {},
 ): Promise<string> {
   const name = (elig.name ?? "").trim();
   if (name) {
@@ -1590,9 +1628,8 @@ export async function upsertEligibility(
       .where({ job_id: jobId, applicable_to: elig.applicable_to ?? "both" })
       .whereRaw("LOWER(TRIM(name)) = ?", [name.toLowerCase()])
       .orderBy("created_at", "asc");
-    const existing = candidates.find((row: Record<string, unknown>) =>
-      eligibilityRowsAgree(row, fields),
-    );
+    const matches = opts.exact ? eligibilityRowsIdentical : eligibilityRowsAgree;
+    const existing = candidates.find((row: Record<string, unknown>) => matches(row, fields));
     if (existing) {
       // academic_tests is compared unparsed: '[]' is the column default, so "existing is empty"
       // is the one case worth overwriting — an earlier page that found no tests must not keep a
@@ -1998,7 +2035,10 @@ function statedDurationWeeks(course: ExtractedCourse): number | null {
 
 export async function resolveCourseLookups(course: ExtractedCourse): Promise<CourseLookupLink> {
   const lists = await loadLookupLists();
-  let level = resolveDegreeLevel(lists, course.degree_level, course.name);
+  // A level a person stated (a sheet column) is trusted first; the course name — which normally
+  // beats a model's guess ("…, B.S." → Bachelor) — is then only the fallback when it matches nothing.
+  let level = (course.degree_level_explicit ? resolveDegreeLevel(lists, course.degree_level, null) : null)
+    ?? resolveDegreeLevel(lists, course.degree_level, course.name);
 
   // Only a duration the SOURCE STATED for the course itself may demote it. resolveDurationWeeks
   // also falls back to the shortest study option and to description prose — fine for filling a
@@ -2147,7 +2187,7 @@ export async function writeCourse(
   const units = await jobUnitIndex(jobId);
   const cls = classifyEntity(
     { name: course.name, entity_type: course.entity_type, parent_program: course.parent_program, evidence: course.evidence },
-    { coursesOnPage, jobUnitCodes: units.codes, jobUnitNames: units.names },
+    { coursesOnPage, jobUnitCodes: units.codes, jobUnitNames: units.names, sourceUrl: course.source_url ?? null },
   );
   if (cls.verdict === "drop") {
     await writeJobEvent(jobId, "dropped_entity", {
@@ -2190,8 +2230,17 @@ export async function writeCourse(
   let existing: Record<string, any> | undefined = res.outcome === "identical" && res.match
     ? await masterKnex(`${S}.extraction_courses`).where({ id: res.match.id }).first()
     : undefined;
-  if (res.outcome === "possible_duplicate" || cls.verdict === "unsupported_standalone") {
-    const reason = res.outcome === "possible_duplicate" ? `possible_duplicate:${res.reason}` : `unsupported_standalone:${cls.reason}`;
+  if (res.outcome === "possible_duplicate") {
+    const matches = res.matches?.length ? res.matches : (res.match ? [res.match] : []);
+    const reason = `possible_duplicate:${res.reason}`;
+    for (const m of matches) {
+      await writeJobEvent(jobId, "course_needs_review", {
+        phase: "courses", level: "warn", message: `"${course.name}" stored but flagged (${reason})`,
+        data: { name: course.name, reason, candidate_id: m.id, url: course.source_url ?? null },
+      });
+    }
+  } else if (cls.verdict === "unsupported_standalone") {
+    const reason = `unsupported_standalone:${cls.reason}`;
     await writeJobEvent(jobId, "course_needs_review", {
       phase: "courses", level: "warn", message: `"${course.name}" stored but flagged (${reason})`,
       data: { name: course.name, reason, candidate_id: res.match?.id ?? null, url: course.source_url ?? null },
@@ -2258,6 +2307,8 @@ export async function writeCourse(
       short_name: course.short_name ?? null,
       degree_level: link.degree_level,
       degree_level_code: link.degree_level_code,
+      // No verdict stays NULL (never guessed), so a later page that classifies it can still fill it
+      // in via the merge below. Readers treat NULL as academic (courses.repository's category filter).
       course_category: normaliseCourseCategory(course.course_category),
       subject_area: course.subject_area ?? null,
       subject_area_code: link.subject_area_code,
@@ -2269,7 +2320,16 @@ export async function writeCourse(
       // The public course search joins on upper(countries.iso2) = upper(country_code), so an
       // unresolvable country stays null rather than storing text that can never match.
       country_code: course.country_code ?? null,
-      verification_status: "unverified",
+      // Approved on arrival (INGESTED_COURSE_STATUS) — an extracted course is live without an
+      // admin approving it; Reject is what takes it back out.
+      verification_status: INGESTED_COURSE_STATUS,
+      // is_published (migration 20260925_003) defaults to false — that draft state is for
+      // self-service institution courses (institution-courses.repository.ts's createService
+      // explicitly opts in to it). A scraped course's public visibility has always been driven
+      // by the job's own status/verification, not a per-course flag, so it must still default
+      // published or every course from a job crawled after this migration silently vanishes from
+      // search/detail pages the moment its job is exported.
+      is_published: true,
     };
     if (course.career_paths?.length) courseInsert.career_paths = course.career_paths;
 
@@ -2490,15 +2550,32 @@ export async function replaceCampuses(
 /**
  * Upsert an agent by (job_id, external_id).
  * Returns the agent row ID.
+ *
+ * `legacyExternalId` is for the one case this lookup cannot survive on its own: the caller
+ * changed how it SYNTHESISES an id, so the same agency now hashes to a different string and the
+ * row saved last time is invisible. Re-running the agents step would then insert a second copy
+ * of every agent it had already saved. When a legacy id is given and the current one matches
+ * nothing, the old row is adopted and re-keyed to the new id — once, after which the first
+ * lookup finds it and this costs nothing.
+ *
+ * Never pass a provider's own id here. Those are stable by definition; only ids we make up can
+ * change out from under their rows.
  */
 export async function upsertAgent(
   jobId: string,
   agent: Record<string, unknown>,
   externalId: string,
+  legacyExternalId?: string | null,
 ): Promise<string> {
-  const existing = await masterKnex(`${S}.extraction_agents`)
-    .where({ job_id: jobId, external_id: externalId })
+  const byId = (id: string) => masterKnex(`${S}.extraction_agents`)
+    .where({ job_id: jobId, external_id: id })
     .first();
+
+  let existing = await byId(externalId);
+  // Only when the current id found nothing: a row already keyed the new way must never be
+  // re-keyed, and the two ids are equal whenever the caller has nothing to migrate.
+  const adopted = !existing && !!legacyExternalId && legacyExternalId !== externalId;
+  if (adopted) existing = await byId(legacyExternalId!);
 
   if (existing) {
     // Merge: only overwrite nulls
@@ -2509,6 +2586,10 @@ export async function upsertAgent(
         updates[key] = val;
       }
     }
+    // Re-key an adopted row even when nothing else changed — that is the whole point of finding
+    // it. Safe against the (job_id, external_id) unique index: the lookup above proved no row
+    // holds this id.
+    if (adopted) updates.external_id = externalId;
     if (Object.keys(updates).length > 0) {
       updates.updated_at = masterKnex.fn.now();
       await masterKnex(`${S}.extraction_agents`).where({ id: existing.id }).update(updates);
@@ -2792,8 +2873,11 @@ export async function insertQueueItemDetailed(jobId: string, url: string): Promi
     `WITH existing AS (
        SELECT 1 FROM ${S}.extraction_queue WHERE job_id = :jobId AND url = :url
      ), cap AS (
-       SELECT (SELECT count(*) FROM ${S}.extraction_queue WHERE job_id = :jobId)
-            < (SELECT page_cap FROM ${S}.extraction_jobs WHERE id = :jobId) AS has_room
+       -- NULL page_cap means no limit. Without the IS NULL arm this reads \`count < NULL\` = NULL,
+       -- which is not TRUE, so the insert's WHERE would silently queue nothing at all.
+       SELECT j.page_cap IS NULL
+           OR (SELECT count(*) FROM ${S}.extraction_queue WHERE job_id = :jobId) < j.page_cap AS has_room
+       FROM ${S}.extraction_jobs j WHERE j.id = :jobId
      ), ins AS (
        INSERT INTO ${S}.extraction_queue (job_id, url, status)
        SELECT :jobId, :url, 'pending'
@@ -2825,7 +2909,8 @@ export async function insertQueueItem(jobId: string, url: string): Promise<strin
  */
 export async function atPageCap(jobId: string): Promise<boolean> {
   const { rows } = await masterKnex.raw(
-    `SELECT (SELECT count(*) FROM ${S}.extraction_queue WHERE job_id = :jobId) >= page_cap AS capped
+    `SELECT page_cap IS NOT NULL
+        AND (SELECT count(*) FROM ${S}.extraction_queue WHERE job_id = :jobId) >= page_cap AS capped
      FROM ${S}.extraction_jobs WHERE id = :jobId`,
     { jobId },
   );

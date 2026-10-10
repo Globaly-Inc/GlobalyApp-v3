@@ -1,7 +1,7 @@
-// The feature itself lives at /business/ai-widget (the portal's "AI assistant" tile links
-// there). This settings route is the sidebar's entry point for the same page.
-import { AiWidgetView } from "@/app/business/ai-widget/components/ai-widget-view";
+import { redirect } from "next/navigation";
+import { WIDGET_SETTINGS_HREF } from "@/app/business/ai-widget/const";
 
+// "AI embed" left Settings; the widget is reached from the Inbox now. Kept for old bookmarks.
 export default function AiEmbedPage() {
-  return <AiWidgetView />;
+  redirect(WIDGET_SETTINGS_HREF);
 }

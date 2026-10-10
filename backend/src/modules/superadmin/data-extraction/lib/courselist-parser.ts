@@ -127,6 +127,49 @@ export function parseCourseList(html: string): ParsedCurriculum {
 }
 
 /**
+ * Acalog (Modern Campus) catalogues — catalog.csuohio.edu and much of the US sector — render a
+ * programme's curriculum as `div.acalog-core` blocks: a heading naming the requirement block, then
+ * `li.acalog-course` items whose anchor text is "PSY 101 - Introduction to Psychology". Credits live
+ * behind a click (showCourse), so they stay null rather than guessed.
+ */
+export function looksLikeAcalogProgram(html: string): boolean {
+  return /<li class="acalog-course/.test(html);
+}
+
+const ACALOG_TOKEN_RE = /<div class="acalog-core">\s*<h[2-6][^>]*>([\s\S]*?)<\/h[2-6]>|<li class="acalog-course[^"]*"[^>]*>([\s\S]*?)<\/li>/g;
+
+export function parseAcalogProgram(html: string): ExtractedStudyUnit[] {
+  const units: ExtractedStudyUnit[] = [];
+  const seen = new Set<string>();
+  let section: string | null = null;
+  for (const m of html.matchAll(ACALOG_TOKEN_RE)) {
+    if (m[1] !== undefined) { section = cellText(m[1]) || section; continue; }
+    // One anchor per course: "or INQ 112 - Creating Your Identity" is an alternative the student may
+    // take instead, kept as its own unit; a bare "or STA 145" names nothing, so it is skipped.
+    for (const a of (m[2] ?? "").matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/g)) {
+      const text = cellText(a[1]);
+      const dash = text.indexOf(" - ");
+      if (dash < 0) continue;
+      const code = text.slice(0, dash).trim();
+      const title = text.slice(dash + 3).trim();
+      if (!CODE_RE.test(code) || !title || seen.has(code)) continue;
+      seen.add(code);
+      units.push({ unit_code: code, unit_name: title, credit_points: null, unit_type: normaliseUnitType(section) });
+    }
+  }
+  return units;
+}
+
+/** Curriculum from a catalogue's own markup — CourseLeaf tables, then Acalog blocks — or []. */
+export function curriculumFromMarkup(html: string): ExtractedStudyUnit[] {
+  if (looksLikeCourseList(html)) {
+    const units = parseCourseList(html).units;
+    if (units.length) return units;
+  }
+  return looksLikeAcalogProgram(html) ? parseAcalogProgram(html) : [];
+}
+
+/**
  * Every programme this page links to, keyed by the anchor's own text.
  *
  * A catalogue index page names 10-20 programmes and links each to its own page, and the

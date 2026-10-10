@@ -97,6 +97,7 @@ export type Accreditation = {
   issuing_organization_id: number | null;
   issuing_organization_name: string | null;
   issuing_organization_logo_url: string | null;
+  issuing_organization_status?: ModerationStatus | null;
   website: string | null;
   description: string | null;
   business_id: number | null;

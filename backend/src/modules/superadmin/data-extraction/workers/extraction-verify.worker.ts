@@ -8,6 +8,11 @@ import { queueService } from "../../../../shared/queue/queueService.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
+import { verifyFieldCoverage } from "../lib/field-coverage.js";
+import { sendCompletionEmail } from "../lib/completion-email.js";
+import { autoPublishOwnerRun } from "../services/promote.service.js";
+import { convertCampusesToBranches } from "../../platform/business-branches/services/business-branches.service.js";
+import { _linkerDeps } from "../lib/jev-linker.js";
 import { getPage } from "../lib/page-store.js";
 import { truncateMarkdown } from "../lib/html-utils.js";
 import { extractJson, setLlmContext } from "../lib/llm-client.js";
@@ -16,7 +21,7 @@ import { loadLookupLists, lookupListsHealth, categoryForServiceSlug } from "../l
 import { jobExcludedLevels } from "../lib/staging-writer.js";
 import { writeJobEvent } from "../lib/staging-writer.js";
 
-import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
+import { INGESTED_COURSE_STATUS, NOT_REJECTED_SQL, SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
 const logger = createChildLogger("extraction-verify-worker");
 
@@ -189,6 +194,7 @@ await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
       // Check still active
       const current = await masterKnex(`${S}.extraction_jobs`).select("status", "stop_requested").where({ id: jobId }).first();
       if (!current || current.stop_requested || current.status === "paused") return;
+      await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({ processing_heartbeat_at: masterKnex.fn.now() });
 
       try {
         // Verification compares against the LIVE page by definition — fresh, never a snapshot.
@@ -240,8 +246,16 @@ await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
         }
 
         // Stamp the course itself — the review UI reads this, not the per-field results table.
-        await masterKnex(`${S}.extraction_courses`).where({ id: course.id }).update({
-          verification_status: result.results.every((r) => r.status === "match") ? "verified" : "mismatch",
+        // `courses` was snapshotted before this loop and each one costs a live fetch + an LLM call,
+        // so an admin can reject a course while we are still working through the list. Re-check the
+        // rejection at write time: without this, a Reject made minutes ago is overwritten with an
+        // approval and the course goes public again with no admin decision behind it.
+        await masterKnex(`${S}.extraction_courses`).where({ id: course.id }).whereRaw(NOT_REJECTED_SQL).update({
+          // All fields still match the live page -> keep it approved (INGESTED_COURSE_STATUS).
+          // Writing the old 'verified' here would silently UN-approve a course that landed approved,
+          // since 'verified' is not in APPROVED_COURSE_STATUSES. A mismatch still un-approves: that is
+          // the point of the check, and Approve puts it back.
+          verification_status: result.results.every((r) => r.status === "match") ? INGESTED_COURSE_STATUS : "mismatch",
           last_verified_at: masterKnex.fn.now(),
         });
 
@@ -271,6 +285,16 @@ await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
     });
 
     await verifyLookupLinks(jobId);
+    await verifyFieldCoverage(jobId).catch((err) => logger.warn("Field coverage report failed", { jobId, error: String(err) }));
+    // Linking reads every course's page and is Jev-only; the link step reports coverage again when done.
+    // The completion email reports linked counts, so it goes out after linking when linking runs.
+    const linking = _linkerDeps.minLink() != null && await queueService.publish(EXTRACTION_QUEUES.STEPS, { jobId, step: "link_entities" })
+      .then(() => true, (err) => { logger.warn("link_entities dispatch failed; sending the completion email now", { jobId, error: String(err) }); return false; });
+    if (!linking) {
+      await sendCompletionEmail(jobId);
+      await convertCampusesToBranches(jobId); // else the link step converts them when it finishes
+      await autoPublishOwnerRun(jobId); // after the email: it needs the job still in review
+    }
 
     await writeJobEvent(jobId, "verification_complete", {
       phase: "verification",

@@ -104,7 +104,12 @@ export function SignUpView() {
       setOtpCode("");
       toast.success("Code sent!", { description: "Check your email for the 6-digit code." });
     } else if (registerAndSendOtp.rejected.match(result)) {
-      if (result.error.code !== "BUSINESS_CLAIM_AVAILABLE") {
+      if (result.error.code === "EMAIL_ALREADY_EXISTS") {
+        setFieldErrors((f) => ({ ...f, email: result.error.message ?? "This email is already registered." }));
+        toast.error("Email already in use", {
+          description: "An account already exists for this address — sign in instead.",
+        });
+      } else if (result.error.code !== "BUSINESS_CLAIM_AVAILABLE") {
         toast.error("Failed to send code", { description: result.error.message ?? "Please try again." });
       }
     }

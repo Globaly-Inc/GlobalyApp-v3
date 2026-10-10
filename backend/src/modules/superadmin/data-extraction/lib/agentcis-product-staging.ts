@@ -4,7 +4,7 @@
 // agentcis-product-mappers.ts.
 
 import { masterKnex } from "../../../../core/db/master-pool.js";
-import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
+import { INGESTED_COURSE_STATUS, SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { coerceLabel } from "./agentcis-mappers.js";
 import {
   extractIntakes, extractStudyOptions, extractEligibility,
@@ -15,6 +15,7 @@ import {
   resolveCourseLookups, durationToWeeks, upsertStudyOption, resolveDurationWeeks, jobCourseIndex,
 } from "./staging-writer.js";
 import { parseCourseName, canonicalCourseUrl } from "./course-name.js";
+import { repeatInstallments } from "./installment-parser.js";
 import { resolveCourse } from "./course-resolver.js";
 
 export interface StagingCounters {
@@ -43,13 +44,18 @@ export async function stageProduct(
   campusMap: Record<string, string>,
   campusIds: string[],
   counters: StagingCounters,
-): Promise<void> {
+  /** false: a shared URL is not an identity. A URL identifies a course only when its page yields ONE
+   * course; a spreadsheet often gives many courses one programmes page, which merged them. */
+  urlIdentity = true,
+): Promise<string | null> {
   const sourceUrl = (p.url as string) || (p.product_url as string) || website;
 
   const taxonomy = extractCourseTaxonomy(p);
   const link = await resolveCourseLookups({
     name: cName,
     degree_level: taxonomy.degreeLevelName,
+    // Set by the spreadsheet mapper when the sheet's column states a level; AgentCIS never sets it.
+    degree_level_explicit: p.degree_level_explicit === true,
     subject_area: taxonomy.subjectName,
     area_of_study: taxonomy.areaName,
   });
@@ -75,7 +81,7 @@ export async function stageProduct(
   // intakes, options and requirements onto it — a repeat often carries what the first one lacked.
   const parsed = parseCourseName(cName);
   const canonicalUrl = canonicalCourseUrl(sourceUrl, website);
-  const resolution = resolveCourse({ jobId, parsed, canonicalUrl }, await jobCourseIndex(jobId, website));
+  const resolution = resolveCourse({ jobId, parsed, canonicalUrl: urlIdentity ? canonicalUrl : null }, await jobCourseIndex(jobId, website));
   const reused = resolution.outcome === "identical" && resolution.match ? resolution.match.id : null;
 
   let courseId: string;
@@ -104,7 +110,7 @@ export async function stageProduct(
         awarding_institution: (p.awarding_institution as string) || institutionName,
         duration_weeks: durationWeeks,
         source_url: sourceUrl,
-        verification_status: "pending",
+        verification_status: INGESTED_COURSE_STATUS,
       })
       .returning("id");
     courseId = course.id as string;
@@ -148,17 +154,22 @@ export async function stageProduct(
     const item = fi as Record<string, unknown>;
     const amount = Number(item.amount ?? 0) || 0;
     const instalments = Number(item.instalment ?? 1) || 1;
-    const total = Math.round(amount * instalments);
+    // A line may state its own period and student type (spreadsheet import: domestic tuition, an
+    // application fee); AgentCIS lines state neither and keep the group's period and "international".
+    const itemPeriod = coerceLabel(item.period) || periodType;
+    const { total, installments } = repeatInstallments(amount, instalments, itemPeriod);
     if (!total) continue;
 
     const feeId = await upsertFee(jobId, {
       name: coerceLabel((item.fee_type as Record<string, unknown> | undefined)?.name) || "Tuition Fee",
-      student_type: "international",
-      period_type: periodType,
+      student_type: coerceLabel(item.student_type) || "international",
+      period_type: itemPeriod,
       // AgentCIS states no currency on the fee itself; the feed is AUD-denominated, and the
       // resolved code is part of upsertFee's dedup key, so it is settled before the call.
       currency: (await normaliseCurrency(coerceLabel(feeGroup?.currency ?? p.currency), jobId)) ?? "AUD",
       total_amount: total,
+      // `amount` is the per-instalment rate — one installment each, not the total re-split by period.
+      installments,
     });
 
     await masterKnex(`${S}.extraction_course_fee_assignments`)
@@ -188,8 +199,8 @@ export async function stageProduct(
   }
 
   // Eligibility — shared per job like the workers' path. Every product here gets the same generic
-  // "Entry Requirements" name, so the non-contradiction check in upsertEligibility is what keeps
-  // products demanding DIFFERENT thresholds on separate rows rather than the name alone.
+  // "Entry Requirements" name, so only an IDENTICAL requirement may share a row (exact: a blank in
+  // a structured product means "none", and the lenient match let it inherit another's tests).
   const elig = extractEligibility(p);
   if (elig) {
     const isPercentage = elig.score_type === "percentage";
@@ -207,7 +218,7 @@ export async function stageProduct(
       academic_tests: JSON.stringify(elig.academic_tests),
       source_url: sourceUrl,
     };
-    const eligId = await upsertEligibility(jobId, eligForMatch, fields);
+    const eligId = await upsertEligibility(jobId, eligForMatch, fields, { exact: true });
     await masterKnex(`${S}.extraction_course_eligibility_assignments`)
       .insert({
         job_id: jobId,
@@ -221,4 +232,6 @@ export async function stageProduct(
   }
 
   if (reused) counters.skipped_products++; else counters.courses_extracted++;
+  // Why this product was folded into an existing course ("name_key", "course_code", …), null when new.
+  return reused ? resolution.reason ?? "identical" : null;
 }

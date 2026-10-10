@@ -5,4 +5,6 @@ import { inviteRealApi } from "./real-api";
 export const inviteApi = createApi({ mock: inviteMockApi, real: inviteRealApi });
 export type {
   AcceptAgentInviteParams, AcceptAgentInviteResult, AcceptBusinessClaimResult, AcceptInstitutionMemberInviteResult,
+  AcceptOnboardingInviteParams, AcceptOnboardingInviteResult, OnboardingInviteLookup,
+  OnboardingInviteParams, OnboardingInviteType,
 } from "./types";

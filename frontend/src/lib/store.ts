@@ -11,10 +11,12 @@ import { businessProfileDetailReducer } from "@/app/business/profile/store/busin
 import { enquiriesReducer as personalEnquiriesReducer } from "@/app/personal/enquiries/store/enquiries-slice"
 import { messagesReducer } from "@/app/personal/messages/store/messages-slice"
 import { businessMessagesReducer } from "@/app/business/messages/store/business-messages-slice"
+import { embedChatsReducer } from "@/app/business/messages/store/embed-chats-slice"
 import { businessEnquiriesReducer } from "@/app/business/enquiries/store/business-enquiries-slice"
 import { adminReducer } from "@/app/admin/store/admin-slice"
 import { overviewReducer } from "@/app/admin/overview/store/overview-slice"
 import { usersReducer } from "@/app/admin/platform/users/store/users-slice"
+import { businessInvitesReducer } from "@/app/admin/platform/business-invites/store/business-invites-slice"
 import { platformUsersReducer } from "@/app/admin/platform/platform-users/store/platform-users-slice"
 import { businessesReducer } from "@/app/admin/platform/businesses/store/businesses-slice"
 import { institutionDetailReducer } from "@/app/admin/platform/businesses/store/institution-detail-slice"
@@ -41,6 +43,12 @@ import { logsReducer } from "@/app/admin/monitoring/monitoring-logs/store/logs-s
 import { adminOtherServicesReducer } from "@/app/admin/monitoring/other-services/store/admin-other-services-slice"
 import { aiChatReducer } from "@/app/ai/store/ai-chat-slice"
 import { aiWidgetReducer } from "@/app/business/ai-widget/store/ai-widget-slice"
+import { aiWidgetVisitorsReducer } from "@/app/business/ai-widget/store/ai-widget-visitors-slice"
+import { aiWidgetVisitorDetailReducer } from "@/app/business/ai-widget/store/ai-widget-visitor-detail-slice"
+import { aiKnowledgeReducer as institutionKnowledgeReducer } from "@/app/business/ai-knowledge/store/ai-knowledge-slice"
+import { aiKnowledgeReviewsReducer } from "@/app/business/ai-knowledge/store/ai-knowledge-reviews-slice"
+import { aiKnowledgeProfileReducer } from "@/app/business/ai-knowledge/store/ai-knowledge-profile-slice"
+import { aiKnowledgeInsightsReducer } from "@/app/business/ai-knowledge/store/ai-knowledge-insights-slice"
 import { enquiriesReducer as monitoringEnquiriesReducer } from "@/app/admin/monitoring/enquiries/store/enquiries-slice"
 import { creditsLedgerReducer } from "@/app/admin/revenue/subscriptions/credits/store/credits-ledger-slice"
 import { comingSoonReducer } from "@/app/coming-soon/store/coming-soon-slice"
@@ -58,10 +66,12 @@ const appReducer = combineReducers({
     enquiries: personalEnquiriesReducer,
     messages: messagesReducer,
     businessMessages: businessMessagesReducer,
+    embedChats: embedChatsReducer,
     businessEnquiries: businessEnquiriesReducer,
     admin: adminReducer,
     overview: overviewReducer,
     adminUsers: usersReducer,
+    businessInvites: businessInvitesReducer,
     platformUsers: platformUsersReducer,
     platformBusinesses: businessesReducer,
     platformInstitutionDetail: institutionDetailReducer,
@@ -88,6 +98,12 @@ const appReducer = combineReducers({
     monitoringOtherServices: adminOtherServicesReducer,
     aiChat: aiChatReducer,
     aiWidget: aiWidgetReducer,
+    aiWidgetVisitors: aiWidgetVisitorsReducer,
+    aiWidgetVisitorDetail: aiWidgetVisitorDetailReducer,
+    aiKnowledge: institutionKnowledgeReducer,
+    aiKnowledgeReviews: aiKnowledgeReviewsReducer,
+    aiKnowledgeProfile: aiKnowledgeProfileReducer,
+    aiKnowledgeInsights: aiKnowledgeInsightsReducer,
     monitoringEnquiries: monitoringEnquiriesReducer,
     creditsLedger: creditsLedgerReducer,
     comingSoon: comingSoonReducer,

@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { ExternalLink } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Combobox } from "@/components/combobox";
@@ -12,20 +13,7 @@ import { useAppDispatch } from "@/lib/hooks";
 import { categoriesApi, type Category } from "@/app/admin/platform/categories/apis";
 import { createJob } from "../store/all-extractions-slice";
 import type { ExistingJobConflict } from "../apis/types";
-import {
-  GUIDED_URL_CATEGORIES,
-  SOURCE_TYPE_OPTIONS,
-  VISA_SERVICE_GUIDED_URL_CATEGORIES,
-  VISA_SERVICE_SOURCE_TYPE_OPTIONS,
-} from "../const";
-import { ExtractionStepIndicator } from "./extraction-step-indicator";
-import { ExtractionSourceStep } from "./extraction-source-step";
-import type { DegreeLevelOption } from "./degree-level-picker";
-import { ExtractionReviewStep } from "./extraction-review-step";
-
-const STEPS = ["Categories", "Source", "Review"];
-
-const cleanUrls = (urls: string[] | undefined) => (urls ?? []).map((u) => u.trim()).filter(Boolean);
+import { SOURCE_TYPE_OPTIONS, VISA_SERVICE_SOURCE_TYPE_OPTIONS } from "../const";
 
 // ponytail: extraction only actually supports Institutions right now — the other business
 // categories (Education Agency, Visa Services, Accreditation Body, Migration Agents, Immigration
@@ -51,7 +39,6 @@ export function NewExtractionDialog({
   onOpenChange,
 }: Readonly<{ open: boolean; onOpenChange: (open: boolean) => void }>) {
   const dispatch = useAppDispatch();
-  const [step, setStep] = useState(0);
   const [conflict, setConflict] = useState<ExistingJobConflict | null>(null);
   const [businessCategory, setBusinessCategory] = useState("");
   const [serviceCategory, setServiceCategory] = useState("");
@@ -61,10 +48,6 @@ export function NewExtractionDialog({
   const [serviceLabel, setServiceLabel] = useState("");
   const [sourceType, setSourceType] = useState("institution");
   const [institutionUrl, setInstitutionUrl] = useState("");
-  const [sampleCourseUrl, setSampleCourseUrl] = useState("");
-  const [guidedUrls, setGuidedUrls] = useState<Record<string, string[]>>({});
-  const [guidanceNotes, setGuidanceNotes] = useState("");
-  const [degreeLevels, setDegreeLevels] = useState<DegreeLevelOption[]>([]);
   const [creating, setCreating] = useState(false);
   const [businessOptions, setBusinessOptions] = useState<Category[]>([]);
   const [serviceOptions, setServiceOptions] = useState<Category[]>([]);
@@ -81,17 +64,12 @@ export function NewExtractionDialog({
     if (fetchedForOpenRef.current) return;
     fetchedForOpenRef.current = true;
 
-    setStep(0);
     setBusinessCategory("");
     setServiceCategory("");
     setBusinessLabel("");
     setServiceLabel("");
     setSourceType("institution");
     setInstitutionUrl("");
-    setSampleCourseUrl("");
-    setGuidedUrls({});
-    setGuidanceNotes("");
-    setDegreeLevels([]);
 
     setLoadingCategories(true);
     Promise.all([
@@ -122,8 +100,8 @@ export function NewExtractionDialog({
     }, SEARCH_DEBOUNCE_MS);
   };
 
-  // A stray backdrop click or Escape would wipe a half-filled three-step form, so the only
-  // ways out are Cancel and the corner ×. Outside presses are blocked by disablePointerDismissal.
+  // A stray backdrop click or Escape would wipe a half-filled form, so the only ways out are
+  // Cancel and the corner ×. Outside presses are blocked by disablePointerDismissal.
   const handleOpenChangeWithReason = (next: boolean, details: { reason?: string }) => {
     if (!next && details.reason === "escape-key") return;
     onOpenChange(next);
@@ -137,7 +115,6 @@ export function NewExtractionDialog({
     businessLabel.trim().toLowerCase() === "visa services" && serviceLabel.trim().toLowerCase() === "visa services";
   const sourceTypeOptions = isVisaServiceCategory ? VISA_SERVICE_SOURCE_TYPE_OPTIONS : SOURCE_TYPE_OPTIONS;
   const isVisaServiceSource = sourceType === "visa_service";
-  const guidedUrlCategories = isVisaServiceSource ? VISA_SERVICE_GUIDED_URL_CATEGORIES : GUIDED_URL_CATEGORIES;
 
   // Keep sourceType valid for whichever option list applies to the category combination
   // being chosen. Applied directly in the category onChange handlers below (not an effect
@@ -150,16 +127,13 @@ export function NewExtractionDialog({
     setSourceType((prev) => (options.some((o) => o.value === prev) ? prev : fallback));
   };
 
-  const stepOneValid = Boolean(businessCategory && serviceCategory && sourceType);
+  // Guided URLs and guidance notes are no longer collected here — they are editable on the job's
+  // Context tab (PatchJobContextSchema), so asking for them before the job exists only stood
+  // between the admin and starting a crawl.
+  const canSubmit = Boolean(businessCategory && serviceCategory && sourceType && institutionUrl.trim());
 
   const handleSubmit = async () => {
-    if (!institutionUrl.trim()) return;
-
-    const guided_urls: Record<string, string[]> = {};
-    for (const { key } of guidedUrlCategories) {
-      const urls = cleanUrls(guidedUrls[key]);
-      if (urls.length) guided_urls[key] = urls;
-    }
+    if (!canSubmit) return;
 
     setCreating(true);
     const result = await dispatch(
@@ -168,10 +142,6 @@ export function NewExtractionDialog({
         business_category_id: Number(businessCategory),
         service_category_id: Number(serviceCategory),
         source_type: sourceType,
-        ...(Object.keys(guided_urls).length && { guided_urls }),
-        ...(guidanceNotes.trim() && { guidance_notes: guidanceNotes.trim() }),
-        ...(sampleCourseUrl.trim() && { sample_course_url: sampleCourseUrl.trim() }),
-        ...(degreeLevels.length && { degree_level_codes: degreeLevels.map((l) => l.slug) }),
       })
     );
     setCreating(false);
@@ -195,10 +165,7 @@ export function NewExtractionDialog({
           <DialogTitle>New Extraction</DialogTitle>
         </DialogHeader>
 
-        <ExtractionStepIndicator steps={STEPS} current={step} />
-
-        {step === 0 ? (
-          <div className="flex flex-col gap-4">
+        <div className="flex max-h-[65vh] flex-col gap-4 overflow-y-auto pr-1">
             <div className="flex flex-col gap-2">
               <Label htmlFor="business-category">Business category</Label>
               <Combobox
@@ -250,66 +217,31 @@ export function NewExtractionDialog({
                 </p>
               )}
             </div>
-          </div>
-        ) : step === 1 ? (
-          <ExtractionSourceStep
-            isVisaServiceSource={isVisaServiceSource}
-            guidedUrlCategories={guidedUrlCategories}
-            institutionUrl={institutionUrl}
-            onInstitutionUrlChange={setInstitutionUrl}
-            sampleCourseUrl={sampleCourseUrl}
-            onSampleCourseUrlChange={setSampleCourseUrl}
-            guidedUrls={guidedUrls}
-            onGuidedUrlsChange={setGuidedUrls}
-            guidanceNotes={guidanceNotes}
-            onGuidanceNotesChange={setGuidanceNotes}
-            degreeLevels={degreeLevels}
-            onDegreeLevelsChange={setDegreeLevels}
-          />
-        ) : (
-          <ExtractionReviewStep
-            businessLabel={businessLabel}
-            serviceLabel={serviceLabel}
-            sourceTypeLabel={sourceTypeOptions.find((o) => o.value === sourceType)?.label ?? sourceType}
-            isVisaServiceSource={isVisaServiceSource}
-            institutionUrl={institutionUrl}
-            sampleCourseUrl={sampleCourseUrl}
-            guidedUrlCategories={guidedUrlCategories}
-            guidedUrls={guidedUrls}
-            guidanceNotes={guidanceNotes}
-            degreeLevels={degreeLevels.map((l) => l.name)}
-          />
-        )}
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="institution-url">
+                {isVisaServiceSource ? "Visa service provider website URL" : "Institution website URL"}
+              </Label>
+              <Input
+                id="institution-url"
+                type="url"
+                placeholder={isVisaServiceSource ? "https://visaconsultancy.com" : "https://university.edu"}
+                value={institutionUrl}
+                onChange={(e) => setInstitutionUrl(e.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Guided URLs and crawl notes can be added on the job&apos;s Context tab once it exists.
+              </p>
+            </div>
+        </div>
 
         <DialogFooter className="sm:flex-row">
-          <Button
-            className="h-10 w-1/4 cursor-pointer"
-            variant="outline"
-            onClick={() => (step === 0 ? onOpenChange(false) : setStep(step - 1))}
-          >
-            {step === 0 ? "Cancel" : "Back"}
+          <Button className="h-10 w-1/4 cursor-pointer" variant="outline" onClick={() => onOpenChange(false)}>
+            Cancel
           </Button>
-          {step === 0 ? (
-            <Button className="h-10 w-3/4 cursor-pointer" onClick={() => setStep(1)} disabled={!stepOneValid}>
-              Next
-            </Button>
-          ) : step === 1 ? (
-            <Button
-              className="h-10 w-3/4 cursor-pointer"
-              onClick={() => setStep(2)}
-              disabled={!institutionUrl.trim()}
-            >
-              Next
-            </Button>
-          ) : (
-            <Button
-              className="h-10 w-3/4 cursor-pointer"
-              onClick={handleSubmit}
-              disabled={creating || !institutionUrl.trim()}
-            >
-              {creating ? "Starting…" : "Start Extraction"}
-            </Button>
-          )}
+          <Button className="h-10 w-3/4 cursor-pointer" onClick={handleSubmit} disabled={creating || !canSubmit}>
+            {creating ? "Starting…" : "Start Extraction"}
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

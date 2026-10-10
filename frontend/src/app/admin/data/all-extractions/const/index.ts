@@ -71,7 +71,7 @@ export function statusesForFilterValue(value: string): ExtractionStatus[] {
 export const SITE_URL_CATEGORY_LABELS: Record<SiteUrlCategory, string> = {
   overview: "Overview", about_us: "About us", contact_us: "Contact us", course: "Courses", branches: "Branches",
   agents: "Agents", fees: "Fees", study_units: "Study units", study_options: "Study options", intake: "Intake",
-  eligibility: "Eligibility", accreditations: "Accreditations", other: "Other",
+  eligibility: "Eligibility", accreditations: "Accreditations", scholarships: "Scholarships", other: "Other",
 };
 
 // Every guided-URL bucket the backend actually reads. Keys must stay `*_urls` — the job
@@ -87,6 +87,7 @@ export const GUIDED_URL_CATEGORIES = [
   { key: "eligibility_urls", label: "Entry Requirements" },
   { key: "units_urls", label: "Study Units / Curriculum" },
   { key: "accreditations_urls", label: "Accreditations" },
+  { key: "scholarships_urls", label: "Scholarships / Bursaries" },
 ] as const;
 
 // Same `*_urls` suffix contract as GUIDED_URL_CATEGORIES, just pointed at a visa/migration

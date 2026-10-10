@@ -1,116 +1,230 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { CalendarDays, Loader2, Plus, Trash2 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { DatePicker } from "@/components/ui/date-picker";
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { Calendar, ChevronDown } from "lucide-react";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
+import { Reveal } from "@/components/reveal";
+import { cn } from "@/lib/utils";
 import { businessProfileDetailApi } from "../../../apis";
+import { ServiceIntakeForm } from "./service-intake-form";
+import { TabSection } from "./tab-section";
+import { IntakeRow } from "./intake-row";
+import { NextIntakeCard, type Countdown } from "./next-intake-card";
+import type { TileParts } from "./intake-date-tile";
 import type { ServiceIntake, ServiceIntakeInput } from "../../../apis/types";
 
-const EMPTY: ServiceIntakeInput = {
-  intake_name: "", start_date: null, end_date: null, orientation_date: null, admission_deadline: null,
-  intake_month: null, intake_year: null,
-};
+const MONTH_ABBR = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-export function IntakesTab({ serviceId }: Readonly<{ serviceId: string }>) {
+function dateParts(value: string) {
+  const d = new Date(value);
+  return { month: MONTH_ABBR[d.getMonth()], day: d.getDate(), year: d.getFullYear() };
+}
+
+/** The tile's date: a full date when there is one, else the month/year an extracted intake
+ *  often only has, else null — never a placeholder that looks like a broken date. */
+function tileParts(intake: ServiceIntake): TileParts | null {
+  const ref = intake.start_date ?? intake.end_date;
+  if (ref) {
+    const p = dateParts(ref);
+    return { top: p.month ?? "", main: String(p.day), bottom: String(p.year) };
+  }
+  if (intake.intake_month || intake.intake_year) {
+    return { top: intake.intake_month ? MONTH_ABBR[intake.intake_month - 1] ?? "" : "", main: String(intake.intake_year ?? ""), bottom: "" };
+  }
+  return null;
+}
+
+/** null = no date at all, so it can't honestly be called upcoming or ended. */
+function isEnded(intake: ServiceIntake): boolean | null {
+  const ref = intake.end_date ?? intake.start_date;
+  if (ref) return new Date(ref) < new Date();
+  if (intake.intake_year) {
+    const now = new Date();
+    const month = intake.intake_month ?? 12;
+    return intake.intake_year < now.getFullYear() || (intake.intake_year === now.getFullYear() && month < now.getMonth() + 1);
+  }
+  return null;
+}
+
+function dateBits(intake: ServiceIntake): string[] {
+  return [
+    intake.start_date && `Starts ${formatDate(intake.start_date)}`,
+    intake.admission_deadline && `Apply by ${formatDate(intake.admission_deadline)}`,
+    intake.end_date && `Ends ${formatDate(intake.end_date)}`,
+  ].filter((b): b is string => Boolean(b));
+}
+
+const DAY_MS = 86_400_000;
+const WINDOW_DAYS = 90;
+
+function startOfToday() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+/** Best date to order by: the start date, else the month/year, else the end date. */
+function sortKey(intake: ServiceIntake): number {
+  if (intake.start_date) return new Date(intake.start_date).getTime();
+  if (intake.intake_year) return new Date(intake.intake_year, (intake.intake_month ?? 1) - 1, 1).getTime();
+  if (intake.end_date) return new Date(intake.end_date).getTime();
+  return Number.POSITIVE_INFINITY;
+}
+
+/** Upcoming = starts today or later (soonest first); past = started before today (latest first).
+ * Without a start date, fall back to `isEnded`'s month/year/end-date reading. */
+function groupIntakes(intakes: ServiceIntake[]) {
+  const today = startOfToday();
+  const upcoming: ServiceIntake[] = [];
+  const past: ServiceIntake[] = [];
+  const undated: ServiceIntake[] = [];
+  for (const intake of intakes) {
+    const ended = intake.start_date ? new Date(intake.start_date) < today : isEnded(intake);
+    if (ended === null) undated.push(intake);
+    else (ended ? past : upcoming).push(intake);
+  }
+  upcoming.sort((a, b) => sortKey(a) - sortKey(b));
+  past.sort((a, b) => sortKey(b) - sortKey(a));
+  return { upcoming, past, undated };
+}
+
+function heroDateLine(intake: ServiceIntake): string {
+  const bits = [intake.start_date && `Starts ${formatDate(intake.start_date)}`, intake.end_date && `Ends ${formatDate(intake.end_date)}`].filter(Boolean);
+  if (bits.length > 0) return bits.join(" · ");
+  const parts = tileParts(intake);
+  return parts ? `Starts ${[parts.top, parts.main].filter(Boolean).join(" ")}` : "Dates to be confirmed";
+}
+
+/** Days left to apply, plus where today sits in the last 90 days before the deadline. */
+function countdown(intake: ServiceIntake): Countdown | null {
+  if (!intake.admission_deadline) return null;
+  const deadline = new Date(intake.admission_deadline);
+  const today = startOfToday();
+  const daysLeft = Math.ceil((deadline.getTime() - today.getTime()) / DAY_MS);
+  const windowStart = new Date(deadline.getTime() - WINDOW_DAYS * DAY_MS);
+  const elapsed = (Date.now() - windowStart.getTime()) / (WINDOW_DAYS * DAY_MS);
+  return {
+    deadlineLabel: formatDate(intake.admission_deadline),
+    daysLeft: daysLeft >= 0 ? daysLeft : null,
+    windowPct: Math.max(0, Math.min(1, elapsed)) * 100,
+    windowStartLabel: `${WINDOW_DAYS} days before · ${formatDate(windowStart.toISOString())}`,
+  };
+}
+
+function formatDate(value: string) {
+  const d = new Date(value);
+  return `${MONTH_ABBR[d.getMonth()]} ${d.getDate()}, ${d.getFullYear()}`;
+}
+
+/** `allowMonth` — institution intakes store month-only dates; a business service's are `date` columns. */
+export function IntakesTab({ serviceId, allowMonth = false }: Readonly<{ serviceId: string; allowMonth?: boolean }>) {
   const [intakes, setIntakes] = useState<ServiceIntake[]>([]);
   const [loading, setLoading] = useState(true);
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState<ServiceIntakeInput>(EMPTY);
+  const [formOpen, setFormOpen] = useState(false);
+  const [editing, setEditing] = useState<ServiceIntake | null>(null);
   const [saving, setSaving] = useState(false);
+  const [pastOpen, setPastOpen] = useState(false);
 
-  const load = () => businessProfileDetailApi.serviceIntakes.list(serviceId).then(setIntakes).finally(() => setLoading(false));
-  useEffect(() => { load(); }, [serviceId]);
+  const fetchedRef = useRef(false);
+  useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+    businessProfileDetailApi.serviceIntakes.list(serviceId).then(setIntakes).finally(() => setLoading(false));
+  }, [serviceId]);
 
-  const handleAdd = async () => {
+  const openAdd = () => { setEditing(null); setFormOpen(true); };
+  const openEdit = (intake: ServiceIntake) => { setEditing(intake); setFormOpen(true); };
+
+  const handleSave = async (input: ServiceIntakeInput) => {
     setSaving(true);
     try {
-      await businessProfileDetailApi.serviceIntakes.create(serviceId, form);
-      toast.success("Intake added");
-      setOpen(false);
-      setForm(EMPTY);
-      load();
+      if (editing) {
+        const updated = await businessProfileDetailApi.serviceIntakes.update(serviceId, editing.id, input);
+        setIntakes((i) => i.map((x) => (x.id === editing.id ? updated : x)));
+        toast.success("Intake updated");
+      } else {
+        const created = await businessProfileDetailApi.serviceIntakes.create(serviceId, input);
+        setIntakes((i) => [...i, created]);
+        toast.success("Intake added");
+      }
+      setFormOpen(false);
     } catch (e) {
-      toast.error("Couldn't add intake", { description: (e as Error).message });
+      toast.error("Couldn't save intake", { description: (e as Error).message });
     } finally {
       setSaving(false);
     }
   };
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (intakeId: number) => {
     try {
-      await businessProfileDetailApi.serviceIntakes.remove(serviceId, id);
-      setIntakes((i) => i.filter((x) => x.id !== id));
+      await businessProfileDetailApi.serviceIntakes.remove(serviceId, intakeId);
+      setIntakes((i) => i.filter((x) => x.id !== intakeId));
+      toast.success("Intake removed");
     } catch (e) {
       toast.error("Couldn't remove intake", { description: (e as Error).message });
     }
   };
 
+  const { upcoming, past, undated } = groupIntakes(intakes);
+  const [next, ...laterUpcoming] = upcoming;
+  const rowProps = (intake: ServiceIntake) => ({
+    name: intake.intake_name || "Untitled intake",
+    parts: tileParts(intake),
+    dateBits: dateBits(intake),
+    onEdit: () => openEdit(intake),
+    onDelete: () => handleDelete(intake.id),
+  });
+  const summary = [`${upcoming.length} upcoming`, `${past.length} past`, undated.length > 0 && `${undated.length} undated`].filter(Boolean).join(" · ");
+
   return (
-    <div>
-      <div className="mb-3 flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <CalendarDays className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-semibold">Intakes</span>
-          <Badge variant="secondary">{intakes.length}</Badge>
-        </div>
-        <Button size="sm" onClick={() => setOpen(true)}>
-          <Plus className="mr-1.5 h-3.5 w-3.5" /> Add intake
-        </Button>
-      </div>
-
-      {loading ? (
-        <div className="flex justify-center py-8"><Loader2 className="h-5 w-5 animate-spin text-primary" /></div>
-      ) : intakes.length === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground italic">No intakes configured yet.</p>
-      ) : (
-        <div className="space-y-2">
-          {intakes.map((i) => (
-            <div key={i.id} className="flex items-center justify-between rounded-lg border p-3">
-              <div>
-                <p className="text-sm font-medium">{i.intake_name || "Intake"}</p>
-                <p className="text-xs text-muted-foreground">
-                  {[i.start_date, i.admission_deadline ? `Deadline ${i.admission_deadline}` : null].filter(Boolean).join(" · ") || "—"}
-                </p>
-              </div>
-              <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => handleDelete(i.id)} aria-label="Remove intake">
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </div>
-          ))}
-        </div>
-      )}
-
-      <Dialog open={open} onOpenChange={setOpen}>
-        <DialogContent>
-          <DialogHeader><DialogTitle>Add intake</DialogTitle></DialogHeader>
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label>Name</Label>
-              <Input className="h-10" value={form.intake_name ?? ""} onChange={(e) => setForm((f) => ({ ...f, intake_name: e.target.value }))} placeholder="Spring 2027" />
-            </div>
-            <div className="grid grid-cols-2 gap-3">
-              <div className="flex flex-col gap-2">
-                <Label>Start date</Label>
-                <DatePicker value={form.start_date ?? ""} onChange={(v) => setForm((f) => ({ ...f, start_date: v || null }))} />
-              </div>
-              <div className="flex flex-col gap-2">
-                <Label>Admission deadline</Label>
-                <DatePicker value={form.admission_deadline ?? ""} onChange={(v) => setForm((f) => ({ ...f, admission_deadline: v || null }))} />
-              </div>
-            </div>
+    <>
+      <TabSection
+        icon={Calendar}
+        title="Intakes"
+        count={intakes.length}
+        addLabel="Add intake"
+        onAdd={openAdd}
+        loading={loading}
+        emptyTitle="No intakes yet"
+        emptyHint="Add the start dates students can join, with their application deadlines."
+        summary={<p className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{summary}</p>}
+      >
+        {next && (
+          <NextIntakeCard
+            name={next.intake_name || "Untitled intake"}
+            parts={tileParts(next)}
+            dateLine={heroDateLine(next)}
+            countdown={countdown(next)}
+            onEdit={() => openEdit(next)}
+            onDelete={() => handleDelete(next.id)}
+          />
+        )}
+        {laterUpcoming.map((intake) => <IntakeRow key={intake.id} status="upcoming" {...rowProps(intake)} />)}
+        {undated.map((intake) => <IntakeRow key={intake.id} status="undated" {...rowProps(intake)} />)}
+        {past.length > 0 && (
+          <div>
+            <button
+              type="button"
+              onClick={() => setPastOpen((o) => !o)}
+              aria-expanded={pastOpen}
+              className="flex items-center gap-1.5 rounded-md py-1 text-xs font-semibold text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-ring"
+            >
+              <ChevronDown className={cn("h-3.5 w-3.5 transition-transform duration-300", pastOpen && "rotate-180")} />
+              Past intakes ({past.length})
+            </button>
+            <Reveal open={pastOpen} className="flex flex-col gap-2 pt-2">
+              {past.map((intake) => <IntakeRow key={intake.id} status="past" {...rowProps(intake)} />)}
+            </Reveal>
           </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpen(false)} disabled={saving}>Cancel</Button>
-            <Button onClick={handleAdd} disabled={saving}>{saving ? "Adding…" : "Add"}</Button>
-          </DialogFooter>
+        )}
+      </TabSection>
+
+      <Dialog open={formOpen} onOpenChange={setFormOpen}>
+        <DialogContent className="max-h-[90vh] overflow-y-auto border-0 bg-transparent p-0 shadow-none sm:max-w-2xl">
+          <ServiceIntakeForm intake={editing ?? undefined} saving={saving} onCancel={() => setFormOpen(false)} onSave={handleSave} allowMonth={allowMonth} />
         </DialogContent>
       </Dialog>
-    </div>
+    </>
   );
 }

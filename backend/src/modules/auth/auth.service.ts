@@ -217,7 +217,10 @@ export async function registerUser(
 
   const existing = await platformUserRepo.findByEmail(email);
   if (existing) {
-    // Anti-enumeration: return identical response, send "someone tried to register" email
+    // Reveals account existence by design — the product wants sign-up to tell the caller
+    // directly that the email is already registered (EMAIL_ALREADY_EXISTS, handled by the
+    // frontend as an inline field error), on top of notifying the real owner by email in case
+    // the caller isn't them.
     queueEmail({
       to: email,
       subject: "Registration attempt on your GlobalyAI account",
@@ -228,7 +231,7 @@ export async function registerUser(
         footnote: "If this wasn't you, no action is needed.",
       }),
     }).catch((err) => logger.warn("Registration notice email failed", { email, err: err.message }));
-    return { message: "Check your email for next steps." };
+    throw new AppError("An account already exists with this email. Please sign in instead.", 409, "EMAIL_ALREADY_EXISTS");
   }
 
   // W1 (click -> registration) is decided HERE and never re-evaluated: the token's own `exp` is the
@@ -299,12 +302,12 @@ async function requireLoginNotSuspended(user: {
   }
 }
 
-export async function sendOtp(email: string) {
-  const user = await platformUserRepo.findByEmail(email);
-  if (!user) throw new NotFoundError("Account not found");
-  await requireLoginNotSuspended(user);
-
-  // Check lockout from existing challenge
+/**
+ * Mints a code and emails it, without asking whether an account exists: the caller has already
+ * established that this address may receive one. Sign-in gets there through an account; an
+ * onboarding invitation gets there through the invite row addressed to that same inbox.
+ */
+export async function issueOtpChallenge(email: string): Promise<string> {
   const existing = await authRepo.findOtpChallenge(email);
   if (existing?.locked_until && new Date() < new Date(existing.locked_until)) {
     throw new UnauthorizedError("Too many attempts. Try again later.");
@@ -313,24 +316,16 @@ export async function sendOtp(email: string) {
   const otp = String(randomInt(100_000, 999_999));
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
   await authRepo.createOtpChallenge(email, hashOtp(otp), expiresAt);
-
-  await queueEmail({ to: user.email, ...otpEmail(otp) });
-
-  // The plaintext OTP is a bearer credential — never let it reach production logs.
-  logger.info("OTP sent", {
-    userId: user.id,
-    ...(config.NODE_ENV === "production" ? {} : { otp }),
-  });
-  return { message: "OTP sent" };
+  await queueEmail({ to: email, ...otpEmail(otp) });
+  return otp;
 }
 
-export async function verifyOtp(email: string, otp: string, meta?: { ip?: string; userAgent?: string }) {
-  const user = await platformUserRepo.findByEmail(email);
-  if (!user) throw new NotFoundError("Account not found");
-  // Re-checked here too (not just sendOtp) — a suspension landing between "code sent" and
-  // "code entered" must still block completing the login, not just requesting a fresh code.
-  await requireLoginNotSuspended(user);
-
+/**
+ * Everything that decides whether a code is right — lockout, expiry, the hash, the attempt counter
+ * — and nothing that spends it. `verifyOtp` consumes the challenge afterwards; the invitation
+ * accept calls this first, so a wrong code can never create an account.
+ */
+export async function assertOtpChallenge(email: string, otp: string) {
   const challenge = await authRepo.findOtpChallenge(email);
   if (!challenge) throw new UnauthorizedError("No OTP requested");
 
@@ -353,6 +348,33 @@ export async function verifyOtp(email: string, otp: string, meta?: { ip?: string
     }
     throw new UnauthorizedError("Invalid OTP");
   }
+
+  return challenge;
+}
+
+export async function sendOtp(email: string) {
+  const user = await platformUserRepo.findByEmail(email);
+  if (!user) throw new NotFoundError("Account not found");
+  await requireLoginNotSuspended(user);
+
+  const otp = await issueOtpChallenge(user.email);
+
+  // The plaintext OTP is a bearer credential — never let it reach production logs.
+  logger.info("OTP sent", {
+    userId: user.id,
+    ...(config.NODE_ENV === "production" ? {} : { otp }),
+  });
+  return { message: "OTP sent" };
+}
+
+export async function verifyOtp(email: string, otp: string, meta?: { ip?: string; userAgent?: string }) {
+  const user = await platformUserRepo.findByEmail(email);
+  if (!user) throw new NotFoundError("Account not found");
+  // Re-checked here too (not just sendOtp) — a suspension landing between "code sent" and
+  // "code entered" must still block completing the login, not just requesting a fresh code.
+  await requireLoginNotSuspended(user);
+
+  const challenge = await assertOtpChallenge(email, otp);
 
   // OTP valid — clean up challenge
   await authRepo.deleteOtpChallenge(challenge.id);
@@ -518,8 +540,8 @@ export async function refreshAccessToken(refreshToken: string, meta?: { ip?: str
  * refresh. Applies to both kinds.
  */
 /**
- * Mints a short-lived, single-purpose token for the self-service "Preview" button (see
- * search/utils/preview-auth.ts's resolvePreviewSchemaName) — NOT the caller's real session
+ * Mints a short-lived, single-purpose token for a "Preview" button (self-service or superadmin —
+ * see search/utils/preview-auth.ts's resolvePreviewSchemaName) — NOT the caller's real session
  * token. Putting the actual bearer access token in a URL query string would leave a fully
  * reusable credential sitting in browser history, server logs and referrer headers; this token
  * carries no `sub`/`orgRole`/role claims, expires in 10 minutes, and `purpose: "preview"` makes
@@ -527,11 +549,16 @@ export async function refreshAccessToken(refreshToken: string, meta?: { ip?: str
  * preview link can only ever bypass is_published on the two public preview routes it was
  * minted for.
  */
+export function issuePreviewTokenForOrg(orgId: string, orgType: "institution") {
+  return jwt.sign({ purpose: "preview", orgType, orgId }, config.JWT_SECRET, { expiresIn: "10m" });
+}
+
+/** Self-service wrapper — mints a preview token for the caller's OWN institution context. */
 export function issuePreviewToken(auth: AuthClaims) {
   if (auth.orgType !== "institution" || !auth.orgId) {
     throw new ForbiddenError("Switch to an institution context first");
   }
-  return jwt.sign({ purpose: "preview", orgType: "institution", orgId: auth.orgId }, config.JWT_SECRET, { expiresIn: "10m" });
+  return issuePreviewTokenForOrg(auth.orgId, "institution");
 }
 
 export async function switchAccount(userId: number, orgId: string, refreshToken?: string) {

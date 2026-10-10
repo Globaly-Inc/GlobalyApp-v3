@@ -130,17 +130,20 @@ const SELF_SERVICE_JOB_URL_DOMAIN = "self-service.globalyhub.invalid";
  * create path mints one. No claim flow is involved: onboardInstitution already marks these
  * claim_status 'claimed'.
  *
- * status "done" keeps the pipeline workers off it (they claim on pending/processing/stalled);
- * source_type names the origin instead. institution_url is a per-institution placeholder —
- * updateInstitutionProfile syncs the real website onto it when one is supplied, which is what
- * the AI embed widget scopes courses on.
+ * status "exported" keeps the pipeline workers off it (they claim on pending/processing/stalled)
+ * while also making the institution's courses pass the public/preview visibility check
+ * (courses.repository.ts's PUBLICLY_VISIBLE requires status = 'exported' — without it, the
+ * owner's own "Preview" button 404s, since a self-registered institution never goes through
+ * the admin promote step that would otherwise set this). source_type names the origin instead.
+ * institution_url is a per-institution placeholder — updateInstitutionProfile syncs the real
+ * website onto it when one is supplied, which is what the AI embed widget scopes courses on.
  */
 async function mintSelfServiceJob(institutionName: string, subdomain: string): Promise<string> {
   const row = await jobsRepo.insertJob({
     institution_name: institutionName,
     institution_url: `https://${SELF_SERVICE_JOB_URL_DOMAIN}/${subdomain}`,
     source_type: "self_service",
-    status: "done",
+    status: "exported",
     // Promote routes by category; keep it resolvable by slug rather than a hardcoded id.
     business_category_id: await promoteRepo.findCategoryIdBySlug("institutions"),
   });
@@ -148,9 +151,16 @@ async function mintSelfServiceJob(institutionName: string, subdomain: string): P
 }
 
 /** Institution onboarding — inserts into institutions table, provisions tenant schema (members, member_invitations). */
+/** institutions.email is unique, and one owner may hold several institutions (a second signup, an
+ * accepted invite, a branch): the given address, else the owner's, while no other institution has it —
+ * otherwise none, rather than failing the insert. */
+const freeInstitutionEmail = async (email: string | null | undefined) =>
+  email && !(await promoteRepo.institutionEmailTaken(email, null)) ? email : null;
+
 export async function onboardInstitution(userId: number, data: OnboardingInstitutionInput) {
   const user = await repo.findByIdFull(userId);
   if (!user) throw new NotFoundError("User not found");
+
 
   // Auto-generate subdomain from institution name, unique across businesses + institutions.
   const subdomain = await generateSubdomain(data.institution_name, async (candidate) => {
@@ -162,23 +172,26 @@ export async function onboardInstitution(userId: number, data: OnboardingInstitu
   });
 
   const sourceJobId = await mintSelfServiceJob(data.institution_name, subdomain);
+  const institutionsCategoryId = await promoteRepo.findCategoryIdBySlug("institutions");
 
   const institution = await repo.insertInstitution({
     platform_user_id: userId,
     source_job_id: sourceJobId,
     first_name: user.first_name,
     last_name: user.last_name,
-    email: data.email ?? user.email,
+    email: await freeInstitutionEmail(data.email ?? user.email),
     phone: data.phone,
     subdomain,
     institution_name: data.institution_name,
     institution_type: data.institution_type,
+    business_category_id: institutionsCategoryId,
     country_id: data.country_id,
     state: data.state,
     city: data.city,
     address: data.address,
     postcode: data.postcode,
     claim_status: "claimed",
+    origin: "signup",
   });
 
   try {

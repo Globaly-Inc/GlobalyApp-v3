@@ -135,6 +135,10 @@ export type InstitutionOverview = ActorFields & {
   /** Social/profile links that don't fit a known platform column (TikTok, Threads, etc), each
    * with a label — either LLM-guessed from the platform or set manually by an admin. */
   other_social_links: { label: string; url: string }[] | null;
+  /** Picked from the homepage when the overview is written — copied to the org's profile. */
+  cover_url?: string | null;
+  /** Up to 3 photos; null = not picked yet, [] = none found or cleared. */
+  gallery_images?: string[] | null;
   updated_at?: string | null;
 };
 
@@ -384,7 +388,7 @@ export type UpdateContextParams = { guided_urls?: Record<string, unknown> | null
 export type StepMode = "auto" | "manual";
 export const SITE_URL_CATEGORIES = [
   "overview", "about_us", "contact_us", "course", "branches", "agents", "fees",
-  "study_units", "study_options", "intake", "eligibility", "accreditations", "other",
+  "study_units", "study_options", "intake", "eligibility", "accreditations", "scholarships", "other",
 ] as const;
 export type SiteUrlCategory = (typeof SITE_URL_CATEGORIES)[number];
 
@@ -393,7 +397,7 @@ export type SiteUrl = {
   url: string;
   source: string;
   category: SiteUrlCategory | null;
-  category_source: "guided" | "heuristic" | "llm" | "admin" | null;
+  category_source: "guided" | "heuristic" | "llm" | "jev" | "admin" | null;
   excluded: boolean;
   created_at: string;
   updated_at: string;
@@ -415,7 +419,7 @@ export type SnapshotRow = {
   /** extraction_site_urls.id — what the Category picker patches. */
   site_url_id: string;
   category: SiteUrlCategory | null;
-  category_source: "guided" | "heuristic" | "llm" | "admin" | null;
+  category_source: "guided" | "heuristic" | "llm" | "jev" | "admin" | null;
   excluded: boolean;
   gcs_path: string;
 };
@@ -496,13 +500,12 @@ export type Intake = ActorFields & {
 
 export type IntakeParams = {
   intake_name?: string;
-  /** Partial dates, as Intake above. */
-  start_date?: string;
-  end_date?: string;
-  orientation_date?: string;
-  admission_deadline?: string;
-  intake_month?: number;
-  intake_year?: number;
+  start_date?: string | null;
+  end_date?: string | null;
+  orientation_date?: string | null;
+  admission_deadline?: string | null;
+  intake_month?: number | null;
+  intake_year?: number | null;
   custom_dates?: IntakeCustomDate[];
 };
 /** One row of an eligibility requirement's language_tests / academic_tests jsonb. */

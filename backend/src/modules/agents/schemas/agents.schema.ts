@@ -6,8 +6,10 @@ export const MemberListQuerySchema = PaginationSchema.extend({
 });
 
 export const InviteAgentSchema = z.object({
-  first_name: z.string().min(1).max(100),
-  last_name: z.string().min(1).max(100),
+  // Optional: the invite form only asks for an email — the invitee's own account supplies
+  // their name when they accept (member rows read it from platform_users).
+  first_name: z.string().max(100).optional().default(""),
+  last_name: z.string().max(100).optional().default(""),
   email: z.string().email(),
   phone: z.string().max(50).nullable().optional(),
   role: z.string().min(1).default("member"),

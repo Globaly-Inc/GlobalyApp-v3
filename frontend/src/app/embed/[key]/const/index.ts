@@ -4,6 +4,17 @@ import type { StarterCategory } from "@/app/ai/const";
 export type EmbedOwnerKind = "business" | "institution";
 
 /**
+ * What the assistant is called when a tenant has not named it — the app's own assistant, the same
+ * one the signed-in portal calls "Ask Aly".
+ *
+ * A FALLBACK, never written to `ai_embed_configs.display_name`: a stored value would mean every
+ * auto-created widget counts as customised, and the onboarding checklist's "Customise your AI
+ * assistant" step reads exactly that column. `public/embed.js` repeats the string because a static
+ * file served to third-party sites cannot import it — change both together.
+ */
+export const DEFAULT_WIDGET_NAME = "Aly";
+
+/**
  * Starter questions for the embedded panel, per owner kind.
  *
  * The shared `STARTER_CATEGORIES` are marketplace questions ("What MBA programs are
@@ -101,3 +112,21 @@ export function embedStarters(kind: EmbedOwnerKind): StarterCategory[] {
     },
   ];
 }
+
+/** postMessage type the panel sends to public/embed.js to close itself. Keep in step with it. */
+export const CLOSE_MESSAGE = "globaly-embed:close";
+
+/** postMessage type asking public/embed.js to grow the panel over the host page, or shrink it
+ *  back (`expanded: boolean`). Keep in step with it. */
+export const EXPAND_MESSAGE = "globaly-embed:expand";
+
+/** postMessage type telling public/embed.js the panel's header — and so its close button — is on
+ *  screen. Until then a mobile host keeps its own launcher showing as the way out. Keep in step. */
+export const READY_MESSAGE = "globaly-embed:ready";
+
+/** postMessage type telling public/embed.js this visitor has a conversation, so its teaser
+ *  card stops inviting them. Keep in step with it. */
+export const STARTED_MESSAGE = "globaly-embed:started";
+
+/** postMessage type the panel sends embed.js with its visitor id, so the host page can keep it. */
+export const FP_MESSAGE = "globaly-embed:fp";

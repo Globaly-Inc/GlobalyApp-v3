@@ -59,7 +59,8 @@ export function DetailTabs({
   const setTab = (next: Tab) => {
     const params = new URLSearchParams(searchParams.toString());
     params.set("tab", next);
-    router.push(`${pathname}?${params.toString()}`);
+    // replace, not push: a tab switch isn't a page — Back should return to the list, not step through tabs.
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
   };
 
   return (
@@ -82,7 +83,10 @@ export function DetailTabs({
           ) : (
             <InstitutionMembersTab institutionId={id} readOnly={readOnly} />
           ))}
-          {tab === "contacts" && <ContactsTab kind={kind} id={id} countries={countries} readOnly={readOnly} />}
+          {/* Contacts are a superadmin-only concept (business_contacts/members CRM fields have no
+              owner-facing self-service editor) — never gated by claim status like the other
+              tabs, since there is no "owner's own edit" for this to defer to. */}
+          {tab === "contacts" && <ContactsTab kind={kind} id={id} countries={countries} />}
           {tab === "services" && (kind === "business" ? (
             <ServicesTab businessId={id} readOnly={readOnly || isPreSeeded} />
           ) : (

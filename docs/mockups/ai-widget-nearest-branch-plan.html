@@ -1,0 +1,141 @@
+<title>Nearest Branch Plan</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600&family=Inter:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one reading column of numbered sections (they are the build order), tables for data and config. Light only, matching the app. */
+:root {
+  --bg: #f6f7fa;
+  --card: #ffffff;
+  --fg: #0f1729;
+  --muted: #5d6b80;
+  --line: #e1e5ea;
+  --primary: #012e8a;
+  --primary-soft: #e8eefb;
+  --add: #15803d;
+  --add-soft: #e6f6ec;
+  --chg: #92560b;
+  --chg-soft: #fdf3e1;
+  --display: "Fraunces", Georgia, serif;
+  --body: "Inter", system-ui, sans-serif;
+  --mono: "Geist Mono", ui-monospace, monospace;
+  color-scheme: light;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--bg); color: var(--fg); font: 15px/1.6 var(--body); padding-inline: 16px; padding-block: 32px 64px; }
+main { max-width: 860px; margin: 0 auto; display: flex; flex-direction: column; gap: 26px; }
+h1, h2 { font-family: var(--display); font-weight: 600; text-wrap: balance; margin: 0; }
+h1 { font-size: 32px; line-height: 1.15; }
+h2 { font-size: 21px; }
+p { margin: 0; }
+.eyebrow { font-size: 12px; letter-spacing: .08em; text-transform: uppercase; color: var(--primary); font-weight: 600; }
+.lead { color: var(--muted); max-width: 68ch; }
+.status { display: inline-flex; gap: 6px; align-items: center; background: var(--chg-soft); color: var(--chg); border-radius: 999px; padding: 4px 12px; font-size: 13px; font-weight: 600; width: fit-content; }
+section { background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 22px 24px; display: flex; flex-direction: column; gap: 12px; }
+section > header { display: flex; align-items: baseline; gap: 10px; }
+section > header .n { font: 500 13px var(--mono); color: var(--muted); }
+ul { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; }
+code { font: 13px var(--mono); background: var(--primary-soft); color: var(--primary); border-radius: 4px; padding: 1px 5px; }
+.tablebox { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 14px; min-width: 560px; }
+th, td { text-align: left; vertical-align: top; padding: 9px 10px; border-bottom: 1px solid var(--line); }
+th { font-size: 12px; color: var(--muted); font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+.tag { font: 600 11px var(--body); border-radius: 4px; padding: 2px 6px; white-space: nowrap; }
+.tag.new { background: var(--add-soft); color: var(--add); }
+.tag.chg { background: var(--chg-soft); color: var(--chg); }
+.decision { display: grid; grid-template-columns: 180px minmax(0, 1fr); gap: 8px 16px; }
+.decision dt { font-weight: 600; }
+.decision dd { margin: 0; color: var(--muted); }
+@media (max-width: 600px) { .decision { grid-template-columns: minmax(0, 1fr); } section { padding: 18px; } }
+</style>
+
+<main>
+  <div style="display:flex;flex-direction:column;gap:10px">
+    <span class="eyebrow">AI widget · plan for review · 2 October 2026</span>
+    <h1>Suggest the nearest branch to domestic visitors</h1>
+    <p class="lead">When someone in the institution's own country asks about applying, studying or visiting, the widget shows the branch nearest to them. Nothing below is built; it waits for your review.</p>
+    <span class="status">● Waiting for your review</span>
+  </div>
+
+  <section>
+    <header><span class="n">00</span><h2>What you decided</h2></header>
+    <dl class="decision">
+      <dt>Visitor location</dt><dd>Automatic, from the location headers Cloudflare adds to each request. The header names are read from <code>.env</code>, so no provider is baked into the code.</dd>
+      <dt>"Closest"</dt><dd>Matched on the branch's own <b>city, state and country</b> columns, with the address shown. No geocoding, no coordinates, no Google calls.</dd>
+    </dl>
+  </section>
+
+  <section>
+    <header><span class="n">01</span><h2>Configuration</h2></header>
+    <p>Two env variables, each naming a header. <code>cf-ipcountry</code> is on by default in Cloudflare; <code>cf-region</code> needs <b>"Add visitor location headers"</b> turned on (Rules › Managed Transforms). Leave the region unset and matching is by country only.</p>
+    <div class="tablebox"><table>
+      <thead><tr><th>Env variable</th><th>Cloudflare header</th><th>Used for</th></tr></thead>
+      <tbody>
+        <tr><td><code>GEO_COUNTRY_HEADER</code></td><td><code>cf-ipcountry</code></td><td>Domestic or not (ISO code, e.g. AU), and the country fallback</td></tr>
+        <tr><td><code>GEO_REGION_HEADER</code></td><td><code>cf-region</code></td><td>State name, e.g. "Victoria": matched against each branch's state, and shown to staff</td></tr>
+      </tbody>
+    </table></div>
+    <p>The headers must reach Fastify through nginx unchanged. The existing <code>TRUST_PROXY</code> rule is unaffected.</p>
+  </section>
+
+  <section>
+    <header><span class="n">02</span><h2>Database</h2></header>
+    <p>Twin migrations in <code>business/</code> and <code>institution/</code>; no new tables. You run them.</p>
+    <div class="tablebox"><table>
+      <thead><tr><th>Table · column</th><th>Change</th><th>Why</th></tr></thead>
+      <tbody>
+                <tr><td><code>ai_widget_visitors.location_country</code>, <code>location_region</code></td><td><span class="tag new">new</span> text null</td><td>Approximate location (state and country), for staff and the domestic check.</td></tr>
+        <tr><td><code>ai_widget_visitors.nearest_branch_id</code>, <code>nearest_branch_match</code>, <code>branch_suggested_at</code></td><td><span class="tag new">new</span> integer, text (<code>state</code> / <code>country</code>), timestamptz</td><td>What was suggested, why, and when, for the visitor page and Activity. One suggestion per chat.</td></tr>
+      </tbody>
+    </table></div>
+    <p>The branch tables don't change: matching uses their existing <code>state</code> and <code>country</code>, and the card shows <code>city</code> and <code>address</code>.</p>
+  </section>
+
+
+  <section>
+    <header><span class="n">03</span><h2>In the chat (guest route)</h2></header>
+    <ul>
+      <li>Every visitor message: read the two headers named in env. Store country and region on the visitor row (a separate, best-effort write, like the profile).</li>
+      <li><b>Domestic</b>: the location country matches the country of the institution's branches. If the visitor told the assistant a nationality that differs, they're international.</li>
+      <li><b>When</b>: the visitor is domestic, at least one branch is located, no branch was suggested in this chat yet, and the message is about applying, enrolling, studying, campuses, visiting or "near me". A small word check decides that; no extra AI call.</li>
+      <li><b>Which</b>, first match wins: a branch whose <b>state</b> matches the visitor's region ("Campus in your state"); else the <b>primary</b> branch in their country, or the first one ("Our main campus"). Matching ignores case, spaces and punctuation. The visitor's ISO country code (AU) is turned into the branch's country name through <code>globalyapp.countries</code>.</li>
+      <li>The branch goes into the AI's context for that turn (name, address, why it matched), so the reply can mention it. A <code>nearest-branch</code> card event follows the reply: name, address, phone, the match ("Campus in your state" or "Our main campus"), a plain Google Maps search link for the address (no API), and the full list, best match first.</li>
+      <li>No headers, no branch in the visitor's country, or an overseas visitor: nothing changes.</li>
+    </ul>
+  </section>
+
+  <section>
+    <header><span class="n">04</span><h2>Screens</h2></header>
+    <div class="tablebox"><table>
+      <thead><tr><th>Where</th><th>Change</th></tr></thead>
+      <tbody>
+        <tr><td>Widget (<code>embed/[key]</code>)</td><td><span class="tag new">new</span> the nearest-campus card, styled with the widget's brand colour, and "See all campuses".</td></tr>
+        <tr><td>Visitor page · Contact Details</td><td><span class="tag chg">changed</span> Location (approximate), Domestic, Nearest branch.</td></tr>
+        <tr><td>Visitor page · Activity</td><td><span class="tag chg">changed</span> "Suggested Melbourne Campus as the nearest branch".</td></tr>
+        <tr><td>Business › Branches</td><td><span class="tag chg">changed</span> a "Suggestable" hint: a branch without a state is flagged, since it can only ever be the fallback.</td></tr>
+      </tbody>
+    </table></div>
+  </section>
+
+  <section>
+    <header><span class="n">05</span><h2>Risks and limits</h2></header>
+    <ul>
+      <li><b>Privacy:</b> this locates visitors without asking. It's city-level and the coordinates aren't stored, but the privacy notice on the institution's site should mention it.</li>
+      <li><b>Spoofing:</b> outside Cloudflare, anyone can send these headers. The worst case is a wrong campus suggestion, so it's acceptable; keep nginx from passing client-set <code>cf-*</code> headers when not behind Cloudflare.</li>
+      <li><b>Accuracy:</b> it's state-level. Two branches in the same state aren't told apart (the first, or the primary, wins), and one in a neighbouring state is never preferred over the main campus.</li>
+      <li><b>Spelling:</b> Cloudflare sends the full state name ("Victoria"), so a branch whose state is stored as "VIC" won't match. Store full state names on branches; the Branches hint flags blanks.</li>
+      <li><b>Cost:</b> none. No external calls.</li>
+      <li><b>Branch ≠ course:</b> branches aren't linked to courses, so the card can't say which campus teaches what.</li>
+      <li>The Google Maps key isn't used by this feature. It appeared in our chat earlier; consider rotating it.</li>
+    </ul>
+  </section>
+
+  <section>
+    <header><span class="n">06</span><h2>How we'll check it</h2></header>
+    <ul>
+      <li>Pure tests: header parsing from env names, the domestic rule, state → country matching (case and punctuation), the "about applying" word check, once per chat.</li>
+      <li>Backend and frontend typecheck and lint; migrations imported with a fake database.</li>
+      <li>You run the migrations, set the env header names, and turn on Cloudflare's location headers. Then a chat from inside the country gets the card, and one via a VPN abroad doesn't.</li>
+      <li>Locally, without Cloudflare, send the headers yourself (<code>curl -H "cf-ipcountry: AU" …</code>) to test.</li>
+    </ul>
+  </section>
+</main>

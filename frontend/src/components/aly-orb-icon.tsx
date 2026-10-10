@@ -17,7 +17,10 @@ import { cn } from "@/lib/utils";
  */
 // ponytail: a plain `<img>`, not next/image — the optimizer has nothing to do with an SVG, and the animation
 // lives in a `<style>` inside the file, which only survives when the browser loads the SVG itself.
-export function AlyOrbIcon({ className }: Readonly<{ className?: string }>) {
+//
+// `color` recolours the orb to a widget's brand colour through the /aly-orb route; omitted, it is azure.
+export function AlyOrbIcon({ className, color }: Readonly<{ className?: string; color?: string | null }>) {
+  const hex = /^#?([0-9a-f]{6})$/i.exec(color?.trim() ?? "")?.[1];
   // eslint-disable-next-line @next/next/no-img-element -- animated SVG, next/image would only add a hop
-  return <img src={ALY_ORB} alt="" aria-hidden className={cn("shrink-0 translate-y-[3.1%] scale-[1.75]", className)} />;
+  return <img src={hex ? `/aly-orb?c=${hex}` : ALY_ORB} alt="" aria-hidden className={cn("shrink-0 translate-y-[3.1%] scale-[1.75]", className)} />;
 }

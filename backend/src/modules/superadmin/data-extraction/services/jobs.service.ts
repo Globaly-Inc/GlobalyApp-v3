@@ -16,6 +16,7 @@ import * as coursesRepo from "../repositories/courses.repository.js";
 import * as reviewRepo from "../repositories/review.repository.js";
 import * as stagedRepo from "../repositories/staged.repository.js";
 import * as visaRepo from "../repositories/visa-services.repository.js";
+import { resumeExtraction } from "./queue.service.js";
 import type { CreateJobInput, FailJobInput, PatchJobContextInput } from "../schemas/jobs.schema.js";
 
 const logger = createChildLogger("extraction-jobs-service");
@@ -105,6 +106,29 @@ export async function getJob(id: string) {
 const PROGRESS_STAGE_KEYS = ["mapping", "intelligence", "scraping", "extracting", "verifying"];
 const PROGRESS_FINISHED_STATUSES = ["done", "approved", "verified", "exported"];
 
+/**
+ * The three stages the portal shows, over the four pipeline_progress keys the workers really
+ * maintain. course_discovery is set done in the same write as site_mapping, so both are "Crawling".
+ * Those four hold plain strings; other writers put objects under their own keys, so read either.
+ */
+const SELF_SERVICE_STAGES = {
+  crawling: ["site_mapping", "course_discovery"],
+  organising: ["data_extraction"],
+  flagging: ["verification"],
+} as const;
+
+type StageState = "waiting" | "processing" | "done";
+
+export function stageState(progress: Record<string, unknown> | null, keys: readonly string[]): StageState {
+  const states = keys.map((k) => {
+    const raw = progress?.[k];
+    const value = typeof raw === "string" ? raw : (raw as { status?: string } | null | undefined)?.status;
+    return value === "done" || value === "processing" ? value : "waiting";
+  });
+  if (states.every((s) => s === "done")) return "done";
+  return states.some((s) => s !== "waiting") ? "processing" : "waiting";
+}
+
 function computeProgressPct(job: {
   status: string;
   pipeline_progress: Record<string, { status: string; total?: number; done?: number }> | null;
@@ -141,7 +165,20 @@ export async function getSelfServiceStatus(jobId: string) {
   const job = await repo.findJobById(jobId);
   if (!job) return null;
   const counts = await getTabCounts(jobId);
-  return { status: job.status as string, progress_pct: computeProgressPct(job), counts };
+  // Per-stage state as well as the one overall figure: the portal names the stage that is running.
+  const finished = PROGRESS_FINISHED_STATUSES.includes(job.status) || job.status === "review";
+  const progress = job.pipeline_progress as Record<string, unknown> | null;
+  const stages = Object.fromEntries(
+    Object.entries(SELF_SERVICE_STAGES).map(([name, keys]) => [name, finished ? "done" : stageState(progress, keys)]),
+  ) as Record<keyof typeof SELF_SERVICE_STAGES, StageState>;
+  return {
+    status: job.status as string,
+    progress_pct: computeProgressPct(job),
+    counts,
+    stages,
+    pages_found: job.total_pages_found ?? 0,
+    started_at: job.created_at ? new Date(job.created_at).toISOString() : null,
+  };
 }
 
 export async function getTabCounts(jobId: string) {
@@ -218,7 +255,7 @@ async function validateDegreeLevelCodes(codes: string[], serviceCategoryId?: num
   return kept;
 }
 
-export async function createJob(input: CreateJobInput, adminId: number) {
+export async function createJob(input: CreateJobInput, adminId: number, opts: { ignoreJobId?: string } = {}) {
   const host = repo.normaliseHost(input.institution_url);
   const degree_level_codes = input.degree_level_codes?.length
     ? await validateDegreeLevelCodes(input.degree_level_codes, input.service_category_id)
@@ -227,7 +264,7 @@ export async function createJob(input: CreateJobInput, adminId: number) {
   const row = await masterKnex.transaction(async (trx) => {
     if (host) await repo.lockInstitutionHost(host, trx);
 
-    const existing = await repo.findJobByInstitutionHost(input.institution_url, trx);
+    const existing = await repo.findJobByInstitutionHost(input.institution_url, trx, opts.ignoreJobId);
     if (existing) throw conflictFor(existing);
 
     // The signed-in admin owns the job — the list shows them as the extractor.
@@ -275,20 +312,13 @@ export function pauseJob(id: string, adminId: number) {
   return setJobStatus(id, "paused", adminId, "JOB_PAUSE");
 }
 
-export async function resumeJob(id: string, adminId: number) {
-  const result = await setJobStatus(id, "extracting", adminId, "JOB_RESUME", {
-    error_message: null,
-    processing_heartbeat_at: null,
-  });
-
-  // Re-dispatch so the pipeline worker picks it back up
-  try {
-    await queueService.publish(EXTRACTION_QUEUES.JOBS, { jobId: id, resumed: true });
-  } catch {
-    logger.warn("Queue unavailable on resume, worker will poll", { jobId: id });
-  }
-
-  return result;
+// Resume picks up the pages that were found but never scraped — it must NOT behave like a
+// fresh job (that's Re-run's job now). Delegates to resumeExtraction (queue.service.ts), which
+// re-dispatches this job's pending/failed/paused queue items via the "courses" step instead of
+// republishing to the JOBS queue, which the one-step-at-a-time job worker treats as brand new
+// and restarts from site_map — that was the actual bug behind "resume re-extracts everything".
+export function resumeJob(id: string, adminId: number) {
+  return resumeExtraction(id, adminId);
 }
 
 export function declineJob(id: string, adminId: number) {

@@ -9,8 +9,26 @@ import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { writeInstitutionOverview, upsertCampus, writeJobEvent } from "./staging-writer.js";
 import { coerceLabel, isDeactivated, pickActiveContact, mapCountry } from "./agentcis-mappers.js";
 import { stageProduct, newStagingCounters } from "./agentcis-product-staging.js";
+import { findCategoryIdBySlug } from "../repositories/promote.repository.js";
 
 const logger = createChildLogger("agentcis-staging");
+
+
+// Only a FOUND id is cached — a null result (category not seeded yet) must not be, or the worker
+// would keep writing uncategorised jobs forever after the category is later added, until restart.
+let institutionsCategoryIdPromise: Promise<number | null> | null = null;
+export async function getInstitutionsCategoryId(): Promise<number | null> {
+  institutionsCategoryIdPromise ??= findCategoryIdBySlug("institutions");
+  let id: number | null;
+  try {
+    id = await institutionsCategoryIdPromise;
+  } catch (err) {
+    institutionsCategoryIdPromise = null;
+    throw err;
+  }
+  if (id === null) institutionsCategoryIdPromise = null;
+  return id;
+}
 
 // ── Progress tracking ──
 //
@@ -47,6 +65,7 @@ export async function stageAgentcisInstitution(
       institution_url: website,
       status: "processing",
       source_type: "agentcis",
+      business_category_id: await getInstitutionsCategoryId(),
       aggregator_name: "AgentCIS",
       pipeline_progress: JSON.stringify({ phase: "institution", current: 0, total: 0, agentcis_id: institutionId }),
       processing_heartbeat_at: masterKnex.fn.now(),

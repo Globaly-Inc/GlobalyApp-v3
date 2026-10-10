@@ -114,6 +114,12 @@ export async function businessRoutes(app: FastifyInstance) {
     return reply.send(result);
   });
 
+  // The welcome splash has played. No body — the only thing to record is that it happened.
+  app.post("/me/onboarding/welcome-seen", { preHandler: requireBusinessContext }, async (req, reply) => {
+    const result = await service.markOnboardingWelcomeSeen(req.auth.orgId!);
+    return reply.send(result);
+  });
+
   app.get("/me/widget-analytics", { preHandler: requireBusinessContext }, async (req, reply) => {
     const result = await service.getMyWidgetAnalytics(req.auth.orgId!);
     return reply.send(result);

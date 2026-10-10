@@ -121,6 +121,10 @@ for (const [label, page, want] of [
   ["blocked wins over a thin body", { blocked: true, markdown: "" }, "blocked"],
   ["under 50 chars is empty", { markdown: "Loading…" }, "empty"],
   ["a readable page is live", { markdown: "x".repeat(50) }, null],
+  ["our scraper down is not the page dead", { blocked: true, markdown: "", error: "Insufficient credits to perform this request." }, "scraper_down"],
+  ["an unreachable Scrapling with no fallback", { markdown: "", error: "No scraper configured (set CRAWL4AI_BASE_URL or FIRECRAWL_API_KEY)" }, "scraper_down"],
+  ["the site's own wall is still blocked", { blocked: true, markdown: "", error: "stealthy_fetch: challenge page" }, "blocked"],
+  ["a real 404 stays not_found whatever the fallback said", { notFound: true, markdown: "", error: "Insufficient credits" }, "not_found"],
 ] as const) {
   const got = deadReasonOf(page);
   if (got !== want) fail(`deadReasonOf ${label}: expected ${want}, got ${got}`);

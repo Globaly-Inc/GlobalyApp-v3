@@ -6,5 +6,5 @@ export const embedApi = createApi({ mock: embedMockApi, real: embedRealApi });
 export type {
   EmbedChatEvent, EmbedContactPrompt, EmbedEndPrompt, EmbedPublicConfig, EmbedStoredMessage,
   EmbedThread, GuestContactRequest, GuestConversationEndRequest, GuestConversationEndResponse,
-  GuestMessageRequest,
+  GuestMessageRequest, GuestRatingRequest, EmbedFile,
 } from "./types";

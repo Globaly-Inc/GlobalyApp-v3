@@ -12,47 +12,63 @@ import type { WorkExperience, WorkExperienceInput } from "../apis/types";
 import { useValidatedForm } from "./validation";
 import { FieldError } from "./field-error";
 
-const schema: z.ZodType<WorkExperienceInput> = z
-  .object({
-    job_title: z.string().min(1, "Required"),
-    organization_name: z.string(),
-    is_current: z.boolean(),
-    start_date: z.string().min(1, "Required"),
-    end_date: z.string(),
-    sort_order: z.number(),
-  })
-  .refine((v) => v.is_current || v.end_date !== "", { message: "Required", path: ["end_date"] });
+const base = z.object({
+  job_title: z.string().min(1, "Required"),
+  organization_name: z.string(),
+  is_current: z.boolean(),
+  start_date: z.string().min(1, "Required"),
+  end_date: z.string(),
+  sort_order: z.number(),
+});
 
-function toInput(item: WorkExperience | null): WorkExperienceInput {
+const schema: z.ZodType<WorkExperienceInput> = base.refine((v) => v.is_current || v.end_date !== "", {
+  message: "Required",
+  path: ["end_date"],
+});
+
+const partialSchema: z.ZodType<WorkExperienceInput> = base.extend({ start_date: z.string() });
+
+function toInput(item: WorkExperience | null, partial = false): WorkExperienceInput {
   return {
     job_title: item?.job_title ?? "",
     organization_name: item?.organization_name ?? "",
     is_current: item?.is_current ?? false,
-    start_date: item?.start_date ?? new Date().toISOString().slice(0, 10),
+    start_date: item?.start_date ?? (partial ? "" : new Date().toISOString().slice(0, 10)),
     end_date: item?.end_date ?? "",
     sort_order: item?.sort_order ?? 0,
   };
 }
 
+/**
+ * `partial` relaxes what a record must carry (see QualificationDialog), for callers holding records someone else stated —
+ * the AI widget's visitor page, where a chat gives "a bachelors in computing" with no institution
+ * or dates. There the owner must be able to correct what IS known without inventing the rest,
+ * and a missing start date must stay missing rather than default to today.
+ */
 export function WorkExperienceDialog({
   open,
   onOpenChange,
   item,
   onSave,
   saving,
+  partial = false,
 }: Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
   item: WorkExperience | null;
   onSave: (data: WorkExperienceInput) => Promise<boolean>;
   saving: boolean;
+  partial?: boolean;
 }>) {
-  const { form, setForm, errors, reset, validate } = useValidatedForm(schema, () => toInput(item));
+  const { form, setForm, errors, reset, validate } = useValidatedForm(
+    partial ? partialSchema : schema,
+    () => toInput(item, partial),
+  );
 
   useEffect(() => {
-    if (open) reset(toInput(item));
+    if (open) reset(toInput(item, partial));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, item]);
+  }, [open, item, partial]);
 
   const handleSubmit = async () => {
     const data = validate();
@@ -86,7 +102,7 @@ export function WorkExperienceDialog({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-2">
-              <Label>Start Date *</Label>
+              <Label>Start Date{partial ? "" : " *"}</Label>
               <DatePicker
                 value={form.start_date ?? ""}
                 onChange={(v) => setForm((f) => ({ ...f, start_date: v }))}
@@ -98,7 +114,7 @@ export function WorkExperienceDialog({
               <FieldError message={errors.start_date} />
             </div>
             <div className="flex flex-col gap-2">
-              <Label>End Date{form.is_current ? "" : " *"}</Label>
+              <Label>End Date{form.is_current || partial ? "" : " *"}</Label>
               <DatePicker
                 value={form.end_date ?? ""}
                 onChange={(v) => setForm((f) => ({ ...f, end_date: v }))}

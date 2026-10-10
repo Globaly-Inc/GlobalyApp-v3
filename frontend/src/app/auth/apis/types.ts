@@ -9,6 +9,8 @@ export type AuthMeBusiness = {
   owner_id: number;
   role: string;
   is_owner: boolean;
+  /** Set on a branch created from another business's Branches tab. */
+  parent_business_id?: number | null;
 };
 
 export type AuthMeInstitution = {
@@ -19,6 +21,8 @@ export type AuthMeInstitution = {
   logo_url: string | null;
   role: string;
   is_owner: boolean;
+  /** Set on a branch created from another institution's Branches tab. */
+  parent_institution_id?: number | null;
 };
 
 export type AuthUser = {

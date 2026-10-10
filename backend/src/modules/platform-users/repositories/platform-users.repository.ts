@@ -3,6 +3,7 @@
 
 import type { Knex } from "knex";
 import { masterKnex } from "../../../core/db/master-pool.js";
+import { withCountryCurrency } from "../../../shared/country-currency.js";
 
 export interface AccountCategory {
   type: "personal" | "business" | "institution";
@@ -67,6 +68,9 @@ export async function insert(data: {
   const { meta, ...rest } = data;
   const [row] = await db<PlatformUserRow>("platform_users")
     .insert({
+      // Every user has a personal account — an invited org member or an org owner too — so the
+      // personal portal and profile always work for them (existing rows: scripts/backfill-personal-accounts.ts).
+      is_personal_account: true,
       ...rest,
       // Only set when provided, so the column default ('{}') still applies otherwise. pg serialises a
       // plain object into jsonb, so no manual JSON.stringify.
@@ -99,12 +103,25 @@ export async function addAccountCategory(userId: number, category: AccountCatego
     .update({ account_categories: JSON.stringify(updated), updated_at: masterKnex.fn.now() });
 }
 
-// ── Business Index (master DB) ──
+export async function removeAccountCategory(userId: number, type: AccountCategory["type"]) {
+  const user = await findByIdFull(userId);
+  if (!user) return;
+  const existing: AccountCategory[] = Array.isArray(user.account_categories) ? user.account_categories : [];
+  const updated = existing.filter((c) => c.type !== type);
+  if (updated.length === existing.length) return;
+  await masterKnex("platform_users")
+    .where({ id: userId })
+    .update({ account_categories: JSON.stringify(updated), updated_at: masterKnex.fn.now() });
+}
 
-/** True if this user currently has a suspended (not removed) membership on at least one
- * business — distinct from "has zero accessible businesses", which also happens for reasons
- * that aren't suspension at all (removed from the business, the business itself deactivated,
- * or they were simply never a member) and must never block login. */
+export async function hasAnyOrgMembership(platformUserId: number, kind: "business" | "institution") {
+  const row = await masterKnex(kind === "institution" ? "user_institution_index" : "user_business_index")
+    .where({ platform_user_id: platformUserId })
+    .whereNull("deleted_at")
+    .first("platform_user_id");
+  return Boolean(row);
+}
+
 export async function hasSuspendedBusinessMembership(platformUserId: number): Promise<boolean> {
   const row = await masterKnex("user_business_index")
     .where({ platform_user_id: platformUserId, account_status: 0 })
@@ -129,6 +146,7 @@ export async function listUserBusinesses(platformUserId: number) {
       "businesses.business_name",
       "businesses.subdomain",
       "businesses.logo_url",
+      "businesses.parent_business_id",
       "user_business_index.role",
       "user_business_index.is_owner",
     );
@@ -364,10 +382,13 @@ export async function listUserInstitutions(platformUserId: number) {
       "institutions.institution_name",
       "institutions.subdomain",
       "institutions.logo_url",
+      // Lets the org switcher nest a branch under its parent (see createInstitutionBranch).
+      "institutions.parent_institution_id",
       "user_institution_index.role",
       "user_institution_index.is_owner",
     );
 }
+
 
 /** See insertUserBusinessIndex for why the merge clears deleted_at. */
 export async function insertUserInstitutionIndex(data: {
@@ -465,9 +486,11 @@ export async function clearInstitutionClaim(id: number) {
 }
 
 export async function updateInstitution(id: number, data: Record<string, unknown>) {
+  // jsonb array: pg would otherwise send a JS array as a Postgres array literal.
+  const patch = Array.isArray(data.other_social_links) ? { ...data, other_social_links: JSON.stringify(data.other_social_links) } : data;
   const [row] = await masterKnex("institutions")
     .where({ id })
-    .update({ ...data, updated_at: masterKnex.fn.now() })
+    .update({ ...withCountryCurrency(patch), updated_at: masterKnex.fn.now() })
     .returning("*");
   return row;
 }

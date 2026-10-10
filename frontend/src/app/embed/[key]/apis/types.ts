@@ -1,6 +1,6 @@
 /** Wire types for the public embed widget API. */
 
-import type { CourseCard } from "@/app/ai/apis/types";
+import type { CourseCard, ResponseBlock } from "@/app/ai/apis/types";
 import type { EmbedOwnerKind } from "../const";
 
 /** Public branding subset of an embed config — all the widget ever sees. */
@@ -8,6 +8,9 @@ export type EmbedPublicConfig = {
   display_name: string | null;
   logo_url: string | null;
   brand_color: string | null;
+  /** Owner-written panel copy; both optional. */
+  greeting: string | null;
+  subtitle: string | null;
   /** Drives the starter questions — an institution's widget is scoped to its own catalog. */
   owner_kind: EmbedOwnerKind;
 };
@@ -53,6 +56,10 @@ export type EmbedEndPrompt = {
   body: string;
   covered: string | null;
   email: string | null;
+  /** An office the visitor could visit, when their approximate location is specific enough for
+   *  one to be meaningful. Absent far more often than present. `place` is a city, never a street
+   *  address, and there is no phone number — a widget hands the visitor no contact route. */
+  branch?: { name: string; place: string } | null;
 };
 
 export type EmbedChatEvent =
@@ -60,8 +67,14 @@ export type EmbedChatEvent =
   | { type: "trace"; step: string }
   | { type: "cards"; cards: CourseCard[] }
   | { type: "chips"; chips: string[] }
+  /** Comparisons, timelines, quick replies — the backend has always sent these. */
+  | { type: "blocks"; blocks: ResponseBlock[] }
   | { type: "contact-prompt"; prompt: EmbedContactPrompt }
   | { type: "end-prompt"; prompt: EmbedEndPrompt }
+  /** A staff member is handling the chat; the message was delivered to them, no AI reply. */
+  | { type: "handoff"; agentName: string | null }
+  /** The visitor asked for a person (or is still waiting for one); the AI is paused. */
+  | { type: "handover" }
   | { type: "done" };
 
 export type GuestContactRequest = {
@@ -84,23 +97,44 @@ export type GuestConversationEndResponse = {
   summary_queued?: boolean;
 };
 
+/** A file a staff member sent. The URL is signed per read. */
+export type EmbedFile = { original_name: string; mime_type: string; url: string };
+
 /** One stored turn of the visitor's thread, as /guest/session returns it. */
 export type EmbedStoredMessage = {
   id: number;
-  role: "user" | "assistant";
+  role: "user" | "assistant" | "agent";
   content: string;
   cards: WireCourseCard[];
   chips: string[];
+  /** Optional: a thread stored before the widget rendered blocks has none. */
+  blocks?: ResponseBlock[] | null;
+  sender_name?: string | null;
+  attachments?: EmbedFile[] | string[];
   created_at: string;
 };
 
 export type EmbedThread = {
   session_id: number | null;
   messages: EmbedStoredMessage[];
+  /** Set while a staff member is handling the chat. */
+  agent_name?: string | null;
+  /** The visitor asked for a person and nobody has joined yet. */
+  waiting?: boolean;
+};
+
+export type GuestRatingRequest = {
+  embed_key: string;
+  fingerprint: string;
+  /** 1 (😞) to 5 (😍). */
+  rating: number;
+  comment?: string;
 };
 
 export type GuestMessageRequest = {
   content: string;
   fingerprint: string;
   embed_key: string;
+  /** No new message: have the AI answer what was asked while a person had the chat. */
+  resume?: boolean;
 };

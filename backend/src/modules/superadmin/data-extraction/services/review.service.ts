@@ -82,7 +82,7 @@ export async function patchCampus(id: string, input: PatchCampusInput, adminId: 
   const found = await repo.updateCampus(id, input, adminId);
   if (!found) throw new NotFoundError("Campus not found");
   await logAudit(adminId, "CAMPUS_PATCH", { entityType: "extraction_campuses", entityId: id });
-  await syncBranchFromCampus(id).catch((err) =>
+  await syncBranchFromCampus(id, input as Record<string, unknown>).catch((err) =>
     logger.warn("Tenant branch sync failed after campus patch", { id, err: err instanceof Error ? err.message : String(err) }),
   );
   return { updated: true };

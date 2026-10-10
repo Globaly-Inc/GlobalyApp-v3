@@ -134,6 +134,13 @@ export async function catalogRoutes(app: FastifyInstance) {
     return reply.send(row);
   });
 
+  app.post("/issuing-organizations/:id/review", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    const { decision } = ReviewInputSchema.parse(req.body);
+    const row = await service.reviewIssuingOrganization(id, decision, Number(req.auth.sub));
+    return reply.send(row);
+  });
+
   // ── Accreditations ──
 
   app.get("/accreditations", async (req, reply) => {

@@ -5,6 +5,7 @@
 // database/seeders/globalyapp/*_seeder.ts), so a prompt can never offer a value a course cannot
 // actually be linked to, and editing a seed file changes the prompt with no code change.
 import type { LookupLists } from "./lookup-catalog.js";
+import { SITE_URL_CATEGORY_DESCRIPTIONS, type SiteUrlCategory } from "./url-categories.js";
 
 // Every fee prompt carries this. Two kinds are in scope and nothing else: tuition and the
 // application fee. The model reliably reports the headline tuition figure and drops the
@@ -20,11 +21,18 @@ export const SITE_ANALYSIS_SYSTEM = `You are a data extraction specialist for ed
 You analyze institution websites and extract structured information.
 Always respond in valid JSON. Never include markdown or explanation outside the JSON.`;
 
-export function siteAnalysisPrompt(url: string, pageText: string, guidanceNotes?: string | null) {
+/** Homepage photos the model may pick a cover and media from — url + alt, already filtered by
+ * gallery-images.ts isPublicCampusPhoto. Empty → no image section, and the prompt is unchanged. */
+export function siteAnalysisPrompt(url: string, pageText: string, guidanceNotes?: string | null, images: { url: string; alt: string }[] = []) {
   return `Analyze this educational institution's homepage and extract overview information.
 
 URL: ${url}
-${guidanceNotes ? `\nAdmin notes: ${guidanceNotes}` : ""}
+${guidanceNotes ? `\nAdmin notes: ${guidanceNotes}` : ""}${images.length ? `
+
+Image candidates (choose cover_url and media_images ONLY from these exact URLs — never invent or edit one):
+${images.map((i) => `- ${i.url}${i.alt ? ` — alt: "${i.alt}"` : ""}`).join("\n")}
+
+Classify each candidate you use by what it shows: campus (grounds, aerial, outdoor views), building (exterior or interior architecture), facility (library, lab, studio, sports, accommodation), group_activity (students or people in a class, event or campus life where no single person is the subject), portrait (one identifiable person — staff, faculty, student or alumni profile, headshot), logo (a logo, crest, badge or wordmark), advert (a banner promoting a third party, ranking badge, app-store button), other. Only campus, building, facility and group_activity are ever shown publicly.` : ""}
 
 Page content:
 ${pageText}
@@ -43,7 +51,9 @@ Extract this JSON structure:
     "zip_code": "postal code or null",
     "ownership_type": "\"public\" or \"private\" — ONLY if explicitly stated (e.g. \"a public research university\", \"private college\"); null if the page doesn't say",
     "description": "brief description of the institution",
-    "logo_url": "logo image URL or null",
+    "logo_url": "logo image URL or null",${images.length ? `
+    "cover_url": "the single image candidate that best represents the institution (a wide campus or building photo), or null",
+    "media_images": [{ "url": "an image candidate URL", "kind": "campus|building|facility|group_activity|portrait|logo|advert|other" }],` : ""}
     "facebook_url": "a facebook.com link, or null — never put a link to a different platform here just because it was near a Facebook icon",
     "instagram_url": "an instagram.com link, or null",
     "twitter_url": "a twitter.com or x.com link, or null — do NOT put tiktok.com, threads.net or any other domain here",
@@ -93,19 +103,7 @@ export function urlCategoryPrompt(lines: string[], categories: readonly string[]
   return `Categorise each of these URLs from an educational institution (or visa/migration provider) website. Where shown, the line under a URL is the first words of the page itself.
 
 Categories (use exactly these keys):
-- overview: the homepage or an institution-wide overview / "why us" page
-- about_us: history, mission, governance, leadership, who we are
-- contact_us: contact details, enquiry forms, how to reach the institution
-- course: a specific course/programme/degree/service, or a listing of them
-- branches: campuses, locations, offices, centres
-- agents: education agents, representatives, partner directories, the team
-- fees: tuition, fees, scholarships, costs, payment
-- study_units: units, modules, subjects, curriculum outlines
-- study_options: study modes — online, part-time, full-time, distance, delivery
-- intake: intakes, key dates, academic calendar, application deadlines
-- eligibility: entry requirements, admission criteria, English language requirements (NOT how-to-apply / application-process pages — those are other)
-- accreditations: accreditation, registration (CRICOS/TEQSA/MARA etc.), rankings, memberships
-- other: news, events, blog, staff, research, careers, legal, how to apply / application process, anything that is none of the above
+${categories.map((c) => `- ${c}: ${SITE_URL_CATEGORY_DESCRIPTIONS[c as SiteUrlCategory]}`).join("\n")}
 
 URLs (${lines.length}):
 ${lines.join("\n")}
@@ -132,6 +130,18 @@ ${categories.map((c) => `    "${c}": []`).join(",\n")}
 export const ELIGIBILITY_SCOPE_RULE = `- ELIGIBILITY IS ADMISSION TO THE COURSE, decided by section MEANING, never by the words "eligible"/"eligibility"/"requirement". A requirement row states one of exactly three things: (1) PRIOR STUDY — the qualification, degree level, subject or grade/GPA/percentage/ATAR/UCAS points the applicant must already hold, including subject prerequisites; (2) LANGUAGE — the English (or other language) proficiency the course requires, with the tests it accepts; (3) ADMISSION TESTS — GRE/GMAT/SAT/ACT and similar, only where the course itself requires or considers them. Nothing else is a requirement row.
 - NEVER record as eligibility: a SCHOLARSHIP, bursary, grant, fee waiver or funding scheme and its criteria, amounts or deadlines (a "Scholarship Eligibility" heading is about the scholarship, not the course — even when it states a GPA); application PAPERWORK and process (personal statement, statement of purpose, CV/résumé, references or referee reports, transcripts, document checklists, interviews, auditions, portfolios, application fees, forms, deadlines, "how to apply"); visa, immigration, accommodation or living-cost information; "inherent requirements", fitness-to-practise, police/working-with-children checks, immunisation or first-aid; age, nationality, residency or citizenship unless the page states it as a condition of admission to THIS course; work experience unless the course states it as an admission condition; and general marketing. Leave all of that out — if a page offers only such content, return an empty requirements array rather than filling it with what the page happens to call "eligibility".
 - Two lists on one page: "Bachelor's degree in a relevant field, GPA 3.0, IELTS 6.5" under Entry Requirements is eligibility; "minimum GPA 3.5, international students only, worth £5,000, apply by 30 June" under Scholarships is NOT — the GPA there is the scholarship's bar, not the course's.`;
+
+const SCHOLARSHIP_ITEM_SCHEMA = `        {
+          "name": "the scholarship/bursary/grant's own name as the page states it",
+          "applicable_to": "domestic|international|both",
+          "coverage_type": "full_tuition|partial_tuition|stipend|living_allowance|other|null",
+          "amount": "the numeric value or percentage stated (e.g. 5000 for '£5,000', 25 for '25% fee reduction'), else null",
+          "currency": "ISO 4217 code when a money amount is stated, else null",
+          "deadline": "YYYY-MM-DD when the page states a day, YYYY-MM when only a month — never invent a day. null if unstated",
+          "application_url": "link to the scholarship's own page or application if this page carries one, else null",
+          "description": "the scholarship's own criteria and terms in the page's words — who qualifies (GPA, nationality, level, new students), what it covers, renewal conditions"
+        }
+`;
 
 export const COURSE_EXTRACTION_SYSTEM = `You are a data extraction specialist. Extract structured course data from educational institution web pages.
 Always respond in valid JSON. Extract everything you can find — fees, intakes, campuses, entry requirements.
@@ -250,17 +260,7 @@ Extract this JSON:
         }
       ],
       "scholarships": [
-        {
-          "name": "the scholarship/bursary/grant's own name as the page states it",
-          "applicable_to": "domestic|international|both",
-          "coverage_type": "full_tuition|partial_tuition|stipend|living_allowance|other|null",
-          "amount": "the numeric value or percentage stated (e.g. 5000 for '£5,000', 25 for '25% fee reduction'), else null",
-          "currency": "ISO 4217 code when a money amount is stated, else null",
-          "deadline": "YYYY-MM-DD when the page states a day, YYYY-MM when only a month — never invent a day. null if unstated",
-          "application_url": "link to the scholarship's own page or application if this page carries one, else null",
-          "description": "the scholarship's own criteria and terms in the page's words — who qualifies (GPA, nationality, level, new students), what it covers, renewal conditions"
-        }
-      ],
+${SCHOLARSHIP_ITEM_SCHEMA}      ],
       "campus_names": ["campus names where this course is offered"],
       "study_units": [
         {
@@ -953,4 +953,30 @@ Rules:
 - "not_found": the field genuinely does not appear anywhere on the page (fees behind external links count as not_found, not mismatch)
 - Search the ENTIRE page content, not just headers — data may be in tables, sidebars, or accordion sections
 - For null extracted values, mark as "match" if the page also doesn't show this info`;
+}
+
+export const SCHOLARSHIPS_PAGE_SYSTEM = `You are a strict data extraction assistant for an education platform.
+Return ONLY valid JSON. Copy names, amounts and conditions from the page; never invent a scholarship, figure or date.`;
+
+/** A scholarship / bursary / funding page, which the course prompt deliberately refuses to stage as
+ *  courses — so until this, every scholarship it listed was dropped. */
+export function scholarshipsPagePrompt(url: string, pageText: string) {
+  return `List every scholarship, bursary, grant or fee waiver this institution page offers.
+
+URL: ${url}
+
+Rules:
+- One entry per named award. A page describing ONE award gives one entry.
+- "applicable_to" is who may hold it: domestic, international or both.
+- Leave out loans, general "financial aid" advice with no named award, and awards from other organisations the page only links to.
+- Return {"scholarships": []} when the page offers none.
+
+Page content:
+${pageText}
+
+Extract this JSON:
+{
+  "scholarships": [
+${SCHOLARSHIP_ITEM_SCHEMA}  ]
+}`;
 }

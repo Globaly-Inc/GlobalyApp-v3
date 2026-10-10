@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { ArrowLeft, Loader2 } from "lucide-react";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { useAuthState } from "@/app/auth/store/auth-slice";
+import { SHOW_PERSONAL_PORTAL } from "../const";
 import { geoApi, type Country } from "../../geo/apis";
 import { personalApi } from "../apis";
 import {
@@ -57,12 +58,7 @@ export function ProfileView() {
   const { profile, qualifications, languageTests, academicTests, workExperiences, status, error } = useAppSelector((state) => state.profile);
   const [countries, setCountries] = useState<Country[]>([]);
 
-  const { user: authUser, initializing } = useAuthState();
-
-  useEffect(() => {
-    if (initializing) return;
-    if (!authUser?.is_personal_account) router.replace("/business/profile");
-  }, [initializing, authUser?.is_personal_account, router]);
+  const { initializing } = useAuthState();
 
   const [personalOpen, setPersonalOpen] = useState(false);
   const [contactOpen, setContactOpen] = useState(false);
@@ -104,7 +100,7 @@ export function ProfileView() {
     );
   }
 
-  if (!profile || initializing || !authUser?.is_personal_account) {
+  if (!profile || initializing) {
     return (
       <div className="flex min-h-[50vh] items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
@@ -197,6 +193,18 @@ export function ProfileView() {
           <ArrowLeft className="h-4 w-4" />
           Back to Profile Editing
         </Link>
+      )}
+      {/* With the Personal Portal's own nav hidden (short release), this is the only way back to
+          wherever the profile was opened from — the business portal, admin, or the site. */}
+      {!preview && !SHOW_PERSONAL_PORTAL && (
+        <button
+          type="button"
+          onClick={() => (window.history.length > 1 ? router.back() : router.push("/"))}
+          className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground hover:underline cursor-pointer"
+        >
+          <ArrowLeft className="h-4 w-4" />
+          Back
+        </button>
       )}
       <ProfileHeroCard
         profile={profile}

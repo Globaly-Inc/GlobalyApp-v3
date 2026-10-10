@@ -47,6 +47,7 @@ function classify(side: Side, other: Side, c: Case) {
       coursesOnPage: sameUrl || pc.heading_path?.length ? 2 : 1,
       jobUnitCodes: new Set((c.job_unit_codes ?? []).map((s) => s.toUpperCase())),
       jobUnitNames: new Set<string>(),
+      sourceUrl: side.source_url ?? pc.url ?? null,
     },
   );
 }
@@ -98,6 +99,28 @@ for (const c of cases) {
   }
   byGroup.set(c.group, g);
 }
+// Direct unit check (not fixture-driven — the fixture format is pairs-only): tier 2c must surface
+// EVERY qualifying candidate, not just the first. A bare subject mention can legitimately sit beside
+// an undergrad AND a grad programme for the same subject, and both need their own review flag.
+{
+  const undergrad = parseCourseName("Aeronautics and Astronautics (Undergraduate)");
+  const grad = parseCourseName("Aeronautics and Astronautics (Graduate)");
+  const bare = parseCourseName("Aeronautics and Astronautics");
+  const toRow = (id: string, p: ReturnType<typeof parseCourseName>): CandidateRow => ({
+    id, job_id: "job", institution_key: null, name_key: p.key, qualifier_norm: p.qualifier,
+    subject_norm: p.subject, specialisation_norm: p.specialisation, variant_flags: p.flags,
+    course_code: p.code, canonical_url: null,
+  });
+  const candidates = [toRow("undergrad", undergrad), toRow("grad", grad)];
+  const r = resolveCourse({ jobId: "job", parsed: bare, canonicalUrl: null }, candidates);
+  const ids = (r.matches ?? (r.match ? [r.match] : [])).map((m) => m.id).sort().join(",");
+  const ok = r.outcome === "possible_duplicate" && r.tier === "2c" && ids === "grad,undergrad";
+  if (ok) pass++; else {
+    fail++;
+    console.error(`FAIL tier2c-multi-match: expected outcome=possible_duplicate tier=2c matches=grad,undergrad; got outcome=${r.outcome} tier=${r.tier} matches=${ids}`);
+  }
+}
+
 console.log("\ngroup".padEnd(28), "pass", "fail");
 for (const [g, v] of byGroup) console.log(g.padEnd(27), String(v.pass).padStart(4), String(v.fail).padStart(5));
 console.log(`\n${pass} passed, ${fail} failed, false merges: ${falseMerges}`);

@@ -1,0 +1,1031 @@
+<!doctype html>
+<!-- Institution AI Knowledge Rack — architecture gap analysis and implementation plan.
+     Requirements as supplied 2026-10-01. Status read from the code on 2026-10-01,
+     branch staging (c150c60b). No JS, no deps. Same stylesheet as
+     docs/data-extraction/2026-10-01-globaly-ai-mvp-requirements-status.html. -->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Institution AI Knowledge Rack — gap analysis &amp; plan</title>
+<style>
+  :root {
+    color-scheme: light;
+    --ink: #111827; --muted: #6b7280; --line: #e5e7eb; --bg: #f8fafc; --card: #fff;
+    --done: #047857; --done-bg: #ecfdf5; --done-line: #a7f3d0;
+    --part: #b45309; --part-bg: #fffbeb; --part-line: #fde68a;
+    --miss: #b91c1c; --miss-bg: #fef2f2; --miss-line: #fecaca;
+    --ask: #4338ca; --ask-bg: #eef2ff; --ask-line: #c7d2fe;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink);
+         font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  main { max-width: 1020px; margin: 0 auto; padding: 48px 24px 96px; }
+  h1 { font-size: 32px; line-height: 1.2; margin: 0 0 8px; }
+  h2 { font-size: 21px; margin: 0; }
+  h3 { font-size: 15px; margin: 22px 0 8px; text-transform: uppercase;
+       letter-spacing: .06em; color: var(--muted); }
+  h4 { font-size: 16px; margin: 20px 0 6px; }
+  p { margin: 0 0 12px; }
+  .sub { color: var(--muted); margin-bottom: 32px; }
+  code { font: 13px/1.5 ui-monospace, SFMono-Regular, Menlo, monospace;
+         background: #f1f5f9; border: 1px solid var(--line); border-radius: 4px; padding: 1px 5px; }
+  pre { font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace; background: #0f172a; color: #e2e8f0;
+        border-radius: 10px; padding: 16px 18px; overflow-x: auto; margin: 14px 0; }
+  pre.plain { background: #f8fafc; color: var(--ink); border: 1px solid var(--line); }
+  ul { margin: 0 0 4px; padding-left: 22px; }
+  li { margin-bottom: 6px; }
+  .req { color: var(--muted); }
+
+  .pill { display: inline-block; font-size: 12px; font-weight: 700; letter-spacing: .04em;
+          text-transform: uppercase; padding: 3px 10px; border-radius: 999px; border: 1px solid; white-space: nowrap; }
+  .done { color: var(--done); background: var(--done-bg); border-color: var(--done-line); }
+  .part { color: var(--part); background: var(--part-bg); border-color: var(--part-line); }
+  .miss { color: var(--miss); background: var(--miss-bg); border-color: var(--miss-line); }
+  .ask  { color: var(--ask);  background: var(--ask-bg);  border-color: var(--ask-line); }
+
+  .summary { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+             padding: 4px 22px 18px; margin-bottom: 36px; }
+  table { width: 100%; border-collapse: collapse; font-size: 15px; }
+  th, td { text-align: left; padding: 10px 12px 10px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { font-size: 13px; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+  tbody tr:last-child td { border-bottom: 0; }
+  td code { font-size: 12px; }
+
+  .step { background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+          padding: 22px 24px; margin-bottom: 18px; }
+  .step-head { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin-bottom: 4px; }
+  .num { flex: none; min-width: 30px; height: 30px; padding: 0 6px; border-radius: 15px; background: var(--ink); color: #fff;
+         font-size: 14px; font-weight: 700; display: grid; place-items: center; }
+  .rule { border-top: 1px solid var(--line); margin: 20px 0 0; padding-top: 16px; }
+  .rule:first-of-type { border-top: 0; padding-top: 0; }
+  .rule-head { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
+  .rule-head h4 { margin: 0 0 6px; }
+  .gap { border-left: 3px solid var(--part-line); background: var(--part-bg);
+         padding: 12px 16px; border-radius: 0 8px 8px 0; margin-top: 12px; }
+  .gap.blocking { border-left-color: var(--miss-line); background: var(--miss-bg); }
+  .gap.question { border-left-color: var(--ask-line); background: var(--ask-bg); }
+  .gap.good { border-left-color: var(--done-line); background: var(--done-bg); }
+  .gap strong { display: block; margin-bottom: 4px; }
+  footer { color: var(--muted); font-size: 14px; border-top: 1px solid var(--line); margin-top: 40px; padding-top: 18px; }
+  @media print { body { background: #fff; } .step, .summary { break-inside: avoid; } }
+</style>
+</head>
+<body>
+<main>
+
+  <h1>Institution AI Knowledge Rack — gap analysis &amp; plan</h1>
+  <p class="sub">
+    The institution-level AI knowledge, memory, voice and lead-intelligence requirements of
+    <strong>2026-10-01</strong>, each one read against the code on branch <code>staging</code>
+    (<code>c150c60b</code>). Companion to
+    <em>2026-10-01-globaly-ai-mvp-requirements-status</em> (§C "AI counsellor &amp; knowledge"),
+    which this expands. Design precedent:
+    <em>2026-09-25-institution-counselling-memory-design</em> — most of what is asked for here is
+    already built by it, and this document is largely about what that design deliberately left out.
+  </p>
+
+  <section class="summary">
+    <h3>Headline</h3>
+    <p>
+      <strong>The memory engine is built and it is good.</strong> Tenant-schema isolation, typed
+      memory classes, a two-model candidate gate, contradiction detection, vote-weighted
+      promotion, provenance and a lifecycle sweep all exist and are wired into both chat paths.
+      Nothing in this plan should rebuild any of it.
+    </p>
+    <p>
+      <strong>What is missing sits on either side of it.</strong> On the input side there is no
+      configuration object — no voice/tone profile, no data-collection rules — so an institution
+      cannot shape its counsellor beyond 2 000 characters of free text on one widget. On the
+      output side the learned result is invisible: there is no portal UI, so today nothing an
+      institution's AI learns is ever seen, approved or deprecated by a human. And the whole
+      lead-conversion half of the requirement — journeys, patterns, volunteered contact details —
+      has no store and no detector at all.
+    </p>
+    <table>
+      <thead>
+        <tr><th style="width:52px">§</th><th>Requirement area</th><th style="width:170px">Status</th><th>Headline gap</th></tr>
+      </thead>
+      <tbody>
+        <tr><td>3</td><td>Knowledge Rack &amp; isolation</td><td><span class="pill done">Mostly built</span></td>
+            <td>Isolation needs no work — the tenant schema is the boundary. What is missing is a <em>Rack</em> object — config is scattered over three tables and two hardcoded constant blocks.</td></tr>
+        <tr><td>4</td><td>Voice &amp; tone</td><td><span class="pill part">Incorrect</span></td>
+            <td><code>RESPONSE_PREFERENCE.metadata</code> is stored, validated — and never read. Only its free text reaches the model.</td></tr>
+        <tr><td>5</td><td>Data collection rules</td><td><span class="pill miss">Missing</span></td>
+            <td>Every institution collects the same eight fields, on the same hardcoded cadence. Gender and age are collected by default.</td></tr>
+        <tr><td>6</td><td>Memory classification</td><td><span class="pill part">Partial</span></td>
+            <td>A (user-specific) and E (sensitive) are correctly rejected. B (general knowledge) is rejected <em>too</em> — the fact filter eats it. D (conversation context) is never written for widget visitors.</td></tr>
+        <tr><td>7</td><td>Memory decision pipeline</td><td><span class="pill done">Built</span></td>
+            <td>Recurrence counts exact hashes only, so two phrasings of the same recurring point never reach the promotion threshold.</td></tr>
+        <tr><td>8</td><td>Conversation patterns</td><td><span class="pill miss">Missing</span></td>
+            <td><code>RESPONSE_PATTERN</code> is produced from one transcript by an LLM. Nothing aggregates sequences across conversations.</td></tr>
+        <tr><td>9</td><td>Name/email detection</td><td><span class="pill miss">Form-only</span></td>
+            <td>Contact capture is the card and only the card. A visitor who types their email in chat is never recorded as a lead.</td></tr>
+        <tr><td>10–11</td><td>Conversion journeys</td><td><span class="pill miss">Missing</span></td>
+            <td>Analytics is four counters and a 6-month series — literally the <code>email_captured = true</code> the requirement rules out.</td></tr>
+        <tr><td>13</td><td>Retrieval behaviour</td><td><span class="pill part">Partial</span></td>
+            <td>Institution memory and knowledge are retrieved. <strong>User-specific context is not</strong> — the widget path passes <code>profile: null</code> and discards everything it extracted last turn.</td></tr>
+        <tr><td>14</td><td>Privacy boundaries</td><td><span class="pill done">Strong</span></td>
+            <td>Two residual holes: counsellor corrections are stored verbatim with facts allowed, and visitor profiles have no TTL or erase path.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════════ A -->
+  <section class="step">
+    <div class="step-head"><span class="num">A</span><h2>Current architecture assessment</h2></div>
+
+    <div class="rule">
+      <h4>A.1 — Where an institution's AI context lives today</h4>
+      <pre class="plain">Institution (globalyapp.institutions)
+├─ schema_name ──────────► &lt;tenant schema&gt;
+│                           ├─ institution_ai_memories      ← the memory engine (20260925_001)
+│                           │    + match_institution_ai_memories()
+│                           └─ ai_widget_visitors           ← visitors, leads, extracted profile
+├─ source_job_id ────────► superadmin.extraction_jobs       ← the course catalogue (exactly one)
+├─ (id) ─────────────────► superadmin.ai_knowledge_sources  ← crawled site + uploads, institution_id
+│                           └─ _documents → _chunks(vector) ← match_ai_knowledge_chunks(..., institution_id)
+└─ (id) ─────────────────► globalyapp.ai_embed_configs      ← ONE PER WIDGET, not per institution
+                              display_name, custom_instructions (2 000 ch), greeting, subtitle,
+                              brand_color, logo_url, auto_learn, quota</pre>
+      <p>
+        Four storage locations, three different owners (tenant schema, <code>superadmin</code>,
+        <code>globalyapp</code>), and no row anywhere that represents "this institution's AI".
+      </p>
+    </div>
+
+    <div class="rule">
+      <h4>A.2 — One chat turn, end to end (widget visitor)</h4>
+      <pre class="plain">POST /api/v3/ai-chat/guest/messages  { embed_key, fingerprint, content }
+  │
+  ├─ resolveActiveConfig(embed_key) → buildEmbedContext
+  │     institution widget → { jobIds: [source_job_id], rackInstitutionId: institutions.id }
+  │     business   widget → { jobIds: domain-matched,   rackInstitutionId: NULL }
+  │
+  ├─ visitorService.tenantDbFor(config) → resolveVisitor()      [best-effort, never fails the turn]
+  │
+  ├─ Promise.all
+  │    ├─ rag.searchAll({ jobIds, rackInstitutionId })          courses · visas · owner profile ·
+  │    │                                                        FAQs · guides · site-index fallback
+  │    └─ retrieveMemories({ institutionId, query })            pinned rules + ranked memories
+  │                                                            ⚠ no `situation` passed on this path
+  │
+  ├─ buildSystemPrompt({ profile: null, ragContext, embedConfig, institutionGuidance, noMoneyData })
+  │                        ▲ ALWAYS NULL for widget visitors
+  ├─ streamChat (no tools in embed mode)
+  ├─ extractProfile(history, content) → recordProfile()         age · gender · nationality ·
+  │                                                            study_preference · 4 jsonb arrays
+  ├─ judgeConclusion + decidePrompt → contact-prompt | end-prompt | none
+  └─ persistVisitorTurn(... memory_ids)                         ids recorded for feedback learning</pre>
+    </div>
+
+    <div class="rule">
+      <h4>A.3 — What the memory engine already guarantees</h4>
+      <table>
+        <thead><tr><th style="width:230px">Guarantee</th><th>Mechanism</th></tr></thead>
+        <tbody>
+          <tr><td>Institution isolation</td>
+              <td><code>institution_ai_memories</code> lives in the institution's own tenant schema. There is <strong>no <code>institution_id</code> column</strong> — the schema is the boundary, so there is no owner filter anyone can forget. <code>memory.repository.schemaFor()</code> resolves id → schema through the pool manager; an unprovisioned institution reads empty and writes throw.</td></tr>
+          <tr><td>Rack isolation</td>
+              <td><code>superadmin.match_ai_knowledge_chunks(vec, n, kind, country, institution_id)</code> treats <code>institution_id</code> as <em>exclusive</em>: set → only that institution's sources, null → only global ones. SQL-level, not category-level.</td></tr>
+          <tr><td>Catalogue isolation</td>
+              <td><code>institutions.source_job_id</code> is unique and is the only job id handed to <code>rag.searchAll</code>. Empty scope answers from shared knowledge rather than another institution's courses.</td></tr>
+          <tr><td>Nothing personal becomes institutional</td>
+              <td>Three independent filters on every candidate: the extractor's own <code>mentions_person</code> flag, <code>PII_RE</code> + the student's known names (content <em>and</em> free-text metadata keys), and Jev's <code>mentions_person ≥ 0.5</code>.</td></tr>
+          <tr><td>Nothing unverified becomes fact</td>
+              <td><code>FACT_RE</code> (money, thousands separators, test scores, years, durations) plus Jev <code>is_fact ≥ 0.6</code>. Confidence stored is <code>min(extractor, jev.endorsed)</code>, and confidence alone never activates anything.</td></tr>
+          <tr><td>Nothing activates without a human or a crowd</td>
+              <td>Learned rows enter as <code>candidate</code>. Promotion needs <code>PROMOTION_MIN_ACTORS = 3</code> <em>distinct</em> hashed students, or one <code>approve()</code>.</td></tr>
+          <tr><td>Contradictions do not silently win</td>
+              <td>Each survivor is checked by Jev against its 5 nearest active memories; a contradicting candidate is stored with <code>conflicts_with_id</code> and <code>promoteIfReady</code> refuses it until a human clears the link.</td></tr>
+          <tr><td>Retired guidance stays retired</td>
+              <td>Re-learning a deprecated statement returns <code>rejected: previously_deprecated</code>. Only a human re-statement reactivates it.</td></tr>
+          <tr><td>Anonymous votes cannot retire rules</td>
+              <td>Widget fingerprints are client-supplied, so anonymous negatives <em>flag</em> (<code>flagged_at</code>) rather than deprecate; human-authored memories can only ever be flagged.</td></tr>
+          <tr><td>Provenance</td>
+              <td><code>source</code>, <code>source_reference{message_id, session_id, actors[], positive_voters[], negative_voters[]}</code>, <code>confidence</code>, <code>reinforce_count</code>, <code>use_count</code>, <code>last_used_at</code>, <code>version</code>, and a 30-entry <code>history[]</code> with the reason for each transition.</td></tr>
+          <tr><td>Decay</td>
+              <td>Hourly sweep: <code>expires_at</code> passed → deprecated; a candidate unreinforced for <code>CANDIDATE_TTL_DAYS = 90</code> → deprecated. Plus a recovery sweep that replays learning signals lost to a broker outage.</td></tr>
+        </tbody>
+      </table>
+      <div class="gap good">
+        <strong>Read this as the floor, not the ceiling</strong>
+        Everything in §7 of the requirement ("memory decision pipeline") and most of §14
+        ("privacy boundaries") is already satisfied by the above. The plan below adds to it and
+        changes none of it.
+      </div>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════════ B -->
+  <section class="step">
+    <div class="step-head"><span class="num">B</span><h2>Missing features — requirement by requirement</h2></div>
+
+    <!-- §3 -->
+    <div class="rule">
+      <div class="rule-head"><h4>§3 · Institution-level Knowledge Rack</h4><span class="pill part">Needs architectural improvement</span></div>
+      <p class="req">Every institution has an independent AI knowledge context: knowledge, behaviour, voice, collection rules, memory, learned knowledge, counselling patterns, lead-conversion patterns.</p>
+      <ul>
+        <li><strong>Where it exists.</strong> Six of those eight branches have a home (A.1). Two do not: <em>data collection rules</em> and <em>lead conversion patterns</em>.</li>
+        <li><strong>Why it is insufficient.</strong> There is no entity called the Rack. The branches that <em>do</em> exist are owned at three different levels — memory per institution, knowledge per institution, <em>behaviour per widget</em>. An institution with two widgets (site-wide and a landing page) gets two personalities over one shared memory, and <code>auto_learn</code> can be on for one and off for the other while both write to the same table.</li>
+        <li><strong>What should change.</strong> One row per institution holding the configuration half of the Rack. <em>Not</em> a new home for memories — they are already correctly placed.</li>
+        <li><strong>Reuse.</strong> <code>institution_ai_memories</code>, <code>ai_knowledge_sources</code>, <code>buildEmbedContext</code>, the <code>ai_widget_visitors</code> tenant-table precedent.</li>
+        <li><strong>DB / worker / API.</strong> One tenant migration · no worker · one GET/PATCH pair + portal page.</li>
+      </ul>
+      <div class="gap blocking">
+        <strong>Decided 2026-10-01: business widgets stay memory-less for MVP</strong>
+<code>buildEmbedContext</code> returns <code>rackInstitutionId: null</code> for a business, so
+        <code>retrieveMemories</code> is never called, <code>onConversationEnd</code> returns early on
+        <code>config.institution_id == null</code>, and <code>database/migrations/business/</code> has no
+        <code>institution_ai_memories</code>.
+        <br><br>
+        The analysis offered two ways out — parity, or stating the limitation. <strong>The limitation is
+        stated.</strong> The portal page says so instead of hiding the nav item, and both silent sites now
+        carry a note naming this decision, so the gap reads as a choice rather than a bug to whoever
+        finds it next.
+        <br><br>
+        Parity was measured, not guessed: <code>institutionId</code> appears 53× in
+        <code>memory.repository</code>, 42× in <code>memory.service</code>, 25× in <code>learning.service</code>,
+        17× in the routes, plus 8 test files. Institution and business ids are both integers from
+        different tables, so every signature would become an owner <code>{kind, id}</code> and the routes
+        would move to <code>requireBusinessOrInstitutionContext</code>. That is a ~15-file mechanical change
+        on a should-have, in the module where six of seven review findings came from a rule being right
+        at one end and wrong at the other — which is the shape of change a seventh would hide in. It
+        belongs in its own reviewed PR.
+      </div>
+    </div>
+
+    <!-- §4 -->
+    <div class="rule">
+      <div class="rule-head"><h4>§4 · Voice &amp; tone memory</h4><span class="pill miss">Incorrect implementation</span></div>
+      <p class="req">A configurable voice/tone profile — tone, formality, friendliness, response length, counselling style, follow-up questions, how recommendations are explained, how uncertainty is communicated, how leads are approached, proactive vs reactive. Not one large system prompt.</p>
+      <ul>
+        <li><strong>Where it exists.</strong> <code>MEMORY_TYPES.RESPONSE_PREFERENCE</code>, whose metadata schema is already <code>{tone, detail_level, language, use_cards}</code>. It is pinned by <code>memory.repository.pinned()</code>, so it reaches every turn regardless of similarity. Plus <code>ai_embed_configs.custom_instructions</code> and the hardcoded <code>VOICE:</code> paragraph in <code>prompt.service.ts</code>.</li>
+        <li><strong>Why it is insufficient.</strong> <code>renderMemoryBlock()</code> emits <code>"- [preference] &lt;content&gt;"</code> and <strong>nothing else</strong>. The structured metadata is validated on write, parsed on read, returned to the portal — and never consulted when building a prompt. A <code>detail_level: "brief"</code> set by an institution changes nothing. The design doc's own note ("tone and style are <code>RESPONSE_PREFERENCE</code> memories") was a scoping decision that stopped one step short of applying them.</li>
+        <li><strong>What should change.</strong> A typed voice profile on the Rack row, rendered as a short <code>COUNSELLING STYLE</code> block. Keep <code>RESPONSE_PREFERENCE</code> for <em>learned</em> style ("visitors respond better when we lead with fees") and let the explicit profile outrank it — that is exactly the config-vs-learned split the requirement asks for.</li>
+        <li><strong>Reuse.</strong> <code>prompt.service.buildSystemPrompt</code> (one more option), <code>sanitizeCustomInstructions</code>, the existing pinned path.</li>
+        <li><strong>DB / worker / API.</strong> Covered by the Rack row · no worker · portal form.</li>
+      </ul>
+    </div>
+
+    <!-- §5 -->
+    <div class="rule">
+      <div class="rule-head"><h4>§5 · Data collection limitations</h4><span class="pill miss">Missing</span></div>
+      <p class="req">The Rack defines what the AI may collect: allowed, restricted, sensitive, required-for-counselling, useful-for-leads, and never-persisted.</p>
+      <ul>
+        <li><strong>Where it exists.</strong> Nowhere as policy. In practice the policy is hardcoded in two files: <code>lib/profile-extract.ts</code> (a fixed eight-field schema — age, gender, nationality, study_preference, qualifications, language_tests, academic_tests, work_experiences — applied identically to every institution), and <code>services/visitor.service.ts</code> (<code>FIRST_ASK_AT = {3,5}</code>, <code>RE_ASK_GAP = {5,10}</code>, with a comment that no institution ever asked for different numbers).</li>
+        <li><strong>Why it is insufficient.</strong> Three distinct problems. (1) <em>Compliance</em> — gender and age are extracted from every visitor of every institution by default, with no opt-out and no stated purpose. (2) <em>Product</em> — a vocational college and a postgraduate business school need different fields, and a widget on a fees page should not ask for IELTS. (3) <em>The requirement's own four-way distinction</em> (answer-this-question / user profile / lead conversion / general knowledge) is implemented implicitly by three unrelated mechanisms and named nowhere, so nothing can be reasoned about or tested.</li>
+        <li><strong>What should change.</strong> A <code>collection</code> block on the Rack row: which profile fields may be extracted, which are off, which are sensitive (recorded for the conversation, never persisted), and the contact-ask cadence. <code>profile-extract</code> builds its JSON shape from the allowed set instead of a constant; <code>visitor.service</code> reads the cadence instead of its constants. Both already have exactly one call site.</li>
+        <li><strong>Reuse.</strong> <code>PROFILE_KEYS</code> / <code>PROFILE_SCALAR_COLUMNS</code> in <code>lib/card-parser.ts</code> are already the canonical field list — make them the vocabulary of the rules.</li>
+        <li><strong>DB / worker / API.</strong> Rack row · no worker · portal form. No change to <code>ai_widget_visitors</code>: a disallowed field is simply never written.</li>
+      </ul>
+    </div>
+
+    <!-- §6 -->
+    <div class="rule">
+      <div class="rule-head"><h4>§6 · Memory classification (A–E)</h4><span class="pill part">Partial — and one class is actively rejected</span></div>
+      <table>
+        <thead><tr><th style="width:190px">Class</th><th style="width:150px">Status</th><th>Finding</th></tr></thead>
+        <tbody>
+          <tr><td>A · User-specific</td><td><span class="pill done">Correct</span></td>
+              <td>Rejected from institutional memory by three independent filters, and routed instead to <code>ai_widget_visitors</code>. Exactly the requirement. <em>But see §13 — it is then never used.</em></td></tr>
+          <tr><td>B · General knowledge</td><td><span class="pill miss">Rejected by design</span></td>
+              <td>"What IELTS score is generally required for Australia?" is killed three times over: the extractor prompt says <em>"If the only useful thing is a fact, output no candidate"</em>; <code>FACT_RE</code> matches <code>ielts…7</code>; Jev's <code>is_fact ≥ 0.6</code> rejects it. There is no general-knowledge store, no frequency counter, and no type for it (<code>GENERAL_CONTEXT</code> exists but no path ever emits it).</td></tr>
+          <tr><td>C · Institution-specific</td><td><span class="pill part">Partial</span></td>
+              <td><code>INSTITUTION_POLICY</code> exists but is admin-only in practice, since learned facts are blocked. The real channel is the crawled site in the Rack — which is correct, and is where institution facts belong.</td></tr>
+          <tr><td>D · Conversation context</td><td><span class="pill miss">Missing for widgets</span></td>
+              <td><code>ai_counselor_sessions.counselling_context</code> exists and is good — written by the <code>update_student_context</code> tool, which runs <strong>only in platform tool mode</strong>. Widget chats never use tools, so the column stays empty for every visitor.</td></tr>
+          <tr><td>E · Sensitive / restricted</td><td><span class="pill part">Partial</span></td>
+              <td>PII patterns and names are filtered from content and free-text metadata. What is absent is a notion of sensitive <em>categories</em> — health, disability, finances, immigration status, religion — which pass every current filter and would be stored verbatim in <code>ai_widget_visitors</code> if a model put them in a profile field.</td></tr>
+        </tbody>
+      </table>
+      <div class="gap">
+        <strong>The fix for B is small and deliberate</strong>
+        A new type <code>GENERAL_KNOWLEDGE</code> with <code>allowFacts: true</code>, always stored as a
+        candidate, <strong>never</strong> auto-promoted (human approval only), and tagged with the
+        destination country/topic it concerns. That is one entry in <code>MEMORY_TYPES</code>, one
+        metadata schema, and one branch in <code>evaluateCandidate</code> — the machinery for everything
+        else already exists.
+      </div>
+    </div>
+
+    <!-- §7 -->
+    <div class="rule">
+      <div class="rule-head"><h4>§7 · Memory decision pipeline</h4><span class="pill done">Already implemented</span></div>
+      <p class="req">Extract → classify → scope → sensitivity → usefulness → confidence → deduplicate → store or discard.</p>
+      <ul>
+        <li><strong>Where it exists.</strong> <code>learning.service.storeCandidates()</code> runs exactly this sequence; see the flow in §E.</li>
+        <li><strong>The one real gap — recurrence is exact-match only.</strong> Deduplication is <code>sha256(normalised content)</code> and the unique index is on that hash. "Students often ask about post-study work rights before fees" and "visitors usually raise work rights ahead of cost" are two rows, each with one actor, and neither will ever reach <code>PROMOTION_MIN_ACTORS = 3</code>. The requirement's "frequency / recurrence" signal is therefore unreachable for anything a model paraphrases — which is everything.</li>
+        <li><strong>What should change.</strong> Before <code>repo.insert()</code>, reuse the embedding that was <em>already computed</em> for the contradiction check: if the nearest same-type active-or-candidate memory is above a merge threshold (≈0.90), reinforce it instead of inserting. One extra branch, zero extra model calls, no schema change.</li>
+        <li><strong>Secondary gap.</strong> No "already known" check against the Rack chunks, so a candidate restating the crawled prospectus is stored anyway. Low priority — it costs a row, not a wrong answer.</li>
+      </ul>
+    </div>
+
+    <!-- §8 -->
+    <div class="rule">
+      <div class="rule-head"><h4>§8 · Learning from conversation patterns</h4><span class="pill miss">Missing</span></div>
+      <p class="req">Recurring interaction sequences, stored separately from factual knowledge.</p>
+      <ul>
+        <li><strong>Where it exists.</strong> The <em>separation</em> is right: <code>RESPONSE_PATTERN</code> and <code>STUDENT_CONCERN_PATTERN</code> are distinct types, and <code>TECHNIQUE_TYPES</code> gives them their own retrieval slot (<code>MAX_TECHNIQUES = 3</code>) so a technique never crowds out an answer.</li>
+        <li><strong>Why it is insufficient.</strong> The <em>input</em> is wrong. A pattern is produced by asking an LLM to read <strong>one</strong> finished transcript — "which techniques here would help future conversations?". That is a single-observation guess dressed as a pattern. Nothing anywhere labels a turn with a topic, records the order of topics, or counts transitions. "Visitors asking about Australian MBAs frequently ask about English requirements next" is unanswerable from the current data without re-reading every transcript through a model.</li>
+        <li><strong>What should change.</strong> Label each turn with a coarse topic at conversation end (one cheap call, one row per session — see §D), then mine transitions with a SQL aggregate. A mined pattern is <em>shown in the portal</em>; a human promoting it writes a normal <code>RESPONSE_PATTERN</code> memory through the existing <code>createMemory</code>. Patterns never auto-enter the prompt.</li>
+        <li><strong>DB / worker / API.</strong> One tenant table · reuses the existing learning worker at the <code>conversation</code> job · one portal panel.</li>
+      </ul>
+    </div>
+
+    <!-- §9 -->
+    <div class="rule">
+      <div class="rule-head"><h4>§9 · Name &amp; email collection</h4><span class="pill miss">Form-only — the headline product gap</span></div>
+      <p class="req">Detect naturally provided details. Do not require a form.</p>
+      <ul>
+        <li><strong>Where it exists.</strong> <code>POST /ai-chat/guest/contact</code> ← the contact card, and only the contact card. <code>visitor.service.recordContact()</code> is its single writer.</li>
+        <li><strong>Why it is insufficient.</strong> <code>lib/profile-extract.ts</code> — the one component that reads what the visitor actually typed — has no <code>name</code> or <code>email</code> key in its output shape and never looks for one. So <em>"I'm John, you can send it to john@example.com"</em> leaves the visitor as <code>status = 'visitor'</code>, with no lead, no summary email, and the contact card still queued to interrupt them three messages later. The database makes this worse: <code>chk_ai_widget_visitors_contact_pair</code> enforces <code>(name IS NULL) = (email IS NULL)</code>, so even a correctly detected name-without-email cannot be stored. There is no <code>phone</code> column.</li>
+        <li><strong>What should change.</strong> Add <code>name</code>, <code>email</code>, <code>phone</code> and a <code>volunteered</code> marker to the <em>existing</em> profile-extract call (it already runs on most turns and already carries the "never infer" discipline these fields need), gated by the §5 collection rules. Relax the pair constraint to "email implies name is optional". Suppress the contact card once details are held — <code>shouldPrompt</code> already short-circuits on <code>contact_status = 'submitted'</code>, so the write is the whole change.</li>
+        <li><strong>Reuse.</strong> <code>extractProfile</code> (no new model call), <code>recordContact</code>, <code>recordProfile</code>'s locked read-modify-write, the generated <code>status</code> column (a lead classifies itself the moment the email lands).</li>
+        <li><strong>DB / worker / API.</strong> One tenant migration (institution <em>and</em> business twins) · no worker · no new endpoint.</li>
+      </ul>
+      <div class="gap question">
+        <strong>Decision needed — consent</strong>
+        Writing an address the visitor typed conversationally is a different consent posture from
+        a form they filled in. Recommended: store it, mark <code>contact_source = 'volunteered'</code>,
+        and have the counsellor confirm in-line ("I'll send the summary to john@example.com —
+        is that right?") rather than silently harvesting. Confirm before building.
+      </div>
+    </div>
+
+    <!-- §10-11 -->
+    <div class="rule">
+      <div class="rule-head"><h4>§10–11 · Conversion journeys &amp; easy-conversion patterns</h4><span class="pill miss">Missing</span></div>
+      <p class="req">Not <code>email_captured = true</code> — the journey that led to it, aggregated across conversations.</p>
+      <ul>
+        <li><strong>Where it exists.</strong> <code>widget-analytics.service.ts</code>: visitors, conversations closed, conversions, conversion rate, each with a month-on-month delta and a 6-month series. That is precisely the counter the requirement rejects.</li>
+        <li><strong>Why it is insufficient.</strong> None of the eleven journey questions can be answered. The raw material exists but is unjoined and split across schemas — the transcript with timestamps is <code>globalyapp.ai_counselor_messages</code>, the conversion is <code>&lt;tenant&gt;.ai_widget_visitors.contact_submitted_at</code>, and there is no FK between them (by design). Reconstructing a journey today means an app-level join plus a model pass over every transcript.</li>
+        <li><strong>Two signals are already stored and simply unread.</strong> <code>contact_prompt_count</code> and <code>contact_prompted_at_count</code> tell you whether the AI ever asked and at which message — so "volunteered vs prompted" is derivable <em>right now</em> as <code>contact_status = 'submitted' AND contact_prompt_count = 0</code>. Likewise <code>message_count</code> at submission gives time-to-conversion in turns.</li>
+        <li><strong>What should change.</strong> One denormalised row per finished conversation, written by the learning worker at the <code>conversation</code> job it already receives. Everything in §10 is a column or a short array on that row; everything in §11 is a <code>GROUP BY</code> over it. No event table, no stream.</li>
+        <li><strong>Reuse.</strong> The <code>conversation</code> learning job (already fires at conversation end, already resolves the institution), <code>learnRepo.findTranscript</code>, the <code>ai_widget_visitors</code> tenant-table pattern.</li>
+        <li><strong>DB / worker / API.</strong> One tenant table · existing worker, one new step · one portal panel + one analytics endpoint.</li>
+      </ul>
+      <div class="gap">
+        <strong>Scope discipline</strong>
+        §11 asks for mining of historical conversations. Do not backfill at MVP: the data is
+        there, the row can be written for new conversations from day one, and a backfill script
+        over existing transcripts is a cheap follow-up once the shape has proved itself.
+      </div>
+    </div>
+
+    <!-- §13 -->
+    <div class="rule">
+      <div class="rule-head"><h4>§13 · Retrieval behaviour</h4><span class="pill part">User-specific context is never retrieved</span></div>
+      <ul>
+        <li><strong>Where it exists.</strong> Institution knowledge (<code>rag.searchAll</code>) and institutional memory (<code>retrieveMemories</code>) run concurrently on both chat paths, and the ids used are persisted on the assistant message so feedback learns against exactly them. That half is complete and well made.</li>
+        <li><strong>Why it is insufficient.</strong> <code>guest.routes.ts</code> calls <code>buildSystemPrompt({ profile: null, … })</code> and passes no <code>situation</code> to <code>retrieveMemories</code>. So everything <code>extractProfile</code> painstakingly captured last turn — the visitor's IELTS, their degree, the course they named — is written to <code>ai_widget_visitors</code> and then <strong>discarded</strong>. The model sees only the last 20 raw messages. A visitor returning tomorrow is a stranger again, and situation-bound guidance cannot match because the retrieval query has no situation in it.</li>
+        <li><strong>What should change.</strong> Render the visitor row through the existing <code>rag.situationText</code> shape and pass it as both the prompt's student-profile block and the memory query's <code>situation</code>. The platform path proves the pattern; the widget path just never adopted it.</li>
+        <li><strong>Reuse.</strong> <code>rag.situationText</code>, <code>buildSystemPrompt({ profile })</code>, <code>ProfileContext</code> — the visitor jsonb columns were deliberately named to mirror <code>platform_user_*</code> field for field, so the adapter is a mapping, not a translation.</li>
+        <li><strong>DB / worker / API.</strong> No migration · no worker · no endpoint. <em>This is the highest value-per-line change in the document.</em></li>
+      </ul>
+    </div>
+
+    <!-- §C portal -->
+    <div class="rule">
+      <div class="rule-head"><h4>Carried from the MVP status doc · No portal UI</h4><span class="pill miss">Blocking</span></div>
+      <p>
+        <code>GET|POST /institution/memories</code>, <code>:id/approve|deprecate|reactivate|unflag</code>,
+        <code>DELETE</code>, <code>/institution/conversations</code> and <code>/:id/messages</code> are all live and
+        tested. <strong>No frontend file references any of them.</strong> Consequences, in order of severity:
+      </p>
+      <ul>
+        <li>Candidates are never approved, so the only promotion path is three distinct students reinforcing an identical hash — which §7 shows is nearly unreachable.</li>
+        <li>Conflicting candidates accumulate with <code>conflicts_with_id</code> set and can never be resolved, because resolution <em>requires</em> a human action.</li>
+        <li>Flagged human-authored memories (the only effect an anonymous thumbs-down has) are invisible.</li>
+        <li>After 90 days the sweep deprecates every unreinforced candidate — so an institution's learning silently expires without anyone having seen it.</li>
+      </ul>
+      <p>Everything else in this plan writes into a system no one can read. The portal is phase 0.</p>
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════════ C -->
+  <section class="step">
+    <div class="step-head"><span class="num">C</span><h2>Recommended architecture</h2></div>
+    <p>
+      The Rack is a <em>composition</em> of what exists plus one configuration row. Three new
+      objects total; no parallel memory system, no new vector store, no new queue.
+    </p>
+    <pre class="plain">INSTITUTION  (globalyapp.institutions)
+│
+├── KNOWLEDGE  ─────────────────────── existing, unchanged ──────────────────────────┐
+│     ├ courses/fees/intakes          superadmin, scoped by institutions.source_job_id│
+│     ├ crawled site + uploads        superadmin.ai_knowledge_chunks, institution_id  │
+│     └ global education knowledge    same table, institution_id IS NULL              │
+│                                                                                     │
+├── CONFIGURATION  ───────────────── ★ NEW: institution_ai_profile (1 row, tenant) ──┤
+│     ├ voice{}                       tone · formality · warmth · length · style      │
+│     ├ behaviour{}                   follow-ups · uncertainty · proactivity · leads  │
+│     ├ collection{}                  allowed · restricted · sensitive · ask cadence  │
+│     └ learning{}                    auto_learn (moves here from ai_embed_configs)   │
+│                                                                                     │
+├── MEMORY  ───────────────────────── existing institution_ai_memories, unchanged ───┤
+│     ├ admin guidelines & policies   source=admin        → active on write           │
+│     ├ counsellor corrections        source=correction   → active on write           │
+│     ├ learned techniques/concerns   source=extracted    → candidate                 │
+│     ├ learned style preferences     RESPONSE_PREFERENCE → candidate                 │
+│     └ ★ general knowledge           GENERAL_KNOWLEDGE   → candidate, human-only     │
+│                                                                                     │
+├── CONVERSATION INTELLIGENCE ────── ★ NEW: institution_conversation_signals (tenant)┤
+│     ├ one row per finished conversation: topic sequence, counts, conversion facts   │
+│     ├ §8 patterns      = GROUP BY over topic transitions                            │
+│     └ §10–11 journeys  = GROUP BY over the conversion columns                       │
+│                                                                                     │
+└── VISITOR CONTEXT ─────────────── existing ai_widget_visitors, ★ newly RETRIEVED ──┘
+      profile arrays + scalars + name/email/phone, scoped to one visitor_key, never
+      pooled, never embedded, never an input to institutional learning.</pre>
+
+    <h3>Isolation — settled by the schema, not by this plan</h3>
+    <p>
+      Institution-level isolation is a solved problem and this plan adds nothing to it. Every
+      object above — memories, visitors, the Rack row, the signals row — lives in the
+      institution's own Postgres schema, resolved by <code>schema_name</code> through the pool
+      manager. There is no <code>institution_id</code> column to omit from a <code>WHERE</code>,
+      so there is no isolation code to write, no filter to review and no test to maintain. The
+      only rule for new work is the one the existing tables already follow: <strong>a new Rack
+      table goes in the tenant schema</strong>. Nothing else is required.
+    </p>
+    <div class="gap">
+      <strong>The one boundary the schema does not draw: visitor ↔ visitor</strong>
+      Inside a single institution's schema, <code>ai_widget_visitors</code> holds every visitor's
+      self-reported background, and it is read by row key —
+      <code>(visitor_key, embed_config_id)</code>. That row must <strong>never</strong> gain a
+      vector column or a match function: the moment visitor data is retrievable by similarity,
+      one visitor's answer can surface another's facts, and the schema boundary says nothing
+      about it. This is a constraint on §D's new tables, not a task.
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════════ D -->
+  <section class="step">
+    <div class="step-head"><span class="num">D</span><h2>Data model</h2></div>
+    <p>Two new tables and a handful of columns. Everything else is reuse.</p>
+
+    <h3>★ New — <code>institution_ai_profile</code> (tenant schema, one row)</h3>
+    <pre>-- database/migrations/institution/2026XXXX_001_institution_ai_profile.ts
+-- Twin in database/migrations/business/ — a business works its widget identically.
+CREATE TABLE institution_ai_profile (
+  id          smallint PRIMARY KEY DEFAULT 1 CHECK (id = 1),  -- one row, structurally
+  voice       jsonb NOT NULL DEFAULT '{}',   -- VoiceProfileSchema
+  behaviour   jsonb NOT NULL DEFAULT '{}',   -- BehaviourProfileSchema
+  collection  jsonb NOT NULL DEFAULT '{}',   -- CollectionRulesSchema
+  learning    jsonb NOT NULL DEFAULT '{}',   -- { auto_learn: bool, learn_general_knowledge: bool }
+  version     integer NOT NULL DEFAULT 1,
+  updated_by  integer NULL,                  -- app-level globalyapp.platform_users.id
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  updated_at  timestamptz NOT NULL DEFAULT now()
+);</pre>
+    <p>
+      Four JSONB blocks rather than thirty columns, for the same reason
+      <code>institution_ai_memories.metadata</code> is JSONB: these are read as a unit on every turn,
+      written whole by one form, and will grow. They are parsed with the same zod schema on read
+      and on write — the convention the memory module already established.
+    </p>
+    <pre class="plain">VoiceProfileSchema       tone: warm|neutral|formal|enthusiastic        formality: 1..5
+                         warmth: 1..5        response_length: brief|standard|detailed
+                         language: ISO code                             use_cards: boolean
+
+BehaviourProfileSchema   counselling_style: consultative|directive|informational
+                         ask_follow_ups: always|when_unclear|never
+                         explain_recommendations: brief_reason|full_rationale|comparison
+                         uncertainty: say_unknown|offer_to_check|defer_to_human
+                         lead_approach: never_ask|when_natural|actively_offer
+                         initiative: reactive|balanced|proactive
+
+CollectionRulesSchema    allowed:   PROFILE_KEYS ∪ PROFILE_SCALAR_COLUMNS ∪ {name,email,phone}
+                         restricted: subset never extracted                (default: gender, age)
+                         sensitive:  subset usable in-conversation, never persisted
+                         required_for_counselling: subset the AI may ask for directly
+                         contact_ask: { first_at:[3,5], gap:[5,10], enabled: true }</pre>
+
+    <h3>★ New — <code>institution_conversation_signals</code> (tenant schema, one row per finished conversation)</h3>
+    <pre>CREATE TABLE institution_conversation_signals (
+  id                    bigserial PRIMARY KEY,
+  session_id            integer NOT NULL,      -- app-level → globalyapp.ai_counselor_sessions.id
+  visitor_key           text    NOT NULL,      -- joins ai_widget_visitors in this same schema
+  embed_config_id       integer NOT NULL,
+
+  -- §10: the journey
+  first_topic           text    NULL,          -- coarse label of the opening question
+  topic_sequence        jsonb   NOT NULL DEFAULT '[]',  -- ["course","eligibility","fees","apply"]
+  message_count         integer NOT NULL DEFAULT 0,
+  duration_seconds      integer NULL,
+  course_interests      jsonb   NOT NULL DEFAULT '[]',  -- course ids/titles surfaced in cards
+  destination_country   text    NULL,
+
+  -- §9–11: the conversion
+  converted             boolean NOT NULL DEFAULT false,
+  contact_source        text    NULL,          -- 'card' | 'volunteered' | null
+  ai_prompted           boolean NOT NULL DEFAULT false,  -- contact_prompt_count > 0 at conversion
+  messages_to_conversion integer NULL,
+  topic_before_conversion text   NULL,
+  trigger_message_id    integer NULL,          -- the assistant turn that preceded the hand-over
+  converted_at          timestamptz NULL,
+
+  -- provenance
+  memory_ids            jsonb   NOT NULL DEFAULT '[]',  -- memories that shaped this conversation
+  created_at            timestamptz NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX ins_conv_signals_session ON institution_conversation_signals (session_id);
+CREATE INDEX ins_conv_signals_converted ON institution_conversation_signals (converted, created_at DESC);</pre>
+    <p>
+      One denormalised row, not an event stream. Every question in §10 is a column read and every
+      question in §11 is one <code>GROUP BY</code> away — <em>"which topic most often precedes a
+      volunteered email"</em> is <code>WHERE converted AND contact_source='volunteered' GROUP BY
+      topic_before_conversion</code>. An events table would make the same answers a window function
+      and buy nothing at this volume.
+    </p>
+
+    <h3>Column additions to existing tables</h3>
+    <table>
+      <thead><tr><th style="width:290px">Table</th><th>Change</th></tr></thead>
+      <tbody>
+        <tr><td><code>&lt;tenant&gt;.ai_widget_visitors</code></td>
+            <td><code>phone text NULL</code>; <code>contact_source text NULL</code> (<code>'card' | 'volunteered'</code>); relax <code>chk_ai_widget_visitors_contact_pair</code> to allow email-without-name. Institution <em>and</em> business twins.</td></tr>
+        <tr><td><code>institution_ai_memories</code></td>
+            <td><strong>No schema change.</strong> <code>GENERAL_KNOWLEDGE</code> is a new value in the zod <code>MEMORY_TYPES</code> tuple — the column is <code>text</code>, vocabularies live in zod by convention.</td></tr>
+        <tr><td><code>globalyapp.ai_embed_configs</code></td>
+            <td><code>auto_learn</code> is superseded by <code>institution_ai_profile.learning.auto_learn</code>. Leave the column in place and read the profile first, falling back to it — per <em>keep unused files</em>, retire by dropping readers, not by dropping columns.</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Provenance — already satisfied</h3>
+    <p>
+      The requirement's provenance list (source conversation, institution, created, confidence,
+      classification, observation count, last observed, manually validated, active/expired) maps
+      one-to-one onto columns that exist today: <code>source_reference.session_id</code> ·
+      <em>the schema itself</em> · <code>created_at</code> · <code>confidence</code> · <code>type</code> +
+      <code>source</code> · <code>reinforce_count</code> + <code>source_reference.actors[]</code> ·
+      <code>last_used_at</code> · <code>history[]</code> entries with <code>by.kind = 'admin'</code> ·
+      <code>status</code> + <code>expires_at</code>. Nothing to add.
+    </p>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════════ E -->
+  <section class="step">
+    <div class="step-head"><span class="num">E</span><h2>Memory classification flow</h2></div>
+    <p>Solid boxes exist today. <strong>★</strong> marks what this plan adds.</p>
+    <pre class="plain">                    ┌──────────────────────────────────────┐
+                    │  Signal: thumbs · counsellor review   │
+                    │          · conversation end           │
+                    └──────────────────┬───────────────────┘
+                                       │  queue: institution_memory_learn
+                                       ▼
+                         ┌─────────────────────────┐
+                         │  extractCandidates()    │  LLM, tier=lite, max 8
+                         │  zod-parsed one by one  │  a malformed entry drops alone
+                         └────────────┬────────────┘
+                                      ▼
+      ┌───────────────────────────────────────────────────────────────┐
+      │                    CLASSIFY  (judgeCandidate / Jev)            │
+      │   mentions_person · is_fact · is_technique · endorsed          │
+      └───────────────────────────────┬───────────────────────────────┘
+                                      ▼
+      ┌───────────────────────────────────────────────────────────────┐
+      │                    SCOPE — which class is this?                │
+      ├────────────────┬──────────────┬─────────────┬─────────────────┤
+      │ A user-specific│ B general    │ C institution│ D conversation  │
+      │                │   knowledge  │   -specific  │   -only         │
+      │  mentions_person│ ★ is_fact &  │  is_fact &   │  neither        │
+      │  OR PII OR name │   generalises│   about us   │                 │
+      ├────────────────┼──────────────┼─────────────┼─────────────────┤
+      │ ✗ DISCARD from │ ★ GENERAL_   │ INSTITUTION_ │ ✗ DISCARD       │
+      │   institutional│   KNOWLEDGE  │ POLICY       │   (lives in the │
+      │   memory       │   candidate, │ (admin /     │    transcript   │
+      │ → ai_widget_   │   facts OK,  │  correction  │    + ★ visitor  │
+      │   visitors     │   HUMAN-ONLY │  only)       │    context)     │
+      │   (§13 feeds it│   promotion  │              │                 │
+      │   back to the  │              │              │                 │
+      │   SAME visitor)│              │              │                 │
+      └────────────────┴──────┬───────┴──────┬──────┴─────────────────┘
+                              │              │
+                   E sensitive ✗ ────────────┤   health · finances · immigration
+                   (★ category check)        │   status · disability · religion
+                                             ▼
+                         ┌─────────────────────────────┐
+                         │  USEFULNESS + CONFIDENCE    │
+                         │  conf = min(extractor, jev) │
+                         │  reject < MIN_CONFIDENCE .6 │
+                         └──────────────┬──────────────┘
+                                        ▼
+                         ┌─────────────────────────────┐
+                         │  DEDUPLICATE                │
+                         │  exact: content_hash        │
+                         │  ★ near: cosine ≥ 0.90 on   │
+                         │    the embedding already    │
+                         │    computed below → reinforce│
+                         └──────────────┬──────────────┘
+                                        ▼
+                         ┌─────────────────────────────┐
+                         │  CONTRADICTION (judgeContra)│
+                         │  vs 5 nearest active        │
+                         └───────┬─────────────┬───────┘
+                       contradicts             clear
+                                 │             │
+                                 ▼             ▼
+                   status=candidate      status=candidate
+                   conflicts_with_id     ─────────────────
+                   NEVER auto-promotes   promotes at 3 distinct
+                   human resolves        actors, or on approve()
+                                 │             │
+                                 └──────┬──────┘
+                                        ▼
+                         ┌─────────────────────────────┐
+                         │  previously deprecated?     │
+                         │  → rejected. A human        │
+                         │    retired it; it stays     │
+                         │    retired.                 │
+                         └─────────────────────────────┘</pre>
+    <p class="req">
+      The rule the requirement states — <em>"do not save user-specific questions or personal
+      details into general AI memory"</em> — is branch A, and it is enforced three times
+      independently (extractor flag, regex + known names, Jev probability). That redundancy is
+      deliberate and should not be collapsed.
+    </p>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════════ F -->
+  <section class="step">
+    <div class="step-head"><span class="num">F</span><h2>Lead conversion flow</h2></div>
+    <pre class="plain">TURN N                                               ┌─ visitor row (tenant schema) ─┐
+  visitor message                                    │ message_count, contact_status, │
+        │                                            │ contact_prompt_count, profile  │
+        ├─► extractProfile()  ★ now also name/email/phone, gated by collection rules  │
+        │        │                                                                    │
+        │        ├─ volunteered contact?  ──► recordContact(source='volunteered')  ───┤
+        │        │        │                        ▲                                  │
+        │        │        │          ★ counsellor confirms in-line rather than        │
+        │        │        │            silently harvesting                            │
+        │        │        └─► status flips 'visitor' → 'lead'  (GENERATED column)     │
+        │        │                                                                    │
+        │        └─ profile facts ──► recordProfile()  ──────────────────────────────┤
+        │                                                                             │
+        ├─► decidePrompt(visitor, nextCount, concluded)                               │
+        │        suppressed when contact_status='submitted' — so a volunteered        │
+        │        address silently cancels the card. ★ no extra code needed.           │
+        │                                                                             │
+        └─► card shown → POST /guest/contact → recordContact(source='card')  ─────────┘
+
+CONVERSATION END  (POST /guest/conversation-end, action=end)
+        │
+        ├─ recordConversationEnd()  →  summary email armed if an address exists   [exists]
+        │
+        └─ onConversationEnd() → queue "conversation" job                         [exists]
+                 │
+                 ▼  institution-memory worker
+           ┌──────────────────────────────────────────────────────────────┐
+           │ 1. learnFromConversation()   — candidates, as today          │
+           │ 2. ★ recordConversationSignals()                              │
+           │      • label each turn with a coarse topic   (one lite call) │
+           │      • topic_sequence, first_topic, message_count, duration  │
+           │      • join the visitor row for the conversion facts:        │
+           │          converted          = contact_status = 'submitted'   │
+           │          contact_source     = 'card' | 'volunteered'         │
+           │          ai_prompted        = contact_prompt_count > 0       │
+           │          messages_to_conv   = message_count at submission    │
+           │          topic_before_conv  = topic of the turn preceding it │
+           │      • INSERT ... ON CONFLICT (session_id) DO NOTHING        │
+           └──────────────────────────────────────────────────────────────┘
+                 │
+                 ▼  §11 "easy conversion" = plain aggregates, no model
+           SELECT topic_before_conversion, count(*)
+             FROM institution_conversation_signals
+            WHERE converted AND contact_source = 'volunteered'
+            GROUP BY 1 ORDER BY 2 DESC;                 → "what were they asking?"
+
+           SELECT avg(messages_to_conversion) FILTER (WHERE NOT ai_prompted),
+                  avg(messages_to_conversion) FILTER (WHERE ai_prompted)
+             FROM institution_conversation_signals WHERE converted;
+                                                        → "how much prompting does it take?"
+
+           SELECT topic_sequence, count(*) FROM institution_conversation_signals
+            WHERE converted GROUP BY 1 ORDER BY 2 DESC LIMIT 10;
+                                                        → "which journeys convert?"</pre>
+    <div class="gap">
+      <strong>Patterns are shown, never auto-applied</strong>
+      An aggregate is evidence about an institution's visitors, not guidance for its counsellor.
+      The portal shows the mined pattern with its support count; a human who agrees presses a
+      button that writes an ordinary <code>RESPONSE_PATTERN</code> memory through <code>createMemory</code>.
+      That keeps one promotion path, one audit trail, and one retrieval surface.
+    </div>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════════ G -->
+  <section class="step">
+    <div class="step-head"><span class="num">G</span><h2>Retrieval flow — exactly what one answer sees</h2></div>
+    <pre class="plain">┌─ 1 · RACK CONFIG ─────────────────────────────── institution_ai_profile, cached 60 s ─┐
+│  voice{} + behaviour{}  → one ~250-char COUNSELLING STYLE block                       │
+│  collection{}           → one line: what you may ask for, what you must not           │
+└───────────────────────────────────────────────────────────────────────────────────────┘
+┌─ 2 · PINNED RULES ─────────────── memory.repository.pinned(), indexed, not similarity ┐
+│  every AVOIDANCE_RULE · every RESPONSE_PREFERENCE · importance-5 COUNSELLING_GUIDELINE │
+│  budget 800 chars — institution-wide rules must not depend on question phrasing        │
+└───────────────────────────────────────────────────────────────────────────────────────┘
+┌─ 3 · RANKED MEMORY ───────────────────────── match_institution_ai_memories(vec, 12) ──┐
+│  cosine ≥ 0.28, then re-ranked:                                                        │
+│    0.55·similarity + 0.20·confidence + 0.10·importance/5                               │
+│  + 0.10·source_authority + 0.05·min(1, use_count/20)                                   │
+│  → top 6 general + top 3 techniques, budget 1 700 chars                                │
+│  ★ query vector = message + situation  (situation is absent on the widget path today)  │
+└───────────────────────────────────────────────────────────────────────────────────────┘
+┌─ 4 · KNOWLEDGE ───────────────────────────────────────────── rag.searchAll(), existing ┐
+│  courses (jobIds) · fees · visas · owner profile · FAQs · guides                        │
+│  → fallback only if the DB found nothing: match_ai_knowledge_chunks(institution_id)     │
+│  money guard: per-topic (fees/refund/scholarship/living) withholding when ungrounded    │
+└───────────────────────────────────────────────────────────────────────────────────────┘
+┌─ 5 · ★ VISITOR CONTEXT ──────────────── ai_widget_visitors, THIS visitor_key only ─────┐
+│  nationality · age · study_preference · qualifications · tests · work                   │
+│  rendered through rag.situationText → buildSystemPrompt({ profile })                    │
+│  never embedded · never pooled · never an input to institutional learning               │
+└───────────────────────────────────────────────────────────────────────────────────────┘
+                                        ▼
+                        buildSystemPrompt → streamChat → persist(memory_ids)
+
+PRIORITY, highest first — a lower rank never overrides a higher one
+  1  Safety, privacy, and facts-only-from-CONTEXT        hard limits, re-stated after the
+                                                         memory block so they are read last
+  2  Admin memories and counsellor corrections           source ∈ {admin, correction}
+  3  Structured platform data                            courses · fees · visas — the ONLY
+                                                         source for a specific claim
+  4  Institution rack documents                          trust_tier 'official' first
+  5  Explicit voice/behaviour profile                    config beats learned style
+  6  Learned memories                                    rendered "(learned, advisory)";
+                                                         guidance, never a fact
+  7  Visitor context                                     what THIS person told us
+  8  Conversation history                                this turn only
+
+CONFLICT RESOLUTION
+  • learned vs admin        → the learned row is stored with conflicts_with_id and is never
+                             injected at all; a human decides. Already implemented.
+  • two admin memories      → both rendered, shown side by side in the portal. The
+                             institution's problem, surfaced rather than silently resolved.
+  • memory vs structured    → structured data wins for any specific claim; the memory can
+                             only shape HOW it is said. Enforced by the HARD LIMITS line.
+  • config vs learned style → config wins; a learned RESPONSE_PREFERENCE that contradicts the
+                             configured voice is flagged for review, not applied.</pre>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════════ H -->
+  <section class="step">
+    <div class="step-head"><span class="num">H</span><h2>MVP implementation plan</h2></div>
+
+    <h3>Scope split</h3>
+    <table>
+      <thead><tr><th style="width:150px">Tier</th><th>Items</th></tr></thead>
+      <tbody>
+        <tr><td><span class="pill miss">Must have</span></td>
+            <td>Portal UI for memories &amp; conversation review (P0) · voice/behaviour profile applied to the prompt (P1) · data-collection rules (P1) · volunteered name/email detection (P2) · visitor context fed back into the prompt (P2).</td></tr>
+        <tr><td><span class="pill part">Should have</span></td>
+            <td>Conversion-journey row + portal panel (P3) · near-duplicate candidate merge (P4) · <code>GENERAL_KNOWLEDGE</code> candidates (P4) · business-widget memory parity · sensitive-category filter.</td></tr>
+        <tr><td><span class="pill ask">Future</span></td>
+            <td>Topic-transition pattern mining (P5) · historical backfill of journeys · automatic voice tuning from outcomes · A/B of counselling patterns · cross-institution anonymised benchmarks (needs its own privacy review).</td></tr>
+      </tbody>
+    </table>
+
+    <h3>Phase 0 — Make the engine visible <span class="pill done">Built 2026-10-01</span></h3>
+    <ul>
+      <li><strong>Files.</strong> New frontend feature at <code>frontend/src/app/business/ai-knowledge/</code> with the full folder set (<code>apis/ store/ const/ types/ utils/ components/</code>, <code>layout.tsx</code>, thin <code>page.tsx</code>) per <code>frontend/AGENTS.md</code>; reducer registered in <code>lib/store.ts</code>. Two tabs: <em>Memories</em> (list, filter by status/type/source/flagged/conflicting, approve · deprecate · reactivate · unflag · edit · delete) and <em>Conversations</em> (<code>?unreviewed=true</code>, thread view, approve/correct/flag a reply).</li>
+      <li><strong>Backend.</strong> None. Every endpoint exists.</li>
+      <li><strong>DB / workers.</strong> None.</li>
+      <li><strong>Tests.</strong> None to add. This phase ships no backend logic, and isolation needs no test — the schema is the boundary. The existing <code>test:institution-memory-*</code> scripts already cover the endpoints the UI calls.</li>
+      <li><strong>Migration notes.</strong> Confirm staging <code>knex_migrations</code> carries institution <code>20260925_001</code> before shipping; a tenant without it reads empty, not broken.</li>
+    </ul>
+    <div class="gap good">
+      <strong>As built</strong>
+      <code>frontend/src/app/business/ai-knowledge/</code>, three tabs, reducers registered as
+      <code>aiKnowledge</code> / <code>aiKnowledgeReviews</code> / <code>aiKnowledgeProfile</code>, nav item
+      under Settings. Institution-only is gated with <code>isInstitutionContext()</code> rather than by
+      hiding the nav item — a business gets a sentence, not a 403.
+    </div>
+
+    <h3>Phase 1 — The Rack configuration row <span class="pill done">Built 2026-10-01</span></h3>
+    <ul>
+      <li><strong>Files.</strong> New module folder reusing the institution-memory shape: <code>schemas/profile.schema.ts</code> (Voice/Behaviour/Collection/Learning zod), <code>repositories/profile.repository.ts</code> (tenant resolution copied from <code>memory.repository.schemaFor</code>), <code>services/profile.service.ts</code> (get with 60 s cache + <code>clearProfileCache</code>, mirroring <code>clearRetrievalCache</code>), route pair on the existing <code>institution/</code> mount.</li>
+      <li><strong>Prompt.</strong> <code>buildSystemPrompt</code> gains one <code>rackProfile</code> option and one renderer; it slots beside <code>institutionGuidance</code>, after BOUNDARIES. <em>Do not</em> grow the existing hardcoded VOICE paragraph — replace it when the profile is present.</li>
+      <li><strong>DB.</strong> <code>institution/2026XXXX_001_institution_ai_profile.ts</code> + business twin. Provisioning seeds the single row with defaults.</li>
+      <li><strong>Workers / API.</strong> No worker. <code>GET|PATCH /institution/ai-profile</code>.</li>
+      <li><strong>Tests.</strong> <code>npm run test:institution-rack-profile</code> — 32 assertions, no DB.</li>
+    </ul>
+    <div class="gap good">
+      <strong>As built — three deviations from the plan above, each deliberate</strong>
+      <ul>
+        <li><strong>Inside <code>institution-memory/</code>, not a new module.</strong> That module already owns
+          the tenant-schema resolution, the <code>/institution/</code> mount and the public surface. A new
+          module would have duplicated <code>schemaFor()</code> and its cache; <code>profile.repository</code> reuses
+          <code>memoryRepo.tenantDbOrNull</code> so the Rack has one schema cache and one test seam.</li>
+        <li><strong>The hardcoded VOICE paragraph stays.</strong> The plan said replace it. It carries the
+          first-person-plural rule — &ldquo;we offer&rdquo;, &ldquo;our campus&rdquo; — which is structural, not stylistic,
+          and replacing it would have dropped that. The profile renders a separate
+          <code>COUNSELLING STYLE</code> block instead, placed <em>before</em> the memory block so that block&rsquo;s
+          HARD LIMITS line stays the last rule read.</li>
+        <li><strong>Defaults are not silent.</strong> The renderer emits only what differs from the
+          defaults — with one exception it must make: the default allow-list withholds age, gender
+          and phone, and a model not told to withhold them will ask. That one line is spent on
+          every untouched profile; everything else costs nothing until someone changes it.</li>
+      </ul>
+    </div>
+
+    <h3>Phase 2 — Close the two retrieval/capture holes <span class="pill done">Built 2026-10-01</span></h3>
+    <ul>
+      <li><strong>2a · Visitor context into the prompt.</strong> Adapter from <code>VisitorRow</code> → <code>ProfileContext</code> (field names already match <code>platform_user_*</code>); <code>guest.routes.ts</code> passes it to <code>buildSystemPrompt({ profile })</code> and its <code>situationText</code> to <code>retrieveMemories({ situation })</code>. No migration, no worker, no endpoint.</li>
+      <li><strong>2b · Volunteered contact details.</strong> <code>lib/profile-extract.ts</code> gains <code>name</code>/<code>email</code>/<code>phone</code> keys built from the institution's <code>collection.allowed</code> set; <code>guest.routes</code> routes a hit to <code>recordContact({ source: 'volunteered' })</code>. Prompt gains a confirm-don't-harvest instruction.</li>
+      <li><strong>DB.</strong> One tenant migration (×2): <code>phone</code>, <code>contact_source</code>, relaxed contact-pair CHECK.</li>
+      <li><strong>Tests.</strong> Extend the existing profile-extract fixtures — email in prose is captured, an email inside a <em>course</em> description is not, a restricted field is never returned. Each must fail first.</li>
+      <li><strong>Risk to watch.</strong> 2b makes the AI read addresses out of free text. Ship it behind <code>collection.allowed</code> defaulting to <strong>on</strong> for email, <strong>off</strong> for phone.</li>
+    </ul>
+    <div class="gap good">
+      <strong>As built</strong>
+      <ul>
+        <li><strong>No new prompt section for 2a.</strong> The visitor's structured background maps onto
+          <code>ProfileContext</code> field for field and the loose scalars onto <code>CounsellingContext</code> —
+          both already rendered, both already feeding <code>situationText</code>. <code>lib/visitor-context.ts</code>
+          is the whole adapter. <code>individual_category</code> is pinned to <code>null</code> so the
+          PROFILE COMPLETION nag can never fire at someone with no profile to complete, and the
+          test asserts exactly that.</li>
+        <li><strong>Consent: confirm, don't harvest.</strong> The Rack's collection block now carries one
+          standing line — confirm an address back once before relying on it — rendered whenever
+          email is collectable, which is the default. The model sees the address in the message
+          it is answering, so the confirmation lands in that same reply.</li>
+        <li><strong>A name alone is now storable.</strong> <code>chk_ai_widget_visitors_contact_pair</code> is
+          dropped: it described the CARD, where both fields are asked for, and it refused the real
+          case of a visitor who says only &ldquo;I'm John&rdquo;. What it protected still holds elsewhere —
+          <code>status</code> derives from <code>email</code>, so a name alone keeps them a Visitor, and the
+          summary is armed only when an address exists. An email takes the full submit path and
+          settles the card; a name alone leaves the card free to ask later, with the name known.</li>
+        <li><strong>Two orphaned validators found and fixed.</strong> <code>UpdateVisitorSchema</code> carried two
+          refines whose only justification was that CHECK; left in place they would have refused
+          to add an email to a name-only row. The card's own both-required refine stays, for the
+          product reason rather than the database one.</li>
+        <li><strong>The counsellor's own address is rejected.</strong> A widget that has just printed the
+          admissions email is the likeliest way to record one the visitor never gave, so any
+          contact value appearing in the counsellor's recent turns is dropped.</li>
+      </ul>
+    </div>
+
+    <h3>Phase 3 — Conversion journeys</h3>
+    <ul>
+      <li><strong>Files.</strong> <code>institution-memory/services/conversation-signals.service.ts</code>; one extra step in the worker's existing <code>conversation</code> branch. Portal panel in the Phase 0 feature.</li>
+      <li><strong>DB.</strong> <code>institution_conversation_signals</code> + business twin.</li>
+      <li><strong>Workers.</strong> No new worker, no new queue — the <code>conversation</code> job already fires at conversation end and already resolves the institution.</li>
+      <li><strong>Caveat.</strong> The job only fires when the visitor presses "end" <em>and</em> <code>auto_learn</code> is on. Signals should be recorded regardless of <code>auto_learn</code> (they are the institution's own analytics, not learning) — publish the job unconditionally and let the learning half check the flag, as <code>learnFromConversation</code> already does.</li>
+      <li><strong>API.</strong> <code>GET /institution/conversion-insights</code> — the aggregates in §F, computed in SQL.</li>
+      <li><strong>Tests.</strong> <code>test:conversion-signals</code> with a seeded transcript: volunteered vs prompted classified correctly, <code>ON CONFLICT</code> makes a replayed job idempotent.</li>
+    </ul>
+
+    <h3>Phase 4 — Learning quality</h3>
+    <ul>
+      <li>Near-duplicate merge in <code>storeCandidates</code> (reuse the embedding already computed for the contradiction check; threshold ≈0.90, same type, status ∈ {active, candidate}).</li>
+      <li><code>GENERAL_KNOWLEDGE</code>: one tuple entry, one metadata schema <code>{ topic, destination_country? }</code>, one <code>evaluateCandidate</code> branch with <code>allowFacts</code>, forced <code>asCandidate</code>, excluded from <code>promoteIfReady</code>. Gated by <code>learning.learn_general_knowledge</code>, default off.</li>
+      <li>Sensitive-category filter: a short keyword set checked alongside <code>PII_RE</code>, plus a Jev question. Applies to <code>recordProfile</code> as well as to candidates.</li>
+      <li>Business-widget parity: the institution memory migrations replayed into <code>database/migrations/business/</code>, and <code>buildEmbedContext</code> returning a usable owner id for the memory calls.</li>
+      <li><strong>Tests.</strong> Paraphrase reinforces rather than inserting; a general-knowledge candidate never auto-promotes however many actors reinforce it.</li>
+    </ul>
+
+    <h3>Phase 5 — Pattern mining <span class="pill done">Built 2026-10-02</span></h3>
+    <p>
+      Topic labelling at conversation end, transition counting over
+      <code>institution_conversation_signals.topic_sequence</code>, a portal panel showing mined
+      sequences with support counts and a promote-to-memory button. Deliberately after MVP:
+      it needs a corpus, and a pattern mined from twenty conversations is noise.
+    </p>
+    <div class="gap good">
+      <strong>As built — no new endpoint, no new table, no new slice</strong>
+      <ul>
+        <li><strong>It rides <code>GET /institution/conversion-insights</code>.</strong> Transitions are
+          one more field on <code>ConversionInsights</code>, computed by one more query inside
+          <code>signalsRepo.insights()</code>. Same tenant, same read, same 4th tab, same Redux slice —
+          a separate route would have added a thunk, a slice and a second round trip to show four
+          rows beside figures the page already fetched.</li>
+        <li><strong>Support counts CONVERSATIONS, not occurrences.</strong>
+          <code>count(DISTINCT s.id)</code> over adjacent pairs from
+          <code>jsonb_array_elements_text(...) WITH ORDINALITY</code>, joined <code>b.i = a.i + 1</code>.
+          A journey that oscillates fees→visa→fees→visa contributes <em>one</em>; counting rows would
+          have made one restless visitor look like three. Verified against the real planner, and
+          against a synthetic <code>VALUES</code> corpus where the two numbers differ (3 vs 4).</li>
+        <li><strong>A floor, because the deferral reason is still true.</strong>
+          <code>MIN_TRANSITION_SUPPORT = 3</code> in SQL (<code>HAVING</code>), and the panel prints the
+          corpus size beside the list so the reader can discount the rest. Two visitors doing the same
+          thing is a coincidence, and inviting someone to teach it to their counsellor is worse than
+          showing nothing.</li>
+        <li><strong>The sentence is composed on the BACKEND</strong> (<code>transitionGuidance</code> in
+          <code>lib/conversation-topics.ts</code>, beside the vocabulary it names) and returned as
+          <code>suggestion</code>. Two reasons: the portal has no test runner, and
+          <code>CreateMemorySchema</code>'s 600-char <code>Content</code> ceiling is enforced on the same
+          side that must not exceed it. The test walks every ordered pair of the eight labels.</li>
+        <li><strong>"Teach this" is the existing create endpoint</strong>, pre-filled — a
+          <code>COUNSELLING_GUIDELINE</code> through <code>createMemory</code>, so it gets the same dedupe,
+          embedding, actor and history as anything typed by hand. No promotion path of its own.
+          A transition is advice about ORDER; it states nothing about fees or visas, so it never
+          reaches for a type that may carry a fact.</li>
+        <li><strong>No chart.</strong> Each row carries two numbers meaning different things (how many
+          visitors, and how many converted), and the tab's one-series <code>InsightBars</code> can only
+          honestly draw one. The conversion share gets the prominence; support is the sample size that
+          says whether to believe it.</li>
+        <li><strong>Tests.</strong> <code>npm run test:conversation-signals</code> — 185 assertions, no DB,
+          fail-first verified. SQL checked read-only against a real tenant schema.</li>
+      </ul>
+    </div>
+
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════════ I -->
+  <section class="step">
+    <div class="step-head"><span class="num">I</span><h2>Risks</h2></div>
+    <table>
+      <thead><tr><th style="width:170px">Risk</th><th style="width:100px">Level</th><th>Assessment and control</th></tr></thead>
+      <tbody>
+        <tr><td>Tenant isolation</td><td><span class="pill done">Not a risk</span></td>
+            <td>The tenant schema <em>is</em> the isolation. There is no filter to forget and nothing to verify. Keep new Rack tables in the tenant schema and it stays true by construction.</td></tr>
+        <tr><td>Privacy</td><td><span class="pill part">Medium</span></td>
+            <td>Three open items. (1) <code>COUNSELLOR_CORRECTION</code> is stored verbatim with <code>allowFacts: true</code> and only a person check — a counsellor who pastes a student's details into a correction creates an active memory containing them. Add the PII regex to the correction path. (2) <code>ai_widget_visitors</code> has no TTL and no erase endpoint; a GDPR/DSAR request today has no handler. (3) Phase 2b widens what the AI reads out of prose — ship it default-on for email only.</td></tr>
+        <tr><td>Memory contamination</td><td><span class="pill done">Low</span></td>
+            <td>Four independent gates already. The residual path is metadata free-text keys, which are filtered by an <em>explicit list</em> — <code>FREE_TEXT_METADATA_KEYS</code>. Adding a free-text metadata field without adding its key silently reopens the hole. The schema file says so; the test enforces it.</td></tr>
+        <tr><td>Incorrect learning</td><td><span class="pill part">Medium</span></td>
+            <td>Candidates need 3 distinct actors or a human. With no portal (today) the human path does not exist and the crowd path is unreachable for paraphrases — so in practice <em>nothing</em> is being learned and candidates expire at 90 days. Phases 0 and 4 are the fix; until then, learning is inert rather than wrong, which is the safe failure.</td></tr>
+        <tr><td>Hallucinated memories</td><td><span class="pill done">Low</span></td>
+            <td>Two models must agree (confidence is the <em>minimum</em> of extractor and Jev), facts are refused, and nothing enters the prompt as a fact — learned rows render "(learned, advisory)". Residual: with <code>TYPESAFE_API_KEY</code> unset, Jev returns null everywhere and the pipeline falls back to regex plus the extractor's own self-assessment. <strong>Confirm the key is set in staging and production</strong>, or the second opinion is silently absent.</td></tr>
+        <tr><td>Prompt size</td><td><span class="pill part">Medium</span></td>
+            <td>Memory is budgeted (800 + 1 700 chars). Nothing else is. Adding the Rack profile (~250) and visitor context (~400) is fine; the uncapped risk is <code>ragContext</code>. Give the new blocks explicit budgets like the memory renderer has, and log the assembled prompt length so growth is visible before it is expensive.</td></tr>
+        <tr><td>Cost</td><td><span class="pill part">Medium</span></td>
+            <td>Each widget turn already costs: 1 chat + 1 embedding + <code>extractProfile</code> + conditionally <code>judgeConclusion</code>. Phase 2 adds none. Phase 3 adds one lite call per <em>conversation</em>. Phase 5's labelling must ride that same call, not add another. Per <em>extraction cost priority</em>, add per-institution AI usage accounting before enabling anything in Phase 4/5 broadly.</td></tr>
+        <tr><td>Performance</td><td><span class="pill done">Low</span></td>
+            <td>Memory retrieval is an exact cosine sort over hundreds of rows in one schema, guarded by a 60 s zero-count cache that skips the embedding entirely when an institution has nothing. The HNSW upgrade path is documented in the migration. Watch pool count instead: every institution with an active widget holds a tenant pool.</td></tr>
+        <tr><td>Duplicate memories</td><td><span class="pill part">Medium</span></td>
+            <td>Exact-hash dedupe only. This is the single biggest brake on learning quality and it is Phase 4's first item.</td></tr>
+        <tr><td>Lead attribution</td><td><span class="pill part">Medium</span></td>
+            <td>Conversion is <code>contact_status = 'submitted'</code> on a row keyed by <code>sha256(fingerprint + embed_key)</code>. A cleared browser, a second device or a private window is a new visitor and a new "conversion"; the same person may convert twice. State this on the analytics panel rather than implying precision. <code>contact_source</code> at least separates volunteered from prompted, which is the distinction the requirement actually asks about.</td></tr>
+        <tr><td>Business widgets</td><td><span class="pill part">Medium</span></td>
+            <td>No memory, no learning, no error — a silent capability gap that will be read as a bug the first time someone demonstrates it. Either ship parity in Phase 4 or say so in the portal.</td></tr>
+      </tbody>
+    </table>
+  </section>
+
+  <!-- ══════════════════════════════════════════════════════════════════ J -->
+  <section class="step">
+    <div class="step-head"><span class="num">J</span><h2>Implementation recommendation</h2></div>
+    <p>
+      <strong>Build the portal first, and build nothing else until it exists.</strong> The memory
+      engine is already better than the requirement asks for, and it is currently inert: every
+      candidate it produces expires unseen after ninety days because the only two promotion paths
+      are a human who has no screen and a crowd threshold that paraphrasing makes unreachable.
+      Adding voice profiles, collection rules and journey tables on top of an unobservable engine
+      multiplies the amount of invisible state. Phase 0 is a frontend-only change against
+      endpoints that already ship.
+    </p>
+    <p>
+      <strong>Then take the two retrieval fixes in Phase 2, in that order.</strong> Feeding the
+      visitor's own context back into their prompt is roughly fifty lines against APIs that exist
+      on the platform path, and it fixes the most visible product failure in the system — a
+      counsellor that forgets what it was told one message ago. Volunteered contact detection is
+      the second, and it turns a form into a conversation.
+    </p>
+    <p>
+      <strong>Add exactly one new configuration object, not a system.</strong> The Rack should be
+      one tenant row with four typed JSONB blocks. Resist a settings table per concern, a
+      versioned config chain, and a behaviour-rules engine — the 2026-09-25 design already made
+      the same call about settings and events tables and was right to. Voice and collection rules
+      are read whole, written whole, and will change a few times a year.
+    </p>
+    <p>
+      <strong>Keep patterns and journeys as queries, not pipelines.</strong> One denormalised row
+      per finished conversation answers every question in §10 and §11 with a <code>GROUP BY</code>.
+      An events table, a stream, or a scheduled aggregation job buys nothing at this volume and
+      costs a worker, a queue and a backfill each.
+    </p>
+    <p>
+      <strong>Reuse list, explicitly.</strong> <code>institution_ai_memories</code> (all memory —
+      add types, never tables) · <code>match_institution_ai_memories</code> · <code>createMemory</code> /
+      <code>approve</code> / <code>voteOnMemory</code> / <code>runSweep</code> · the
+      <code>institution_memory_learn</code> queue and its worker · <code>lib/jev.ts</code> ·
+      <code>evaluateCandidate</code> · <code>retrieveMemories</code> and <code>renderMemoryBlock</code> ·
+      <code>rag.situationText</code> and <code>buildSystemPrompt</code> · <code>extractProfile</code> ·
+      <code>ai_widget_visitors</code> and its generated <code>status</code> column ·
+      <code>sanitizeCustomInstructions</code> · the pool-manager tenant resolution in
+      <code>memory.repository.schemaFor</code>. Nothing in this plan needs a second memory system,
+      a second vector store, or a second queue.
+    </p>
+    <div class="gap question">
+      <strong>Four decisions needed before Phase 1 starts</strong>
+      <ul>
+        <li><strong>Consent posture for volunteered contact details</strong> — store silently, or confirm in-line? (Recommended: confirm.)</li>
+        <li><strong>Default collection rules</strong> — should gender and age stay on by default? (Recommended: off; they are collected today with no stated purpose.)</li>
+        <li><strong>Business widgets</strong> — memory parity in Phase 4, or documented as institution-only for MVP?</li>
+        <li><strong>General knowledge</strong> — is an institution's counsellor allowed to learn generic sector facts at all, or should everything factual come from the Rack and the catalogue? (Recommended: allow, human-approval-only, default off.)</li>
+      </ul>
+    </div>
+  </section>
+
+  <footer>
+    Analysis read from the code on 2026-10-01 · branch <code>staging</code> (<code>c150c60b</code>) ·
+    line-level references are accurate as of that commit and will drift. No code was changed by
+    this document. Companions: <em>2026-09-25-institution-counselling-memory-design</em> (the
+    shipped engine) and <em>2026-10-01-globaly-ai-mvp-requirements-status</em> (§C–§E).
+  </footer>
+
+</main>
+</body>
+</html>

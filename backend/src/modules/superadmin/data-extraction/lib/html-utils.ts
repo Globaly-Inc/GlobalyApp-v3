@@ -230,6 +230,29 @@ export function looksLikeNonCourseUrl(url: string): boolean {
   return NON_COURSE_PATH_MARKERS.some((m) => path.includes(m));
 }
 
+const CATALOGUE_HOST = /^(explorecourses|bulletin|catalog(?:ue)?s?|courses|programs|handbook|study|so[a-z]|school|faculty)\./i;
+
+/** Hosts that are never a course page, whatever their paths say. csuohio.edu: 345 of 500 queued
+ *  pages were researchguides.csuohio.edu LibGuides named after courses ("NUR 334 - …"), all 0 yield. */
+const NON_CONTENT_HOST = /^(researchguides|libguides|guides\.lib|library|libraries|lib|specialcollections|stories|news|newsroom|events|calendar|alumni|giving|athletics|magazine|blogs?)\./i;
+
+/** 0 = the admin or the site pointed at it, 1 = catalogue host, 2 = course-looking path, 3 = rest. */
+export function crawlRank(url: string, source?: string | null): number {
+  if (source === "admin" || source === "guided" || source === "homepage") return 0;
+  try { if (CATALOGUE_HOST.test(new URL(url).hostname) && !looksLikeNonCourseUrl(url)) return 1; } catch { /* rank below */ }
+  return looksLikeCourseUrl(url) ? 2 : 3;
+}
+
+/** Stable, so discovery order still decides within a rank. page_cap and the snapshot keep the
+ *  FIRST N of this list, which used to be discovery order: CSU's 247 capped-out course URLs were
+ *  whichever the sitemap happened to list last. */
+export function rankForCrawl<T extends { url: string; source?: string | null; category_source?: string | null }>(rows: T[]): T[] {
+  return rows
+    .map((r, i) => ({ r, i, k: crawlRank(r.url, r.category_source === "admin" ? "admin" : r.source) }))
+    .sort((a, b) => a.k - b.k || a.i - b.i)
+    .map((x) => x.r);
+}
+
 /** Heuristic: does this URL look like a course detail or listing page? */
 export function looksLikeCourseUrl(url: string): boolean {
   // Checked BEFORE everything else, including the catalogue-host short-circuit below — that
@@ -257,12 +280,10 @@ export function looksLikeCourseUrl(url: string): boolean {
   // "catalog(ue)" needs the plural too — seen live on catalogs.uky.edu, which the
   // singular-only form silently excluded even though it's exactly the kind of catalogue
   // host this exists for.
-  const catalogueHost = /^(explorecourses|bulletin|catalog(?:ue)?s?|courses|programs|handbook|study|so[a-z]|school|faculty)\./i;
-
   let path: string;
   try {
     const u = new URL(url);
-    if (catalogueHost.test(u.hostname)) return true;
+    if (CATALOGUE_HOST.test(u.hostname)) return true;
     // Path only, never the full href: matching the whole URL string let a signal
     // like "/admission" match by pure string coincidence against a HOSTNAME
     // ("https://admission.example.edu/..." contains "/admission" right after
@@ -364,7 +385,41 @@ export function isRegistrySuffix(site: string): boolean {
  * and the site canonicalised to www (a 100% loss), and it discarded the catalogue
  * subdomains where universities actually publish courses.
  */
-export function filterUrls(urls: string[], base: string): string[] {
+export type FilterDropReason = "invalid_url" | "off_site" | "non_content_host" | "asset" | "blocked_path" | "duplicate";
+export type FilterUrlsReport = {
+  kept: string[];
+  dropped: Record<FilterDropReason, { count: number; sample: string[] }>;
+  droppedTotal: number;
+};
+
+const DROP_SAMPLE_SIZE = 5;
+
+export function redactUrlForSample(url: string): string {
+  try {
+    const u = new URL(url);
+    for (const key of [...u.searchParams.keys()]) u.searchParams.set(key, "redacted");
+    u.hash = "";
+    return u.toString();
+  } catch {
+    return "[unparseable url]";
+  }
+}
+
+export function filterUrlsDetailed(urls: string[], base: string): FilterUrlsReport {
+  const dropped = {
+    invalid_url: { count: 0, sample: [] as string[] },
+    off_site: { count: 0, sample: [] as string[] },
+    non_content_host: { count: 0, sample: [] as string[] },
+    asset: { count: 0, sample: [] as string[] },
+    blocked_path: { count: 0, sample: [] as string[] },
+    duplicate: { count: 0, sample: [] as string[] },
+  };
+  const drop = (reason: FilterDropReason, url: string) => {
+    const d = dropped[reason];
+    d.count++;
+    if (d.sample.length < DROP_SAMPLE_SIZE) d.sample.push(redactUrlForSample(url));
+  };
+
   const seen = new Set<string>();
   const result: string[] = [];
 
@@ -372,16 +427,18 @@ export function filterUrls(urls: string[], base: string): string[] {
   try {
     site = siteOf(base);
   } catch {
-    return [];
+    for (const raw of urls) drop("invalid_url", raw);
+    return { kept: [], dropped, droppedTotal: urls.length };
   }
 
   for (const raw of urls) {
     try {
       const u = new URL(raw);
-      if (!isSameSite(u.hostname, site)) continue;
+      if (!isSameSite(u.hostname, site)) { drop("off_site", raw); continue; }
+      if (NON_CONTENT_HOST.test(u.hostname)) { drop("non_content_host", raw); continue; }
       // Skip assets
       const ext = u.pathname.slice(u.pathname.lastIndexOf(".")).toLowerCase();
-      if (ASSET_EXTS.has(ext)) continue;
+      if (ASSET_EXTS.has(ext)) { drop("asset", raw); continue; }
       // Skip common non-course paths. `search` is deliberately absent: course
       // catalogues are routinely served from /search (explorecourses.stanford.edu),
       // and the course heuristic is what narrows the list afterwards.
@@ -391,17 +448,21 @@ export function filterUrls(urls: string[], base: string): string[] {
       // per program merely named in passing (seen live: one ranking article produced
       // 17 invented "Graduate X Programs" courses across job b290bd10-...-3bcccb).
       const path = u.pathname.toLowerCase();
-      if (/\/(login|signin|register|cart|checkout|privacy|cookie|terms|sitemap|feed|api|news|press-room|media|blog)\b/.test(path)) continue;
+      if (/\/(login|signin|register|cart|checkout|privacy|cookie|terms|sitemap|feed|api|news|press-room|media|blog)\b/.test(path)) { drop("blocked_path", raw); continue; }
 
       u.hash = "";
       const normalized = u.href.replace(/\/+$/, "");
-      if (!seen.has(normalized)) {
-        seen.add(normalized);
-        result.push(normalized);
-      }
-    } catch { /* invalid URL */ }
+      if (seen.has(normalized)) { drop("duplicate", raw); continue; }
+      seen.add(normalized);
+      result.push(normalized);
+    } catch { drop("invalid_url", raw); }
   }
-  return result;
+  const droppedTotal = Object.values(dropped).reduce((n, d) => n + d.count, 0);
+  return { kept: result, dropped, droppedTotal };
+}
+
+export function filterUrls(urls: string[], base: string): string[] {
+  return filterUrlsDetailed(urls, base).kept;
 }
 
 /**

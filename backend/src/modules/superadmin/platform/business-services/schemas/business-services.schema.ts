@@ -11,6 +11,14 @@ export const ServiceSearchQuerySchema = PaginationSchema.extend({
   // Institutions only — splits the Services tab into Academic Courses vs Short Courses
   // (extraction_courses.course_category). Ignored for a real business's own services.
   course_category: z.enum(["academic", "short_course"]).optional(),
+  // Services tab filters. published applies to both org kinds; origin and degree_level are
+  // institution courses only (extraction_courses), ignored for a business's own services.
+  published: z.enum(["published", "draft"]).optional(),
+  origin: z.enum(["extracted", "manual"]).optional(),
+  degree_level: z.string().min(1).optional(),
+  // Services tab summary counts. needs_approval = not approved yet (pending or needs changes) —
+  // institution courses only, a business's own services have no approval step. missing_fee = no fee.
+  attention: z.enum(["needs_approval", "missing_fee"]).optional(),
 });
 
 export const ServiceInputSchema = z.object({

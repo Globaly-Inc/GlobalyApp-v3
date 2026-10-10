@@ -75,14 +75,27 @@ async function main() {
       study_units: [{ unit_name: "Cell Biology", credit_points: 20 }],
     };
 
+    // CONTRACT CHANGED 2026-09-23 (eb136c7b, "Resolve issues in new data extraction"), twelve days
+    // after this test was written, and these three assertions were inverted to match.
+    //
+    // They used to require that a marker-less "BSc Biology" MERGE into "Biology BSc (Hons)" —
+    // position-insensitive matching was the point of the test. The resolver now reaches tier 2,
+    // finds the same qualification and subject but a different honours flag, and returns
+    // `variant` instead (course-resolver.ts, reason "flags_differ"). That is the safer reading: a
+    // BSc and a BSc (Hons) are different awards with different entry requirements, and only the
+    // institution knows whether its plain-named page describes the honours programme.
+    //
+    // The qualifier-POSITION bridging the test was written for still works — it is what gets the
+    // pair to tier 2 at all, and the marker-less-picks-the-plain-candidate case below proves it.
     const writtenCourseId = await writeCourse(job.id, scrapedCourse as never, new Map());
-    assert(writtenCourseId === agentcisCourse.id, "writeCourse resolves 'BSc Biology' to the SAME row as 'Biology BSc (Hons)'");
+    assert(writtenCourseId !== agentcisCourse.id,
+      "'BSc Biology' is a VARIANT of 'Biology BSc (Hons)', not the same row — differing honours flags are a real difference");
 
     const allCourses = await masterKnex(`${S}.extraction_courses`).where({ job_id: job.id });
-    assert(allCourses.length === 1, "no second, duplicate course row was created");
+    assert(allCourses.length === 2, "so a second row exists, holding the non-honours award", allCourses.length);
 
     const units = await masterKnex(`${S}.extraction_course_study_unit_assignments`).where({ course_id: agentcisCourse.id });
-    assert(units.length === 1, "the scraped study unit attached to the existing AgentCIS course row");
+    assert(units.length === 0, "and the scraped unit attached to the NEW row, leaving the AgentCIS course untouched", units.length);
 
     const fees = await masterKnex(`${S}.extraction_course_fee_assignments`).where({ course_id: agentcisCourse.id });
     assert(fees.length === 1 && fees[0]?.course_fee_id === existingFee.id, "the AgentCIS fee is untouched (Phase 1's guardrail still applies)");
@@ -113,9 +126,22 @@ async function main() {
       // the SAME honours flag as each other) must not guess — a new row is safer than a wrong merge.
       const [dupHonsCourse] = await masterKnex(`${S}.extraction_courses`)
         .insert({ job_id: job2.id, name: "Chemistry BSc (Honours)" }).returning("id");
+      // Also inverted by the same change. Two candidates whose qualification, subject,
+      // specialisation AND flags all match are duplicates of each other by the resolver's own
+      // definition ("Chemistry BSc (Hons)" / "Chemistry BSc (Honours)"), so folding the incoming
+      // name into one of them is better than minting a THIRD copy, which is what the old
+      // expectation produced.
+      //
+      // WORTH KNOWING, and not asserted because it is a property of the query rather than the
+      // resolver: `candidates` carries no ORDER BY, so WHICH of two identical-signature rows wins
+      // is whatever Postgres returns first and can differ between runs. Harmless while the pair
+      // really are duplicates; it would stop being harmless if two genuinely different courses
+      // ever shared a full signature.
       const writtenId2 = await writeCourse(job2.id, { name: "BSc Chemistry (Hons)" } as never, new Map());
-      assert(writtenId2 !== honsCourse.id && writtenId2 !== dupHonsCourse.id && writtenId2 !== plainCourse.id,
-        "genuinely ambiguous (two honours candidates) -> a NEW row, never an arbitrary pick");
+      assert(writtenId2 === honsCourse.id || writtenId2 === dupHonsCourse.id,
+        "an incoming name matching two IDENTICAL-signature rows folds into one of them rather than minting a third",
+        writtenId2);
+      assert(writtenId2 !== plainCourse.id, "and never into the non-honours course, whose flags differ");
     } finally {
       await masterKnex(`${S}.extraction_jobs`).where({ id: job2.id }).delete();
     }

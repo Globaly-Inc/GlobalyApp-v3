@@ -1,9 +1,12 @@
 import { masterKnex } from "../../../core/db/master-pool.js";
 
+/** `agent` is a staff member who took a widget chat over (20261001_001); the server sets it. */
+export type MessageRole = "user" | "assistant" | "agent";
+
 export interface MessageRow {
   id: number;
   session_id: number;
-  role: "user" | "assistant";
+  role: MessageRole;
   content: string;
   sources: unknown[];
   cards: unknown[];
@@ -15,15 +18,27 @@ export interface MessageRow {
   completion_tokens: number | null;
   total_tokens: number | null;
   latency_ms: number | null;
+  /** Agent rows only — a snapshot of the staff member's name, so the public widget never joins. */
+  sender_name: string | null;
   created_at: Date;
 }
 
 const TABLE = "ai_counselor_messages";
 
+// What a student may see. The review, feedback_actor and memory_ids columns added by
+// 20260925_001 are internal to the learning pipeline and never leave through this list.
+const STUDENT_COLUMNS = [
+  "id", "session_id", "role", "content", "sources", "cards", "chips", "blocks", "attachments",
+  "feedback", "prompt_tokens", "completion_tokens", "total_tokens", "latency_ms", "sender_name", "created_at",
+];
+
 export async function create(data: {
   session_id: number;
-  role: "user" | "assistant";
+  role: MessageRole;
   content: string;
+  /** Required for role "agent", forbidden otherwise — CHECK ai_messages_agent_sender_check. */
+  sender_user_id?: number;
+  sender_name?: string;
   sources?: unknown[];
   cards?: unknown[];
   chips?: unknown[];
@@ -33,6 +48,10 @@ export async function create(data: {
   completion_tokens?: number;
   total_tokens?: number;
   latency_ms?: number;
+  /** Institution memories that shaped this reply — feedback learns against exactly these.
+   * Only written when present, so the column default holds and a DB behind the
+   * 20260925_001 migration is not asked for a column it lacks. */
+  memory_ids?: string[];
 }): Promise<MessageRow> {
   const [row] = await masterKnex(TABLE)
     .insert({
@@ -48,6 +67,8 @@ export async function create(data: {
       completion_tokens: data.completion_tokens ?? null,
       total_tokens: data.total_tokens ?? null,
       latency_ms: data.latency_ms ?? null,
+      ...(data.sender_name ? { sender_user_id: data.sender_user_id ?? null, sender_name: data.sender_name } : {}),
+      ...(data.memory_ids?.length ? { memory_ids: JSON.stringify(data.memory_ids) } : {}),
     })
     .returning("*");
   return row;
@@ -70,10 +91,22 @@ export async function findBySession(
   opts: { limit?: number } = {},
 ): Promise<MessageRow[]> {
   const q = masterKnex(TABLE)
+    .select(STUDENT_COLUMNS)
     .where({ session_id: sessionId })
     .orderBy([{ column: "created_at", order: "desc" }, { column: "id", order: "desc" }]);
   if (opts.limit) q.limit(opts.limit);
   const rows = await q;
+  return rows.reverse();
+}
+
+/** The newest `limit` messages across several sessions (a visitor's chats), oldest first. */
+export async function findBySessions(sessionIds: number[], limit: number): Promise<MessageRow[]> {
+  if (!sessionIds.length) return [];
+  const rows = await masterKnex(TABLE)
+    .select(STUDENT_COLUMNS)
+    .whereIn("session_id", sessionIds)
+    .orderBy([{ column: "created_at", order: "desc" }, { column: "id", order: "desc" }])
+    .limit(limit);
   return rows.reverse();
 }
 

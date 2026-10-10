@@ -44,7 +44,7 @@ export function ProductFilm() {
   const caption = FILM_BEATS[step]?.caption ?? "";
 
   return (
-    <section className="px-3 py-20 sm:px-5 md:py-28">
+    <section className="px-3 py-14 sm:px-5 sm:py-20 md:py-28">
       <div className="mx-auto max-w-[1300px] px-2">
         <Reveal>
           <SectionHeading
@@ -59,7 +59,7 @@ export function ProductFilm() {
           {/* max-w-6xl rather than 4xl: the stage's height is fixed by
               FilmStage, shared with v1 and v2, so width is what sets its
               shape. At 6xl it reads as a 16:10 desktop screen, not a square. */}
-          <div ref={ref} className="mx-auto mt-12 max-w-6xl">
+          <div ref={ref} className="mx-auto mt-8 max-w-6xl sm:mt-12">
             <GlassPanel spotlight={false} className="p-3 sm:p-4">
               <FilmStage beat={step} />
 

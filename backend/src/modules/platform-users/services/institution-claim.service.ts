@@ -16,7 +16,7 @@ import { config } from "../../../config.js";
 import { getKnex } from "../../../core/db/pool-manager.js";
 import { schemaName } from "../../../core/db/knex.js";
 import { provisionOnClaim } from "../../../core/business/provisioner.js";
-import { seedBranchesFromJob } from "../../superadmin/data-extraction/lib/branch-sync.js";
+import { convertCampusesToBranches } from "../../superadmin/platform/business-branches/services/business-branches.service.js";
 import { claimBusinessEmail } from "../../../shared/mail/templates.js";
 import { queueEmail } from "../../auth/auth.service.js";
 import { createChildLogger } from "../../../shared/logger.js";
@@ -141,12 +141,6 @@ export async function acceptInstitutionClaim(
       schema_name: institution.schema_name,
     });
 
-    if (institution.source_job_id) {
-      await seedBranchesFromJob(Number(institution.id), institution.schema_name, institution.source_job_id).catch((err) =>
-        logger.warn("Branch seeding from extraction failed", { institutionId: institution.id, err: err instanceof Error ? err.message : String(err) }),
-      );
-    }
-
     // addMember writes the tenant `members` row AND user_institution_index. The index is what
     // makes login hand out institution context — without it the owner would claim
     // successfully and then find no institution to enter. Idempotent, so a retried claim is
@@ -172,6 +166,13 @@ export async function acceptInstitutionClaim(
     // makes the institution resolvable by findInstitutionBySchemaName and
     // listUserInstitutions, so it must not flip until the schema and the owner member exist.
     await repo.updateInstitution(institution.id, { account_status: 1 });
+
+    // Each extracted campus becomes a real branch org (switchable in the org switcher), not a
+    // plain branch row — so this runs only now, once the owner member exists and the institution
+    // is active (convertCampusesToBranches needs both). Not awaited: minting an org per campus
+    // provisions a schema each, too slow to hold the claim request for; it never throws, and a
+    // campus it misses is picked up by `npm run job:convert-campuses`.
+    if (institution.source_job_id) void convertCampusesToBranches(institution.source_job_id);
 
     // Leads that arrived while nobody could sign in — the enquiry fallback mails unclaimed
     // institutions precisely to get them here, so the schema starts with them already in it.

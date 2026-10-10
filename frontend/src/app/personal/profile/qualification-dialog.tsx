@@ -15,20 +15,28 @@ import type { Qualification, QualificationInput } from "../apis/types";
 import { useValidatedForm } from "./validation";
 import { FieldError } from "./field-error";
 
-const schema: z.ZodType<QualificationInput> = z
-  .object({
-    qualification_type: z.string().min(1, "Required"),
-    degree_title: z.string().min(1, "Required"),
-    subject_area: z.string(),
-    institution_name: z.string().min(1, "Required"),
-    grading_system: z.string(),
-    grade_value: z.string(),
-    is_current: z.boolean(),
-    start_date: z.string().min(1, "Required"),
-    end_date: z.string(),
-    sort_order: z.number(),
-  })
-  .refine((v) => v.is_current || v.end_date !== "", { message: "Required", path: ["end_date"] });
+const base = z.object({
+  qualification_type: z.string().min(1, "Required"),
+  degree_title: z.string().min(1, "Required"),
+  subject_area: z.string(),
+  institution_name: z.string().min(1, "Required"),
+  grading_system: z.string(),
+  grade_value: z.string(),
+  is_current: z.boolean(),
+  start_date: z.string().min(1, "Required"),
+  end_date: z.string(),
+  sort_order: z.number(),
+});
+
+const schema: z.ZodType<QualificationInput> = base.refine((v) => v.is_current || v.end_date !== "", {
+  message: "Required",
+  path: ["end_date"],
+});
+
+const partialSchema: z.ZodType<QualificationInput> = base.extend({
+  institution_name: z.string(),
+  start_date: z.string(),
+});
 
 const GRADING_SYSTEMS = [
   { value: "gpa_4", label: "GPA (4.0 scale)" },
@@ -41,7 +49,7 @@ const GRADING_SYSTEMS = [
   { value: "other", label: "Other" },
 ];
 
-function toInput(item: Qualification | null): QualificationInput {
+function toInput(item: Qualification | null, partial = false): QualificationInput {
   return {
     qualification_type: item?.qualification_type ?? "",
     degree_title: item?.degree_title ?? "",
@@ -50,30 +58,41 @@ function toInput(item: Qualification | null): QualificationInput {
     grading_system: item?.grading_system ?? "",
     grade_value: item?.grade_value ?? "",
     is_current: item?.is_current ?? false,
-    start_date: item?.start_date ?? new Date().toISOString().slice(0, 10),
+    start_date: item?.start_date ?? (partial ? "" : new Date().toISOString().slice(0, 10)),
     end_date: item?.end_date ?? "",
     sort_order: item?.sort_order ?? 0,
   };
 }
 
+/**
+ * `partial` relaxes what a record must carry, for callers holding records someone else stated —
+ * the AI widget's visitor page, where a chat gives "a bachelors in computing" with no institution
+ * or dates. There the owner must be able to correct what IS known without inventing the rest,
+ * and a missing start date must stay missing rather than default to today.
+ */
 export function QualificationDialog({
   open,
   onOpenChange,
   item,
   onSave,
   saving,
+  partial = false,
 }: Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
   item: Qualification | null;
   onSave: (data: QualificationInput) => Promise<boolean>;
   saving: boolean;
+  partial?: boolean;
 }>) {
-  const { form, setForm, errors, reset, validate } = useValidatedForm(schema, () => toInput(item));
+  const { form, setForm, errors, reset, validate } = useValidatedForm(
+    partial ? partialSchema : schema,
+    () => toInput(item, partial),
+  );
 
   useEffect(() => {
-    if (open) reset(toInput(item));
-  }, [open, item]);
+    if (open) reset(toInput(item, partial));
+  }, [open, item, partial]);
 
   const [degreeLevels, setDegreeLevels] = useState<Lookup[]>([]);
   const [areasOfStudy, setAreasOfStudy] = useState<Lookup[]>([]);
@@ -170,7 +189,7 @@ export function QualificationDialog({
             />
           </div>
           <div className="flex flex-col gap-2">
-            <Label>Institution *</Label>
+            <Label>Institution{partial ? "" : " *"}</Label>
             <Combobox
               value={form.institution_name ?? ""}
               onChange={(v) => setForm((f) => ({ ...f, institution_name: v }))}
@@ -199,7 +218,7 @@ export function QualificationDialog({
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="flex flex-col gap-2">
-              <Label>Start Date *</Label>
+              <Label>Start Date{partial ? "" : " *"}</Label>
               <DatePicker
                 value={form.start_date ?? ""}
                 onChange={(v) => setForm((f) => ({ ...f, start_date: v }))}
@@ -210,7 +229,7 @@ export function QualificationDialog({
               <FieldError message={errors.start_date} />
             </div>
             <div className="flex flex-col gap-2">
-              <Label>End Date{form.is_current ? "" : " *"}</Label>
+              <Label>End Date{form.is_current || partial ? "" : " *"}</Label>
               <DatePicker
                 value={form.end_date ?? ""}
                 onChange={(v) => setForm((f) => ({ ...f, end_date: v }))}

@@ -208,6 +208,9 @@ domestic_fee_installments: FeeInstallment[] | null;
   international_fee_installments: FeeInstallment[] | null;
   /** The platform's city page for the campus city, when one is published. */
   city_link: { name: string; href: string } | null;
+  /** Per-section public/private control set in the owner's editor — a section absent or not
+   * explicitly `false` here is public (same "unset means public" rule as the profile pages). */
+  public_visibility: Record<string, boolean> | null;
 };
 
 export type SearchBusiness = {
@@ -456,7 +459,8 @@ export type SearchJob = {
 };
 
 export type SearchScholarship = {
-  id: number;
+  /** A number for platform scholarships, a uuid for an institution's own. */
+  id: number | string;
   title: string;
   slug: string;
   provider_name: string | null;

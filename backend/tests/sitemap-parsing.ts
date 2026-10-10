@@ -8,7 +8,7 @@
  */
 import { gzipSync } from "node:zlib";
 import {
-  decodeSitemapBody, nextHostSlot, throttleForHost, sitemapIndexChildren, sitemapLocs, sitemapUrlsFromRobots, updateHostHealth,
+  decodeSitemapBody, nextHostSlot, noteForeignHost, rebaseLocs, throttleForHost, sitemapIndexChildren, sitemapLocs, sitemapUrlsFromRobots, updateHostHealth,
 } from "../src/modules/superadmin/data-extraction/lib/scraper.js";
 import type { HostHealth } from "../src/modules/superadmin/data-extraction/lib/scraper.js";
 
@@ -85,6 +85,21 @@ eq(updateHostHealth(twoFail, true), { alive: true, failures: 0, dead: false }, "
 eq(updateHostHealth(updateHostHealth(fresh(), false), true), { alive: true, failures: 0, dead: false }, "a later answer revives a host that had failed");
 
 eq(updateHostHealth(answered, false, 1), { alive: true, failures: 1, dead: true }, "the limit is tunable");
+
+// ── alias hosts (CSU: www index lists every page on a pantheonsite.io host) ────────
+{
+  const aliases = new Map<string, string>();
+  noteForeignHost("http://live-csu.pantheonsite.io/sitemap.xml?page=1", "https://www.csuohio.edu/sitemap.xml", "csuohio.edu", aliases);
+  noteForeignHost("https://catalog.csuohio.edu/a", "https://www.csuohio.edu/sitemap.xml", "csuohio.edu", aliases);
+  noteForeignHost("https://partner.org/x", "http://live-csu.pantheonsite.io/sitemap.xml", "csuohio.edu", aliases);
+  eq([...aliases], [["live-csu.pantheonsite.io", "https://www.csuohio.edu"]], "only a foreign host listed by an OWN-site doc is a candidate");
+  eq(
+    rebaseLocs(["http://live-csu.pantheonsite.io/academics/nursing?x=1", "https://partner.org/p", "https://www.csuohio.edu/academics/nursing?x=1"], aliases),
+    ["https://www.csuohio.edu/academics/nursing?x=1", "https://partner.org/p"],
+    "confirmed alias locs move onto the own origin, keep path+query, dedupe; others untouched",
+  );
+  eq(rebaseLocs(["http://live-csu.pantheonsite.io/a"], new Map()), ["http://live-csu.pantheonsite.io/a"], "unconfirmed alias is not rebased");
+}
 
 // ── per-host pacing ─────────────────────────────────────────────────────────
 // The slot must be reserved before the caller sleeps. Read-sleep-write paces sequential callers

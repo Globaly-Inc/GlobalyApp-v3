@@ -90,8 +90,8 @@ const issuingOrganizations: IssuingOrganization[] = [
 ];
 
 const accreditations: Accreditation[] = [
-  { id: 1, name: "AACSB Accreditation", issuing_organization_id: 1, issuing_organization_name: "AACSB International", issuing_organization_logo_url: null, website: null, description: "Business school accreditation.", business_id: null, is_global: true, status: "approved", sort_order: 0, scope_country_ids: [] },
-  { id: 2, name: "TEQSA Registration", issuing_organization_id: 2, issuing_organization_name: "TEQSA", issuing_organization_logo_url: null, website: null, description: null, business_id: 42, is_global: false, status: "pending", sort_order: 1, scope_country_ids: [1] },
+  { id: 1, name: "AACSB Accreditation", issuing_organization_id: 1, issuing_organization_name: "AACSB International", issuing_organization_logo_url: null, issuing_organization_status: "approved", website: null, description: "Business school accreditation.", business_id: null, is_global: true, status: "approved", sort_order: 0, scope_country_ids: [] },
+  { id: 2, name: "TEQSA Registration", issuing_organization_id: 2, issuing_organization_name: "TEQSA", issuing_organization_logo_url: null, issuing_organization_status: "pending", website: null, description: null, business_id: 42, is_global: false, status: "pending", sort_order: 1, scope_country_ids: [1] },
 ];
 
 const countries: CountryOption[] = [
@@ -291,6 +291,7 @@ export const categoriesMockApi = {
       is_global: input.scope_country_ids.length === 0,
       issuing_organization_name: org?.name ?? null,
       issuing_organization_logo_url: org?.logo_url ?? null,
+      issuing_organization_status: org ? "approved" : null,
     };
     accreditations.push(row);
     return row;
@@ -304,6 +305,16 @@ export const categoriesMockApi = {
       ...(input.scope_country_ids ? { is_global: input.scope_country_ids.length === 0 } : {}),
       ...(org ? { issuing_organization_name: org.name } : {}),
     });
+  },
+  reviewIssuingOrganization: async (id: number, decision: ModerationStatus): Promise<unknown> => {
+    console.log("[mock] reviewIssuingOrganization", id, decision);
+    await delay(300);
+    // The real API reports issuer status on each accreditation row (issuing_organization_status),
+    // so that's what the mock updates — the list the Approve/Reject issuer buttons live on.
+    for (const a of accreditations) {
+      if (a.issuing_organization_id === id) a.issuing_organization_status = decision;
+    }
+    return { id, status: decision };
   },
   reviewAccreditation: async (id: number, decision: ModerationStatus): Promise<Accreditation> => {
     console.log("[mock] reviewAccreditation", id, decision);

@@ -100,7 +100,7 @@ function mockScraplingConnectFlaky(markdown: string, failCount: number) {
 }
 
 async function main() {
-  const { scrapeMarkdown } = await import("../src/modules/superadmin/data-extraction/lib/scraper.js");
+  const { scrapeFailureText, scrapeMarkdown } = await import("../src/modules/superadmin/data-extraction/lib/scraper.js");
 
   // 1. Scrapling succeeds first — nothing else should even matter.
   mockScrapling(LONG);
@@ -119,11 +119,25 @@ async function main() {
   r = await scrapeMarkdown("https://example.com");
   assertEqual(r.scraper, "firecrawl", "falls through to firecrawl when scrapling and crawl4ai are short");
 
-  // 4. forceFirecrawl skips both scrapling and crawl4ai even though they'd succeed.
-  mockScrapling(LONG);
+  {
+    const calls: { name: string; args: Record<string, unknown> }[] = [];
+    (Client.prototype as any).connect = async function () {};
+    (Client.prototype as any).callTool = async function (req: { name: string; arguments: Record<string, unknown> }) {
+      calls.push({ name: req.name, args: req.arguments });
+      return { structuredContent: { status: 200, content: [LONG], url: "https://example.com" } };
+    };
+    mockFetch({ "crawl4ai.test": LONG, "firecrawl.dev": LONG });
+    r = await scrapeMarkdown("https://example.com", { forceFirecrawl: true, mobile: true, waitFor: 8000 });
+    assertEqual(r.scraper, "scrapling", "hard retry is served by scrapling when it can");
+    assertEqual(calls[0]?.name, "stealthy_fetch", "hard retry skips the plain-HTTP get tier");
+    assertEqual(calls[0]?.args.wait, 8000, "hard retry passes the render wait");
+    assertEqual(String(calls[0]?.args.useragent).includes("iPhone"), true, "mobile retry sends a mobile user agent");
+  }
+  // 4b. ...and reaches Firecrawl only when Scrapling's browsers fail too.
+  mockScrapling(SHORT);
   mockFetch({ "crawl4ai.test": LONG, "firecrawl.dev": LONG });
   r = await scrapeMarkdown("https://example.com", { forceFirecrawl: true });
-  assertEqual(r.scraper, "firecrawl", "forceFirecrawl skips scrapling and crawl4ai");
+  assertEqual(r.scraper, "firecrawl", "hard retry falls back to firecrawl after scrapling fails");
 
   // 5. Scrapling returns a long-but-empty soft-404 shell (nav/footer boilerplate padded past
   // MIN_CONTENT_LEN) — must not be accepted as a real scrape; falls through to Crawl4AI.
@@ -269,6 +283,21 @@ async function main() {
   assertEqual(r.scraper, "scrapling", "a short real 2xx page is accepted from scrapling");
   assertEqual(r.markdown, THIN_REAL, "with its content intact");
   assertEqual(toolCalls, 1, "at the first tier, no escalation");
+
+  (Client.prototype as any).callTool = async function () { throw new Error("MCP error -32001: Request timed out"); };
+  global.fetch = (async (url: string | URL) => url.toString().includes("firecrawl.dev")
+    ? new Response(JSON.stringify({ success: false, error: "Insufficient credits to perform this request." }), { status: 402 })
+    : new Response(JSON.stringify({ markdown: SHORT }), { status: 200 })) as typeof fetch;
+  r = await scrapeMarkdown("https://example.com/down");
+  assertEqual(r.error, "Insufficient credits to perform this request.", "error stays the fallback's, so failure classification is unchanged");
+  assertEqual(/MCP error -32001/.test(scrapeFailureText(r) ?? ""), true, "the shown failure names Scrapling's own error");
+  assertEqual(scrapeFailureText({ error: "x" }), "x", "no Scrapling failure → the error unchanged");
+  const { config } = await import("../src/config.js");
+  const c4Url = config.CRAWL4AI_BASE_URL;
+  (config as { CRAWL4AI_BASE_URL?: string }).CRAWL4AI_BASE_URL = undefined;
+  r = await scrapeMarkdown("https://example.com/down2");
+  (config as { CRAWL4AI_BASE_URL?: string }).CRAWL4AI_BASE_URL = c4Url;
+  assertEqual([r.scraper, /MCP error -32001/.test(scrapeFailureText(r) ?? "")].join(), "firecrawl,true", "…on the Firecrawl-only path too");
 
   console.log(`\n${passed} passed, ${failed} failed`);
   if (failed > 0) process.exit(1);

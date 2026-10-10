@@ -17,10 +17,16 @@ export function ServiceSharingPicker({
   value,
   onChange,
   emptyText = "Head office has no services to share.",
+  label = "Share services",
+  allLabel = "Share all",
+  allNote = "All current and future services will be shared with this branch.",
 }: Readonly<{
   value: SharedServices;
   onChange: (value: SharedServices) => void;
   emptyText?: string;
+  label?: string;
+  allLabel?: string;
+  allNote?: string;
 }>) {
   const [services, setServices] = useState<BusinessService[]>([]);
   const [total, setTotal] = useState(0);
@@ -73,7 +79,7 @@ export function ServiceSharingPicker({
     servicesList = (
       <div className="divide-y rounded-lg border pr-1">
         {services.map((s) => {
-          const isSelected = selectedIds.includes(s.id);
+          const isSelected = isAll || selectedIds.includes(s.id);
           return (
             <div key={s.id} className="flex items-center gap-3 p-3">
               <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-primary/10">
@@ -83,7 +89,9 @@ export function ServiceSharingPicker({
                 <p className="truncate text-sm">{s.name}</p>
                 {s.category_name && <p className="truncate text-xs text-muted-foreground">{s.category_name}</p>}
               </div>
-              <Switch checked={isSelected} onCheckedChange={() => toggle(s.id)} />
+              {/* Locked under "Share all" — it also covers future services, so switching one off
+                 means turning "Share all" off first. */}
+              <Switch checked={isSelected} disabled={isAll} onCheckedChange={() => toggle(s.id)} />
             </div>
           );
         })}
@@ -94,15 +102,14 @@ export function ServiceSharingPicker({
   let content: React.ReactNode;
   if (noServicesAtAll) {
     content = <p className="rounded-lg border py-3 text-center text-xs italic text-muted-foreground">{emptyText}</p>;
-  } else if (isAll) {
-    content = (
-      <p className="rounded-lg border bg-muted/40 py-3 text-center text-xs text-muted-foreground">
-        All current and future services will be shared with this branch.
-      </p>
-    );
   } else {
     content = (
       <>
+        {isAll && (
+          <p className="rounded-lg border bg-muted/40 py-3 text-center text-xs text-muted-foreground">
+            {allNote} Turn off {allLabel} to pick individually.
+          </p>
+        )}
         <div className="flex items-center justify-between gap-2">
           <div className="relative flex-1">
             <Search className="absolute top-1/2 left-2.5 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
@@ -113,12 +120,12 @@ export function ServiceSharingPicker({
               className="h-9 pl-8 text-sm"
             />
           </div>
-          {selectedIds.length > 0 && (
+          {!isAll && selectedIds.length > 0 && (
             <Badge variant="secondary" className="shrink-0 text-xs">
               {selectedIds.length} selected
             </Badge>
           )}
-          {services.length > 0 && (
+          {!isAll && services.length > 0 && (
             <Button
               type="button"
               variant="outline"
@@ -146,11 +153,11 @@ export function ServiceSharingPicker({
     <div className="space-y-2">
       <div className="flex items-center justify-between gap-2">
         <Label>
-          Share services <span className="font-normal text-muted-foreground">(optional)</span>
+          {label} <span className="font-normal text-muted-foreground">(optional)</span>
         </Label>
         {!noServicesAtAll && (
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            Share all
+            {allLabel}
             <Switch checked={isAll} onCheckedChange={(checked) => onChange(checked ? "all" : [])} />
           </label>
         )}

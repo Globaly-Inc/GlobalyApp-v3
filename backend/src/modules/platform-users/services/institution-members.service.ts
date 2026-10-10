@@ -44,6 +44,8 @@ export interface InstitutionMemberInput {
   last_name?: string | null;
   email?: string | null;
   phone?: string | null;
+  /** The invite's "Position / Job Title" — stored in members.job_title. */
+  job_title?: string | null;
 }
 
 /**
@@ -69,6 +71,7 @@ export async function addMember(tenantDb: Knex, institutionId: number, input: In
       last_name: input.last_name,
       email: input.email,
       phone: input.phone,
+      job_title: input.job_title ?? null,
     })
     .onConflict("platform_user_id")
     .merge({
@@ -78,7 +81,8 @@ export async function addMember(tenantDb: Knex, institutionId: number, input: In
       // reset too, so accepting a real invite can't collide with another member's primary flag
       // (addMember never calls a resetPrimaryMembers-equivalent since a fresh accept is never
       // itself flagged primary through the invite).
-      job_title: null, department: null, linkedin_url: null, other_url: null,
+      // job_title is the one exception: it's the position the accepted invite itself carried.
+      job_title: input.job_title ?? null, department: null, linkedin_url: null, other_url: null,
       tags: [], preferred_channel: null, is_primary: false, notes: null,
     });
 
@@ -182,7 +186,8 @@ async function enrichMembers(members: MemberRow[]) {
       is_owner: member.is_owner,
       account_status: member.account_status,
       admin_point_of_contact: member.admin_point_of_contact,
-      position: null,
+      // Institutions keep the title in members.job_title (shared with contacts).
+      position: member.job_title ?? null,
       is_public: true,
       created_at: member.created_at,
       updated_at: member.updated_at,
@@ -464,6 +469,7 @@ export interface InstitutionInviteInput {
   email: string;
   phone?: string | null;
   role: string;
+  position?: string | null;
 }
 
 async function createInvitation(
@@ -485,19 +491,26 @@ async function createInvitation(
     }
   }
 
-  const pending = await invitesRepo.findPendingInvitationByEmail(tenantDb, input.email);
-  if (pending) throw new ConflictError("Invitation already pending for this email");
+  const existing = await invitesRepo.findPendingInvitationByEmail(tenantDb, input.email);
+  if (existing && new Date(existing.expired_at).getTime() > Date.now()) {
+    throw new ConflictError("Invitation already pending for this email");
+  }
 
   const token = randomBytes(32).toString("hex");
   const expiredAt = new Date(Date.now() + INVITE_TOKEN_TTL_MS);
-  const invitation = await invitesRepo.insertInvitation(tenantDb, {
-    email: input.email,
-    user_details: { first_name: input.first_name, last_name: input.last_name, phone: input.phone ?? null, role: input.role },
-    invite_token: token,
-    invited_by: invitedByMemberId,
-    status: "pending",
-    expired_at: expiredAt,
-  });
+  const userDetails = {
+    first_name: input.first_name, last_name: input.last_name, phone: input.phone ?? null,
+    role: input.role, position: input.position ?? null,
+  };
+  const invitation = existing
+    ? await invitesRepo.reviveInvitation(tenantDb, existing.id, {
+        user_details: userDetails, invite_token: token, invited_by: invitedByMemberId, expired_at: expiredAt,
+      })
+    : await invitesRepo.insertInvitation(tenantDb, {
+        email: input.email, user_details: userDetails, invite_token: token,
+        invited_by: invitedByMemberId, status: "pending", expired_at: expiredAt,
+      });
+  if (!invitation) throw new ConflictError("This invitation was just updated by someone else — refresh and try again");
 
   const acceptUrl = `${config.WEB_APP_URL}/invite/institution-member/accept?token=${token}&org_id=${institutionSchemaName}`;
   // ponytail: fire-and-forget — invitation must not fail because email is down
@@ -569,6 +582,7 @@ export async function acceptMemberInvitation(institutionSchemaName: string, toke
     last_name: platformUser.last_name,
     email: platformUser.email,
     phone: platformUser.phone,
+    job_title: details.position || null,
   });
 
   await invitesRepo.markInvitationAccepted(tenantDb, invitation.id);

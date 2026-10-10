@@ -13,7 +13,8 @@ import { setProgress } from "../lib/pipeline-steps.js";
 
 const logger = createChildLogger("extraction-step-service");
 
-export async function dispatchStep(jobId: string, input: RunStepInput, adminId: number) {
+/** `actor: "owner"` is the portal's page-correction path; every other caller is an admin. */
+export async function dispatchStep(jobId: string, input: RunStepInput, adminId: number, opts: { actor?: "admin" | "owner" } = {}) {
   const job = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).first();
   if (!job) throw new NotFoundError("Extraction job not found");
 
@@ -68,6 +69,11 @@ export async function dispatchStep(jobId: string, input: RunStepInput, adminId: 
 
   // Mark this step processing — an atomic merge, so a step finishing concurrently keeps its status.
   await setProgress(jobId, { [step]: "processing" });
+  // An admin running a step makes this an admin run: the completion email (isOwnerRun) keys on it.
+  // Before the publish, so a fast step cannot finish before the mark lands.
+  if (opts.actor !== "owner") {
+    await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({ updated_by_platform_user_id: adminId });
+  }
 
   // Publish to queue
   await queueService.publish(EXTRACTION_QUEUES.STEPS, {

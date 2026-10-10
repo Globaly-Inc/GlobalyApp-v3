@@ -12,6 +12,7 @@ import * as sessionsRepo from "../repositories/sessions.repository.js";
 import * as creditService from "./credit.service.js";
 import * as embedRepo from "../repositories/embed.repository.js";
 import type { EmbedContext } from "./embed.service.js";
+import { profileBlockFor, retrieveMemories } from "../../institution-memory/index.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import * as storage from "../../../shared/storage/storageService.js";
 
@@ -33,7 +34,7 @@ export async function withInstitutionMedia(cards: ParsedCard[]): Promise<ParsedC
       if (!m) return card;
       return {
         ...card,
-        institution_logo_url: m.logo_url,
+        institution_logo_url: await storage.resolvePreviewUrl(m.logo_url),
         institution_cover_url: await storage.resolvePreviewUrl(m.cover_url),
         institution_website: m.website,
         city: card.city ?? m.city ?? undefined,
@@ -87,6 +88,7 @@ export async function handleMessage(opts: {
       role: (m.role === "user" ? "user" : "model") as "user" | "model",
       parts: [{ text: m.content }],
     }));
+    const pinnedCourseIds = rag.pinnedCourseIdsFrom(prevMessages);
 
     // 4. Persist user message
     await messagesRepo.create({
@@ -222,17 +224,57 @@ export async function handleMessage(opts: {
       }
     }
 
+    // What this institution has told or taught its counsellor — never throws, "" when there
+    // is nothing. Runs beside searchAll so it costs no extra wall-clock on the embed path.
+    let memoryIds: string[] = [];
     if (!result) {
-      const ragOutput = await rag.searchAll({
-        query: opts.content,
-        userId: opts.userId,
-        jobIds: opts.embed?.jobIds,
-        rackInstitutionId: opts.embed?.rackInstitutionId,
-        skipCourses: discoveryTurn,
-        onTrace: trace,
-      });
+      const institutionId = opts.embed?.rackInstitutionId;
+      const [ragOutput, memory, rackProfile] = await Promise.all([
+        rag.searchAll({
+          query: opts.content,
+          userId: opts.userId,
+          jobIds: opts.embed?.jobIds,
+          rackInstitutionId: institutionId,
+          skipCourses: discoveryTurn,
+          pinnedCourseIds,
+          priorQuestion: rag.lastAssistantQuestion(prevMessages),
+          onTrace: trace,
+        }),
+        // Courtesy turns skip the memory EMBEDDING for the same reason searchAll skips its
+        // searches: there is nothing in "thanks" to retrieve guidance for. The pinned rules still
+        // come back — they are institution-wide and must not depend on how the student phrased the
+        // turn, least of all on a closing reply (Greptile).
+        institutionId
+          ? retrieveMemories({
+              institutionId,
+              institutionName: opts.embed?.config.display_name,
+              // Resolved, not raw: this embeds the question too (see rag.resolveQuery).
+              query: rag.resolveQuery(opts.content, rag.lastAssistantQuestion(prevMessages)),
+              situation: rag.situationText(profileContext, session.counselling_context),
+              pinnedOnly: rag.isCourtesyTurn(opts.content, rag.lastAssistantQuestion(prevMessages)),
+              onTrace: trace,
+            })
+          : null,
+        // The Rack's configuration half. Cached 60s and never throws, so it rides the same
+        // Promise.all rather than adding a round trip of its own.
+        institutionId ? profileBlockFor(institutionId) : "",
+      ]);
+      memoryIds = memory?.ids ?? [];
       sources = ragOutput.sources;
       if (sources.length) writeEvent(opts.reply, "sources", sources);
+      // A money question with nothing to ground it is answered "we don't have that", by rule,
+      // not by the model's judgement — a guessed fee or refund window is the costliest mistake.
+      // Matched per topic, not one boolean over the whole context: a retrieved course fee is
+      // evidence for a fees question and NOT for a refund-policy one (Greptile).
+      // Only the topics asked AND ungrounded are withheld — the rest of the question is still
+      // answered. `askedMoneyTopics` reads the question strictly, so a finance COURSE or an
+      // accommodation availability question is not treated as a question about an amount.
+      const withheldMoneyTopics = rag.askedMoneyTopics(opts.content)
+        .filter((topic) => !ragOutput.moneyTopics.includes(topic));
+      if (withheldMoneyTopics.length) {
+        trace(`Money question, no evidence for ${withheldMoneyTopics.join("/")}`
+          + `${ragOutput.moneyTopics.length ? ` (context has: ${ragOutput.moneyTopics.join(", ")})` : ""}: that part withheld`);
+      }
 
       result = await streamChat({
         system: buildSystemPrompt({
@@ -245,6 +287,10 @@ export async function handleMessage(opts: {
           discoveryTurn,
           returning,
           embedConfig: opts.embed?.config,
+          rackProfile,
+          institutionGuidance: memory?.text,
+          withheldMoneyTopics,
+          retrievalSkipped: !ragOutput.searched,
         }),
         history,
         userMessage: opts.content,
@@ -253,7 +299,8 @@ export async function handleMessage(opts: {
     }
 
     // 7. Parse structured blocks
-    const cards = await withInstitutionMedia(parseCards(result.fullText));
+    // Already-shown courses are dropped, not re-carded — see rag.dropShownCards.
+    const cards = await withInstitutionMedia(rag.dropShownCards(parseCards(result.fullText), pinnedCourseIds));
     const chips = parseChips(result.fullText);
     const blocks = parseBlocks(result.fullText);
     const cleanText = stripBlocks(result.fullText);
@@ -289,6 +336,7 @@ export async function handleMessage(opts: {
       completion_tokens: result.usage.completionTokens,
       total_tokens: result.usage.totalTokens,
       latency_ms: latencyMs,
+      memory_ids: memoryIds,
     });
 
     // `question` vs `historyTail` is the whole diagnosis for a suspected off-by-one:

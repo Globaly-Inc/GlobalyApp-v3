@@ -1,8 +1,9 @@
 // Page view counters — one row per (entity_type, entity_id), created on the first real visit.
 
 import { masterKnex } from "../../../core/db/master-pool.js";
-import { SUPERADMIN_SCHEMA as S } from "../../superadmin/consts.js";
+import { SUPERADMIN_SCHEMA as S, publicJobSql } from "../../superadmin/consts.js";
 import { STARTING_VIEWS, type PageViewType } from "../consts.js";
+import { approvedCourseSql } from "../../superadmin/consts.js";
 
 const T = "page_views";
 
@@ -26,7 +27,9 @@ export async function entityExists(entityType: PageViewType, entityId: string): 
       if (!UUID.test(entityId)) return false;
       const row = await masterKnex(`${S}.extraction_courses as ec`)
         .where("ec.id", entityId)
-        .whereRaw(`exists (select 1 from ${S}.extraction_jobs ej where ej.id = ec.job_id and ej.status = 'exported')`)
+        .whereRaw(`exists (select 1 from ${S}.extraction_jobs ej where ej.id = ec.job_id and ${publicJobSql("ej")})`)
+        .where("ec.is_published", true)
+        .whereRaw(approvedCourseSql("ec"))
         .first("ec.id");
       return Boolean(row);
     }

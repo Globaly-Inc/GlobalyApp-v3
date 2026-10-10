@@ -10,6 +10,7 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { isRegistrySuffix, isSameSite, siteOf } from "./html-utils.js";
 import { assertPublicUrl, safeFetch, UnsafeUrlError } from "../../../../shared/public-url.js";
+import { circuitOpenError, hostGapMs, hostOf, isHostCircuitOpen, noteHostOutcome } from "./host-health.js";
 
 const logger = createChildLogger("scraper");
 
@@ -29,6 +30,7 @@ export interface ScrapeOptions {
   waitFor?: number;
   withLinks?: boolean;
   forceFirecrawl?: boolean;
+  breaker?: boolean;
   /** Firecrawl mobile emulation — some anti-bot walls only serve the mobile site. */
   mobile?: boolean;
   /**
@@ -58,11 +60,22 @@ export interface ScrapeResult {
   blocked?: boolean;
   notFound?: boolean;
   error?: string;
+  scraplingError?: string;
+}
+
+/** `error`, naming Scrapling's failure too when a fallback ran after it. */
+export function scrapeFailureText(r: { error?: string; scraplingError?: string }): string | undefined {
+  if (!r.scraplingError) return r.error;
+  return `${r.error ?? "no content"} (after Scrapling failed: ${r.scraplingError})`;
 }
 
 export interface MapOptions {
   limit?: number;
   includeSubdomains?: boolean;
+  /** Firecrawl's map FIRST, as discovery was before 2026-09-30. The AI-knowledge crawler keeps it:
+   *  a knowledge source is one site, and the extraction order's catalogue / cert-log probes would
+   *  pull every subdomain of the institution into it. */
+  preferMap?: boolean;
 }
 
 export interface DiscoveryResult {
@@ -92,11 +105,20 @@ const ACCESS_DENIED_PATTERNS = [
   /you don['’]?t have permission to access/i,
 ];
 const NO_CONTENT_PATTERNS = [...NOT_FOUND_PATTERNS, ...ACCESS_DENIED_PATTERNS];
+const CHALLENGE_PATTERNS = [
+  /verify (that )?you(['’]re| are) (not a robot|human)/i,
+  /checking (your browser|if the site connection is secure)/i,
+];
+const CHALLENGE_MAX_LEN = 2000;
+
+export function isChallengePage(content: string): boolean {
+  return content.length < CHALLENGE_MAX_LEN && CHALLENGE_PATTERNS.some((re) => re.test(content));
+}
 
 // ponytail: phrase-based soft-404 detector, not a content-density model — add one if a
 // real page keeps slipping through with boilerplate-only content but no matching phrase.
 function isUsableContent(content: string): boolean {
-  if (content.length < MIN_CONTENT_LEN) return false;
+  if (content.length < MIN_CONTENT_LEN || isChallengePage(content)) return false;
   return !NO_CONTENT_PATTERNS.some((re) => re.test(content));
 }
 
@@ -114,6 +136,7 @@ function isDeadUrlSignal(content: string, error?: string | null): boolean {
 function unusableReason(content: string): string {
   if (content.length < MIN_CONTENT_LEN) return `page content too short (${content.length} chars)`;
   if (isDeadUrl(content)) return "source page reports the content doesn't exist (404 / not found)";
+  if (isChallengePage(content)) return "anti-bot challenge page (needs a browser tier)";
   if (ACCESS_DENIED_PATTERNS.some((re) => re.test(content))) return "page reports access denied (possible anti-bot block)";
   return "page content unusable";
 }
@@ -165,8 +188,8 @@ export function politeDelay(minMs: number, maxMs: number): Promise<void> {
 /** Last RESERVED slot per host — a time already promised to a caller, not a time a request was
  *  observed to happen. See nextHostSlot. */
 const lastHostHit = new Map<string, number>();
-// ponytail: 800ms is polite enough for edu sites; set HOST_THROTTLE_MS=1500 if you get 429s
-const MIN_HOST_GAP_MS = Number(process.env.HOST_THROTTLE_MS) || 800;
+// The gap is no longer one constant for every host — host-health.ts starts it at HOST_THROTTLE_MS
+// (800) and lets a host earn its way down to HOST_THROTTLE_MIN_MS or back itself off on a 429.
 
 /**
  * The next moment a request to this host may go out, given the last slot already handed out. Pure.
@@ -229,7 +252,8 @@ export async function throttleForHost(url: string) {
     return; // invalid url
   }
 
-  const shared = await reserveSharedHostSlot(host, MIN_HOST_GAP_MS);
+  const gapMs = hostGapMs(host);
+  const shared = await reserveSharedHostSlot(host, gapMs);
   if (shared !== null) {
     // The shared table is authoritative; keep the local map roughly in step so a later fallback
     // doesn't immediately hand out a slot the shared reservation already used.
@@ -239,7 +263,7 @@ export async function throttleForHost(url: string) {
   }
 
   const now = Date.now();
-  const slot = nextHostSlot(lastHostHit.get(host), now, MIN_HOST_GAP_MS);
+  const slot = nextHostSlot(lastHostHit.get(host), now, gapMs);
   lastHostHit.set(host, slot); // reserve BEFORE awaiting, or concurrent callers all take it
   const wait = slot - now;
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
@@ -297,11 +321,16 @@ function getFirecrawlKey() {
 
 // ─── Crawl4AI ───────────────────────────────────────────────────────────────
 
-function extractLinksFromMarkdown(markdown: string): string[] {
+export function extractLinksFromMarkdown(markdown: string, baseUrl?: string): string[] {
   const links = new Set<string>();
-  const mdLink = /\[[^\]]*\]\((https?:\/\/[^\s)]+)\)/g;
+  const mdLink = /\[[^\]]*\]\(([^\s)]+)\)/g;
   let m: RegExpExecArray | null;
-  while ((m = mdLink.exec(markdown)) !== null) links.add(m[1]);
+  while ((m = mdLink.exec(markdown)) !== null) {
+    const href = m[1];
+    if (/^https?:\/\//i.test(href)) { links.add(href); continue; }
+    if (!baseUrl || /^(#|javascript:|mailto:|tel:|data:)/i.test(href)) continue;
+    try { links.add(new URL(href, baseUrl).toString()); } catch { /* not a URL */ }
+  }
   const bare = /(https?:\/\/[^\s)<>"']+)/g;
   while ((m = bare.exec(markdown)) !== null) links.add(m[1]);
   return [...links];
@@ -421,7 +450,7 @@ const SCRAPLING_TIERS: { tool: string; timeoutMs: number; browser?: boolean; arg
 // FIRST browser request queues itself as a waiter that nothing will ever wake. That is a permanent
 // stall of every browser-tier scrape in the process, from one typo in an env var. `|| 2` catches
 // NaN, 0 and "", Math.floor rejects "2.7", and Math.max rejects negatives — same shape as
-// HOST_THROTTLE_MS above, which is why that one was never vulnerable to this.
+// host-health.ts's gap constants, which is why those were never vulnerable to this.
 const MAX_BROWSER_TIER_CONCURRENCY = Math.max(1, Math.floor(Number(process.env.SCRAPLING_BROWSER_CONCURRENCY) || 2));
 let browsersInFlight = 0;
 const browserWaiters: (() => void)[] = [];
@@ -456,12 +485,27 @@ export const __browserSlotInternals = { acquireBrowserSlot, releaseBrowserSlot, 
  *  carries no not-found phrasing is a real, thin page — not a wall to escalate past. */
 const MIN_THIN_2XX_LEN = 50;
 
+const MOBILE_UA = "Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1";
+
+export function hardRetryTiers(hard: { mobile?: boolean; waitMs?: number }): typeof SCRAPLING_TIERS {
+  const wait = hard.waitMs ?? 8000;
+  const pageTimeout = 55_000;
+  return SCRAPLING_TIERS.filter((t) => t.browser).map((t) => ({
+    ...t,
+    // The client must outlive Scrapling's own page timeout + wait, or it aborts a fetch that was
+    // about to succeed and leaves its Chromium running server-side.
+    timeoutMs: pageTimeout + wait + 20_000,
+    args: { ...t.args, timeout: pageTimeout, wait, ...(hard.mobile ? { useragent: MOBILE_UA } : {}) },
+  }));
+}
+
 async function scraplingScrape(
   url: string,
   cfg: { baseUrl: string; apiKey?: string },
   extractionType: ScraplingExtractionType,
   mainContentOnly: boolean,
-): Promise<{ content: string; tierUsed?: string; error?: string; notFound?: boolean }> {
+  hard?: { mobile?: boolean; waitMs?: number },
+): Promise<{ content: string; tierUsed?: string; error?: string; notFound?: boolean; throttled?: boolean }> {
   let client: Client;
   try {
     client = await getMcpClient(cfg);
@@ -473,7 +517,8 @@ async function scraplingScrape(
   }
 
   let lastError: string | undefined;
-  for (const tier of SCRAPLING_TIERS) {
+  let throttled = false;
+  for (const tier of hard ? hardRetryTiers(hard) : SCRAPLING_TIERS) {
     if (tier.browser) await acquireBrowserSlot();
     try {
       // Inside the try, not before it: anything thrown between acquiring the slot and entering
@@ -502,13 +547,20 @@ async function scraplingScrape(
       // provider can change that; escalating only spends minutes per dead URL.
       if (status === 404 || status === 410) {
         logger.info(`scrapling mcp: tool "${tier.tool}" got HTTP ${status} for ${url} — dead URL, not escalating`);
-        return { content: "", tierUsed: tier.tool, notFound: true, error: `${tier.tool}: HTTP ${status} — source page does not exist` };
+        // `throttled` rides along: plain HTTP can answer 429 and a browser tier then confirm 404,
+        // and dropping the flag here recorded the page as a bare dead link — silently discarding
+        // the host's own request to slow down.
+        return { content: "", tierUsed: tier.tool, notFound: true, throttled, error: `${tier.tool}: HTTP ${status} — source page does not exist` };
+      }
+      if (status === 429 || status === 503) {
+        throttled = true;
+        logger.warn(`scrapling mcp: tool "${tier.tool}" got HTTP ${status} for ${url} — backing this host off`);
       }
       const ok2xx = status != null && status >= 200 && status < 300;
-      const thinButReal = ok2xx && content.length >= MIN_THIN_2XX_LEN && !NO_CONTENT_PATTERNS.some((re) => re.test(content));
+      const thinButReal = ok2xx && content.length >= MIN_THIN_2XX_LEN && !isChallengePage(content) && !NO_CONTENT_PATTERNS.some((re) => re.test(content));
       if (isUsableContent(content) || thinButReal) {
         logger.info(`scrapling mcp: tool "${tier.tool}" succeeded for ${url} (${content.length} chars${thinButReal && !isUsableContent(content) ? ", thin 2xx" : ""})`);
-        return { content, tierUsed: tier.tool };
+        return { content, tierUsed: tier.tool, throttled };
       }
       lastError = `${tier.tool}: ${unusableReason(content)}`;
       logger.info(`scrapling mcp: tool "${tier.tool}" insufficient for ${url} (${content.length} chars) — escalating`);
@@ -527,7 +579,7 @@ async function scraplingScrape(
       if (tier.browser) releaseBrowserSlot();
     }
   }
-  return { content: "", error: lastError ?? "all scrapling tiers exhausted" };
+  return { content: "", error: lastError ?? "all scrapling tiers exhausted", throttled };
 }
 
 // ─── Firecrawl ──────────────────────────────────────────────────────────────
@@ -645,6 +697,56 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
     throw err;
   }
 
+  // A host that has failed TRIP_AFTER times in a row is not asked again until the circuit
+  // half-opens. An admin Retry (forceFirecrawl) always goes through: the operator is explicitly
+  // asking us to try this one page, and that is also how a trip gets tested before it expires.
+  //
+  // OPT-IN (`breaker`), and only the snapshot step opts in. The page worker must NOT arm it: its
+  // failures route to `scraper_down`, whose retry republishes with forceFirecrawl:false — which
+  // would hit the open circuit, return instantly, and burn all three attempts in milliseconds.
+  // On a catalogue-concentrated job (Yale: 983 of 1,013 URLs on one host) a single five-failure
+  // blip would then kill the whole remaining queue in seconds, where today those pages fail
+  // slowly and a container that recovers mid-run still rescues the later ones.
+  // Outcomes are still RECORDED from every caller, so the adaptive gap keeps learning everywhere.
+  const host = hostOf(url);
+  if (host && opts.breaker && !opts.forceFirecrawl && isHostCircuitOpen(host)) {
+    const error = circuitOpenError(host);
+    logger.warn(`skipping ${url} — ${error}`);
+    return { markdown: "", links: [], scraper: "none", blocked: true, error };
+  }
+  const signals: ScrapeSignals = { throttled: false };
+  return recordHostOutcome(host, await scrapeMarkdownUncircuited(url, opts, signals), signals);
+}
+
+/** Side-channel for things host-health cares about that are not part of a page's result. */
+interface ScrapeSignals { throttled: boolean }
+
+/**
+ * Feed the result back to host-health so the gap can adapt and the breaker can trip.
+ *
+ * `notFound` records NOTHING. A real 404 returns from the first tier in milliseconds, so counting
+ * it as a failure would trip a healthy host purely for having dead links — which a university
+ * catalogue always does — while counting it as a success let that same wall of dead links earn
+ * speed-up credit it never justified.
+ *
+ * A throttle outranks the rest: it widens the gap even when the page then succeeded on a browser
+ * tier, because being asked to slow down is the signal whether or not we got the page in the end.
+ */
+function recordHostOutcome(host: string | null, r: ScrapeResult, signals: ScrapeSignals): ScrapeResult {
+  if (!host) return r;
+  if (signals.throttled) noteHostOutcome(host, "throttled");
+  // A real 404 is a RESPONSE — it proves the host is up, so it clears the circuit — but it says
+  // nothing about pace, so it earns no speed-up credit. Recording nothing at all was wrong in the
+  // other direction: the single probe that reopens a circuit often lands on a dead link, and
+  // leaving `openUntil` set then re-skipped a host that had just answered, every window.
+  else if (r.notFound) noteHostOutcome(host, "alive");
+  // `blocked` with a non-empty body is the Firecrawl path handing back an unusable page (a
+  // challenge wall, a soft 404). Length alone read that as a success.
+  else noteHostOutcome(host, !r.blocked && r.markdown.length > 0 ? "ok" : "failed");
+  return r;
+}
+
+async function scrapeMarkdownUncircuited(url: string, opts: ScrapeOptions, signals: ScrapeSignals): Promise<ScrapeResult> {
   // Pace PAGE scrapes per host, not just sitemap fetches. This was the one path with no throttle
   // at all: throttleForHost lived only inside politeFetch, while the page worker auto-scales to 10
   // concurrent consumers and a well-discovered university puts nearly every course URL on a single
@@ -655,8 +757,9 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
   await throttleForHost(url);
 
   const fcKey = getFirecrawlKey();
-  const scrapling = opts.forceFirecrawl ? null : getScraplingConfig();
+  const scrapling = getScraplingConfig();
   const c4 = opts.forceFirecrawl ? null : getCrawl4aiConfig();
+  let scraplingError: string | undefined;
 
   // Path 0: Scrapling available
   if (scrapling) {
@@ -666,19 +769,22 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
     // with it on, 101k chars with "£9,790 per year" and a paragraph per module with it off
     // (2026-09-21). Nav stays in; Gemini copes and stripMarkdownJunk/truncateMarkdown bound it.
     // `onlyMainContent` still keys the store's mode; it no longer changes what Scrapling returns.
-    const s = await scraplingScrape(url, scrapling, "markdown", false);
+    const s = await scraplingScrape(url, scrapling, "markdown", false,
+      opts.forceFirecrawl ? { mobile: opts.mobile, waitMs: opts.waitFor } : undefined);
+    if (s.throttled) signals.throttled = true;
     if (s.content) {
       logger.info(`scrapling OK for ${url} (tier: ${s.tierUsed ?? "unknown"}, ${s.content.length} chars)`);
       return {
         markdown: s.content,
-        links: opts.withLinks ? extractLinksFromMarkdown(s.content) : [],
+        links: opts.withLinks ? extractLinksFromMarkdown(s.content, url) : [],
         scraper: "scrapling",
       };
     }
     // blocked: true is the shape every caller already branches on for "no page to process";
     // notFound tells the page worker to file it as not_found rather than anti_bot.
     if (s.notFound) return { markdown: "", links: [], scraper: "scrapling", blocked: true, notFound: true, error: s.error };
-    logger.warn(`scrapling insufficient for ${url} (tier: ${s.tierUsed ?? "unknown"}) — falling through: ${s.error ?? "content too short"}`);
+    scraplingError = s.error ?? "content too short";
+    logger.warn(`scrapling insufficient for ${url} (tier: ${s.tierUsed ?? "unknown"}) — falling through: ${scraplingError}`);
   }
 
   // Path A: Crawl4AI available
@@ -687,7 +793,7 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
     if (isUsableContent(a1.markdown)) {
       return {
         markdown: a1.markdown,
-        links: opts.withLinks ? extractLinksFromMarkdown(a1.markdown) : [],
+        links: opts.withLinks ? extractLinksFromMarkdown(a1.markdown, url) : [],
         scraper: "crawl4ai",
       };
     }
@@ -695,7 +801,7 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
     if (isUsableContent(a2.markdown)) {
       return {
         markdown: a2.markdown,
-        links: opts.withLinks ? extractLinksFromMarkdown(a2.markdown) : [],
+        links: opts.withLinks ? extractLinksFromMarkdown(a2.markdown, url) : [],
         scraper: "crawl4ai",
       };
     }
@@ -707,7 +813,7 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
       }
       return {
         markdown: fc.markdown, links: fc.links, scraper: "firecrawl", blocked: true,
-        error: fc.error || a2.error || a1.error || unusableReason(fc.markdown),
+        error: fc.error || a2.error || a1.error || unusableReason(fc.markdown), scraplingError,
         notFound: isDeadUrlSignal(fc.markdown, fc.error)
           || isDeadUrlSignal(a2.markdown, a2.error)
           || isDeadUrlSignal(a1.markdown, a1.error),
@@ -715,7 +821,7 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
     }
     return {
       markdown: "", links: [], scraper: "crawl4ai", blocked: true,
-      error: a2.error || a1.error || unusableReason(a2.markdown),
+      error: a2.error || a1.error || unusableReason(a2.markdown), scraplingError,
       notFound: isDeadUrlSignal(a2.markdown, a2.error) || isDeadUrlSignal(a1.markdown, a1.error),
     };
   }
@@ -726,12 +832,12 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
     const usable = isUsableContent(fc.markdown);
     return {
       markdown: fc.markdown, links: fc.links, scraper: "firecrawl", blocked: !usable,
-      error: fc.error || (usable ? undefined : unusableReason(fc.markdown)),
+      error: fc.error || (usable ? undefined : unusableReason(fc.markdown)), ...(usable ? {} : { scraplingError }),
       notFound: !usable && isDeadUrlSignal(fc.markdown, fc.error),
     };
   }
 
-  return { markdown: "", links: [], scraper: "none", error: "No scraper configured (set CRAWL4AI_BASE_URL or FIRECRAWL_API_KEY)" };
+  return { markdown: "", links: [], scraper: "none", error: "No scraper configured (set CRAWL4AI_BASE_URL or FIRECRAWL_API_KEY)", scraplingError };
 }
 
 // ─── URL discovery ──────────────────────────────────────────────────────────
@@ -796,6 +902,31 @@ export function sitemapUrlsFromRobots(txt: string): string[] {
 /** Child sitemap URLs inside a `<sitemapindex>`. Pure. */
 export function sitemapIndexChildren(xml: string): string[] {
   return [...xml.matchAll(/<sitemap>[\s\S]*?<loc>([^<]+)<\/loc>[\s\S]*?<\/sitemap>/gi)].map((m) => m[1].trim());
+}
+
+/** Foreign hosts an own-site sitemap points at, recorded as `foreignHost → own origin`. Pure.
+ *  CSU's www index lists 5,000 URLs on live-csu-mainsite.pantheonsite.io (a misset Drupal base
+ *  URL); filterUrls then drops every one as off-site. A partner site listed the same way is not an
+ *  alias, so the caller confirms each candidate against the own origin before rebasing. */
+export function noteForeignHost(listed: string, docUrl: string, site: string, aliases: Map<string, string>): void {
+  try {
+    const l = new URL(listed);
+    const d = new URL(docUrl);
+    if (!isSameSite(l.hostname, site) && isSameSite(d.hostname, site) && !aliases.has(l.host)) aliases.set(l.host, d.origin);
+  } catch { /* not a URL */ }
+}
+
+/** Locs on a confirmed alias host, moved onto the own origin (path and query kept). Pure. */
+export function rebaseLocs(locs: Iterable<string>, confirmed: Map<string, string>): string[] {
+  const out = new Set<string>();
+  for (const loc of locs) {
+    try {
+      const u = new URL(loc);
+      const to = confirmed.get(u.host);
+      out.add(to ? `${to}${u.pathname}${u.search}` : loc);
+    } catch { out.add(loc); }
+  }
+  return [...out];
 }
 
 /** Page URLs inside a `<urlset>`. Pure. */
@@ -906,7 +1037,10 @@ async function fetchSitemapDoc(url: string, seedUrl: string, opts: { retry?: boo
   return { ok: false, reachable: false };
 }
 
-export async function fetchSitemapUrls(seedUrl: string, max = 10000): Promise<string[]> {
+/** `rebaseAliases` only for the job's own seed: a cert-log or catalogue host that serves the same
+ *  misset sitemap would otherwise mint a duplicate copy of the site on itself (csuohio.edu and
+ *  csu2.0.csuohio.edu each came back with CSU's 4,300 pages). */
+export async function fetchSitemapUrls(seedUrl: string, max = 10000, opts: { rebaseAliases?: boolean } = {}): Promise<string[]> {
   // Same guard: sitemapsFromLinkedHosts derives the host from a page's own links.
   try {
     await assertPublicUrl(seedUrl);
@@ -948,19 +1082,24 @@ export async function fetchSitemapUrls(seedUrl: string, max = 10000): Promise<st
     return r.ok ? r.text : null;
   }
 
-  async function parse(xml: string, depth: number) {
+  const site = siteOf(seedUrl);
+  const aliases = new Map<string, string>();
+
+  async function parse(xml: string, depth: number, docUrl: string) {
     if (depth > SITEMAP_MAX_DEPTH || seen.size >= max) return;
     if (/<sitemapindex[\s>]/i.test(xml)) {
       for (const sub of sitemapIndexChildren(xml).slice(0, SITEMAP_INDEX_CHILD_CAP)) {
         if (seen.size >= max) return;
         if (tried.has(sub)) continue;
         tried.add(sub);
+        noteForeignHost(sub, docUrl, site, aliases);
         const child = await fetchDoc(sub);
-        if (child) await parse(child, depth + 1);
+        if (child) await parse(child, depth + 1, sub);
       }
       return;
     }
     for (const loc of sitemapLocs(xml)) {
+      noteForeignHost(loc, docUrl, site, aliases);
       seen.add(loc);
       if (seen.size >= max) return;
     }
@@ -970,7 +1109,34 @@ export async function fetchSitemapUrls(seedUrl: string, max = 10000): Promise<st
     if (seen.size >= max || tried.has(url)) return;
     tried.add(url);
     const doc = await fetchDoc(url);
-    if (doc) await parse(doc, 0);
+    if (doc) await parse(doc, 0, url);
+  }
+
+  /** An alias is real when one of its paths answers on the own origin AT that path, and a path that
+   *  cannot exist does not — a site that 200s every URL, or redirects unknown ones home, would
+   *  otherwise "confirm" a partner host and mint its whole sitemap onto ours. */
+  async function confirmedAliases(): Promise<Map<string, string>> {
+    const confirmed = new Map<string, string>();
+    const trimmed = (p: string) => p.replace(/\/+$/, "") || "/";
+    for (const [host, to] of aliases) {
+      const sample = [...seen].find((u) => { try { return new URL(u).host === host && new URL(u).pathname !== "/"; } catch { return false; } });
+      if (!sample) continue;
+      const u = new URL(sample);
+      try {
+        const fetchOpts = { signal: AbortSignal.timeout(SITEMAP_FETCH_TIMEOUT_MS) };
+        const res = await politeFetch(`${to}${u.pathname}${u.search}`, fetchOpts, { referer: seedUrl });
+        const landed = new URL(res.url || `${to}${u.pathname}`);
+        const samePage = res.ok && isSameSite(landed.hostname, site) && trimmed(landed.pathname) === trimmed(u.pathname);
+        const control = samePage
+          ? await politeFetch(`${to}/__alias-check-${Date.now().toString(36)}`, fetchOpts, { referer: seedUrl })
+          : null;
+        if (samePage && control && !control.ok) confirmed.set(host, to);
+        else logger.info(`Sitemap host ${host} is not an alias of ${to}`, { status: res.status, landed: landed.pathname, controlStatus: control?.status });
+      } catch (err) {
+        logger.warn(`Sitemap alias probe failed for ${host}`, { error: String(err) });
+      }
+    }
+    return confirmed;
   }
 
   // robots.txt is read ALWAYS, not as a last resort. It is the site's own declaration of where its
@@ -997,7 +1163,10 @@ export async function fetchSitemapUrls(seedUrl: string, max = 10000): Promise<st
       if (seen.size > 0 || health.get(hostOf(origin))?.dead) break;
     }
   }
-  return [...seen];
+  if (!opts.rebaseAliases || !aliases.size) return [...seen];
+  const confirmed = await confirmedAliases();
+  if (confirmed.size) logger.info(`Rebasing sitemap URLs from alias hosts onto ${origin}`, { hosts: [...confirmed.keys()] });
+  return rebaseLocs(seen, confirmed);
 }
 
 /**
@@ -1183,36 +1352,42 @@ export async function discoverUrlsForCrawl(seedUrl: string, opts: MapOptions = {
   const limit = opts.limit ?? 5000;
   // Course catalogues live on subdomains far more often than not, and both the map
   // call and the URL filter used to exclude them.
-  const mapOpts: MapOptions = { includeSubdomains: true, ...opts };
-
-  // 1. Firecrawl map
-  const map = await mapUrlsDetailed(seedUrl, mapOpts);
-  if (map.success && map.links.length > 1) {
-    return { urls: map.links, method: "map", sources: { map: map.links.length } };
+  const { preferMap, ...rest } = opts;
+  const mapOpts: MapOptions = { includeSubdomains: true, ...rest };
+  if (preferMap) {
+    const first = await mapUrlsDetailed(seedUrl, mapOpts);
+    if (first.success && first.links.length > 1) return { urls: first.links, method: "map", sources: { map: first.links.length } };
   }
-  // 2. sitemap.xml — the seed's, any catalogue subdomain that has one, plus anything
+
+  // 1. sitemap.xml — the seed's, any catalogue subdomain that has one, plus anything
   // Certificate Transparency logs surface that the wordlist and already-linked-hosts
   // paths below could never find on their own (see fetchCertLogSitemaps).
   const [sitemap, catalogue, certLog] = await Promise.all([
-    fetchSitemapUrls(seedUrl, limit),
+    fetchSitemapUrls(seedUrl, limit, { rebaseAliases: true }),
     fetchCatalogueSitemaps(seedUrl, limit),
     fetchCertLogSitemaps(seedUrl, limit),
   ]);
   const merged = [...new Set([...sitemap, ...catalogue, ...certLog])];
   if (merged.length > 1) {
     return {
-      urls: merged, method: "sitemap", error: map.error,
+      urls: merged, method: "sitemap",
       sources: { seed_sitemap: sitemap.length, catalogue: catalogue.length, cert_log: certLog.length },
     };
   }
-  // 3. Scrape seed page for links.
+  // 2. Scrape seed page for links. The pipeline's own crawl (site-crawl.ts) expands from here.
   const res = await scrapeMarkdown(seedUrl, { withLinks: true, onlyMainContent: false });
   if (res.links.length > 1) {
     const linked = await sitemapsFromLinkedHosts(res.links, limit);
     if (linked.length) {
-      return { urls: [...new Set([...linked, ...res.links])], method: "sitemap", error: map.error };
+      return { urls: [...new Set([...linked, ...res.links])], method: "sitemap" };
     }
-    return { urls: res.links, method: "page-links", error: map.error };
+    return { urls: res.links, method: "page-links" };
+  }
+  // 3. Firecrawl map, last: a paid external service, and one whose credits ran out unnoticed while
+  // it sat first here (every job then silently degraded to homepage links).
+  const map = preferMap ? { success: false, links: [] as string[], error: "Firecrawl map returned no links", insufficientCredits: undefined } : await mapUrlsDetailed(seedUrl, mapOpts);
+  if (map.success && map.links.length > 1) {
+    return { urls: map.links, method: "map", sources: { map: map.links.length } };
   }
   // 4. Seed URL only
   return { urls: [seedUrl], method: "seed-only", error: map.error || "No URLs discovered", insufficientCredits: map.insufficientCredits };

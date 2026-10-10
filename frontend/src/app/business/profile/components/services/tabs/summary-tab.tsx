@@ -1,17 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Award, BookOpen, CalendarDays, DollarSign, FileText, GraduationCap, Image as ImageIcon, Loader2, ShieldCheck, Sparkles } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import type { LucideIcon } from "lucide-react";
+import { Award, BookOpen, CalendarDays, DollarSign, GraduationCap, Image as ImageIcon, ShieldCheck } from "lucide-react";
 import { Combobox } from "@/components/combobox";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { SectionCard } from "@/app/personal/profile/section-card";
 import { businessProfileDetailApi } from "../../../apis";
 import { SectionSummaryCard } from "../section-summary-card";
 import { ServiceSetupChecklist } from "../service-setup-checklist";
+import { PublicBadge } from "../public-badge";
+import { SummaryCardLink } from "../summary-card-link";
+import { DescriptionCard } from "./description-card";
 import type { DetailTab } from "../service-form-view";
 
 const COURSE_FIELDS = [
@@ -61,83 +61,52 @@ export function SummaryTab({
     });
   }, [serviceId]);
 
-  return (
-    <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-      <div className="space-y-4 lg:col-span-2">
-        <Card className="gap-3">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FileText className="h-4 w-4 text-muted-foreground" />
-              Description
-            </CardTitle>
-            <CardAction>
-              <Button
-                variant="ghost"
-                size="sm"
-                className="gap-1.5 text-primary"
-                disabled={generatingDescription}
-                onClick={onWriteWithAi}
-              >
-                {generatingDescription ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                Write with AI
-              </Button>
-            </CardAction>
-          </CardHeader>
-          <CardContent>
-            <Textarea
-              value={description}
-              onChange={(e) => onDescriptionChange(e.target.value)}
-              placeholder="Describe the service..."
-              rows={8}
-              className="min-h-20"
-            />
-          </CardContent>
-        </Card>
+  const section = (icon: LucideIcon, title: string, count: number, emptyText: string, tab: DetailTab, addLabel = "Add") => (
+    <SectionSummaryCard
+      icon={icon}
+      title={title}
+      count={count}
+      badge={<PublicBadge />}
+      emptyText={emptyText}
+      addLabel={addLabel}
+      onAdd={() => onNavigateTab(tab)}
+    >
+      <SummaryCardLink onClick={() => onNavigateTab(tab)}>View all {count} {title.toLowerCase()}</SummaryCardLink>
+    </SectionSummaryCard>
+  );
 
+  return (
+    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
+      <div className="stagger-in flex flex-col gap-4 lg:col-span-2">
+        <DescriptionCard
+          description={description}
+          onDescriptionChange={onDescriptionChange}
+          onWriteWithAi={onWriteWithAi}
+          generatingDescription={generatingDescription}
+        />
         {serviceId && (
           <>
-            <SectionSummaryCard
-              icon={BookOpen}
-              title="Study units"
-              count={counts.studyUnits}
-              emptyText="No study units assigned yet."
-              addLabel="Add unit"
-              onAdd={() => onNavigateTab("study-units")}
-            />
-            <SectionSummaryCard
-              icon={Award}
-              title="Accreditations"
-              count={counts.accreditations}
-              emptyText="No accreditations linked yet."
-              addLabel="Add"
-              onAdd={() => onNavigateTab("accreditations")}
-            />
-            <SectionSummaryCard
-              icon={ShieldCheck}
-              title="Eligibility"
-              count={counts.eligibility}
-              emptyText="No eligibility requirements configured yet."
-              addLabel="Add"
-              onAdd={() => onNavigateTab("eligibility")}
-            />
-            <Card className="gap-3">
-              <CardHeader className="flex flex-row items-center justify-between">
-                <CardTitle className="flex items-center gap-2 text-sm">
-                  <ImageIcon className="h-4 w-4 text-muted-foreground" />
-                  Media <Badge variant="secondary" className="text-[10px]">Public</Badge>
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <p className="text-sm text-muted-foreground italic">No media uploaded yet.</p>
-              </CardContent>
-            </Card>
+            {section(BookOpen, "Study units", counts.studyUnits, "No study units assigned yet.", "study-units", "Add unit")}
+            {section(Award, "Accreditations", counts.accreditations, "No accreditations linked yet.", "accreditations")}
+            {section(ShieldCheck, "Eligibility", counts.eligibility, "No eligibility requirements configured yet.", "eligibility")}
+            <SectionSummaryCard icon={ImageIcon} title="Media" count={0} badge={<PublicBadge />} emptyText="No media uploaded yet." />
           </>
         )}
       </div>
 
-      <div className="space-y-4">
+      <div className="stagger-in flex flex-col gap-4">
+        {serviceId && (
+          <ServiceSetupChecklist
+            steps={[
+              { label: "Fees", done: counts.fees > 0, tab: "fees" },
+              { label: "Intakes", done: counts.intakes > 0, tab: "intakes" },
+              { label: "Eligibility", done: counts.eligibility > 0, tab: "eligibility" },
+            ]}
+            onNavigateTab={onNavigateTab}
+          />
+        )}
         <SectionCard icon={GraduationCap} title="Course details">
-          <div className="space-y-4">
+          <div className="flex flex-col gap-4">
             {COURSE_FIELDS.map((field) => {
               const fieldId = schemaFieldIdByKey[field.key];
               const value = fieldId != null && fieldValues[fieldId] != null ? String(fieldValues[fieldId]) : "";
@@ -169,29 +138,8 @@ export function SummaryTab({
 
         {serviceId && (
           <>
-            <SectionSummaryCard
-              icon={DollarSign}
-              title="Course fees"
-              count={counts.fees}
-              emptyText="No fees configured yet."
-              addLabel="Add"
-              onAdd={() => onNavigateTab("fees")}
-            />
-            <SectionSummaryCard
-              icon={CalendarDays}
-              title="Intakes"
-              count={counts.intakes}
-              emptyText="No intakes configured yet."
-              addLabel="Add"
-              onAdd={() => onNavigateTab("intakes")}
-            />
-            <ServiceSetupChecklist
-              steps={[
-                { label: "Fees", done: counts.fees > 0 },
-                { label: "Intakes", done: counts.intakes > 0 },
-                { label: "Eligibility", done: counts.eligibility > 0 },
-              ]}
-            />
+            {section(DollarSign, "Course fees", counts.fees, "No fees configured yet.", "fees")}
+            {section(CalendarDays, "Intakes", counts.intakes, "No intakes configured yet.", "intakes")}
           </>
         )}
       </div>

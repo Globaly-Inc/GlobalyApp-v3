@@ -1,0 +1,775 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>AI Widget Social Inbox</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,640&family=Inter:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    color-scheme: light;
+    --paper: #FAFBFD;
+    --ink: #101A2E;
+    --muted: #56657E;
+    --line: #DCE2EB;
+    --wash: #EEF2F9;
+    --accent: #012E8A;
+    --accent-soft: #E3EAF8;
+    --ok: #17794A;
+    --warn: #9A5B00;
+    --warn-soft: #FFF3DC;
+    --ch-web: #56657E;
+    --ch-messenger: #0866FF;
+    --ch-instagram: #C8356B;
+    --ch-whatsapp: #1A8F4C;
+    --font-display: "Fraunces", "Iowan Old Style", Georgia, serif;
+    --font-body: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --font-mono: "Geist Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      color-scheme: dark;
+      --paper: #0B1220;
+      --ink: #E8ECF3;
+      --muted: #97A4BA;
+      --line: #26314A;
+      --wash: #121B2E;
+      --accent: #8AAAFF;
+      --accent-soft: #17254A;
+      --ok: #5CCB8F;
+      --warn: #F0B45C;
+      --warn-soft: #2B2112;
+      --ch-web: #97A4BA;
+      --ch-messenger: #5C9BFF;
+      --ch-instagram: #F07AA4;
+      --ch-whatsapp: #4FD18A;
+    }
+  }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --paper: #0B1220;
+    --ink: #E8ECF3;
+    --muted: #97A4BA;
+    --line: #26314A;
+    --wash: #121B2E;
+    --accent: #8AAAFF;
+    --accent-soft: #17254A;
+    --ok: #5CCB8F;
+    --warn: #F0B45C;
+    --warn-soft: #2B2112;
+    --ch-web: #97A4BA;
+    --ch-messenger: #5C9BFF;
+    --ch-instagram: #F07AA4;
+    --ch-whatsapp: #4FD18A;
+  }
+
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font: 15px/1.6 var(--font-body);
+    padding-inline: 20px;
+  }
+  .shell {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding-block: 48px 96px;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 40px;
+  }
+  @media (min-width: 1100px) {
+    .shell { grid-template-columns: 220px minmax(0, 1fr); gap: 56px; }
+  }
+
+  /* ── TOC ── */
+  nav.toc { display: none; }
+  @media (min-width: 1100px) {
+    nav.toc { display: block; position: sticky; top: calc(env(safe-area-inset-top, 0px) + 32px); align-self: start; }
+  }
+  nav.toc p { margin: 0 0 10px; font: 500 11px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  nav.toc ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; counter-reset: toc; }
+  nav.toc li { counter-increment: toc; }
+  nav.toc a {
+    display: flex; gap: 10px; padding: 5px 8px; border-radius: 6px;
+    color: var(--muted); text-decoration: none; font-size: 13.5px;
+  }
+  nav.toc a::before { content: counter(toc); font: 500 12px/1.6 var(--font-mono); color: var(--muted); opacity: .6; min-width: 2ch; }
+  nav.toc a:hover { background: var(--wash); color: var(--ink); }
+  nav.toc a:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+  main { min-width: 0; max-width: 820px; }
+
+  /* ── Header ── */
+  header.doc { display: flex; flex-direction: column; gap: 18px; padding-bottom: 28px; border-bottom: 1px solid var(--line); }
+  .eyebrow { font: 500 11.5px/1 var(--font-mono); letter-spacing: .09em; text-transform: uppercase; color: var(--muted); display: flex; flex-wrap: wrap; gap: 8px 14px; align-items: center; }
+  .status {
+    display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; border-radius: 999px;
+    background: var(--warn-soft); color: var(--warn); letter-spacing: .04em;
+  }
+  .status::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  h1 {
+    font: 640 clamp(30px, 5vw, 44px)/1.08 var(--font-display);
+    letter-spacing: -.015em; margin: 0; text-wrap: balance;
+  }
+  .lede { margin: 0; font-size: 17px; line-height: 1.55; color: var(--muted); max-width: 64ch; }
+  dl.meta { margin: 0; display: grid; grid-template-columns: max-content 1fr; gap: 6px 18px; font-size: 13.5px; }
+  dl.meta dt { color: var(--muted); font: 500 12px/1.9 var(--font-mono); letter-spacing: .04em; text-transform: uppercase; }
+  dl.meta dd { margin: 0; }
+
+  /* ── Sections ── */
+  section { padding-top: 44px; display: flex; flex-direction: column; gap: 16px; }
+  h2 {
+    font: 600 26px/1.2 var(--font-display); margin: 0; letter-spacing: -.01em; text-wrap: balance;
+    display: flex; align-items: baseline; gap: 12px;
+  }
+  h2 .n { font: 500 13px/1 var(--font-mono); color: var(--accent); letter-spacing: .04em; }
+  h3 { font: 600 16px/1.35 var(--font-body); margin: 12px 0 0; text-wrap: balance; }
+  p { margin: 0; max-width: 68ch; }
+  a { color: var(--accent); }
+  code, .mono { font-family: var(--font-mono); font-size: .88em; }
+  p code, li code, td code, dd code { background: var(--wash); padding: 1px 5px; border-radius: 4px; overflow-wrap: anywhere; }
+  ul, ol { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 6px; max-width: 70ch; }
+  strong { font-weight: 600; }
+
+  /* Checklist */
+  ul.check { list-style: none; padding-left: 0; }
+  ul.check > li { position: relative; padding-left: 28px; }
+  ul.check > li::before {
+    content: ""; position: absolute; left: 2px; top: .38em; width: 13px; height: 13px;
+    border: 1.5px solid var(--muted); border-radius: 3px;
+  }
+  ul.check > li > ul { margin-top: 4px; }
+
+  /* Callouts */
+  .note {
+    border: 1px solid var(--line); background: var(--wash); border-radius: 10px;
+    padding: 14px 16px; display: flex; flex-direction: column; gap: 8px; max-width: 72ch;
+  }
+  .note.warn { background: var(--warn-soft); border-color: transparent; }
+  .note .label { font: 500 11px/1 var(--font-mono); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .note.warn .label { color: var(--warn); }
+
+  /* Tables */
+  .table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 10px; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th, td { text-align: left; vertical-align: top; padding: 9px 12px; border-bottom: 1px solid var(--line); }
+  tr:last-child td { border-bottom: 0; }
+  th { background: var(--wash); font: 500 11px/1.4 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); white-space: nowrap; }
+  td.path { font-family: var(--font-mono); font-size: 12.5px; white-space: nowrap; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  tr.group td { background: var(--paper); font: 600 12.5px/1.4 var(--font-body); color: var(--ink); padding-top: 14px; }
+
+  /* Action + phase tags */
+  .act, .ph {
+    display: inline-block; font: 500 10.5px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase;
+    padding: 4px 6px; border-radius: 4px; white-space: nowrap;
+  }
+  .act.c { background: var(--accent-soft); color: var(--accent); }
+  .act.m { background: var(--wash); color: var(--muted); border: 1px solid var(--line); }
+  .act.q { background: var(--warn-soft); color: var(--warn); }
+  .ph { border: 1px solid var(--line); color: var(--muted); }
+  .ph.p1 { color: var(--accent); border-color: var(--accent); }
+
+  /* Channel chips */
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { display: inline-flex; align-items: center; gap: 7px; font-size: 13px; padding: 4px 10px 4px 8px; border: 1px solid var(--line); border-radius: 999px; }
+  .chip i { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+  .chip.web i { background: var(--ch-web); }
+  .chip.messenger i { background: var(--ch-messenger); }
+  .chip.instagram i { background: var(--ch-instagram); }
+  .chip.whatsapp i { background: var(--ch-whatsapp); }
+
+  /* Code */
+  pre {
+    margin: 0; overflow-x: auto; background: var(--wash); border: 1px solid var(--line); border-radius: 10px;
+    padding: 14px 16px; font: 12.5px/1.6 var(--font-mono); color: var(--ink);
+  }
+  pre .c { color: var(--muted); }
+
+  /* Flow */
+  .flows { display: grid; grid-template-columns: 1fr; gap: 16px; }
+  @media (min-width: 760px) { .flows { grid-template-columns: 1fr 1fr; } }
+  .flow { border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 12px; background: var(--paper); }
+  .flow h3 { margin: 0; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+  .flow ol { list-style: none; padding: 0; margin: 0; counter-reset: step; gap: 0; }
+  .flow li { counter-increment: step; display: grid; grid-template-columns: 24px 1fr; gap: 10px; font-size: 13.5px; line-height: 1.45; padding-bottom: 12px; position: relative; }
+  .flow li:last-child { padding-bottom: 0; }
+  .flow li::before {
+    content: counter(step); width: 22px; height: 22px; border-radius: 50%;
+    border: 1.5px solid var(--accent); color: var(--accent); font: 500 11px/19px var(--font-mono); text-align: center;
+    background: var(--paper); position: relative; z-index: 1;
+  }
+  .flow li:not(:last-child)::after {
+    content: ""; position: absolute; left: 11px; top: 22px; bottom: 0; width: 1.5px; background: var(--line);
+  }
+  .flow li small { display: block; color: var(--muted); font-size: 12.5px; }
+
+  /* Phases */
+  .phases { display: grid; grid-template-columns: 1fr; gap: 12px; }
+  @media (min-width: 700px) { .phases { grid-template-columns: repeat(2, 1fr); } }
+  .phase { border: 1px solid var(--line); border-radius: 12px; padding: 16px; display: flex; flex-direction: column; gap: 8px; }
+  .phase.now { border-color: var(--accent); }
+  .phase header { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; }
+  .phase h3 { margin: 0; font-size: 15px; }
+  .phase p, .phase ul { font-size: 13.5px; }
+  .phase ul { padding-left: 18px; gap: 4px; }
+
+  /* Questions */
+  ol.questions { list-style: none; padding: 0; gap: 12px; max-width: none; counter-reset: q; }
+  ol.questions > li {
+    counter-increment: q; border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px 14px 52px; position: relative;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  ol.questions > li::before {
+    content: "Q" counter(q); position: absolute; left: 16px; top: 15px; font: 500 12px/1.4 var(--font-mono); color: var(--accent);
+  }
+  ol.questions .q { font-weight: 600; }
+  ol.questions .rec { font-size: 13.5px; color: var(--muted); }
+  ol.questions .owner { font: 500 11px/1 var(--font-mono); letter-spacing: .06em; text-transform: uppercase; color: var(--muted); }
+
+  .gate {
+    margin-top: 12px; border: 1.5px solid var(--accent); border-radius: 12px; padding: 18px 20px;
+    display: flex; flex-direction: column; gap: 8px; background: var(--accent-soft);
+  }
+  .gate p { max-width: 70ch; }
+
+  @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+  html { scroll-behavior: smooth; }
+</style>
+</head>
+<body>
+<div class="shell">
+
+<nav class="toc" aria-label="Sections">
+  <p>Contents</p>
+  <ol>
+    <li><a href="#summary">Summary</a></li>
+    <li><a href="#flow">How messages move</a></li>
+    <li><a href="#files">File map</a></li>
+    <li><a href="#db">Database track</a></li>
+    <li><a href="#auth">Authorization track</a></li>
+    <li><a href="#backend">Backend track</a></li>
+    <li><a href="#frontend">Frontend track</a></li>
+    <li><a href="#tests">Test plan</a></li>
+    <li><a href="#risk">Risk &amp; rollback</a></li>
+    <li><a href="#questions">Open questions</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<header class="doc">
+  <div class="eyebrow">
+    <span class="status">Draft — awaiting approval</span>
+    <span>Implementation plan</span>
+    <span>GlobalyApp-v3</span>
+  </div>
+  <h1>AI Widget Social Inbox</h1>
+  <p class="lede">Let a business or institution connect its Facebook Page, Instagram account and WhatsApp number to its AI widget. Direct messages land in one inbox next to website chats. The same AI answers them, and a team member can read every thread and reply by hand.</p>
+  <dl class="meta">
+    <dt>Date</dt><dd>2026-09-29</dd>
+    <dt>Mode</dt><dd>New feature, extending the AI embed widget (<code>ai_embed_configs</code>)</dd>
+    <dt>Spec</dt><dd>None yet. No PRD or spec covers social channels (searched <code>docs/</code>). This plan records the design decisions; §10 needs answers before any code.</dd>
+    <dt>Reference</dt><dd>GlobalyOS-V2 Support inbox (<code>inbox-webhooks-meta.ts</code>, <code>normalize.ts</code>, <code>inbox-send.ts</code>). Its patterns are reused and its known gaps are fixed here.</dd>
+  </dl>
+</header>
+
+<!-- ───────────────────────── 1 ───────────────────────── -->
+<section id="summary">
+  <h2><span class="n">01</span>Summary</h2>
+  <div class="chips" aria-label="Channels">
+    <span class="chip web"><i></i>Website widget (exists)</span>
+    <span class="chip messenger"><i></i>Messenger</span>
+    <span class="chip instagram"><i></i>Instagram DMs</span>
+    <span class="chip whatsapp"><i></i>WhatsApp</span>
+  </div>
+
+  <h3>In scope</h3>
+  <ul>
+    <li><strong>Connect channels</strong> from the AI widget page. Facebook Login for Business covers a Page plus its linked Instagram account. WhatsApp uses Embedded Signup. Each connection belongs to one widget and uses that widget's knowledge scope, instructions and monthly credits.</li>
+    <li><strong>Receive DMs</strong> through one signed Meta webhook. Each sender becomes a thread in the existing widget tables: <code>ai_counselor_sessions</code> and <code>ai_counselor_messages</code> centrally, and <code>ai_widget_visitors</code> per tenant.</li>
+    <li><strong>AI auto-reply</strong> per channel (toggle), using the same answer pipeline as the website widget, turned into plain text that fits each channel's length limit.</li>
+    <li><strong>Inbox</strong> at <code>/business/ai-widget/inbox</code>: every widget conversation (website and social) with channel filters, the full transcript and a reply box for social threads.</li>
+    <li><strong>Human takeover</strong>: a staff reply pauses the AI on that thread, and so does a reply sent from Meta Business Suite (detected from message echoes). "Resume AI" turns it back on.</li>
+  </ul>
+
+  <h3>Out of scope</h3>
+  <ul>
+    <li>Post and ad comments, TikTok, Telegram, SMS, email.</li>
+    <li>Broadcasts and marketing messages. WhatsApp template sends for threads past 24 hours are Phase 3.</li>
+    <li>Sending images or files. Inbound media is recorded as a placeholder until Phase 3.</li>
+    <li>Pushing staff replies into an open website widget. Website threads are read-only in the inbox.</li>
+    <li>Assignment, SLAs, AI confidence gate and intent lists. These were deliberately skipped when porting from GlobalyOS.</li>
+    <li>The <code>HUMAN_AGENT</code> message tag (7-day window). It needs separate Meta approval.</li>
+  </ul>
+
+  <h3>Phases</h3>
+  <div class="phases">
+    <div class="phase now">
+      <header><h3>Meta app &amp; review</h3><span class="ph">P0 · starts now</span></header>
+      <p>Not code. Business verification, a Meta app with Messenger, Instagram and WhatsApp products, App Review for the permissions in §6. Review takes weeks, so it runs in parallel with P1. Development mode works for team test accounts.</p>
+    </div>
+    <div class="phase now">
+      <header><h3>Messenger + Instagram</h3><span class="ph p1">P1</span></header>
+      <ul>
+        <li>Page connect (one login covers both)</li>
+        <li>Webhook, dedup, threads</li>
+        <li>AI auto-reply worker</li>
+        <li>Inbox, staff reply, takeover</li>
+      </ul>
+    </div>
+    <div class="phase">
+      <header><h3>WhatsApp</h3><span class="ph">P2</span></header>
+      <ul>
+        <li>Embedded Signup (FB JS SDK), WABA subscribe, number register</li>
+        <li>Text send, 24-hour service window</li>
+        <li>Visitor <code>phone</code> + profile name from the webhook</li>
+      </ul>
+    </div>
+    <div class="phase">
+      <header><h3>Hardening</h3><span class="ph">P3</span></header>
+      <ul>
+        <li>Delivered/read ticks from status webhooks</li>
+        <li>Inbound media copied to storage</li>
+        <li>Sweep that re-queues unanswered inbound messages</li>
+        <li>WhatsApp templates past 24 h</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<!-- ───────────────────────── 2 ───────────────────────── -->
+<section id="flow">
+  <h2><span class="n">02</span>How messages move</h2>
+  <p>Four paths. Each writes to the tables the website widget already uses, so the inbox, the visitor record and the AI history read one conversation, not a copy.</p>
+  <div class="flows">
+    <div class="flow">
+      <h3>Inbound DM</h3>
+      <ol>
+        <li><span>Meta calls <code>POST /api/v3/social/webhooks/meta</code><small>One URL for the whole app. Meta registers a single callback per app, not per Page.</small></span></li>
+        <li><span>Verify <code>X-Hub-Signature-256</code> against the raw body<small>HMAC-SHA256 with the app secret, <code>timingSafeEqual</code>. Reject with 401 before any JSON parse or DB read.</small></span></li>
+        <li><span>Parse events by <code>object</code><small><code>page</code> and <code>instagram</code> use <code>entry[].messaging[]</code>. <code>whatsapp_business_account</code> uses <code>entry[].changes[].value</code>.</small></span></li>
+        <li><span>Find the channel row by <code>(channel, account id)</code><small>This gives the widget, and the widget gives the tenant. The account id is covered by Meta's signature.</small></span></li>
+        <li><span>Find or create the session and tenant visitor, then insert the message<small>The unique index on <code>external_message_id</code> makes Meta's retries harmless.</small></span></li>
+        <li><span>Publish <code>{ sessionId, messageId }</code> to <code>social_inbound</code>, answer 200<small>If the DB write fails, answer 5xx so Meta retries.</small></span></li>
+      </ol>
+    </div>
+    <div class="flow">
+      <h3>AI reply (worker)</h3>
+      <ol>
+        <li><span>Wait about 4 s, then check <code>shouldAutoReply()</code><small>Skips if AI is off or paused, a newer message is waiting, there's no text, the sender cap is hit, or the widget is inactive.</small></span></li>
+        <li><span>Run <code>answerVisitorTurn()</code><small>This is the website widget's pipeline moved into a service, called with <code>channel</code> and a no-op <code>onChunk</code>.</small></span></li>
+        <li><span>Convert with <code>toChannelText()</code><small>Removes widget blocks and cards, converts markdown, splits to the channel's limit.</small></span></li>
+        <li><span>Send through the Graph API with the sealed channel token</span></li>
+        <li><span>Insert the assistant row with Meta's message id<small>If the send fails, the row is kept with <code>delivery_error</code> so the inbox shows "Not delivered".</small></span></li>
+      </ol>
+    </div>
+    <div class="flow">
+      <h3>Staff reply</h3>
+      <ol>
+        <li><span>Inbox composer calls <code>POST /api/v3/ai-chat/embed/visitors/:id/messages</code></span></li>
+        <li><span>Load the visitor through <code>req.db</code><small>The tenant schema is the ownership check.</small></span></li>
+        <li><span>Check <code>replyWindowOpen()</code><small>24 h since the customer's last message. Returns 409 with a plain explanation if closed.</small></span></li>
+        <li><span>Send through Graph, insert <code>role='assistant'</code> with <code>sent_by_platform_user_id</code></span></li>
+        <li><span>Set <code>ai_paused_at</code> on the visitor<small>This stops the AI and the person answering at the same time.</small></span></li>
+      </ol>
+    </div>
+    <div class="flow">
+      <h3>Reply from Meta Business Suite</h3>
+      <ol>
+        <li><span>Meta sends an echo (<code>message.is_echo</code>) for every Page message</span></li>
+        <li><span>Echo with our <code>app_id</code><small>Ignore it, because we already stored it at send time.</small></span></li>
+        <li><span>Echo from any other app, or none<small>Store it as a staff reply with no user id and pause the AI. The transcript stays complete and the AI stops answering.</small></span></li>
+      </ol>
+    </div>
+  </div>
+
+  <h3>Channel limits the code has to respect</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Channel</th><th>Account id</th><th>Sender id</th><th>Send endpoint</th><th>Text limit</th><th>Reply window</th></tr></thead>
+      <tbody>
+        <tr><td><span class="chip messenger"><i></i>Messenger</span></td><td>Page id</td><td>PSID (page-scoped)</td><td class="path">POST /{page-id}/messages</td><td class="num">2,000 chars</td><td>24 h after the user's last message (<code>messaging_type: RESPONSE</code>)</td></tr>
+        <tr><td><span class="chip instagram"><i></i>Instagram</span></td><td>IG professional account id</td><td>IGSID</td><td class="path">POST /{page-id}/messages</td><td class="num">1,000 bytes UTF-8</td><td>24 h after the user's last message</td></tr>
+        <tr><td><span class="chip whatsapp"><i></i>WhatsApp</span></td><td><code>phone_number_id</code></td><td><code>wa_id</code> (phone)</td><td class="path">POST /{phone-number-id}/messages</td><td class="num">4,096 chars</td><td>24 h service window, then approved templates only</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <p>Graph errors to handle by name: <code>190</code> is an invalid token, so mark the channel "Needs reconnect". <code>10</code> with subcode <code>2018278</code> is a Messenger or Instagram send outside the window. <code>131047</code> is a WhatsApp send past 24 hours. The Graph version is pinned in <code>META_GRAPH_VERSION</code>; set it to the current version at build time.</p>
+</section>
+
+<!-- ───────────────────────── 3 ───────────────────────── -->
+<section id="files">
+  <h2><span class="n">03</span>File map</h2>
+  <p>This lists every file created or changed in P1, plus the P2 additions. Paths follow <code>globalyapp-dev</code>: the backend module shape of <code>modules/referrals/</code>, and the frontend feature folders from <code>frontend/AGENTS.md</code>. Migration dates are placeholders for the day each file is written.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th></th><th>Path</th><th>Purpose</th><th>Phase</th></tr></thead>
+      <tbody>
+        <tr class="group"><td colspan="4">Database · <code>backend/database/migrations/</code></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">globalyapp/20260929_002_ai_social_channels.ts</td><td>Connected Page, IG or WhatsApp account per widget, with a sealed token</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">globalyapp/20260929_003_ai_counselor_messages_social.ts</td><td><code>external_message_id</code> (unique), <code>sent_by_platform_user_id</code>, <code>delivery_error</code></td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">business/20260929_001_ai_widget_visitors_channel.ts</td><td><code>channel</code>, <code>social_channel_id</code>, <code>external_user_id</code>, <code>ai_paused_at</code>, <code>owner_read_at</code></td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">institution/20260929_001_ai_widget_visitors_channel.ts</td><td>Same migration for institutions (the two org kinds always get the same change)</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">{business,institution}/2026MMDD_001_ai_widget_visitors_phone.ts</td><td><code>phone</code> for WhatsApp senders</td><td><span class="ph">P2</span></td></tr>
+
+        <tr class="group"><td colspan="4">New module · <code>backend/src/modules/social-channels/</code></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">index.ts</td><td><code>socialChannelsModule</code> (protected) + <code>publicSocialChannelsModule</code> (webhook, OAuth callback, data deletion)</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">consts.ts</td><td><code>SOCIAL_CHANNELS</code>, <code>TEXT_LIMITS</code>, <code>REPLY_WINDOW_MS</code>, gate reasons</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">shared/queues.ts</td><td><code>SOCIAL_QUEUES.INBOUND = "social_inbound"</code></td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">lib/meta-signature.ts</td><td><code>verifyMetaSignature(rawBody, header, secret)</code></td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">lib/meta-events.ts</td><td><code>parseMetaEvents(payload)</code> → normalised events (pure)</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">lib/meta-graph.ts</td><td>Small <code>fetch</code> client: code exchange, pages, subscribe, profile, <code>sendText</code>, error mapping</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">utils/outbound-text.ts</td><td><code>toChannelText(markdown, channel)</code>: strip blocks, convert markdown, split to limit</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">utils/reply-gate.ts</td><td><code>shouldAutoReply()</code> and <code>replyWindowOpen()</code> (pure)</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">repositories/channels.repository.ts</td><td>Channel CRUD, lookup by <code>(channel, external_account_id)</code></td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">services/channels.service.ts</td><td>OAuth state, page list cache, connect/disconnect, <code>seal()</code>/<code>open()</code> tokens</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">services/inbound.service.ts</td><td><code>recordInbound(event)</code>: channel → widget → session → visitor → message → publish</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">services/outbound.service.ts</td><td><code>sendReply(visitor, text, by)</code>, shared by the worker and the staff route</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">routes/webhook.routes.ts</td><td>GET verify handshake, POST receive (scoped raw-body parser)</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">routes/oauth.routes.ts</td><td>Start (protected), callback (public), data-deletion callback (public)</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">routes/channels.routes.ts</td><td>List, connect, toggle AI, disconnect</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">schemas/channels.schema.ts</td><td>zod for connect/patch; response allow-list (no token)</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">workers/social-reply.worker.ts</td><td>Consumes <code>social_inbound</code>, gates, answers, sends</td><td><span class="ph p1">P1</span></td></tr>
+
+        <tr class="group"><td colspan="4">Existing AI widget · <code>backend/src/modules/ai-counsellor/</code></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">services/visitor-turn.service.ts</td><td><code>answerVisitorTurn()</code>: steps 1–13 of the <code>/guest/messages</code> handler, moved as-is</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act m">modify</span></td><td class="path">routes/guest.routes.ts</td><td><code>/guest/messages</code> calls <code>answerVisitorTurn()</code> with its SSE <code>onChunk</code>. Behaviour unchanged.</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act m">modify</span></td><td class="path">services/prompt.service.ts</td><td>Optional <code>channel</code>: plain text, short answers, no card or chip syntax</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act m">modify</span></td><td class="path">repositories/messages.repository.ts</td><td>Insert and return the three new columns; <code>ON CONFLICT DO NOTHING</code> on the external id</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act m">modify</span></td><td class="path">services/visitor.service.ts</td><td><code>resolveVisitor</code> accepts <code>channel</code>, <code>socialChannelId</code>, <code>externalUserId</code>, <code>name</code></td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act m">modify</span></td><td class="path">repositories/visitors.repository.ts</td><td><code>channel</code> filter, per-channel counts, unread flag, last-message preview; <code>external_user_id</code> kept off the allow-list</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act m">modify</span></td><td class="path">routes/visitors.routes.ts</td><td>Add <code>GET /:id/messages</code>, <code>POST /:id/messages</code>, <code>POST /:id/messages/read</code>; PATCH gains <code>ai_paused</code></td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act m">modify</span></td><td class="path">schemas/visitors.schema.ts (or its current home)</td><td>Reply body, <code>ai_paused</code>, <code>channel</code> filter</td><td><span class="ph p1">P1</span></td></tr>
+
+        <tr class="group"><td colspan="4">Wiring</td></tr>
+        <tr><td><span class="act m">modify</span></td><td class="path">backend/src/server.ts</td><td>Register the protected module inside <code>protectedApp</code> and the public one outside it</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act m">modify</span></td><td class="path">backend/package.json</td><td><code>job:social-reply</code> + <code>test:social-*</code> scripts</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act m">modify</span></td><td class="path">docker-compose.yml</td><td><code>social-reply-worker</code> service</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act m">modify</span></td><td class="path">Makefile</td><td><code>up-</code>/<code>down-</code>/<code>logs-social-reply</code></td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act m">modify</span></td><td class="path">…/superadmin/settings/services/integration-settings.service.ts</td><td>Keys <code>meta_app_id</code>, <code>meta_app_secret</code>, <code>meta_webhook_verify_token</code>, <code>meta_login_config_id</code>, <code>meta_wa_config_id</code> with env fallback</td><td><span class="ph p1">P1</span></td></tr>
+
+        <tr class="group"><td colspan="4">Frontend · <code>frontend/src/</code></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">app/business/ai-widget/inbox/page.tsx, layout.tsx</td><td>Thin route files</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">app/business/ai-widget/inbox/apis/{index,types,real-api,mock-data}.ts</td><td>Conversations, transcript, reply, read, pause; mock first</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">app/business/ai-widget/inbox/store/ai-widget-inbox-slice.ts</td><td><code>aiWidgetInbox</code> slice</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">app/business/ai-widget/inbox/{const,types,utils}/index.ts</td><td>Channel labels and colours, window countdown helper</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">app/business/ai-widget/inbox/components/inbox-view.tsx</td><td>Two panes: conversation list + thread</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">…/inbox/components/channel-capsules.tsx</td><td>All · Website · Messenger · Instagram · WhatsApp, each with a count, each clickable</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">…/inbox/components/thread-header.tsx</td><td>Channel badge, "AI replying" / "AI paused" pill, Resume AI</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">…/inbox/components/reply-window-bar.tsx</td><td>"Replies close in 17 h", or the closed-window explanation</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">app/business/ai-widget/components/social-channels-card.tsx</td><td>Connected accounts, status, AI toggle, disconnect</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">app/business/ai-widget/components/connect-page-dialog.tsx</td><td>Pick the Page after the Facebook login redirect</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">app/business/ai-widget/store/ai-widget-channels-slice.ts</td><td><code>aiWidgetChannels</code> slice</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act m">modify</span></td><td class="path">app/business/ai-widget/apis/{types,real-api,mock-data,index}.ts</td><td>Channel endpoints</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act m">modify</span></td><td class="path">app/business/ai-widget/components/ai-widget-view.tsx</td><td>Mount the channels card and a "Conversations" link; open the picker on <code>?connect=</code></td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act m">modify</span></td><td class="path">app/business/ai-widget/components/visitors-table.tsx</td><td>Channel badge column, "Open conversation" link</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act m">modify</span></td><td class="path">app/business/const/index.ts</td><td><code>BUSINESS_NAV_GROUPS</code>: "AI conversations" → <code>/business/ai-widget/inbox</code> (institutions inherit it)</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act m">modify</span></td><td class="path">lib/store.ts</td><td>Register <code>aiWidgetInbox</code>, <code>aiWidgetChannels</code></td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act c">create</span></td><td class="path">app/business/ai-widget/components/connect-whatsapp-button.tsx</td><td>Loads the FB JS SDK on click, runs Embedded Signup</td><td><span class="ph">P2</span></td></tr>
+
+        <tr class="group"><td colspan="4">Confirm before creating</td></tr>
+        <tr><td><span class="act q">confirm</span></td><td class="path">frontend/src/components/chat/*</td><td>Reuse <code>conversation-list</code>, <code>message-list</code> and <code>message-composer</code> through a mapping in the feature's <code>utils/</code>. If their props turn out to be enquiry-specific, wrap them in the feature folder instead of changing them.</td><td><span class="ph p1">P1</span></td></tr>
+        <tr><td><span class="act q">confirm</span></td><td class="path">frontend admin integrations page</td><td>Whether the new Meta keys need rows on the superadmin Integrations screen, or env only for now</td><td><span class="ph p1">P1</span></td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ───────────────────────── 4 ───────────────────────── -->
+<section id="db">
+  <h2><span class="n">04</span>Database track</h2>
+  <p>Three decisions keep this small:</p>
+  <ul>
+    <li><strong>No new conversation or message tables.</strong> A social sender is a visitor thread like any website visitor.</li>
+    <li><strong>No change to the <code>role</code> CHECK.</strong> A staff reply is <code>role='assistant'</code> with <code>sent_by_platform_user_id</code> set. The model history already reads the org's side of the conversation as <code>assistant</code>, so no history reader changes.</li>
+    <li><strong>Visitor key.</strong> Social threads use <code>visitor_key = sha256("&lt;channel&gt;:&lt;account id&gt;:&lt;sender id&gt;")</code>. The embed key is left out on purpose: rotating a widget's key must not split a customer's Messenger thread. Isolation between widgets still comes from the <code>(visitor_key, embed_config_id)</code> unique index.</li>
+  </ul>
+
+  <h3>globalyapp · <code>ai_social_channels</code> (central, like <code>ai_embed_configs</code>)</h3>
+  <p>This is central, not per tenant, because the unauthenticated webhook has to find the owner from the Page id before it can know which schema to use.</p>
+<pre><span class="c">-- 20260929_002_ai_social_channels.ts (knex; SQL shown for review)</span>
+CREATE TABLE ai_social_channels (
+  id                    serial PRIMARY KEY,
+  embed_config_id       integer NOT NULL REFERENCES ai_embed_configs(id),
+  channel               text NOT NULL
+                        CONSTRAINT ai_social_channels_channel_check
+                        CHECK (channel IN ('messenger','instagram','whatsapp')),
+  external_account_id   text NOT NULL,      <span class="c">-- page id | IG account id | phone_number_id</span>
+  external_parent_id    text NULL,          <span class="c">-- linked page id (IG) | WABA id (WhatsApp)</span>
+  display_name          text NOT NULL,      <span class="c">-- page name, @handle, +61 4xx…</span>
+  access_token_sealed   text NOT NULL,      <span class="c">-- seal() from shared/crypto/secret-box.ts; never selected into a reply</span>
+  ai_auto_reply         boolean NOT NULL DEFAULT false,
+  status                text NOT NULL DEFAULT 'active'
+                        CONSTRAINT ai_social_channels_status_check CHECK (status IN ('active','error')),
+  last_error            text NULL,
+  last_webhook_at       timestamptz NULL,
+  connected_by_platform_user_id integer NULL REFERENCES platform_users(id),
+  created_at            timestamptz NOT NULL DEFAULT now(),
+  updated_at            timestamptz NOT NULL DEFAULT now(),
+  deleted_at            timestamptz NULL
+);
+<span class="c">-- One Page / number can feed one widget. Named: the connect route maps 23505 on it to
+-- "This Page is already connected to another widget."</span>
+CREATE UNIQUE INDEX ai_social_channels_account_uniq
+  ON ai_social_channels (channel, external_account_id) WHERE deleted_at IS NULL;
+CREATE INDEX ai_social_channels_config_idx
+  ON ai_social_channels (embed_config_id) WHERE deleted_at IS NULL;</pre>
+
+  <h3>globalyapp · <code>ai_counselor_messages</code></h3>
+<pre><span class="c">-- 20260929_003_ai_counselor_messages_social.ts</span>
+ALTER TABLE ai_counselor_messages
+  ADD COLUMN external_message_id      text NULL,     <span class="c">-- Meta mid / wamid</span>
+  ADD COLUMN sent_by_platform_user_id integer NULL REFERENCES platform_users(id),
+  ADD COLUMN delivery_error           text NULL;
+<span class="c">-- Webhook idempotency. Meta mids and wamids are globally unique.</span>
+CREATE UNIQUE INDEX ai_messages_external_id_uniq
+  ON ai_counselor_messages (external_message_id) WHERE external_message_id IS NOT NULL;</pre>
+
+  <h3>business + institution · <code>ai_widget_visitors</code></h3>
+  <p>This is per tenant, following the rule that a tenant's own records go in its schema. How a contact is reached, and whether a person has taken the thread over, are part of that tenant's contact record.</p>
+<pre><span class="c">-- 20260929_001_ai_widget_visitors_channel.ts (same file in business/ and institution/)</span>
+ALTER TABLE ai_widget_visitors
+  ADD COLUMN channel           text NOT NULL DEFAULT 'web'
+             CONSTRAINT ai_widget_visitors_channel_check
+             CHECK (channel IN ('web','messenger','instagram','whatsapp')),
+  ADD COLUMN social_channel_id integer NULL,      <span class="c">-- app-level FK → globalyapp.ai_social_channels.id</span>
+  ADD COLUMN external_user_id  text NULL,         <span class="c">-- PSID | IGSID | wa_id; needed to send, never returned</span>
+  ADD COLUMN ai_paused_at      timestamptz NULL,  <span class="c">-- set by a staff or Business Suite reply</span>
+  ADD COLUMN owner_read_at     timestamptz NULL;  <span class="c">-- unread dot in the inbox</span>
+CREATE INDEX ai_widget_visitors_channel_idx
+  ON ai_widget_visitors (channel, last_activity_at DESC);</pre>
+
+  <h3>Steps</h3>
+  <ul class="check">
+    <li>Write the three P1 migrations with real <code>down()</code>. Existing migrations are append-only, so nothing already on STAGING is edited.</li>
+    <li>The reply window is computed from the latest <code>role='user'</code> message's <code>created_at</code>, so no <code>last_inbound_at</code> column.</li>
+    <li>Check each migration with <code>BEGIN … ROLLBACK</code> in psql before applying anything.</li>
+    <li>You run: <code>npm run migrate:globalyapp</code> then <code>npm run migrate:tenants</code>. Nobody else runs DB commands on your DB.</li>
+  </ul>
+</section>
+
+<!-- ───────────────────────── 5 ───────────────────────── -->
+<section id="auth">
+  <h2><span class="n">05</span>Authorization track</h2>
+  <p>This repo has no RLS. Row access comes from the tenant schema (<code>req.db</code>) and explicit owner filters. Each new surface states its check.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Surface</th><th>Who can reach it</th><th>Check</th></tr></thead>
+      <tbody>
+        <tr><td>Channel routes</td><td>Business or institution staff</td><td><code>requireBusinessOrInstitutionContext</code>. The channel's <code>embed_config_id</code> must belong to <code>recipientFromRequest(req)</code>, otherwise 404 (not 403, so ids don't leak).</td></tr>
+        <tr><td>Visitor transcript and reply</td><td>Same</td><td>Visitor is loaded through <code>req.db</code>. A visitor from another tenant does not exist in that schema.</td></tr>
+        <tr><td>Webhook POST</td><td>Meta only</td><td>Signature over the raw body with the app secret. The tenant comes only from the channel row found by the signed account id.</td></tr>
+        <tr><td>Webhook GET</td><td>Meta setup</td><td><code>hub.verify_token</code> compared in constant time with <code>meta_webhook_verify_token</code>.</td></tr>
+        <tr><td>OAuth callback</td><td>Browser redirect from Facebook</td><td><code>state</code> is <code>seal()</code>ed and holds org kind, org id, widget id, user id and expiry (10 min), and is single-use in Dragonfly. The JWT isn't sent on this redirect, so the state is the identity.</td></tr>
+        <tr><td>Data-deletion callback</td><td>Meta</td><td>Verify the <code>signed_request</code> with the app secret, then delete that sender's visitor rows and messages.</td></tr>
+        <tr><td>Tokens</td><td>Server only</td><td>Sealed at rest. Every response is an explicit column allow-list, and <code>access_token_sealed</code> and <code>external_user_id</code> are never on one.</td></tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+<!-- ───────────────────────── 6 ───────────────────────── -->
+<section id="backend">
+  <h2><span class="n">06</span>Backend track</h2>
+
+  <h3>Endpoints</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Method</th><th>Path</th><th>Guard</th><th>Does</th></tr></thead>
+      <tbody>
+        <tr class="group"><td colspan="4"><code>/api/v3/social</code> · new module</td></tr>
+        <tr><td>GET</td><td class="path">/social/channels?embed_config_id=</td><td>owner</td><td>List connections (no tokens)</td></tr>
+        <tr><td>GET</td><td class="path">/social/meta/oauth/start?embed_config_id=</td><td>owner</td><td>Returns the Facebook Login for Business URL (<code>config_id</code>, sealed <code>state</code>)</td></tr>
+        <tr><td>GET</td><td class="path">/social/meta/oauth/callback</td><td>public</td><td>Exchange code → long-lived user token → <code>/me/accounts</code>, cache Pages and linked IG accounts under <code>state</code> for 10 min, 302 to <code>/business/ai-widget?connect=&lt;state&gt;</code></td></tr>
+        <tr><td>GET</td><td class="path">/social/meta/pages?state=</td><td>owner</td><td>Read the cached Pages for the picker. State must match the caller.</td></tr>
+        <tr><td>POST</td><td class="path">/social/channels</td><td>owner</td><td><code>{ state, page_id, include_instagram }</code>. Subscribes the Page (<code>subscribed_apps</code>: <code>messages</code>, <code>message_echoes</code>), seals the Page token, inserts one row per channel.</td></tr>
+        <tr><td>PATCH</td><td class="path">/social/channels/:id</td><td>owner</td><td><code>{ ai_auto_reply }</code></td></tr>
+        <tr><td>DELETE</td><td class="path">/social/channels/:id</td><td>owner</td><td>Unsubscribe the Page, soft-delete. Threads stay readable.</td></tr>
+        <tr><td>GET / POST</td><td class="path">/social/webhooks/meta</td><td>public, signed</td><td>Handshake / receive (see §2)</td></tr>
+        <tr><td>POST</td><td class="path">/social/meta/data-deletion</td><td>public, signed</td><td>Meta data-deletion callback, returns <code>{ url, confirmation_code }</code></td></tr>
+        <tr class="group"><td colspan="4"><code>/api/v3/ai-chat</code> · existing widget module</td></tr>
+        <tr><td>GET</td><td class="path">/embed/visitors?channel=</td><td>owner</td><td><strong>Extended</strong>: channel filter, per-channel counts, unread, last-message preview</td></tr>
+        <tr><td>GET</td><td class="path">/embed/visitors/:id/messages</td><td>owner</td><td><strong>New</strong>: the first owner-facing transcript. Paginated oldest→newest. Returns <code>sent_by</code> name, <code>delivery_error</code>.</td></tr>
+        <tr><td>POST</td><td class="path">/embed/visitors/:id/messages</td><td>owner</td><td><strong>New</strong>: staff reply. Social only (400 for web). 409 when the window is closed. Pauses the AI.</td></tr>
+        <tr><td>POST</td><td class="path">/embed/visitors/:id/messages/read</td><td>owner</td><td><strong>New</strong>: sets <code>owner_read_at</code> (same shape as enquiries' read route)</td></tr>
+        <tr><td>PATCH</td><td class="path">/embed/visitors/:id</td><td>owner</td><td><strong>Extended</strong>: <code>{ ai_paused: boolean }</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>Steps</h3>
+  <ul class="check">
+    <li><strong>Move the answer pipeline out of the route first.</strong> Move <code>/guest/messages</code> steps 1–13 (resolve config and credits, context, session, visitor, history, RAG, prompt, <code>streamChat</code>, parse, profile extract, usage, persist) into <code>answerVisitorTurn({ config, visitorKey, content, channel, onChunk })</code>. The route keeps its SSE writer and the contact and end-of-chat cards. Existing embed tests must pass unchanged before anything else is added.</li>
+    <li><strong>Webhook route.</strong> Register it in its own encapsulated plugin with <code>addContentTypeParser("application/json", { parseAs: "buffer" })</code> so only this route sees raw bytes. Override the global IP rate limit on the route, because Meta sends bursts from shared IPs and the signature check comes before any work.
+      <ul>
+        <li>Respond 200 for ignored events: statuses in P1, our own echoes, unknown accounts. Log the unknown ones.</li>
+        <li>Respond 5xx only when persisting fails, so Meta retries into the dedup index.</li>
+        <li>Update <code>last_webhook_at</code> on the channel for its health pill.</li>
+      </ul>
+    </li>
+    <li><strong><code>recordInbound</code></strong>: <code>findByVisitor</code>/<code>createForVisitor</code> with the social visitor key; <code>tenantDbFor(config)</code>; <code>resolveVisitor</code> with channel fields; fetch the sender's name once on first contact (<code>GET /{psid}?fields=first_name,last_name</code>; IG <code>fields=name,username</code>). Don't store profile photo URLs; Meta's CDN links expire.
+      <ul>
+        <li>Insert the <code>user</code> message with <code>external_message_id</code>. Publish only if a row was actually inserted.</li>
+        <li>Non-text messages are stored as <code>[Photo]</code>, <code>[Voice message]</code> and so on, with the type in <code>attachments</code>. The AI skips them.</li>
+        <li>Clear <code>owner_read_at</code> so the thread shows as unread.</li>
+      </ul>
+    </li>
+    <li><strong><code>shouldAutoReply()</code></strong> returns a reason, not a boolean. The reasons, in order:
+      <ol>
+        <li><code>channel_ai_off</code></li>
+        <li><code>paused_by_staff</code></li>
+        <li><code>config_inactive</code></li>
+        <li><code>no_text</code></li>
+        <li><code>newer_message_pending</code> (so three quick messages get one answer)</li>
+        <li><code>sender_cap</code> (30 AI replies per thread per hour, so a stranger can't drain a widget's credits by DM)</li>
+      </ol>
+      The <code>credit_limit</code> 429 from <code>resolveActiveConfig</code> is caught as a reason too. Log every skip at info with its reason.</li>
+    <li><strong>Worker</strong> <code>social-reply.worker.ts</code>: <code>queueService.consume(SOCIAL_QUEUES.INBOUND)</code>, a 4 s in-handler wait before the gate, then answer, <code>toChannelText</code>, <code>sendReply</code>. Four wiring edits: worker file, <code>job:social-reply</code>, compose service, Makefile targets.
+      <br><code>// ponytail: 4 s in-handler wait holds one consumer slot per message; move to a delayed queue if volume grows</code></li>
+    <li><strong><code>meta-graph.ts</code></strong>: plain <code>fetch</code> with a 15 s <code>AbortSignal.timeout</code> (the same lesson as the extraction LLM freeze: an unbounded external call froze a worker). It maps <code>190</code> → set channel <code>status='error'</code> with <code>last_error</code>, and the window codes → a typed error the staff route turns into 409.</li>
+    <li><strong>Prompt</strong>: when <code>channel</code> is set, the system prompt says to answer in plain text, two short paragraphs at most, with no card, chip or block syntax. Course cards the model still produces become at most three "Name: link" lines in <code>toChannelText</code>.</li>
+    <li><strong>Settings</strong>: Meta app id, secret, webhook verify token and the Login config ids go through <code>getIntegrationSetting()</code> (encrypted, 60 s cache, env fallback). No secrets in <code>.env</code> without your go-ahead.</li>
+    <li><strong>P2 WhatsApp</strong>: Embedded Signup returns <code>code</code>, <code>waba_id</code>, <code>phone_number_id</code>. Exchange the code for a business token, <code>POST /{waba-id}/subscribed_apps</code>, <code>POST /{phone-number-id}/register</code> if the number is new. Webhook branch <code>whatsapp_business_account</code>, <code>contacts[].profile.name</code> → visitor name, <code>wa_id</code> → <code>phone</code>. Send <code>{ messaging_product: "whatsapp", to, type: "text", text: { body } }</code>. WhatsApp keeps <code>*bold*</code> and <code>_italic_</code>; the others get plain text.</li>
+  </ul>
+
+  <div class="note">
+    <span class="label">Meta permissions for App Review (final list confirmed in P0)</span>
+    <p><code>pages_show_list</code>, <code>pages_manage_metadata</code>, <code>pages_messaging</code>, <code>pages_read_engagement</code>, <code>business_management</code>, <code>instagram_basic</code>, <code>instagram_manage_messages</code>; P2 adds <code>whatsapp_business_management</code>, <code>whatsapp_business_messaging</code> and Tech Provider onboarding. App Review also needs a privacy policy URL that covers stored DMs and the data-deletion callback above.</p>
+  </div>
+</section>
+
+<!-- ───────────────────────── 7 ───────────────────────── -->
+<section id="frontend">
+  <h2><span class="n">07</span>Frontend track</h2>
+  <p>Institutions use the same <code>/business/*</code> portal, so one nav entry covers both org kinds. Every feature folder gets <code>apis/ store/ const/ types/ utils/ components/</code>. The mock API is built first, since <code>NEXT_PUBLIC_MOCK_DATA</code> defaults to mock.</p>
+
+  <h3>AI widget page: channels</h3>
+  <ul class="check">
+    <li>One <strong>Social channels</strong> card per widget. Rows show a channel dot, account name, a status pill ("Active", "Needs reconnect", with <code>last_error</code> on hover), an "AI replies" switch, and Disconnect behind a confirm dialog that says threads stay in the inbox.</li>
+    <li>"Connect Facebook Page" calls <code>/social/meta/oauth/start</code> and navigates to the returned URL. On return, <code>?connect=&lt;state&gt;</code> opens <code>connect-page-dialog</code>: a Combobox of Pages, and a checkbox "Also connect @handle on Instagram" when the Page has a linked account.</li>
+    <li>P2: "Connect WhatsApp" loads the FB JS SDK only on click and runs Embedded Signup.</li>
+  </ul>
+
+  <h3>Inbox: <code>/business/ai-widget/inbox</code></h3>
+  <ul class="check">
+    <li>Left pane: channel capsules (All, Website, Messenger, Instagram, WhatsApp, each with a count and each clickable, including All), then the conversation list with an unread dot, channel badge, preview and relative time. It reuses <code>components/chat</code> list rows through a mapping.</li>
+    <li>Right pane: <code>thread-header</code> (name, channel, "AI replying" / "AI paused by &lt;name&gt;" / "AI off for this channel", Resume AI), <code>message-list</code>, and the composer.
+      <ul>
+        <li>Staff messages show the sender's name. Failed sends show "Not delivered", followed by the reason.</li>
+      </ul>
+    </li>
+    <li>Composer states:
+      <ul>
+        <li>Social thread, window open: shows "Replies close in 17 h".</li>
+        <li>Window closed: disabled, with "Messenger only allows replies within 24 hours of the customer's last message. The next message they send reopens it."</li>
+        <li>Website thread: replaced by "Website chats can't receive replies yet."</li>
+      </ul>
+    </li>
+    <li>Refresh by polling with the existing <code>POLL_MS</code> (15 s), as <code>/business/messages</code> does. Guard the mount fetch with <code>useRef</code>. Opening a thread calls <code>…/messages/read</code>.</li>
+    <li>Loading, empty ("No conversations yet. Connect a channel or add the widget to your site.") and error states for both panes. Keep each file under 300 lines.</li>
+  </ul>
+</section>
+
+<!-- ───────────────────────── 8 ───────────────────────── -->
+<section id="tests">
+  <h2><span class="n">08</span>Test plan</h2>
+  <p>Standalone <code>backend/tests/*.ts</code> scripts run with <code>npm run test:&lt;name&gt;</code>. For each guard, break it on purpose and watch the test go red for the right reason before it counts. Undo the break with the same targeted edit, never <code>git checkout</code>.</p>
+  <ul class="check">
+    <li><strong>Tracer bullet:</strong> <code>tests/social-meta-events.ts</code>. Real-shaped Messenger, Instagram and WhatsApp fixtures → <code>parseMetaEvents</code>. Asserts channel, account id, sender, mid and text. Asserts that echoes carry <code>app_id</code>, that <code>statuses[]</code> and <code>read</code> events produce nothing, and that an unknown <code>object</code> produces nothing.</li>
+    <li><code>tests/social-meta-signature.ts</code>: valid passes. A tampered body, the wrong secret, a missing header, a header without <code>sha256=</code>, and a signature of the wrong length each fail <strong>with their own reason</strong> and never throw (<code>timingSafeEqual</code> throws on length mismatch if not guarded).</li>
+    <li><code>tests/social-outbound-text.ts</code>: splits at 2,000 characters, 1,000 <strong>bytes</strong> (an emoji-heavy fixture proves bytes, not characters) and 4,096 characters, on paragraph then sentence boundaries. No chunk goes over its limit. Widget blocks are removed. Markdown becomes plain text except WhatsApp bold and italic.</li>
+    <li><code>tests/social-reply-gate.ts</code>: one case per reason, in order, plus the window boundary at exactly 24 h.</li>
+    <li><code>tests/social-inbound-dedup.ts</code> (dev DB, like <code>rerun-agentcis.ts</code>): the same mid delivered twice gives one row, one publish, and the conflict is on <code>ai_messages_external_id_uniq</code>. Deletes its own rows at the end.</li>
+    <li><code>tests/social-visitor-key.ts</code>: the key changes with channel, account and sender, never equals the website key for the same inputs, and is stable across embed-key rotation.</li>
+    <li><strong>Regression after the pipeline move</strong>: <code>embed-visitor-key</code>, <code>embed-rate-limit</code>, <code>embed-owner-profile</code>, <code>ai-tool-loop</code> and <code>ai-counsellor-flow</code> stay green with no edits to the tests.</li>
+    <li><strong>End to end in Meta Development mode</strong>: a test Page where the dev is an admin, a tunnel for the webhook URL, DM from a tester account → AI answers → staff replies from the inbox → AI pauses → reply from Business Suite → echo recorded.</li>
+    <li><strong>Gates</strong>: <code>npm run build</code> (backend <code>tsc</code>), <code>npm run lint</code> (frontend), a secret grep over the diff, and every new response checked against its allow-list.</li>
+  </ul>
+</section>
+
+<!-- ───────────────────────── 9 ───────────────────────── -->
+<section id="risk">
+  <h2><span class="n">09</span>Risk &amp; rollback</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Risk</th><th>Mitigation</th></tr></thead>
+      <tbody>
+        <tr><td>App Review and business verification take weeks. WhatsApp also needs Tech Provider onboarding.</td><td>Start P0 on day one. Build and demo in Development mode with team accounts. Only going Live waits on review.</td></tr>
+        <tr><td><code>secret-box</code> derives its key from <code>JWT_SECRET</code>. Rotating it makes every Page token unreadable.</td><td>A token that fails to decrypt moves its channel to "Needs reconnect" instead of crashing the worker. Document it next to <code>JWT_SECRET</code>. A dedicated key is open question 6.</td></tr>
+        <tr><td>AI and a person both answer the same customer.</td><td>A staff reply pauses the AI. A Business Suite echo pauses the AI. Auto-reply is off by default on a new channel.</td></tr>
+        <tr><td>Strangers DM a Page to burn the widget's credits.</td><td>The same <code>monthly_credit_limit</code> applies, plus the per-thread hourly cap in <code>shouldAutoReply</code>.</td></tr>
+        <tr><td><code>queueService.consume</code> drops a message on error (no requeue, no DLQ), so an AI reply can be lost.</td><td>The inbound message is saved before publishing, so it shows as unread and a person can answer. The P3 sweep re-queues unanswered threads.</td></tr>
+        <tr><td>The Page already routes messages to another app (for example ManyChat), so we receive nothing or fight over replies.</td><td>Check at connect and show "Messenger is routed to another app. Change it in Page settings → Advanced messaging." Open question 2.</td></tr>
+        <tr><td>Moving the widget pipeline changes website widget behaviour.</td><td>A move, not a rewrite. Existing embed tests must pass before new code lands, and it ships in its own PR first.</td></tr>
+        <tr><td>Storing social DMs is new personal data.</td><td>Data-deletion callback, privacy policy update, and <code>external_user_id</code> kept off every response.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <h3>Rollback</h3>
+  <ul>
+    <li><strong>Stop replies instantly</strong>: set <code>ai_auto_reply=false</code> on the channel rows, or stop the <code>social-reply-worker</code> service. Messages keep arriving and stay readable.</li>
+    <li><strong>Stop receiving</strong>: remove the webhook subscription in the Meta app dashboard. No deploy needed.</li>
+    <li><strong>Frontend</strong>: remove the nav item. The inbox route is unreachable without it.</li>
+    <li><strong>DB</strong>: every migration has a working <code>down()</code>. The column additions are nullable or defaulted, so the website widget never reads them.</li>
+    <li><strong>Pipeline move</strong>: it is its own PR, so reverting it restores the inline handler.</li>
+  </ul>
+</section>
+
+<!-- ───────────────────────── 10 ───────────────────────── -->
+<section id="questions">
+  <h2><span class="n">10</span>Open questions</h2>
+  <ol class="questions">
+    <li>
+      <span class="q">Which channels ship first?</span>
+      <span class="rec">Recommended: Messenger and Instagram in P1, since one login flow covers both. WhatsApp follows in P2 because of its separate signup, number registration and per-conversation pricing.</span>
+      <span class="owner">Owner · product</span>
+    </li>
+    <li>
+      <span class="q">Who owns the Meta app?</span>
+      <span class="rec">Does GlobalyHub have a verified Meta Business account and a developer app, and who submits App Review and the privacy policy? This blocks going Live, not development.</span>
+      <span class="owner">Owner · founder</span>
+    </li>
+    <li>
+      <span class="q">Should AI auto-reply be on when a channel is first connected?</span>
+      <span class="rec">Recommended: off. Many Pages already have people answering, and the owner should switch it on deliberately.</span>
+      <span class="owner">Owner · product</span>
+    </li>
+    <li>
+      <span class="q">OK to move the widget's answer pipeline out of <code>guest.routes.ts</code> into a service?</span>
+      <span class="rec">Recommended: yes, as a behaviour-neutral first PR. The alternative is copying about 250 lines that would drift from the widget within a month.</span>
+      <span class="owner">Owner · dev</span>
+    </li>
+    <li>
+      <span class="q">Where does the inbox live, and what is it called?</span>
+      <span class="rec">Recommended: a two-pane <code>/business/ai-widget/inbox</code>, labelled "AI conversations", separate from the enquiry chat at <code>/business/messages</code>. A smaller option is a transcript panel on the visitor detail page. It needs fewer files, but replying to many threads becomes list → detail → back.</span>
+      <span class="owner">Owner · product / design</span>
+    </li>
+    <li>
+      <span class="q">Is the token encryption key acceptable for v1?</span>
+      <span class="rec"><code>secret-box</code> derives from <code>JWT_SECRET</code>, so rotating it disconnects every channel. Accept it for v1 and document it, or add a dedicated <code>SECRET_BOX_KEY</code> now (a small change, but it touches integration settings too).</span>
+      <span class="owner">Owner · dev</span>
+    </li>
+    <li>
+      <span class="q">Do social AI replies share the widget's monthly credits?</span>
+      <span class="rec">Recommended: yes, one pool per widget, shown as one usage number.</span>
+      <span class="owner">Owner · product</span>
+    </li>
+  </ol>
+
+  <div class="gate">
+    <strong>Approval gate</strong>
+    <p>The seven questions above need answers before implementation starts. Nothing in the file map has been created: no migration, no route, no component.</p>
+    <p>Reply <strong>"approved"</strong> to start P1 with the recommended answers, or say what to change.</p>
+  </div>
+</section>
+
+</main>
+</div>
+</body>
+</html>

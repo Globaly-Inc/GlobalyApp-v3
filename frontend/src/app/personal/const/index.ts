@@ -12,18 +12,11 @@ import {
 import type { PortalNavGroup } from "@/components/portal-sidebar";
 import { AlyOrbIcon } from "@/components/aly-orb-icon";
 
-/**
- * Where the portal opens: every "Personal Portal" switch — the marketing navbar, the admin and business
- * shells, the admin org switcher, the post-join CTA — lands here, as does the bare `/personal` root.
- *
- * It is Ask Aly rather than Socials because the assistant is the portal's front door: the first thing a
- * user wants on arriving is to ask for something, not to read a feed. Keep this a constant rather than the
- * literal repeated across five features — the whole point is that they move together.
- *
- * Note this is the *landing* route only. `NAV_ITEMS` still lists Socials at `/personal/portal`, and the
- * mobile bottom bar still tabs to it; nothing about the nav itself changes.
- */
 export const PERSONAL_PORTAL_HOME = "/personal/ai";
+/** ponytail: hidden for the short release — flip to true to bring the "Personal Portal" menu entry back. */
+export const SHOW_PERSONAL_PORTAL = false;
+/** ponytail: the header's notifications bell + Credits pill, hidden in every portal for the short release. */
+export const SHOW_HEADER_EXTRAS = false;
 
 /** Shared by the desktop rail, its submenu column, and the mobile drawer, so the three can't drift apart. */
 // `href` is required here (unlike PortalNavGroup, where it can fall back to the first item), because the

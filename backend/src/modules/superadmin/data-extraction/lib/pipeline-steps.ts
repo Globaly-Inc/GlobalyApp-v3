@@ -16,11 +16,14 @@ import { queueService } from "../../../../shared/queue/queueService.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { NEXT_STEP, type PipelineStep } from "../schemas/step.schema.js";
-import { discoverUrlsForCrawl } from "./scraper.js";
-import { SNAPSHOT_BATCH_SIZE } from "./site-snapshot.js";
+import { discoverUrlsForCrawl, scrapeFailureText, scrapeRenderedHtml } from "./scraper.js";
+import { chooseOverviewMedia, imageCandidates, metaImages } from "./gallery-images.js";
+import { SNAPSHOT_BATCH_SIZE, jobHalted } from "./site-snapshot.js";
+import { CRAWL_BUDGET, crawlSeeds, crawlSite } from "./site-crawl.js";
+import { _urlClassifyDeps, jevCategorise, jevVerdicts } from "./jev-url-classify.js";
 import { getPage, normaliseUrl, readSnapshot } from "./page-store.js";
 import {
-  looksLikeCourseUrl, looksLikeVisaServiceUrl, filterUrls, truncateMarkdown, collectGuidedUrls, compileBlocklist,
+  looksLikeCourseUrl, looksLikeVisaServiceUrl, filterUrls, filterUrlsDetailed, truncateMarkdown, collectGuidedUrls, compileBlocklist,
   classifierDistrusted, MIN_CLASSIFIER_KEEP_RATIO,
 } from "./html-utils.js";
 import { extractJson } from "./llm-client.js";
@@ -32,16 +35,19 @@ import { writeInstitutionOverview, writeSiteIntelligence, insertQueueItemDetaile
 import {
   upsertSiteUrls, listActiveSiteUrls, listSiteUrlsByCategory, setSiteUrlCategories,
 } from "../repositories/site-urls.repository.js";
-import { SITE_URL_CATEGORIES, categoriesFor, guidedUrlCategories, type CategoryVerdict, type SiteUrlCategory } from "./url-categories.js";
+import { SITE_URL_CATEGORIES, categoriesFor, guidedUrlCategories, heuristicCategory, type CategoryVerdict, type SiteUrlCategory } from "./url-categories.js";
 
 const logger = createChildLogger("pipeline-steps");
 
 type JobRow = Record<string, any>;
 
+// Every field is optional because extractJson CASTS the model's JSON to this shape rather than
+// validating it — declaring them required told readers a guarantee the parse never made, and the
+// unguarded destructure below was written on the strength of it.
 interface SiteAnalysisResult {
-  institution: Record<string, unknown>;
-  site_intelligence: Record<string, unknown>;
-  course_page_patterns: string[];
+  institution?: Record<string, unknown>;
+  site_intelligence?: Record<string, unknown>;
+  course_page_patterns?: string[];
 }
 
 interface UrlDiscoveryResult {
@@ -57,6 +63,9 @@ interface UrlCategoryResult {
 export const _stepDeps = {
   loadJob: async (jobId: string): Promise<JobRow | undefined> => masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).first(),
   publish: async (queue: string, payload: Record<string, unknown>): Promise<void> => { await queueService.publish(queue, payload); },
+  crawl: crawlSite,
+  /** The homepage's HTML, for og:image / twitter:image — the markdown snapshot drops <meta>. */
+  renderedHtml: scrapeRenderedHtml,
   // ONE atomic jsonb merge, never read-modify-write: snapshot batches land concurrently and the
   // successor hand-off writes in the same window, so two readers of the whole blob overwrite each
   // other and a freshly written "site_analysis: processing" vanishes while its message is already
@@ -140,10 +149,28 @@ async function readJsonList(jobId: string, key: string): Promise<string[]> {
 }
 
 /** Discover every same-site URL and persist the list. Network: discovery only, no page scrapes. */
-export async function runSiteMap(jobId: string, job: JobRow): Promise<number> {
+/** `crawlStopped`: the job was paused/stopped mid-crawl, so the list is PARTIAL — the caller must not report the step done. */
+export async function runSiteMap(jobId: string, job: JobRow): Promise<{ total: number; crawlStopped: boolean }> {
   const discovery = await discoverUrlsForCrawl(job.institution_url, { limit: 10000 });
   const origin = new URL(job.institution_url).origin;
-  let found: { url: string; source: string }[] = filterUrls(discovery.urls, origin).map((url) => ({ url, source: discovery.method }));
+  const filtered = filterUrlsDetailed(discovery.urls, origin);
+  let found: { url: string; source: string }[] = filtered.kept.map((url) => ({ url, source: discovery.method }));
+  if (filtered.droppedTotal > 0) {
+    const byReason = Object.entries(filtered.dropped).filter(([, d]) => d.count > 0);
+    await _stepDeps.writeEvent(jobId, "urls_discarded", {
+      level: filtered.droppedTotal > filtered.kept.length ? "warn" : "info",
+      phase: "course_discovery",
+      message: `${filtered.droppedTotal} of ${discovery.urls.length} discovered URLs discarded before the site list `
+        + `(${byReason.map(([r, d]) => `${r}: ${d.count}`).join(", ")})`,
+      data: {
+        discovered: discovery.urls.length,
+        kept: filtered.kept.length,
+        discarded: filtered.droppedTotal,
+        by_reason: Object.fromEntries(byReason.map(([r, d]) => [r, d.count])),
+        samples: Object.fromEntries(byReason.map(([r, d]) => [r, d.sample])),
+      },
+    });
+  }
 
   // Related domains: an admin-curated hint for a multi-campus institution whose country site is a
   // genuinely different registrable domain (monash.edu.my vs monash.edu). Opt-in config, not
@@ -162,6 +189,30 @@ export async function runSiteMap(jobId: string, job: JobRow): Promise<number> {
     } catch (err) {
       logger.warn("Related-domain discovery failed", { jobId, domain, err: String(err) });
     }
+  }
+
+  // Our own crawl, where the sitemaps said too little (rochester.edu: none) or a catalogue host gave
+  // only its root. Replaces Firecrawl's map as the default; discovery only reaches Firecrawl last.
+  const seeds = crawlSeeds(job.institution_url, found.map((f) => f.url));
+  let crawlStopped = false;
+  if (seeds.length) {
+    // The crawl can run for minutes: each stop check also bumps the heartbeat so the job never reads as dead.
+    const crawl = await _stepDeps.crawl(seeds, {
+      budget: CRAWL_BUDGET,
+      shouldStop: async () => {
+        await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({ processing_heartbeat_at: masterKnex.fn.now() });
+        return jobHalted(jobId);
+      },
+    });
+    crawlStopped = crawl.stopped;
+    const known = new Set(found.map((f) => f.url));
+    const added = crawl.urls.filter((u) => !known.has(u));
+    found.push(...added.map((url) => ({ url, source: "crawl" })));
+    await _stepDeps.writeEvent(jobId, "urls_crawled", {
+      phase: "course_discovery",
+      message: `Crawled ${crawl.fetched} pages from ${seeds.length} seed(s) — ${added.length} new URLs${crawl.stopped ? " (stopped: job paused)" : ""}`,
+      data: { seeds, fetched: crawl.fetched, added: added.length, stopped: crawl.stopped },
+    });
   }
 
   const { patterns: blocklist, invalid } = compileBlocklist(await readJsonList(jobId, "url_blocklist_patterns"));
@@ -199,7 +250,7 @@ export async function runSiteMap(jobId: string, job: JobRow): Promise<number> {
     message: `Discovered ${total} URLs via ${discovery.method}${sourceNote} — ${inserted} new on the site list`,
     data: { method: discovery.method, count: total, new: inserted, sources: discovery.sources ?? null },
   });
-  return total;
+  return { total, crawlStopped };
 }
 
 /**
@@ -209,8 +260,8 @@ export async function runSiteMap(jobId: string, job: JobRow): Promise<number> {
  */
 /** `fresh` re-fetches every page even if a snapshot within the window exists — the admin's
  *  "re-snapshot" after a scraper fix. Default false: a rerun on an unchanged site stays free. */
-export async function dispatchSnapshotBatches(jobId: string, urls: string[], pageCap: number, fresh = false): Promise<number> {
-  const capped = urls.slice(0, pageCap || 500);
+export async function dispatchSnapshotBatches(jobId: string, urls: string[], pageCap: number | null, fresh = false): Promise<number> {
+  const capped = pageCap == null ? urls : urls.slice(0, pageCap);
   const batches = Math.ceil(capped.length / SNAPSHOT_BATCH_SIZE);
   const runId = randomUUID();
   for (let i = 0; i < batches; i++) {
@@ -225,6 +276,17 @@ export async function dispatchSnapshotBatches(jobId: string, urls: string[], pag
 
 // ── Step 3: site_analysis ───────────────────────────────────────────────────
 
+/** og:image / twitter:image of the homepage, [] when its HTML can't be read — a cover candidate
+ * only, never a reason to fail the step. */
+async function homepageMetaImages(url: string): Promise<string[]> {
+  try {
+    const { html } = await _stepDeps.renderedHtml(url);
+    return html ? metaImages(html, url) : [];
+  } catch {
+    return [];
+  }
+}
+
 /**
  * Homepage → Gemini → institution overview + site intelligence. The homepage is read in FULL mode
  * (its footer IS the data) while the snapshot step stores MAIN mode, so this is the one page the
@@ -233,7 +295,7 @@ export async function dispatchSnapshotBatches(jobId: string, urls: string[], pag
 export async function runSiteAnalysis(jobId: string, job: JobRow): Promise<string[]> {
   const isVisaService = job.source_type === "visa_service";
   const homepage = await getPage(job.institution_url, { withLinks: true, onlyMainContent: false });
-  if (!homepage.markdown && homepage.error) throw new Error(`Failed to scrape homepage: ${homepage.error}`);
+  if (!homepage.markdown && homepage.error) throw new Error(`Failed to scrape homepage: ${scrapeFailureText(homepage)}`);
 
   await _stepDeps.writeEvent(jobId, "page_fetched", {
     phase: "site_mapping",
@@ -242,33 +304,67 @@ export async function runSiteAnalysis(jobId: string, job: JobRow): Promise<strin
   });
 
   const pageText = truncateMarkdown(homepage.markdown);
+  // Institution media: the homepage's own photos, pre-filtered, for the model to classify.
+  const images = isVisaService ? [] : imageCandidates(homepage.markdown, job.institution_url, null);
   const analysis = await extractJson<SiteAnalysisResult>({
     system: SITE_ANALYSIS_SYSTEM,
     prompt: isVisaService
       ? visaServiceSiteAnalysisPrompt(job.institution_url, pageText, job.guidance_notes)
-      : siteAnalysisPrompt(job.institution_url, pageText, job.guidance_notes),
+      : siteAnalysisPrompt(job.institution_url, pageText, job.guidance_notes, images),
   });
 
+  // Both keys are the model's to supply, and a model that answers with valid JSON of the WRONG
+  // shape used to take the whole chain down here: destructuring an absent `institution` throws
+  // "Cannot destructure property 'other_social_urls' of 'analysis.institution' as it is
+  // undefined", which surfaces to the admin as an opaque failed Analyse step naming nothing it
+  // could act on. A missing section is a thin analysis, not a broken pipeline — the homepage is
+  // one input among many and the `institution` step re-reads it properly later — so default and
+  // carry on, but say so, because silently writing an empty overview looks like a working step.
+  // Truthiness is not enough: extractJson CASTS, so a model can hand back `institution` as a
+  // string or an array and pass a `!analysis[k]` check. Spreading a string into the overview
+  // insert yields columns "0", "1", "2"… and Postgres rejects them, and a string
+  // `site_intelligence` reads every field as undefined — which is the wholesale-null overwrite
+  // again, silently (Greptile). A section has to BE an object before either write looks at it.
+  const isSection = (v: unknown): v is Record<string, unknown> =>
+    typeof v === "object" && v !== null && !Array.isArray(v);
+  const missing = (["institution", "site_intelligence"] as const).filter((k) => !isSection(analysis[k]));
+  if (missing.length) {
+    await _stepDeps.writeEvent(jobId, "site_analysis_incomplete", {
+      level: "warn", phase: "site_analysis",
+      message: `Site analysis returned no ${missing.join(" and no ")} — continuing with what came back`,
+      data: { missing, keys: Object.keys(analysis ?? {}) },
+    });
+  }
+
   // The prompt's response key is `other_social_urls`; the DB column is `other_social_links`.
-  const { other_social_urls, ...institutionRest } = analysis.institution as Record<string, unknown>;
+  // cover_url / media_images are the model's picks, not overview columns: they go through
+  // chooseOverviewMedia (candidates only, campus kinds, guard re-checked) to pickOverviewMedia.
+  const { other_social_urls, cover_url, media_images, ...institutionRest } = isSection(analysis.institution) ? analysis.institution : {};
+  const media = isVisaService ? undefined
+    : chooseOverviewMedia(images, { cover_url, media_images }, await homepageMetaImages(job.institution_url), job.institution_url);
   await writeInstitutionOverview(jobId, {
     ...institutionRest,
     ...(Array.isArray(other_social_urls) && other_social_urls.length ? { other_social_links: other_social_urls } : {}),
     source_url: job.institution_url,
-  } as any);
-  await writeSiteIntelligence(jobId, analysis.site_intelligence as any);
+  } as any, media);
+  // SKIPPED, not defaulted, when the model omits it. writeSiteIntelligence upserts with a bare
+  // .merge() — a wholesale column replace — unlike writeInstitutionOverview's fill-blanks
+  // COALESCE(NULLIF(...)) above, which is why `?? {}` is harmless there and destructive here:
+  // it would overwrite a previous run's currency, country, fee_structure and navigation_patterns
+  // with nulls, and handleEnrichmentStep reads exactly those (Greptile). Leaving the row alone
+  // keeps the last good analysis; nothing requires it to exist, every reader optional-chains it.
+  if (isSection(analysis.site_intelligence)) await writeSiteIntelligence(jobId, analysis.site_intelligence as any);
 
-  const patterns = analysis.course_page_patterns ?? [];
+  // Same cast, same hazard: a string here would be returned as `string[]` and counted with
+  // .length, reporting "17 course URL patterns" for a 17-character sentence.
+  const patterns = Array.isArray(analysis.course_page_patterns) ? analysis.course_page_patterns : [];
   await _stepDeps.writeEvent(jobId, "site_analyzed", {
     phase: "site_mapping",
     message: "Site analysis complete",
     data: { patterns },
   });
 
-  // The "institution" step does a better overview than the homepage alone (it also reads the
-  // contact page) and "branches" chains off it. It is a side branch, not part of the chain, but
-  // it obeys the same gate so a manual-mode job does not start work behind the admin's back.
-  if (!job.source_type || job.source_type === "institution") {
+  if (!job.source_type || job.source_type === "institution" || job.source_type === "agentcis") {
     if (job.step_mode === "manual") {
       await _stepDeps.setProgress(jobId, { institution: "waiting" });
     } else {
@@ -284,7 +380,8 @@ export async function runSiteAnalysis(jobId: string, job: JobRow): Promise<strin
 const CLASSIFIER_BATCH = 200;
 const EXCERPT_CHARS = 300;
 const EXCERPT_CONCURRENCY = 8;
-const CLASSIFY_ALL_CAP = 3200;
+const CLASSIFY_CAP_ENV = Number(process.env.EXTRACTION_CLASSIFY_CAP);
+const CLASSIFY_ALL_CAP = Number.isInteger(CLASSIFY_CAP_ENV) && CLASSIFY_CAP_ENV > 0 ? CLASSIFY_CAP_ENV : 25_000;
 
 /** First EXCERPT_CHARS of each snapshotted page, keyed by normalised URL. Pages not yet snapshotted are absent.
  *  One file read per URL, a few at a time — never a scrape. */
@@ -357,6 +454,53 @@ export async function runUrlClassify(jobId: string, job: JobRow): Promise<{ cour
 
   let picked = new Set(urls.filter(isVisaService ? looksLikeVisaServiceUrl : looksLikeCourseUrl));
   let usedLlm = false;
+
+  // Jev path (TYPESAFE_API_KEY set, not a visa-service job): one per-URL question replaces both
+  // lite-model passes below. See lib/jev-url-classify.ts.
+  const jevMin = isVisaService ? null : _urlClassifyDeps.minConf();
+  if (jevMin != null) {
+    const guidedMap = guidedUrlCategories(guidedRaw, normaliseUrl);
+    const candidates = urls.filter((u) => !guidedMap.has(u)).slice(0, CLASSIFY_ALL_CAP);
+    const jev = await jevCategorise(candidates, await excerptsFor(candidates), jevMin, () =>
+      masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({ processing_heartbeat_at: masterKnex.fn.now() }).then(() => undefined));
+    const placed = jevVerdicts(urls, jev, guidedMap, looksLikeCourseUrl, heuristicCategory);
+    // What neither Jev (confidently) nor a heuristic could place still gets the lite-model pass —
+    // Jev unsure must mean "no Jev", never "other" (review, 2026-09-30).
+    const unplaced = [...placed].filter(([, v]) => v === null).map(([u]) => u).slice(0, CLASSIFY_ALL_CAP);
+    // A failed fallback must not fail the step: every URL already placed keeps its verdict and the
+    // unplaced remainder becomes "other" (the same as a URL the model was shown and did not return).
+    const modelled = unplaced.length
+      ? await categoriseWithModel(jobId, unplaced).catch(async (err) => {
+        logger.warn("URL category fallback failed; keeping Jev/heuristic verdicts", { jobId, err: String(err) });
+        await _stepDeps.writeEvent(jobId, "url_category_fallback_failed", {
+          level: "warn", phase: "course_discovery",
+          message: `The model pass for ${unplaced.length} unplaced URLs failed — they are filed as "other"; re-run url_classify to retry`,
+          data: { unplaced: unplaced.length, error: String(err).slice(0, 300) },
+        });
+        return new Map<string, SiteUrlCategory>();
+      })
+      : new Map<string, SiteUrlCategory>();
+    const tried = new Set(unplaced);
+    const verdicts = new Map<string, CategoryVerdict>();
+    for (const [url, v] of placed) {
+      const m = modelled.get(url);
+      verdicts.set(url, v ?? (m ? { category: m, source: "llm" } : { category: "other", source: tried.has(url) ? "llm" : "heuristic" }));
+    }
+    if (![...verdicts.values()].some((v) => v.category === "course")) {
+      verdicts.set(normaliseUrl(job.institution_url), { category: "course", source: "heuristic" }); // fallback: the homepage itself
+    }
+    await setSiteUrlCategories(jobId, verdicts);
+    const byCategory: Record<string, number> = {};
+    for (const { category } of verdicts.values()) byCategory[category] = (byCategory[category] ?? 0) + 1;
+    const course = byCategory.course ?? 0;
+    const summary = Object.entries(byCategory).filter(([k]) => k !== "course").map(([k, n]) => `${k} ${n}`).join(", ");
+    await _stepDeps.writeEvent(jobId, "urls_filtered", {
+      phase: "course_discovery",
+      message: `${course} course pages identified out of ${urls.length} (Jev: ${jev.size} of ${candidates.length} answered confidently; ${modelled.size} placed by the model pass)${summary ? `; also ${summary}` : ""}`,
+      data: { count: course, total: urls.length, jev_answered: jev.size, jev_asked: candidates.length, model_categorised: modelled.size, categories: byCategory },
+    });
+    return { course, total: urls.length, categories: byCategory };
+  }
 
   const classify = async (candidates: string[], narrowing: boolean) => {
     usedLlm = true;
@@ -452,7 +596,7 @@ export async function runQueuePages(jobId: string, job: JobRow): Promise<{ queue
       phase: "course_discovery",
       message: `${courseUrls.length} course URLs: ${parts.join(", ")}.`
         + (cappedOut > 0 ? " Raise page_cap or use Deep Scrape to cover the rest." : ""),
-      data: { queued, duplicates, discarded_at_cap: cappedOut, course_urls: courseUrls.length, at_page_cap: cappedOut > 0, page_cap: Number(job.page_cap) || 500 },
+      data: { queued, duplicates, discarded_at_cap: cappedOut, course_urls: courseUrls.length, at_page_cap: cappedOut > 0, page_cap: job.page_cap ?? null },
     });
   }
 
@@ -490,4 +634,87 @@ export async function runQueuePages(jobId: string, job: JobRow): Promise<{ queue
     });
   }
   return { queued, idle };
+}
+
+// A "pending" row tagged awaiting_publish with a still-counting-down retry_after_ms is NOT stuck —
+// extraction-page.worker.ts released it to wait out a provider-mandated backoff and has its own
+// in-process timer that will republish it at the right time. Blindly republishing it here would
+// jump that backoff and risk the exact rate limit it exists to avoid (Greptile). Mirrors
+// extraction-queue-reclaim.worker.ts's applyDueCondition "pending" branch exactly (same
+// RECLAIM_GRACE_MINUTES=5), so Resume and the automatic reclaim sweep never disagree about which
+// pending rows are fair game — keep the two in sync if either changes.
+function retryableQueueItemCondition(qb: import("knex").Knex.QueryBuilder): void {
+  qb.whereIn("status", ["failed", "paused"])
+    .orWhere((sub) => {
+      sub.where({ status: "pending" }).andWhere((due) => {
+        due.whereRaw(`processing_meta->>'awaiting_publish' is distinct from 'true'`)
+          .orWhereRaw(
+            `updated_at < now() - (coalesce((processing_meta->>'retry_after_ms')::bigint, 0) * interval '1 millisecond') - interval '5 minutes'`,
+          );
+      });
+    });
+}
+
+// Reconstructs the SAME scraper-tier options extraction-page.worker.ts's own retry ladder would
+// have published (forceFirecrawl/mobile/proxy), from processing_meta.retry_strategy — identical
+// mapping to extraction-queue-reclaim.worker.ts's publishOpts, kept in sync deliberately.
+//
+// Needed because a "pending" row with a retry_strategy already recorded can have an escalated
+// retry message genuinely in flight RIGHT NOW: extraction-page.worker.ts's immediate (non-deferred)
+// anti-bot retry flips the row to "pending" and publishes its escalated retry synchronously, with
+// no awaiting_publish tag at all (that tag is deferred-retry-only) — so retryableQueueItemCondition
+// above cannot and does not try to exclude it. A bare {jobId, queueItemId, url} republish here would
+// still land as a second queue message; if IT wins the claim race the page runs a default-tier
+// scrape instead of the intended escalated one, burning a retry attempt without ever addressing the
+// block (Greptile). Publishing with the SAME reconstructed options makes a duplicate message
+// harmless either way — the claim guard already makes the loser a no-op, but now the winner is
+// always correct regardless of which message that is.
+function retryPublishOpts(meta: Record<string, unknown> | null | undefined) {
+  const strategy = meta?.retry_strategy;
+  return (
+    strategy === "mobile" ? { forceFirecrawl: true, mobile: true, proxy: "stealth" as const, expandCollapsed: true } :
+    strategy === "browser_render" ? { forceFirecrawl: true, mobile: false, proxy: "auto" as const, expandCollapsed: true } :
+    {}
+  );
+}
+
+export async function republishRetryableQueueItems(
+  jobId: string,
+): Promise<{ candidates: number; dispatched: number; error: unknown }> {
+  const items = await masterKnex(`${S}.extraction_queue`)
+    .where({ job_id: jobId })
+    .where(retryableQueueItemCondition)
+    .select("id", "url", "processing_meta");
+
+  let dispatched = 0;
+  let error: unknown = null;
+  // Caught internally, not thrown straight through: a mid-loop publish failure must not lose the
+  // count of items already dispatched before it — callers (resumeExtraction) need that count to
+  // decide whether pages are already in flight, not just that something went wrong (Greptile).
+  try {
+    for (const item of items) {
+      const flipped = await masterKnex(`${S}.extraction_queue`)
+        .where({ id: item.id })
+        .where(retryableQueueItemCondition)
+        .update({
+          status: "pending",
+          updated_at: masterKnex.fn.now(),
+          processing_meta: masterKnex.raw(
+            `coalesce(processing_meta, '{}'::jsonb) || '{"attempt_token": null, "awaiting_publish": true}'::jsonb`,
+          ),
+        });
+      if (flipped === 0) continue;
+      await _stepDeps.publish(EXTRACTION_QUEUES.PAGES, {
+        jobId, queueItemId: item.id, url: item.url, ...retryPublishOpts(item.processing_meta),
+      });
+      await masterKnex(`${S}.extraction_queue`)
+        .where({ id: item.id, status: "pending" })
+        .whereRaw(`processing_meta->>'attempt_token' is null`)
+        .update({ processing_meta: masterKnex.raw(`processing_meta - 'awaiting_publish'`) });
+      dispatched++;
+    }
+  } catch (err) {
+    error = err;
+  }
+  return { candidates: items.length, dispatched, error };
 }

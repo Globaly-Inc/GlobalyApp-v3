@@ -18,7 +18,7 @@ import { config } from "../../config.js";
  */
 const BRAND = {
   primary: "#012E8A", // --primary
-  gold: "#23DDF6", // --gold             hsl(187 92% 55%)
+  gold: "#A6CBFD", // --gold             hsl(214 96% 82%)
   ink: "#0F1729", // --foreground        hsl(222 47% 11%)
   body: "#3F4B60",
   muted: "#65758B", // --muted-foreground hsl(215 16% 47%)
@@ -75,6 +75,11 @@ type LayoutOptions = {
   /** Inner HTML — paragraphs, lists, or an OTP block. Trusted markup. */
   body: string;
   cta?: { label: string; href: string };
+  /**
+   * Trusted markup placed BELOW the primary button — a secondary offer that must not compete
+   * with it. Its own `<tr>`, so a caller passing nothing changes nothing.
+   */
+  afterCta?: string;
   /** Small print above the divider. */
   footnote?: string;
   /**
@@ -92,7 +97,7 @@ type LayoutOptions = {
   align?: "center" | "left";
 };
 
-export function emailLayout({ heading, body, cta, footnote, size = "default", align = "center" }: LayoutOptions): string {
+export function emailLayout({ heading, body, cta, afterCta, footnote, size = "default", align = "center" }: LayoutOptions): string {
   const wide = size === "wide";
   const maxWidth = wide ? 600 : 480;
   // Narrower side padding on the wide layout: it already has the room, and on a 375px phone
@@ -105,7 +110,9 @@ export function emailLayout({ heading, body, cta, footnote, size = "default", al
     : "";
 
   const small = footnote
-    ? `<tr><td align="center" style="padding-top:24px"><p style="margin:0;color:${BRAND.faint};font-size:13px;line-height:20px">${footnote}</p></td></tr>`
+    // padding-bottom matches the footer rule's own 20px, so the small print sits between two equal
+    // gaps instead of resting on the line.
+    ? `<tr><td align="center" style="padding:24px 0 20px"><p style="margin:0;color:${BRAND.faint};font-size:13px;line-height:20px">${footnote}</p></td></tr>`
     : "";
 
   return `<!DOCTYPE html>
@@ -133,13 +140,18 @@ export function emailLayout({ heading, body, cta, footnote, size = "default", al
                 </tr>
                 <tr>
                   <td align="center" style="padding-bottom:${wide ? "10px" : "20px"}">
-                    <h1 style="margin:0;color:${BRAND.ink};font-family:${HEADING_FONT};font-size:${wide ? "25px" : "23px"};line-height:32px;font-weight:700">${heading}</h1>
+                    <!-- Capped rather than run to the card's full width: a 540px single line of
+                         25px serif reads as a banner, not a headline. 420px breaks the long ones
+                         over two balanced lines and leaves every short heading on one. Word-engine
+                         Outlook ignores max-width and renders the full width, as it did before. -->
+                    <h1 style="margin:0 auto;max-width:420px;color:${BRAND.ink};font-family:${HEADING_FONT};font-size:${wide ? "25px" : "23px"};line-height:32px;font-weight:700">${heading}</h1>
                   </td>
                 </tr>
                 <tr>
                   <td align="${align}" style="color:${BRAND.body};font-size:15px;line-height:23px">${body}</td>
                 </tr>
                 ${button}
+                ${afterCta ? `<tr><td align="left">${afterCta}</td></tr>` : ""}
                 ${small}
                 <tr>
                   <td align="center" style="border-top:1px solid ${BRAND.line};padding-top:20px;margin-top:8px">
@@ -773,6 +785,512 @@ export function claimBusinessEmail(options: {
   };
 }
 
+/** One numbered row of the "what happens next" list: a navy disc beside a line of text. */
+const stepRow = (n: number, html: string) => `<tr>
+    <td width="40" valign="top" style="width:40px;padding:0 0 14px">
+      <table cellpadding="0" cellspacing="0" role="presentation" style="border-radius:14px;background-color:${BRAND.primary}">
+        <tr><td align="center" valign="middle" style="width:28px;height:28px;color:#ffffff;font-family:${FONT};font-size:13px;font-weight:700;line-height:28px">${n}</td></tr>
+      </table>
+    </td>
+    <td valign="top" style="padding:3px 0 14px;color:${BRAND.body};font-size:15px;line-height:22px">${html}</td>
+  </tr>`;
+
+export function onboardingInviteEmail(options: {
+  acceptUrl: string;
+  /** Which portal the one click sets up. */
+  kind: "institution" | "business";
+  orgName?: string | null;
+  /** The business category the admin picked, e.g. "Visa Services"; named for businesses only. */
+  categoryName?: string | null;
+}): { subject: string; html: string; text: string } {
+  const org = options.kind === "institution" ? "institution" : "business";
+  const orgName = options.orgName?.trim();
+  const what = options.kind === "business" && options.categoryName ? `your ${esc(options.categoryName)} business` : `your ${org}`;
+
+  const card = orgName
+    ? `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 22px">
+         <tr><td align="center" style="padding:0 16px">
+           <table cellpadding="0" cellspacing="0" role="presentation" style="background-color:${BRAND.soft};border-radius:12px">
+             <tr><td align="center" style="padding:14px 32px">
+               <p style="margin:0 0 4px;color:${BRAND.primary};font-size:11px;line-height:14px;font-weight:700;letter-spacing:0.08em;text-transform:uppercase">Invitation for</p>
+               <p style="margin:0;color:${BRAND.ink};font-family:${HEADING_FONT};font-size:19px;line-height:26px;font-weight:700">${esc(orgName)}</p>
+             </td></tr>
+           </table>
+         </td></tr>
+       </table>`
+    : "";
+
+  // Led by the assistant rather than by "join our platform": the reader has never heard of us, and
+  // a listing on someone else's site is not a reason to click.
+  const benefits: Array<[string, string]> = options.kind === "institution"
+    ? [
+        ["An AI counsellor on your own site.", "One line of code, added once. It answers students and parents in a simple chat, around the clock, in your branding."],
+        ["It answers from your pages, not ours.", "We read your public site and build your profile from it — courses, branches, fees, intakes, scholarships."],
+        ["The data stays yours to change.", "Review every course and branch we found, correct it, add what we missed. Nothing goes live until you say so."],
+      ]
+    : [
+        ["An AI assistant on your own site.", "One line of code, added once. It answers visitors in a simple chat, around the clock, in your branding."],
+        ["It answers from your pages, not ours.", "We read your public site and build your profile from it — your services, what they cost, and how they work."],
+        ["The data stays yours to change.", "Review everything we found, correct it, add what we missed. Nothing goes live until you say so."],
+      ];
+  const benefitRows = benefits
+    .map(([lead, rest]) => `<p style="margin:0 0 16px"><strong style="color:${BRAND.ink}">${lead}</strong> ${rest}</p>`)
+    .join("");
+
+  const body = `${card}${benefitRows}
+         <p style="margin:4px 0 14px;color:${BRAND.ink};font-size:14px;line-height:20px;font-weight:700">What happens next</p>
+         <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+           ${stepRow(1, `Click <strong>Set up my ${org}</strong> below. It takes one click.`)}
+           ${stepRow(2, `We create your account and ${what}'s portal.`)}
+           ${stepRow(3, "Sign in with a one-time code we email to this address. No password to remember.")}
+         </table>`;
+
+  const fallback = `Button not working? Paste this link into your browser:<br><span style="color:${BRAND.muted};word-break:break-all">${esc(options.acceptUrl)}</span>`;
+
+  return {
+    subject: orgName ? `Set up ${orgName} on GlobalyAI` : `You're invited to set up your ${org} on GlobalyAI`,
+    text: [
+      "Hi there,",
+      "",
+      ...benefits.map(([lead, rest]) => `${lead.toUpperCase()} ${rest}`),
+      "",
+      `Set up your account: ${options.acceptUrl}`,
+      "",
+      "What happens next:",
+      "1. Open the link above.",
+      `2. We create your account and ${options.kind === "business" && options.categoryName ? `your ${options.categoryName} business's` : `your ${org}'s`} portal.`,
+      "3. Sign in with a one-time code we email to this address.",
+      "",
+      "This link expires in 72 hours. If you weren't expecting this, you can safely ignore this email.",
+    ].join("\n"),
+    html: emailLayout({
+      heading: options.kind === "institution"
+        ? "Your website, answering students around the clock"
+        : "Your website, answering visitors around the clock",
+      body,
+      align: "left",
+      size: "wide",
+      cta: { label: `Set up my ${org}`, href: options.acceptUrl },
+      footnote: `${fallback}<br><br>This link expires in 72 hours. If you weren't expecting this, you can safely ignore this email.`,
+    }),
+  };
+}
+
+/**
+ * To the admin who sent an onboarding invite (support when that admin is gone): the invitee opened
+ * an expired or revoked link and asked for a new one. An expired invite is resent from the Invites
+ * tab; a revoked one can't be, so the admin sends a fresh invitation instead.
+ */
+export function onboardingLinkRequestEmail(options: {
+  email: string;
+  orgName: string;
+  reason: "expired" | "revoked";
+  invitesUrl: string;
+  /** Where the button goes: for an expired invite, the Invites tab primed to resend it. */
+  actionUrl: string;
+}): { subject: string; html: string; text: string } {
+  const expired = options.reason === "expired";
+  const org = esc(options.orgName);
+  const email = esc(options.email);
+  const pill = expired
+    ? { label: "Link expired", fg: "#92400E", bg: "#FEF3C7" }
+    : { label: "Invite revoked", fg: "#991B1B", bg: "#FEE2E2" };
+  const steps = expired
+    ? [
+        "Click <strong>Resend the invite</strong> below, and sign in to the admin if asked.",
+        `We email <strong>${email}</strong> a fresh link, valid for 72 hours.`,
+      ]
+    : [
+        "Open the <strong>Invites</strong> tab on the Businesses page.",
+        `Revoked invites can't be resent, so click <strong>Invite Business</strong> and send a new one to <strong>${email}</strong>.`,
+      ];
+
+  const card = `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 24px;background-color:${BRAND.soft};border-radius:12px">
+       <tr><td style="padding:16px 18px">
+         <table cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 10px;border-radius:9999px;background-color:${pill.bg}">
+           <tr><td style="padding:3px 10px;color:${pill.fg};font-size:11px;line-height:16px;font-weight:700;letter-spacing:0.06em;text-transform:uppercase">${pill.label}</td></tr>
+         </table>
+         <p style="margin:0 0 4px;color:${BRAND.ink};font-family:${HEADING_FONT};font-size:19px;line-height:26px;font-weight:700">${org}</p>
+         <p style="margin:0;color:${BRAND.muted};font-size:14px;line-height:20px"><a href="mailto:${email}" style="color:${BRAND.primary};text-decoration:none">${email}</a></p>
+       </td></tr>
+     </table>`;
+
+  const body = `<p style="margin:0 0 20px">${expired
+      ? `<strong>${org}</strong> opened their onboarding link after it expired and asked for a new one.`
+      : `<strong>${org}</strong> opened an onboarding link that was revoked and asked to be invited again.`}</p>
+     ${card}
+     <p style="margin:0 0 14px;color:${BRAND.ink};font-size:14px;line-height:20px;font-weight:700">What to do</p>
+     <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+       ${steps.map((step, i) => stepRow(i + 1, step)).join("")}
+     </table>`;
+
+  return {
+    subject: expired ? `${options.orgName} needs a new invite link` : `${options.orgName} asked to be invited again`,
+    text: [
+      expired
+        ? `${options.orgName} (${options.email}) opened their onboarding link after it expired and asked for a new one.`
+        : `${options.orgName} (${options.email}) opened an onboarding link that was revoked and asked to be invited again.`,
+      "",
+      "What to do:",
+      ...(expired
+        ? ["1. Open the link below, and sign in to the admin if asked.", `2. We email ${options.email} a fresh link, valid for 72 hours.`]
+        : ["1. Open the Invites tab on the Businesses page.", `2. Revoked invites can't be resent, so send a new invitation to ${options.email}.`]),
+      "",
+      expired ? `Resend it: ${options.actionUrl}` : `Invites: ${options.invitesUrl}`,
+      "",
+      "Each invite can send this request at most once a day.",
+    ].join("\n"),
+    html: emailLayout({
+      heading: expired ? "An invite link needs resending" : "Someone asked to be re-invited",
+      body,
+      align: "left",
+      size: "wide",
+      cta: { label: expired ? "Resend the invite" : "Send a new invite", href: options.actionUrl },
+      footnote: "Each invite can send this request at most once a day.",
+    }),
+  };
+}
+
+/**
+ * The embed snippet, mailed to the org's developer from the portal's AI-embed card.
+ *
+ * Written for a developer reading on a phone: the tag is the payload and comes first, as selectable
+ * monospace on an ink surface — some clients strip the CTA button, none strip text.
+ *
+ * The install guidance is "add it once, in the file every page already shares", NOT the usual
+ * "paste on every page": every platform these recipients actually use has a single site-wide slot
+ * (theme.liquid, Code Injection → Footer, footer.php, root layout), and per-page pasting is how a
+ * widget ends up on three pages out of forty. Verified against current platform docs 2026-10-02.
+ *
+ * Addressed generically and says nothing about signing in: the reader is whoever the owner asked
+ * us to send the code to, has no GlobalyAI account, and is not being offered one.
+ */
+export function embedSnippetEmail(options: {
+  orgName: string;
+  snippet: string;
+}): { subject: string; html: string; text: string } {
+  const org = esc(options.orgName);
+  const greeting = "Hi there,";
+  const mono = "ui-monospace,SFMono-Regular,Menlo,Consolas,monospace";
+
+  /** Where "once" actually is, per platform. Ordered by how likely this reader is to be on it. */
+  const PLACES: Array<[string, string]> = [
+    ["Custom site, React, Vue, Next", "<code style=\"font-family:" + mono + ";font-size:13px\">index.html</code>, or your root layout"],
+    ["WordPress", "Your theme's <code style=\"font-family:" + mono + ";font-size:13px\">footer.php</code>, or a header-and-footer plugin"],
+    ["Shopify", "Online Store → Themes → Edit code → <code style=\"font-family:" + mono + ";font-size:13px\">theme.liquid</code>"],
+    ["Squarespace", "Settings → Code Injection → Footer"],
+    ["Webflow", "Project Settings → Custom Code → Footer"],
+  ];
+
+  const placeRows = PLACES.map(([platform, where], i) => `<tr>
+       <td valign="top" style="padding:10px 14px 10px 0;${i ? `border-top:1px solid ${BRAND.line};` : ""}color:${BRAND.ink};font-size:14px;line-height:21px;font-weight:600;white-space:nowrap">${esc(platform)}</td>
+       <td valign="top" style="padding:10px 0;${i ? `border-top:1px solid ${BRAND.line};` : ""}color:${BRAND.body};font-size:14px;line-height:21px">${where}</td>
+     </tr>`).join("");
+
+  // Ink surface, light text: reads as code to a developer, and renders identically in light and
+  // dark clients because both colours are stated rather than inherited.
+  const snippetBlock = `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 10px">
+       <tr><td style="padding:16px;background-color:${BRAND.ink};border-radius:12px">
+         <code style="display:block;color:#E8EEFB;font-family:${mono};font-size:13px;line-height:21px;word-break:break-all">${esc(options.snippet)}</code>
+       </td></tr>
+     </table>`;
+
+  // Who the tag is from, above the tag itself: this reader is a stranger being asked to paste a
+  // third-party script onto a live site, and that is a decision they make before they scroll.
+  const about = `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 18px;border:1px solid #CFE0F7;border-radius:12px;background-color:${BRAND.soft}">
+       <tr><td style="padding:14px 16px">
+         <p style="margin:0 0 5px;color:${BRAND.primary};font-size:11px;line-height:15px;font-weight:700;letter-spacing:.08em;text-transform:uppercase">About GlobalyAI</p>
+         <p style="margin:0;color:${BRAND.body};font-size:13.5px;line-height:20px">GlobalyAI is the education platform that connects students with verified institutions,
+           agents and education services worldwide. ${org} keeps its courses, fees and intakes with us — this script puts that same information on their own
+           site, as a chat assistant their visitors can ask.</p>
+       </td></tr>
+     </table>`;
+
+  const body = `<p style="margin:0 0 18px;line-height:24px">${greeting}</p>
+     <p style="margin:0 0 18px;line-height:24px"><strong>${org}</strong> asked us to send you the code for their GlobalyAI chat assistant.
+       It is one script tag — nothing to install, no stylesheet to load.</p>
+     ${about}
+     ${snippetBlock}
+     <p style="margin:0 0 24px;color:${BRAND.muted};font-size:13px;line-height:20px">Pasting it more than once is harmless; the second tag does nothing.</p>
+
+     <p style="margin:0 0 6px;color:${BRAND.ink};font-size:15px;line-height:22px;font-weight:700">Add it once, not to every page</p>
+     <p style="margin:0 0 14px;line-height:24px">Put it in the one file or setting every page already shares, anywhere before the closing
+       <code style="font-family:${mono};font-size:13px">&lt;/body&gt;</code> tag, and the assistant appears across the whole site.</p>
+     <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 24px;border-collapse:collapse">${placeRows}</table>
+
+     <p style="margin:0 0 20px;line-height:24px"><strong style="color:${BRAND.ink}">What happens then:</strong> a chat button appears in the
+       bottom-right corner of the site. Visitors can ask about courses, fees, intakes and entry requirements, and
+       ${org} sees every conversation in their portal.</p>`;
+
+  return {
+    subject: `Chat widget code for ${options.orgName}`,
+    text: [
+      "Hi there,",
+      "",
+      `${options.orgName} asked us to send you the code for their GlobalyAI chat assistant.`,
+      "It is one script tag — nothing to install, no stylesheet to load.",
+      "",
+      `ABOUT GLOBALYAPP — the education platform that connects students with verified institutions, agents and education services worldwide. ${options.orgName} keeps its courses, fees and intakes with us; this script puts that same information on their own site, as a chat assistant their visitors can ask.`,
+      "",
+      options.snippet,
+      "",
+      "ADD IT ONCE, NOT TO EVERY PAGE",
+      "Put it in the one file or setting every page already shares, anywhere before the closing </body> tag:",
+      "",
+      "  Custom site, React, Vue, Next — index.html, or your root layout",
+      "  WordPress — your theme's footer.php, or a header-and-footer plugin",
+      "  Shopify — Online Store > Themes > Edit code > theme.liquid",
+      "  Squarespace — Settings > Code Injection > Footer",
+      "  Webflow — Project Settings > Custom Code > Footer",
+      "",
+      "Pasting it more than once is harmless; the second tag does nothing.",
+      "",
+      `What happens then: a chat button appears in the bottom-right corner. Visitors can ask about courses, fees, intakes and entry requirements, and ${options.orgName} sees every conversation in their portal.`,
+      "",
+    ].join("\n"),
+    html: emailLayout({
+      heading: "Your chat widget code",
+      body,
+      align: "left",
+      size: "wide",
+      footnote: "Sent because someone at this organisation asked us to share their widget code with you.",
+    }),
+  };
+}
+
+/**
+ * What the crawl found: the headline count, then one row per coverage figure.
+ *
+ * Its own helper rather than `countBlock` + `benefitList` (which the acquisition mail shares and
+ * must keep): a tick list cannot show "97 of 184", and the denominator is the whole point — 97
+ * courses with fees reads as good news until you see how many courses there are.
+ *
+ * `of` is per row because not every figure is a share of the total: campuses are a count in their
+ * own right, and "16 / 184 campuses" would be nonsense.
+ */
+/** Four-figure counts are the normal case here, and "1284 courses" reads as a part number. */
+const num = (n: number) => n.toLocaleString("en-US");
+
+function coverageBlock(
+  count: number,
+  label: string,
+  rows: Array<{ label: string; count: number; of?: number }>,
+): string {
+  const cells = rows.map((r, i) => {
+    const edge = i ? `border-top:1px solid ${BRAND.line};` : "";
+    const denominator = r.of ? `<span style="color:${BRAND.faint};font-weight:400"> / ${num(r.of)}</span>` : "";
+    return `<tr>
+      <td style="${edge}padding:11px 20px;color:${BRAND.body};font-size:15px;line-height:21px">${esc(r.label.charAt(0).toUpperCase() + r.label.slice(1))}</td>
+      <td align="right" style="${edge}padding:11px 20px;color:${BRAND.ink};font-size:15px;line-height:21px;font-weight:700;white-space:nowrap">${num(r.count)}${denominator}</td>
+    </tr>`;
+  }).join("");
+
+  return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;border:1px solid ${BRAND.line};border-radius:12px">
+    <tr><td colspan="2" style="padding:18px 20px;background-color:${BRAND.soft};border-radius:12px 12px 0 0">
+      <span style="color:${BRAND.primary};font-size:34px;line-height:38px;font-weight:700">${num(count)}</span>
+      <span style="color:${BRAND.body};font-size:15px;line-height:21px">&nbsp;${esc(label)}</span>
+    </td></tr>
+    ${cells}
+  </table>`;
+}
+
+/**
+ * The other half of the coverage table: what was NOT found. The shares above state it by implication
+ * — 1,102 of 1,284 have fees — but the gap is the part the owner can act on, and a footnote saying
+ * "some details may need your review" never says which. Only rows with a real shortfall are shown,
+ * so a complete crawl prints no block at all rather than an empty reassurance.
+ */
+function reviewBlock(total: number, rows: Array<{ label: string; count: number; of?: number }>): string {
+  const gaps = rows
+    .filter((r) => r.of !== undefined && r.of > r.count)
+    .map((r) => ({ label: r.label.replace(/^courses with /i, "No "), count: (r.of as number) - r.count }));
+  if (!gaps.length || total === 0) return "";
+
+  const cells = gaps.map((g, i) => {
+    const edge = i ? "border-top:1px solid #F2D8AE;" : "";
+    return `<tr>
+      <td style="${edge}padding:9px 20px;color:${BRAND.body};font-size:15px;line-height:21px">${esc(g.label)}</td>
+      <td align="right" style="${edge}padding:9px 20px;color:#B45309;font-size:15px;line-height:21px;font-weight:700;white-space:nowrap">${num(g.count)}</td>
+    </tr>`;
+  }).join("");
+
+  return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;margin-top:14px;border:1px solid #F2D8AE;border-radius:12px">
+    <tr><td colspan="2" style="padding:13px 20px;background-color:#FEF7EC;border-radius:12px 12px 0 0">
+      <span style="color:#92400E;font-size:15px;line-height:21px;font-weight:700">Needs your review</span>
+      <span style="color:${BRAND.body};font-size:13px;line-height:20px">&nbsp;&mdash; nothing is hidden from students because of it</span>
+    </td></tr>
+    ${cells}
+  </table>`;
+}
+
+/**
+ * "Also included" — the AI-assistant offer under the completion mail's primary button.
+ *
+ * A text link, never a second pill: this mail exists to get the profile reviewed, and two buttons
+ * of equal weight make the reader choose instead of act. Position carries the hierarchy — below
+ * the CTA, inside its own bordered box, so it reads as an extra rather than a competing errand.
+ *
+ * Two fluid columns with NO media query, because this file's premise is that clients strip
+ * `<style>`: each column is `width:100%` capped by `max-width`, so they sit side by side when the
+ * card has the room and wrap to a stack when it does not. Outlook's Word engine ignores
+ * `display:inline-block` and simply stacks them — the same acceptable outcome, not a broken one.
+ * The wrapper is `font-size:0` so the newline between the two blocks cannot render as a gap.
+ *
+ * The preview shows the assistant answering the thing this org was just crawled for, so the offer
+ * lands as "your catalogue, on your site" rather than as a generic feature ad. The reply says what
+ * it can do rather than inventing a specific course — a mock must not state a fact we never read.
+ */
+function aiWidgetPromo(options: {
+  /** Pre-escaped. */
+  entityName: string;
+  /** Pre-escaped, protocol already stripped by the caller. */
+  website: string | null;
+  itemLabel: "courses" | "services";
+  href: string;
+  /** The real tag, resolved from the org's own widget. Null when it could not be resolved — the
+   *  panel then sends them to the portal for it rather than printing a tag that is not theirs. */
+  snippet: string | null;
+}): string {
+  const courses = options.itemLabel === "courses";
+  const where = options.website ? `on <strong>${options.website}</strong>` : "on your own website";
+  const blurb = courses
+    ? `Let students ask about your courses, fees and intakes ${where}.`
+    : `Let visitors ask about your services, costs and processing times ${where}.`;
+  const question = courses ? "Which courses start in September?" : "Do you help with student visas?";
+  const answer = courses
+    ? "I can list the September intakes with their fees and entry requirements."
+    : "I can take you through the documents, costs and timelines.";
+
+  const mono = "ui-monospace,SFMono-Regular,Menlo,Consolas,monospace";
+  // The tag itself, full width under both columns — a 248px column cannot show a line this long,
+  // and a developer copying it needs the whole thing selectable rather than wrapped mid-attribute.
+  // Ink surface with both colours stated, so it reads as code in light and dark clients alike.
+  const codeRow = options.snippet
+    ? `<tr><td style="padding:0 20px 20px">
+        <p style="margin:0 0 8px;color:${BRAND.ink};font-size:13px;line-height:19px;font-weight:700">Paste this one line into your site</p>
+        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 8px">
+          <tr><td style="padding:14px;background-color:${BRAND.ink};border-radius:10px">
+            <code style="display:block;color:#E8EEFB;font-family:${mono};font-size:12px;line-height:19px;word-break:break-all">${esc(options.snippet)}</code>
+          </td></tr>
+        </table>
+        <p style="margin:0;color:${BRAND.muted};font-size:12px;line-height:18px">Add it <strong style="color:${BRAND.body}">once</strong>, in the file every page already shares — your root layout, theme footer, or your platform's site-wide code setting. <a href="${options.href}" style="color:${BRAND.primary};text-decoration:none;font-weight:600">Where to put it &rarr;</a></p>
+      </td></tr>`
+    : `<tr><td style="padding:0 20px 20px">
+        <a href="${options.href}" style="color:${BRAND.primary};font-size:14px;line-height:21px;font-weight:600;text-decoration:none">Get the embed code &rarr;</a>
+      </td></tr>`;
+
+  const bubble = (text: string, mine: boolean) => `
+    <div style="${mine ? "text-align:right" : "padding-top:8px"}">
+      <span style="display:inline-block;max-width:94%;text-align:left;font-size:12px;line-height:17px;padding:8px 10px;${
+        mine
+          ? `background-color:${BRAND.primary};color:#ffffff;border-radius:12px 12px 4px 12px`
+          : `background-color:${BRAND.page};color:${BRAND.body};border-radius:12px 12px 12px 4px`
+      }">${text}</span>
+    </div>`;
+
+  return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin-top:28px;border:1px solid ${BRAND.line};border-radius:14px">
+    <tr><td style="padding:20px;font-size:0">
+      <div style="display:inline-block;width:100%;max-width:248px;vertical-align:top">
+        <div style="padding:0 16px 0 0">
+          <p style="margin:0 0 6px;color:${BRAND.primary};font-size:12px;line-height:16px;font-weight:700;letter-spacing:.08em;text-transform:uppercase">Also included</p>
+          <p style="margin:0 0 8px;color:${BRAND.ink};font-size:17px;line-height:23px;font-weight:700">Add the AI assistant to your website</p>
+          <p style="margin:0;color:${BRAND.body};font-size:14px;line-height:21px">${blurb}</p>
+        </div>
+      </div><div style="display:inline-block;width:100%;max-width:248px;vertical-align:top;padding-top:4px">
+        <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="border:1px solid ${BRAND.line};border-radius:12px;background-color:#ffffff">
+          <tr><td style="padding:10px 12px;border-bottom:1px solid ${BRAND.line}">
+            <table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr>
+              <td width="20" style="width:20px;padding-right:8px"><img src="${logoUrl()}" alt="" width="20" height="20" style="display:block;border-radius:5px" /></td>
+              <td style="color:${BRAND.ink};font-size:13px;line-height:18px;font-weight:700">Ask ${options.entityName}</td>
+              <td width="8" align="right" style="width:8px"><span style="display:inline-block;width:7px;height:7px;border-radius:9999px;background-color:#16A34A">&nbsp;</span></td>
+            </tr></table>
+          </td></tr>
+          <tr><td style="padding:12px">${bubble(question, true)}${bubble(answer, false)}</td></tr>
+        </table>
+      </div>
+    </td></tr>
+    ${codeRow}
+  </table>`;
+}
+
+/**
+ * "Your profile is ready" — sent by the data-extraction completion step to the institution's or
+ * business's owner (or the entity's own address) once a crawl finishes verification. Counts are
+ * what was captured, so the owner knows what to review; nothing here promises it is live.
+ */
+export function extractionCompleteEmail(options: {
+  recipientName: string | null;
+  entityName: string;
+  website: string | null;
+  /** "courses" for an institution, "services" for a visa/migration provider. */
+  itemLabel: "courses" | "services";
+  itemCount: number;
+  /** `of` renders the denominator ("97 / 184"); omit it for a figure that is not a share. */
+  coverage: Array<{ label: string; count: number; of?: number }>;
+  portalUrl: string;
+  /** The org's real embed tag. Null falls back to a link — never a tag that is not theirs. */
+  snippet?: string | null;
+}): { subject: string; html: string; text: string } {
+  const entityName = esc(options.entityName);
+  const greeting = options.recipientName ? `Hi ${esc(options.recipientName)},` : `Hi ${entityName} team,`;
+  const site = options.website ? ` from <strong>${esc(options.website)}</strong>` : "";
+  const found = options.coverage.filter((c) => c.count > 0);
+  const coverage = found.map((c) => `${c.count} ${c.label}`);
+  const review = reviewBlock(options.itemCount, options.coverage);
+  // Internal, like the other deep links in this file (see `web`): the caller already builds
+  // portalUrl from the same WEB_APP_URL, so a second parameter would only be a way to disagree.
+  const widgetUrl = web("/business/ai-widget");
+  const askWhere = options.website ? `on ${options.website}` : "on your own website";
+
+  return {
+    subject: `Your ${options.entityName} profile is ready on GlobalyAI`,
+    text: [
+      options.recipientName ? `Hi ${options.recipientName},` : `Hi ${options.entityName} team,`,
+      `We've finished collecting ${options.entityName}'s details${options.website ? ` from ${options.website}` : ""} on GlobalyAI.`,
+      `${options.itemCount} ${options.itemLabel} found${coverage.length ? ` — ${coverage.join(", ")}` : ""}.`,
+      `Review your profile: ${options.portalUrl}`,
+      "ALSO INCLUDED — Add the AI assistant to your website",
+      options.itemLabel === "courses"
+        ? `Let students ask about your courses, fees and intakes ${askWhere}.`
+        : `Let visitors ask about your services, costs and processing times ${askWhere}.`,
+      ...(options.snippet
+        ? [
+            "Paste this one line into your site:",
+            options.snippet,
+            "Add it ONCE, in the file every page already shares — your root layout, theme footer, or your platform's site-wide code setting.",
+          ]
+        : [`Get the embed code: ${widgetUrl}`]),
+      "Some details may need your review before students see them. You can edit anything from your portal.",
+    ].join("\n\n"),
+    html: emailLayout({
+      heading: "Your profile is ready to review",
+      body: `<p style="margin:0 0 12px">${greeting}</p>
+             <p style="margin:0 0 20px">We've finished collecting <strong>${entityName}</strong>'s details${site} on
+             <strong>GlobalyAI</strong> — the platform connecting students with verified institutions, agents, and
+             education services worldwide.</p>
+             ${coverageBlock(options.itemCount, `${options.itemLabel} found`, found)}
+             ${review}
+             <p style="margin:20px 0 0">Take a look and make sure everything is right, so students find accurate
+             information about ${entityName}.</p>`,
+      size: "wide",
+      align: "left",
+      cta: { label: "Review your profile", href: options.portalUrl },
+      afterCta: aiWidgetPromo({
+        entityName,
+        website: options.website ? esc(options.website) : null,
+        itemLabel: options.itemLabel,
+        href: widgetUrl,
+        snippet: options.snippet ?? null,
+      }),
+      // Only when nothing was flagged above: with the "Needs your review" table on the page, a
+      // footnote hinting that some details may need review is the same sentence, said worse.
+      footnote: review
+        ? undefined
+        : "Some details may need your review before students see them. You can edit anything from your portal.",
+    }),
+  };
+}
+
 /** The "here's your guide" mail, sent by guide-email.worker.ts with a 7-day signed GCS link. */
 export function guideDeliveryEmail(options: {
   guideTitle: string;
@@ -799,21 +1317,106 @@ export interface ChatSummaryTurn {
   answer: string;
 }
 
-const BULLET_RE = /^[-*\u2022]\s+/;
+/** The course card the chat ended on — the facts the counsellor's course card carried. */
+export interface ChatSummaryProgram {
+  name: string;
+  institution?: string;
+  city?: string;
+  duration?: string;
+  study_modes?: string[];
+  intakes?: string[];
+}
+
+/** A bullet line: "- ", "* ", "• ", or "✓ " for a requirement the chat confirmed was met. */
+const BULLET_RE = /^([-*\u2022]|\u2713)\s+/;
+const CHECK_RE = /^\u2713\s+/;
 
 function bulletList(items: string[]): string {
   const rows = items
-    .map(
-      (l) =>
-        `<tr><td valign="top" style="padding:0 8px 6px 0;color:${BRAND.muted};font-size:14px;line-height:22px">&bull;</td>
-             <td style="padding:0 0 6px;color:${BRAND.body};font-size:14px;line-height:22px">${esc(l.replace(BULLET_RE, ""))}</td></tr>`,
-    )
+    .map((l) => {
+      // A ✓ only ever comes from the prompt's "explicitly confirmed in the chat" rule.
+      const mark = CHECK_RE.test(l)
+        ? `<span style="display:inline-block;width:20px;height:20px;border-radius:10px;background-color:#E6F6EC;color:#16A34A;font-size:12px;line-height:20px;text-align:center;font-weight:700">&#10003;</span>`
+        : `<span style="display:inline-block;width:8px;height:8px;border-radius:4px;background-color:${BRAND.primary};margin:0 6px">&bull;</span>`;
+      return `<tr><td valign="top" width="28" style="width:28px;padding:3px 8px 12px 0;font-size:0;line-height:0">${mark}</td>
+             <td style="padding:0 0 12px;color:${BRAND.ink};font-size:16px;line-height:26px">${esc(l.replace(BULLET_RE, ""))}</td></tr>`;
+    })
     .join("");
-  return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;margin:0 0 14px">${rows}</table>`;
+  return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;margin:0 0 12px">${rows}</table>`;
+}
+
+/** "Program discussed": the course card the chat ended on, as in the widget. */
+function programCard(p: ChatSummaryProgram, others: string[]): string {
+  const where = [p.institution, p.city ? `${p.city} campus` : null].filter(Boolean).join(" · ");
+  const pills = [
+    p.duration,
+    ...(p.study_modes ?? []).slice(0, 2),
+    p.intakes?.length ? `Intake ${p.intakes.slice(0, 3).join(", ")}` : null,
+  ].filter((x): x is string => !!x && !!x.trim());
+  const pillHtml = pills
+    .map((x) => `<span style="display:inline-block;margin:0 8px 8px 0;padding:6px 12px;border:1px solid ${BRAND.line};border-radius:8px;background-color:#ffffff;color:${BRAND.body};font-size:14px;line-height:18px">${esc(x)}</span>`)
+    .join("");
+  const also = others.length
+    ? `<p style="margin:8px 0 0;color:${BRAND.muted};font-size:13px;line-height:20px">Also discussed: ${others.map(esc).join(", ")}</p>`
+    : "";
+  return `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;margin:4px 0 28px;border:1px solid ${BRAND.line};border-radius:14px;background-color:#F6F8FC">
+    <tr><td style="padding:22px 24px ${pills.length ? "16px" : "22px"}">
+      <p style="margin:0 0 8px;color:${BRAND.primary};font-size:12px;line-height:16px;font-weight:700;text-transform:uppercase;letter-spacing:0.08em">Program discussed</p>
+      <p style="margin:0 0 4px;color:${BRAND.ink};font-size:19px;line-height:26px;font-weight:700">${esc(p.name)}</p>
+      ${where ? `<p style="margin:0 0 14px;color:${BRAND.muted};font-size:15px;line-height:22px">${esc(where)}</p>` : ""}
+      ${pillHtml ? `<div>${pillHtml}</div>` : ""}
+      ${also}
+    </td></tr>
+  </table>`;
+}
+
+/**
+ * The summary email's own shell: a left-aligned card with the navy rule, the logo and heading on
+ * the left, a squared button, and the copyright outside the card. Separate from emailLayout, which
+ * four other emails share and which keeps its centred look.
+ */
+function recapLayout(o: {
+  heading: string;
+  body: string;
+  cta: { label: string; href: string };
+  footnote: string;
+  /** Trusted HTML pill opposite the logo, e.g. "Waiting now". */
+  badge?: string;
+}): string {
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${o.heading}</title>
+</head>
+<body style="margin:0;padding:0;background-color:${BRAND.page};font-family:${FONT}">
+  <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background-color:${BRAND.page};padding:40px 16px">
+    <tr><td align="center">
+      <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;max-width:600px;background-color:#ffffff;border:1px solid ${BRAND.line};border-radius:16px;overflow:hidden">
+        <tr><td style="height:6px;background-color:${BRAND.primary};line-height:6px;font-size:0">&nbsp;</td></tr>
+        <tr><td style="padding:40px 44px 36px">
+          <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;margin:0 0 28px"><tr>
+            <td valign="middle"><img src="${logoUrl()}" alt="GlobalyAI" width="44" height="44" style="display:block;border-radius:10px" /></td>
+            ${o.badge ? `<td valign="middle" align="right">${o.badge}</td>` : ""}
+          </tr></table>
+          <h1 style="margin:0 0 24px;color:${BRAND.ink};font-family:${FONT};font-size:28px;line-height:36px;font-weight:700">${o.heading}</h1>
+          <div style="color:${BRAND.ink};font-size:16px;line-height:26px">${o.body}</div>
+          <table cellpadding="0" cellspacing="0" role="presentation" style="margin:12px 0 28px"><tr><td style="border-radius:10px;background-color:${BRAND.primary}">
+            <a href="${o.cta.href}" style="display:inline-block;padding:15px 28px;color:#ffffff;font-size:16px;line-height:20px;font-weight:600;text-decoration:none;border-radius:10px">${o.cta.label}</a>
+          </td></tr></table>
+          <p style="margin:0;padding-top:20px;border-top:1px solid ${BRAND.line};color:${BRAND.muted};font-size:14px;line-height:21px">${o.footnote}</p>
+        </td></tr>
+      </table>
+      <p style="margin:24px 0 0;color:${BRAND.faint};font-size:13px;line-height:18px">© ${new Date().getFullYear()} GlobalyHub — World #1 AI Integrated Education Ecosystem</p>
+    </td></tr>
+  </table>
+</body>
+</html>`;
 }
 
 const proseParagraph = (lines: string[]): string =>
-  `<p style="margin:0 0 14px;color:${BRAND.body};font-size:15px;line-height:23px">${esc(lines.join(" "))}</p>`;
+  `<p style="margin:0 0 14px;color:${BRAND.ink};font-size:16px;line-height:26px">${esc(lines.join(" "))}</p>`;
 
 /**
  * The model's recap as mail HTML.
@@ -869,6 +1472,8 @@ export function chatSummaryEmail(options: {
   name: string;
   orgName: string | null;
   courses: string[];
+  /** The course card the chat ended on. Null/absent on older rows: no program block. */
+  program?: ChatSummaryProgram | null;
   turns: ChatSummaryTurn[];
   conversationUrl: string;
   /** The written recap. Null when the model was unavailable or the chat was too short —
@@ -886,11 +1491,16 @@ export function chatSummaryEmail(options: {
   confirmedEnd?: boolean;
 }): { subject: string; html: string; text: string } {
   const org = options.orgName ? esc(options.orgName) : null;
-  const subject = options.orgName
-    ? `Your conversation with ${options.orgName}`
-    : "Your conversation summary";
+  const subject = options.orgName ? `Your chat with ${options.orgName}` : "Your chat summary";
 
-  const courseList = options.courses.length
+  // The program card when we know which course the chat ended on; the plain list otherwise.
+  const program = options.program?.name ? options.program : null;
+  const others = program
+    ? options.courses.filter((c) => c.split(" — ")[0] !== program.name)
+    : [];
+  const courseList = program
+    ? programCard(program, others)
+    : options.courses.length
     ? `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;border-radius:12px;background-color:${BRAND.soft};margin:0 0 20px">
          <tr><td style="padding:16px 18px">
            <p style="margin:0 0 8px;color:${BRAND.muted};font-size:12px;line-height:16px;text-transform:uppercase;letter-spacing:0.06em">Programs we discussed</p>
@@ -927,8 +1537,11 @@ export function chatSummaryEmail(options: {
     ? renderSummaryProse(options.summary.trim())
     : transcript;
 
+  // "Pick up where you left off" only when they didn't say they were done — see pickUp below.
   const intro = options.summary?.trim()
-    ? `Here's a recap of your chat with ${org ? `<strong>${org}</strong>` : "our AI counsellor"}, so you have it to hand whenever you need it.`
+    ? options.confirmedEnd
+      ? "Here's a quick recap of your chat, so you have it to hand."
+      : "Here's a quick recap, so you can pick up where you left off."
     : `Here's the conversation you had with ${org ? `the <strong>${org}</strong> AI counsellor` : "our AI counsellor"}, so you have the details to hand whenever you need them.`;
 
   /**
@@ -939,17 +1552,20 @@ export function chatSummaryEmail(options: {
    * and simply closed the tab without pressing a button — and being told your question went
    * unanswered when it did not is worse than being told nothing. An invitation is true for both.
    */
-  const pickUp = options.confirmedEnd
+  // The recap's intro already carries the invitation; only the transcript fallback needs it said.
+  const pickUp = options.confirmedEnd || options.summary?.trim()
     ? ""
-    : `<p style="margin:0 0 20px">If anything's still unanswered, you can pick up where you left off.</p>`;
+    : `<p style="margin:0 0 24px;color:${BRAND.muted};font-size:16px;line-height:26px">If anything's still unanswered, you can pick up where you left off.</p>`;
 
   const body = `<p style="margin:0 0 16px">Hi ${esc(options.name)},</p>
-    <p style="margin:0 0 ${pickUp ? "8px" : "20px"}">${intro}</p>
+    <p style="margin:0 0 ${pickUp ? "8px" : "24px"};color:${BRAND.muted}">${intro}</p>
     ${pickUp}
     ${courseList}
     ${written}`;
 
-  const textCourses = options.courses.length
+  const textCourses = program
+    ? `\n\nProgram discussed: ${program.name}${program.institution ? ` — ${program.institution}` : ""}${others.length ? `\nAlso discussed: ${others.join(", ")}` : ""}`
+    : options.courses.length
     ? `\n\nPrograms we discussed:\n${options.courses.map((c) => `- ${c}`).join("\n")}`
     : "";
   const textTurns = options.turns
@@ -962,7 +1578,7 @@ export function chatSummaryEmail(options: {
   // "a recap" over a raw transcript whenever the model was unavailable, and never invited an
   // abandoned visitor back. A plain-text part nobody reads is still a plain-text part that lies.
   const textIntro = options.summary?.trim()
-    ? `Here's a recap of your chat with ${options.orgName ?? "our"} AI counsellor.`
+    ? `Here's a quick recap of your chat with ${options.orgName ?? "our"} AI counsellor.`
     : `Here's the conversation you had with ${options.orgName ? `the ${options.orgName}` : "our"} AI counsellor.`;
   const textPickUp = options.confirmedEnd
     ? ""
@@ -971,15 +1587,71 @@ export function chatSummaryEmail(options: {
   return {
     subject,
     text: `Hi ${options.name},\n\n${textIntro}${textPickUp}${textCourses}\n${textBody}\n\nContinue the conversation: ${options.conversationUrl}`,
-    html: emailLayout({
-      heading: "Your conversation",
+    html: recapLayout({
+      heading: org ? `Your chat with ${org}` : "Your chat summary",
       body,
       cta: { label: "Continue the conversation", href: options.conversationUrl },
       // Says plainly why this arrived. The visitor asked for it minutes ago, but they asked
       // inside someone else's website and may not connect this sender with that chat.
-      footnote: `You asked us to send you a copy of this chat${org ? ` on ${org}'s website` : ""}. We only email you when you ask us to.`,
-      size: "wide",
-      align: "left",
+      footnote: `You asked for a summary of this chat${org ? ` on ${org}'s website` : ""}.`,
+    }),
+  };
+}
+
+/**
+ * "A visitor is waiting for a person" — sent to the org's contact address when a website-chat
+ * visitor asks for a human, until there is an in-app notification system. Everything from the
+ * visitor is escaped: it is a stranger's words landing in someone's inbox.
+ */
+export function handoverRequestEmail(options: {
+  orgName: string | null;
+  visitorName: string | null;
+  message: string;
+  inboxUrl: string;
+}): { subject: string; html: string; text: string } {
+  const name = options.visitorName?.trim() || null;
+  const who = name ?? "A visitor";
+  const first = name?.split(/\s+/)[0] ?? null;
+  const initials = name
+    ? name.split(/\s+/).filter(Boolean).slice(0, 2).map((w) => w[0]!.toUpperCase()).join("")
+    : "?";
+  const message = options.message.length > 500 ? `${options.message.slice(0, 500)}…` : options.message;
+  const subject = `${who} is waiting for a person on your website chat`;
+  const site = options.orgName ? `${esc(options.orgName)}'s` : "your";
+
+  const badge = `<span style="display:inline-block;padding:7px 14px;border-radius:999px;background-color:#FDF3E1;color:#92560B;font-size:14px;line-height:18px;font-weight:600;white-space:nowrap"><span style="display:inline-block;width:10px;height:10px;border-radius:5px;background-color:#E08A0B;margin-right:6px;vertical-align:-1px"></span>Waiting now</span>`;
+
+  // The visitor's message as it reads in the chat: their initials, their name, their words.
+  // No timestamp — the server can't know the reader's time zone, and a wrong time is worse than none.
+  const card = `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;margin:8px 0 28px;border:1px solid ${BRAND.line};border-radius:14px;background-color:#F6F8FC">
+    <tr><td style="padding:20px 22px 18px">
+      <table cellpadding="0" cellspacing="0" role="presentation"><tr>
+        <td valign="top" style="padding-right:14px">
+          <div style="width:44px;height:44px;border-radius:22px;background-color:${BRAND.primary};color:#ffffff;font-size:16px;line-height:44px;font-weight:700;text-align:center">${esc(initials)}</div>
+        </td>
+        <td valign="top">
+          <p style="margin:0 0 8px;color:${BRAND.ink};font-size:16px;line-height:22px;font-weight:600">${esc(who)}</p>
+          <div style="display:inline-block;padding:10px 16px;border:1px solid ${BRAND.line};border-radius:14px;background-color:#ffffff;color:${BRAND.ink};font-size:16px;line-height:24px;white-space:pre-wrap">${esc(message)}</div>
+        </td>
+      </tr></table>
+    </td></tr>
+    <tr><td style="padding:14px 22px;border-top:1px solid ${BRAND.line};background-color:#ffffff;border-radius:0 0 14px 14px;color:${BRAND.body};font-size:15px;line-height:22px">
+      &#128339;&nbsp; AI assistant paused. Resumes in <strong style="color:${BRAND.ink}">15 min</strong> if no one replies.
+    </td></tr>
+  </table>`;
+
+  const body = `<p style="margin:0 0 16px;color:${BRAND.body}"><strong style="color:${BRAND.ink}">${esc(who)}</strong> asked to talk to someone from your team in the chat on ${site} website.</p>
+    ${card}`;
+
+  return {
+    subject,
+    text: `${who} asked to talk to someone from your team in your website chat.\n\n"${message}"\n\nAI assistant paused. It resumes in 15 minutes if no one replies.\n\nReply in the Inbox: ${options.inboxUrl}`,
+    html: recapLayout({
+      heading: "A visitor is waiting for you",
+      badge,
+      body,
+      cta: { label: first ? `Reply to ${esc(first)}` : "Open the conversation", href: options.inboxUrl },
+      footnote: `Your reply in the Inbox appears straight in ${first ? `${esc(first)}'s` : "their"} chat. You're getting this because a visitor asked for a person on your website chat.`,
     }),
   };
 }

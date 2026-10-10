@@ -1,0 +1,441 @@
+<!doctype html>
+<html lang="en" style="color-scheme:light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AI Chat Takeover Mockup</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600&family=Geist+Mono:wght@400;500&family=Inter:wght@400;500;600;700&display=swap">
+<style>
+:root{
+  --bg:hsl(210 20% 99%); --surface:#FFFFFF; --ink:hsl(222 47% 11%); --muted:hsl(215 16% 47%); --line:hsl(215 16% 90%);
+  --primary:#012E8A; --primary-soft:hsl(220 86% 95%); --aqua:hsl(187 85% 32%); --aqua-soft:hsl(187 92% 94%);
+  --add:hsl(152 60% 30%); --add-soft:hsl(152 60% 94%); --warn:hsl(32 90% 32%); --warn-soft:hsl(40 90% 93%); --bad:hsl(0 84% 60%); --bad-soft:hsl(0 84% 96%); --code:hsl(210 17% 96%);
+  color-scheme:light;
+}
+*{box-sizing:border-box}
+body{background:var(--bg);color:var(--ink);font:15px/1.6 "Inter",system-ui,-apple-system,"Segoe UI",sans-serif;padding-inline:20px;padding-block:0 64px}
+.wrap{max-width:1400px;margin:0 auto;display:flex;flex-direction:column;gap:40px}
+header.top{padding-block:48px 8px;display:flex;flex-direction:column;gap:12px}
+.eyebrow{font:500 12px/1 "Geist Mono",ui-monospace,monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--aqua)}
+h1{font-family:"Fraunces",Georgia,serif;letter-spacing:-.01em;font-size:clamp(28px,4vw,40px);line-height:1.15;margin:0;font-weight:700;text-wrap:balance}
+h2{font-family:"Fraunces",Georgia,serif;letter-spacing:-.01em;font-size:22px;margin:0;font-weight:600;text-wrap:balance}
+h3{font-size:16px;margin:0;font-weight:600}
+p{margin:0;max-width:72ch}
+.lede{color:var(--muted);font-size:17px}
+section{display:flex;flex-direction:column;gap:18px}
+section > header{display:flex;flex-direction:column;gap:6px;border-top:1px solid var(--line);padding-top:24px}
+.toc{display:flex;flex-wrap:wrap;gap:8px}
+.toc a{font:500 13px/1 "Inter",sans-serif;color:var(--primary);background:var(--primary-soft);padding:7px 10px;border-radius:999px;text-decoration:none}
+.toc a:focus-visible{outline:2px solid var(--aqua);outline-offset:2px}
+code,.mono{font-family:"Geist Mono",ui-monospace,SFMono-Regular,monospace;font-size:.88em}
+p code,li code,td code{background:var(--code);padding:1px 5px;border-radius:4px}
+pre.code{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:14px 16px;overflow-x:auto;margin:0;font:13px/1.55 "Geist Mono",ui-monospace,monospace;color:var(--ink)}
+.cm{color:var(--muted)}
+ul{margin:0;padding-left:20px;display:flex;flex-direction:column;gap:6px}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:16px}
+.grid3{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:18px;display:flex;flex-direction:column;gap:12px}
+.note{font-size:13px;color:var(--muted)}
+.pill{display:inline-flex;align-items:center;gap:6px;font:500 11.5px/1 "Geist Mono",monospace;padding:5px 8px;border-radius:999px;width:fit-content;white-space:nowrap}
+.pill.ai{background:var(--primary-soft);color:var(--primary)}
+.pill.human{background:var(--aqua-soft);color:var(--aqua)}
+.pill.ok{background:var(--add-soft);color:var(--add)}
+.pill.warn{background:var(--warn-soft);color:var(--warn)}
+.pill.bad{background:var(--bad-soft);color:var(--bad)}
+.tablebox{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:14px}
+th,td{text-align:left;padding:10px 14px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font:500 12px/1.3 "Geist Mono",monospace;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);background:var(--code)}
+tr:last-child td{border-bottom:0}
+td.col{font-family:"Geist Mono",monospace;font-size:13px;white-space:nowrap}
+.tag{font:500 11px/1 "Geist Mono",monospace;padding:3px 6px;border-radius:4px;white-space:nowrap}
+.tag.new{background:var(--add-soft);color:var(--add)}
+.tag.chg{background:var(--warn-soft);color:var(--warn)}
+.tag.no{background:var(--code);color:var(--muted)}
+.tbl-title{display:flex;flex-wrap:wrap;gap:8px;align-items:baseline}
+.tbl-title .mono{color:var(--muted)}
+.diagram{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;overflow-x:auto}
+.files td:first-child{font-family:"Geist Mono",monospace;font-size:12.5px;word-break:break-all}
+.steps{counter-reset:s;list-style:none;padding:0;display:flex;flex-direction:column;gap:10px}
+.steps li{counter-increment:s;display:grid;grid-template-columns:28px 1fr;gap:10px}
+.steps li::before{content:counter(s);font:600 12px/28px "Geist Mono",monospace;width:28px;height:28px;text-align:center;border-radius:50%;background:var(--primary-soft);color:var(--primary)}
+
+/* ---------- mock app ---------- */
+.switch{display:flex;flex-wrap:wrap;gap:6px;align-items:center}
+.switch span{font-size:13px;color:var(--muted);margin-right:4px}
+.switch button{font:500 13px/1 "Inter",sans-serif;padding:8px 12px;border-radius:999px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+.switch button[aria-pressed="true"]{background:var(--primary);border-color:var(--primary);color:#fff}
+.switch button:focus-visible,.btn:focus-visible{outline:2px solid var(--aqua);outline-offset:2px}
+.appbox{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+.app{display:grid;grid-template-columns:330px minmax(460px,1fr) 290px;min-width:1080px;height:680px;font-size:13px}
+.pane{display:flex;flex-direction:column;min-height:0;border-right:1px solid var(--line)}
+.pane:last-child{border-right:0}
+.list-top{padding:12px;display:flex;flex-direction:column;gap:10px;border-bottom:1px solid var(--line)}
+.search{border:1px solid var(--line);border-radius:8px;padding:7px 10px;color:var(--muted);background:var(--bg)}
+.kinds{display:flex;gap:4px;background:var(--code);padding:3px;border-radius:8px}
+.kinds b{flex:1;text-align:center;font-weight:500;padding:6px 6px;border-radius:6px;color:var(--muted);font-size:12px;white-space:nowrap}
+.kinds b.on{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(16,26,51,.08)}
+.chips{display:flex;gap:4px;flex-wrap:wrap}
+.chips i{font-style:normal;font-size:11.5px;padding:4px 8px;border-radius:999px;color:var(--muted);border:1px solid var(--line)}
+.chips i.on{background:var(--primary);color:#fff;border-color:var(--primary)}
+.rows{overflow:auto;flex:1}
+.lrow{display:grid;grid-template-columns:36px 1fr auto;gap:10px;padding:10px 12px;border-bottom:1px solid var(--line);align-items:start}
+.lrow.sel{background:var(--primary-soft)}
+.av{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font:600 11.5px/1 "Inter",sans-serif;background:var(--code);color:var(--ink);position:relative;flex:none}
+.av .badge{position:absolute;right:-3px;bottom:-3px;width:16px;height:16px;border-radius:50%;border:2px solid var(--surface);display:grid;place-items:center;font-size:8px;font-weight:700}
+.badge.b-ai{background:var(--primary);color:var(--surface)}
+.badge.b-h{background:var(--aqua);color:var(--surface)}
+.badge.b-r{background:var(--add);color:var(--surface)}
+.lrow .nm{font-weight:600;display:flex;gap:6px;align-items:center;min-width:0}
+.lrow .nm span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lrow .pv{color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lrow .pv.unread{color:var(--ink);font-weight:600}
+.lrow .rt{display:flex;flex-direction:column;align-items:flex-end;gap:4px;font-size:11px;color:var(--muted)}
+.cnt{background:var(--bad);color:var(--surface);font:600 10.5px/1 "Inter",sans-serif;padding:3px 6px;border-radius:999px}
+.minpill{font:500 10px/1 "Geist Mono",monospace;padding:3px 5px;border-radius:4px}
+.thead{display:flex;gap:10px;align-items:center;justify-content:space-between;padding:10px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.thead .who{display:flex;gap:10px;align-items:center}
+.thead small{display:block;color:var(--muted);font-size:11.5px}
+.thead strong{font-family:"Fraunces",Georgia,serif;font-size:16px;font-weight:600}
+.btn{font:500 12.5px/1 "Inter",sans-serif;padding:7px 11px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer;white-space:nowrap}
+.btn.primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn.ghost{border-color:transparent;background:transparent;color:var(--muted)}
+.btns{display:flex;gap:6px;flex-wrap:wrap}
+.strip{padding:8px 14px;font-size:12px;display:flex;gap:8px;align-items:center;border-bottom:1px solid var(--line)}
+.strip.s-ai{background:var(--primary-soft);color:var(--primary)}
+.strip.s-h{background:var(--aqua-soft);color:var(--aqua)}
+.strip.s-r{background:var(--add-soft);color:var(--add)}
+.thread{flex:1;overflow:auto;padding:16px 18px;display:flex;flex-direction:column;gap:14px;background:var(--bg)}
+.day{align-self:center;font-size:11px;padding:3px 10px;border:1px solid var(--line);border-radius:999px;background:var(--surface);color:var(--muted)}
+.run{display:flex;flex-direction:column;gap:4px;max-width:78%}
+.run.l{align-self:flex-start}
+.run.r{align-self:flex-end;align-items:flex-end}
+.rh{font-size:11px;color:var(--muted);display:flex;gap:6px;align-items:center}
+.rh b{color:var(--ink);font-weight:600}
+.rb{display:flex;gap:8px;align-items:flex-end}
+.run.r .rb{flex-direction:row-reverse}
+.bub{padding:9px 12px;border-radius:14px;line-height:1.45}
+.bub.v{background:hsl(210 17% 95%);border-bottom-left-radius:4px}
+.bub.ai{background:hsl(222 35% 92%);border-bottom-right-radius:4px}
+.bub.ag{background:hsl(210 90% 94%);border:1px solid hsl(210 80% 84%);border-bottom-right-radius:4px}
+.av.sm{width:24px;height:24px;font-size:9.5px}
+.av.aiav{border-radius:7px;background:var(--primary-soft);color:var(--primary)}
+.av.agav{background:var(--aqua-soft);color:var(--aqua)}
+.sys{align-self:center;font-size:11px;color:var(--muted);display:flex;gap:8px;align-items:center;width:100%}
+.sys::before,.sys::after{content:"";flex:1;height:1px;background:var(--line)}
+.att{display:flex;gap:6px;align-items:center;margin-top:6px;font-size:12px;padding:6px 8px;border-radius:8px;background:var(--surface);border:1px solid var(--line)}
+.comp{border-top:1px solid var(--line);padding:10px 14px;display:flex;flex-direction:column;gap:8px;background:var(--surface)}
+.ban{font-size:12px;padding:7px 10px;border-radius:8px}
+.ban.b-ai{background:var(--warn-soft);color:var(--warn)}
+.ban.b-r{background:var(--add-soft);color:var(--add)}
+.box{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;flex-direction:column;gap:10px}
+.box .ph{color:var(--muted)}
+.tools{display:flex;gap:10px;align-items:center;flex-wrap:wrap;color:var(--muted);font-size:12px}
+.tools .sp{flex:1}
+.side{overflow-y:auto;overflow-x:hidden;padding:16px 14px;display:flex;flex-direction:column;gap:16px}
+.side .idn{display:flex;flex-direction:column;align-items:center;gap:6px;text-align:center}
+.side .idn .av{width:52px;height:52px;font-size:16px}
+.sec{display:flex;flex-direction:column;gap:8px;border-top:1px solid var(--line);padding-top:12px}
+.sec h4{margin:0;font:500 11px/1 "Geist Mono",monospace;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.kv{display:grid;grid-template-columns:92px 1fr;gap:4px 8px;font-size:12.5px}
+.kv dt{color:var(--muted)}
+.kv dd{margin:0;overflow-wrap:anywhere}
+.ctrl{border:1px solid var(--line);border-radius:10px;padding:10px;display:flex;flex-direction:column;gap:8px}
+.ctrl .btn{width:100%;text-align:center}
+.tl{list-style:none;padding:0;margin:0;display:flex;flex-direction:column;gap:6px;font-size:12px;color:var(--muted)}
+.mock-note{display:flex;flex-direction:column;gap:6px}
+[data-show]{display:none}
+.app[data-state="ai"] [data-show~="ai"],
+.app[data-state="human"] [data-show~="human"],
+.app[data-state="resumed"] [data-show~="resumed"],
+.app[data-state="resolved"] [data-show~="resolved"]{display:revert}
+.app [data-show].flexy{display:none}
+.app[data-state="ai"] .flexy[data-show~="ai"],
+.app[data-state="human"] .flexy[data-show~="human"],
+.app[data-state="resumed"] .flexy[data-show~="resumed"],
+.app[data-state="resolved"] .flexy[data-show~="resolved"]{display:flex}
+@media (prefers-reduced-motion: reduce){*{transition:none!important;animation:none!important}}
+
+.widgets{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px}
+.wdg{background:var(--surface);border:1px solid var(--line);border-radius:16px;overflow:hidden;display:flex;flex-direction:column;max-width:340px;width:100%;font-size:13px;box-shadow:0 8px 24px rgba(16,26,51,.08)}
+.wdg-h{display:flex;gap:10px;align-items:center;padding:12px 14px;border-bottom:1px solid var(--line)}
+.wdg-h small{display:block;color:var(--muted);font-size:11.5px}
+.wdg-b{padding:14px;display:flex;flex-direction:column;gap:10px;background:var(--bg);min-height:280px}
+.wdg-b .me{align-self:flex-end;background:var(--code);padding:8px 12px;border-radius:14px;border-bottom-right-radius:4px;max-width:80%}
+.wdg-b .ai{align-self:flex-start;display:flex;gap:8px;max-width:88%}
+.wdg-b .lbl{font-size:11px;color:var(--muted);margin-bottom:3px}
+.wdg-b .agb{background:var(--primary-soft);padding:8px 12px;border-radius:14px;border-bottom-left-radius:4px}
+.wdg-i{border-top:1px solid var(--line);padding:10px 14px;color:var(--muted);background:var(--surface)}
+.wdg-cap{font-size:12px;color:var(--muted);margin-top:8px}
+
+.shell{display:grid;grid-template-columns:72px 1fr;grid-template-rows:56px auto;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--surface);min-width:1152px}
+.topbar{grid-column:1/-1;display:flex;align-items:center;gap:14px;padding:0 16px;border-bottom:1px solid var(--line)}
+.logo{width:34px;height:34px;border-radius:9px;background:var(--primary);color:#fff;display:grid;place-items:center;font:700 18px/1 "Inter",sans-serif}
+.org{display:flex;align-items:center;gap:8px;font-weight:600;font-size:14px}
+.org span{color:var(--muted);font-weight:400}
+.topbar .sp{flex:1}
+.credits{font-size:12.5px;color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:6px 12px}
+.me{width:30px;height:30px;border-radius:50%;background:var(--primary);color:#fff;display:grid;place-items:center;font-weight:600;font-size:13px}
+.rail{border-right:1px solid var(--line);display:flex;flex-direction:column;gap:6px;padding:10px 8px;align-items:stretch}
+.rail a{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10.5px;color:var(--muted);text-decoration:none;padding:8px 2px;border-radius:10px}
+.rail a b{font-size:16px;font-weight:400;line-height:1}
+.rail a.on{background:var(--primary-soft);color:var(--primary)}
+.shell .app{border:0;min-width:0}
+.appbox{overflow-x:auto;border:0;background:transparent}
+
+.main{display:flex;flex-direction:column;min-width:0}
+.istrip{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.istrip .sp{flex:1}
+.wtoggle{display:inline-flex;align-items:center;gap:8px;font:500 13px/1 "Inter",sans-serif;padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);cursor:pointer}
+.sw{width:30px;height:17px;border-radius:999px;background:var(--line);position:relative;flex:none}
+.sw::after{content:"";position:absolute;top:2px;left:2px;width:13px;height:13px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.2)}
+[data-widget="on"] .sw{background:var(--add)}
+[data-widget="on"] .sw::after{left:15px}
+.wlabel-on,.wlabel-off{display:none}
+[data-widget="on"] .wlabel-on,[data-widget="off"] .wlabel-off{display:inline}
+.dashed{border-style:dashed}
+.offban{display:none;padding:8px 14px;font-size:12.5px;background:var(--warn-soft);color:var(--warn);border-bottom:1px solid var(--line)}
+[data-widget="off"] .offban{display:block}
+.view-inbox,.view-channels{display:none}
+[data-view="inbox"] .view-inbox{display:grid}
+[data-view="channels"] .view-channels{display:flex}
+.chpage{flex-direction:column;gap:22px;padding:28px 32px;height:680px;overflow:auto;background:var(--bg)}
+.chpage h2{font-family:"Fraunces",Georgia,serif;font-size:26px;margin:0;font-weight:600}
+.chsec{display:flex;flex-direction:column;gap:10px}
+.chsec h4{margin:0;font:600 11.5px/1 "Inter",sans-serif;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.chcard{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:16px;display:flex;gap:12px;align-items:flex-start}
+.chcard.soon{border-style:dashed}
+.chic{width:36px;height:36px;border-radius:9px;display:grid;place-items:center;font-size:17px;flex:none}
+.chcard .t{font-weight:600}
+.chcard .d{color:var(--muted);font-size:12.5px}
+.chcard .grow{flex:1;display:flex;flex-direction:column;gap:4px}
+.chgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(300px,1fr));gap:14px}
+.soonb{font:500 11px/1 "Inter",sans-serif;padding:5px 8px;border-radius:999px;background:var(--code);color:var(--muted);white-space:nowrap}
+.back{font-size:13px;color:var(--primary);background:none;border:0;padding:0;cursor:pointer;width:fit-content}
+</style>
+</head>
+<body>
+<div class="wrap" style="padding-block:32px">
+<div class="switch" role="group" aria-label="Conversation state">
+    <span>State:</span>
+    <button type="button" id="st-ai" data-state="ai" aria-pressed="true">AI active</button>
+    <button type="button" id="st-human" data-state="human" aria-pressed="false">Human takeover</button>
+    <button type="button" id="st-resumed" data-state="resumed" aria-pressed="false">Resume AI</button>
+    <button type="button" id="st-resolved" data-state="resolved" aria-pressed="false">Resolved</button>
+  </div>
+<div class="appbox">
+  <div class="shell">
+  <div class="topbar"><div class="logo">g</div><div class="org">🎓 Cornell University <span>▾</span></div><div class="sp"></div><span>🔔</span><span class="credits">Credits</span><div class="me">C</div></div>
+  <nav class="rail" aria-label="App navigation"><a href="#"><b>⌂</b>Home</a><a href="#"><b>▦</b>Business</a><a href="#"><b>📣</b>Marketing</a><a href="#"><b>✎</b>Scribe</a><a href="#"><b>🎓</b>LMS</a><a href="#"><b>⚙</b>Settings</a><a href="#" class="on"><b>📥</b>Inbox</a></nav>
+  <main class="main" id="main" data-view="inbox" data-widget="on">
+  <div class="istrip">
+    <button type="button" class="wtoggle" id="w-toggle1" aria-label="Turn AI chat widget on or off">💬 Widget · <span class="wlabel-on">On</span><span class="wlabel-off">Off</span> <span class="sw" aria-hidden="true"></span></button>
+    <button type="button" class="btn dashed" id="go-connect">📡 Connect a channel</button>
+    <span class="sp"></span>
+    <button type="button" class="btn" id="go-channels">⚙ Channels</button>
+  </div>
+  <div class="offban">The AI chat widget is off. It's hidden on your website and visitors can't start or continue chats. Past conversations stay here.</div>
+  <div class="app view-inbox" id="app" data-state="ai">
+    <!-- LIST -->
+    <div class="pane">
+      <div class="list-top">
+        <div class="search">Search by name, programme or message</div>
+        <div class="chips"><i class="on">All</i><i>AI handling</i><i>With team</i><i>Unread 2</i><i>Resolved</i></div>
+      </div>
+      <div class="rows">
+        <div class="lrow sel">
+          <div class="av">RB
+            <span class="badge b-ai" data-show="ai resumed">AI</span>
+            <span class="badge b-h" data-show="human">RB</span>
+            <span class="badge b-r" data-show="resolved">✓</span>
+          </div>
+          <div style="min-width:0">
+            <div class="nm"><span>Rojan Byanjankar</span><span class="minpill pill ok" style="padding:2px 5px">Lead</span></div>
+            <div class="pv unread" data-show="ai">Ithaca, and do you need GRE?</div>
+            <div class="pv" data-show="human">You: GRE is optional for the MEng…</div>
+            <div class="pv" data-show="resumed">AI: The application deadline is…</div>
+            <div class="pv" data-show="resolved">Thanks, that's all I needed!</div>
+          </div>
+          <div class="rt"><span>5:53 PM</span><span class="cnt" data-show="ai">1</span>
+            <span class="pill human" style="padding:2px 6px;font-size:10px" data-show="human">Rojan</span>
+            <span class="pill ok" style="padding:2px 6px;font-size:10px" data-show="resolved">Resolved</span>
+          </div>
+        </div>
+        <div class="lrow">
+          <div class="av">SK<span class="badge b-h">MS</span></div>
+          <div style="min-width:0"><div class="nm"><span>Sita Karki</span></div><div class="pv unread">Can I apply with a 6.0 IELTS?</div></div>
+          <div class="rt"><span>5:40 PM</span><span class="cnt">2</span><span class="pill human" style="padding:2px 6px;font-size:10px">Manjil</span></div>
+        </div>
+        <div class="lrow">
+          <div class="av">WV<span class="badge b-ai">AI</span></div>
+          <div style="min-width:0"><div class="nm"><span>Website visitor</span></div><div class="pv">AI: Here are the scholarship options…</div></div>
+          <div class="rt"><span>4:12 PM</span></div>
+        </div>
+        <div class="lrow">
+          <div class="av">AT<span class="badge b-r">✓</span></div>
+          <div style="min-width:0"><div class="nm"><span>Aarav Thapa</span><span class="minpill pill ok" style="padding:2px 5px">Lead</span></div><div class="pv">Thank you!</div></div>
+          <div class="rt"><span>Fri</span><span class="pill ok" style="padding:2px 6px;font-size:10px">Resolved</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- THREAD -->
+    <div class="pane">
+      <div class="thead">
+        <div class="who"><div class="av">RB</div><div><strong>Rojan Byanjankar</strong> <small>via Website widget · rojan.byanjankar@globalyhub.com</small></div></div>
+        <div class="btns">
+          <span class="pill ai" data-show="ai resumed">AI is handling</span>
+          <span class="pill human" data-show="human">You have this</span>
+          <span class="pill ok" data-show="resolved">Resolved</span>
+          <button class="btn primary" type="button" id="h-take" data-show="ai resumed">Take over</button>
+          <button class="btn" type="button" id="h-resume" data-show="human">Resume AI</button>
+          <button class="btn" type="button" id="h-resolve" data-show="ai human resumed">Resolve</button>
+          <button class="btn" type="button" id="h-reopen" data-show="resolved">Reopen</button>
+        </div>
+      </div>
+      <div class="strip s-ai flexy" data-show="ai">The AI assistant is answering this visitor. Replying or clicking Take over pauses it.</div>
+      <div class="strip s-h flexy" data-show="human">You're handling this chat, so the AI is paused. It resumes by itself if you don't reply for 15 minutes.</div>
+      <div class="strip s-ai flexy" data-show="resumed">The AI assistant is answering again. It can see your earlier replies.</div>
+      <div class="strip s-r flexy" data-show="resolved">Resolved by Rojan at 6:04 PM. If the visitor writes again, the chat reopens and the AI answers.</div>
+
+      <div class="thread">
+        <span class="day">Today</span>
+        <div class="run l"><div class="rh"><b>Rojan Byanjankar</b> · 5:50 PM</div><div class="rb"><div class="av sm">RB</div><div class="bub v">What courses do you offer?</div></div></div>
+        <div class="run r"><div class="rh">5:50 PM · <b style="color:var(--primary)">AI Assistant</b></div><div class="rb"><div class="av sm aiav">AI</div><div class="bub ai">Hello! Are you interested in undergraduate, graduate, or certificate programs?</div></div></div>
+        <div class="run l"><div class="rh"><b>Rojan Byanjankar</b> · 5:51 PM</div><div class="rb"><div class="av sm">RB</div><div class="bub v">i am interested in studying masters can you list me all the master courses?</div></div></div>
+        <div class="run r"><div class="rh">5:51 PM · <b style="color:var(--primary)">AI Assistant</b></div><div class="rb"><div class="av sm aiav">AI</div><div class="bub ai">MEng in Computer Science (Ithaca), MEng in Computer Science (Cornell Tech), Master of Regional Planning, MS in Computer Science.</div></div></div>
+        <div class="run l"><div class="rh"><b>Rojan Byanjankar</b> · 5:53 PM</div><div class="rb"><div class="av sm">RB</div><div class="bub v">Ithaca, and do you need GRE?</div></div></div>
+
+        <div class="sys flexy" data-show="human resumed resolved">Rojan took over · 5:54 PM</div>
+        <div class="run r" data-show="human resumed resolved"><div class="rh">5:54 PM · <b>Rojan</b> · Team</div><div class="rb"><div class="av sm agav">RB</div><div><div class="bub ag">Hi, I'm Rojan from admissions 👋 GRE is optional for the MEng. I've attached the fee sheet.</div><div class="att">📄 MEng-fees-2027.pdf · 212 KB</div></div></div></div>
+        <div class="run l" data-show="human resumed resolved"><div class="rh"><b>Rojan Byanjankar</b> · 5:56 PM</div><div class="rb"><div class="av sm">RB</div><div class="bub v">Perfect, when is the deadline?</div></div></div>
+
+        <div class="sys flexy" data-show="resumed resolved">Rojan handed back to AI · 5:58 PM</div>
+        <div class="run r" data-show="resumed resolved"><div class="rh">5:58 PM · <b style="color:var(--primary)">AI Assistant</b></div><div class="rb"><div class="av sm aiav">AI</div><div class="bub ai">The MEng application deadline for Fall 2027 is 15 January.</div></div></div>
+        <div class="run l" data-show="resolved"><div class="rh"><b>Rojan Byanjankar</b> · 6:02 PM</div><div class="rb"><div class="av sm">RB</div><div class="bub v">Thanks, that's all I needed!</div></div></div>
+        <div class="sys flexy" data-show="resolved">Resolved by Rojan · 6:04 PM</div>
+      </div>
+
+      <div class="comp">
+        <div class="ban b-ai" data-show="ai resumed">AI is handling this conversation. Sending a reply takes it over.</div>
+        <div class="ban b-r" data-show="resolved">This chat is resolved. Replying reopens it and puts you in charge.</div>
+        <div class="box">
+          <span class="ph">Reply to Rojan Byanjankar… (Enter to send, Shift+Enter for a new line)</span>
+          <div class="tools"><b>B</b><i>I</i><span>•≡</span><span>😊</span><span>📎 Attach</span><span class="sp"></span><button class="btn primary" type="button" id="c-send">Send</button></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PANEL -->
+    <div class="pane side">
+      <div class="idn"><div class="av">RB</div><strong>Rojan Byanjankar</strong><span class="pill ok">Lead</span><span class="note">via Website widget</span></div>
+
+      <div class="sec">
+        <h4>Handled by</h4>
+        <div class="ctrl">
+          <div data-show="ai resumed"><span class="pill ai">AI assistant</span></div>
+          <div data-show="human"><span class="pill human">Rojan · since 5:54 PM</span></div>
+          <div data-show="resolved"><span class="pill ok">Resolved</span></div>
+          <button class="btn primary" type="button" id="p-take" data-show="ai resumed">Take over</button>
+          <button class="btn" type="button" id="p-resume" data-show="human">Resume AI</button>
+          <button class="btn" type="button" id="p-resolve" data-show="ai human resumed">Resolve</button>
+        </div>
+      </div>
+
+      <div class="sec">
+        <h4>Contact</h4>
+        <dl class="kv"><dt>Email</dt><dd>rojan.byanjankar@globalyhub.com</dd><dt>Age</dt><dd>24</dd><dt>Nationality</dt><dd>Nepal</dd><dt>Gender</dt><dd>Male</dd></dl>
+      </div>
+      <div class="sec">
+        <h4>Study preference</h4>
+        <dl class="kv"><dt>Level</dt><dd>Masters</dd><dt>Interest</dt><dd>Computer Science</dd></dl>
+      </div>
+      <div class="sec">
+        <h4>Profile</h4>
+        <dl class="kv"><dt>Qualification</dt><dd>BSc CSIT · 3.6 GPA</dd><dt>English</dt><dd>IELTS 7.0</dd></dl>
+        <a class="note" href="#mock" style="color:var(--primary)">Open full visitor record →</a>
+      </div>
+      <div class="sec">
+        <h4>Timeline</h4>
+        <ul class="tl">
+          <li>First seen · Today 5:50 PM</li>
+          <li data-show="human resumed resolved">Taken over by Rojan · 5:54 PM</li>
+          <li data-show="resumed resolved">Handed back to AI · 5:58 PM</li>
+          <li data-show="resolved">Resolved by Rojan · 6:04 PM</li>
+          <li>Summary email · pending</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+  
+  <div class="chpage view-channels">
+    <button type="button" class="back" id="go-inbox">← Back to Inbox</button>
+    <div><h2>Channels</h2><p class="note" style="font-size:13.5px">Connect messaging platforms to your Inbox.</p></div>
+    <div class="chsec">
+      <h4>Web widget</h4>
+      <div class="chcard" style="max-width:760px">
+        <div class="chic" style="background:var(--primary-soft);color:var(--primary)">🌐</div>
+        <div class="grow"><span class="t">AI chat widget</span><span class="d">Live AI chat on cornell.edu. Your team can take over any conversation from the Inbox.</span>
+          <a href="#" class="d" style="color:var(--primary)">Widget settings →</a></div>
+        <button type="button" class="wtoggle" id="w-toggle2" aria-label="Turn AI chat widget on or off"><span class="wlabel-on">On</span><span class="wlabel-off">Off</span> <span class="sw" aria-hidden="true"></span></button>
+      </div>
+    </div>
+    <div class="chsec">
+      <h4>channels</h4>
+      <div class="chgrid">
+        <div class="chcard soon"><div class="chic" style="background:hsl(142 60% 93%);color:hsl(142 60% 30%)">🟢</div><div class="grow"><span class="t">WhatsApp</span><span class="d">Reply to WhatsApp Business messages from your Inbox.</span></div><span class="soonb">Coming soon</span></div>
+        <div class="chcard soon"><div class="chic" style="background:hsl(330 80% 95%);color:hsl(330 70% 45%)">📸</div><div class="grow"><span class="t">Instagram</span><span class="d">Manage Instagram DMs from your connected page.</span></div><span class="soonb">Coming soon</span></div>
+      </div>
+    </div>
+  </div>
+  </main>
+  </div>
+  </div>
+
+<div class="widgets">
+    <div>
+      <div class="wdg">
+        <div class="wdg-h"><div class="av aiav av">AI</div><div><strong>Cornell University</strong><small>AI counsellor · powered by Globaly</small></div></div>
+        <div class="wdg-b">
+          <div class="me">Ithaca, and do you need GRE?</div>
+          <div class="ai"><div class="av sm aiav">AI</div><div><div class="lbl">AI counsellor</div>GRE is not required for most MEng programmes, but some departments recommend it.</div></div>
+        </div>
+        <div class="wdg-i">Type your message…</div>
+      </div>
+    </div>
+    <div>
+      <div class="wdg">
+        <div class="wdg-h"><div class="av agav av">RB</div><div><strong>Cornell University</strong><small>Rojan is replying</small></div></div>
+        <div class="wdg-b">
+          <div class="me">Ithaca, and do you need GRE?</div>
+          <div class="ai"><div class="av sm agav">RB</div><div><div class="lbl">Rojan · Admissions team</div><div class="agb">Hi, I'm Rojan from admissions 👋 GRE is optional for the MEng. I've attached the fee sheet.</div><div class="att">📄 MEng-fees-2027.pdf · 212 KB</div></div></div>
+          <div class="me">Perfect, when is the deadline?</div>
+        </div>
+        <div class="wdg-i">Type your message…</div>
+      </div>
+    </div>
+  </div>
+</div>
+<script>
+(function(){
+  var app=document.getElementById('app');
+  var btns=document.querySelectorAll('.switch button');
+  function set(s){app.setAttribute('data-state',s);btns.forEach(function(b){b.setAttribute('aria-pressed',String(b.getAttribute('data-state')===s));});}
+  btns.forEach(function(b){b.addEventListener('click',function(){set(b.getAttribute('data-state'));});});
+  var map={'h-take':'human','p-take':'human','c-send':'human','h-resume':'resumed','p-resume':'resumed','h-resolve':'resolved','p-resolve':'resolved','h-reopen':'human'};
+  Object.keys(map).forEach(function(id){var el=document.getElementById(id);if(el)el.addEventListener('click',function(){set(map[id]);});});
+})();
+</script>
+<script>
+(function(){
+  var m=document.getElementById('main');
+  function view(v){m.setAttribute('data-view',v);}
+  ['go-connect','go-channels'].forEach(function(id){document.getElementById(id).addEventListener('click',function(){view('channels');});});
+  document.getElementById('go-inbox').addEventListener('click',function(){view('inbox');});
+  ['w-toggle1','w-toggle2'].forEach(function(id){document.getElementById(id).addEventListener('click',function(){m.setAttribute('data-widget',m.getAttribute('data-widget')==='on'?'off':'on');});});
+})();
+</script>
+</body>
+</html>

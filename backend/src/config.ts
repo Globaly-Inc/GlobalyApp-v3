@@ -81,6 +81,10 @@ const envSchema = z.object({
   // time, and vectors from two different spaces in the same column. Point this at "openrouter"
   // to use the fallback key directly, and re-embed after switching either way.
   EMBEDDING_PROVIDER: z.enum(["gemini", "openrouter"]).default("gemini"),
+  // TypeSafe Jev — typed yes/no decisions for the institution-memory learning pipeline (candidate
+  // gate, contradiction check, feedback attribution). Optional: unset falls back to the
+  // extractor's own flags and the regex filters. See modules/institution-memory/lib/jev.ts.
+  TYPESAFE_API_KEY: z.string().optional(),
 
   // Scrapers
   SCRAPLING_BASE_URL: z.string().optional(),  // base URL of Scrapling's own MCP server (e.g. http://localhost:8123) — /mcp is appended by scraper.ts
@@ -105,6 +109,13 @@ const envSchema = z.object({
 
   // Google Maps (Places Autocomplete + Details for address lookup)
   GOOGLE_MAPS_API_KEY: z.string().optional(),
+
+  // Cloudflare visitor-location headers (AI widget branch recommendation). Header NAMES, not
+  // values; set one to an empty string to ignore that header. Region headers need Cloudflare's
+  // "Add visitor location headers" managed transform.
+  CLOUDFLARE_COUNTRY_HEADER: z.string().default("cf-ipcountry"),
+  CLOUDFLARE_REGION_HEADER: z.string().default("cf-region"),
+  CLOUDFLARE_REGION_CODE_HEADER: z.string().default("cf-region-code"),
 });
 
 const parsed = envSchema.parse(process.env);

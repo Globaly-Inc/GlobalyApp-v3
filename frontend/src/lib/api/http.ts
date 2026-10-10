@@ -4,9 +4,11 @@ import {
   getRefreshToken,
   getSelectedOrgId,
   isTokenExpired,
+  saveSelectedOrgId,
   saveTokens,
 } from "@/lib/session";
 import { parseBody } from "./parse-body";
+import { SIGN_IN_HREF } from "@/app/auth/const";
 
 const RAW_BASE = process.env.NEXT_PUBLIC_API_URL ?? "";
 const BASE_URL = `${RAW_BASE.replace(/\/+$/, "")}/api/v3`;
@@ -63,7 +65,7 @@ function forceSignIn(): never {
     // Skip it when already under /auth, or signing out would build a redirect loop.
     const back = `${window.location.pathname}${window.location.search}`;
     window.location.href = back.startsWith("/auth")
-      ? "/auth/sign-in"
+      ? SIGN_IN_HREF
       : `/auth/sign-in?redirect=${encodeURIComponent(back)}`;
   }
   throw new Error("Your session has expired. Please sign in again.");
@@ -84,6 +86,11 @@ function orgIdFromToken(token: string | null): string | null {
   } catch {
     return null;
   }
+}
+
+/** The org the current access token is scoped to — the one every /me API call answers for. */
+export function currentOrgId(): string | null {
+  return orgIdFromToken(getAccessToken());
 }
 
 export function hasBusinessContext(): boolean {
@@ -127,7 +134,13 @@ export function runExclusiveSwitch<T>(fn: () => Promise<T>): Promise<T> {
  * whether that is an error or just "not a business account".
  */
 export function ensureBusinessContext(force = false): Promise<boolean> {
-  if (!force && hasBusinessContext()) return Promise.resolve(true);
+  // Not just "the token has an org" — it has to be on the org the UI treats as active.
+  // Login and /refresh scope a token server-side (first membership row / the session's last
+  // switch), so a perfectly valid token can be on a DIFFERENT business than the one the
+  // header renders from the saved pick: dashboard and top-left then disagree until some
+  // later switch-account happens to reconcile them.
+  const currentOrgId = orgIdFromToken(getAccessToken());
+  if (!force && currentOrgId !== null && currentOrgId === getSelectedOrgId()) return Promise.resolve(true);
 
   switchPromise ??= (async () => {
     const refreshToken = getRefreshToken();
@@ -155,6 +168,12 @@ export function ensureBusinessContext(force = false): Promise<boolean> {
       ? selected!
       : [...allOrgs].sort((a, b) => a.id - b.id)[0]!.org_id;
 
+    // Already on the resolved org — just record it, so BusinessShell reads the same pick.
+    if (!force && orgId === currentOrgId) {
+      saveSelectedOrgId(orgId);
+      return true;
+    }
+
     return runExclusiveSwitch(async () => {
       const res = await fetch(`${BASE_URL}/auth/switch-account`, {
         method: "POST",
@@ -166,6 +185,7 @@ export function ensureBusinessContext(force = false): Promise<boolean> {
 
       const { access_token } = (await res.json()) as { access_token: string };
       saveTokens({ accessToken: access_token, refreshToken });
+      saveSelectedOrgId(orgId);
       return true;
     });
   })().finally(() => {

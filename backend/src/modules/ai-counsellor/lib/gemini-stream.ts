@@ -21,6 +21,13 @@ function isTransient(err: unknown): boolean {
   return /429|503|overloaded|high demand|rate limit/i.test(message);
 }
 
+/** Both chat paths ran at Gemini's ~1.0 default while every other Gemini call in the module
+ * pins its own (0 for the extractors and the conclusion judge, 0.2-0.4 for the summaries),
+ * so the same question came back in a different voice and length each turn. No
+ * maxOutputTokens: GEMINI_MODEL is a reasoning model and thinking tokens spend that budget
+ * before a word is written — a tight cap returns a truncated fragment. */
+const CHAT_GENERATION_CONFIG = { temperature: 0.6 } as const;
+
 export interface StreamChatOpts {
   system: string;
   history: Array<{ role: "user" | "model"; parts: Array<{ text: string }> }>;
@@ -57,6 +64,7 @@ export async function streamChat(opts: StreamChatOpts): Promise<StreamChatResult
     const model = getClient().getGenerativeModel({
       model: config.GEMINI_MODEL,
       systemInstruction: opts.system,
+      generationConfig: CHAT_GENERATION_CONFIG,
     });
 
     for (let attempt = 0; attempt < 3; attempt++) {
@@ -191,6 +199,7 @@ async function streamChatWithToolsGemini(
   const model = getClient().getGenerativeModel({
     model: config.GEMINI_MODEL,
     systemInstruction: opts.system,
+    generationConfig: CHAT_GENERATION_CONFIG,
   });
 
   const contents: Content[] = [

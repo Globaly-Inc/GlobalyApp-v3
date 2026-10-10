@@ -1,20 +1,73 @@
 // Extraction courses repository.
 
+import type { Knex } from "knex";
 import { masterKnex } from "../../../../core/db/master-pool.js";
-import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
+import { APPROVED_COURSE_STATUSES, SUPERADMIN_SCHEMA as S, approvedCourseSql } from "../../consts.js";
 const T = `${S}.extraction_courses`;
 
 export type CourseListFilters = {
   search?: string; status?: string; scope?: "in" | "out"; excluded?: string[] | null;
   courseCategory?: "academic" | "short_course";
+  /** Also include the courses a parent institution shares with a branch — see SharedCourses. */
+  shared?: SharedCourses | null;
+  /** Only approved courses (approvedCourseSql) — for anything outside the extraction
+   * review screens, which must still see every course to approve it. */
+  approvedOnly?: boolean;
+  /** Owner's Services tab filters: is_published, extracted (created_by null) vs hand-added, and a
+   * degree level by its code (degree_levels.slug). */
+  published?: boolean;
+  origin?: "extracted" | "manual";
+  degreeLevel?: string;
+  /** Services tab summary counts: not approved yet (approvalStatus ≠ approved — coalesce so a NULL
+   * verdict counts as pending), or no fee (what getFeePricesForCourses + the legacy
+   * domestic_fee_total fallback would both leave empty). */
+  attention?: "needs_approval" | "missing_fee";
 };
+
+/**
+ * What a parent shares with a branch: `ids` picked from (or "all" of) the parent's OWN visible
+ * catalog — its job's courses plus whatever ITS parent shares with it (`shared`, recursively). A
+ * branch of a branch can therefore be offered, and receive, courses inherited from further up.
+ */
+export type SharedCourses = { jobId: string; ids: "all" | string[]; shared?: SharedCourses | null };
+
+/** `job_id = jobId OR <in the shared scope>`. `prefix` is the table alias ("ec." or ""). */
+export function applyCourseScope(b: Knex.QueryBuilder, prefix: string, jobId: string, shared?: SharedCourses | null) {
+  b.where(`${prefix}job_id`, jobId);
+  if (shared) {
+    b.orWhere((s) => {
+      s.where((inner) => applyCourseScope(inner, prefix, shared.jobId, shared.shared));
+      if (shared.ids !== "all") s.whereIn(`${prefix}id`, shared.ids);
+    });
+  }
+}
 export type CourseSort = "newest" | "oldest" | "name_asc" | "name_desc" | "recently_updated";
 
-function filteredCoursesQuery(jobId: string, { search, status, scope, excluded, courseCategory }: CourseListFilters) {
-  const q = masterKnex(T).where({ job_id: jobId });
+function filteredCoursesQuery(
+  jobId: string,
+  { search, status, scope, excluded, courseCategory, shared, approvedOnly, published, origin, degreeLevel, attention }: CourseListFilters,
+) {
+  const q = masterKnex(T).where((b) => applyCourseScope(b, "", jobId, shared));
+  if (approvedOnly) q.whereRaw(approvedCourseSql(T));
   if (search) q.where((b) => b.whereILike("name", `%${search}%`).orWhereILike("description", `%${search}%`));
   if (status) q.where("verification_status", status);
-  if (courseCategory) q.where("course_category", courseCategory);
+  // An unclassified course (NULL — extracted before the column existed, an import, or the model
+  // gave no verdict) is an academic course everywhere else (the portal labels it "Academic Course"),
+  // so it belongs under Academic here too — matching only = 'academic' hid it from both list tabs.
+  if (courseCategory === "academic") q.where((b) => b.where("course_category", "academic").orWhereNull("course_category"));
+  else if (courseCategory) q.where("course_category", courseCategory);
+  if (published !== undefined) q.where("is_published", published);
+  if (origin) q[origin === "extracted" ? "whereNull" : "whereNotNull"]("created_by_platform_user_id");
+  if (degreeLevel) q.where("degree_level_code", degreeLevel);
+  if (attention === "needs_approval") q.whereRaw(`not coalesce(${approvedCourseSql(T)}, false)`);
+  if (attention === "missing_fee") {
+    q.whereNull("domestic_fee_total").whereNotExists(
+      masterKnex(`${S}.extraction_course_fee_assignments as a`)
+        .join(`${S}.extraction_course_fees as f`, "f.id", "a.course_fee_id")
+        .where("a.job_id", jobId).whereNotNull("f.total_amount")
+        .whereRaw("a.course_id = ??", [`${T}.id`]).select(masterKnex.raw("1")),
+    );
+  }
   if (scope && excluded) {
     // Mirrors isCourseInScope on a SCOPED job: the level must be resolved AND not excluded.
     const inScope = "(degree_level_code IS NOT NULL AND NOT (degree_level_code = ANY(?)))";
@@ -35,7 +88,9 @@ export async function listCoursesByJob(
   switch (sort) {
     case "name_asc": return q.orderBy("name", "asc");
     case "name_desc": return q.orderBy("name", "desc");
-    case "newest": return q.orderBy("created_at", "desc");
+    // id breaks ties — an extraction inserts many courses with the same created_at, and without it
+    // offset paging can repeat or skip rows across pages.
+    case "newest": return q.orderBy("created_at", "desc").orderBy("id", "desc");
     case "recently_updated": return q.orderBy("updated_at", "desc");
     default: return q.orderBy("created_at", "asc");
   }
@@ -184,6 +239,20 @@ export async function updateCoursesByIds(ids: string[], data: Record<string, unk
   return masterKnex(T)
     .whereIn("id", ids)
     .update({ ...data, updated_at: masterKnex.fn.now(), updated_by_platform_user_id: adminId });
+}
+
+export async function approveAllCoursesForJob(jobId: string, adminId: number) {
+  return masterKnex(T)
+    .where({ job_id: jobId })
+    // Already approved, flagged (a rejection "approve all" must not undo) and mismatch (a detected
+    // data conflict that needs a per-course look) stay as they are.
+    .whereRaw("coalesce(verification_status, 'unverified') <> all(?)", [[...APPROVED_COURSE_STATUSES, "flagged", "mismatch"]])
+    .update({
+      verification_status: "confirmed",
+      last_verified_at: new Date().toISOString(),
+      updated_at: masterKnex.fn.now(),
+      updated_by_platform_user_id: adminId,
+    });
 }
 
 export async function deleteCourse(id: string) {

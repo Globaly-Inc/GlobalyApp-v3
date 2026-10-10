@@ -5,7 +5,7 @@ import type { CounsellingContext } from "../repositories/sessions.repository.js"
 // One card mapping and one chunk-budget rule for both retrieval paths — a divergence
 // here would mean the legacy path and the tool path emitting different course-card
 // shapes, or handing the model different amounts of rack context for the same question.
-import { capPerDocument, courseCardFields, feeLine, rankFees } from "../lib/tools.js";
+import { selectChunks, courseCardFields, feeLine, rankFees } from "../lib/tools.js";
 // Same cross-module import the ai-knowledge crawl worker uses — one embedding client for the platform.
 import { embed, isEmbedConfigured as embeddingConfigured } from "../../superadmin/data-extraction/lib/llm-client.js";
 
@@ -23,10 +23,228 @@ const STOPWORDS = new Set([
 function extractKeywords(query: string): string[] {
   return query
     .toLowerCase()
+    // "planning" is a subject (Master of Planning, financial planning) in every form but the verb
+    // "planning to", so only the PHRASE can be dropped — the word itself is a real course name
+    // (Greptile). Here, not in FILLER, because by then the next word is gone.
+    .replace(/\bplanning\s+to\b/g, " ")
     .split(/\s+/)
     // Strip punctuation — "australia?" must search as "australia"
     .map(w => w.replace(/[^\p{L}\p{N}]/gu, ""))
     .filter(w => w.length > 2 && !STOPWORDS.has(w));
+}
+
+/** Turns that close the conversation. `extractKeywords` keeps every one of these (none is a
+ * stopword and all are >2 chars), so until now a goodbye cost a ten-way search plus a rack
+ * embedding to answer one word. They still see the courses already on screen — they fall
+ * through to the pinned-only path in searchAll. */
+const CLOSING_RE =
+  /^(thanks?|thank you|ty|no thanks?|nope|nothing( else)?|that'?s (it|all)|bye|goodbye|see you|cheers)[\s!.,]*$/i;
+
+/** Words that only POINT at something already on screen — an ordinal or a count answering
+ * "which one?". Like an acknowledgement they carry no subject, but extractKeywords keeps them,
+ * and "the second one" keeps TWO of them, which is enough to look like a question of its own. */
+const POINTER_RE = /^(first|second|third|fourth|fifth|sixth|seventh|last|one|two|three|four|five|number|option)$/i;
+
+/** Acknowledgements, which are closers ONLY when nothing was asked. After the counsellor's own
+ * question these are the student saying YES — "yep" to "shall I show you Melbourne courses?"
+ * must retrieve those courses, not end the turn with nothing to show. */
+const ACK_RE =
+  /^(ok(ay)?|k|cool|great|nice|perfect|awesome|lovely|got it|understood|sure|yep|yup|yeah|alright)[\s!.,]*$/i;
+
+/** Word-level: a YES plus the words people pad one with. "yes" alone borrowed the question it
+ *  answered, but "yes, please" is two words that both survive extractKeywords, so it read as a
+ *  subject of its own and searched for the literal words — the counsellor then reported the course
+ *  it had just recommended as missing from our system. None of these ever names a course. */
+const AFFIRM_RE =
+  /^(yes|yea|yeah|yep|yup|sure|please|thanks?|more|tell|show|send|give|also|too|definitely|absolutely)$/i;
+
+/** Values an answer can BE rather than subjects it can be about: a month, a year, a figure.
+ * "September" answering "which intake?" has to borrow that question like "yes" does — but it is
+ * the only kind of one-word answer we can recognise, which is why the test below asks the
+ * question in terms of shape, not count.
+ * ponytail: a one-word answer naming a place ("Melbourne") reads as a subject and keeps its own
+ * words — widen this only if a real conversation shows that losing the borrow hurts. */
+const ANSWER_RE =
+  /^(jan(uary)?|feb(ruary)?|mar(ch)?|apr(il)?|may|jun(e)?|jul(y)?|aug(ust)?|sep(t|tember)?|oct(ober)?|nov(ember)?|dec(ember)?|\d+)$/i;
+
+export function isCourtesyTurn(message: string, priorQuestion?: string | null): boolean {
+  const text = message.trim();
+  return CLOSING_RE.test(text) || (!priorQuestion && ACK_RE.test(text));
+}
+
+/** The counsellor's own last question, when its answer is what the student just sent.
+ * A short reply ("yes", "the second one", "September") carries no searchable subject of
+ * its own — the subject is in the question it answers, so that is what we search. */
+export function lastAssistantQuestion(
+  messages: Array<{ role: string; content: string }>,
+): string | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === "user") continue;
+    const text = messages[i].content;
+    return text.includes("?") ? text : null;
+  }
+  return null;
+}
+
+/**
+ * What this turn should actually search for.
+ *
+ * Two turns searched badly before this existed, both because `extractKeywords` keeps any word
+ * over two letters that isn't a stopword:
+ * - "thanks" / "no thanks" / "bye" searched for themselves — a ten-way search plus a rack
+ *   embedding spent on a goodbye.
+ * - "yes", "September", "the second one" searched for themselves too, which matches nothing,
+ *   so "yes" answering "shall I show you Melbourne courses?" left the counsellor with no
+ *   courses to show. The subject of a short reply lives in the question it answers.
+ *
+ * Empty keywords are not a dead end: searchAll still answers from the courses already on screen.
+ */
+export function retrievalKeywords(
+  query: string,
+  priorQuestion?: string | null,
+): { keywords: string[]; fromPriorQuestion: boolean } {
+  // A closing turn searches nothing, whatever is available to borrow.
+  if (isCourtesyTurn(query, priorQuestion)) return { keywords: [], fromPriorQuestion: false };
+  const own = extractKeywords(query);
+  // Counting keywords was the wrong proxy for "this turn has a subject of its own" (Greptile):
+  // "ok" survives extractKeywords as NOTHING (<= 2 letters) and used to search nothing at all,
+  // while "the second one" survives as two pointer words and used to search for them literally.
+  // What matters is whether any word names a subject, not how many words there are.
+  // FOLLOW_UP joins the four regexes for the same reason they are here: "details" answering
+  // "would you like details about our nursing diploma?" names no topic, so counting it as a
+  // subject suppressed the borrow and left courseKeywordsFor an empty query, which browsed
+  // unrelated courses (Greptile). It is a filter, not a count — see below.
+  const subject = own.filter((w) =>
+    !POINTER_RE.test(w) && !ACK_RE.test(w) && !AFFIRM_RE.test(w) && !ANSWER_RE.test(w)
+    && !FOLLOW_UP.has(w));
+  // ONE surviving subject word is still a subject (Greptile): "show engineering" loses "show" to
+  // AFFIRM_RE, and borrowing on a count of one meant an engineering request also searched the
+  // nursing question before it. Borrow only when nothing of the visitor's own names a topic.
+  if (subject.length || !priorQuestion) return { keywords: own, fromPriorQuestion: false };
+  const borrowed = extractKeywords(priorQuestion);
+  if (!borrowed.length) return { keywords: own, fromPriorQuestion: false };
+  return { keywords: [...new Set([...borrowed, ...own])], fromPriorQuestion: true };
+}
+
+/**
+ * What a MEANING-based search should see this turn. The keyword searches borrow the question a
+ * short reply answers; the searches that embed or scan the text — the rack, country detection,
+ * institution memory — were still reading the reply itself, so "yes" to "shall I explain the
+ * refund policy?" searched the meaning of the word "yes" (Greptile). Both halves are kept: the
+ * question carries the subject, the reply carries which one ("the second", "September").
+ */
+export function resolveQuery(query: string, priorQuestion?: string | null): string {
+  const { fromPriorQuestion } = retrievalKeywords(query, priorQuestion);
+  return fromPriorQuestion ? `${priorQuestion} ${query}`.trim() : query;
+}
+
+/**
+ * A degree level is a FILTER, never a keyword.
+ *
+ * "I am looking for a Master's degree" extracted to ["looking","masters","degree"] and matched
+ * NOTHING: no course name contains "masters" (they read MSc, MEng, MBA), and the degree_level
+ * column holds "Master's", which ILIKE '%masters%' cannot reach either. The institution had twelve
+ * master's courses published and the widget said it had none.
+ *
+ * The label is canonical, not a literal column value: knowledge.repository expands it to every
+ * spelling the free-text degree_level column actually holds. Deliberately literal — "postgraduate"
+ * is not here, since narrowing it to Master would hide the doctorates it also means.
+ */
+const DEGREE_LEVELS: Array<[RegExp, string]> = [
+  [/\b(ph\.?d|doctoral|doctorate|dba|d\.?b\.?a)\b/i, "Doctoral"],
+  [/\b(master'?s?|msc|m\.?sc|m\.?eng|mba|m\.?b\.?a)\b/i, "Master"],
+  [/\b(bachelor'?s?|bsc|b\.?sc|b\.?eng|undergraduate)\b/i, "Bachelor"],
+  // Separate levels: lumping certificates in with diplomas filtered a certificate request to the
+  // 151 diplomas and hid all 213 certificates (Greptile).
+  [/\b(diplomas?)\b/i, "Diploma"],
+  [/\b(certificates?)\b/i, "Certificate"],
+
+];
+
+/**
+ * Named qualifications, not levels. The degree_level column says "Master" for an MBA and "PHD" for a
+ * DBA, so the level filter cannot express either — the word is the only thing that says BUSINESS.
+ * Dropping "mba" as a level word left an empty query, which browsed eight master's courses in
+ * alphabetical order in place of the MBA the student asked for (Greptile). The generic abbreviations
+ * stay out: a course named "Master of Science in X" never says "msc", so keeping that one would turn
+ * a browsable level into zero results.
+ */
+const NAMED_QUALIFICATION = /^(m\.?b\.?a|d\.?b\.?a)\.?$/i;
+
+/**
+ * Words that are never a topic: what the visitor is DOING, and how they are ASKING for it.
+ *
+ * Two jobs, and they are not the same job — which is what made "details" a bug. These are filler
+ * for the course query AND non-subjects for the borrowing test below, because a turn made only of
+ * them ("details", "options", "I'm interested") is a request to continue the counsellor's last
+ * question, not a topic of its own. Borrowing is the only way such a turn keeps its subject.
+ *
+ * "info" is here but "information" is NOT: Information Technology and Information Systems are real
+ * course names, while no course is called "Info". "info on information technology" therefore keeps
+ * the words that name the subject and loses only the one that asks for it.
+ */
+const FOLLOW_UP = new Set([
+  // What the visitor is doing. These only ever reached the query on a turn that states a
+  // qualification ("I have X and want Y"), where every word must hit a course NAME — "want
+  // nursing" matched nothing and fell back to loose matching.
+  "looking", "want", "wants", "need", "needs", "interested", "seeking", "hold", "holds",
+  "completed", "there", "after",
+  // How a visitor ASKS — never covered before, and the opening message is almost always phrased
+  // this way. "can you tell me about studying nursing" reached searchCourses as "tell nursing",
+  // whose strict pass needs BOTH words in a course name, matches nothing, and drops to the loose
+  // OR the strict pass exists to avoid.
+  "tell", "know", "explain", "describe", "show", "find", "learn", "help", "like", "more",
+  "available", "options", "option", "details", "detail", "info", "please",
+  "recommend", "recommendation", "recommendations", "suggest", "suggestion", "suggestions",
+]);
+
+/**
+ * The catalogue itself. Filler for a course query — "what courses do you offer" must reach
+ * searchCourses as the EMPTY query that means browse, not as a search for the word "offer" — but
+ * a SUBJECT for the borrowing test, because asking what exists is a broad new question rather than
+ * a request to continue. Borrowing here would narrow "what courses do you offer?" back to whatever
+ * the counsellor last asked about, which is the opposite of what was asked.
+ */
+const CATALOGUE = new Set(["degree", "degrees", "course", "courses", "program", "programs",
+  "programme", "programmes", "study", "studies", "studying", "offer", "offered"]);
+
+/** Words that survive extractKeywords but say nothing about WHICH course — they only ever dilute
+ *  a level-filtered search, and on a level-only turn they are the whole query. */
+const FILLER = new Set([...FOLLOW_UP, ...CATALOGUE]);
+
+/**
+ * What the visitor already HOLDS, which is never what they are asking for. The level was read from
+ * the whole sentence and decided by LIST ORDER, so "I have a bachelor's degree and want a diploma in
+ * nursing" filtered to Bachelor — bachelor is tested before diploma — and excluded every diploma
+ * (Greptile). The clause runs from the possession words to the next thing they ask for, or to the
+ * next punctuation. Dropped before the level is read; if nothing is left to read, the whole query is
+ * used as before, so "I have a diploma" still filters to diplomas.
+ */
+const HELD_CLAUSE =
+  /\b(?:i\s*(?:have|'ve|hold|completed|finished|did|studied)|my\s+(?:current\s+|highest\s+)?(?:degree|qualification|background))\b.*?(?=\b(?:want|wanting|need|looking|interested|seeking|apply|applying|study|studying|do\s+you|is\s+there|any|now)\b|[,.;!?]|$)/gis;
+
+export function detectDegreeLevel(query: string): string | null {
+  const asked = query.replace(HELD_CLAUSE, " ");
+  const search = DEGREE_LEVELS.some(([re]) => re.test(asked)) ? asked : query;
+  return DEGREE_LEVELS.find(([re]) => re.test(search))?.[1] ?? null;
+}
+
+/**
+ * The keywords left once the level has been lifted out into its own filter. Empty is a real
+ * answer — searchCourses browses the filtered set rather than matching noise.
+ *
+ * The filler strip is UNCONDITIONAL. Gating it on a detected level left the commonest question a
+ * widget gets — "What courses do you offer?" — searching for the literal words "courses offer",
+ * which matched none of the institution's 33 published courses and was answered "I don't have the
+ * course listings in our system". A word that says nothing about WHICH course says nothing whether
+ * or not a level was named. The level words themselves still go only when a level WAS detected,
+ * since that is what proves the word was read as a filter.
+ */
+export function courseKeywordsFor(keywords: string[], degreeLevel: string | null): string {
+  return keywords
+    .filter((w) => NAMED_QUALIFICATION.test(w)
+      || (!FILLER.has(w) && !(degreeLevel && DEGREE_LEVELS.some(([re]) => re.test(w)))))
+    .join(" ");
 }
 
 // ── Country detection (scopes Knowledge Rack retrieval to country-specific categories) ──
@@ -39,7 +257,16 @@ const wordRe = (name: string) =>
 // ponytail: cached forever — the countries table is effectively static pre-launch
 let countryMatchers: Array<{ re: RegExp; iso2: string }> | null = null;
 
-async function detectCountryCode(query: string): Promise<string | null> {
+/**
+ * The country this turn is about, or null.
+ *
+ * `fallback` is the question a short reply answers, and is read ONLY when the reply itself names no
+ * country: the student's own words always win. Order matters because matching is first-hit over an
+ * unordered list (listCountryNames has no ORDER BY), so a text holding two country names resolves
+ * to whichever the table happens to list first — "Canada" answering "Australia or Canada?" would
+ * otherwise scope the search to Australia and drop the Canada passages (Greptile).
+ */
+export async function detectCountryCode(query: string, fallback?: string | null): Promise<string | null> {
   if (!countryMatchers) {
     const rows = await knowledge.listCountryNames().catch(err => {
       logger.warn("Country list load failed", { err: String(err) });
@@ -51,14 +278,17 @@ async function detectCountryCode(query: string): Promise<string | null> {
       ...Object.entries(COUNTRY_ALIASES).map(([alias, iso2]) => ({ re: wordRe(alias), iso2 })),
     ];
   }
-  const q = query.toLowerCase();
-  return countryMatchers.find(m => m.re.test(q))?.iso2 ?? null;
+  const hit = (text: string) => countryMatchers!.find(m => m.re.test(text.toLowerCase()))?.iso2 ?? null;
+  return hit(query) ?? (fallback ? hit(fallback) : null);
 }
 
 // Higher-trust sources lead the context so the model anchors on them (AC-09).
 // ponytail: a course rarely has more than a handful of fees; the cap only stops a fee table
 // that was scraped row-by-row from crowding the context out.
 const MAX_FEE_LINES = 4;
+
+/** Courses rendered into CONTEXT per turn: the search's own limit, plus room for the pinned ones. */
+const MAX_HYDRATED = 10;
 
 const TIER_RANK: Record<string, number> = { gov: 0, verified_institution: 1, other: 2 };
 const TIER_LABEL: Record<string, string> = {
@@ -85,7 +315,7 @@ async function matchRack(
   trace: (step: string) => void,
   institutionId?: number | null,
 ): Promise<knowledge.KnowledgeChunkResult[]> {
-  const capped = capPerDocument(await knowledge.matchKnowledgeChunks(vector, 8, countryCode, institutionId));
+  const capped = selectChunks(await knowledge.matchKnowledgeChunks(vector, 8, countryCode, institutionId));
   trace(institutionId ? `This website: ${capped.length} passages found` : `Knowledge rack: ${capped.length} chunks found`);
   return capped;
 }
@@ -94,6 +324,131 @@ export interface RagOutput {
   contextText: string;
   sources: Array<{ type: string; id: string; title: string }>;
   traceSteps: string[];
+  /** Whether any search actually ran this turn. False on a courtesy or closing reply ("thanks",
+   *  "bye"), whose keywords are all filler — there is nothing in it to retrieve for. Empty
+   *  `contextText` means two different things, and only this tells them apart: searched and found
+   *  nothing, versus never searched. The prompt's empty-retrieval rule needs the first. */
+  searched: boolean;
+  /** Which money topics the CONTEXT can actually ground an answer in. The gate compares this
+   *  with the topics the QUESTION asks about: a course fee row is evidence for "fees", never
+   *  for "refund". Empty = nothing in context an unapproximatable money claim can rest on. */
+  moneyTopics: MoneyTopic[];
+}
+
+// Fees, refunds, funding — the claims a counsellor must never approximate. Split by topic
+// because a single regex over every source answered the wrong question: it asked "is there
+// money anywhere in the context", when the gate needs "is there evidence for what was ASKED".
+// A retrieved course fee used to clear the guard for a refund-policy question with no refund
+// source anywhere (Greptile). There is no structured refund or scholarship field in any source
+// here, so those two topics are groundable ONLY by prose that actually discusses them — which
+// is exactly the distinction the old single boolean could not make.
+const MONEY_TOPIC_RE = {
+  fees: /\b(fees?|tuition|costs?|price|pricing|deposits?|instal+ments?|payments?|expenses|afford(?:able)?|expensive|cheap(?:er|est)?)\b/i,
+  refund: /\b(refunds?|refundable)\b/i,
+  scholarship: /\b(scholarships?|bursar(?:y|ies)|funding|grants?|waivers?|stipends?|loans?|financial aid)\b/i,
+  living: /\b(cost of living|living costs?)\b/i,
+} as const;
+
+// The words above mean money wherever they appear. These don't: every one of them is the
+// ordinary word for something else in this product — "finance" and "financial engineering" are
+// SUBJECTS we teach, a budget is a student's constraint, "how do I pay" asks about process,
+// accommodation and deferral are facilities and admin. Matching them outright is what made the
+// widget answer "we don't have that specific information" to "compare two masters programs on
+// fees, duration and intakes" — observed live 2026-10-05 — and to plain availability questions.
+// They count only alongside a cost sense in the same message.
+const MONEY_MAYBE_RE = {
+  fees: /\b(pay|budget|financial|finance)\b/i,
+  refund: /\b(withdraw(?:al|ing|n)?|cancel(?:lation|ling|led)?|deferr?(?:al|ing)?)\b/i,
+  scholarship: /\b(funds?|discounts?)\b/i,
+  living: /\b(accommodation|rent|groceries|homestay)\b/i,
+} as const;
+
+/** What turns an ambiguous word into a question about an amount. Deliberately has no "pay"
+ *  family: "pay" is itself an ambiguous word above, and a word must never satisfy its own
+ *  cost sense — "how do I pay" would classify itself as a money question. */
+const COST_SENSE_RE =
+  /\b(how much|cost(?:s|ly)?|fees?|tuition|price[sd]?|pricing|charge[sd]?|expensive|cheap(?:er|est)?|afford(?:able)?|refunds?|money|instal+ments?|deposits?|per (?:year|semester|month|week|term))\b/i;
+
+/**
+ * Where one clause of a question stops and the next begins. The cost sense that promotes an
+ * ambiguous word has to come from the SAME clause, or a money clause lends its cost sense to an
+ * unrelated one: "what are the fees, and can I defer my start date?" read "defer" as a refund
+ * question, and the withhold line for `refund` names deferrals — so the start-date answer we
+ * hold was gagged by the fee clause beside it (Greptile).
+ *
+ * ponytail: conjunctions and sentence enders only. A bare comma splice ("what are the fees, can
+ * I defer?") still reads as one clause; splitting on every comma separates appositives from
+ * their own cost sense ("how much, roughly, is accommodation?") and loses more than it saves.
+ * Split on commas too if real transcripts show the splice is common.
+ */
+const CLAUSE_SPLIT_RE = /[.!?;\n]+|,?\s+(?:and|but|also|plus|or)\s+/gi;
+
+export type MoneyTopic = keyof typeof MONEY_TOPIC_RE;
+const MONEY_TOPICS = Object.keys(MONEY_TOPIC_RE) as MoneyTopic[];
+
+/**
+ * Every money topic a piece of text touches, read GENEROUSLY — the ambiguous words count too.
+ *
+ * This is the CONTEXT side: it answers "could this passage ground a money answer?", and the
+ * safe error there is to say yes. A passage that quotes a monthly rent in prose must ground a
+ * cost-of-living question even though "rent" on its own is ambiguous; tightening this side
+ * would withhold MORE answers, which is the opposite of the defect.
+ */
+export function moneyTopicsOf(text: string): MoneyTopic[] {
+  return MONEY_TOPICS.filter((topic) => MONEY_TOPIC_RE[topic].test(text) || MONEY_MAYBE_RE[topic].test(text));
+}
+
+/**
+ * Every money topic a QUESTION actually asks about, read strictly.
+ *
+ * This is the asked side: it answers "is the visitor asking for an amount?", and here the safe
+ * error is to say no — a false yes gags an answer we hold, which costs the visitor their reply.
+ * A false no only means the model answers from context as usual, still bound by the
+ * "money comes only from CONTEXT" rule in the system prompt.
+ *
+ * Read per clause: an unambiguous money word counts wherever it appears, but an ambiguous one is
+ * promoted only by a cost sense standing next to it in the same clause.
+ */
+export function askedMoneyTopics(query: string): MoneyTopic[] {
+  const clauses = query.split(CLAUSE_SPLIT_RE).filter((c) => c?.trim());
+  return MONEY_TOPICS.filter((topic) => clauses.some((clause) =>
+    MONEY_TOPIC_RE[topic].test(clause) || (COST_SENSE_RE.test(clause) && MONEY_MAYBE_RE[topic].test(clause))));
+}
+
+export const isMoneyQuestion = (query: string): boolean => askedMoneyTopics(query).length > 0;
+
+/** The courses the counsellor last put in front of the student (oldest-first history), so a
+ *  follow-up like "this course" resolves. Shared by the signed-in and widget-visitor paths. */
+export function pinnedCourseIdsFrom(messages: Array<{ role: string; cards: unknown[] }>): string[] {
+  const lastCards = [...messages].reverse().find((m) => m.role === "assistant" && m.cards?.length)?.cards ?? [];
+  return lastCards
+    .map((c) => (c as { id?: unknown }).id)
+    .filter((id): id is string => typeof id === "string")
+    .slice(0, 3);
+}
+
+/**
+ * Drops cards for courses that are already on screen. The same pinned ids that keep a follow-up
+ * answerable ("is it online?" about the course just shown) also put those courses back in front of
+ * the model every turn, and it re-cards them — so a question ABOUT a course was answered with the
+ * same two cards again, pushing the actual answer off screen. The prompt tells the model not to;
+ * this makes it so regardless.
+ *
+ * Only the last carded turn's ids are passed, not the whole conversation: a course the student
+ * circles back to twenty turns later is worth showing again.
+ */
+export function dropShownCards<T extends { id?: string | null }>(cards: T[], alreadyShown: string[]): T[] {
+  if (!alreadyShown.length) return cards;
+  const shown = new Set(alreadyShown);
+  return cards.filter((c) => !(typeof c.id === "string" && shown.has(c.id)));
+}
+
+/** The gate: a money question with no context evidence on ANY topic it asks about.
+ *  Overlap, not equality — "what are the fees and is there a scholarship" is answerable
+ *  the moment either one is grounded, and the model still only says what its context holds. */
+export function shouldWithholdMoney(query: string, contextTopics: MoneyTopic[]): boolean {
+  const asked = askedMoneyTopics(query);
+  return asked.length > 0 && !asked.some((topic) => contextTopics.includes(topic));
 }
 
 export async function searchAll(opts: {
@@ -106,35 +461,65 @@ export async function searchAll(opts: {
   /** Discovery turn: skip course retrieval so the model counsels instead of
    * recommending — it cannot list courses it never saw. */
   skipCourses?: boolean;
+  /** The counsellor's last question, when the student's message is the answer to it —
+   * see lastAssistantQuestion. Searched in place of a reply too thin to search. */
+  priorQuestion?: string | null;
   /** Embed mode: read THIS institution's own crawled website instead of the global rack.
    *  Unset for a business widget, which keeps the rack switched off entirely. */
   rackInstitutionId?: number | null;
+  /** Courses the counsellor already showed this conversation (the last reply's cards). A follow-up
+   *  — "is online study an option for this course?" — keyword-matches nothing useful, and without
+   *  the course in CONTEXT the model disowned what it had said one message earlier. */
+  pinnedCourseIds?: string[];
   onTrace?: (step: string) => void;
 }): Promise<RagOutput> {
   const embedScoped = opts.jobIds != null;
-  const keywords = extractKeywords(opts.query);
+  const { keywords, fromPriorQuestion } = retrievalKeywords(opts.query, opts.priorQuestion);
   const searchQuery = keywords.join(" ");
+  // See resolveQuery: the semantic searches below must not be handed a bare "yes".
+  const resolvedQuery = fromPriorQuestion ? `${opts.priorQuestion} ${opts.query}`.trim() : opts.query;
+  const pinned = opts.pinnedCourseIds ?? [];
   const trace = (step: string) => {
     traceSteps.push(step);
     opts.onTrace?.(step);
   };
   const traceSteps: string[] = [];
 
-  if (!searchQuery) {
-    trace("No searchable keywords extracted");
-    return { contextText: "", sources: [], traceSteps };
+  if (!searchQuery && !pinned.length) {
+    trace("Nothing to search this turn");
+    return { contextText: "", sources: [], traceSteps, moneyTopics: [], searched: false };
   }
 
-  trace(`Keywords: ${keywords.join(", ")}`);
+  if (searchQuery && fromPriorQuestion) trace(`Keywords (from the question it answers): ${keywords.join(", ")}`);
+  else if (searchQuery) trace(`Keywords: ${keywords.join(", ")}`);
+  else trace("Nothing to search; answering from the courses already shown");
 
-  const countryCode = await detectCountryCode(opts.query);
+  // The reply first, the question it answers only as a fallback — see detectCountryCode.
+  const countryCode = await detectCountryCode(opts.query, fromPriorQuestion ? opts.priorQuestion : null);
+  // "a Master's degree" is a filter plus an empty keyword set, not three keywords to ILIKE.
+  const degreeLevel = detectDegreeLevel(resolvedQuery);
+  const courseQuery = courseKeywordsFor(keywords, degreeLevel);
+  if (degreeLevel) trace(`Degree level: ${degreeLevel}${courseQuery ? "" : " (browsing that level)"}`);
   if (countryCode) trace(`Country detected: ${countryCode}`);
+
+  // Keeping "mba" in the query means a school that writes its MBA out in full can now match
+  // nothing where the level alone used to browse. Fall back to that browse instead of reporting
+  // none — only when the qualification WAS the whole query, so "mba finance" finding nothing still
+  // means nothing rather than eight unrelated master's. Same widen-once shape as the tool path.
+  const qualificationOnly = !!degreeLevel && !!courseQuery
+    && courseQuery.split(" ").every((w) => NAMED_QUALIFICATION.test(w));
 
   // ── Parallel searches — each wrapped so one failure doesn't kill the rest ──
   const none = Promise.resolve([]);
-  const [courses, visas, institutions, ownerProfile, agents, maraAgents, knowledgeVisas, faqs, guides, rackHits] = await Promise.all([
+  const noOwner = { overview: [], campuses: [], accreditations: [] };
+  const [courses, visas, institutions, ownerProfile, agents, maraAgents, knowledgeVisas, faqs, guides, rackHits] = !searchQuery
+    ? [[], [], [], noOwner, [], [], [], [], [], []] as Awaited<ReturnType<typeof runSearches>>
+    : await runSearches();
+  async function runSearches() { return Promise.all([
     opts.skipCourses ? none.then(r => { trace("Courses: skipped (discovery turn)"); return r; })
-      : knowledge.searchCourses({ query: searchQuery, limit: 8, jobIds: opts.jobIds })
+      : knowledge.searchCourses({ query: courseQuery, degreeLevel: degreeLevel ?? undefined, limit: 8, jobIds: opts.jobIds })
+        .then(r => r.length || !qualificationOnly ? r
+          : knowledge.searchCourses({ query: "", degreeLevel: degreeLevel ?? undefined, limit: 8, jobIds: opts.jobIds }))
         .then(r => { trace(`Courses: ${r.length} found`); return r; })
         .catch(err => { logger.warn("Course search failed", { err: String(err) }); trace("Course search failed"); return []; }),
     knowledge.searchVisas({ query: searchQuery, limit: 5 })
@@ -179,19 +564,20 @@ export async function searchAll(opts: {
     // policies, scholarships, eligibility prose — that structured extraction never captured.
     // Global rack content stays out of embed answers, and the owner's site stays out of
     // global ones; the SQL function enforces both directions.
-    !embeddingConfigured() || (embedScoped && !opts.rackInstitutionId) ? none : embed(opts.query)
+    !embeddingConfigured() || (embedScoped && !opts.rackInstitutionId) ? none : embed(resolvedQuery)
       .then(v => matchRack(v, countryCode, trace, opts.rackInstitutionId))
       .catch(err => { logger.warn("Knowledge rack search failed", { err: String(err) }); trace("Knowledge rack search failed"); return []; }),
-  ]);
+  ]); }
 
   // ── Hydrate course details for found courses ──
+  // Pinned first: the course under discussion must survive the cap whatever else matched.
   let hydratedCourses: knowledge.CourseDetailResult[] = [];
-  if (courses.length > 0) {
-    const courseIds = courses.map(c => c.id);
+  const courseIds = [...new Set([...pinned, ...courses.map(c => c.id)])].slice(0, MAX_HYDRATED);
+  if (courseIds.length > 0) {
     trace(`Hydrating ${courseIds.length} courses`);
     const details = await Promise.all(
       courseIds.map(id =>
-        knowledge.getCourseDetails(id).catch(err => {
+        knowledge.getCourseDetails(id, { jobIds: opts.jobIds }).catch(err => {
           logger.warn("Course detail fetch failed", { id, err: String(err) });
           return undefined;
         }),
@@ -213,21 +599,22 @@ export async function searchAll(opts: {
       "--- THIS INSTITUTION (you represent it; answer questions about it from here) ---",
       `Name: ${own.name ?? "Unknown"}`,
       own.description ? `About: ${own.description.slice(0, 1200)}` : "",
-      [own.address, own.city, own.state, own.country].filter(Boolean).length
-        ? `Location: ${[own.address, own.city, own.state, own.country].filter(Boolean).join(", ")}`
+      [own.city, own.state, own.country].filter(Boolean).length
+        ? `Location: ${[own.city, own.state, own.country].filter(Boolean).join(", ")}`
         : "",
-      // Its own published contact details, from its own website — safe to quote, unlike a
-      // person's. The privacy rule in the system prompt is narrowed to match.
-      own.phone ? `Phone: ${own.phone}` : "",
-      own.email ? `Email: ${own.email}` : "",
+      // No phone, no email, no street address — not even the institution's own. A widget reply
+      // never hands a visitor a way to contact anybody (owner decision, 2026-10-08); the contact
+      // details belong to the staff who set the widget up, in the portal. Withheld HERE rather
+      // than by a prompt rule, so there is nothing in the window to leak. City and country stay:
+      // "where are your campuses" is a question about the place, not a way to reach a person.
       own.website ? `Website: ${own.website}` : "",
     ];
 
     if (ownerProfile.campuses.length) {
       lines.push(`Campuses (${ownerProfile.campuses.length}):`);
       for (const c of ownerProfile.campuses) {
-        const where = [c.address, c.city, c.state, c.country].filter(Boolean).join(", ");
-        lines.push(`  - ${c.name ?? "Campus"}${where ? `: ${where}` : ""}${c.phone ? ` (${c.phone})` : ""}`);
+        const where = [c.city, c.state, c.country].filter(Boolean).join(", ");
+        lines.push(`  - ${c.name ?? "Campus"}${where ? `: ${where}` : ""}`);
       }
     }
     if (ownerProfile.accreditations.length) {
@@ -388,18 +775,99 @@ export async function searchAll(opts: {
   }
 
   if (rackHits.length) {
-    const rendered = renderRackHits(rackHits);
+    const rendered = renderRackHits(rackHits, embedScoped);
     parts.push(rendered.text);
     sources.push(...rendered.sources);
   }
 
   const contextText = parts.join("\n\n");
-  trace(`Context: ${contextText.length} chars, ${sources.length} sources`);
-  return { contextText, sources, traceSteps };
+  const moneyTopics = new Set<MoneyTopic>();
+  // Structured fields name their own topic — unambiguous, so no regex over the rendered text
+  // (CARD_FIELDS JSON carries a "fees" key for every course, which would make the text look
+  // money-bearing when it is not). Every rendered money field must appear here, or the model is
+  // told to withhold what its own context contains: knowledgeVisas renders "Fee: USD x" above.
+  if (hydratedCourses.some(c => c.fees.length > 0)) moneyTopics.add("fees");
+  if (visas.some(v => v.application_fee_amount != null)
+    || knowledgeVisas.some(v => v.application_fee_usd != null)) moneyTopics.add("fees");
+  if (guides.some(g => !!g.cost_of_living_monthly_usd)) moneyTopics.add("living");
+  // Prose grounds whichever topics it actually discusses — this is the only way refund and
+  // scholarship questions ever become answerable, since no source here has a field for them.
+  for (const f of faqs) for (const topic of moneyTopicsOf(`${f.question} ${f.answer}`)) moneyTopics.add(topic);
+  for (const d of rackHits) for (const topic of moneyTopicsOf(d.content)) moneyTopics.add(topic);
+
+  const topics = [...moneyTopics];
+  trace(`Context: ${contextText.length} chars, ${sources.length} sources${topics.length ? `, money evidence: ${topics.join(", ")}` : ""}`);
+  // `searchQuery` is the gate every search above sits behind, so it is also the honest answer to
+  // "did we look": a pinned-courses-only turn hydrates context without searching for anything.
+  return { contextText, sources, traceSteps, moneyTopics: topics, searched: !!searchQuery };
+}
+
+/**
+ * Contact routes a widget reply must never carry — stripped from passage text before the prompt
+ * sees it, because a crawled site brings its own staff directory with it and the model has no way
+ * to tell a department inbox from a person's desk line.
+ *
+ * Deliberately narrow on phone numbers: an international number always starts "+", and a local one
+ * is only taken when the page labels it. A bare digit run is left alone — the money guard depends
+ * on fees surviving this verbatim, and "1 200 000" is a tuition figure far more often than a phone.
+ * ponytail: label-or-plus only; widen it if a real unlabelled number gets through.
+ */
+/** Words that never sit between a house number and its street word. The trailing lookahead makes
+ *  each one a whole token, so "A'Beckett" in "45 A'Beckett Street" is not read as the article. */
+const NOT_IN_ADDRESS = [
+  "per", "at", "in", "on", "of", "for", "the", "a", "an", "and", "or", "to", "from", "with",
+  "our", "your", "its", "is", "are", "was", "were", "each", "every", "about", "approximately",
+  "over", "under", "up", "plus", "only", "total", "overall", "required", "minimum", "maximum",
+  "year", "years", "semester", "semesters", "term", "terms", "month", "months", "week", "weeks",
+  "intake", "intakes", "band", "score", "scores", "fee", "fees", "tuition", "cost", "costs",
+  "deposit", "discount", "scholarship", "scholarships",
+];
+
+const STREET_WORDS = "road|rd|street|st|avenue|ave|lane|drive|boulevard|blvd|highway|parade|place|terrace|square|crescent";
+
+function buildAddressRe(): RegExp {
+  const notAddress = `(?!(?:${NOT_IN_ADDRESS.join("|")})(?:[\\s,.-]|$))`;
+  return new RegExp(
+    `\\b\\d{1,5}[a-z]?(?![,.]\\d)(?:[\\s,.-]+${notAddress}[\\p{L}\\p{N}'()-]+){0,3}[\\s,]+(?:${STREET_WORDS})\\b\\.?`,
+    "giu",
+  );
+}
+
+const CONTACT_RE: Array<[RegExp, string]> = [
+  [/[\w.+-]+@[\w-]+\.[\w.-]+/g, "[contact withheld]"],
+  [/\+\d[\d\s().-]{7,}\d/g, "[contact withheld]"],
+  [/\b(?:tel|phone|call|mobile|fax|whatsapp)\b[:.\s]*[\d(][\d\s().-]{6,}\d/gi, "[contact withheld]"],
+  // A street address is a contact route as much as a phone number is, and the prompt rule alone
+  // left one sitting in the context for the model to resist (Greptile). Anchored on a HOUSE NUMBER
+  // followed by a street word, so the city, state and country around it survive — "where are your
+  // campuses" is a question about a place.
+  //
+  // The span between the two is the whole difficulty. Five unconstrained words reached from a FEE
+  // to an unrelated street-named campus — "Tuition is 4000 per semester at King Street" masked as
+  // "[address withheld]", deleting the figure the answer was about (Greptile P1). Worse, the
+  // "950,000" lookahead does not reject such a figure, it only moves the anchor: "AUD 24,500 per
+  // year at our Oxford Street campus" re-anchored on 500 and rendered "AUD 24,[address withheld]",
+  // and "IELTS 6.5 overall ... Collins Street" re-anchored on 5.
+  //
+  // So the span is three words at most, and none of them may be a word that cannot appear inside a
+  // street address but is everywhere in money and score prose. That is the real difference between
+  // "45 George Street" and "4000 per semester at King Street", and it holds however the sentence is
+  // worded — an address never says "per", "at" or "year".
+  //
+  // ponytail: a street named with no number ("on College Road") still gets through, and so does a
+  // figure that reaches a street through three pure name words ("IELTS 6.5 overall Collins
+  // Street"). Both widenings risk eating a fee, which is the worse failure: the money guard
+  // depends on figures surviving this verbatim, while a missed address only fails to redact.
+  [buildAddressRe(), "[address withheld]"],
+  [/\bp\.?\s?o\.?\s*box\s*\d+/gi, "[address withheld]"],
+];
+
+export function withoutContactDetails(text: string): string {
+  return CONTACT_RE.reduce((out, [re, mask]) => out.replace(re, mask), text);
 }
 
 /** Rack chunks as prompt text + deduped sources — one format for every retrieval path. */
-function renderRackHits(rackHits: knowledge.KnowledgeChunkResult[]): {
+function renderRackHits(rackHits: knowledge.KnowledgeChunkResult[], hideContacts = false): {
   text: string;
   sources: RagOutput["sources"];
 } {
@@ -420,7 +888,7 @@ function renderRackHits(rackHits: knowledge.KnowledgeChunkResult[]): {
     // point of chunking — no truncation, so the answer can't be cut off.
     lines.push(
       `Passage: ${where || origin} (${origin}, ${d.category_label}, ${tier}${freshnessOf(d)})`,
-      ...d.content.split("\n").map((line) => `  ${line}`),
+      ...(hideContacts ? withoutContactDetails(d.content) : d.content).split("\n").map((line) => `  ${line}`),
       `  Source: ${d.url ?? d.file_name ?? origin}${page}`,
       "",
     );
@@ -477,7 +945,7 @@ export async function counsellorBriefing(opts: {
     const query = situation ? `${opts.message}\nStudent situation: ${situation}` : opts.message;
     const countryCode = await detectCountryCode(query);
     const vector = await embed(query);
-    const hits = capPerDocument(await knowledge.matchKnowledgeChunks(vector, 6, countryCode));
+    const hits = selectChunks(await knowledge.matchKnowledgeChunks(vector, 6, countryCode));
     opts.onTrace?.(`Knowledge rack briefing: ${hits.length} passages`);
     if (!hits.length) return empty;
     return renderRackHits(hits);

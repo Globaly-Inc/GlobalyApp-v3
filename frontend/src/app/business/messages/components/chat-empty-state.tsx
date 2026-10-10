@@ -2,7 +2,11 @@
 
 import { useSyncExternalStore } from "react";
 import Image from "next/image";
-import { MessageSquare } from "lucide-react";
+import Link from "next/link";
+import { Bot, MessageSquare } from "lucide-react";
+import { buttonVariants } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
+import { WIDGET_SETTINGS_HREF } from "@/app/business/ai-widget/const";
 import { useAppSelector } from "@/lib/hooks";
 import { ICON } from "@/lib/public-assets";
 
@@ -39,11 +43,16 @@ const CAPABILITIES = ["Search", "Unread", "Drafts", "Starred", "Favorites"];
  * Greeted by business name rather than first name: the business shell identifies the
  * viewer by their org (business_name/logo_url), and carries no agent first name.
  */
-export function ChatEmptyState({ threadCount }: Readonly<{ threadCount: number }>) {
+export function ChatEmptyState({
+  threadCount,
+  embed = false,
+}: Readonly<{ threadCount: number; /** The AI Conversations tab — widget chats, none of the enquiry shortcuts. */ embed?: boolean }>) {
   const hydrated = useSyncExternalStore(subscribeNever, hydratedSnapshot, serverSnapshot);
   const businessName = useAppSelector((s) => s.businessOnboarding.profile?.business_name);
   // Withheld until hydrated so the first client render matches the server's HTML.
   const name = hydrated ? businessName : undefined;
+  // `loaded` first: an empty list before the fetch answers means "not asked yet", not "no widget".
+  const needsWidget = useAppSelector((s) => s.aiWidget.loaded && s.aiWidget.configs.length === 0);
 
   return (
     <div className="flex h-full flex-col items-center justify-center px-4 py-8">
@@ -59,20 +68,42 @@ export function ChatEmptyState({ threadCount }: Readonly<{ threadCount: number }
       <h1 className="mb-2 text-center text-2xl font-bold">
         {name ? `${name} — Messages` : "Messages"}
       </h1>
-      <p className="text-center text-muted-foreground">Your conversations with students who enquired</p>
+      <p className="text-center text-muted-foreground">
+        {embed ? "Chats visitors had with your AI assistant" : "Your conversations with students who enquired"}
+      </p>
 
-      <div className="mt-8 flex flex-wrap justify-center gap-2">
-        {CAPABILITIES.map((capability) => (
-          <span key={capability} className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
-            {capability}
+      {/* The way back to setup once the onboarding pop-up has been dismissed for the session. */}
+      {needsWidget && (
+        <div className="mt-6 flex w-full max-w-md items-center gap-3 rounded-xl border bg-card p-3.5 shadow-sm">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+            <Bot className="size-4" aria-hidden />
           </span>
-        ))}
-      </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">AI Embed isn&apos;t set up yet</p>
+            <p className="text-xs text-muted-foreground">Website visitor chats will land here once it is.</p>
+          </div>
+          <Link href={WIDGET_SETTINGS_HREF} className={cn(buttonVariants({ size: "sm" }), "shrink-0")}>
+            Configure Widget
+          </Link>
+        </div>
+      )}
+
+      {!embed && (
+        <div className="mt-8 flex flex-wrap justify-center gap-2">
+          {CAPABILITIES.map((capability) => (
+            <span key={capability} className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
+              {capability}
+            </span>
+          ))}
+        </div>
+      )}
 
       <p className="mt-6 max-w-md text-center text-xs text-muted-foreground">
         {threadCount > 0
           ? "Pick a conversation from the list to get started."
-          : "A conversation opens as soon as you unlock an enquiry. Unlock one from the Enquiries inbox and it appears here."}
+          : embed
+            ? "When someone talks to the AI assistant on your website, their chat appears here."
+            : "A conversation opens as soon as you unlock an enquiry. Unlock one from the Enquiries inbox and it appears here."}
       </p>
     </div>
   );

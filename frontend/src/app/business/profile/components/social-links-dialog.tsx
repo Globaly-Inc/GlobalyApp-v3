@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -8,9 +8,12 @@ import { FieldError } from "@/components/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useValidatedForm } from "@/lib/use-validated-form";
-import type { BusinessProfile, SocialLinks } from "@/app/business/apis/types";
+import type { BusinessProfile, OtherSocialLink, SocialLinks, SocialLinksPatch } from "@/app/business/apis/types";
+import { OtherLinksEditor } from "./other-links-editor";
 
-const PLATFORMS: { key: keyof SocialLinks; label: string; placeholder: string }[] = [
+type Platform = { key: keyof SocialLinks; label: string; placeholder: string };
+
+const PLATFORMS: Platform[] = [
   { key: "linkedin_url", label: "LinkedIn", placeholder: "https://linkedin.com/company/..." },
   { key: "facebook_url", label: "Facebook", placeholder: "https://facebook.com/..." },
   { key: "instagram_url", label: "Instagram", placeholder: "https://instagram.com/..." },
@@ -24,6 +27,13 @@ const PLATFORMS: { key: keyof SocialLinks; label: string; placeholder: string }[
   { key: "line_url", label: "Line", placeholder: "https://line.me/..." },
   { key: "viber_url", label: "Viber", placeholder: "https://viber.com/..." },
 ];
+
+// Institutions only have columns for these 6 (see institutions migrations) — the other 6 were
+// added to businesses only (20260822_004_businesses_profile_fields.ts) and never ported, so
+// showing them here for an institution would silently no-op on save.
+const INSTITUTION_PLATFORM_KEYS = new Set<keyof SocialLinks>([
+  "linkedin_url", "facebook_url", "instagram_url", "twitter_url", "youtube_url", "whatsapp_url",
+]);
 
 type FormState = Record<keyof SocialLinks, string>;
 
@@ -42,14 +52,24 @@ export function SocialLinksDialog({
   profile,
   onSave,
   saving,
+  isInstitution = false,
 }: Readonly<{
   open: boolean;
   onOpenChange: (open: boolean) => void;
   profile: BusinessProfile;
-  onSave: (patch: Partial<SocialLinks>) => Promise<boolean>;
+  onSave: (patch: SocialLinksPatch) => Promise<boolean>;
   saving: boolean;
+  isInstitution?: boolean;
 }>) {
   const { form, setForm, errors, reset, validate } = useValidatedForm(schema, () => toForm(profile));
+  const visiblePlatforms = isInstitution ? PLATFORMS.filter((p) => INSTITUTION_PLATFORM_KEYS.has(p.key)) : PLATFORMS;
+  const [otherLinks, setOtherLinks] = useState<OtherSocialLink[]>(profile.other_social_links ?? []);
+  // Reloaded from the profile each time the dialog opens — during render, not in an effect.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setOtherLinks(profile.other_social_links ?? []);
+  }
 
   useEffect(() => {
     if (open) reset(toForm(profile));
@@ -59,8 +79,10 @@ export function SocialLinksDialog({
   const handleSubmit = async () => {
     const data = validate();
     if (!data) return;
-    const patch: Partial<SocialLinks> = {};
+    const patch: SocialLinksPatch = {};
     for (const p of PLATFORMS) patch[p.key] = data[p.key] || null;
+    // Only institutions have the column — the business endpoint would reject the key.
+    if (isInstitution) patch.other_social_links = otherLinks;
     const ok = await onSave(patch);
     if (ok) onOpenChange(false);
   };
@@ -72,7 +94,7 @@ export function SocialLinksDialog({
           <DialogTitle>Social links</DialogTitle>
         </DialogHeader>
         <div className="grid grid-cols-2 gap-4">
-          {PLATFORMS.map((p) => (
+          {visiblePlatforms.map((p) => (
             <div key={p.key} className="space-y-2">
               <Label htmlFor={`social-${p.key}`}>{p.label}</Label>
               <Input
@@ -86,6 +108,7 @@ export function SocialLinksDialog({
               <FieldError message={errors[p.key]} />
             </div>
           ))}
+          {isInstitution && <OtherLinksEditor links={otherLinks} onChange={setOtherLinks} />}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

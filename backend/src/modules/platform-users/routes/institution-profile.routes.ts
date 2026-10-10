@@ -78,6 +78,12 @@ export async function institutionProfileRoutes(app: FastifyInstance) {
     return reply.send(result);
   });
 
+  // The welcome splash has played. No body — the only thing to record is that it happened.
+  app.post("/me/onboarding/welcome-seen", { preHandler: requireInstitutionContext }, async (req, reply) => {
+    const result = await service.markOnboardingWelcomeSeen(req.institution!);
+    return reply.send(result);
+  });
+
   app.get("/me/widget-analytics", { preHandler: requireInstitutionContext }, async (req, reply) => {
     const result = await service.getMyWidgetAnalytics(req.institution!);
     return reply.send(result);

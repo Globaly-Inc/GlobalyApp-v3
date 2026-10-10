@@ -42,6 +42,8 @@ export const ICON = {
   height: 283,
 } as const;
 
+export const APP_ICON_ATTR = "data-app-icon";
+
 /**
  * Raster copies for the places SVG doesn't work: social cards (1200x630) and the
  * schema.org logo, which crawlers want as PNG.

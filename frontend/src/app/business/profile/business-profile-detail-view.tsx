@@ -3,16 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { Eye, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Switch } from "@/components/ui/switch";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { geoApi, type Country } from "@/app/geo/apis";
 import { fetchMe, useAuthState, switchAccount } from "@/app/auth/store/auth-slice";
+import { saveSelectedOrgId } from "@/lib/session";
 import { fetchMyProfile, updateMyProfile } from "@/app/business/store/business-onboarding-slice";
 import { businessApi } from "@/app/business/apis";
-import type { SocialLinks } from "@/app/business/apis/types";
+import type { SocialLinksPatch } from "@/app/business/apis/types";
 import { authApi } from "@/app/auth/apis";
 import { SocialLinksDialog } from "./components/social-links-dialog";
 import { BranchesTab } from "./components/tabs/branches-tab";
@@ -20,10 +19,16 @@ import { ServicesTab } from "./components/tabs/services-tab";
 import { PartnersTab } from "./components/tabs/partners-tab";
 import { MembersTab } from "./components/tabs/members-tab";
 import { ScholarshipsTab } from "./components/tabs/scholarships-tab";
+import { InstitutionScholarshipsTab } from "./components/scholarships/institution-scholarships-tab";
 import { ActivityTab } from "./components/tabs/activity-tab";
 import { ProfileTab } from "./components/tabs/profile-tab";
 import { ProfileHeaderCard } from "./components/profile-header-card";
+import { ProfilePublishBar } from "./components/profile-publish-bar";
 import { SiteUrlsCard } from "../portal/components/site-urls-card";
+import { isInstitutionOrg } from "./utils";
+// Lives in the ai-widget feature because that is whose data it is — the same reason
+// /business/settings/ai-embed renders AiWidgetView from there rather than forking it.
+import { SIGN_IN_HREF } from "@/app/auth/const";
 
 // Tab switching happens only via the sidebar (`BUSINESS_NAV_GROUPS`) — this page renders no
 // second, in-content tab strip.
@@ -57,12 +62,10 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
   const { user: authUser, initializing } = useAuthState();
   const isBusiness = authUser?.user_category === "business";
   const isInstitution = authUser?.user_category === "institution";
-  // Membership lists are the authoritative source for whether THIS businessId is a business or
-  // institution — user_category only gives the primary role, so a dual-role user always resolves
-  // to "business" even when they're viewing an institution profile.
-  const isViewingInstitution =
-    !authUser?.businesses.some((b) => b.id === businessId) &&
-    !!authUser?.institutions.some((i) => i.id === businessId);
+  // Membership lists + the active org decide whether THIS businessId is a business or an
+  // institution — user_category only gives the primary role, and ids can collide across the two
+  // lists (see isInstitutionOrg).
+  const isViewingInstitution = isInstitutionOrg(authUser, businessId);
   const parsedTab = parseTab(searchParams.get("tab"));
   // Partners/Scholarships/Activity have no institution-side data — the sidebar never links
   // there for an institution, but fall back to profile if the URL is edited directly. Branches
@@ -73,7 +76,7 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
 
   useEffect(() => {
     if (initializing) return;
-    if (!authUser) router.replace("/auth/sign-in");
+    if (!authUser) router.replace(SIGN_IN_HREF);
     // A business/institution membership takes priority over `type` — a super-admin who
     // also owns or manages a business must still be able to view it, not get bounced to
     // the admin dashboard just because their session is admin-typed.
@@ -88,9 +91,12 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
     if (initializing || (!isBusiness && !isInstitution) || switchedRef.current) return;
     // Search both lists — user_category picks the primary role, so a dual-role user has
     // isBusiness=true even when navigating to an institution profile.
-    const target =
-      authUser?.businesses.find((b) => b.id === businessId) ??
-      authUser?.institutions.find((i) => i.id === businessId);
+    // Ids can collide across the two lists — keep the active org when it's one of the matches.
+    const candidates = [
+      ...(authUser?.businesses.filter((b) => b.id === businessId) ?? []),
+      ...(authUser?.institutions.filter((i) => i.id === businessId) ?? []),
+    ];
+    const target = candidates.find((c) => c.org_id === authUser?.orgId) ?? candidates[0];
     if (!target) {
       // This business/institution isn't in the session's cached membership list — most likely
       // the user was granted access after login and /auth/me hasn't been refetched since. Try
@@ -112,6 +118,8 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
     dispatch(switchAccount(target.org_id))
       .unwrap()
       .then(() => {
+        // This org is now the active one — remember it, or the next page goes back to the old pick.
+        saveSelectedOrgId(target.org_id);
         setContextReady(true);
         dispatch(fetchMyProfile());
       })
@@ -153,7 +161,7 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
     toast.success(is_published ? "Profile published" : "Profile unpublished");
   };
 
-  const handleSaveSocials = async (patch: Partial<SocialLinks>) => {
+  const handleSaveSocials = async (patch: SocialLinksPatch) => {
     setSavingSocials(true);
     try {
       await dispatch(updateMyProfile(patch)).unwrap();
@@ -168,42 +176,35 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
   };
 
   return (
-    <div className="space-y-4 md:space-y-6">
+    // Keyed on the tab so each switch replays the entrance stagger.
+    <div key={tab} className="stagger-in space-y-4 md:space-y-6">
       {/* V1's profile body is a column of bordered cards, not one card wrapping everything — so
           only the other tabs, which are tables and lists, keep the outer <Card>. */}
       {tab === "profile" ? (
         <>
-          <div className="flex flex-wrap items-center justify-end gap-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                if (!isViewingInstitution) {
-                  window.open(`/business/${profile.subdomain}`, "_blank");
-                  return;
-                }
-                // Mints a short-lived, single-purpose preview token (never the caller's own
-                // session access token) so an unpublished institution's owner can still preview
-                // it — see issuePreviewToken (backend) and the matching bypass in
-                // findPublicInstitutionBySlug. Opens the tab synchronously (inside the click
-                // gesture) so popup blockers don't catch it, then redirects once the token
-                // comes back.
-                const path = `/institution/${institutionPublicSlug(profile.business_name, profile.id)}`;
-                const tab = window.open("", "_blank");
-                authApi.mintPreviewToken()
-                  .then(({ preview_token }) => {
-                    if (tab) tab.location.href = `${path}?preview_token=${encodeURIComponent(preview_token)}`;
-                  })
-                  .catch(() => { if (tab) tab.location.href = path; });
-              }}
-            >
-              <Eye className="mr-1.5 h-3.5 w-3.5" /> Preview
-            </Button>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">{profile.is_published ? "Published" : "Unpublished"}</span>
-              <Switch checked={profile.is_published} onCheckedChange={handleTogglePublished} />
-            </div>
-          </div>
+          <ProfilePublishBar
+            profile={profile}
+            onTogglePublished={handleTogglePublished}
+            onPreview={() => {
+              if (!isViewingInstitution) {
+                window.open(`/business/${profile.subdomain}`, "_blank");
+                return;
+              }
+              // Mints a short-lived, single-purpose preview token (never the caller's own
+              // session access token) so an unpublished institution's owner can still preview
+              // it — see issuePreviewToken (backend) and the matching bypass in
+              // findPublicInstitutionBySlug. Opens the tab synchronously (inside the click
+              // gesture) so popup blockers don't catch it, then redirects once the token
+              // comes back.
+              const path = `/institution/${institutionPublicSlug(profile.business_name, profile.id)}`;
+              const tab = window.open("", "_blank");
+              authApi.mintPreviewToken()
+                .then(({ preview_token }) => {
+                  if (tab) tab.location.href = `${path}?preview_token=${encodeURIComponent(preview_token)}`;
+                })
+                .catch(() => { if (tab) tab.location.href = path; });
+            }}
+          />
 
           <ProfileHeaderCard
             profile={profile}
@@ -219,17 +220,21 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
           <ProfileTab profile={profile} countries={countries} isInstitution={isViewingInstitution} />
         </>
       ) : tab === "site_mapping" ? (
-        <SiteUrlsCard />
+        <SiteUrlsCard sharedFrom={profile?.extraction_parent_name ?? null} />
       ) : (
-        <Card>
-          <CardContent>
-            {tab === "branches" && <BranchesTab businessId={businessId} isInstitution={isViewingInstitution} />}
+        <Card className="rounded-[18px]">
+          <CardContent className="stagger-in-deep px-[22px]">
+            {tab === "branches" && <BranchesTab businessId={businessId} isInstitution={isViewingInstitution} countries={countries} />}
             {tab === "partners" && (
               <PartnersTab businessId={businessId} businessName={profile.business_name} isInstitution={isViewingInstitution} />
             )}
             {tab === "team" && <MembersTab businessId={businessId} />}
-            {tab === "services" && <ServicesTab businessId={businessId} readOnly={isViewingInstitution} />}
-            {tab === "scholarships" && <ScholarshipsTab businessId={businessId} />}
+            {/* Self-service is always the org's own claimed account — unlike admin's pre-seeded/
+                unclaimed case, there's no legitimate read-only state here, so an institution
+                gets the same full "Add service"/manage UI a business does (backend now writes
+                a manually-added course into the institution's own extraction catalog). */}
+            {tab === "services" && <ServicesTab businessId={businessId} isInstitution={isViewingInstitution} />}
+            {tab === "scholarships" && (isViewingInstitution ? <InstitutionScholarshipsTab /> : <ScholarshipsTab businessId={businessId} />)}
             {tab === "activity" && <ActivityTab businessId={businessId} />}
           </CardContent>
         </Card>
@@ -241,6 +246,7 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
         profile={profile}
         onSave={handleSaveSocials}
         saving={savingSocials}
+        isInstitution={isViewingInstitution}
       />
     </div>
   );

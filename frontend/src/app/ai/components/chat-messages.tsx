@@ -7,8 +7,8 @@ import { stripStructuredBlocks } from "../utils";
 import { ThinkingIndicator } from "./thinking-indicator";
 
 type ChatMessagesProps = {
-  onChipClick: (chip: string) => void;
-  onSend: (value: string) => void;
+  onChipClick: (chip: string) => boolean | void;
+  onSend: (value: string) => boolean | void;
 };
 
 export function ChatMessages({ onChipClick, onSend }: ChatMessagesProps) {

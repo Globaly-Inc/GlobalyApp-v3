@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ProfileLocationsCard } from "@/app/(web)/components/profile/profile-locations-card";
 import type { ProfileLocation } from "@/app/(web)/components/profile/profile-data";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import type { BusinessProfile } from "@/app/business/apis/types";
@@ -10,6 +9,7 @@ import { fetchBranches } from "../store/business-profile-detail-slice";
 import { LocationEditDialog, type LocationTarget } from "./location-edit-dialog";
 import { PrivacyBadge } from "@/components/privacy-badge";
 import { useSectionVisibility } from "./use-section-visibility";
+import { LocationsCard } from "./locations-card";
 
 /** One page is plenty for a card meant to be skimmed — V1 showed every branch it had loaded. */
 const BRANCH_LIMIT = 50;
@@ -19,21 +19,17 @@ const businessLocationId = (id: number) => `business-${id}`;
 
 /**
  * The portal's Locations card. V1 listed the business's own address first and every branch after
- * it, so the owner sees the same set a visitor does — hence the shared `<ProfileLocationsCard>`
- * rather than a portal-only list.
+ * it, so the owner sees the same set a visitor does — the same `ProfileLocation` rows the public
+ * `<ProfileLocationsCard>` renders, laid out by the portal's own `<LocationsCard>`.
  */
 export function ProfileLocationsSection({
   profile,
   countries,
   readOnly,
-  hasBranches,
 }: Readonly<{
   profile: BusinessProfile;
   countries: Country[];
   readOnly: boolean;
-  /** Institutions own campuses, not branches, and `/businesses/branches` 403s without a business
-   *  context — so for them the card shows the one address and skips the request entirely. */
-  hasBranches: boolean;
 }>) {
   const dispatch = useAppDispatch();
   const { isPublic, toggle, canToggle } = useSectionVisibility(profile);
@@ -48,7 +44,8 @@ export function ProfileLocationsSection({
   // that follows a profile change, and a refetch that fails parks on "failed" with rows still in
   // the list; either way the card would put edit pencils on addresses this profile doesn't own.
   const [loadedFor, setLoadedFor] = useState<number | null>(null);
-  const showBranches = hasBranches && branchOwnerId === profile.id && loadedFor === profile.id && branchStatus === "idle";
+  // Institutions too: fetchBranches routes their session to /institutions/branches (getOrgBase).
+  const showBranches = branchOwnerId === profile.id && loadedFor === profile.id && branchStatus === "idle";
   const branches = showBranches ? branchRows : [];
 
   // Keyed to the profile, not a bare boolean: the guard is there because Strict Mode double-invokes
@@ -56,14 +53,14 @@ export function ProfileLocationsSection({
   // and a `true` that never resets would pin the card to whichever business mounted first.
   const fetchedForRef = useRef<number | null>(null);
   useEffect(() => {
-    if (!hasBranches || fetchedForRef.current === profile.id) return;
+    if (fetchedForRef.current === profile.id) return;
     fetchedForRef.current = profile.id;
     dispatch(fetchBranches({ id: profile.id, params: { limit: BRANCH_LIMIT } }))
       .unwrap()
       .then(() => setLoadedFor(profile.id))
       // The slice already records the failure; the card just keeps showing the business address.
       .catch(() => {});
-  }, [dispatch, hasBranches, profile.id]);
+  }, [dispatch, profile.id]);
 
   const [editing, setEditing] = useState<LocationTarget | null>(null);
 
@@ -94,6 +91,9 @@ export function ProfileLocationsSection({
       // Branch rows carry no coordinates — the map falls back to geocoding the address string.
       latitude: null,
       longitude: null,
+      // A linked branch is its own org: its name/address are edited on its own profile, and the
+      // backend rejects them here (assertLinkOnlyPatch) — so no pencil rather than a failing save.
+      editable: b.linked_business_id == null && b.linked_institution_id == null,
     })),
   ];
 
@@ -108,8 +108,9 @@ export function ProfileLocationsSection({
 
   return (
     <>
-      <ProfileLocationsCard
+      <LocationsCard
         locations={locations}
+        primaryId={businessLocationId(profile.id)}
         badge={<PrivacyBadge isPublic={isPublic("locations")} onToggle={canEditVisibility ? () => toggle("locations") : undefined} />}
         onEditLocation={readOnly ? undefined : startEditing}
       />

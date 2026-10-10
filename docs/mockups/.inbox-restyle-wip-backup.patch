@@ -1,0 +1,307 @@
+diff --git a/frontend/src/app/business/messages/components/embed-conversation-view.tsx b/frontend/src/app/business/messages/components/embed-conversation-view.tsx
+index c7de8651..698a280e 100644
+--- a/frontend/src/app/business/messages/components/embed-conversation-view.tsx
++++ b/frontend/src/app/business/messages/components/embed-conversation-view.tsx
+@@ -2,7 +2,7 @@
+ 
+ import { useEffect, useRef } from "react";
+ import Link from "next/link";
+-import { ArrowLeft, Bot, ExternalLink, Info, User } from "lucide-react";
++import { ArrowLeft, ExternalLink, Info, MessageSquare, User } from "lucide-react";
+ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+ import { Button, buttonVariants } from "@/components/ui/button";
+ import { Skeleton } from "@/components/ui/skeleton";
+@@ -12,20 +12,25 @@ import { VISITOR_STATUS_BADGE } from "@/app/business/ai-widget/const";
+ import { visitorDisplayName, visitorInitials } from "@/app/business/ai-widget/utils";
+ import type { WidgetVisitor } from "@/app/business/ai-widget/apis/types";
+ import { fetchEmbedTranscript } from "../store/embed-chats-slice";
+-import { DateDivider, dayLabel, TranscriptBubble } from "./transcript-bubble";
++import { dateSeparatorLabel } from "@/components/chat/utils";
++import { DatePill, isGroupedWith, TranscriptBubble } from "./transcript-bubble";
+ 
+ /**
+- * An AI conversation (embed widget chat): the enquiry `ConversationView` header bar over a
+- * bubble transcript (visitor left, assistant right), read-only: the visitor talked to the assistant on
+- * the business's website, and there is no channel to reply to them from here. The footer says
+- * so where the composer would be, and points to the visitor's record for follow-up.
++ * An AI conversation (embed widget chat) in a support-inbox layout: a header with the visitor,
++ * the channel and an Open/Ended pill, over a centred transcript. Read-only — the visitor talked
++ * to the assistant on the business's website and there is no channel to reply from here; the
++ * footer says so where a composer would be.
+  */
+-/**
+- * The message column — Ask Aly's (`@/app/ai/components/chat-messages`): centred, 48rem wide,
+- * 16/24px gutters. Turn spacing comes from each bubble's own vertical padding (2×16px = Ask
+- * Aly's gap-8), since day dividers sit between turns at a wider measure.
+- */
+-const MESSAGE_COLUMN = "mx-auto w-full max-w-3xl px-4 sm:px-6";
++
++/** Centred and narrower than the pane, so both sides' bubbles stay near each other. */
++const MESSAGE_COLUMN = "mx-auto w-full max-w-2xl px-4 sm:px-6";
++
++/** `end_confirmed` is the only state where the visitor closed the chat; everything else is live. */
++function chatStatus(state: WidgetVisitor["conversation_state"]) {
++  return state === "end_confirmed"
++    ? { label: "Ended", className: "bg-muted text-muted-foreground" }
++    : { label: "Open", className: "bg-primary/10 text-primary" };
++}
+ 
+ export function EmbedConversationView({ visitor, onBack }: Readonly<{ visitor: WidgetVisitor; onBack: () => void }>) {
+   const dispatch = useAppDispatch();
+@@ -42,6 +47,7 @@ export function EmbedConversationView({ visitor, onBack }: Readonly<{ visitor: W
+ 
+   const badge = VISITOR_STATUS_BADGE[visitor.status];
+   const name = visitorDisplayName(visitor);
++  const chatState = chatStatus(visitor.conversation_state);
+ 
+   return (
+     <div className="flex h-full flex-col">
+@@ -50,11 +56,17 @@ export function EmbedConversationView({ visitor, onBack }: Readonly<{ visitor: W
+           <Button variant="ghost" size="icon-sm" className="md:hidden" onClick={onBack} aria-label="Back to conversations">
+             <ArrowLeft />
+           </Button>
+-          <Avatar className="size-9 shrink-0">
+-            <AvatarFallback className="bg-primary/10 text-xs text-primary">
+-              {visitor.name ? visitorInitials(visitor) : <User className="size-4" aria-hidden />}
+-            </AvatarFallback>
+-          </Avatar>
++          <span className="relative shrink-0">
++            <Avatar className="size-9">
++              <AvatarFallback className="bg-primary/10 text-xs font-medium text-primary">
++                {visitor.name ? visitorInitials(visitor) : <User className="size-4" aria-hidden />}
++              </AvatarFallback>
++            </Avatar>
++            {/* The channel badge: this came in through the website widget. */}
++            <span className="absolute -bottom-0.5 -right-0.5 flex size-4 items-center justify-center rounded bg-card">
++              <MessageSquare className="size-3 text-primary" aria-hidden />
++            </span>
++          </span>
+           <div className="min-w-0">
+             <div className="flex items-center gap-1.5">
+               <h2 className={cn("truncate text-base font-semibold text-foreground", !visitor.name && "italic")}>{name}</h2>
+@@ -62,24 +74,25 @@ export function EmbedConversationView({ visitor, onBack }: Readonly<{ visitor: W
+                 {badge.label}
+               </span>
+             </div>
+-            <p className="flex items-center gap-1 truncate text-xs text-muted-foreground">
+-              <Bot className="size-3 shrink-0" aria-hidden />
+-              AI conversation{visitor.email ? ` · ${visitor.email}` : ""}
++            <p className="truncate text-xs text-muted-foreground">
++              via Web widget{visitor.email ? ` · ${visitor.email}` : ""}
+             </p>
+           </div>
+         </div>
+-        <Link
+-          href={`/business/ai-widget/visitors/${visitor.id}`}
+-          className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "shrink-0 gap-1.5")}
+-        >
+-          <ExternalLink className="size-3.5" aria-hidden />
+-          <span className="hidden sm:inline">View visitor</span>
+-        </Link>
++        <div className="flex shrink-0 items-center gap-1">
++          <span className={cn("rounded-full px-2.5 py-0.5 text-xs font-medium", chatState.className)}>{chatState.label}</span>
++          <Link
++            href={`/business/ai-widget/visitors/${visitor.id}`}
++            className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "gap-1.5")}
++          >
++            <ExternalLink className="size-3.5" aria-hidden />
++            <span className="hidden sm:inline">View visitor</span>
++          </Link>
++        </div>
+       </div>
+ 
+-      {/* The scroller spans the pane (scrollbar at its edge). Messages sit in a centred column;
+-          day dividers are wider, 80% of the pane, centred on the same axis. */}
+-      <div className="min-h-0 flex-1 overflow-y-auto py-4">
++      {/* The scroller spans the pane (scrollbar at its edge); the conversation is a centred column. */}
++      <div className="min-h-0 flex-1 overflow-y-auto pb-6 pt-2">
+         <div className={MESSAGE_COLUMN}>
+         {!messages && status !== "failed" ? (
+           <div className="space-y-4 px-4">
+@@ -97,26 +110,25 @@ export function EmbedConversationView({ visitor, onBack }: Readonly<{ visitor: W
+           <p className="px-4 py-8 text-center text-sm text-muted-foreground">Couldn&apos;t load this conversation.</p>
+         ) : messages!.length === 0 ? (
+           <p className="px-4 py-8 text-center text-sm text-muted-foreground">No messages in this chat.</p>
+-        ) : null}
+-        </div>
+-        {messages && messages.length > 0 &&
+-          messages.map((m, i) => {
+-            const prev = messages[i - 1];
+-            const label = dayLabel(m.created_at);
+-            const showDate = !prev || dayLabel(prev.created_at) !== label;
++        ) : (
++          messages!.map((m, i) => {
++            const prev = messages![i - 1];
++            const label = dateSeparatorLabel(m.created_at);
++            const showDate = !prev || dateSeparatorLabel(prev.created_at) !== label;
+             return (
+               <div key={m.id}>
+-                {showDate && (
+-                  <div className="mx-auto w-4/5">
+-                    <DateDivider label={label} />
+-                  </div>
+-                )}
+-                <div className={MESSAGE_COLUMN}>
+-                  <TranscriptBubble message={m} />
+-                </div>
++                {showDate && <DatePill label={label} />}
++                <TranscriptBubble
++                  message={m}
++                  grouped={!showDate && isGroupedWith(m, prev)}
++                  visitorName={name}
++                  visitorInitials={visitor.name ? visitorInitials(visitor) : null}
++                />
+               </div>
+             );
+-          })}
++          })
++        )}
++        </div>
+       </div>
+ 
+       <div className="flex shrink-0 items-center gap-2 border-t border-border bg-muted/40 px-4 py-3 text-xs text-muted-foreground">
+diff --git a/frontend/src/app/business/messages/components/transcript-bubble.tsx b/frontend/src/app/business/messages/components/transcript-bubble.tsx
+index 80156fde..76ec8f07 100644
+--- a/frontend/src/app/business/messages/components/transcript-bubble.tsx
++++ b/frontend/src/app/business/messages/components/transcript-bubble.tsx
+@@ -1,68 +1,97 @@
+ "use client";
+ 
++import { User } from "lucide-react";
+ import { AlyOrbIcon } from "@/components/aly-orb-icon";
++import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+ import { RichTextMessage } from "@/components/chat/rich-text-message";
+ import { messageTime } from "@/components/chat/utils";
+ import { MessageMarkdown } from "@/app/ai/components/message-markdown";
++import { cn } from "@/lib/utils";
+ import type { VisitorMessage } from "@/app/business/ai-widget/apis/types";
+ 
+-/** `Sunday, September 13th`. */
+-export function dayLabel(iso: string): string {
+-  const date = new Date(iso);
+-  const day = date.getDate();
+-  const suffix = day % 10 === 1 && day !== 11 ? "st" : day % 10 === 2 && day !== 12 ? "nd" : day % 10 === 3 && day !== 13 ? "rd" : "th";
+-  const head = new Intl.DateTimeFormat(undefined, { weekday: "long", month: "long" }).format(date);
+-  return `${head} ${day}${suffix}`;
++/** A new sender block starts after this long, even from the same side. */
++const GROUP_WINDOW_MS = 5 * 60_000;
++
++/** Same side within five minutes — stacked under one name line, like a support inbox. */
++export function isGroupedWith(message: VisitorMessage, previous: VisitorMessage | undefined): boolean {
++  if (!previous || previous.role !== message.role) return false;
++  return new Date(message.created_at).getTime() - new Date(previous.created_at).getTime() < GROUP_WINDOW_MS;
+ }
+ 
+-/** A full-width hairline with the day in an outlined pill across it. */
+-export function DateDivider({ label }: Readonly<{ label: string }>) {
++/** A centred outlined pill between days — no rule behind it. */
++export function DatePill({ label }: Readonly<{ label: string }>) {
+   return (
+-    <div className="relative my-5 flex items-center justify-center">
+-      <div className="absolute inset-x-0 top-1/2 h-px bg-border" />
+-      <span className="relative rounded-full border border-border bg-card px-3 py-0.5 text-xs font-semibold text-foreground">
+-        {label}
+-      </span>
++    <div className="my-4 flex justify-center">
++      <span className="rounded-full border border-border bg-card px-3 py-0.5 text-xs text-muted-foreground">{label}</span>
+     </div>
+   );
+ }
+ 
+ /**
+- * One transcript turn in Ask Aly's style (`@/app/ai/components/chat-message`), MIRRORED for the
+- * business reading it: Ask Aly puts the person on the right because they are the one typing;
+- * here the business is the reader and its assistant is "our side", so the visitor's grey bubble
+- * sits left and the assistant's bubble-less prose sits right, with its mark beside it.
+- *
+- * The time goes where Ask Aly's copy/reply actions would — a read-only transcript has no
+- * actions, and "when did they ask" is what an owner scanning it needs.
++ * One transcript message in a support-inbox layout: a `Name · time` line above the bubble and
++ * the avatar at its bottom corner. The visitor sits left in grey; the AI assistant, which
++ * answers for the business, sits right in a light tint of the brand navy — the side an agent's
++ * own replies take. A tint, not the solid `--primary`: a long transcript in solid navy reads heavy.
++ * A grouped message drops the name line and keeps an empty avatar gutter so bubbles align.
+  */
+-export function TranscriptBubble({ message }: Readonly<{ message: VisitorMessage }>) {
++export function TranscriptBubble({
++  message,
++  grouped,
++  visitorName,
++  visitorInitials,
++}: Readonly<{
++  message: VisitorMessage;
++  grouped: boolean;
++  visitorName: string;
++  /** Null for an anonymous visitor — a person glyph instead. */
++  visitorInitials: string | null;
++}>) {
+   const time = messageTime(message.created_at);
++  const isBot = message.role === "assistant";
++
++  return (
++    <div className={cn("flex flex-col", isBot ? "items-end" : "items-start", grouped ? "mt-1" : "mt-4")}>
++      {!grouped && (
++        <p className={cn("mb-1 text-xs text-muted-foreground", isBot ? "mr-8" : "ml-8")}>
++          {isBot ? (
++            <>
++              {time} · <span className="font-medium text-primary">AI Assistant</span>
++            </>
++          ) : (
++            <>
++              <span className="font-medium text-foreground">{visitorName}</span> · {time}
++            </>
++          )}
++        </p>
++      )}
+ 
+-  if (message.role === "assistant") {
+-    return (
+-      <div className="flex w-full flex-row-reverse gap-3 py-4">
+-        {/* Ask Aly's AssistantMark chip, carrying the Aly orb. The orb draws past its box
+-            (scale-175), so it gets a smaller box than the chip. */}
+-        <span className="mt-0.5 hidden size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 sm:flex">
+-          <AlyOrbIcon className="size-4" />
++      <div className={cn("flex max-w-[80%] items-end gap-2", isBot && "flex-row-reverse")}>
++        <span className="size-6 shrink-0">
++          {!grouped &&
++            (isBot ? (
++              // The orb draws past its box (scale-175), so it gets a smaller one than the slot.
++              <span className="flex size-6 items-center justify-center">
++                <AlyOrbIcon className="size-4" />
++              </span>
++            ) : (
++              <Avatar className="size-6">
++                <AvatarFallback className="bg-primary/10 text-[10px] font-medium text-primary">
++                  {visitorInitials ?? <User className="size-3" aria-hidden />}
++                </AvatarFallback>
++              </Avatar>
++            ))}
+         </span>
+-        <div className="flex min-w-0 max-w-[85%] flex-col items-end gap-1.5">
+-          <div className="w-full">
+-            <MessageMarkdown text={message.content} />
+-          </div>
+-          <span className="text-[11px] text-muted-foreground">AI Assistant · {time}</span>
+-        </div>
+-      </div>
+-    );
+-  }
+ 
+-  return (
+-    <div className="flex flex-col items-start gap-1.5 py-4">
+-      <div className="max-w-[85%] rounded-2xl rounded-bl-md bg-muted px-4 py-2.5 text-[0.9375rem] leading-relaxed text-foreground">
+-        <RichTextMessage body={message.content} />
++        {isBot ? (
++          <div className="min-w-0 rounded-2xl bg-primary/10 px-3.5 py-2">
++            <MessageMarkdown text={message.content} className="text-sm leading-relaxed" />
++          </div>
++        ) : (
++          <div className="min-w-0 rounded-2xl bg-muted px-3.5 py-2 text-sm leading-relaxed text-foreground">
++            <RichTextMessage body={message.content} />
++          </div>
++        )}
+       </div>
+-      <span className="text-[11px] text-muted-foreground">{time}</span>
+     </div>
+   );
+ }

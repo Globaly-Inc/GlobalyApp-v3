@@ -2,6 +2,7 @@ import { joinParts } from "@/app/(web)/components/profile/profile-data";
 import type { BusinessProfile } from "@/app/business/apis/types";
 import type { Country } from "@/app/geo/apis";
 import { authApi } from "@/app/auth/apis";
+import type { AuthUser } from "@/app/auth/apis/types";
 import { BUSINESS_TYPE_LABELS } from "../const";
 
 /** Falls back to the raw enum value so an unmapped type still reads as something. */
@@ -41,4 +42,34 @@ export async function coursePublicHref(name: string, id: string): Promise<string
   } catch {
     return path;
   }
+}
+
+/** Whether `/business/profile/:id` means an institution. Business and institution ids come from
+ * separate sequences and can collide, so the id alone is ambiguous for a dual-role user — the
+ * active org (`orgId`) settles it when both lists hold that id. */
+export function isInstitutionOrg(
+  user: Pick<AuthUser, "businesses" | "institutions" | "orgId"> | null | undefined,
+  id: number,
+): boolean {
+  const inst = user?.institutions.find((i) => i.id === id);
+  const biz = user?.businesses.find((b) => b.id === id);
+  if (inst && biz) return inst.org_id === user?.orgId;
+  return !!inst;
+}
+
+export type DegreeTone = "doctoral" | "research" | "postgrad" | "undergrad" | "other";
+
+/** Short badge for a course's degree level ("Master (Research)" → MRes) and the colour family it
+ * belongs to. Free text from extraction, so it matches on keywords; anything unknown keeps its
+ * first three letters. */
+export function degreeBadge(level: string | null): { label: string; tone: DegreeTone } | null {
+  const l = level?.trim();
+  if (!l) return null;
+  if (/ph\.?d|doctor|dphil/i.test(l)) return { label: "PhD", tone: "doctoral" };
+  if (/research|mphil|mres/i.test(l)) return { label: "MRes", tone: "research" };
+  if (/master|postgrad|mba|msc|\bma\b/i.test(l)) return { label: "PG", tone: "postgrad" };
+  if (/bachelor|undergrad|bsc|\bba\b/i.test(l)) return { label: "UG", tone: "undergrad" };
+  if (/diploma/i.test(l)) return { label: "Dip", tone: "other" };
+  if (/cert/i.test(l)) return { label: "Cert", tone: "other" };
+  return { label: l.slice(0, 3), tone: "other" };
 }

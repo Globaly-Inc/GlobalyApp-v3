@@ -17,7 +17,15 @@ export type SocialLinks = {
 
 export type CoverPosition = { x: number; y: number; zoom: number };
 
+/** A labelled link beyond the fixed platform columns (Weibo, Medium, Bluesky…). */
+export type OtherSocialLink = { label: string; url: string };
+
+/** What the Social links dialog saves — `other_social_links` is institutions only. */
+export type SocialLinksPatch = Partial<SocialLinks> & { other_social_links?: OtherSocialLink[] | null };
+
 export type BusinessProfile = SocialLinks & {
+  /** Institutions only — first filled from extraction, editable in the Social links dialog. */
+  other_social_links?: OtherSocialLink[] | null;
   id: number;
   schema_name: string;
   business_name: string;
@@ -26,6 +34,9 @@ export type BusinessProfile = SocialLinks & {
   business_category_id: number | null;
   /** Extraction job this profile was linked to (self-triggered or promoted). Null = no extracted data yet. */
   source_job_id: string | null;
+  /** Set on a branch that shares its head office's website — it uses that extraction (named here)
+   * instead of running its own. Optional: mock/older responses omit it. */
+  extraction_parent_name?: string | null;
   /**
    * Institutions only — the ownership sector, "Public" or "Private". Absent on a business, which
    * is classified by `business_category_id` instead.
@@ -69,7 +80,7 @@ export type BusinessProfilePatch = Partial<
     | "is_published" | "show_team_public" | "public_visibility" | "currency" | "cover_position"
     | "linkedin_url" | "facebook_url" | "instagram_url" | "twitter_url" | "youtube_url" | "whatsapp_url"
     | "tiktok_url" | "threads_url" | "messenger_url" | "telegram_url" | "line_url" | "viber_url"
-    | "gallery_images" | "video_urls" | "registration_licenses"
+    | "gallery_images" | "video_urls" | "registration_licenses" | "other_social_links"
   >
 >;
 
@@ -136,6 +147,7 @@ export type ExtractionCounts = {
   fees: number;
   intakes: number;
   eligibility: number;
+  scholarships: number;
   units: number;
   study_options: number;
   accreditations: number;
@@ -143,23 +155,31 @@ export type ExtractionCounts = {
 };
 
 /** null when no extraction has been started (source_job_id unset, or only the placeholder). */
+export type ExtractionStageState = "waiting" | "processing" | "done";
+
+/** The three stages the portal names, derived server-side from the job's pipeline progress. */
+export type ExtractionStages = Record<"crawling" | "organising" | "flagging", ExtractionStageState>;
+
 export type ExtractionStatus = {
   status: string;
   progress_pct: number;
   counts: ExtractionCounts;
+  stages: ExtractionStages;
+  pages_found: number;
+  started_at: string | null;
 } | null;
 
 /** Mirrors backend lib/url-categories.ts SITE_URL_CATEGORIES exactly. */
 export type SiteUrlCategory =
   | "overview" | "about_us" | "contact_us" | "course" | "branches" | "agents" | "fees"
-  | "study_units" | "study_options" | "intake" | "eligibility" | "accreditations" | "other";
+  | "study_units" | "study_options" | "intake" | "eligibility" | "accreditations" | "scholarships" | "other";
 
 export type SiteUrl = {
   id: string;
   url: string;
   source: string;
   category: SiteUrlCategory | null;
-  category_source: "guided" | "heuristic" | "llm" | "admin" | null;
+  category_source: "guided" | "heuristic" | "llm" | "jev" | "admin" | null;
   created_at: string;
 };
 
@@ -208,6 +228,9 @@ export type OnboardingProgress = {
   steps: OnboardingStep[];
   completed: number;
   total: number;
+  /** Play the welcome splash? Due (an onboarding invite was accepted) and not yet seen. Not a step —
+   *  nothing to tick off. The server decides; no URL param is involved. */
+  showWelcome: boolean;
 };
 
 export type WidgetAnalyticsMonth = {

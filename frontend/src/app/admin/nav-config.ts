@@ -15,6 +15,7 @@ import {
   Database,
   FileCheck,
   Upload,
+  FileSpreadsheet,
   Brain,
   Bot,
   Shield,
@@ -43,6 +44,8 @@ export interface AdminNavGroup {
   icon: LucideIcon;
   items: AdminNavItem[];
   roles?: AdminRole[];
+  /** Pinned to the bottom of the rail, as in the business portal. */
+  pinBottom?: boolean;
 }
 
 const GENERAL_ADMIN: AdminRole[] = ["super_admin", "admin", "moderator"];
@@ -72,6 +75,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     items: [
       { icon: FileCheck, label: "All Extractions", href: "/admin/data/all-extractions" },
       { icon: Upload, label: "AgentCIS Import", href: "/admin/data/agentcis-import" },
+      { icon: FileSpreadsheet, label: "Spreadsheet Import", href: "/admin/data/spreadsheet-import" },
       { icon: Brain, label: "AI Memory", href: "/admin/data/ai-memory" },
       { icon: Bot, label: "AI Knowledge", href: "/admin/data/ai-knowledge" },
     ],
@@ -117,6 +121,7 @@ export const ADMIN_NAV_GROUPS: AdminNavGroup[] = [
     icon: Settings,
     label: "Settings",
     roles: GENERAL_ADMIN,
+    pinBottom: true,
     items: [{ icon: Settings, label: "Integrations", href: "/admin/settings/integrations" }],
   },
 ];

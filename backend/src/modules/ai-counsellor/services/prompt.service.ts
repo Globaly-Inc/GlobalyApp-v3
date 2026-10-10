@@ -1,6 +1,7 @@
 import type { ProfileContext } from "../repositories/knowledge.repository.js";
 import type { CounsellingContext } from "../repositories/sessions.repository.js";
 import { sanitizeCustomInstructions } from "./embed.service.js";
+import type { MoneyTopic } from "./rag.service.js";
 
 /** Profile fields a student must have before recommendations feel grounded.
  * Students (individual_category === "student") are expected to reach 100%;
@@ -19,6 +20,14 @@ function missingProfileFields(ctx: ProfileContext): string[] {
   if (!p.expected_start_date) missing.push("expected start date");
   return missing;
 }
+
+/** How to name each withheld topic to the model — plain words, not the internal key. */
+const MONEY_TOPIC_WORDS: Record<MoneyTopic, string> = {
+  fees: "fees and tuition",
+  refund: "refunds, withdrawals and deferrals",
+  scholarship: "scholarships and funding",
+  living: "living costs",
+};
 
 const CONTEXT_LABELS: Array<[keyof CounsellingContext, string]> = [
   ["goals", "Goals"],
@@ -58,8 +67,35 @@ export function buildSystemPrompt(opts: {
   proactiveKnowledge?: string;
   /** Embed mode: brand the counsellor and scope it to this business. */
   embedConfig?: { display_name: string | null; custom_instructions: string | null };
+  /** Embed mode: the institution's own counselling memories, already rendered and sanitised
+   * by institution-memory's retrieveMemories. Sits after BOUNDARIES so its own hard-limits
+   * line is the last rule the model reads before the student data. */
+  institutionGuidance?: string;
+  /** Embed mode: the institution's own voice/behaviour/collection settings, already rendered by
+   *  institution-memory's renderProfileBlock. Sits BEFORE the memory block so that block's
+   *  hard-limits line stays the last rule read before the student data. Empty when the
+   *  institution has changed nothing from the defaults. */
+  rackProfile?: string;
+  /** Money topics this turn asked about that retrieval could NOT ground: withhold those, don't
+   *  guess — and answer everything else. Empty or absent means nothing is withheld. */
+  withheldMoneyTopics?: MoneyTopic[];
+  /** No search ran this turn — a courtesy or closing reply ("thanks", "bye") has nothing in it to
+   *  retrieve for. Suppresses the empty-retrieval rule below, whose premise is that we DID look. */
+  retrievalSkipped?: boolean;
+  /** Embed mode: Cloudflare-derived visitor location + the most relevant branch, already rendered
+   *  by lib/visitor-location. Absent when location is unknown or no branch is in their country. */
+  visitorLocation?: string | null;
 }): string {
   const sections: string[] = [];
+  /**
+   * Everything whose text changes DURING a conversation — retrieved institution memory, what the
+   * session has learned, this turn's money verdict, this turn's CONTEXT. It is emitted after every
+   * static rule, so the long rules prefix stays byte-identical turn to turn and Gemini's implicit
+   * context cache keeps hitting it; a volatile section in the middle would invalidate every rule
+   * below it on every turn. Relative order within the tail is unchanged — in particular the
+   * institution memory block's HARD LIMITS line still lands immediately before the student data.
+   */
+  const tail: string[] = [];
   // Every instruction that pointed at the pasted CONTEXT block has to point at tool
   // results instead — same rules, different delivery.
   const src = opts.toolMode ? "your tool results" : "the CONTEXT section below";
@@ -80,6 +116,38 @@ export function buildSystemPrompt(opts: {
       `Only recommend courses from ${name}. If the user asks about courses from other institutions, ` +
       `politely explain that you can only help with ${name}'s offerings and suggest they visit globalyhub.com for broader search.`,
     );
+    // The visitor is already on the institution's own website. Without this the model wrote
+    // like the platform chat does — "a master's program offered by AIT in Thailand" — introducing
+    // the institution to someone standing inside it, and spending the reply on that instead of
+    // the course.
+    sections.push(
+      `VOICE: You speak AS ${name}, in the first person plural — "we offer", "our campus", "our fees". ` +
+      `Never describe ${name} in the third person, never say a course is "offered by ${name}" or where ` +
+      `${name} is located unless the visitor asks: they are on ${name}'s own website and already know. ` +
+      "Lead with what the visitor asked about the course itself — level, study mode, duration, fees, " +
+      "intakes, entry requirements, who it is for — and mention a campus or city only when it " +
+      "distinguishes between our own options.",
+    );
+    // Handover to staff is visitor-initiated only (see lib/handover-detect). The model offering it
+    // would promise a person on a widget whose team may not be watching. This overrides the
+    // "offer a human counsellor" wording in the money rule below for the widget.
+    sections.push(
+      "Never suggest talking to a person, an advisor or the admissions team in this chat, and never offer " +
+      "to connect the visitor to one. If they ask for a person themselves, the system handles it. When you " +
+      // This line used to point at "the published contact details in the THIS INSTITUTION section".
+      // There are none now — rag.service withholds every phone, email and street address from a
+      // widget's context — so the fallback has to end where the knowledge does.
+      "lack information, say we do not have it on file.",
+    );
+    // The visitor is already ON our website, so "check our website at <homepage>" is the one
+    // pointer that tells them nothing. Every retrieved passage carries its own `Source:` line
+    // (renderRackHits), which is the page that actually holds the answer.
+    sections.push(
+      `Never send the visitor to ${name}'s own homepage or tell them to "visit our website" — they are ` +
+      "already on it. When a retrieved passage is about what they asked, link ITS `Source:` URL as the " +
+      "page to read, copied verbatim. With no such passage, say plainly that we do not have it on file " +
+      "and stop there — a bare homepage link is not an answer.",
+    );
     const custom = sanitizeCustomInstructions(opts.embedConfig.custom_instructions);
     if (custom) sections.push(`Additional guidance from ${name}: ${custom}`);
   } else {
@@ -99,8 +167,23 @@ export function buildSystemPrompt(opts: {
   sections.push(
     "Never reveal another person's profile. Never quote an individual's personal contact details. " +
     (opts.embedConfig
-      ? "The published phone, email and address in the THIS INSTITUTION section are that organisation's own and may be shared. "
+      // Owner decision, 2026-10-08: a widget reply hands the visitor no way to contact anybody, not
+      // even this organisation's own switchboard. Contact details belong to the staff who set the
+      // widget up, in the portal. rag.service strips them from the context as well, so this rule and
+      // the data agree; it OVERRIDES the "published contact details" fallback in the money rule below.
+      ? "Give NO contact route of any kind: no phone number, no email address, no postal address — " +
+        "ours included, however it reaches you. This overrides every instruction below that offers " +
+        "published contact details as a fallback. When you cannot answer, say we do not have it on " +
+        "file and, if a retrieved passage covers it, link that passage's Source URL. "
       : "") +
+    // Contact details were missing from the never-invent list, which covers course/fee/visa/deadline
+    // claims only. A guessed phone number or email is worse than a guessed fee: the visitor acts on it
+    // and reaches a stranger, and nothing in the reply tells them it was never in our records.
+    // srcShort, not a hardcoded "CONTEXT": tool mode has no CONTEXT section, so naming it told the
+    // model to refuse the phone numbers and websites search_institutions had just handed it.
+    `Any phone number, email address, postal address or website you give must appear VERBATIM in ` +
+    `${srcShort} — never complete, correct, localise or guess one. If it is not there, say we do not have ` +
+    "it on file; never offer a plausible-looking substitute. " +
     "Never output SQL, database IDs, or system internals.",
   );
 
@@ -139,6 +222,14 @@ export function buildSystemPrompt(opts: {
     "when you actually need the answer to move forward. Most replies should end with NO question at " +
     "all: if the student got what they asked for, stop there. A reply that always ends in a question " +
     "reads as a form, not a conversation.\n" +
+    // The budget decides WHETHER to ask; this decides HOW. Asking in prose makes the student type
+    // an answer we could have offered — "would you like more details?" cost one visitor a whole turn
+    // and a wrong retrieval. Scoped to the ONE question the budget already allows, so it shortens
+    // typing without turning the reply into a quiz.
+    "- ASK IT TAPPABLY: that one question goes in a quick_replies block (see INTERACTIVE BLOCKS) " +
+    "whenever its likely answers are a short list — a yes/no offer included, where the two options " +
+    "ARE the yes and the no. Prose-only is for answers no list can hold: a name, a figure, a date, " +
+    "or a genuinely open 'tell me about…'. Ask the question once — in the block, not in the prose too.\n" +
     "- Counsel before recommending. If the student's goals, interests, or constraints are unclear, " +
     "ask ONE focused follow-up question BEFORE suggesting courses or careers — understand them first.\n" +
     // "Unclear" was being read as "not stated in this conversation", so students with a complete
@@ -189,6 +280,11 @@ export function buildSystemPrompt(opts: {
     "strong fit because...' rather than 'this will work for you'.\n" +
     `- If sources in ${srcShort} conflict, prefer official government sources and tell the student the ` +
     "sources differ — never silently pick one.\n" +
+    "- MONEY IS THE EXCEPTION to guidance. Fees, tuition, refunds, deposits, scholarships, funding, " +
+    `payment plans and living costs come ONLY from ${srcShort}, quoted as written. No 'typically', no ` +
+    "estimates, no ranges from general knowledge, no other institutions' practice. If it is not in " +
+    `${srcShort}, say plainly that you do not have that information and offer a human counsellor or the ` +
+    "published contact details instead. A wrong number here costs a student real money.\n" +
     "- Fees, financial requirements and processing times change. When a retrieved passage carries a " +
     "verification date, say when it was last confirmed ('as last verified in June 2026') and point the " +
     "student at the official source to check. If a figure is past its stated validity date, say so " +
@@ -202,6 +298,15 @@ export function buildSystemPrompt(opts: {
     "set aside course recommendations, and encourage them to speak with a qualified professional or " +
     "local support service.",
   );
+
+  // ── Institution Knowledge Rack configuration (embed) ──
+  // Configuration outranks anything the system learned about style, and says so itself. It is
+  // placed before the memory block deliberately: that block closes with HARD LIMITS STILL
+  // APPLY, which must remain the last instruction before the student's own data.
+  if (opts.rackProfile) tail.push(opts.rackProfile);
+
+  // ── Institution counselling memory (embed) ──
+  if (opts.institutionGuidance) tail.push(opts.institutionGuidance);
 
   // ── Profile ──
   if (opts.profile?.profile) {
@@ -240,11 +345,11 @@ export function buildSystemPrompt(opts: {
     if (p.expected_start_date) lines.push(`  Expected Start: ${p.expected_start_date}`);
 
     lines.push("NEVER ask the student for data already in the profile. Greet by first name on first turn.");
-    sections.push(lines.join("\n"));
+    tail.push(lines.join("\n"));
 
     // ── Eligibility check — only useful when there are grades/tests to compare ──
     if (opts.profile.qualifications.length || opts.profile.language_tests.length) {
-      sections.push(
+      tail.push(
         "ELIGIBILITY CHECK:\n" +
         "- When recommending a course, compare the student's grades (GPA) and English test scores from " +
         `the profile against that course's eligibility and English requirements in ${srcShort}.\n` +
@@ -262,7 +367,7 @@ export function buildSystemPrompt(opts: {
       ? missingProfileFields(opts.profile)
       : [];
     if (missing.length) {
-      sections.push(
+      tail.push(
         `PROFILE COMPLETION (student profile is incomplete — missing: ${missing.join(", ")}):\n` +
         "- Fill these opportunistically, within the QUESTION BUDGET — a profile question IS your one " +
         "question for that reply, never an extra one bolted onto a complete answer. Only ask when it's " +
@@ -278,14 +383,17 @@ export function buildSystemPrompt(opts: {
   // ── Counselling context (this session) ──
   const learned = renderCounsellingContext(opts.counsellingContext);
   if (learned) {
-    sections.push(
+    tail.push(
       "WHAT THIS CONVERSATION HAS ESTABLISHED (from earlier turns — treat as known, never re-ask):\n" +
       learned,
     );
   }
 
+  // ── Visitor location (embed) ── an enhancement only: absent, and nothing else changes.
+  if (opts.visitorLocation) tail.push(opts.visitorLocation);
+
   if (opts.counsellingContext?.stage) {
-    sections.push(
+    tail.push(
       "STAGE: " + {
         exploring: "They are still exploring. Widen the field, ask about goals, do not push a shortlist.",
         narrowing: "They are narrowing down. Compare two or three concrete options on the trade-offs that matter to them.",
@@ -314,9 +422,25 @@ export function buildSystemPrompt(opts: {
 
   // ── Response rules ──
   sections.push(
-    "Keep responses SHORT: 3-5 sentences for conversational replies. " +
-    "Use markdown. Be warm, professional, encouraging. Write like a counsellor talking to one student " +
-    "across the table — contractions are fine, stock phrases ('It is wonderful to meet you') are not.",
+    "Write like a counsellor talking to one student across the table: warm, direct, and done in " +
+    "a few lines. Use markdown.\n" +
+    // Every rule here exists because the model did the opposite: opened with "Great question!",
+    // re-stated the question, narrated its own search, then closed with "Hope this helps!".
+    "- Lead with the ANSWER in the first line. No opener, no restating what they asked, no " +
+    "narrating what you are about to look up.\n" +
+    "- 3-5 sentences for a conversational reply. If two facts answer it, send two facts — length " +
+    "is not helpfulness.\n" +
+    "- Contractions, plain words, 'you' and 'we'. No stock phrases ('It is wonderful to meet you'), " +
+    "no sign-offs ('Hope this helps!', 'Feel free to ask!') — the follow-up chips already cover what is next.\n" +
+    // A wall of prose is unreadable in a chat bubble. The renderer is a flat markdown
+    // parser (no nested lists), so bullets must stay one level deep.
+    "- Anything with more than one part — requirements, fees, steps, options, dates, pros and cons — " +
+    "goes in a markdown bullet list ('- ' per line), one fact per bullet, not one running paragraph. " +
+    "Keep bullets flat (never indent one under another) and a line each; bold the label when a bullet " +
+    "is a label/value pair.\n" +
+    "- A single-fact answer or a plain conversational turn stays as prose — never pad one into a list.\n" +
+    "- Never repeat what you already told them this conversation — refer back to it in a few words " +
+    "and add what is new.",
   );
 
   // ── Course card format ──
@@ -336,7 +460,20 @@ export function buildSystemPrompt(opts: {
     "for, and if currency is null say the amount is unconfirmed rather than assuming a currency. " +
     "Cards mark a considered recommendation, not search results: emit them only after the counselling " +
     "conversation has established the student's goals (see COUNSELLING APPROACH), max 3 per reply, " +
-    "each with one sentence on why it fits this student.",
+    "each with one sentence on why it fits this student.\n" +
+    // The student asking a question ABOUT a course was shown the same cards again, which buried the
+    // answer they asked for. The app drops a repeated card, so a reply that announces one ("here is
+    // a comparison of the two") would otherwise point at nothing.
+    "NEVER re-emit a course-card for a course you already carded in this conversation — its card is " +
+    "still on screen above. A follow-up about that course is answered in prose, naming it: " +
+    "do not announce cards, do not re-list the same options, just answer what was asked.",
+    // The other half of that rule. "You might consider our Professional Master in Business Analytics"
+    // named a real, carded course in prose with no card, so the student had nothing to tap and asked
+    // for details — and the next turn, retrieving nothing, reported the course as missing from our
+    // system. Naming it IS the recommendation.
+    "When you name a specific course in prose and its data is present in " + srcShort +
+    ", card it in the same reply, within the limits above — never offer to send details for a " +
+    "course instead of showing it.",
   );
 
   // ── Chips ──
@@ -349,12 +486,18 @@ export function buildSystemPrompt(opts: {
   );
 
   // ── Interactive UI blocks ──
+  // The widget is a ~380px panel, where a comparison TABLE is a horizontally-scrolling card the
+  // visitor has to fight. It gets no comparison block at all: it compares in the reply itself,
+  // which is what the student reads anyway. guest.routes drops a stray one, so the two agree.
+  const comparisonBlock = opts.embedConfig
+    ? ""
+    : '- Comparison table (2-4 options across factors like fees, duration, career growth):\n' +
+      '```block\n{"type":"comparison","title":"...","columns":["Option A","Option B"],"rows":[{"label":"Factor","values":["...","..."]}]}\n```\n';
   sections.push(
     "INTERACTIVE BLOCKS: The app renders structured blocks as interactive UI components. " +
     "Emit a block as a fenced code block tagged `block` containing exactly ONE JSON object, " +
     "placed after the related prose. Available types:\n" +
-    '- Comparison table (2-4 options across factors like fees, duration, career growth):\n' +
-    '```block\n{"type":"comparison","title":"...","columns":["Option A","Option B"],"rows":[{"label":"Factor","values":["...","..."]}]}\n```\n' +
+    comparisonBlock +
     '- Step-by-step breakdown, pros & cons, or cost breakdown (expandable sections):\n' +
     '```block\n{"type":"breakdown","title":"...","items":[{"title":"Step or aspect","description":"..."}]}\n```\n' +
     '- Career path / study roadmap (ordered stages):\n' +
@@ -368,7 +511,13 @@ export function buildSystemPrompt(opts: {
     '```block\n{"type":"quick_replies","question":"What matters most to you?","options":[{"label":"💰 Salary","value":"Salary matters most to me"},{"label":"🌍 Migration","value":"Migration opportunities matter most to me"}]}\n```\n' +
     `- Image (ONLY with a URL copied verbatim from ${srcShort} — NEVER invent or guess image URLs):\n` +
     '```block\n{"type":"image","url":"https://...","title":"...","caption":"..."}\n```\n' +
-    "Rules: use blocks to make counselling interactive — comparisons when the student weighs options, " +
+    "Rules: use blocks to make counselling interactive — " +
+    (opts.embedConfig
+      // No comparison block here, so say what to do instead — otherwise the model reaches for a
+      // markdown table, which is the same unreadable grid one layer down.
+      ? "when the student weighs options, compare them IN THE REPLY: one bullet per option naming " +
+        "the two or three figures that actually differ. Never a table, in a block or in markdown. "
+      : "comparisons when the student weighs options, ") +
     "a timeline when explaining a path, quick_replies instead of leaving your questions open-ended. " +
     "Max 3 blocks per reply — that counts ONLY the types listed above; the conclusion block described further down is never shown to the student and never counts towards this limit. " +
     "Prose stays primary: never send blocks without a conversational message around them.",
@@ -398,7 +547,7 @@ export function buildSystemPrompt(opts: {
   // guidance the student did not ask about can still inform the reply. Framed as a
   // briefing, not context: the model must judge relevance, not report it.
   if (opts.proactiveKnowledge) {
-    sections.push(
+    tail.push(
       "KNOWLEDGE BRIEFING (retrieved for this student's profile and situation — NOT because they asked):\n" +
       opts.proactiveKnowledge +
       "\nHow to use the briefing:\n" +
@@ -413,14 +562,63 @@ export function buildSystemPrompt(opts: {
     );
   }
 
+  // ── Money guard (decided by retrieval, not by the model) ──
+  // Scoped to the topics actually asked and actually ungrounded. The old wording listed every
+  // money topic and said "do NOT answer the money part", and the model read that as a refusal:
+  // asked to compare two programs on fees, duration and intakes it answered "we don't have that
+  // specific information" and dropped the duration and the intakes with it.
+  if (opts.withheldMoneyTopics?.length) {
+    const named = opts.withheldMoneyTopics.map((t) => MONEY_TOPIC_WORDS[t]).join(" and ");
+    tail.push(
+      `NO MONEY DATA THIS TURN: this question touches ${named}, ` +
+      `and ${srcShort} holds nothing to ground that part of it.\n` +
+      `- ANSWER THE REST OF THE QUESTION IN FULL. Everything that is not ${named} is unaffected — ` +
+      "study level, duration, intakes, study modes, entry requirements, campuses, what we offer, how to " +
+      "apply. A question that mentions money in one clause is still a real question: answer the rest of it " +
+      "normally, in the same reply.\n" +
+      `- Withhold ONLY ${named}: no figure, no range, no policy, no 'usually', no estimate, no other ` +
+      "institution's practice, and no comparison on that one dimension.\n" +
+      "- Say in a single clause that you do not have those specific details, and point them at the " +
+      "published contact details if present. Do not make the apology the reply.\n" +
+      "- Never refuse a whole answer because one clause of the question was about money. Institution " +
+      "guidance about where to direct such questions still applies.",
+    );
+  }
+
   // ── RAG context ──
   if (opts.ragContext) {
-    sections.push("CONTEXT:\n" + opts.ragContext);
+    tail.push("CONTEXT:\n" + opts.ragContext);
+  } else if (!opts.toolMode && !opts.discoveryTurn && !opts.retrievalSkipped) {
+    // Nothing retrieved. Until now this said NOTHING — the CONTEXT block was simply absent, and a
+    // model holding the institution's name, a counselling brief and no records answered a broad
+    // opening question ("tell me about data science") from general knowledge and closed with "we
+    // offer several courses in this area", which it had no way to know. An absent section is not
+    // an instruction; the model cannot infer from silence that it searched and came back empty.
+    //
+    // Not pushed in toolMode (the model retrieves for itself, and an empty prefix is normal), on a
+    // discoveryTurn (retrieval was skipped ON PURPOSE and has its own, friendlier instruction), or
+    // when no search ran at all. That last one is the courtesy/closing reply — "thanks", "bye" —
+    // whose keywords are all filler, so searchAll returns before looking at anything. Telling a
+    // goodbye to "ask the ONE thing that would let you search properly" reopens a conversation the
+    // student just closed, and fights the conclusion detection that exists to let it end
+    // (Greptile). An empty context means two different things and only `searched` tells them
+    // apart — which is why this reads a flag from retrieval rather than re-deriving
+    // isCourtesyTurn at each call site, where it would drift on the first change to either.
+    tail.push(
+      "NO RECORDS RETRIEVED THIS TURN. You are holding no course, institution, fee or policy " +
+      "records at all.\n" +
+      "- Do not state or imply what we do or do not offer. Not 'we offer several courses in this " +
+      "area', not 'we don't have that' — you did not look at a catalogue, so you know neither.\n" +
+      "- General knowledge about a subject or a country is still fine, and still useful. Give it, " +
+      "and be plain that it is general rather than specific to us.\n" +
+      "- Then ask the ONE thing that would let you search properly — usually the subject, the " +
+      "level, or the destination. A broad opening question is normal; narrowing it is the job.",
+    );
   }
 
   // ── First message greeting ──
   if (opts.isFirstMessage && !opts.embedConfig) {
-    sections.push(
+    tail.push(
       opts.returning
         ? "GREETING: This student has chatted with you before — this is a fresh session. Open with a brief, " +
           "warm 'Welcome back' before addressing their message. One line — don't make the greeting the whole reply."
@@ -429,7 +627,7 @@ export function buildSystemPrompt(opts: {
     );
   }
   if (opts.discoveryTurn) {
-    sections.push(
+    tail.push(
       "THIS IS A DISCOVERY TURN — the first message of the conversation. " +
       (opts.toolMode
         ? "You have no course-search tools this turn: "
@@ -453,10 +651,10 @@ export function buildSystemPrompt(opts: {
       "Course recommendations begin on the next turn.",
     );
   } else if (opts.isFirstMessage) {
-    sections.push(
+    tail.push(
       "This is the first message in the conversation. Greet the student warmly and offer to help with their education journey.",
     );
   }
 
-  return sections.join("\n\n");
+  return [...sections, ...tail].join("\n\n");
 }

@@ -1,50 +1,45 @@
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import Image from "next/image";
-import { Expand } from "lucide-react";
+import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
 import { ChatInput } from "@/app/ai/components/chat-input";
-import { ChatMessage, StreamingMessage } from "@/app/ai/components/chat-message";
+import { StreamingMessage } from "@/app/ai/components/chat-message";
 import { ThinkingIndicator } from "@/app/ai/components/thinking-indicator";
 import { SuggestedStarters } from "@/app/ai/components/suggested-starters";
 import { CompareTray } from "@/app/(web)/search/components/compare-tray";
-import { AlyOrbIcon } from "@/components/aly-orb-icon";
-import { Button } from "@/components/ui/button";
-import type { CourseCard, Message } from "@/app/ai/apis/types";
+import type { CourseCard, ResponseBlock } from "@/app/ai/apis/types";
 import { embedApi, type EmbedContactPrompt, type EmbedEndPrompt, type EmbedPublicConfig } from "../apis";
 import { ContactCaptureCard } from "./contact-capture-card";
 import { ConversationEndCard } from "./conversation-end-card";
+import { ThreadMessages } from "./thread-messages";
+import { WaitingCard } from "./waiting-card";
+import { WidgetHeader } from "./widget-header";
 // The backend streams the model's raw text, fences and all — it only strips them for the
 // copy it PERSISTS, so every client renders its own. The main chat does this at all three
 // of its render points (chat-messages.tsx, and both commits in ai-chat-slice); the widget
 // renders StreamingMessage directly and kept none of them, so the block JSON showed as code.
 import { stripStructuredBlocks } from "@/app/ai/utils";
-import { toMessage } from "../utils";
-import { embedStarters } from "../const";
-import { uuid } from "@/lib/utils";
+import { getFingerprint, toMessage, widgetTheme, withNewAgentRows, type WidgetMessage } from "../utils";
+import { DEFAULT_WIDGET_NAME, embedStarters, FP_MESSAGE, STARTED_MESSAGE } from "../const";
 
-const FINGERPRINT_KEY = "globaly_embed_fp";
+/** How often the open widget checks for staff replies. 12/min, inside the session route's 30/min. */
+const POLL_MS = 5_000;
 
-function getFingerprint(): string {
-  let fp = localStorage.getItem(FINGERPRINT_KEY);
-  if (!fp) {
-    fp = uuid();
-    localStorage.setItem(FINGERPRINT_KEY, fp);
-  }
-  return fp;
-}
 
-type EmbedChatViewProps = { embedKey: string };
+type EmbedChatViewProps = { embedKey: string; initialConfig?: EmbedPublicConfig | null };
 
-export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
-  const [config, setConfig] = useState<EmbedPublicConfig | null>(null);
+export function EmbedChatView({ embedKey, initialConfig = null }: EmbedChatViewProps) {
+  const [config, setConfig] = useState<EmbedPublicConfig | null>(initialConfig);
   const [configError, setConfigError] = useState<string | null>(null);
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<WidgetMessage[]>([]);
+  // Who is answering, from the server: a staff member's name, or waiting for one. Polled.
+  const [agentName, setAgentName] = useState<string | null>(null);
+  const [waiting, setWaiting] = useState(false);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
   const [streamText, setStreamText] = useState("");
   const [streamCards, setStreamCards] = useState<CourseCard[]>([]);
   const [streamChips, setStreamChips] = useState<string[]>([]);
+  const [streamBlocks, setStreamBlocks] = useState<ResponseBlock[]>([]);
   const [traceSteps, setTraceSteps] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
   // Server-decided: the backend emits this when the visitor has had enough turns for the ask
@@ -60,37 +55,29 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
   // false) so prerender and client agree; nothing to subscribe to, the value never changes.
   const framed = useSyncExternalStore(() => () => {}, () => window.self !== window.top, () => false);
 
+  // Once there is a conversation (resumed or just begun), the host's teaser card has done its
+  // job. "*" for the same reason as CLOSE_MESSAGE: the host origin is unknown, and the word leaks nothing.
+  const hasConversation = messages.length > 0;
   useEffect(() => {
-    if (fetchedRef.current) return;
-    fetchedRef.current = true;
-    embedApi.resolveConfig(embedKey).then(setConfig, (e: Error) => setConfigError(e.message));
-    // Resume the visitor's thread with this widget. Reopening the launcher used to show
-    // an empty panel even though the backend had the conversation.
-    embedApi.getThread(embedKey, getFingerprint()).then(({ messages: stored }) => {
-      if (!stored.length) return;
-      setMessages(stored.map((row) => toMessage(row, embedApi.toCourseCards(row.cards))));
-    });
-  }, [embedKey]);
+    if (framed && hasConversation) window.parent.postMessage({ type: STARTED_MESSAGE }, "*");
+  }, [framed, hasConversation]);
 
-  useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages.length, streamText, contactPrompt, endPrompt]);
-
-  const send = async (content: string) => {
+  const run = async (content: string, resume: boolean) => {
     if (sending) return;
-    setInput("");
+    if (!resume) setInput("");
     setError(null);
     setSending(true);
     setStreamText("");
     setStreamCards([]);
     setStreamChips([]);
+    setStreamBlocks([]);
     setTraceSteps([]);
     // Typing instead of answering IS the answer. Both cards go; the backend already treats an
     // unanswered prompt as a decline and waits out the same cooldown before offering again.
     setContactPrompt(null);
     setEndPrompt(null);
     // ponytail: negative temp ids — the widget has no persisted messages, feedback stays hidden
-    setMessages((prev) => [
+    if (!resume) setMessages((prev) => [
       ...prev,
       { id: -prev.length - 1, session_id: 0, role: "user", content, cards: [], chips: [], blocks: [], feedback: null, created_at: new Date().toISOString() },
     ]);
@@ -98,21 +85,28 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
     let text = "";
     let cards: CourseCard[] = [];
     let chips: string[] = [];
+    let blocks: ResponseBlock[] = [];
     try {
       await embedApi.sendMessage(
-        { content, fingerprint: getFingerprint(), embed_key: embedKey },
+        { content, fingerprint: getFingerprint(), embed_key: embedKey, ...(resume ? { resume: true } : {}) },
         (event) => {
           if (event.type === "delta") { text += event.text; setStreamText(text); }
           else if (event.type === "cards") { cards = event.cards; setStreamCards(cards); }
           else if (event.type === "chips") { chips = event.chips; setStreamChips(chips); }
+          else if (event.type === "blocks") { blocks = event.blocks; setStreamBlocks(blocks); }
           else if (event.type === "trace") { setTraceSteps((prev) => [...prev, event.step]); }
           else if (event.type === "contact-prompt") { setContactPrompt(event.prompt); }
           else if (event.type === "end-prompt") { setEndPrompt(event.prompt); }
+          else if (event.type === "handoff") { setAgentName(event.agentName); setWaiting(false); }
+          else if (event.type === "handover") { setWaiting(true); }
         },
       );
+      // A person is handling the chat or being waited for: the message was delivered, and there
+      // is no AI reply to draw — an empty bubble here would read as the AI saying nothing.
+      if (!text && !cards.length && !chips.length && !blocks.length) return;
       setMessages((prev) => [
         ...prev,
-        { id: -prev.length - 1, session_id: 0, role: "assistant", content: stripStructuredBlocks(text), cards, chips, blocks: [], feedback: null, created_at: new Date().toISOString() },
+        { id: -prev.length - 1, session_id: 0, role: "assistant", content: stripStructuredBlocks(text), cards, chips, blocks, feedback: null, created_at: new Date().toISOString() },
       ]);
     } catch (e) {
       setError((e as Error).message);
@@ -121,8 +115,69 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
       setStreamText("");
       setStreamCards([]);
       setStreamChips([]);
+      setStreamBlocks([]);
     }
   };
+  // Returns false when a reply is still streaming, so a tapped chip stays tappable.
+  const send = (content: string) => {
+    if (sending) return false;
+    void run(content, false);
+    return true;
+  };
+  // Called by the thread reads above; the reply streams like any other, minus a visitor bubble.
+  const resume = useEffectEvent(() => void run("", true));
+
+  useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+    if (!initialConfig) embedApi.resolveConfig(embedKey).then(setConfig, (e: Error) => setConfigError(e.message));
+    // Inside a host page: hand our visitor id to embed.js, which keeps it in first-party storage
+    // and gives it back next visit — iframe storage alone is partitioned or wiped by some browsers.
+    if (window.parent !== window) window.parent.postMessage({ type: FP_MESSAGE, fp: getFingerprint() }, "*");
+    // Resume the visitor's thread with this widget. Reopening the launcher used to show
+    // an empty panel even though the backend had the conversation.
+    embedApi.getThread(embedKey, getFingerprint()).then((thread) => {
+      setAgentName(thread.agent_name ?? null);
+      setWaiting(thread.waiting ?? false);
+      // So the first poll can tell if a hold seen here lifts before it runs.
+      heldRef.current = !!thread.agent_name || !!thread.waiting;
+      if (!thread.messages.length) return;
+      setMessages(thread.messages.map((row) => toMessage(row, embedApi.toCourseCards(row.cards))));
+      // Back after a person had the chat and left a question unanswered: the AI answers it now.
+      if (!thread.agent_name && !thread.waiting && thread.messages.at(-1)?.role === "user") resume();
+    });
+  }, [embedKey, initialConfig]);
+
+  // Staff replies arrive from the Inbox, not as the answer to anything the visitor sent, so the
+  // open widget polls for them. Paused while a send is streaming and while the tab is hidden.
+  const sendingRef = useRef(false);
+  const heldRef = useRef(false);
+  useEffect(() => {
+    sendingRef.current = sending;
+  }, [sending]);
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      if (sendingRef.current || document.visibilityState !== "visible") return;
+      embedApi.getThread(embedKey, getFingerprint()).then((thread) => {
+        if (sendingRef.current) return;
+        setAgentName(thread.agent_name ?? null);
+        setWaiting(thread.waiting ?? false);
+        setMessages((prev) => withNewAgentRows(prev, thread.messages, embedApi.toCourseCards));
+        // The person's 15 minutes ran out (the hold just lifted) with the visitor's question
+        // unanswered: the AI picks it up without waiting for them to type again. Only on the
+        // transition, so a normal turn's not-yet-stored reply never looks unanswered.
+        const held = heldRef.current;
+        heldRef.current = !!thread.agent_name || !!thread.waiting;
+        if (held && !heldRef.current && thread.messages.at(-1)?.role === "user") resume();
+      });
+    }, POLL_MS);
+    return () => window.clearInterval(id);
+  }, [embedKey]);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages.length, streamText, contactPrompt, endPrompt]);
+
 
   const submitContact = async (contactName: string, email: string) => {
     await embedApi.submitContact({
@@ -154,6 +209,10 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
       .catch(() => {});
   };
 
+  const rate = (rating: number, comment?: string) => {
+    embedApi.submitRating({ embed_key: embedKey, fingerprint: getFingerprint(), rating, comment });
+  };
+
   const skipContact = () => {
     // Optimistic: the card goes now and the decline is recorded in the background. If the
     // post fails the visitor simply gets asked again later, which is the same thing a
@@ -168,39 +227,32 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
     return <div className="flex h-dvh items-center justify-center p-6 text-center text-sm text-muted-foreground">{configError}</div>;
   }
 
-  const name = config?.display_name ?? "AI Counsellor";
+  const name = config?.display_name?.trim() || DEFAULT_WIDGET_NAME;
   const isChatting = messages.length > 0 || sending;
+  const theme = widgetTheme(config?.brand_color);
 
   return (
-    <div className="flex h-dvh flex-col bg-background">
-      {/* Same shape as the in-app Ask Aly popover header: identity on the left, expand on
-          the right. The brand colour stays a hairline accent so the header keeps reading
-          as the counsellor's, not as a coloured banner. */}
-      <header
-        className="flex shrink-0 items-center gap-2.5 border-b px-4 py-2.5"
-        style={config?.brand_color ? { borderTopColor: config.brand_color, borderTopWidth: 3 } : undefined}
-      >
-        {config?.logo_url ? (
-          <Image src={config.logo_url} alt={name} width={28} height={28} className="size-7 rounded" unoptimized />
-        ) : (
-          <AlyOrbIcon className="size-7" />
-        )}
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-semibold">{name}</p>
-          <p className="truncate text-xs text-muted-foreground">AI counsellor · powered by GlobalyAI</p>
-        </div>
-        {framed && (
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Open in a new tab"
-            title="Open in a new tab"
-            render={<a href={`/embed/${encodeURIComponent(embedKey)}`} target="_blank" rel="noreferrer" />}
-          >
-            <Expand className="h-4 w-4" />
-          </Button>
-        )}
-      </header>
+    // The brand colour replaces the app's primary for everything inside the panel — buttons,
+    // chips, the heading, focus rings — so the widget reads as the institution's, not GlobalyAI's.
+    <div className="flex h-dvh flex-col bg-background" data-widget-brand style={theme.vars}>
+      <WidgetHeader
+        name={name}
+        brandColor={config?.brand_color}
+        framed={framed}
+        subtitle={
+          agentName
+            ? `${agentName} from the admissions team is replying`
+            : waiting
+              ? "Waiting for the admissions team"
+              : config?.subtitle ?? "AI counsellor"
+        }
+      />
+
+      {agentName && (
+        <p className="shrink-0 border-b bg-primary/10 px-4 py-2 text-xs text-primary">
+          👋 You&apos;re chatting with a person from the admissions team.
+        </p>
+      )}
 
       {isChatting ? (
         <div className="flex-1 overflow-y-auto">
@@ -208,28 +260,38 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
               panel the max-width is inert; in the expanded tab it stops the thread from
               running the full screen width. */}
           <div className="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-6 sm:px-6">
-            {messages.map((m) => (
-              <ChatMessage key={m.id} message={m} onChipClick={send} />
-            ))}
+            <ThreadMessages messages={messages} onChipClick={send} onSend={send} joinedAgent={agentName} />
             {sending && !streamText && <ThinkingIndicator steps={traceSteps} />}
             {sending && streamText && (
-              <StreamingMessage content={stripStructuredBlocks(streamText)} cards={streamCards} chips={streamChips} onChipClick={send} />
+              <StreamingMessage
+                content={stripStructuredBlocks(streamText)}
+                cards={streamCards}
+                chips={streamChips}
+                blocks={streamBlocks}
+                onChipClick={send}
+                onSend={send}
+              />
             )}
             {contactPrompt && !sending && (
               <ContactCaptureCard prompt={contactPrompt} onSubmit={submitContact} onSkip={skipContact} />
             )}
+            {waiting && !agentName && !sending && <WaitingCard />}
             {endPrompt && !sending && (
               <ConversationEndCard
                 prompt={endPrompt}
                 onEnd={endConversation}
                 onContinue={continueConversation}
+                onRate={rate}
               />
             )}
             <div ref={bottomRef} className="h-2" />
           </div>
         </div>
       ) : (
-        <div className="flex-1 overflow-y-auto">
+        <div className="flex-1 overflow-y-auto" style={{ background: theme.heroBackground }}>
+          {config?.greeting && (
+            <p className="px-6 pt-6 text-center text-sm text-muted-foreground">{config.greeting}</p>
+          )}
           <SuggestedStarters
             onSelect={send}
             // Empty until the config lands: rendering the business set first and swapping it
@@ -239,12 +301,21 @@ export function EmbedChatView({ embedKey }: EmbedChatViewProps) {
         </div>
       )}
 
+      {/* Sits with the conversation rather than as a full-width band above the input: a failed
+          turn is part of the thread, and a red bar spanning a 400px panel reads as the whole
+          widget breaking. role=alert so it is announced, not just seen. */}
       {error && (
-        <p className="border-t bg-destructive/10 px-4 py-2 text-center text-sm text-destructive">{error}</p>
+        <div className="px-4 pb-2">
+          <p role="alert" className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            {error}
+          </p>
+        </div>
       )}
 
       <ChatInput value={input} onChange={setInput} onSend={send} disabled={sending} />
-      <CompareTray />
+      <p className="shrink-0 pb-2 text-center text-[11px] text-muted-foreground">Powered by GlobalyAI · AI can make mistakes</p>
+      {/* Above the composer, so the tray never covers the message box or Send. */}
+      <CompareTray positionClass="bottom-28 right-3" />
     </div>
   );
 }

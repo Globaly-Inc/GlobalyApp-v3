@@ -11,7 +11,10 @@ function delay(ms: number) {
 }
 
 let mockExtractionProgressPct = 0;
+let mockExtractionStartedAt = new Date().toISOString();
 let mockReviewedCourses = false;
+/** Starts false so the splash plays against mocks — it is the thing being changed. */
+let mockWelcomeSeen = false;
 const mockEditedSnapshots: Record<string, string> = {};
 
 const MOCK_SITE_URLS: Omit<SiteUrl, "id" | "created_at">[] = [
@@ -171,6 +174,7 @@ export const businessMockApi = {
     if (!website) throw new Error("A website is required to start extraction");
     mockProfile = { ...mockProfile, website, source_job_id: "mock-job-id" };
     mockExtractionProgressPct = 0;
+    mockExtractionStartedAt = new Date().toISOString();
     return mockProfile;
   },
 
@@ -191,11 +195,20 @@ export const businessMockApi = {
         fees: Math.round(30 * scale),
         intakes: Math.round(12 * scale),
         eligibility: Math.round(20 * scale),
+        scholarships: Math.round(5 * scale),
         units: Math.round(90 * scale),
         study_options: Math.round(15 * scale),
         accreditations: Math.round(3 * scale),
         visa_services: 0,
       },
+      // Walks the three stages across the same fake progress the counts use.
+      stages: {
+        crawling: mockExtractionProgressPct >= 40 ? "done" : "processing",
+        organising: mockExtractionProgressPct >= 80 ? "done" : mockExtractionProgressPct >= 40 ? "processing" : "waiting",
+        flagging: mockExtractionProgressPct >= 100 ? "done" : mockExtractionProgressPct >= 80 ? "processing" : "waiting",
+      },
+      pages_found: Math.round(412 * scale),
+      started_at: mockExtractionStartedAt,
     };
   },
 
@@ -294,7 +307,7 @@ export const businessMockApi = {
         detail: "Admissions staff who answer enquiries", duration: "~2 min", done: false,
       },
     ];
-    return { steps, completed: steps.filter((s) => s.done).length, total: steps.length };
+    return { steps, completed: steps.filter((s) => s.done).length, total: steps.length, showWelcome: !mockWelcomeSeen };
   },
 
   markCoursesReviewed: async (): Promise<{ reviewed: boolean }> => {
@@ -302,6 +315,13 @@ export const businessMockApi = {
     await delay(300);
     mockReviewedCourses = true;
     return { reviewed: true };
+  },
+
+  markWelcomeSeen: async (): Promise<{ seen: boolean }> => {
+    console.log("[mock] POST /businesses/me/onboarding/welcome-seen");
+    await delay(300);
+    mockWelcomeSeen = true;
+    return { seen: true };
   },
 
   getWidgetAnalytics: async (): Promise<WidgetAnalytics> => {

@@ -12,8 +12,8 @@ import { LinkBlock } from "./blocks/link-block";
 type MessageBlocksProps = {
   blocks: ResponseBlock[];
   /** Block actions and quick replies send their value as the user's next message. */
-  onAction?: (value: string) => void;
-  onSend?: (value: string) => void;
+  onAction?: (value: string) => boolean | void;
+  onSend?: (value: string) => boolean | void;
 };
 
 /**
@@ -39,7 +39,7 @@ export function MessageBlocks({ blocks, onAction, onSend }: MessageBlocksProps) 
           case "image":
             return <ImageBlock key={i} block={block} />;
           case "quick_replies":
-            return <QuickRepliesBlock key={i} block={block} onAction={onAction} onSend={onSend} />;
+            return <QuickRepliesBlock key={i} block={block} onSend={onSend} />;
           case "link":
             return <LinkBlock key={i} block={block} />;
           default:

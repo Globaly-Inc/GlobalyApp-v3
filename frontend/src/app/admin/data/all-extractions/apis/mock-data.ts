@@ -342,6 +342,12 @@ export const allExtractionsMockApi = {
     await delay(200);
   },
 
+  approveAllCourses: async (jobId: string): Promise<{ updated: number }> => {
+    console.log("[mock] POST approve-all courses", jobId);
+    await delay(200);
+    return { updated: 0 };
+  },
+
   deleteCourse: async (id: string): Promise<void> => {
     console.log("[mock] DELETE course", id);
     await delay(200);

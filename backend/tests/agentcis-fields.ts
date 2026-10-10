@@ -10,7 +10,7 @@ import {
   extractCourseTaxonomy, extractEligibility,
   extractEnglishTestScores, extractIntakes, extractStudyOptions,
 } from "../src/modules/superadmin/data-extraction/lib/agentcis-product-mappers.js";
-import { degreeLevelName } from "../src/modules/superadmin/data-extraction/lib/agentcis-mappers.js";
+import { degreeLevelName, mapCountry } from "../src/modules/superadmin/data-extraction/lib/agentcis-mappers.js";
 
 let passed = 0;
 let failed = 0;
@@ -104,6 +104,9 @@ ok(intakes.map((i) => i.intake_name), ["February", "April", "September", "July",
 ok(intakes.every((i) => i.intake_year === null), true, "intakes: no year stated by AgentCIS -> year null, not guessed");
 ok(intakes.find((i) => i.intake_name === "September")?.intake_month, 9, "intakes: month name resolved to number");
 ok(extractIntakes({ name: "Some Course", intake_month: [] }), [], "intakes: empty intake_month -> [] (not the whole product as a fake intake)");
+
+// Real `include=country` shape (partner 4064) — keyed country_name, not name.
+ok(mapCountry({ id: 11, country_name: "Australia", country_code: "AU" }), "Australia", "country: include=country object -> country_name");
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

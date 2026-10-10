@@ -249,6 +249,13 @@ export const reviewAccreditation = mutation<{ id: number; decision: ModerationSt
   (_arg, state) => fetchAccreditations({ page: state.accreditations.page }),
 );
 
+// Refetches accreditations — that list is where an issuer's status and review actions are shown.
+export const reviewIssuingOrganization = mutation<{ id: number; decision: ModerationStatus }>(
+  "reviewIssuingOrganization",
+  ({ id, decision }) => categoriesApi.reviewIssuingOrganization(id, decision),
+  (_arg, state) => fetchAccreditations({ page: state.accreditations.page }),
+);
+
 export const removeAccreditation = mutation<number>(
   "removeAccreditation",
   (id) => categoriesApi.deleteAccreditation(id),

@@ -60,7 +60,8 @@ export const countPublished = repo.countPublished;
 export async function findPublishedBySlug(slug: string) {
   const row = await repo.findPublishedBySlug(slug);
   if (!row) throw new NotFoundError("Scholarship not found");
-  // Best-effort — a view-count miss should never break the detail page.
-  repo.incrementViewCount(row.id).catch(() => {});
+  // Best-effort — a view-count miss should never break the detail page. Institution
+  // scholarships (institution_id set) have no view counter.
+  if (row.institution_id == null) repo.incrementViewCount(Number(row.id)).catch(() => {});
   return row;
 }
