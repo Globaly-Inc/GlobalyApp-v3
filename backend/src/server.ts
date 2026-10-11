@@ -85,7 +85,9 @@ export async function buildServer() {
   // identity the rate limiter and the guest gate have. See config.TRUST_PROXY.
   const trustProxy = parseTrustProxy(config.TRUST_PROXY);
   assertUsableTrustProxy(trustProxy);
-  const app = Fastify({ logger: true, trustProxy });
+  // fastify 5.12.5's typings dropped the numeric hop count, but its runtime still honours it
+  // (lib/request.js getTrustProxyFn).
+  const app = Fastify({ logger: true, trustProxy: trustProxy as boolean | string | string[] });
 
   // --- Framework plugins ---
   await app.register(cors, { origin: config.CORS_ORIGINS, credentials: true });
