@@ -64,7 +64,7 @@ function Toolbar({ editor }: Readonly<{ editor: Editor }>) {
   };
 
   return (
-    <div className="flex flex-wrap items-center gap-0.5 border-b border-input bg-muted/40 p-1">
+    <div className="flex flex-wrap items-center gap-0.5 border-y border-border bg-card px-3 py-1.5">
       <ToolbarButton icon={Bold} label="Bold" active={editor.isActive("bold")} onClick={() => editor.chain().focus().toggleBold().run()} />
       <ToolbarButton icon={Italic} label="Italic" active={editor.isActive("italic")} onClick={() => editor.chain().focus().toggleItalic().run()} />
       <ToolbarButton icon={UnderlineIcon} label="Underline" active={editor.isActive("underline")} onClick={() => editor.chain().focus().toggleUnderline().run()} />
@@ -99,9 +99,10 @@ export function BlogRichEditor({ value, onChange }: Readonly<{ value: string; on
     editorProps: {
       attributes: {
         class: cn(
-          "min-h-64 max-w-none p-4 text-sm leading-relaxed outline-hidden",
-          "[&_h2]:text-xl [&_h2]:font-bold [&_h2]:mt-4 [&_h2]:mb-2",
-          "[&_h3]:text-lg [&_h3]:font-semibold [&_h3]:mt-3 [&_h3]:mb-2",
+          "mx-auto min-h-80 max-w-180 px-5 py-6 text-base leading-7 text-foreground/90 outline-hidden sm:px-8",
+          "[&_h2]:font-heading [&_h2]:text-2xl [&_h2]:font-medium [&_h2]:tracking-[-0.02em] [&_h2]:text-foreground [&_h2]:mt-6 [&_h2]:mb-2",
+          "[&_h3]:font-heading [&_h3]:text-lg [&_h3]:font-medium [&_h3]:text-foreground [&_h3]:mt-4 [&_h3]:mb-2",
+          "[&_p+p]:mt-3",
           "[&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground",
           "[&_pre]:rounded-md [&_pre]:bg-muted [&_pre]:p-3 [&_pre]:font-mono [&_pre]:text-xs",
           "[&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5",
@@ -124,7 +125,7 @@ export function BlogRichEditor({ value, onChange }: Readonly<{ value: string; on
   if (!editor) return null;
 
   return (
-    <div className="rounded-md border border-input">
+    <div>
       <Toolbar editor={editor} />
       <EditorContent editor={editor} />
     </div>

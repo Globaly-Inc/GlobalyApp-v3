@@ -44,12 +44,12 @@ function WidgetIllustration() {
 
       <div className="absolute right-6 top-5 w-44 overflow-hidden rounded-2xl border border-border bg-card shadow-xl shadow-primary/20 sm:right-10 sm:w-48">
         <div className="flex items-center gap-2 bg-primary px-3 py-2.5">
-          <span className="flex size-6 items-center justify-center rounded-full bg-white/20 text-primary-foreground">
+          <span className="flex size-6 items-center justify-center rounded-full bg-primary-foreground/20 text-primary-foreground">
             <Bot className="size-3.5" />
           </span>
           <span className="flex flex-col gap-1">
-            <Bar className="w-16 bg-white/85" />
-            <Bar className="h-1 w-10 bg-white/45" />
+            <Bar className="w-16 bg-primary-foreground/85" />
+            <Bar className="h-1 w-10 bg-primary-foreground/45" />
           </span>
         </div>
         <div className="flex flex-col gap-2 p-3">

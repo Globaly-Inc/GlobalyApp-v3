@@ -178,7 +178,7 @@ export function MessagesView() {
         <InboxChannelBar />
         <WidgetSetupDialog />
         <div className="flex min-h-0 flex-1">
-        <div className={cn("w-full shrink-0 md:w-80 lg:w-[22rem]", mainOpen && "hidden md:block")}>
+        <div className={cn("w-full shrink-0 md:w-72 lg:w-80", mainOpen && "hidden md:block")}>
           {kind !== "enquiry" ? (
             <InboxListSidebar
               header={tabs}

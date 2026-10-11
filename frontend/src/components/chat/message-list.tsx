@@ -26,9 +26,9 @@ import { useChatCopy } from "./chat-copy";
 /** V2's `DateSeparator`: a centred label between two hairlines. */
 function DateSeparator({ label }: Readonly<{ label: string }>) {
   return (
-    <div className="my-4 flex items-center gap-3 px-4">
+    <div role="separator" aria-label={label} className="my-3 flex items-center gap-3 px-4">
       <div className="h-px flex-1 bg-border" />
-      <span className="text-xs font-medium text-muted-foreground">{label}</span>
+      <span className="text-xs text-muted-foreground">{label}</span>
       <div className="h-px flex-1 bg-border" />
     </div>
   );
@@ -44,10 +44,10 @@ function DateSeparator({ label }: Readonly<{ label: string }>) {
  */
 const EVENT_ICON: Record<MessageKind, { icon: LucideIcon; className?: string }> = {
   message: { icon: Info },
-  member_added: { icon: UserRoundPlus, className: "text-emerald-600 dark:text-emerald-500" },
+  member_added: { icon: UserRoundPlus, className: "text-success" },
   member_removed: { icon: UserRoundMinus, className: "text-destructive" },
   member_left: { icon: LogOut },
-  admin_granted: { icon: Crown, className: "text-amber-500" },
+  admin_granted: { icon: Crown, className: "text-warning" },
   admin_revoked: { icon: ShieldOff },
   renamed: { icon: Pencil },
   photo_changed: { icon: Camera },
@@ -69,7 +69,7 @@ function ThreadEventRow({ message }: Readonly<{ message: EnquiryMessage }>) {
       <div className="inline-flex max-w-full items-center gap-2 rounded-full bg-muted/60 px-3 py-1">
         <Icon className={cn("size-3.5 shrink-0", className ?? "text-muted-foreground")} aria-hidden />
         <span className="min-w-0 break-words text-xs font-medium text-muted-foreground">{message.body}</span>
-        <time dateTime={message.created_at} className="shrink-0 text-[11px] tabular-nums text-muted-foreground/70">
+        <time dateTime={message.created_at} className="shrink-0 text-xs tabular-nums text-muted-foreground/70">
           {messageTime(message.created_at)}
         </time>
       </div>
@@ -221,7 +221,7 @@ export function MessageList({
 
   return (
     <div className="relative min-h-0 flex-1">
-      <div ref={scrollRef} onScroll={handleScroll} className="h-full overflow-y-auto py-2">
+      <div ref={scrollRef} onScroll={handleScroll} className="h-full overflow-y-auto overflow-x-hidden py-3">
         {messages.map((message, i) => {
           const previous = messages[i - 1];
           const showDate = !previous || dateSeparatorLabel(previous.created_at) !== dateSeparatorLabel(message.created_at);

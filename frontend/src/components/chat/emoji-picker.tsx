@@ -104,7 +104,7 @@ export function EmojiPicker({
             <Button
               variant="ghost"
               size="icon-lg"
-              className="text-muted-foreground hover:text-foreground"
+              className="size-10 text-muted-foreground hover:text-foreground md:size-8"
               aria-label="Insert emoji"
               title="Insert emoji"
             />
@@ -115,7 +115,7 @@ export function EmojiPicker({
         {trigger ? undefined : <Smile className="size-4" />}
       </PopoverTrigger>
 
-      <PopoverContent side={side} align={align} className="w-80 gap-0 p-0">
+      <PopoverContent side={side} align={align} className="w-80 max-w-[calc(100vw-2rem)] gap-0 p-0">
         {/* Quick row — the defaults, before any history exists. */}
         <div className="flex flex-wrap gap-0.5 border-b border-border p-2">
           {QUICK_EMOJIS.map((emoji) => (
@@ -153,7 +153,7 @@ export function EmojiPicker({
         </div>
 
         {!results && (
-          <div className="flex items-center gap-0.5 border-b border-border px-2 py-1.5">
+          <div className="flex items-center gap-0.5 overflow-x-auto border-b border-border px-2 py-1.5">
             {recent.length > 0 && (
               <button
                 type="button"
@@ -161,7 +161,7 @@ export function EmojiPicker({
                 title="Recently used"
                 aria-label="Recently used"
                 className={cn(
-                  "flex size-7 cursor-pointer items-center justify-center rounded-md transition-colors",
+                  "flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md transition-colors",
                   activeKey === RECENT_KEY ? "bg-primary/10 text-primary" : "text-muted-foreground hover:bg-muted",
                 )}
               >
@@ -178,7 +178,7 @@ export function EmojiPicker({
                   title={category.label}
                   aria-label={category.label}
                   className={cn(
-                    "flex size-7 cursor-pointer items-center justify-center rounded-md transition-colors",
+                    "flex size-7 shrink-0 cursor-pointer items-center justify-center rounded-md transition-colors",
                     activeKey === category.key
                       ? "bg-primary/10 text-primary"
                       : "text-muted-foreground hover:bg-muted",
@@ -198,7 +198,7 @@ export function EmojiPicker({
             <EmojiGrid emojis={recent} onPick={pick} />
           ) : (
             <>
-              <p className="mb-1.5 px-0.5 text-[11px] font-medium text-muted-foreground">{active.label}</p>
+              <p className="mb-1.5 px-0.5 text-xs font-medium text-muted-foreground">{active.label}</p>
               <EmojiGrid emojis={active.emojis} onPick={pick} />
             </>
           )}

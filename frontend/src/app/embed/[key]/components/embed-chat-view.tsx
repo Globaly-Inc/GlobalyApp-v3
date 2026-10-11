@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useEffectEvent, useRef, useState, useSyncExternalStore } from "react";
+import { AlyOrbColor } from "@/components/aly-orb-icon";
 import { ChatInput } from "@/app/ai/components/chat-input";
 import { StreamingMessage } from "@/app/ai/components/chat-message";
 import { ThinkingIndicator } from "@/app/ai/components/thinking-indicator";
@@ -13,6 +14,7 @@ import { ConversationEndCard } from "./conversation-end-card";
 import { ThreadMessages } from "./thread-messages";
 import { WaitingCard } from "./waiting-card";
 import { WidgetHeader } from "./widget-header";
+import { usePromptActions } from "./use-prompt-actions";
 // The backend streams the model's raw text, fences and all — it only strips them for the
 // copy it PERSISTS, so every client renders its own. The main chat does this at all three
 // of its render points (chat-messages.tsx, and both commits in ai-chat-slice); the widget
@@ -178,50 +180,11 @@ export function EmbedChatView({ embedKey, initialConfig = null }: EmbedChatViewP
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages.length, streamText, contactPrompt, endPrompt]);
 
-
-  const submitContact = async (contactName: string, email: string) => {
-    await embedApi.submitContact({
-      embed_key: embedKey,
-      fingerprint: getFingerprint(),
-      action: "submit",
-      name: contactName,
-      email,
-    });
-  };
-
-  /** Returns whether a summary was actually queued, so the card only promises a real email. */
-  const endConversation = async (): Promise<boolean> => {
-    const res = await embedApi.confirmConversationEnd({
-      embed_key: embedKey,
-      fingerprint: getFingerprint(),
-      action: "end",
-    });
-    return res.summary_queued === true;
-  };
-
-  const continueConversation = () => {
-    // Optimistic, like skipping the contact card: the card goes now and the decision is
-    // recorded in the background. A lost post just means the counsellor may offer again
-    // sooner than the cooldown intended — not worth blocking the UI on.
-    setEndPrompt(null);
-    embedApi
-      .confirmConversationEnd({ embed_key: embedKey, fingerprint: getFingerprint(), action: "continue" })
-      .catch(() => {});
-  };
-
-  const rate = (rating: number, comment?: string) => {
-    embedApi.submitRating({ embed_key: embedKey, fingerprint: getFingerprint(), rating, comment });
-  };
-
-  const skipContact = () => {
-    // Optimistic: the card goes now and the decline is recorded in the background. If the
-    // post fails the visitor simply gets asked again later, which is the same thing a
-    // decline eventually leads to anyway — not worth blocking the UI on.
-    setContactPrompt(null);
-    embedApi
-      .submitContact({ embed_key: embedKey, fingerprint: getFingerprint(), action: "skip" })
-      .catch(() => {});
-  };
+  const { submitContact, endConversation, continueConversation, rate, skipContact } = usePromptActions(
+    embedKey,
+    setContactPrompt,
+    setEndPrompt,
+  );
 
   if (configError) {
     return <div className="flex h-dvh items-center justify-center p-6 text-center text-sm text-muted-foreground">{configError}</div>;
@@ -234,88 +197,91 @@ export function EmbedChatView({ embedKey, initialConfig = null }: EmbedChatViewP
   return (
     // The brand colour replaces the app's primary for everything inside the panel — buttons,
     // chips, the heading, focus rings — so the widget reads as the institution's, not GlobalyAI's.
-    <div className="flex h-dvh flex-col bg-background" data-widget-brand style={theme.vars}>
-      <WidgetHeader
-        name={name}
-        brandColor={config?.brand_color}
-        framed={framed}
-        subtitle={
-          agentName
-            ? `${agentName} from the admissions team is replying`
-            : waiting
-              ? "Waiting for the admissions team"
-              : config?.subtitle ?? "AI counsellor"
-        }
-      />
+    // The shared assistant/thinking orbs read this, so they wear the brand colour like the header orb.
+    <AlyOrbColor value={config?.brand_color ?? null}>
+      <div className="flex h-dvh flex-col bg-background" data-widget-brand style={theme.vars}>
+        <WidgetHeader
+          name={name}
+          brandColor={config?.brand_color}
+          framed={framed}
+          subtitle={
+            agentName
+              ? `${agentName} from the admissions team is replying`
+              : waiting
+                ? "Waiting for the admissions team"
+                : config?.subtitle ?? "AI counsellor"
+          }
+        />
 
-      {agentName && (
-        <p className="shrink-0 border-b bg-primary/10 px-4 py-2 text-xs text-primary">
-          👋 You&apos;re chatting with a person from the admissions team.
-        </p>
-      )}
-
-      {isChatting ? (
-        <div className="flex-1 overflow-y-auto">
-          {/* Mirrors ChatMessages: one centred column, generous turn spacing. In the 380px
-              panel the max-width is inert; in the expanded tab it stops the thread from
-              running the full screen width. */}
-          <div className="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-6 sm:px-6">
-            <ThreadMessages messages={messages} onChipClick={send} onSend={send} joinedAgent={agentName} />
-            {sending && !streamText && <ThinkingIndicator steps={traceSteps} />}
-            {sending && streamText && (
-              <StreamingMessage
-                content={stripStructuredBlocks(streamText)}
-                cards={streamCards}
-                chips={streamChips}
-                blocks={streamBlocks}
-                onChipClick={send}
-                onSend={send}
-              />
-            )}
-            {contactPrompt && !sending && (
-              <ContactCaptureCard prompt={contactPrompt} onSubmit={submitContact} onSkip={skipContact} />
-            )}
-            {waiting && !agentName && !sending && <WaitingCard />}
-            {endPrompt && !sending && (
-              <ConversationEndCard
-                prompt={endPrompt}
-                onEnd={endConversation}
-                onContinue={continueConversation}
-                onRate={rate}
-              />
-            )}
-            <div ref={bottomRef} className="h-2" />
-          </div>
-        </div>
-      ) : (
-        <div className="flex-1 overflow-y-auto" style={{ background: theme.heroBackground }}>
-          {config?.greeting && (
-            <p className="px-6 pt-6 text-center text-sm text-muted-foreground">{config.greeting}</p>
-          )}
-          <SuggestedStarters
-            onSelect={send}
-            // Empty until the config lands: rendering the business set first and swapping it
-            // for the institution's a moment later is a visible flip of the whole hero.
-            categories={config ? embedStarters(config.owner_kind ?? "business") : []}
-          />
-        </div>
-      )}
-
-      {/* Sits with the conversation rather than as a full-width band above the input: a failed
-          turn is part of the thread, and a red bar spanning a 400px panel reads as the whole
-          widget breaking. role=alert so it is announced, not just seen. */}
-      {error && (
-        <div className="px-4 pb-2">
-          <p role="alert" className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            {error}
+        {agentName && (
+          <p className="shrink-0 border-b bg-primary/10 px-4 py-2 text-xs text-primary">
+            👋 You&apos;re chatting with a person from the admissions team.
           </p>
-        </div>
-      )}
+        )}
 
-      <ChatInput value={input} onChange={setInput} onSend={send} disabled={sending} />
-      <p className="shrink-0 pb-2 text-center text-[11px] text-muted-foreground">Powered by GlobalyAI · AI can make mistakes</p>
-      {/* Above the composer, so the tray never covers the message box or Send. */}
-      <CompareTray positionClass="bottom-28 right-3" />
-    </div>
+        {isChatting ? (
+          <div className="flex-1 overflow-y-auto">
+            {/* Mirrors ChatMessages: one centred column, generous turn spacing. In the 380px
+                panel the max-width is inert; in the expanded tab it stops the thread from
+                running the full screen width. */}
+            <div className="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-6 sm:px-6">
+              <ThreadMessages messages={messages} onChipClick={send} onSend={send} joinedAgent={agentName} />
+              {sending && !streamText && <ThinkingIndicator steps={traceSteps} />}
+              {sending && streamText && (
+                <StreamingMessage
+                  content={stripStructuredBlocks(streamText)}
+                  cards={streamCards}
+                  chips={streamChips}
+                  blocks={streamBlocks}
+                  onChipClick={send}
+                  onSend={send}
+                />
+              )}
+              {contactPrompt && !sending && (
+                <ContactCaptureCard prompt={contactPrompt} onSubmit={submitContact} onSkip={skipContact} />
+              )}
+              {waiting && !agentName && !sending && <WaitingCard />}
+              {endPrompt && !sending && (
+                <ConversationEndCard
+                  prompt={endPrompt}
+                  onEnd={endConversation}
+                  onContinue={continueConversation}
+                  onRate={rate}
+                />
+              )}
+              <div ref={bottomRef} className="h-2" />
+            </div>
+          </div>
+        ) : (
+          <div className="flex-1 overflow-y-auto" style={{ background: theme.heroBackground }}>
+            {config?.greeting && (
+              <p className="px-6 pt-6 text-center text-sm text-muted-foreground">{config.greeting}</p>
+            )}
+            <SuggestedStarters
+              onSelect={send}
+              // Empty until the config lands: rendering the business set first and swapping it
+              // for the institution's a moment later is a visible flip of the whole hero.
+              categories={config ? embedStarters(config.owner_kind ?? "business") : []}
+            />
+          </div>
+        )}
+
+        {/* Sits with the conversation rather than as a full-width band above the input: a failed
+            turn is part of the thread, and a red bar spanning a 400px panel reads as the whole
+            widget breaking. role=alert so it is announced, not just seen. */}
+        {error && (
+          <div className="px-4 pb-2">
+            <p role="alert" className="rounded-lg bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {error}
+            </p>
+          </div>
+        )}
+
+        <ChatInput value={input} onChange={setInput} onSend={send} disabled={sending} />
+        <p className="shrink-0 pb-2 text-center text-xs text-muted-foreground">Powered by GlobalyAI · AI can make mistakes</p>
+        {/* Above the composer, so the tray never covers the message box or Send. */}
+        <CompareTray positionClass="bottom-28 right-3" />
+      </div>
+    </AlyOrbColor>
   );
 }

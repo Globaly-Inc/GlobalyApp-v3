@@ -1,3 +1,6 @@
+"use client";
+
+import { createContext, use } from "react";
 import { ALY_ORB } from "@/lib/public-assets";
 import { cn } from "@/lib/utils";
 
@@ -18,9 +21,13 @@ import { cn } from "@/lib/utils";
 // ponytail: a plain `<img>`, not next/image — the optimizer has nothing to do with an SVG, and the animation
 // lives in a `<style>` inside the file, which only survives when the browser loads the SVG itself.
 //
-// `color` recolours the orb to a widget's brand colour through the /aly-orb route; omitted, it is azure.
+// `color` recolours the orb to a widget's brand colour through the /aly-orb route; omitted, it falls back to
+// the nearest AlyOrbColor provider (the embed sets its brand colour once), then azure.
+export const AlyOrbColor = createContext<string | null>(null);
+
 export function AlyOrbIcon({ className, color }: Readonly<{ className?: string; color?: string | null }>) {
-  const hex = /^#?([0-9a-f]{6})$/i.exec(color?.trim() ?? "")?.[1];
+  const inherited = use(AlyOrbColor);
+  const hex = /^#?([0-9a-f]{6})$/i.exec((color ?? inherited)?.trim() ?? "")?.[1];
   // eslint-disable-next-line @next/next/no-img-element -- animated SVG, next/image would only add a hop
   return <img src={hex ? `/aly-orb?c=${hex}` : ALY_ORB} alt="" aria-hidden className={cn("shrink-0 translate-y-[3.1%] scale-[1.75]", className)} />;
 }

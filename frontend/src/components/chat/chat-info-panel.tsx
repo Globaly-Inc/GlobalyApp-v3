@@ -44,9 +44,10 @@ function SectionHeader({
     <button
       type="button"
       onClick={onToggle}
-      className="flex w-full cursor-pointer items-center justify-between px-4 py-3 transition-colors hover:bg-muted/50"
+      aria-expanded={open}
+      className="flex w-full cursor-pointer items-center justify-between gap-2 px-4 py-3 outline-none transition-colors hover:bg-muted/50 focus-visible:bg-muted/50"
     >
-      <h4 className="flex items-center gap-2 text-sm font-medium">
+      <h4 className="flex min-w-0 items-center gap-2 text-sm font-semibold">
         <Icon className="size-4 text-muted-foreground" aria-hidden />
         {label}
         {count > 0 && <span className="text-xs font-normal text-muted-foreground">({count})</span>}
@@ -96,11 +97,11 @@ export function ChatInfoPanel({
 
   return (
     <div className="flex h-full flex-col bg-card">
-      <div className="flex shrink-0 items-center gap-2 border-b border-border p-4">
-        <div className="flex size-8 items-center justify-center rounded-full bg-gradient-to-br from-sky-500/20 to-sky-500/5">
-          <MessageSquare className="size-4 text-sky-500" aria-hidden />
+      <div className="flex shrink-0 items-center gap-3 border-b border-border px-4 py-3">
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+          <MessageSquare className="size-4 text-primary" aria-hidden />
         </div>
-        <div>
+        <div className="min-w-0">
           <h3 className="text-sm font-semibold">{showMembers ? "Conversation Info" : "Individual Chat Info"}</h3>
           <p className="text-xs text-muted-foreground">Details &amp; pinned items</p>
         </div>
@@ -143,7 +144,7 @@ export function ChatInfoPanel({
                     type="button"
                     onClick={() => onJumpToMessage(message.id)}
                     className={cn(
-                      "w-full cursor-pointer rounded-lg bg-muted/50 p-2 text-left transition-colors hover:bg-muted",
+                      "w-full cursor-pointer rounded-lg border border-border bg-background p-2.5 text-left transition-colors hover:bg-muted/50",
                       "focus-visible:ring-2 focus-visible:ring-primary focus-visible:outline-none",
                     )}
                   >
@@ -152,10 +153,10 @@ export function ChatInfoPanel({
                         {message.sender_avatar && (
                           <AvatarImage src={message.sender_avatar} alt={message.sender_name} />
                         )}
-                        <AvatarFallback className="text-[8px]">{initials(message.sender_name)}</AvatarFallback>
+                        <AvatarFallback className="text-xs">{initials(message.sender_name)}</AvatarFallback>
                       </Avatar>
                       <span className="truncate text-xs font-medium">{message.sender_name}</span>
-                      <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
+                      <span className="ml-auto shrink-0 text-xs text-muted-foreground">
                         {pinStamp(message.created_at)}
                       </span>
                     </div>
@@ -197,7 +198,7 @@ export function ChatInfoPanel({
                       target="_blank"
                       rel="noopener noreferrer"
                       title={file.original_name}
-                      className="group relative aspect-square overflow-hidden rounded-lg bg-muted/50 text-left transition-all hover:ring-2 hover:ring-primary/50"
+                      className="group relative aspect-square overflow-hidden rounded-lg border border-border bg-muted/50 text-left outline-none transition-shadow hover:ring-2 hover:ring-primary/50 focus-visible:ring-2 focus-visible:ring-primary"
                     >
                       {image ? (
                         // eslint-disable-next-line @next/next/no-img-element -- signed, expiring, per-viewer URL
@@ -221,7 +222,7 @@ export function ChatInfoPanel({
                           />
                           <span
                             className={cn(
-                              "mt-1 text-[9px] font-medium",
+                              "mt-1 text-xs font-medium",
                               pdf ? "text-destructive" : "text-muted-foreground",
                             )}
                           >
@@ -230,9 +231,9 @@ export function ChatInfoPanel({
                         </span>
                       )}
 
-                      <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-1.5 opacity-0 transition-opacity group-hover:opacity-100">
-                        <span className="block truncate text-[10px] text-white">{file.original_name}</span>
-                        <span className="block text-[8px] text-white/70">{formatFileSize(file.size_bytes)}</span>
+                      <span className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/70 to-transparent p-1.5 opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100">
+                        <span className="block truncate text-xs text-white">{file.original_name}</span>
+                        <span className="block text-xs text-white/70">{formatFileSize(file.size_bytes)}</span>
                       </span>
                     </a>
                   );

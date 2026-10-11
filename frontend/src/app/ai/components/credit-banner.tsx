@@ -6,6 +6,7 @@ import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchCreditBalance } from "../store/ai-chat-slice";
 import { useAuthState } from "@/app/auth/store/auth-slice";
 import Link from "next/link";
+import { Alert } from "@/components/ui/alert";
 
 export function CreditBanner() {
   const dispatch = useAppDispatch();
@@ -24,20 +25,22 @@ export function CreditBanner() {
 
   if (credits.total === 0) {
     return (
-      <div className="mx-4 mb-2 flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
-        <AlertTriangle className="h-4 w-4 shrink-0 text-destructive" />
-        <span>You&apos;ve used all your credits.</span>
-        <Link href="/personal/credits" className="ml-auto shrink-0 text-xs font-medium text-primary hover:underline">
-          Purchase more
-        </Link>
-      </div>
+      <Alert variant="destructive" className="mx-4 mt-2 w-auto py-2">
+        <AlertTriangle />
+        <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+          <span>You&apos;ve used all your credits.</span>
+          <Link href="/personal/credits" className="ml-auto shrink-0 text-xs font-medium text-primary hover:underline">
+            Purchase more
+          </Link>
+        </div>
+      </Alert>
     );
   }
 
   return (
-    <div className="mx-4 mb-2 flex items-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/5 px-3 py-2 text-sm">
-      <Coins className="h-4 w-4 shrink-0 text-amber-600" />
+    <Alert variant="warning" role="status" className="mx-4 mt-2 w-auto py-2">
+      <Coins />
       <span>{credits.total} credit{credits.total !== 1 ? "s" : ""} remaining</span>
-    </div>
+    </Alert>
   );
 }

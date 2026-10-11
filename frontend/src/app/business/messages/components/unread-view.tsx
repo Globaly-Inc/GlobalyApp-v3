@@ -4,6 +4,7 @@ import { Check, CheckCheck, MessageCircle } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { markThreadRead } from "../store/business-messages-slice";
 import { fullStamp, initials, previewText, threadTitle, threadAvatar } from "@/components/chat/utils";
@@ -47,22 +48,18 @@ export function UnreadView({
         }
       />
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
         {loading && unread.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
         ) : unread.length === 0 ? (
-          <div className="py-8 text-center text-muted-foreground">
-            <MessageCircle className="mx-auto mb-3 size-12 opacity-30" aria-hidden />
-            <p>No unread messages</p>
-            <p className="mt-1 text-sm">You&apos;re all caught up!</p>
-          </div>
+          <EmptyState icon={MessageCircle} title="No unread messages" description="You're all caught up!" compact />
         ) : (
           unread.map((thread) => (
             <div key={thread.distribution_id} className="group relative">
               <button
                 type="button"
                 onClick={() => onOpen(thread.distribution_id)}
-                className="w-full cursor-pointer rounded-lg border border-border bg-background p-3 text-left transition-colors hover:bg-muted"
+                className="w-full cursor-pointer rounded-lg border border-border bg-card p-3.5 text-left transition-colors hover:bg-muted/50"
               >
                 <div className="flex items-start gap-3">
                   <Avatar className="size-10 shrink-0">

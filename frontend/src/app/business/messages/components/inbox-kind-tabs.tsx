@@ -39,7 +39,7 @@ export function InboxKindTabs({
             {label}
             <span
               className={cn(
-                "inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-[10px] font-semibold",
+                "inline-flex h-4 min-w-4 items-center justify-center rounded-full px-1 text-xs font-semibold",
                 active ? "bg-primary text-primary-foreground" : "bg-muted-foreground/10 text-muted-foreground",
               )}
             >

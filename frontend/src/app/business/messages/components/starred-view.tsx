@@ -4,6 +4,7 @@ import { useEffect, useRef } from "react";
 import { Bookmark, X } from "lucide-react";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchStarredMessages, toggleMessageStar } from "../store/business-messages-slice";
 import { fullStamp, initials, previewText } from "@/components/chat/utils";
@@ -36,24 +37,25 @@ export function StarredView({
     <div className="flex h-full min-h-0 flex-col bg-background">
       <SpecialViewHeader type="starred" onBack={onBack} />
 
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+      <div className="min-h-0 flex-1 space-y-2 overflow-y-auto p-4">
         {starredStatus === "loading" && starred.length === 0 ? (
           <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
         ) : starredStatus === "failed" && starred.length === 0 ? (
           <p className="py-8 text-center text-sm text-destructive">Couldn&apos;t load your starred messages.</p>
         ) : starred.length === 0 ? (
-          <div className="py-8 text-center text-muted-foreground">
-            <Bookmark className="mx-auto mb-3 size-12 opacity-30" aria-hidden />
-            <p>No starred messages</p>
-            <p className="mt-1 text-sm">Bookmark important messages to find them easily</p>
-          </div>
+          <EmptyState
+            icon={Bookmark}
+            title="No starred messages"
+            description="Bookmark important messages to find them easily"
+            compact
+          />
         ) : (
           starred.map((message) => (
             <button
               key={message.id}
               type="button"
               onClick={() => onOpen(message.distribution_id, message.id)}
-              className="w-full cursor-pointer rounded-lg border border-border bg-background p-3 text-left transition-colors hover:bg-muted"
+              className="w-full cursor-pointer rounded-lg border border-border bg-card p-3.5 text-left transition-colors hover:bg-muted/50"
             >
               <div className="flex items-start gap-3">
                 <Avatar className="size-10 shrink-0">

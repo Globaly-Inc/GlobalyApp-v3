@@ -16,7 +16,7 @@ import type { EmbedChatActions } from "./use-embed-chat-actions";
 function Section({ title, children }: Readonly<{ title: string; children: React.ReactNode }>) {
   return (
     <section className="flex flex-col gap-2 border-t border-border pt-4">
-      <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{title}</h3>
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</h3>
       {children}
     </section>
   );
@@ -59,7 +59,7 @@ export function EmbedVisitorPanel({ visitor, actions }: Readonly<{ visitor: Widg
           </AvatarFallback>
         </Avatar>
         <p className={cn("font-semibold text-foreground", !visitor.name && "italic")}>{visitorDisplayName(visitor)}</p>
-        <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-medium", badge.className)}>{badge.label}</span>
+        <span className={cn("rounded px-1.5 py-0.5 text-xs font-medium", badge.className)}>{badge.label}</span>
         <span className="flex items-center gap-1 text-xs text-muted-foreground">
           <MessageSquare className="size-3 text-primary" aria-hidden /> Web widget
         </span>

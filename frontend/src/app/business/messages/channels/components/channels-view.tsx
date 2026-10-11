@@ -3,11 +3,13 @@
 import Link from "next/link";
 import { WIDGET_SETTINGS_HREF } from "@/app/business/ai-widget/const";
 import { ArrowLeft, Globe } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { PageHeader } from "@/components/ui/page-header";
 import { WidgetSwitch } from "../../components/widget-switch";
 import { UPCOMING_CHANNELS } from "../const";
 
 function SectionLabel({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{children}</h2>;
+  return <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{children}</h2>;
 }
 
 /**
@@ -24,16 +26,13 @@ export function ChannelsView() {
           <ArrowLeft className="size-3.5" aria-hidden />
           Back to Inbox
         </Link>
-        <div>
-          <h1 className="text-2xl font-semibold text-foreground">Channels</h1>
-          <p className="text-sm text-muted-foreground">Connect messaging platforms to your Inbox.</p>
-        </div>
+        <PageHeader title="Channels" subtitle="Connect messaging platforms to your Inbox." />
       </div>
 
       <section className="flex flex-col gap-3">
         <SectionLabel>Web widget</SectionLabel>
-        <div className="flex max-w-3xl flex-wrap items-center gap-4 rounded-xl border border-border bg-card p-4">
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+        <div className="flex max-w-3xl flex-wrap items-center gap-4 rounded-lg border border-border bg-card p-4 shadow-sm">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary-light text-primary">
             <Globe className="size-5" aria-hidden />
           </span>
           <div className="min-w-0 flex-1">
@@ -53,7 +52,7 @@ export function ChannelsView() {
         <SectionLabel>Available channels</SectionLabel>
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {UPCOMING_CHANNELS.map((channel) => (
-            <div key={channel.key} className="flex items-start gap-3 rounded-xl border border-dashed border-border bg-card p-4">
+            <div key={channel.key} className="flex items-start gap-3 rounded-lg border border-dashed border-border bg-card p-4">
               <span className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${channel.tint}`}>
                 <channel.icon className="size-5" aria-hidden />
               </span>
@@ -61,9 +60,9 @@ export function ChannelsView() {
                 <p className="font-medium text-foreground">{channel.name}</p>
                 <p className="text-sm text-muted-foreground">{channel.description}</p>
               </div>
-              <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+              <Badge variant="secondary" className="shrink-0">
                 Coming soon
-              </span>
+              </Badge>
             </div>
           ))}
         </div>

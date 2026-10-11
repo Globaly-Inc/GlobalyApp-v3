@@ -59,10 +59,10 @@ export function ThreadMemberRow({
   const isStudent = member.source === "student";
 
   return (
-    <div className="flex items-center gap-2 rounded-md px-2 py-1.5 hover:bg-muted/50">
+    <div className="flex min-w-0 items-center gap-2 rounded-lg px-2 py-1.5 hover:bg-muted/50">
       <Avatar className="size-7 shrink-0">
         {member.photo_url && <AvatarImage src={member.photo_url} alt="" className="object-cover" />}
-        <AvatarFallback className="bg-primary/10 text-[10px] text-primary">{initials(name)}</AvatarFallback>
+        <AvatarFallback className="bg-primary/10 text-xs text-primary">{initials(name)}</AvatarFallback>
       </Avatar>
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-medium">{name}</p>
@@ -72,13 +72,13 @@ export function ThreadMemberRow({
       {/* Student wins over Admin: on the business side these are never the same person, and which
           party someone belongs to matters more than what they may administer. */}
       {isStudent ? (
-        <Badge variant="outline" className="shrink-0 gap-1 text-[10px]">
+        <Badge variant="outline" className="shrink-0 gap-1">
           <GraduationCap className="size-3" aria-hidden />
           Student
         </Badge>
       ) : (
         isAdmin && (
-          <Badge variant="secondary" className="shrink-0 gap-1 text-[10px]">
+          <Badge variant="secondary" className="shrink-0 gap-1">
             <ShieldCheck className="size-3" aria-hidden />
             Admin
           </Badge>

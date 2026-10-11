@@ -51,7 +51,7 @@ export function ConversationRow({
       >
         <Avatar className={cn("shrink-0", compact ? "size-6" : "size-8")}>
           {avatar && <AvatarImage src={avatar} alt={threadTitle(thread)} />}
-          <AvatarFallback className={cn("bg-muted text-muted-foreground", compact ? "text-[10px]" : "text-xs")}>
+          <AvatarFallback className={cn("bg-muted text-muted-foreground", "text-xs")}>
             {initials(threadTitle(thread))}
           </AvatarFallback>
         </Avatar>
@@ -60,7 +60,7 @@ export function ConversationRow({
           <span className="flex items-baseline gap-1.5">
             <span className="truncate">{threadTitle(thread)}</span>
             {!compact && (
-              <span className="ml-auto shrink-0 text-[10px] font-normal text-muted-foreground">
+              <span className="ml-auto shrink-0 text-xs font-normal text-muted-foreground">
                 {listStamp(activityDate(thread).toISOString())}
               </span>
             )}
@@ -80,7 +80,7 @@ export function ConversationRow({
         </span>
 
         {hasUnread && (
-          <Badge variant="destructive" className="h-5 min-w-5 shrink-0 px-1.5 text-[10px]">
+          <Badge variant="destructive" className="h-5 min-w-5 shrink-0 px-1.5 text-xs">
             {thread.unread_count > 99 ? "99+" : thread.unread_count}
           </Badge>
         )}
@@ -96,11 +96,13 @@ export function ConversationRow({
         title={thread.is_favorite ? "Remove from favorites" : "Add to favorites"}
         className={cn(
           "absolute right-1 cursor-pointer rounded p-1 transition-opacity hover:bg-muted",
-          thread.is_favorite ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+          thread.is_favorite
+            ? "opacity-100"
+            : "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100",
         )}
       >
         <Star
-          className={cn("size-3.5", thread.is_favorite ? "fill-orange-500 text-orange-500" : "text-muted-foreground")}
+          className={cn("size-3.5", thread.is_favorite ? "fill-warning text-warning" : "text-muted-foreground")}
         />
       </button>
     </div>

@@ -84,11 +84,14 @@ export function MessageActions({
     <>
       <div
         className={cn(
-          "absolute -top-4 right-4 z-10 flex items-center gap-0.5 rounded-lg border border-border bg-card px-1 py-0.5 shadow-lg",
+          "absolute -top-4 right-4 z-10 flex items-center gap-0.5 rounded-lg border border-border bg-card p-0.5 shadow-md",
           // The menu holds the toolbar open while it is showing, or it vanishes under the
           // pointer as soon as the popover steals hover.
-          "opacity-0 transition-opacity duration-150 group-hover:opacity-100 focus-within:opacity-100",
-          menuOpen && "opacity-100",
+          // Hidden toolbars ignore taps, so a touch can't hit an invisible button: the first
+          // tap focuses the row (see MessageRow) and group-focus-within reveals it.
+          "pointer-events-none opacity-0 transition-opacity duration-150",
+          "group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100",
+          menuOpen && "pointer-events-auto opacity-100",
         )}
       >
         {onReply && (
@@ -104,7 +107,7 @@ export function MessageActions({
           title={isStarred ? "Remove from starred" : "Add to starred"}
           aria-label={isStarred ? "Remove from starred" : "Add to starred"}
         >
-          {isStarred ? <BookmarkCheck className="size-3.5 text-blue-500" /> : <Bookmark className="size-3.5" />}
+          {isStarred ? <BookmarkCheck className="size-3.5 text-info" /> : <Bookmark className="size-3.5" />}
         </Button>
 
         {canPin && (
@@ -115,7 +118,7 @@ export function MessageActions({
             title={isPinned ? "Unpin from conversation" : "Pin to conversation"}
             aria-label={isPinned ? "Unpin from conversation" : "Pin to conversation"}
           >
-            {isPinned ? <PinOff className="size-3.5 text-amber-600" /> : <Pin className="size-3.5" />}
+            {isPinned ? <PinOff className="size-3.5 text-warning" /> : <Pin className="size-3.5" />}
           </Button>
         )}
 

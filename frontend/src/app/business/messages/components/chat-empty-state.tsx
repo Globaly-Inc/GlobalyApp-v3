@@ -4,6 +4,7 @@ import { useSyncExternalStore } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { Bot, MessageSquare } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { WIDGET_SETTINGS_HREF } from "@/app/business/ai-widget/const";
@@ -56,26 +57,26 @@ export function ChatEmptyState({
 
   return (
     <div className="flex h-full flex-col items-center justify-center px-4 py-8">
-      <div className="relative mb-6">
-        <div className="flex size-20 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 via-primary/10 to-primary/5 shadow-lg">
-          <Image src={ICON.src} alt="GlobalyAI" width={ICON.width} height={ICON.height} className="size-12 rounded-lg" />
+      <div className="relative mb-5">
+        <div className="flex size-16 items-center justify-center rounded-2xl bg-primary-light">
+          <Image src={ICON.src} alt="GlobalyAI" width={ICON.width} height={ICON.height} className="size-10 rounded-lg" />
         </div>
-        <div className="absolute -bottom-2 -right-2 flex size-8 items-center justify-center rounded-full bg-primary/20">
+        <div className="absolute -bottom-1.5 -right-1.5 flex size-7 items-center justify-center rounded-full bg-card ring-1 ring-border">
           <MessageSquare className="size-4 text-primary" aria-hidden />
         </div>
       </div>
 
-      <h1 className="mb-2 text-center text-2xl font-bold">
+      <h1 className="mb-1.5 text-center font-heading text-xl font-medium tracking-[-0.01em] text-foreground">
         {name ? `${name} — Messages` : "Messages"}
       </h1>
-      <p className="text-center text-muted-foreground">
+      <p className="text-center text-sm text-muted-foreground">
         {embed ? "Chats visitors had with your AI assistant" : "Your conversations with students who enquired"}
       </p>
 
       {/* The way back to setup once the onboarding pop-up has been dismissed for the session. */}
       {needsWidget && (
         <div className="mt-6 flex w-full max-w-md items-center gap-3 rounded-xl border bg-card p-3.5 shadow-sm">
-          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary-light text-primary">
             <Bot className="size-4" aria-hidden />
           </span>
           <div className="min-w-0 flex-1">
@@ -89,11 +90,11 @@ export function ChatEmptyState({
       )}
 
       {!embed && (
-        <div className="mt-8 flex flex-wrap justify-center gap-2">
+        <div className="mt-6 flex flex-wrap justify-center gap-1.5">
           {CAPABILITIES.map((capability) => (
-            <span key={capability} className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
+            <Badge key={capability} variant="outline" className="text-muted-foreground">
               {capability}
-            </span>
+            </Badge>
           ))}
         </div>
       )}

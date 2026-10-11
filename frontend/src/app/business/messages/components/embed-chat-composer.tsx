@@ -16,22 +16,22 @@ import { embedChatState, handlerLabel } from "../utils";
 function banner(visitor: WidgetVisitor): { icon: typeof Bot; text: string; className: string } {
   switch (embedChatState(visitor)) {
     case "resolved":
-      return { icon: CheckCircle2, text: "This chat is resolved. Replying reopens it and puts you in charge.", className: "bg-emerald-500/10 text-emerald-800" };
+      return { icon: CheckCircle2, text: "This chat is resolved. Replying reopens it and puts you in charge.", className: "bg-success/10 text-success" };
     case "human":
       return visitor.handled_by_me
-        ? { icon: Hand, text: "You're handling this chat, so the AI is paused. It takes over again 15 minutes after your last reply.", className: "bg-cyan-500/10 text-cyan-900" }
-        : { icon: Hand, text: `${handlerLabel(visitor)} is handling this chat. Your reply is sent, and they stay in charge.`, className: "bg-cyan-500/10 text-cyan-900" };
+        ? { icon: Hand, text: "You're handling this chat, so the AI is paused. It takes over again 15 minutes after your last reply.", className: "bg-info/10 text-info" }
+        : { icon: Hand, text: `${handlerLabel(visitor)} is handling this chat. Your reply is sent, and they stay in charge.`, className: "bg-info/10 text-info" };
     case "waiting":
-      return { icon: Hand, text: "This visitor asked to talk to a person, so the AI is paused. Reply to join the chat. If nobody does within 15 minutes, the AI picks it up again.", className: "bg-amber-500/15 text-amber-900" };
+      return { icon: Hand, text: "This visitor asked to talk to a person, so the AI is paused. Reply to join the chat. If nobody does within 15 minutes, the AI picks it up again.", className: "bg-warning/10 text-warning" };
     default:
-      return { icon: Bot, text: "The AI assistant is answering this visitor. Sending a reply takes the chat over.", className: "bg-amber-500/10 text-amber-900" };
+      return { icon: Bot, text: "The AI assistant is answering this visitor. Sending a reply takes the chat over.", className: "bg-warning/10 text-warning" };
   }
 }
 
 const NOTE_BANNER = {
   icon: StickyNote,
   text: "Internal note. Only your team sees it — the visitor and the AI never do.",
-  className: "bg-amber-500/15 text-amber-900",
+  className: "bg-warning/10 text-warning",
 };
 
 /**
@@ -66,7 +66,7 @@ export function EmbedChatComposer({ visitor }: Readonly<{ visitor: WidgetVisitor
   };
 
   return (
-    <div className={cn("shrink-0 border-t border-border", mode === "note" && "bg-amber-50/60")}>
+    <div className={cn("shrink-0 border-t border-border", mode === "note" ? "bg-warning/5" : "bg-card")}>
       <div className="mx-3 mt-2 flex gap-1" role="tablist" aria-label="Compose">
         {(["reply", "note"] as const).map((m) => (
           <button
@@ -78,7 +78,7 @@ export function EmbedChatComposer({ visitor }: Readonly<{ visitor: WidgetVisitor
             className={cn(
               "rounded-md px-2.5 py-1 text-xs font-medium",
               mode === m
-                ? m === "note" ? "bg-amber-100 text-amber-900" : "bg-primary/10 text-primary"
+                ? m === "note" ? "bg-warning/15 text-warning" : "bg-primary/10 text-primary"
                 : "text-muted-foreground hover:bg-muted",
             )}
           >

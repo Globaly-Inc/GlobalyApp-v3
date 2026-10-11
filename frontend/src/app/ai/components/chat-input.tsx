@@ -131,7 +131,7 @@ export function ChatInput({ value, onChange, onSend, disabled, allowAttachments,
             one box; the textarea's own border/ring is suppressed to avoid a double outline. */}
         <div
           className={cn(
-            "rounded-3xl bg-card p-2 shadow-lg",
+            "rounded-xl bg-card p-2 shadow-sm",
             // The animated ring is the empty-state hero's only; once a conversation is running it
             // would pull the eye away from the thread.
             bare

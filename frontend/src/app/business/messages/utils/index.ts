@@ -33,14 +33,14 @@ export function handlerLabel(v: Pick<WidgetVisitor, "handled_by_me" | "handled_b
 export function embedChatPill(v: WidgetVisitor): { label: string; className: string } {
   switch (embedChatState(v)) {
     case "resolved":
-      return { label: "Resolved", className: "bg-emerald-500/10 text-emerald-700" };
+      return { label: "Resolved", className: "bg-success/15 text-success" };
     case "human":
       return {
         label: v.handled_by_me ? "You have this" : `${handlerLabel(v)} has this`,
-        className: "bg-cyan-500/10 text-cyan-800",
+        className: "bg-info/15 text-info",
       };
     case "waiting":
-      return { label: "Wants a person", className: "bg-amber-500/15 text-amber-800" };
+      return { label: "Wants a person", className: "bg-warning/15 text-warning" };
     default:
       return { label: "AI is handling", className: "bg-primary/10 text-primary" };
   }

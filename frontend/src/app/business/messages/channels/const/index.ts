@@ -10,13 +10,13 @@ export const UPCOMING_CHANNELS = [
     name: "WhatsApp",
     description: "Reply to WhatsApp Business messages from your Inbox.",
     icon: MessageCircle,
-    tint: "bg-green-500/10 text-green-700",
+    tint: "bg-success/10 text-success",
   },
   {
     key: "instagram",
     name: "Instagram",
     description: "Manage Instagram DMs from your connected page.",
     icon: Camera,
-    tint: "bg-pink-500/10 text-pink-600",
+    tint: "bg-chart-5/10 text-chart-5", // brand pink as a categorical colour, not an error
   },
 ] as const;

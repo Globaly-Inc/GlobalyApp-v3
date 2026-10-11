@@ -18,7 +18,7 @@ export function AgentMessage({ message }: Readonly<{ message: WidgetMessage }>) 
   const name = message.sender_name ?? "Admissions team";
   return (
     <div className="flex w-full gap-3">
-      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-sky-100 text-[11px] font-semibold text-sky-800">
+      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-full bg-info/15 text-xs font-semibold text-info">
         {initials(name)}
       </span>
       <div className="flex min-w-0 max-w-[85%] flex-col gap-1">
@@ -26,7 +26,7 @@ export function AgentMessage({ message }: Readonly<{ message: WidgetMessage }>) 
           <span className="font-medium text-foreground">{name}</span> · Admissions team
         </p>
         {message.content && (
-          <div className="rounded-2xl rounded-tl-md bg-sky-50 px-4 py-2.5 text-[0.9375rem] leading-relaxed">
+          <div className="rounded-2xl rounded-tl-md bg-info/10 px-4 py-2.5 text-[0.9375rem] leading-relaxed">
             <RichTextMessage body={message.content} />
           </div>
         )}
