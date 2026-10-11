@@ -15,7 +15,7 @@ import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { DynamicIcon } from "@/components/dynamic-icon";
 import { CourseDetailsCard } from "./services/course-details-card";
 import { CategoryExtraFields } from "./services/category-extra-fields";
-import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs";
+import { SectionTabs } from "@/components/section-tabs";
 import { ServiceFeesTab } from "./services/service-fees-tab";
 import { ServiceIntakesTab } from "./services/service-intakes-tab";
 import { ServiceEligibilityTab } from "./services/service-eligibility-tab";
@@ -452,7 +452,7 @@ export function InstitutionServiceFormView({ institutionId, serviceId }: Readonl
       </div>
 
       {isEdit && (
-        <AdminSegmentedTabs
+        <SectionTabs
           options={[
             { value: "summary", label: "Summary" },
             { value: "fees", label: isCourse ? "Course Fees" : "Fees" },

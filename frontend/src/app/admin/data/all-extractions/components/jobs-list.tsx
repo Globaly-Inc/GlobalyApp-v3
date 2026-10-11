@@ -1,16 +1,18 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Building2, Plus } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
+import { Checkbox } from "@/components/ui/checkbox";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ListSkeleton } from "@/components/ui/list-skeleton";
 import { Pagination } from "@/components/ui/pagination";
+import { Table, TableBody, TableCard, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchBusinessCategoryOptions } from "@/app/admin/platform/categories/store/categories-slice";
 import { DynamicIcon } from "@/components/dynamic-icon";
-import { ACTIVE_STATUSES, MODE_HEADINGS, PUBLISHABLE_STATUSES, type DashboardMode, type SortOrder } from "../const";
+import { ACTIVE_STATUSES, MODE_HEADINGS, PUBLISHABLE_STATUSES, type DashboardMode } from "../const";
 import {
   declineJob,
   deleteJob,
@@ -20,108 +22,36 @@ import {
   resumeJob,
 } from "../store/all-extractions-slice";
 import type { GetJobsParams } from "../apis/types";
-import { ExtractionJobRow } from "./extraction-job-row";
-import { NewExtractionDialog } from "./new-extraction-dialog";
+import { EXTRACTION_JOB_COLUMNS, ExtractionJobRow } from "./extraction-job-row";
 import { JobsListToolbar } from "./jobs-list-toolbar";
 import { JobsBulkBar } from "./jobs-bulk-bar";
+import { useJobsListFilters } from "./use-jobs-list-filters";
 
 const POLL_MS = 8000;
-const DEFAULT_PAGE_SIZE = 10;
 
-export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
+export function JobsList({ mode, onNewExtraction }: Readonly<{ mode: DashboardMode; onNewExtraction?: () => void }>) {
   const dispatch = useAppDispatch();
-  const router = useRouter();
-  const pathname = usePathname();
-  const searchParams = useSearchParams();
   const { jobs, meta, status } = useAppSelector((state) => state.dataAllExtractions);
   const businessCategories = useAppSelector((state) => state.platformCategories.businessCategoryOptions);
 
-  const [searchQuery, setSearchQueryState] = useState(() => searchParams.get("q") ?? "");
-  const [debouncedQuery, setDebouncedQuery] = useState(() => searchParams.get("q") ?? "");
-  const [sortOrder, setSortOrderState] = useState<SortOrder>(() => (searchParams.get("sort") as SortOrder) || "newest");
-  const [sourceFilter, setSourceFilterState] = useState(() => searchParams.get("source") ?? "all");
-  const [statusFilter, setStatusFilterState] = useState(() => searchParams.get("status") ?? "all");
-  const [businessCategoryFilter, setBusinessCategoryFilterState] = useState(() => searchParams.get("category") ?? "all");
-  const [showDeclined, setShowDeclinedState] = useState(() => searchParams.get("declined") === "1");
-  const [showNewForm, setShowNewForm] = useState(false);
+  const {
+    searchQuery, setSearchQuery, debouncedQuery,
+    sortOrder, setSortOrder,
+    sourceFilter, setSourceFilter,
+    statusFilter, setStatusFilter,
+    businessCategoryFilter, setBusinessCategoryFilter,
+    showDeclined, setShowDeclined,
+    page, setPage, pageSize, setPageSize,
+    hasActiveFilters, clearFilters,
+  } = useJobsListFilters();
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
-  const [page, setPageState] = useState(() => Number(searchParams.get("page")) || 1);
-  const [pageSize, setPageSizeState] = useState(() => Number(searchParams.get("per_page")) || DEFAULT_PAGE_SIZE);
   const [confirmBulkDelete, setConfirmBulkDelete] = useState(false);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [publishingId, setPublishingId] = useState<string | null>(null);
 
   const isCompleted = mode === "completed";
-  const showNewExtractionButton = mode === "all" || mode === "ai-ongoing";
+  const showNewExtractionButton = Boolean(onNewExtraction) && (mode === "all" || mode === "ai-ongoing");
   const canPublish = mode === "all" || isCompleted;
-
-  // Mutable snapshot of the query string, updated synchronously on every call so that
-  // several updateParam calls firing in the same tick (e.g. a filter change plus the
-  // page-reset effect below) all build on each other's changes instead of the stale
-  // `searchParams` from this render — otherwise the later call clobbers the earlier one.
-  const paramsRef = useRef(new URLSearchParams(searchParams.toString()));
-  useEffect(() => {
-    paramsRef.current = new URLSearchParams(searchParams.toString());
-  }, [searchParams]);
-
-  const updateParam = (key: string, value: string | null) => {
-    const params = paramsRef.current;
-    if (value === null || value === "") params.delete(key);
-    else params.set(key, value);
-    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
-  };
-
-  const setPage = (next: number) => {
-    setPageState(next);
-    updateParam("page", String(next));
-  };
-
-  const setPageSize = (next: number) => {
-    setPageSizeState(next);
-    updateParam("per_page", String(next));
-  };
-
-  const setSearchQuery = (next: string) => {
-    setSearchQueryState(next);
-    updateParam("q", next || null);
-  };
-
-  const setSortOrder = (next: SortOrder) => {
-    setSortOrderState(next);
-    updateParam("sort", next === "newest" ? null : next);
-  };
-
-  const setSourceFilter = (next: string) => {
-    setSourceFilterState(next);
-    updateParam("source", next === "all" ? null : next);
-  };
-
-  const setStatusFilter = (next: string) => {
-    setStatusFilterState(next);
-    updateParam("status", next === "all" ? null : next);
-  };
-
-  const setBusinessCategoryFilter = (next: string) => {
-    setBusinessCategoryFilterState(next);
-    updateParam("category", next === "all" ? null : next);
-  };
-
-  const setShowDeclined = (next: boolean) => {
-    setShowDeclinedState(next);
-    updateParam("declined", next ? "1" : null);
-  };
-
-  const hasActiveFilters =
-    searchQuery !== "" || sortOrder !== "newest" || sourceFilter !== "all" || statusFilter !== "all" || businessCategoryFilter !== "all" || showDeclined;
-
-  const clearFilters = () => {
-    setSearchQuery("");
-    setSortOrder("newest");
-    setSourceFilter("all");
-    setStatusFilter("all");
-    setBusinessCategoryFilter("all");
-    setShowDeclined(false);
-  };
 
   const categoriesFetchedRef = useRef(false);
   useEffect(() => {
@@ -129,10 +59,6 @@ export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
     categoriesFetchedRef.current = true;
     if (businessCategories.length === 0) dispatch(fetchBusinessCategoryOptions());
   }, [dispatch, businessCategories.length]);
-  useEffect(() => {
-    const t = setTimeout(() => setDebouncedQuery(searchQuery.trim()), 350);
-    return () => clearTimeout(t);
-  }, [searchQuery]);
 
   // Any filter/sort/mode/page-size change invalidates the current page — but not the initial
   // mount, where page may have been restored from the URL (?page=N&per_page=N on reload).
@@ -253,11 +179,8 @@ export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
   ];
 
   return (
-    <div className="pb-20">
-      <NewExtractionDialog open={showNewForm} onOpenChange={setShowNewForm} />
-
+    <div className="space-y-4 pb-20">
       <JobsListToolbar
-        mode={mode}
         jobCount={meta.total}
         searchQuery={searchQuery}
         onSearchChange={setSearchQuery}
@@ -271,56 +194,68 @@ export function JobsList({ mode }: Readonly<{ mode: DashboardMode }>) {
         businessCategoryFilter={businessCategoryFilter}
         onBusinessCategoryFilterChange={setBusinessCategoryFilter}
         businessCategoryOptions={businessCategoryOptions}
-        showSelectAll={jobs.length > 0}
-        allPageSelected={allPageSelected}
-        onToggleSelectAll={toggleSelectAllOnPage}
         showDeclinedToggle={mode !== "ai-ongoing"}
         showDeclined={showDeclined}
         onToggleShowDeclined={() => setShowDeclined(!showDeclined)}
         hasActiveFilters={hasActiveFilters}
         onClearFilters={clearFilters}
-        showNewExtractionButton={showNewExtractionButton}
-        onNewExtraction={() => setShowNewForm(true)}
       />
 
-      {isLoading && <p className="text-sm text-muted-foreground">Loading…</p>}
+      {isLoading && <ListSkeleton count={6} itemClassName="h-16" />}
 
       {!isLoading && meta.total === 0 && (
-        <Card className="border-dashed">
-          <div className="flex flex-col items-center gap-4 py-16 text-center">
-            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-accent">
-              <Building2 className="h-7 w-7 text-primary" />
-            </div>
-            <p className="text-sm text-muted-foreground">
-              {debouncedQuery ? "No jobs match your search." : MODE_HEADINGS[mode].empty}
-            </p>
-            {!debouncedQuery && showNewExtractionButton && (
-              <Button className="gap-1.5 cursor-pointer" onClick={() => setShowNewForm(true)}>
+        <EmptyState
+          icon={Building2}
+          title={debouncedQuery ? "No jobs match your search." : MODE_HEADINGS[mode].empty}
+          action={
+            !debouncedQuery && showNewExtractionButton ? (
+              <Button className="gap-1.5" onClick={onNewExtraction}>
                 <Plus className="h-4 w-4" />
                 Start an Extraction
               </Button>
-            )}
-          </div>
-        </Card>
+            ) : undefined
+          }
+        />
       )}
 
-      <div className="space-y-3">
-        {jobs.map((job) => (
-          <ExtractionJobRow
-            key={job.id}
-            job={job}
-            selected={selectedIds.has(job.id)}
-            onToggleSelect={() => toggleSelect(job.id)}
-            onPause={() => runAction(pauseJob(job.id), "Paused")}
-            onResume={() => runAction(resumeJob(job.id), "Resumed")}
-            onDecline={() => runAction(declineJob(job.id), "Extraction declined")}
-            onDelete={() => runAction(deleteJob(job.id), "Deleted")}
-            onPublish={canPublish ? () => handlePublish(job.id) : undefined}
-            onReload={() => dispatch(fetchAllExtractions(fetchParams))}
-            publishing={publishingId === job.id}
-          />
-        ))}
-      </div>
+      {jobs.length > 0 && (
+        <TableCard>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {EXTRACTION_JOB_COLUMNS.map((col) => (
+                  <TableHead key={col.label} numeric={"numeric" in col} className={"className" in col ? col.className : undefined}>
+                    {col.label === "Select" ? (
+                      <Checkbox checked={allPageSelected} onCheckedChange={toggleSelectAllOnPage} aria-label={allPageSelected ? "Deselect page" : "Select page"} />
+                    ) : "srOnly" in col ? (
+                      <span className="sr-only">{col.label}</span>
+                    ) : (
+                      col.label
+                    )}
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {jobs.map((job) => (
+                <ExtractionJobRow
+                  key={job.id}
+                  job={job}
+                  selected={selectedIds.has(job.id)}
+                  onToggleSelect={() => toggleSelect(job.id)}
+                  onPause={() => runAction(pauseJob(job.id), "Paused")}
+                  onResume={() => runAction(resumeJob(job.id), "Resumed")}
+                  onDecline={() => runAction(declineJob(job.id), "Extraction declined")}
+                  onDelete={() => runAction(deleteJob(job.id), "Deleted")}
+                  onPublish={canPublish ? () => handlePublish(job.id) : undefined}
+                  onReload={() => dispatch(fetchAllExtractions(fetchParams))}
+                  publishing={publishingId === job.id}
+                />
+              ))}
+            </TableBody>
+          </Table>
+        </TableCard>
+      )}
 
       {meta.total > 0 && (
         <Pagination page={page} total={meta.total} limit={pageSize} onPageChange={setPage} align="end" onPageSizeChange={setPageSize} />

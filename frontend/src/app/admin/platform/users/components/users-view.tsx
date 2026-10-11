@@ -5,7 +5,7 @@ import { Users } from "lucide-react";
 import { PageBody } from "@/components/ui/page-body";
 import { PageHeader } from "@/components/ui/page-header";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs";
+import { SectionTabs } from "@/components/section-tabs";
 import { fetchInvitations } from "../store/users-slice";
 import { PlatformUsersTab } from "./platform-users-tab";
 import { InvitationsTab } from "./invitations-tab";
@@ -43,7 +43,7 @@ export function UsersView() {
     <PageBody>
       <PageHeader title={<><Users /> Users</>} subtitle="Manage users and pending admin invitations." />
 
-      <AdminSegmentedTabs options={TABS} value={tab} onChange={setTab} />
+      <SectionTabs options={TABS} value={tab} onChange={setTab} />
 
       {tab === "users" && <PlatformUsersTab />}
       {tab === "invitations" && (

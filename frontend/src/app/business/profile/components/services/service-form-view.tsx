@@ -10,7 +10,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Combobox } from "@/components/combobox";
 import { DynamicIcon } from "@/components/dynamic-icon";
-import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs";
+import { SectionTabs } from "@/components/section-tabs";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import type { Accreditation, Category, Lookup } from "@/app/admin/platform/categories/apis/types";
 import { businessProfileDetailApi } from "../../apis";
@@ -265,7 +265,7 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
 
       {isEdit && serviceId ? (
         <>
-          <AdminSegmentedTabs options={DETAIL_TABS} value={detailTab} onChange={setDetailTab} />
+          <SectionTabs options={DETAIL_TABS} value={detailTab} onChange={setDetailTab} />
           <Card>
             <CardContent key={detailTab} className="animate-step-forward">
               {detailTab === "summary" && (

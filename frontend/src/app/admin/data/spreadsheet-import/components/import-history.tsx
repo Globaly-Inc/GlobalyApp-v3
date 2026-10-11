@@ -2,12 +2,14 @@
 
 import { Fragment, useEffect, useState } from "react";
 import Link from "next/link";
-import { ChevronDown, Loader2, Search } from "lucide-react";
+import { ChevronDown, History } from "lucide-react";
 import { Combobox } from "@/components/combobox";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { EmptyState } from "@/components/ui/empty-state";
+import { FilterBar, SearchInput } from "@/components/ui/filter-bar";
+import { ListSkeleton } from "@/components/ui/list-skeleton";
 import { Pagination } from "@/components/ui/pagination";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Table, TableBody, TableCard, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { SectionTabs } from "@/components/section-tabs";
 import { cn } from "@/lib/utils";
 import { ExtractionStatusBadge } from "@/app/admin/data/all-extractions/components/status-badge";
 import type { ExtractionJob } from "@/app/admin/data/all-extractions/apis/types";
@@ -72,111 +74,113 @@ export function ImportHistory({ refreshKey }: Readonly<{ refreshKey: number }>) 
 
   const total = totals[tab];
 
+  const tabOptions = [
+    { value: "imported" as const, label: "Imported", count: totals.imported },
+    { value: "failed" as const, label: "Failed", count: totals.failed },
+  ];
+
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-3 p-5">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <p className="text-sm font-semibold">Import history</p>
-          <div className="flex gap-1">
-            {([["imported", "Imported"], ["failed", "Failed"]] as const).map(([v, label]) => (
-              <button
-                key={v}
-                type="button"
-                onClick={() => { setTab(v); setPage(1); setExpanded(null); }}
-                className={cn(
-                  "cursor-pointer rounded-md border px-2.5 py-1 text-xs font-medium",
-                  tab === v ? "border-primary bg-primary/10 text-primary" : "border-border text-muted-foreground",
-                )}
-              >
-                {label} ({totals[v]})
-              </button>
-            ))}
-          </div>
-        </div>
+    <section className="flex flex-col gap-3">
+      <h2 className="font-heading text-base font-medium text-foreground">Import history</h2>
 
-        <div className="flex flex-wrap items-center gap-2">
-          <div className="relative min-w-56 flex-1">
-            <Search className="pointer-events-none absolute top-1/2 left-2.5 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-            <Input value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search institutions…" className="h-10 pl-8" />
-          </div>
-          {tab === "imported" && (
-            <Combobox
-              options={STATUS_FILTERS.map((f) => ({ value: f.value, label: f.label }))}
-              value={status}
-              onChange={(v) => { setStatus(v || "all"); setPage(1); }}
-              className="h-10 w-48"
-            />
-          )}
-        </div>
+      <SectionTabs
+        options={tabOptions}
+        value={tab}
+        onChange={(v) => { setTab(v); setPage(1); setExpanded(null); }}
+        className="mb-0"
+      />
 
-        {error ? (
-          <p className="text-sm text-destructive">Couldn&apos;t load imports: {error}</p>
-        ) : !jobs ? (
-          <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
-        ) : jobs.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {q || status !== "all" ? "No imports match." : tab === "failed" ? "No failed imports." : "Nothing imported yet."}
-          </p>
-        ) : (
-          <div className="overflow-x-auto">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead className="w-8" />
-                  <TableHead>Institution</TableHead>
-                  <TableHead>Status</TableHead>
-                  {tab === "failed" ? <TableHead>Reason</TableHead> : <TableHead>Courses</TableHead>}
-                  <TableHead>Imported</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {jobs.map((j) => (
-                  <Fragment key={j.id}>
-                    <TableRow>
-                      <TableCell>
-                        <button
-                          type="button"
-                          aria-label="Show courses"
-                          aria-expanded={expanded === j.id}
-                          onClick={() => setExpanded((e) => (e === j.id ? null : j.id))}
-                          className="cursor-pointer text-muted-foreground"
-                        >
-                          <ChevronDown className={cn("h-4 w-4 transition-transform", expanded !== j.id && "-rotate-90")} />
-                        </button>
-                      </TableCell>
-                      <TableCell className="font-medium">
-                        <Link href={`/admin/data/all-extractions/${j.id}`} className="text-primary hover:underline">
-                          {j.institution_name || "(unnamed)"}
-                        </Link>
-                      </TableCell>
-                      <TableCell><ExtractionStatusBadge status={j.status} /></TableCell>
-                      {tab === "failed"
-                        ? <TableCell className="max-w-md text-xs whitespace-normal text-destructive">{j.error_message || "Failed while importing"}</TableCell>
-                        : <TableCell>{j.courses_extracted}</TableCell>}
-                      <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{new Date(j.created_at).toLocaleString()}</TableCell>
-                    </TableRow>
-                    {expanded === j.id && (
-                      <TableRow>
-                        <TableCell colSpan={5} className="bg-muted/30 p-4"><ImportCoursesPanel jobId={j.id} /></TableCell>
-                      </TableRow>
-                    )}
-                  </Fragment>
-                ))}
-              </TableBody>
-            </Table>
-          </div>
-        )}
-
-        {total > 0 && (
-          <Pagination
-            page={page}
-            limit={limit}
-            total={total}
-            onPageChange={(p) => { setPage(p); setExpanded(null); }}
-            onPageSizeChange={(l) => { setLimit(l); setPage(1); }}
+      <FilterBar>
+        <SearchInput value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Search institutions…" />
+        {tab === "imported" && (
+          <Combobox
+            options={STATUS_FILTERS.map((f) => ({ value: f.value, label: f.label }))}
+            value={status}
+            onChange={(v) => { setStatus(v || "all"); setPage(1); }}
+            className="h-10 w-48"
           />
         )}
-      </CardContent>
-    </Card>
+        <span className="shrink-0 px-2 text-sm text-muted-foreground">
+          {total} import{total === 1 ? "" : "s"}
+        </span>
+      </FilterBar>
+
+      {error ? (
+        <p className="text-sm text-destructive">Couldn&apos;t load imports: {error}</p>
+      ) : !jobs ? (
+        <ListSkeleton count={4} itemClassName="h-12" />
+      ) : jobs.length === 0 ? (
+        <EmptyState
+          compact
+          icon={History}
+          title={q || status !== "all" ? "No imports match." : tab === "failed" ? "No failed imports." : "Nothing imported yet."}
+        />
+      ) : (
+        <TableCard>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                <TableHead className="w-8"><span className="sr-only">Expand</span></TableHead>
+                <TableHead>Institution</TableHead>
+                <TableHead>Status</TableHead>
+                <TableHead className="hidden md:table-cell">{tab === "failed" ? "Reason" : "Courses"}</TableHead>
+                <TableHead className="hidden lg:table-cell">Imported</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {jobs.map((j) => (
+                <Fragment key={j.id}>
+                  <TableRow>
+                    <TableCell>
+                      <button
+                        type="button"
+                        aria-label="Show courses"
+                        aria-expanded={expanded === j.id}
+                        onClick={() => setExpanded((e) => (e === j.id ? null : j.id))}
+                        className="cursor-pointer text-muted-foreground"
+                      >
+                        <ChevronDown className={cn("h-4 w-4 transition-transform", expanded !== j.id && "-rotate-90")} />
+                      </button>
+                    </TableCell>
+                    <TableCell primary className="font-medium">
+                      <Link href={`/admin/data/all-extractions/${j.id}`} className="block truncate text-primary hover:underline">
+                        {j.institution_name || "(unnamed)"}
+                      </Link>
+                      {/* Fallbacks for the columns hidden on narrow screens. */}
+                      {tab === "failed" ? (
+                        <p className="text-xs font-normal whitespace-normal text-destructive md:hidden">{j.error_message || "Failed while importing"}</p>
+                      ) : (
+                        <p className="text-xs font-normal text-muted-foreground md:hidden">{j.courses_extracted} courses</p>
+                      )}
+                      <p className="truncate text-xs font-normal text-muted-foreground lg:hidden">{new Date(j.created_at).toLocaleString()}</p>
+                    </TableCell>
+                    <TableCell><ExtractionStatusBadge status={j.status} /></TableCell>
+                    {tab === "failed"
+                      ? <TableCell className="hidden max-w-md text-xs whitespace-normal text-destructive md:table-cell">{j.error_message || "Failed while importing"}</TableCell>
+                      : <TableCell className="hidden md:table-cell">{j.courses_extracted}</TableCell>}
+                    <TableCell className="hidden text-xs text-muted-foreground lg:table-cell">{new Date(j.created_at).toLocaleString()}</TableCell>
+                  </TableRow>
+                  {expanded === j.id && (
+                    <TableRow>
+                      <TableCell colSpan={5} className="bg-muted/30 p-4"><ImportCoursesPanel jobId={j.id} /></TableCell>
+                    </TableRow>
+                  )}
+                </Fragment>
+              ))}
+            </TableBody>
+          </Table>
+        </TableCard>
+      )}
+
+      {total > 0 && (
+        <Pagination
+          page={page}
+          limit={limit}
+          total={total}
+          onPageChange={(p) => { setPage(p); setExpanded(null); }}
+          onPageSizeChange={(l) => { setLimit(l); setPage(1); }}
+        />
+      )}
+    </section>
   );
 }

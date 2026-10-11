@@ -1,8 +1,10 @@
 "use client";
 
-import { RefreshCw } from "lucide-react";
+import { Inbox, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
+import { Table, TableBody, TableCard, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AgentcisJobRow } from "./agentcis-job-row";
 import type { AgentcisJob } from "../apis/types";
 
@@ -38,28 +40,26 @@ export function AgentcisJobsTable({
         </div>
 
         {jobs.length === 0 ? (
-          <div className="py-8 text-center text-sm text-muted-foreground">
-            No imports found. Search and import institutions above.
-          </div>
+          <EmptyState compact icon={Inbox} title="No imports found." description="Search and import institutions above." />
         ) : (
-          <div className="border rounded-lg overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 text-xs">
-                <tr>
-                  <th className="text-left p-3 font-medium">Institution</th>
-                  <th className="text-left p-3 font-medium w-28">Status</th>
-                  <th className="text-left p-3 font-medium">Progress</th>
-                  <th className="text-left p-3 font-medium w-32">Updated</th>
-                  <th className="text-right p-3 font-medium w-20">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
+          <TableCard>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Institution</TableHead>
+                  <TableHead className="w-28">Status</TableHead>
+                  <TableHead>Progress</TableHead>
+                  <TableHead className="hidden w-32 lg:table-cell">Updated</TableHead>
+                  <TableHead className="w-20"><span className="sr-only">Actions</span></TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {jobs.map((job) => (
                   <AgentcisJobRow key={job.id} job={job} onRetry={onRetry} onDelete={onDelete} onViewError={onViewError} />
                 ))}
-              </tbody>
-            </table>
-          </div>
+              </TableBody>
+            </Table>
+          </TableCard>
         )}
       </CardContent>
     </Card>

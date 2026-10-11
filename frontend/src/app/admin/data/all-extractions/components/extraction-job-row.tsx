@@ -1,59 +1,31 @@
 "use client";
 
-import { useState } from "react";
-import { useRouter } from "next/navigation";
-import {
-  ArrowUpRight,
-  BookOpen,
-  Building2,
-  Calendar,
-  ChevronDown,
-  ChevronUp,
-  Eye,
-  FileSpreadsheet,
-  FileText,
-  Globe,
-  Landmark,
-  Loader2,
-  MoreVertical,
-  Pause,
-  Pencil,
-  Play,
-  RotateCw,
-  Trash2,
-  Users,
-  XCircle,
-} from "lucide-react";
-import { Card } from "@/components/ui/card";
-import { cn } from "@/lib/utils";
+import { Fragment, useState } from "react";
+import Link from "next/link";
+import { FileSpreadsheet, Landmark } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Button } from "@/components/ui/button";
-import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/components/ui/dialog";
-import { ACTIVE_STATUSES, FINISHED_STATUSES, PAUSABLE_STATUSES, PIPELINE_STAGES, PUBLISHABLE_STATUSES, STATUS_CONFIG } from "../const";
+import { TableCell, TableRow } from "@/components/ui/table";
+import { cn } from "@/lib/utils";
+import { ACTIVE_STATUSES, FINISHED_STATUSES, PIPELINE_STAGES, PUBLISHABLE_STATUSES, STATUS_CONFIG } from "../const";
 import { ExtractionStatusBadge, NeedsAttentionBadge } from "./status-badge";
-import { useRerunJob } from "./rerun-extraction-button";
 import { RowActors } from "./row-actors";
 import { PipelineProgressPanel } from "./pipeline-progress-panel";
+import { ExtractionJobActions, type ExtractionJobActionProps } from "./extraction-job-actions";
 import type { ExtractionJob, PipelineProgress } from "../apis/types";
 
-function StatPill({ icon: Icon, children }: Readonly<{ icon: React.ElementType; children: React.ReactNode }>) {
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
-      <Icon className="h-3 w-3" />
-      {children}
-    </span>
-  );
-}
+/** Column headers for the rows below — kept beside the row so the two can't drift apart. */
+export const EXTRACTION_JOB_COLUMNS = [
+  { label: "Select", className: "w-px", srOnly: true },
+  { label: "Institution" },
+  { label: "Status" },
+  { label: "Progress", className: "hidden md:table-cell" },
+  { label: "Courses", className: "hidden lg:table-cell", numeric: true },
+  { label: "Agents", className: "hidden lg:table-cell", numeric: true },
+  { label: "Branches", className: "hidden lg:table-cell", numeric: true },
+  { label: "Created", className: "hidden md:table-cell" },
+  { label: "Actions", className: "w-px", srOnly: true },
+] as const;
 
 // Weighted mean of pipeline stage completion — a "processing" stage counts its own
 // done/total ratio (or half-credit with no counts yet) so the bar isn't stuck between steps.
@@ -82,215 +54,120 @@ function overallProgressPct(job: ExtractionJob, progress: PipelineProgress | nul
   return 0;
 }
 
+function ProgressCell({ job, pct }: Readonly<{ job: ExtractionJob; pct: number }>) {
+  const isFailed = job.status === "failed";
+  const isActive = ACTIVE_STATUSES.includes(job.status);
+  return (
+    <div className="w-28">
+      <div className={cn("text-sm font-semibold", isFailed ? "text-destructive" : isActive ? "text-purple-600" : "text-foreground")}>
+        {pct}%
+      </div>
+      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
+        <div
+          className={cn("h-full rounded-full", isFailed ? "bg-destructive" : isActive ? "bg-purple-500" : "bg-success")}
+          style={{ width: `${pct}%` }}
+        />
+      </div>
+    </div>
+  );
+}
+
+const count = (n: number | undefined | null) => (n ? n : "—");
+
 export function ExtractionJobRow({
-  job,
   selected,
   onToggleSelect,
-  onPause,
-  onResume,
-  onDecline,
-  onDelete,
-  onPublish,
-  onReload,
-  publishing = false,
-}: Readonly<{
-  job: ExtractionJob;
-  selected: boolean;
-  onToggleSelect: () => void;
-  onPause: () => void;
-  onResume: () => void;
-  onDecline: () => void;
-  onDelete: () => void;
-  onReload: () => void;
-  /** Omitted in modes where publishing isn't offered. */
-  onPublish?: () => void;
-  publishing?: boolean;
-}>) {
-  const router = useRouter();
-  const [confirmDelete, setConfirmDelete] = useState(false);
+  ...actionProps
+}: ExtractionJobActionProps & Readonly<{ selected: boolean; onToggleSelect: () => void }>) {
+  const { job } = actionProps;
   const [expanded, setExpanded] = useState(false);
 
   const isPublishable = PUBLISHABLE_STATUSES.includes(job.status);
-  const isPausable = PAUSABLE_STATUSES.includes(job.status);
-  const isResumable = job.status === "paused" || job.status === "stalled";
-  const isActive = ACTIVE_STATUSES.includes(job.status);
-  const { rerun, running: rerunning, dialog: rerunDialog } = useRerunJob(job.id, onReload);
-
   const progress = (job.pipeline_progress ?? null) as PipelineProgress | null;
   const hasPipeline = Boolean(progress && Object.keys(progress).length > 0);
   const status = STATUS_CONFIG[job.status] ?? STATUS_CONFIG.pending;
-  const progressPct = overallProgressPct(job, progress);
+  const name = job.institution_name || job.institution_url;
+  const pct = overallProgressPct(job, progress);
+  const counts = [
+    [job.courses_extracted, "course"],
+    [job.agent_count, "agent"],
+    [job.campus_count, "branch"],
+  ] as const;
+  const countText = counts
+    .filter(([n]) => n)
+    .map(([n, unit]) => `${n} ${unit === "branch" ? (n === 1 ? "branch" : "branches") : `${unit}${n === 1 ? "" : "s"}`}`)
+    .join(" · ");
+  const created = new Date(job.created_at).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
 
   return (
-    <Card
-      className={cn(
-        "flex flex-col gap-0 border-l-4 p-5 transition-shadow hover:shadow-md",
-        status.accent,
-        selected && "ring-2 ring-primary"
-      )}
-    >
-      <div className="flex flex-row items-start justify-between gap-4">
-        <div className="flex flex-1 items-start gap-3 min-w-0">
-          {isPublishable && (
-            <div className="pt-1">
-              <Checkbox checked={selected} onCheckedChange={onToggleSelect} />
+    <Fragment>
+      <TableRow data-state={selected ? "selected" : undefined}>
+        <TableCell>
+          {isPublishable && <Checkbox checked={selected} onCheckedChange={onToggleSelect} aria-label={`Select ${name}`} />}
+        </TableCell>
+        <TableCell primary>
+          <div className="flex min-w-0 items-center gap-3">
+            <div className={cn("flex size-9 shrink-0 items-center justify-center rounded-full", status.className)}>
+              <Landmark className="h-4 w-4" />
             </div>
-          )}
-          <div className={cn("flex h-14 w-14 shrink-0 items-center justify-center rounded-full", status.className)}>
-            <Landmark className="h-7 w-7" />
-          </div>
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-3">
-              {/* ponytail: <p>, not a heading — globals.css puts h1-h4 in the Fraunces serif */}
-              <p className="font-semibold text-foreground truncate">{job.institution_name || job.institution_url}</p>
-              <ExtractionStatusBadge status={job.status} />
-              <NeedsAttentionBadge job={job} />
-              {job.source_type === "spreadsheet" && (
-                <span className="inline-flex items-center gap-1 rounded-full border border-sky-300 bg-sky-50 px-2 py-0.5 text-xs font-medium text-sky-700">
-                  <FileSpreadsheet className="h-3 w-3" />
-                  Spreadsheet
-                </span>
-              )}
-            </div>
-            <div className="flex flex-wrap items-center gap-3 mt-1.5 text-sm text-muted-foreground">
-              <span className="flex items-center gap-1 truncate">
-                <Globe className="h-3.5 w-3.5 shrink-0" />
-                {job.institution_url}
-              </span>
-              <span className="flex items-center gap-1 shrink-0">
-                <Calendar className="h-3.5 w-3.5" />
-                {new Date(job.created_at).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" })}
-              </span>
-              {/* Both actors, same wording as the job header and every sub-tab card — this row
-                  used to print the creator's bare name with a user icon, so the last admin to
-                  act on the job was invisible here and the one name shown was unlabelled. */}
-              <RowActors row={job} className="text-sm" />
-            </div>
-
-            {(job.courses_extracted > 0 || Boolean(job.agent_count) || Boolean(job.campus_count)) && (
-              <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                {job.courses_extracted > 0 && <StatPill icon={BookOpen}>{job.courses_extracted} courses</StatPill>}
-                {Boolean(job.agent_count) && <StatPill icon={Users}>{job.agent_count} agents</StatPill>}
-                {Boolean(job.campus_count) && <StatPill icon={Building2}>{job.campus_count} branches</StatPill>}
+            <div className="min-w-0">
+              <div className="flex flex-wrap items-center gap-1.5">
+                <Link href={`/admin/data/all-extractions/${job.id}`} className="truncate font-medium text-foreground hover:underline">
+                  {name}
+                </Link>
+                <NeedsAttentionBadge job={job} />
+                {job.source_type === "spreadsheet" && (
+                  <Badge variant="info">
+                    <FileSpreadsheet /> Spreadsheet
+                  </Badge>
+                )}
               </div>
-            )}
-
-            {hasPipeline && (
-              <Button
-                variant="outline"
-                className="mt-3 h-7 gap-1.5 px-2.5 text-xs text-muted-foreground cursor-pointer"
-                onClick={() => setExpanded((s) => !s)}
-              >
-                {expanded ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
-                Pipeline Progress
-                <span className="text-muted-foreground/70">· Track the status of each step</span>
-              </Button>
-            )}
-          </div>
-        </div>
-
-        <div className="flex items-start gap-4 shrink-0">
-          <div className="w-32 pt-1">
-            <span className="text-xs text-muted-foreground">Progress</span>
-            <div className={cn("text-lg font-bold leading-tight", job.status === "failed" ? "text-red-600" : isActive ? "text-purple-600" : "text-foreground")}>
-              {progressPct}%
-            </div>
-            <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-              <div
-                className={cn("h-full rounded-full", job.status === "failed" ? "bg-red-500" : isActive ? "bg-purple-500" : "bg-emerald-500")}
-                style={{ width: `${progressPct}%` }}
-              />
+              <p className="truncate text-xs text-muted-foreground">{job.institution_url}</p>
+              {/* Below md the Created column is hidden — keep the date and both actors reachable here. */}
+              <div className="mt-0.5 flex flex-wrap items-center gap-x-3 text-xs text-muted-foreground md:hidden">
+                <span>{created}</span>
+                <RowActors row={job} />
+              </div>
+              {/* Progress and counts columns hide at md / lg — keep them readable here, as the old row did. */}
+              <p className="mt-0.5 text-xs text-muted-foreground md:hidden">
+                {pct}% · {status.label}
+              </p>
+              {countText && <p className="mt-0.5 text-xs text-muted-foreground lg:hidden">{countText}</p>}
             </div>
           </div>
-
-          <div className="flex items-center gap-2 flex-wrap justify-end">
-            <Button
-              variant="outline"
-              className="gap-1.5 px-3 cursor-pointer"
-              onClick={() => router.push(`/admin/data/all-extractions/${job.id}`)}
-            >
-              <Eye className="h-3.5 w-3.5" />
-              View
-            </Button>
-
-            {isPublishable && onPublish && (
-              <Button className="gap-1.5 px-3 cursor-pointer" disabled={publishing} onClick={onPublish}>
-                {publishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowUpRight className="h-3.5 w-3.5" />}
-                {job.status === "exported" ? "Re-publish / Repair" : "Publish to Business"}
-              </Button>
-            )}
-
-            <DropdownMenu>
-              <DropdownMenuTrigger className="flex h-9 w-9 items-center justify-center rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground">
-                <MoreVertical className="h-3.5 w-3.5" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end">
-                <DropdownMenuItem onClick={() => router.push(`/admin/data/all-extractions/${job.id}`)}>
-                  <Eye className="h-3.5 w-3.5" /> View Details
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={rerun} disabled={rerunning} className="text-purple-600">
-                  <RotateCw className="h-3.5 w-3.5" /> Re-run Job
-                </DropdownMenuItem>
-                {isPausable && (
-                  <DropdownMenuItem onClick={onPause} className="text-orange-600">
-                    <Pause className="h-3.5 w-3.5" /> Pause
-                  </DropdownMenuItem>
-                )}
-                {isResumable && (
-                  <DropdownMenuItem onClick={onResume} className="text-emerald-600">
-                    <Play className="h-3.5 w-3.5" /> {job.status === "stalled" ? "Recover" : "Resume"}
-                  </DropdownMenuItem>
-                )}
-                {isPublishable && job.status !== "exported" && (
-                  <DropdownMenuItem onClick={onDecline} className="text-destructive">
-                    <XCircle className="h-3.5 w-3.5" /> Decline
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuItem onClick={() => router.push(`/admin/data/all-extractions/${job.id}?tab=overview`)}>
-                  <FileText className="h-3.5 w-3.5" /> View Logs
-                </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => router.push(`/admin/data/all-extractions/${job.id}?tab=overview`)}>
-                  <Pencil className="h-3.5 w-3.5" /> Edit
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => setConfirmDelete(true)} className="text-destructive">
-                  <Trash2 className="h-3.5 w-3.5" /> Delete
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            <Dialog open={confirmDelete} onOpenChange={setConfirmDelete}>
-              <DialogContent>
-                <DialogHeader>
-                  <DialogTitle>Delete extraction?</DialogTitle>
-                  <DialogDescription>
-                    This will permanently delete all extracted data for{" "}
-                    <strong>{job.institution_name || job.institution_url}</strong>.
-                  </DialogDescription>
-                </DialogHeader>
-                <DialogFooter>
-                  <Button variant="outline" className="cursor-pointer" onClick={() => setConfirmDelete(false)}>
-                    Cancel
-                  </Button>
-                  <Button
-                    variant="destructive"
-                    className="cursor-pointer"
-                    onClick={() => {
-                      setConfirmDelete(false);
-                      onDelete();
-                    }}
-                  >
-                    Delete
-                  </Button>
-                </DialogFooter>
-              </DialogContent>
-            </Dialog>
-            {rerunDialog}
-          </div>
-        </div>
-      </div>
-
-      {expanded && progress && <PipelineProgressPanel job={job} progress={progress} />}
-    </Card>
+        </TableCell>
+        <TableCell>
+          <ExtractionStatusBadge status={job.status} />
+        </TableCell>
+        <TableCell className="hidden md:table-cell">
+          <ProgressCell job={job} pct={pct} />
+        </TableCell>
+        <TableCell numeric className="hidden lg:table-cell">{count(job.courses_extracted)}</TableCell>
+        <TableCell numeric className="hidden lg:table-cell">{count(job.agent_count)}</TableCell>
+        <TableCell numeric className="hidden lg:table-cell">{count(job.campus_count)}</TableCell>
+        <TableCell className="hidden md:table-cell">
+          <div className="text-muted-foreground">{created}</div>
+          {/* Both actors, same wording as the job header and every sub-tab card. */}
+          <RowActors row={job} className="flex-col items-start gap-y-0.5" />
+        </TableCell>
+        <TableCell>
+          <ExtractionJobActions
+            {...actionProps}
+            hasPipeline={hasPipeline}
+            expanded={expanded}
+            onToggleExpanded={() => setExpanded((s) => !s)}
+          />
+        </TableCell>
+      </TableRow>
+      {expanded && progress && (
+        <TableRow className="hover:bg-transparent">
+          <TableCell colSpan={EXTRACTION_JOB_COLUMNS.length} className="bg-muted/30 whitespace-normal">
+            <div className="overflow-x-auto">
+              <PipelineProgressPanel job={job} progress={progress} />
+            </div>
+          </TableCell>
+        </TableRow>
+      )}
+    </Fragment>
   );
 }

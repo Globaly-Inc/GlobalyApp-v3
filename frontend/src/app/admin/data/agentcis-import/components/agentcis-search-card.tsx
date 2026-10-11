@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Table, TableBody, TableCard, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { MAX_SELECTION } from "../const";
 import type { AgentCISResult, ImportResult } from "../apis/types";
 
@@ -70,37 +71,33 @@ export function AgentcisSearchCard({
             {query ? "No institutions found." : "Start typing to search AgentCIS..."}
           </div>
         ) : (
-          <div className="border rounded-lg overflow-hidden">
-            <table className="w-full text-sm">
-              <thead className="bg-muted/50 text-xs">
-                <tr>
-                  <th className="w-10 p-3" />
-                  <th className="text-left p-3 font-medium">Name</th>
-                  <th className="text-left p-3 font-medium">Country</th>
-                  <th className="text-left p-3 font-medium">City</th>
-                </tr>
-              </thead>
-              <tbody>
+          <TableCard>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-10"><span className="sr-only">Select</span></TableHead>
+                  <TableHead>Name</TableHead>
+                  <TableHead className="hidden md:table-cell">Country</TableHead>
+                  <TableHead className="hidden md:table-cell">City</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {results.map((r) => {
                   const sid = String(r.id);
                   return (
-                    <tr
-                      key={sid}
-                      className="border-t hover:bg-muted/30 transition-colors cursor-pointer"
-                      onClick={() => onToggle(r.id)}
-                    >
-                      <td className="p-3 text-center">
+                    <TableRow key={sid} className="cursor-pointer" onClick={() => onToggle(r.id)}>
+                      <TableCell className="text-center" onClick={(e) => e.stopPropagation()}>
                         <Checkbox checked={selectedIds.includes(sid)} onCheckedChange={() => onToggle(r.id)} />
-                      </td>
-                      <td className="p-3 font-medium text-foreground">{r.name}</td>
-                      <td className="p-3 text-muted-foreground">{r.country ?? "—"}</td>
-                      <td className="p-3 text-muted-foreground">{r.city ?? "—"}</td>
-                    </tr>
+                      </TableCell>
+                      <TableCell className="font-medium text-foreground">{r.name}</TableCell>
+                      <TableCell className="hidden text-muted-foreground md:table-cell">{r.country ?? "—"}</TableCell>
+                      <TableCell className="hidden text-muted-foreground md:table-cell">{r.city ?? "—"}</TableCell>
+                    </TableRow>
                   );
                 })}
-              </tbody>
-            </table>
-          </div>
+              </TableBody>
+            </Table>
+          </TableCard>
         )}
 
         <div className="flex items-center gap-3">

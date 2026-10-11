@@ -20,7 +20,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs";
+import { SectionTabs } from "@/components/section-tabs";
 import {
   fetchBusinessDetail, updateBusinessDetail, updateBusinessPublished, updateBusinessStatus, updateEnquirySettings,
 } from "../store/businesses-slice";
@@ -267,7 +267,7 @@ export function BusinessDetailView({ id }: Readonly<{ id: number }>) {
         </div>
 
         <div className="lg:col-span-2">
-          <AdminSegmentedTabs options={TABS} value={tab} onChange={setTab} />
+          <SectionTabs options={TABS} value={tab} onChange={setTab} />
           <Card>
             <CardContent>
               {tab === "branches" && <BranchesTab businessId={business.id} readOnly={readOnly} />}

@@ -3,6 +3,7 @@
 import { RefreshCw, Trash2, ExternalLink, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { TableCell, TableRow } from "@/components/ui/table";
 import { STATUS_BADGE } from "../const";
 import { relativeTime, progressText, progressCounters, firstErrorLine } from "../utils";
 import type { AgentcisJob } from "../apis/types";
@@ -23,19 +24,19 @@ export function AgentcisJobRow({
   const errorLine = job.status === "failed" ? firstErrorLine(job) : null;
 
   return (
-    <tr className="border-t hover:bg-muted/30 transition-colors">
-      <td className="p-3">
-        <div className="font-medium text-foreground">{job.institution_name ?? "—"}</div>
+    <TableRow>
+      <TableCell primary>
+        <div className="truncate font-medium text-foreground">{job.institution_name ?? "—"}</div>
         {job.institution_url && (
           <div className="text-xs text-muted-foreground truncate max-w-xs">
             {job.institution_url.replace(/^https?:\/\//, "").substring(0, 40)}
           </div>
         )}
-      </td>
-      <td className="p-3">
+      </TableCell>
+      <TableCell>
         <Badge variant={badge.variant}>{badge.label}</Badge>
-      </td>
-      <td className="p-3 text-muted-foreground">
+      </TableCell>
+      <TableCell className="text-muted-foreground">
         <div>{progressText(job)}</div>
         {counters && <div className="text-xs text-muted-foreground/80 mt-0.5">{counters}</div>}
         {errorLine && (
@@ -48,9 +49,9 @@ export function AgentcisJobRow({
             <span className="truncate">{errorLine}</span>
           </button>
         )}
-      </td>
-      <td className="p-3 text-xs text-muted-foreground">{relativeTime(job.updated_at)}</td>
-      <td className="p-3 text-right">
+      </TableCell>
+      <TableCell className="hidden text-xs text-muted-foreground lg:table-cell">{relativeTime(job.updated_at)}</TableCell>
+      <TableCell className="text-right">
         <div className="flex items-center justify-end gap-1">
           {job.status === "done" && (
             <a
@@ -75,7 +76,7 @@ export function AgentcisJobRow({
             </Button>
           )}
         </div>
-      </td>
-    </tr>
+      </TableCell>
+    </TableRow>
   );
 }

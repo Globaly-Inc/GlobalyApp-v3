@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { ApiError } from "@/lib/api/http";
 import { countriesApi } from "../apis";
 import type { Country, CountryInput } from "../apis/types";
-import { AdminSegmentedTabs } from "../../../components/admin-segmented-tabs";
+import { SectionTabs } from "@/components/section-tabs";
 import { COUNTRY_EDITOR_TABS_EDIT, COUNTRY_EDITOR_TABS_NEW, type CountryEditorTab } from "../const";
 import { generateSlug } from "../utils";
 import { CountryBasicPanel } from "./country-basic-panel";
@@ -135,7 +135,7 @@ export function CountryEditorView({ countryId }: Readonly<{ countryId: number | 
         </Button>
       </div>
 
-      <AdminSegmentedTabs options={countryId ? COUNTRY_EDITOR_TABS_EDIT : COUNTRY_EDITOR_TABS_NEW} value={tab} onChange={setTab} />
+      <SectionTabs options={countryId ? COUNTRY_EDITOR_TABS_EDIT : COUNTRY_EDITOR_TABS_NEW} value={tab} onChange={setTab} />
 
       {tab === "basic" && <CountryBasicPanel {...panelProps} />}
       {tab === "images" && <CountryImagesPanel {...panelProps} onPendingFile={registerPendingFile} />}

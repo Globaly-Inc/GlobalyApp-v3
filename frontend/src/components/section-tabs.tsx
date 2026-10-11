@@ -11,10 +11,10 @@ export interface SegmentOption<T extends string> {
 }
 
 /**
- * In-page section switcher for admin pages (Categories, AI Knowledge, Users…). Built on `ui/tabs`, so it
+ * In-page section switcher (admin Categories and Users, personal enquiries, business lists…). Built on `ui/tabs`, so it
  * has real tab semantics and arrow-key movement; the page renders the matching section itself.
  */
-export function AdminSegmentedTabs<T extends string>({
+export function SectionTabs<T extends string>({
   options,
   value,
   onChange,

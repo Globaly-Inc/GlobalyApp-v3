@@ -142,9 +142,9 @@ export function BusinessInvitesView({ reloadKey = 0 }: Readonly<{ reloadKey?: nu
   };
 
   return (
-    <div>
+    <div className="space-y-4">
       <InviteStatCards counts={counts} value={filter} onChange={handleFilter} loading={status === "loading"} />
-      <InvitesSearch value={search} onChange={handleSearch} />
+      <InvitesSearch value={search} onChange={handleSearch} total={total} />
 
       <InvitesTable
         invites={invites}

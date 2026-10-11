@@ -82,7 +82,7 @@ export function InvitationsTab({
                 const status = invitationStatus(invitation);
                 return (
                   <TableRow key={invitation.id}>
-                    <TableCell className="max-w-0 w-full">
+                    <TableCell primary>
                       <p className="truncate font-medium text-foreground">
                         {invitation.first_name} {invitation.last_name}
                       </p>

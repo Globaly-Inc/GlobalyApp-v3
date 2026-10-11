@@ -42,6 +42,9 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
 
 type CellProps = { /** Right-aligned, for counts and amounts. */ numeric?: boolean }
 
+/** The row's identifying column: takes the spare width and truncates, but never collapses (min 11rem, 16rem from md). */
+const PRIMARY_CELL = "w-full max-w-0 min-w-44 md:min-w-64"
+
 function TableHead({ className, numeric, ...props }: React.ComponentProps<"th"> & CellProps) {
   return (
     <th
@@ -56,11 +59,11 @@ function TableHead({ className, numeric, ...props }: React.ComponentProps<"th"> 
   )
 }
 
-function TableCell({ className, numeric, ...props }: React.ComponentProps<"td"> & CellProps) {
+function TableCell({ className, numeric, primary, ...props }: React.ComponentProps<"td"> & CellProps & { primary?: boolean }) {
   return (
     <td
       data-slot="table-cell"
-      className={cn("px-4 py-3 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0", numeric && "text-right", className)}
+      className={cn("px-4 py-3 align-middle whitespace-nowrap [&:has([role=checkbox])]:pr-0", numeric && "text-right", primary && PRIMARY_CELL, className)}
       {...props}
     />
   )

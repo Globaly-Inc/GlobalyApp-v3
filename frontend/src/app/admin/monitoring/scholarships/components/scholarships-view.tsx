@@ -1,12 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, CircleCheck, FileClock, GraduationCap, Plus, Star, Trash2, Upload, X } from "lucide-react";
+import { CircleCheck, FileClock, GraduationCap, Plus, Star, Trash2, Upload, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { AdminSegmentedTabs } from "../../../components/admin-segmented-tabs";
+import { Checkbox } from "@/components/ui/checkbox";
+import { EmptyState } from "@/components/ui/empty-state";
+import { FilterBar, SearchInput } from "@/components/ui/filter-bar";
+import { ListSkeleton } from "@/components/ui/list-skeleton";
+import { PageBody } from "@/components/ui/page-body";
+import { PageHeader } from "@/components/ui/page-header";
+import { Pagination } from "@/components/ui/pagination";
+import { Table, TableBody, TableCard, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { SectionTabs } from "@/components/section-tabs";
 import { ConfirmDeleteDialog } from "../../../components/confirm-delete-dialog";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { STATUS_TABS } from "../const";
@@ -20,8 +26,7 @@ import type { Scholarship } from "../apis/types";
 import { EMPTY_ADVANCED_FILTERS, ScholarshipAdvancedFilters, type AdvancedFilters } from "./scholarship-advanced-filters";
 import { ScholarshipDialog } from "./scholarship-dialog";
 import { ScholarshipImportDialog } from "./scholarship-import-dialog";
-import { ScholarshipRow } from "./scholarship-row";
-import { ScholarshipsTableHeader } from "./scholarships-table-header";
+import { SCHOLARSHIP_COLUMNS, ScholarshipRow } from "./scholarship-row";
 
 const PAGE_SIZE_OPTIONS = [10, 25, 50, 100];
 
@@ -45,9 +50,9 @@ type Tone = { badge: string; top: string };
 
 const TONES: Record<"neutral" | "green" | "gray" | "amber", Tone> = {
   neutral: { badge: "bg-primary/10 text-primary", top: "bg-primary" },
-  green: { badge: "bg-emerald-500/10 text-emerald-600", top: "bg-emerald-500" },
+  green: { badge: "bg-success/15 text-success", top: "bg-success" },
   gray: { badge: "bg-muted text-muted-foreground", top: "bg-muted-foreground/40" },
-  amber: { badge: "bg-amber-500/10 text-amber-600", top: "bg-amber-500" },
+  amber: { badge: "bg-warning/15 text-warning", top: "bg-warning" },
 };
 
 function StatCard({
@@ -55,7 +60,7 @@ function StatCard({
 }: Readonly<{ icon: typeof GraduationCap; label: string; value: number; tone: keyof typeof TONES }>) {
   const t = TONES[tone];
   return (
-    <Card className="gap-0 overflow-hidden py-0 transition-shadow hover:shadow-md">
+    <Card className="gap-0 overflow-hidden py-0">
       <div className={`h-1 w-full ${t.top}`} />
       <CardContent className="flex items-center gap-3.5 px-5 py-5">
         <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-full ${t.badge}`}>
@@ -72,7 +77,7 @@ function StatCard({
 
 export function ScholarshipsView() {
   const dispatch = useAppDispatch();
-  const { scholarships, page, limit, totalPages, total, counts } = useAppSelector((state) => state.monitoringScholarships);
+  const { scholarships, page, limit, total, counts, status: listStatus } = useAppSelector((state) => state.monitoringScholarships);
   const fetchedRef = useRef(false);
 
   const [search, setSearch] = useState("");
@@ -162,99 +167,103 @@ export function ScholarshipsView() {
   };
 
   return (
-    <div>
-      <div className="mb-5 flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Scholarships</h1>
-          <p className="text-muted-foreground mt-1">Manage scholarship listings, featured placement, and publish status.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={() => setImportOpen(true)}>
-            <Upload className="h-4 w-4" /> Bulk import (XLSX)
-          </Button>
-          <Button onClick={() => { setEditing(null); setDialogOpen(true); }}>
-            <Plus className="h-4 w-4" /> New scholarship
-          </Button>
-        </div>
-      </div>
+    <PageBody>
+      <PageHeader
+        title={<><GraduationCap /> Scholarships</>}
+        subtitle="Manage scholarship listings, featured placement, and publish status."
+      >
+        <Button variant="outline" onClick={() => setImportOpen(true)}>
+          <Upload className="h-4 w-4" /> Bulk import (XLSX)
+        </Button>
+        <Button onClick={() => { setEditing(null); setDialogOpen(true); }}>
+          <Plus className="h-4 w-4" /> New scholarship
+        </Button>
+      </PageHeader>
 
-      <div className="mb-5 grid grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <StatCard icon={GraduationCap} label="Total" value={counts.total} tone="neutral" />
         <StatCard icon={CircleCheck} label="Published" value={counts.published} tone="green" />
         <StatCard icon={FileClock} label="Draft" value={counts.draft} tone="gray" />
         <StatCard icon={Star} label="Featured" value={counts.featured} tone="amber" />
       </div>
 
-      <div className="mb-4 flex items-center gap-3">
-        <AdminSegmentedTabs options={STATUS_TABS} value={status} onChange={setStatus} className="mb-0" />
-        <ScholarshipAdvancedFilters value={advanced} onApply={setAdvanced} />
-        <Input placeholder="Search by title or provider…" value={search} onChange={(e) => setSearch(e.target.value)} className="h-10 max-w-sm ml-auto" />
-      </div>
+      <div className="flex flex-col gap-4">
+        <SectionTabs options={STATUS_TABS} value={status} onChange={setStatus} className="mb-0" />
 
-      {selected.size > 0 && (
-        <div className="mb-3 flex items-center justify-between rounded-lg border border-border bg-muted/50 px-4 py-2.5">
-          <p className="text-sm font-medium text-foreground">{selected.size} selected</p>
-          <div className="flex items-center gap-2">
-            <Button variant="destructive" size="sm" onClick={() => setDeleting("selection")}>
-              <Trash2 className="h-4 w-4" /> Delete {selected.size}
-            </Button>
-            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSelected(new Set())}>
-              <X className="h-4 w-4" />
-            </Button>
+        <FilterBar>
+          <SearchInput placeholder="Search by title or provider…" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <ScholarshipAdvancedFilters value={advanced} onApply={setAdvanced} />
+          <span className="shrink-0 px-2 text-sm text-muted-foreground">
+            {total} scholarship{total === 1 ? "" : "s"}
+          </span>
+        </FilterBar>
+
+        {selected.size > 0 && (
+          <div className="flex items-center justify-between rounded-lg border border-border bg-muted/50 px-4 py-2.5">
+            <p className="text-sm font-medium text-foreground">{selected.size} selected</p>
+            <div className="flex items-center gap-2">
+              <Button variant="destructive" size="sm" onClick={() => setDeleting("selection")}>
+                <Trash2 className="h-4 w-4" /> Delete {selected.size}
+              </Button>
+              <Button variant="ghost" size="icon-sm" aria-label="Clear selection" onClick={() => setSelected(new Set())}>
+                <X />
+              </Button>
+            </div>
           </div>
-        </div>
-      )}
+        )}
 
-      {/* overflow-visible overrides Card's own baked-in overflow-hidden, which would otherwise trap the sticky table header inside this box */}
-      <Card className="overflow-visible py-0">
-        <CardContent className="p-0">
-          {scholarships.length === 0 ? (
-            <p className="p-8 text-center text-sm text-muted-foreground">No scholarships found.</p>
-          ) : (
-            <>
-              <ScholarshipsTableHeader allSelected={allSelected} someSelected={someSelected} onSelectAll={toggleSelectAll} />
-              {scholarships.map((s) => (
-                <ScholarshipRow
-                  key={s.id}
-                  scholarship={s}
-                  selected={selected.has(s.id)}
-                  onSelect={(checked) => toggleSelect(s.id, checked)}
-                  onToggle={(field, value) => handleToggle(s, field, value)}
-                  onEdit={() => { setEditing(s); setDialogOpen(true); }}
-                  onDelete={() => setDeleting(s)}
-                />
-              ))}
-            </>
-          )}
-        </CardContent>
-      </Card>
-
-      {total > 0 && (
-        <div className="mt-3 flex items-center justify-end gap-4 text-sm text-muted-foreground">
-          <div className="flex items-center gap-2">
-            <span>Rows per page</span>
-            <Select value={String(limit)} onValueChange={(v) => v && changePageSize(Number(v))}>
-              <SelectTrigger className="h-8 w-17.5 text-xs">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {PAGE_SIZE_OPTIONS.map((size) => (
-                  <SelectItem key={size} value={String(size)}>{size}</SelectItem>
+        {listStatus === "loading" && scholarships.length === 0 && <ListSkeleton count={6} itemClassName="h-14" />}
+        {listStatus !== "loading" && scholarships.length === 0 && (
+          <EmptyState icon={GraduationCap} title="No scholarships found." />
+        )}
+        {scholarships.length > 0 && (
+          <TableCard>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-px">
+                    <Checkbox
+                      checked={allSelected}
+                      indeterminate={someSelected && !allSelected}
+                      onCheckedChange={(v) => toggleSelectAll(!!v)}
+                      aria-label="Select all"
+                    />
+                  </TableHead>
+                  {SCHOLARSHIP_COLUMNS.map((col) => (
+                    <TableHead key={col.label} className={"className" in col ? col.className : undefined}>
+                      {"srOnly" in col ? <span className="sr-only">{col.label}</span> : col.label}
+                    </TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {scholarships.map((s) => (
+                  <ScholarshipRow
+                    key={s.id}
+                    scholarship={s}
+                    selected={selected.has(s.id)}
+                    onSelect={(checked) => toggleSelect(s.id, checked)}
+                    onToggle={(field, value) => handleToggle(s, field, value)}
+                    onEdit={() => { setEditing(s); setDialogOpen(true); }}
+                    onDelete={() => setDeleting(s)}
+                  />
                 ))}
-              </SelectContent>
-            </Select>
-          </div>
-          <p>Page {page} of {totalPages} · {total} total</p>
-          <div className="flex items-center gap-1">
-            <Button variant="outline" size="icon" className="h-8 w-8" disabled={page <= 1} onClick={() => goToPage(page - 1)}>
-              <ChevronLeft className="h-4 w-4" />
-            </Button>
-            <Button variant="outline" size="icon" className="h-8 w-8" disabled={page >= totalPages} onClick={() => goToPage(page + 1)}>
-              <ChevronRight className="h-4 w-4" />
-            </Button>
-          </div>
-        </div>
-      )}
+              </TableBody>
+            </Table>
+          </TableCard>
+        )}
+
+        {total > 0 && (
+          <Pagination
+            page={page}
+            limit={limit}
+            total={total}
+            onPageChange={goToPage}
+            pageSizeOptions={PAGE_SIZE_OPTIONS}
+            onPageSizeChange={changePageSize}
+          />
+        )}
+      </div>
 
       <ScholarshipDialog open={dialogOpen} onOpenChange={setDialogOpen} editing={editing} onSaved={handleSaved} />
       <ScholarshipImportDialog open={importOpen} onOpenChange={setImportOpen} />
@@ -265,6 +274,6 @@ export function ScholarshipsView() {
         onConfirm={handleConfirmDelete}
         deleting={busy}
       />
-    </div>
+    </PageBody>
   );
 }

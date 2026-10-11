@@ -14,8 +14,8 @@ import type { WidgetVisitor } from "../apis/types";
 
 /**
  * The list itself — a real table, because Status and Last activity were asked for as columns
- * and a column that only lines up on one screen width is not a column. The card chrome around
- * it (header, tabs, pagination) is the Team tab's, so the two pages still read as one app.
+ * and a column that only lines up on one screen width is not a column. The caller wraps it in a
+ * `TableCard`; header, tabs and pagination live there too.
  */
 
 /**
@@ -61,102 +61,100 @@ export function VisitorsTable({
   // free-text columns (name/email and study preference) absorb whatever width is left, and
   // the per-visitor demographics drop out below lg rather than pushing a horizontal scroll.
   return (
-    <div className="overflow-hidden border-t">
-      <Table className="table-fixed">
-        <TableHeader className="bg-muted/40">
-          <TableRow className="hover:bg-transparent">
-            <TableHead className="w-10 pl-3">
-              <Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label="Select all on this page" />
-            </TableHead>
-            <TableHead className="text-xs text-muted-foreground">Visitor</TableHead>
-            <TableHead className="hidden w-14 text-xs text-muted-foreground lg:table-cell">Age</TableHead>
-            <TableHead className="hidden w-20 text-xs text-muted-foreground lg:table-cell">Gender</TableHead>
-            <TableHead className="hidden w-28 text-xs text-muted-foreground lg:table-cell">Nationality</TableHead>
-            <TableHead className="hidden text-xs text-muted-foreground lg:table-cell">Study preference</TableHead>
-            <TableHead className="w-24 text-xs text-muted-foreground">Status</TableHead>
-            <TableHead className="w-16 text-xs text-muted-foreground">Chats</TableHead>
-            <TableHead className="hidden w-28 text-xs text-muted-foreground md:table-cell">Last activity</TableHead>
-            <TableHead className="w-20 pr-3 text-right text-xs text-muted-foreground">
-              <span className="sr-only">Actions</span>
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {visitors.map((v) => {
-            const badge = VISITOR_STATUS_BADGE[v.status];
-            const anonymous = !v.name;
-            const selected = selectedIds.has(v.id);
-            return (
-              <TableRow key={v.id} data-state={selected ? "selected" : undefined}>
-                <TableCell className="pl-3">
-                  <Checkbox
-                    checked={selected}
-                    onCheckedChange={() => toggleOne(v.id)}
-                    aria-label={`Select ${visitorDisplayName(v)}`}
-                  />
-                </TableCell>
-                {/* Name with the email beneath it — one column instead of two is most of the width
-                    that used to overflow. No email is the normal state, so it is simply omitted. */}
-                <TableCell>
-                  <div className="flex min-w-0 items-center gap-3">
-                    <Avatar className="size-9">
-                      <AvatarFallback
-                        className={cn(
-                          "text-xs font-semibold",
-                          anonymous ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary",
-                        )}
-                      >
-                        {anonymous ? <User className="h-4 w-4" /> : visitorInitials(v)}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="min-w-0">
-                      <p className={cn("truncate font-medium", anonymous && "text-muted-foreground italic")}>
-                        {visitorDisplayName(v)}
-                      </p>
-                      {v.email && (
-                        <a
-                          href={`mailto:${v.email}`}
-                          className="block truncate text-xs text-muted-foreground hover:text-primary hover:underline"
-                          title={v.email}
-                        >
-                          {v.email}
-                        </a>
+    <Table className="table-fixed">
+      <TableHeader>
+        <TableRow>
+          <TableHead className="w-10 pl-3">
+            <Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label="Select all on this page" />
+          </TableHead>
+          <TableHead>Visitor</TableHead>
+          <TableHead className="hidden w-14 lg:table-cell">Age</TableHead>
+          <TableHead className="hidden w-20 lg:table-cell">Gender</TableHead>
+          <TableHead className="hidden w-28 lg:table-cell">Nationality</TableHead>
+          <TableHead className="hidden lg:table-cell">Study preference</TableHead>
+          <TableHead className="w-24">Status</TableHead>
+          <TableHead className="w-16">Chats</TableHead>
+          <TableHead className="hidden w-28 md:table-cell">Last activity</TableHead>
+          <TableHead className="w-20 pr-3 text-right">
+            <span className="sr-only">Actions</span>
+          </TableHead>
+        </TableRow>
+      </TableHeader>
+      <TableBody>
+        {visitors.map((v) => {
+          const badge = VISITOR_STATUS_BADGE[v.status];
+          const anonymous = !v.name;
+          const selected = selectedIds.has(v.id);
+          return (
+            <TableRow key={v.id} data-state={selected ? "selected" : undefined}>
+              <TableCell className="pl-3">
+                <Checkbox
+                  checked={selected}
+                  onCheckedChange={() => toggleOne(v.id)}
+                  aria-label={`Select ${visitorDisplayName(v)}`}
+                />
+              </TableCell>
+              {/* Name with the email beneath it — one column instead of two is most of the width
+                  that used to overflow. No email is the normal state, so it is simply omitted. */}
+              <TableCell>
+                <div className="flex min-w-0 items-center gap-3">
+                  <Avatar className="size-9">
+                    <AvatarFallback
+                      className={cn(
+                        "text-xs font-semibold",
+                        anonymous ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary",
                       )}
-                    </div>
+                    >
+                      {anonymous ? <User className="h-4 w-4" /> : visitorInitials(v)}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="min-w-0">
+                    <p className={cn("truncate font-medium", anonymous && "text-muted-foreground italic")}>
+                      {visitorDisplayName(v)}
+                    </p>
+                    {v.email && (
+                      <a
+                        href={`mailto:${v.email}`}
+                        className="block truncate text-xs text-muted-foreground hover:text-primary hover:underline"
+                        title={v.email}
+                      >
+                        {v.email}
+                      </a>
+                    )}
                   </div>
-                </TableCell>
-                {/* Verbatim, never a bucket — "early 30s" is a real stored value. */}
-                <TableCell className="hidden truncate lg:table-cell" title={v.age ?? undefined}>{orDash(v.age)}</TableCell>
-                <TableCell className="hidden truncate capitalize lg:table-cell">{orDash(v.gender)}</TableCell>
-                {/* The resolved country when there is one, otherwise the visitor's own wording.
-                    The title carries the original whenever it differed, so a wrong resolution is
-                    visible without opening the drawer. */}
-                <TableCell className="hidden truncate lg:table-cell" title={v.nationality_raw ?? undefined}>
-                  {orDash(v.nationality ?? v.nationality_raw)}
-                </TableCell>
-                <TableCell className="hidden truncate lg:table-cell" title={v.study_preference ?? undefined}>
-                  {orDash(v.study_preference)}
-                </TableCell>
-                <TableCell>
-                  <Badge className={badge.className}>{badge.label}</Badge>
-                </TableCell>
-                <TableCell className="text-muted-foreground">
-                  <span className="flex items-center gap-1.5">
-                    <MessageSquare className="h-3.5 w-3.5" />
-                    {v.message_count}
-                  </span>
-                </TableCell>
-                <TableCell className="hidden truncate text-muted-foreground md:table-cell">
-                  {relativeTime(v.last_activity_at)}
-                </TableCell>
-                <TableCell className="pr-3 text-right">
-                  <Button size="sm" onClick={() => onView(v)}>View</Button>
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
-    </div>
+                </div>
+              </TableCell>
+              {/* Verbatim, never a bucket — "early 30s" is a real stored value. */}
+              <TableCell className="hidden truncate lg:table-cell" title={v.age ?? undefined}>{orDash(v.age)}</TableCell>
+              <TableCell className="hidden truncate capitalize lg:table-cell">{orDash(v.gender)}</TableCell>
+              {/* The resolved country when there is one, otherwise the visitor's own wording.
+                  The title carries the original whenever it differed, so a wrong resolution is
+                  visible without opening the drawer. */}
+              <TableCell className="hidden truncate lg:table-cell" title={v.nationality_raw ?? undefined}>
+                {orDash(v.nationality ?? v.nationality_raw)}
+              </TableCell>
+              <TableCell className="hidden truncate lg:table-cell" title={v.study_preference ?? undefined}>
+                {orDash(v.study_preference)}
+              </TableCell>
+              <TableCell>
+                <Badge className={badge.className}>{badge.label}</Badge>
+              </TableCell>
+              <TableCell className="text-muted-foreground">
+                <span className="flex items-center gap-1.5">
+                  <MessageSquare className="h-3.5 w-3.5" />
+                  {v.message_count}
+                </span>
+              </TableCell>
+              <TableCell className="hidden truncate text-muted-foreground md:table-cell">
+                {relativeTime(v.last_activity_at)}
+              </TableCell>
+              <TableCell className="pr-3 text-right">
+                <Button size="sm" onClick={() => onView(v)}>View</Button>
+              </TableCell>
+            </TableRow>
+          );
+        })}
+      </TableBody>
+    </Table>
   );
 }

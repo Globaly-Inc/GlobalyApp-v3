@@ -52,7 +52,7 @@ export function PlatformUserRow({
 
   return (
     <TableRow>
-      <TableCell className="max-w-0 w-full">
+      <TableCell primary>
         <div className="flex min-w-0 items-center gap-3">
           <div
             className={cn(

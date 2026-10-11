@@ -5,7 +5,7 @@ import { Plus, Users } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useAppSelector } from "@/lib/hooks";
-import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs";
+import { SectionTabs } from "@/components/section-tabs";
 import type { InstitutionRole } from "../../apis/types";
 import { InviteInstitutionMemberDialog } from "../members/invite-institution-member-dialog";
 import { InstitutionInvitationsList } from "./institution-invitations-list";
@@ -50,7 +50,7 @@ export function InstitutionMembersTab({
         ))}
       </div>
 
-      <AdminSegmentedTabs options={SUB_TABS} value={subTab} onChange={setSubTab} />
+      <SectionTabs options={SUB_TABS} value={subTab} onChange={setSubTab} />
 
       {subTab === "members" && <InstitutionMembersList institutionId={institutionId} readOnly={readOnly} />}
       {subTab === "invitations" && <InstitutionInvitationsList institutionId={institutionId} readOnly={readOnly} />}
