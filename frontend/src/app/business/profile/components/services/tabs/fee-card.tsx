@@ -23,8 +23,8 @@ export const formatAmount = (v: number) => v.toLocaleString(undefined, { maximum
 
 const STUDENT_CHIP: Record<ServiceFee["student_type"], [string, string]> = {
   both: ["All students", "bg-primary/10 text-primary"],
-  domestic: ["Domestic", "bg-emerald-500/10 text-emerald-700 dark:bg-emerald-400/15 dark:text-emerald-300"],
-  international: ["International", "bg-violet-500/10 text-violet-700 dark:bg-violet-400/15 dark:text-violet-300"],
+  domestic: ["Domestic", "bg-success/10 text-success"],
+  international: ["International", "bg-chart-4/10 text-chart-4"],
 };
 // Segment/dot tone ramp, cycling per installment.
 const TONES = ["bg-primary", "bg-primary/75", "bg-primary/50", "bg-primary/30"];
@@ -97,7 +97,7 @@ export function FeeCard({
                 className={cn("relative grid grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-3 rounded-[10px] py-[7px] pr-2.5 transition-colors", hot === j && "bg-muted")}
                 onMouseEnter={() => setHot(j)}
               >
-                <span className={cn("relative z-10 grid size-6 place-items-center rounded-full font-mono text-[10.5px] font-semibold text-primary-foreground shadow-[0_0_0_3px_var(--color-card)]", tone(j), j % TONES.length >= 2 && "text-foreground")}>
+                <span className={cn("relative z-10 grid size-6 place-items-center rounded-full font-mono text-xs font-semibold text-primary-foreground shadow-[0_0_0_3px_var(--color-card)]", tone(j), j % TONES.length >= 2 && "text-foreground")}>
                   {j + 1}
                 </span>
                 <div className="min-w-0">
@@ -108,7 +108,7 @@ export function FeeCard({
                 </div>
                 <span className="text-right font-mono text-[13px] font-semibold whitespace-nowrap tabular-nums">
                   {money(sum)}
-                  <small className="block text-[11px] font-medium text-muted-foreground">{total > 0 ? Math.round((sum / total) * 100) : 0}% of total</small>
+                  <small className="block text-xs font-medium text-muted-foreground">{total > 0 ? Math.round((sum / total) * 100) : 0}% of total</small>
                 </span>
               </li>
             );

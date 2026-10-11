@@ -54,7 +54,7 @@
   background: radial-gradient(
     circle at var(--cx, 50%) var(--cy, 50%),
     transparent max(0px, calc(var(--iris-r) - 120px)),
-    rgba(35, 221, 246, 0.38) max(0px, calc(var(--iris-r) - 14px)),
+    rgba(166, 203, 253, 0.38) max(0px, calc(var(--iris-r) - 14px)),
     rgba(255, 255, 255, 0.75) max(0px, calc(var(--iris-r) - 1px)),
     transparent var(--iris-r)
   );
@@ -134,7 +134,7 @@
 }
 
 .shimmer {
-  background: linear-gradient(90deg, #23ddf6 0%, #ffffff 45%, #23ddf6 90%);
+  background: linear-gradient(90deg, #a6cbfd 0%, #ffffff 45%, #a6cbfd 90%);
   background-size: 200% 100%;
   -webkit-background-clip: text;
   background-clip: text;

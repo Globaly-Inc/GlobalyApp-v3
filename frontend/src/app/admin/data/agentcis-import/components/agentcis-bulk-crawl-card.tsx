@@ -69,7 +69,7 @@ export function AgentcisBulkCrawlCard({
         </div>
 
         {result && (
-          <div className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-800">
+          <div className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 p-3 text-sm text-success">
             <CheckCircle2 className="h-4 w-4 shrink-0" />
             <span>
               Scanned {result.pages_scanned} page{result.pages_scanned === 1 ? "" : "s"} — {result.job_count} job

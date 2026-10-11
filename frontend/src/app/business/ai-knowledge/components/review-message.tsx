@@ -37,7 +37,7 @@ export function ReviewMessageRowView({
     return (
       <div className="flex flex-col items-end gap-1">
         <div className="max-w-[85%] rounded-lg rounded-br-sm bg-primary/10 px-3 py-2 text-sm">{message.content}</div>
-        <span className="text-[11px] text-muted-foreground">{relativeTime(message.created_at)}</span>
+        <span className="text-xs text-muted-foreground">{relativeTime(message.created_at)}</span>
       </div>
     );
   }
@@ -63,9 +63,9 @@ export function ReviewMessageRowView({
     <div className="flex flex-col gap-1.5">
       <div className="max-w-[85%] rounded-lg rounded-bl-sm border bg-muted/40 px-3 py-2 text-sm">{message.content}</div>
 
-      <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
+      <div className="flex flex-wrap items-center gap-1.5 text-xs text-muted-foreground">
         <span>{relativeTime(message.created_at)}</span>
-        {message.feedback === "positive" && <ThumbsUp className="size-3 text-emerald-600" />}
+        {message.feedback === "positive" && <ThumbsUp className="size-3 text-success" />}
         {message.feedback === "negative" && <ThumbsDown className="size-3 text-destructive" />}
         {message.memory_ids.length > 0 && (
           <span>
@@ -73,13 +73,13 @@ export function ReviewMessageRowView({
           </span>
         )}
         {reviewed && (
-          <Badge variant="outline" className="text-[11px]">{REVIEW_META[reviewed].label}</Badge>
+          <Badge variant="outline" className="text-xs">{REVIEW_META[reviewed].label}</Badge>
         )}
       </div>
 
       {message.correction && (
-        <div className="max-w-[85%] rounded-lg border border-emerald-500/20 bg-emerald-500/5 px-3 py-2">
-          <p className="text-[11px] font-medium text-emerald-700 dark:text-emerald-400">Your correction</p>
+        <div className="max-w-[85%] rounded-lg border border-success/20 bg-success/5 px-3 py-2">
+          <p className="text-xs font-medium text-success">Your correction</p>
           <p className="mt-1 text-sm">{message.correction}</p>
           {message.review_note && <p className="mt-1 text-xs text-muted-foreground">{message.review_note}</p>}
         </div>

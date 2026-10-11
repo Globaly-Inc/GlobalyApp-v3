@@ -13,9 +13,9 @@ import { REQUIRED_COMPLETION } from "../const";
  */
 export function ProfileGateCard({ completion }: Readonly<{ completion: number | null }>) {
   return (
-    <Card className="gap-3 bg-amber-50/70 p-4 ring-amber-500/25 dark:bg-amber-500/10 dark:ring-amber-500/20">
+    <Card className="gap-3 bg-warning/10 p-4 ring-warning/25">
       <div className="flex items-start gap-3">
-        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-amber-100 text-amber-700 dark:bg-amber-500/15 dark:text-amber-300">
+        <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-warning/15 text-warning">
           <Lock className="size-4" aria-hidden />
         </div>
 

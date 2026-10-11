@@ -39,23 +39,23 @@ export const REACTION_CHOICES = ["👍", "❤️", "🎉", "👏", "😮", "😢
  */
 export const POST_TYPE_STYLES: Record<string, { accent: string; badge: string; label: string }> = {
   social: {
-    accent: "border-l-emerald-500",
-    badge: "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400",
+    accent: "border-l-success",
+    badge: "bg-success/10 text-success",
     label: "Social",
   },
   promotion: {
-    accent: "border-l-orange-500",
-    badge: "bg-orange-500/10 text-orange-700 dark:text-orange-400",
+    accent: "border-l-warning",
+    badge: "bg-warning/10 text-warning",
     label: "Promotion",
   },
   update: {
-    accent: "border-l-cyan-500",
-    badge: "bg-cyan-500/10 text-cyan-700 dark:text-cyan-400",
+    accent: "border-l-info",
+    badge: "bg-info/10 text-info",
     label: "Update",
   },
   announcement: {
-    accent: "border-l-blue-500",
-    badge: "bg-blue-500/10 text-blue-700 dark:text-blue-400",
+    accent: "border-l-primary",
+    badge: "bg-primary/10 text-primary",
     label: "Announcement",
   },
 };

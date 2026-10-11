@@ -18,11 +18,11 @@ export function readStatus(progress: unknown): string | undefined {
 
 export type StepBadge = { label: string; icon: LucideIcon; className: string; spin?: boolean };
 
-const RUNNING: StepBadge = { label: "Running", icon: Loader2, className: "bg-blue-500/15 text-blue-700", spin: true };
-const STOPPED: StepBadge = { label: "Stopped", icon: MinusCircle, className: "bg-amber-500/15 text-amber-700" };
-const COMPLETE: StepBadge = { label: "Complete", icon: CheckCircle2, className: "bg-emerald-500/15 text-emerald-700" };
+const RUNNING: StepBadge = { label: "Running", icon: Loader2, className: "bg-info/15 text-info", spin: true };
+const STOPPED: StepBadge = { label: "Stopped", icon: MinusCircle, className: "bg-warning/15 text-warning" };
+const COMPLETE: StepBadge = { label: "Complete", icon: CheckCircle2, className: "bg-success/15 text-success" };
 export const NOT_RUN: StepBadge = { label: "Not run", icon: Clock, className: "border border-border text-muted-foreground" };
-const WAITING: StepBadge = { label: "Waiting for Run", icon: Clock, className: "bg-amber-500/15 text-amber-700" };
+const WAITING: StepBadge = { label: "Waiting for Run", icon: Clock, className: "bg-warning/15 text-warning" };
 
 export const BADGES: Record<string, StepBadge> = {
   running: RUNNING,

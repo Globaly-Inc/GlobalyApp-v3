@@ -73,12 +73,12 @@ export function MemoryDetailSheet({
               <p className="flex items-center gap-1.5 text-xs font-medium text-destructive">
                 <AlertTriangle className="size-3.5" /> Contradicts something already in use
               </p>
-              <p className="mt-1.5 text-xs text-muted-foreground">
+              <p className="mt-1.5 text-xs text-foreground">
                 {conflictsWith
                   ? `“${conflictsWith.content}”`
                   : "The rule it contradicts isn't in the current filter — switch to All to see it."}
               </p>
-              <p className="mt-1.5 text-xs text-muted-foreground">
+              <p className="mt-1.5 text-xs text-foreground">
                 Putting this one into use clears the contradiction. The other stays as it is, so
                 retire it too if they genuinely cannot both be true.
               </p>
@@ -86,11 +86,11 @@ export function MemoryDetailSheet({
           )}
 
           {memory.flagged_at && (
-            <div className="rounded-md border border-amber-500/20 bg-amber-500/5 p-3">
-              <p className="flex items-center gap-1.5 text-xs font-medium text-amber-700 dark:text-amber-400">
+            <div className="rounded-md border border-warning/20 bg-warning/5 p-3">
+              <p className="flex items-center gap-1.5 text-xs font-medium text-warning">
                 <Flag className="size-3.5" /> Visitors pushed back on this
               </p>
-              <p className="mt-1.5 text-xs text-muted-foreground">
+              <p className="mt-1.5 text-xs text-foreground">
                 Enough visitors thumbed down replies that followed it. It is still in use — votes
                 never retire something a person wrote, they only ask you to look.
               </p>

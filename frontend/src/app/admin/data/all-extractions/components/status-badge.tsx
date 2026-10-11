@@ -20,7 +20,7 @@ export function NeedsAttentionBadge({ job }: Readonly<{ job: ExtractionJob }>) {
   if (!isEmpty) return null;
 
   return (
-    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border border-orange-300 text-orange-700 bg-orange-50">
+    <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium border border-warning/30 text-warning bg-warning/10">
       <AlertCircle className="h-3 w-3" />
       Needs attention — no data
     </span>

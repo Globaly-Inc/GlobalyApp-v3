@@ -6,7 +6,7 @@ export function FirstPlusMore({ items, empty }: Readonly<{ items: string[]; empt
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap" title={items.join("\n")}>
       <span className="block max-w-65 truncate">{first}</span>
       {rest.length > 0 && (
-        <span className="shrink-0 rounded-full bg-muted px-1.5 py-px font-mono text-[10px] font-semibold text-muted-foreground">+{rest.length}</span>
+        <span className="shrink-0 rounded-full bg-muted px-1.5 py-px font-mono text-xs font-semibold text-muted-foreground">+{rest.length}</span>
       )}
     </span>
   );

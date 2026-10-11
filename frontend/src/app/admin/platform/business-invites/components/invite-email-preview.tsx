@@ -44,7 +44,7 @@ export function InviteEmailPreview({ categoryId, name }: Readonly<{ categoryId: 
       </summary>
 
       <div className="flex flex-col gap-2 border-t px-3.5 py-3">
-        <span className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">Subject</span>
+        <span className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">Subject</span>
         {current?.preview ? <span className="text-sm">{current.preview.subject}</span> : <Skeleton className="h-5 w-3/4" />}
 
         {current?.failed ? (

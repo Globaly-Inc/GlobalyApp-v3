@@ -111,18 +111,18 @@ export function ServiceIntakesTab({
                     ended ? "bg-muted" : "bg-primary/10",
                   )}
                 >
-                  <span className={cn("text-[10px] font-semibold uppercase", ended ? "text-muted-foreground" : "text-primary")}>
+                  <span className={cn("text-xs font-semibold uppercase", ended ? "text-muted-foreground" : "text-primary")}>
                     {parts?.month ?? "--"}
                   </span>
                   <span className={cn("text-lg font-bold leading-tight", ended ? "text-muted-foreground" : "text-primary")}>
                     {parts?.day ?? "-"}
                   </span>
-                  <span className={cn("text-[10px]", ended ? "text-muted-foreground" : "text-primary")}>{parts?.year ?? ""}</span>
+                  <span className={cn("text-xs", ended ? "text-muted-foreground" : "text-primary")}>{parts?.year ?? ""}</span>
                 </div>
                 <div className="flex-1">
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-medium">{intake.intake_name || "Untitled intake"}</p>
-                    <Badge variant={ended ? "secondary" : "default"} className="text-[10px]">
+                    <Badge variant={ended ? "secondary" : "default"} className="text-xs">
                       {ended ? "Ended" : "Upcoming"}
                     </Badge>
                   </div>

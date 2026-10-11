@@ -97,12 +97,12 @@ export function ConversationsTab() {
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
                 {session.flagged > 0 && (
-                  <Badge variant="outline" className="gap-1 border-destructive/20 bg-destructive/10 text-[11px] text-destructive">
+                  <Badge variant="outline" className="gap-1 border-destructive/20 bg-destructive/10 text-xs text-destructive">
                     <Flag className="size-3" /> {session.flagged}
                   </Badge>
                 )}
                 {session.unreviewed > 0 && (
-                  <Badge variant="secondary" className="text-[11px] tabular-nums">{session.unreviewed} to review</Badge>
+                  <Badge variant="secondary" className="text-xs tabular-nums">{session.unreviewed} to review</Badge>
                 )}
               </div>
             </button>

@@ -32,10 +32,10 @@ import { cn } from "@/lib/utils";
  * Private stays muted: nothing was granted, so no hue is the honest answer.
  */
 const TONE = {
-  visible: "border-blue-200 bg-blue-100 text-blue-800 dark:border-blue-500/30 dark:bg-blue-500/15 dark:text-blue-300",
-  gated: "border-amber-200 bg-amber-100 text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-300",
+  visible: "border-info/30 bg-info/15 text-info",
+  gated: "border-warning/30 bg-warning/15 text-warning",
   shared:
-    "border-emerald-200 bg-emerald-100 text-emerald-800 dark:border-emerald-500/30 dark:bg-emerald-500/15 dark:text-emerald-300",
+    "border-success/30 bg-success/15 text-success",
   private: "border-border bg-muted text-muted-foreground",
 } as const;
 
@@ -52,8 +52,8 @@ export function EnquirySubmittedDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <div className="mb-1 flex size-10 items-center justify-center rounded-full bg-emerald-500/10">
-            <CircleCheck className="size-5 text-emerald-600 dark:text-emerald-400" aria-hidden />
+          <div className="mb-1 flex size-10 items-center justify-center rounded-full bg-success/10">
+            <CircleCheck className="size-5 text-success" aria-hidden />
           </div>
           <DialogTitle>Enquiry sent</DialogTitle>
           <DialogDescription>
@@ -134,7 +134,7 @@ function VisibilityRow({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1">
           <p className="text-sm font-medium text-foreground">{title}</p>
-          <Badge variant="outline" className={cn("shrink-0 text-[11px]", tone)}>
+          <Badge variant="outline" className={cn("shrink-0 text-xs", tone)}>
             {badge}
           </Badge>
         </div>

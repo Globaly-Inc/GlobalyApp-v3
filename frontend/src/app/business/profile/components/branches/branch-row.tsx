@@ -69,9 +69,9 @@ export function BranchRow({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-1.5">
           <span className="text-sm font-semibold"><Highlight text={b.name} query={query} /></span>
-          {b.is_primary && <Badge className="text-[10px]">Head Office</Badge>}
+          {b.is_primary && <Badge className="text-xs">Head Office</Badge>}
           {b.origin && <OriginChip origin={b.origin} />}
-          {linked && <Badge variant="outline" className="text-[10px] capitalize">{b.branch_type.replaceAll("_", " ")}</Badge>}
+          {linked && <Badge variant="outline" className="text-xs capitalize">{b.branch_type.replaceAll("_", " ")}</Badge>}
         </div>
         <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-muted-foreground">
           <MapPin className="size-3 shrink-0" />

@@ -88,7 +88,7 @@ export function InstitutionMembersList({
                     <MoreVertical className="h-3.5 w-3.5" />
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem onClick={() => toggleStatus(m.platform_user_id, !active)} className={cn(active ? "text-destructive" : "text-emerald-600")}>
+                    <DropdownMenuItem onClick={() => toggleStatus(m.platform_user_id, !active)} className={cn(active ? "text-destructive" : "text-success")}>
                       {active ? <Ban className="h-3.5 w-3.5" /> : <ShieldCheck className="h-3.5 w-3.5" />}
                       {active ? "Suspend" : "Reinstate"}
                     </DropdownMenuItem>

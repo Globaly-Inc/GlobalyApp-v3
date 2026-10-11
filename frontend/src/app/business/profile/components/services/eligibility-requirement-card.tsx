@@ -38,8 +38,8 @@ export function academicTestValue(t: ReturnType<typeof readAcademicTest>): strin
 /** Who a requirement applies to, as a tinted chip. */
 export const APPLICABLE_TO_CHIP: Record<ServiceEligibility["applicable_to"], { label: string; className: string }> = {
   both: { label: "All students", className: "bg-primary/10 text-primary" },
-  domestic: { label: "Domestic", className: "bg-emerald-500/10 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300" },
-  international: { label: "International", className: "bg-violet-500/10 text-violet-700 dark:bg-violet-400/10 dark:text-violet-300" },
+  domestic: { label: "Domestic", className: "bg-success/10 text-success" },
+  international: { label: "International", className: "bg-chart-4/10 text-chart-4" },
 };
 
 /** Extracted eligibility rows also carry the scraped text forms of degree/score. */
@@ -55,7 +55,7 @@ export function minScoreLabel(row: ServiceEligibility): string | null {
   return extra.min_score_grade || null;
 }
 
-const SECTION_LABEL = "text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground";
+const SECTION_LABEL = "text-xs font-semibold uppercase tracking-wider text-muted-foreground";
 
 function KeyValue({ k, v }: Readonly<{ k: React.ReactNode; v: string }>) {
   return (
@@ -89,7 +89,7 @@ export function EligibilityRequirementCard({ row, degreeLevels }: Readonly<{
         {/* Extracted rows carry their requirement as name/description — show them,
            not just who it applies to. */}
         <p className="min-w-0 flex-1 text-sm font-semibold">{row.name || "Requirement"}</p>
-        <span className={`shrink-0 rounded-full px-2 py-0.5 text-[11px] font-semibold ${chip.className}`}>{chip.label}</span>
+        <span className={`shrink-0 rounded-full px-2 py-0.5 text-xs font-semibold ${chip.className}`}>{chip.label}</span>
       </div>
       {row.description && <p className="line-clamp-3 text-xs text-muted-foreground">{row.description}</p>}
       {(degree || score) && (
@@ -105,7 +105,7 @@ export function EligibilityRequirementCard({ row, degreeLevels }: Readonly<{
           {academicTests.map((t, i) => (
             <KeyValue
               key={`${t.name}-${i}`}
-              k={<>{t.name}{t.optional && <span className="ml-1.5 rounded bg-muted px-1 text-[10px]">optional</span>}</>}
+              k={<>{t.name}{t.optional && <span className="ml-1.5 rounded bg-muted px-1 text-xs">optional</span>}</>}
               v={academicTestValue(t) ?? "—"}
             />
           ))}

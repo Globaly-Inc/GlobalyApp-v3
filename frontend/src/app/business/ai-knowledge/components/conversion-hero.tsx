@@ -84,7 +84,7 @@ function Secondary({
     <div className={cn("min-w-0", className)}>
       <p className="text-xs text-muted-foreground">{label}</p>
       <p className="mt-0.5 text-xl font-semibold tabular-nums">{value}</p>
-      <p className="text-[11px] text-muted-foreground/70">{hint}</p>
+      <p className="text-xs text-muted-foreground/70">{hint}</p>
     </div>
   );
 }

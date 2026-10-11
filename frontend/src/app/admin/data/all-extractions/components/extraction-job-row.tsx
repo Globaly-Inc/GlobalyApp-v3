@@ -59,12 +59,12 @@ function ProgressCell({ job, pct }: Readonly<{ job: ExtractionJob; pct: number }
   const isActive = ACTIVE_STATUSES.includes(job.status);
   return (
     <div className="w-28">
-      <div className={cn("text-sm font-semibold", isFailed ? "text-destructive" : isActive ? "text-purple-600" : "text-foreground")}>
+      <div className={cn("text-sm font-semibold", isFailed ? "text-destructive" : isActive ? "text-chart-4" : "text-foreground")}>
         {pct}%
       </div>
       <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
         <div
-          className={cn("h-full rounded-full", isFailed ? "bg-destructive" : isActive ? "bg-purple-500" : "bg-success")}
+          className={cn("h-full rounded-full", isFailed ? "bg-destructive" : isActive ? "bg-chart-4" : "bg-success")}
           style={{ width: `${pct}%` }}
         />
       </div>

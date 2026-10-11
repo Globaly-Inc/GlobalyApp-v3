@@ -96,9 +96,9 @@ export function BranchesTab({
               <div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium">{b.name}</span>
-                  {b.is_primary && <Badge className="text-[10px]">Head Office</Badge>}
+                  {b.is_primary && <Badge className="text-xs">Head Office</Badge>}
                   {b.linked_business_id != null && (
-                    <Badge variant="outline" className="text-[10px] capitalize">{b.branch_type.replaceAll("_", " ")}</Badge>
+                    <Badge variant="outline" className="text-xs capitalize">{b.branch_type.replaceAll("_", " ")}</Badge>
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">{[b.city, b.state, b.country].filter(Boolean).join(", ") || "—"}</p>

@@ -21,7 +21,7 @@ import {
 import type { ServiceEligibility, ServiceEligibilityInput } from "../../../apis/types";
 
 const BLOCK = "grid content-start gap-2 rounded-xl border p-3";
-const BLOCK_LABEL = "text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground";
+const BLOCK_LABEL = "text-xs font-semibold uppercase tracking-wider text-muted-foreground";
 const KV = "flex items-baseline justify-between gap-2 text-[13px]";
 
 export function EligibilityTab({ serviceId }: Readonly<{ serviceId: string }>) {
@@ -111,7 +111,7 @@ export function EligibilityTab({ serviceId }: Readonly<{ serviceId: string }>) {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <h3 className="text-[15px] font-semibold">{row.name || "Untitled requirement"}</h3>
-                    <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${chip.className}`}>{chip.label}</span>
+                    <span className={`rounded-full px-2 py-0.5 text-xs font-semibold ${chip.className}`}>{chip.label}</span>
                   </div>
                   {row.description && <p className="mt-2 line-clamp-3 text-[13px] leading-relaxed text-muted-foreground">{row.description}</p>}
                 </div>
@@ -139,7 +139,7 @@ export function EligibilityTab({ serviceId }: Readonly<{ serviceId: string }>) {
                         <div key={`${t.name}-${i}`} className={KV}>
                           <span className="text-muted-foreground">
                             {t.name}
-                            {t.optional && <span className="ml-1.5 rounded bg-muted px-1.5 py-px text-[10.5px] font-medium">optional</span>}
+                            {t.optional && <span className="ml-1.5 rounded bg-muted px-1.5 py-px text-xs font-medium">optional</span>}
                           </span>
                           <span className="font-mono font-semibold">{academicTestValue(t) ?? "—"}</span>
                         </div>

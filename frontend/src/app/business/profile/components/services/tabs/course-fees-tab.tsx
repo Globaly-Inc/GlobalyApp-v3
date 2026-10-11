@@ -105,7 +105,7 @@ export function CourseFeesTab({ serviceId, isCourse = true }: Readonly<{ service
     <div className="grid gap-2.5 sm:grid-cols-2">
       {groups.map(({ g, own, amounts }) => (
         <div key={g} className="rounded-xl border bg-card px-4 py-3.5 sm:px-[18px]">
-          <p className="text-[11px] font-medium tracking-wider text-muted-foreground uppercase">Estimated cost · {GROUP_LABEL[g]}</p>
+          <p className="text-xs font-medium tracking-wider text-muted-foreground uppercase">Estimated cost · {GROUP_LABEL[g]}</p>
           <div className="mt-1 flex flex-col gap-1">
             {amounts.map((a) => (
               <p key={`${a.period}|${a.currency}`} className="flex flex-wrap items-baseline gap-x-2">

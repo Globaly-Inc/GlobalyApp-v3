@@ -30,7 +30,7 @@ type Step = { label: string; detail?: string; state: "done" | "doing" | "waiting
 function StepMark({ state }: Readonly<{ state: Step["state"] }>) {
   if (state === "done") {
     return (
-      <span className="flex size-6 items-center justify-center rounded-full bg-emerald-500/15 text-emerald-700 dark:text-emerald-400">
+      <span className="flex size-6 items-center justify-center rounded-full bg-success/15 text-success">
         <Check className="h-3.5 w-3.5" strokeWidth={3} aria-hidden />
       </span>
     );
@@ -155,8 +155,8 @@ export function OnboardingSetupView({ orgName }: Readonly<{ orgName?: string }>)
 
         {failed && (
           <div className="flex items-start gap-3 rounded-2xl border bg-card p-4">
-            <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-amber-500/15">
-              <TriangleAlert className="h-4.5 w-4.5 text-amber-600 dark:text-amber-400" aria-hidden />
+            <span className="flex size-9 shrink-0 items-center justify-center rounded-full bg-warning/15">
+              <TriangleAlert className="h-4.5 w-4.5 text-warning" aria-hidden />
             </span>
             <div className="flex min-w-0 flex-col gap-2.5">
               <div>

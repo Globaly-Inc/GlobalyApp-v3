@@ -12,8 +12,8 @@ const MODES = {
 const LOAD_LABELS: Record<string, string> = { full_time: "Full-time", part_time: "Part-time" };
 const APPLICABLE: Record<string, { label: string; className: string }> = {
   both: { label: "All students", className: "bg-primary/10 text-primary" },
-  domestic: { label: "Domestic", className: "bg-emerald-500/12 text-emerald-700 dark:text-emerald-400" },
-  international: { label: "International", className: "bg-violet-500/12 text-violet-700 dark:text-violet-400" },
+  domestic: { label: "Domestic", className: "bg-success/12 text-success" },
+  international: { label: "International", className: "bg-chart-4/12 text-chart-4" },
 };
 
 /** One way to study the course: mode tile, load, a duration bar scaled against the longest
@@ -47,7 +47,7 @@ export function StudyOptionCard({
       </div>
 
       <div className="flex flex-col gap-1.5">
-        <div className="flex justify-between font-mono text-[11px] text-muted-foreground">
+        <div className="flex justify-between font-mono text-xs text-muted-foreground">
           <span>Duration</span>
           <span className="font-semibold text-foreground">{option.duration_value ? `${option.duration_value} ${option.duration_unit}` : "Not set"}</span>
         </div>
@@ -62,7 +62,7 @@ export function StudyOptionCard({
       </div>
 
       {applicable && (
-        <span className={cn("self-start rounded-full px-2 py-0.5 text-[11px] font-semibold", applicable.className)}>{applicable.label}</span>
+        <span className={cn("self-start rounded-full px-2 py-0.5 text-xs font-semibold", applicable.className)}>{applicable.label}</span>
       )}
     </article>
   );

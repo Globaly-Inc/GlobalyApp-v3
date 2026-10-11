@@ -41,7 +41,7 @@ function MediaThumb({ file }: Readonly<{ file: ServiceMediaFile }>) {
     <div className="flex size-full flex-col items-center justify-center gap-2 bg-primary/5 p-3 text-center text-primary">
       <span className="flex size-11 items-center justify-center rounded-xl bg-primary/10"><FileIcon mimeType={file.mime_type} /></span>
       <span className="line-clamp-2 max-w-full break-all text-xs font-medium text-foreground">{file.original_name}</span>
-      <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[10px] font-semibold">{ext}</span>
+      <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-xs font-semibold">{ext}</span>
     </div>
   );
 }

@@ -47,7 +47,7 @@ export function KnowledgeNav({
             {count > 0 && (
               <span
                 className={cn(
-                  "grid min-w-5 place-items-center rounded-full px-1.5 py-0.5 text-[11px] font-semibold tabular-nums",
+                  "grid min-w-5 place-items-center rounded-full px-1.5 py-0.5 text-xs font-semibold tabular-nums",
                   // On the selected tab the badge sits on the primary fill, where a tinted
                   // background would disappear — so it borrows the tab's own foreground at low
                   // opacity instead of carrying a colour of its own.

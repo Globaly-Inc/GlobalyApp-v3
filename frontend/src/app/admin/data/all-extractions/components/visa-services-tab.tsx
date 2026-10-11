@@ -19,9 +19,9 @@ const STATUS_TABS = [
 ];
 
 const STATUS_BADGE: Record<string, string> = {
-  pending: "bg-amber-100 text-amber-700",
-  approved: "bg-emerald-100 text-emerald-700",
-  discarded: "bg-red-100 text-red-700",
+  pending: "bg-warning/15 text-warning",
+  approved: "bg-success/15 text-success",
+  discarded: "bg-destructive/15 text-destructive",
 };
 
 const humanize = (v: string | null | undefined) => (v ? v.replaceAll("_", " ") : null);
@@ -178,7 +178,7 @@ function VisaServiceCard({
           {service.visa_types_handled?.length ? (
             <div className="flex flex-wrap gap-1">
               {service.visa_types_handled.map((v) => (
-                <Badge key={v} variant="outline" className="text-[10px]">{v}</Badge>
+                <Badge key={v} variant="outline" className="text-xs">{v}</Badge>
               ))}
             </div>
           ) : null}

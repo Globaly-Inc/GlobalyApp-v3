@@ -82,18 +82,18 @@ export function StudyUnitsTab({ serviceId }: Readonly<{ serviceId: string }>) {
   const summary = (
     <div className="flex flex-wrap items-center gap-x-8 gap-y-3 rounded-2xl border bg-card px-5 py-4">
       <div>
-        <p className="text-[11px] font-bold uppercase tracking-[.08em] text-muted-foreground">Total credits</p>
+        <p className="text-xs font-bold uppercase tracking-[.08em] text-muted-foreground">Total credits</p>
         <p className="text-[26px] font-bold leading-tight tracking-tight"><CountUp value={total} /></p>
       </div>
       {total > 0 && (
         <div className="min-w-[220px] max-w-[440px] flex-1">
           <div className="flex h-3 gap-[3px] overflow-hidden rounded-full">
             {compulsory > 0 && <i className="animate-fill-x h-full bg-primary" style={{ flex: compulsory, "--fill-delay": "200ms" } as React.CSSProperties} />}
-            {elective > 0 && <i className="animate-fill-x h-full bg-violet-500" style={{ flex: elective, "--fill-delay": "350ms" } as React.CSSProperties} />}
+            {elective > 0 && <i className="animate-fill-x h-full bg-chart-4" style={{ flex: elective, "--fill-delay": "350ms" } as React.CSSProperties} />}
           </div>
           <div className="mt-1.5 flex gap-3.5 text-xs text-muted-foreground">
             <span className="inline-flex items-center gap-1.5"><i className="size-2.5 rounded-[3px] bg-primary" />Compulsory {compulsory}</span>
-            <span className="inline-flex items-center gap-1.5"><i className="size-2.5 rounded-[3px] bg-violet-500" />Elective {elective}</span>
+            <span className="inline-flex items-center gap-1.5"><i className="size-2.5 rounded-[3px] bg-chart-4" />Elective {elective}</span>
           </div>
         </div>
       )}

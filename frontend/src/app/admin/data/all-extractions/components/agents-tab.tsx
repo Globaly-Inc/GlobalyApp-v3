@@ -58,9 +58,9 @@ const agentSchema = z.object({
 });
 
 function runStatusClass(status: string) {
-  if (status === "completed" || status === "done") return "bg-emerald-500/15 text-emerald-700";
+  if (status === "completed" || status === "done") return "bg-success/15 text-success";
   if (status === "failed") return "bg-destructive/15 text-destructive";
-  if (status === "running") return "bg-blue-500/15 text-blue-700";
+  if (status === "running") return "bg-info/15 text-info";
   return "bg-muted text-muted-foreground";
 }
 
@@ -89,7 +89,7 @@ function ExtractionHistory({
             Last run: <span className="font-medium text-foreground">{new Date(last.started_at).toLocaleString()}</span>
             {" · "}
             <span className="font-medium text-foreground">{last.agents_found} agents</span>
-            {last.agents_new > 0 && <span className="text-emerald-600"> (+{last.agents_new} new)</span>}
+            {last.agents_new > 0 && <span className="text-success"> (+{last.agents_new} new)</span>}
             {last.agents_removed > 0 && <span className="text-destructive"> (-{last.agents_removed} removed)</span>}
           </p>
         )}
@@ -100,15 +100,15 @@ function ExtractionHistory({
             {runs.map((r) => (
               <div key={r.id} className="flex items-center justify-between rounded px-2 py-1.5 text-xs hover:bg-muted/50">
                 <div className="flex min-w-0 items-center gap-2">
-                  <span className={cn("inline-flex rounded px-1.5 py-0.5 text-[10px] font-medium", runStatusClass(r.status))}>
+                  <span className={cn("inline-flex rounded px-1.5 py-0.5 text-xs font-medium", runStatusClass(r.status))}>
                     {r.status}
                   </span>
                   <span className="text-muted-foreground">{new Date(r.started_at).toLocaleString()}</span>
-                  {r.provider && <code className="rounded bg-muted px-1 text-[10px]">{r.provider}</code>}
+                  {r.provider && <code className="rounded bg-muted px-1 text-xs">{r.provider}</code>}
                 </div>
                 <div className="flex shrink-0 items-center gap-2">
                   <span className="font-medium">{r.agents_found}</span>
-                  {r.agents_new > 0 && <span className="text-emerald-600">+{r.agents_new}</span>}
+                  {r.agents_new > 0 && <span className="text-success">+{r.agents_new}</span>}
                   {r.agents_removed > 0 && <span className="text-destructive">-{r.agents_removed}</span>}
                 </div>
               </div>

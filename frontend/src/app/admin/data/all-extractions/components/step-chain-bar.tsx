@@ -60,7 +60,7 @@ export function StepChainBar({ job, highlight = [], onChanged }: Readonly<{ job:
           >
             <div className="flex min-w-0 flex-col">
               <span className="text-xs font-medium text-foreground">{i + 1}. {s.label}</span>
-              <span className={cn("mt-0.5 inline-flex w-fit items-center gap-1 rounded-full px-1.5 py-0.5 text-[10px] font-medium", badge.className)}>
+              <span className={cn("mt-0.5 inline-flex w-fit items-center gap-1 rounded-full px-1.5 py-0.5 text-xs font-medium", badge.className)}>
                 <badge.icon className={cn("h-2.5 w-2.5", badge.spin && "animate-spin")} />
                 {badge.label}
               </span>
@@ -79,7 +79,7 @@ export function StepChainBar({ job, highlight = [], onChanged }: Readonly<{ job:
         );
       })}
       {job.step_mode === "manual" && (
-        <p className="basis-full text-[11px] text-muted-foreground">
+        <p className="basis-full text-xs text-muted-foreground">
           Manual step mode: the pipeline stops after each step. Press ▶ on the next step when you are happy with the previous one.
         </p>
       )}

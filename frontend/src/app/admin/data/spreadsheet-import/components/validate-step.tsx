@@ -56,7 +56,7 @@ export function ValidateStep({
               />
               <span className="text-xs text-muted-foreground">{g.rows.length} courses</span>
               {g.include && nameIssues.map((i) => (
-                <span key={i.message} className={cn("text-xs", i.blocking ? "text-destructive" : "text-amber-700")}>{i.message}</span>
+                <span key={i.message} className={cn("text-xs", i.blocking ? "text-destructive" : "text-warning")}>{i.message}</span>
               ))}
               {!g.include && <span className="text-xs text-muted-foreground">Skipped</span>}
             </div>
@@ -77,7 +77,7 @@ export function ValidateStep({
                         <TableCell className="text-xs text-muted-foreground">{n}</TableCell>
                         <TableCell className="text-xs">
                           {(byRow.get(n) ?? []).map((i) => (
-                            <span key={i.field + i.message} className={cn("block", i.blocking ? "text-destructive" : "text-amber-700")}>
+                            <span key={i.field + i.message} className={cn("block", i.blocking ? "text-destructive" : "text-warning")}>
                               {FIELD_BY_KEY.get(i.field)?.label ?? i.field}: {i.message}
                             </span>
                           ))}
@@ -89,12 +89,12 @@ export function ValidateStep({
                             <TableCell key={c} className="min-w-40">
                               <Input
                                 title={cellIssue.message}
-                                className={cn("h-8 text-xs", cellIssue.blocking ? "border-destructive" : "border-amber-500")}
+                                className={cn("h-8 text-xs", cellIssue.blocking ? "border-destructive" : "border-warning")}
                                 defaultValue={r[c] ?? ""}
                                 // Commit on blur, like the AgentCIS importer: re-validating per keystroke re-renders every table.
                                 onBlur={(e) => e.target.value !== (r[c] ?? "") && editCell(g, n, c, e.target.value)}
                               />
-                              <span className={cn("mt-0.5 flex items-center gap-1 text-[10px]", cellIssue.blocking ? "text-destructive" : "text-amber-700")}>
+                              <span className={cn("mt-0.5 flex items-center gap-1 text-xs", cellIssue.blocking ? "text-destructive" : "text-warning")}>
                                 <AlertTriangle className="h-3 w-3" /> {cellIssue.message}
                               </span>
                             </TableCell>

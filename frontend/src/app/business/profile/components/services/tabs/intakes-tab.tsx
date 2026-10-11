@@ -188,7 +188,7 @@ export function IntakesTab({ serviceId, allowMonth = false }: Readonly<{ service
         loading={loading}
         emptyTitle="No intakes yet"
         emptyHint="Add the start dates students can join, with their application deadlines."
-        summary={<p className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{summary}</p>}
+        summary={<p className="font-mono text-xs font-semibold uppercase tracking-wider text-muted-foreground">{summary}</p>}
       >
         {next && (
           <NextIntakeCard

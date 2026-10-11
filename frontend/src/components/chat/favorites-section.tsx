@@ -46,7 +46,7 @@ export function FavoritesSection({
         className={cn(SIDEBAR_LABEL, "mb-2 flex cursor-pointer items-center gap-1.5 px-2 transition-colors hover:text-foreground")}
       >
         <ChevronRight className={cn("size-3 transition-transform", expanded && "rotate-90")} aria-hidden />
-        <Star className="size-3 fill-warning text-warning" aria-hidden />
+        <Star className="size-3 fill-rating text-rating" aria-hidden />
         Favorites
       </button>
 

@@ -222,7 +222,7 @@ export function FeedComposer({
           imageInput.current?.click();
         }}
       >
-        <ImageIcon className="h-4 w-4 text-emerald-600" /> Image
+        <ImageIcon className="h-4 w-4 text-success" /> Image
       </Button>
       <Button
         variant="ghost"
@@ -234,7 +234,7 @@ export function FeedComposer({
           videoInput.current?.click();
         }}
       >
-        <Video className="h-4 w-4 text-blue-600" /> Video
+        <Video className="h-4 w-4 text-info" /> Video
       </Button>
       {uploading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
     </div>
@@ -342,7 +342,7 @@ export function FeedComposer({
             rows={4}
             className="w-full resize-y bg-transparent px-3 py-2.5 text-sm outline-none placeholder:text-muted-foreground"
           />
-          <p className="px-3 pb-1.5 text-right text-[11px] text-muted-foreground">
+          <p className="px-3 pb-1.5 text-right text-xs text-muted-foreground">
             {content.length}/{MAX_POST_LENGTH}
           </p>
           <MentionDropdown

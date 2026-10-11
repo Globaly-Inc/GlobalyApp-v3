@@ -148,7 +148,7 @@ export function ServiceManagementTable({
                     <span className="block truncate font-semibold" title={s.name}><Highlight text={s.name} query={query} /></span>
                   )}
                   {(s.origin || s.edited_by) && (
-                    <p className="mt-[3px] flex min-w-0 items-center gap-1.5 whitespace-nowrap text-[11.5px] text-muted-foreground">
+                    <p className="mt-[3px] flex min-w-0 items-center gap-1.5 whitespace-nowrap text-xs text-muted-foreground">
                       {s.origin && <OriginChip origin={s.origin} />}
                       {s.edited_by && (
                         <span className="truncate" title={s.edited_at ? new Date(s.edited_at).toLocaleString() : undefined}>
@@ -163,7 +163,7 @@ export function ServiceManagementTable({
               {visibleColumns.has("category") && (
                 <td className={td}>
                   {s.category_name
-                    ? <span className="whitespace-nowrap rounded-full bg-primary/10 px-[9px] py-[3px] text-[11px] font-semibold text-primary">{s.category_name}</span>
+                    ? <span className="whitespace-nowrap rounded-full bg-primary/10 px-[9px] py-[3px] text-xs font-semibold text-primary">{s.category_name}</span>
                     : <span className="text-muted-foreground">—</span>}
                 </td>
               )}
@@ -201,7 +201,7 @@ export function ServiceManagementTable({
                   {/* Fixed slots, so every row's icons line up whether or not it still needs approval. */}
                   <div className={ACTIONS}>
                     {onApprove && (needsApproval(s) ? (
-                      <Button size="icon-sm" variant="ghost" className={cn(ICON, "text-emerald-600 hover:bg-emerald-50 hover:text-emerald-700 dark:text-emerald-400 dark:hover:bg-emerald-950/40")} onClick={() => onApprove(s.id)} aria-label="Approve course" title="Approve course">
+                      <Button size="icon-sm" variant="ghost" className={cn(ICON, "text-success hover:bg-success/10 hover:text-success")} onClick={() => onApprove(s.id)} aria-label="Approve course" title="Approve course">
                         <CheckCircle2 className="h-4 w-4" />
                       </Button>
                     ) : <span className="inline-block size-[30px]" aria-hidden />)}
@@ -245,7 +245,7 @@ function FeeSummary({ price }: Readonly<{ price: string | null }>) {
     <span className="inline-flex items-center gap-1.5 whitespace-nowrap tabular-nums" title={[first, ...rest].join("\n")}>
       {first}
       {rest.length > 0 && (
-        <span className="rounded-full bg-muted px-1.5 py-px font-mono text-[10px] font-semibold text-muted-foreground">+{rest.length}</span>
+        <span className="rounded-full bg-muted px-1.5 py-px font-mono text-xs font-semibold text-muted-foreground">+{rest.length}</span>
       )}
     </span>
   );

@@ -111,7 +111,7 @@ export function OnboardingAcceptView() {
             <div className="flex justify-center mb-2">
               {current.kind === "checking" && <Loader2 className="h-10 w-10 animate-spin text-primary" />}
               {current.kind === "done" && <CheckCircle2 className="h-10 w-10 text-primary" />}
-              {current.kind === "lapsed" && <Clock className="h-10 w-10 text-amber-500" />}
+              {current.kind === "lapsed" && <Clock className="h-10 w-10 text-warning" />}
               {current.kind === "error" && <XCircle className="h-10 w-10 text-destructive" />}
             </div>
             <CardTitle className="text-2xl">

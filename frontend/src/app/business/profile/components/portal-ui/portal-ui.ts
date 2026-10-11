@@ -19,7 +19,7 @@ export const FILTER_ACTIVE = "border-primary bg-primary/10 text-primary dark:bg-
 export const TABLE_WRAP = "max-h-[620px] overflow-auto rounded-[14px] border";
 export const TABLE = "w-full border-separate border-spacing-0 text-[13.5px]";
 export const TH =
-  "sticky top-0 z-[2] whitespace-nowrap border-b bg-muted px-3 py-[11px] text-left text-[11.5px] font-semibold text-muted-foreground";
+  "sticky top-0 z-[2] whitespace-nowrap border-b bg-muted px-3 py-[11px] text-left text-xs font-semibold text-muted-foreground";
 // Hover tint is mixed into the card colour (opaque), so the sticky Actions cell stays solid.
 export const TD = "border-b bg-card px-3 py-2.5 align-middle transition-colors group-hover/row:bg-[color-mix(in_oklab,var(--color-muted)_40%,var(--color-card))] group-last/row:border-b-0";
 /** Row: rises in (set style animationDelay), tints on hover via TD's group-hover. */

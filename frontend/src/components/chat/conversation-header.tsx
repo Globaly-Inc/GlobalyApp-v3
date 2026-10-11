@@ -238,7 +238,7 @@ export function ConversationHeader({
           title={thread.is_favorite ? "Remove from favorites" : "Add to favorites"}
           aria-label={thread.is_favorite ? "Remove from favorites" : "Add to favorites"}
         >
-          <Star className={cn("size-4", thread.is_favorite && "fill-warning text-warning")} />
+          <Star className={cn("size-4", thread.is_favorite && "fill-rating text-rating")} />
         </Button>
 
         <Popover open={menuOpen} onOpenChange={setMenuOpen}>

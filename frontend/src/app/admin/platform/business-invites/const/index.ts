@@ -19,5 +19,5 @@ export const STATUS_BADGE: Record<InviteStatus, { label: string; variant: "warni
 export const EMAIL_BADGE: Record<EmailStatus, { label: string; icon: LucideIcon; className: string }> = {
   queued: { label: "Sending…", icon: Loader2, className: "text-muted-foreground" },
   sent: { label: "Email delivered", icon: CheckCheck, className: "text-muted-foreground" },
-  failed: { label: "Email failed", icon: TriangleAlert, className: "font-semibold text-red-700 dark:text-red-400" },
+  failed: { label: "Email failed", icon: TriangleAlert, className: "font-semibold text-destructive" },
 };

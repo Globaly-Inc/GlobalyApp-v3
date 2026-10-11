@@ -50,7 +50,7 @@ export function BusinessScholarshipsTable({
                   <div className="min-w-0">
                     <b className="block truncate font-semibold" title={s.title}>{s.title}</b>
                     {s.provider_name && (
-                      <small className="mt-0.75 block truncate text-[11.5px] text-muted-foreground">{s.provider_name}</small>
+                      <small className="mt-0.75 block truncate text-xs text-muted-foreground">{s.provider_name}</small>
                     )}
                   </div>
                 </div>

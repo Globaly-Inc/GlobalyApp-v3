@@ -8,9 +8,9 @@ import { IntakeDateTile, type TileParts } from "./intake-date-tile";
 export type IntakeStatus = "upcoming" | "past" | "undated";
 
 const STATUS_BADGE: Record<IntakeStatus, React.ReactNode> = {
-  upcoming: <Badge className="text-[10px]">Upcoming</Badge>,
-  past: <Badge variant="secondary" className="text-[10px]">Ended</Badge>,
-  undated: <Badge variant="outline" className="text-[10px] text-muted-foreground">Date not set</Badge>,
+  upcoming: <Badge className="text-xs">Upcoming</Badge>,
+  past: <Badge variant="secondary" className="text-xs">Ended</Badge>,
+  undated: <Badge variant="outline" className="text-xs text-muted-foreground">Date not set</Badge>,
 };
 
 /** One intake in the list: date tile, name + status chip, the dates it has, and actions that

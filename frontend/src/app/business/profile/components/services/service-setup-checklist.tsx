@@ -39,7 +39,7 @@ export function ServiceSetupChecklist<T extends string>({
               <span
                 className={cn(
                   "grid size-[18px] shrink-0 place-items-center rounded-full border-[1.5px]",
-                  s.done ? "border-emerald-500 bg-emerald-500 text-white" : "border-border",
+                  s.done ? "border-success bg-success text-success-foreground" : "border-border",
                 )}
               >
                 {s.done && <Check className="animate-pop-in size-3" strokeWidth={3} />}
@@ -57,7 +57,7 @@ export function ServiceSetupChecklist<T extends string>({
                   className={cn(row, "group/step text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary")}
                 >
                   {inner}
-                  <span className="ml-auto text-[11.5px] font-semibold text-primary opacity-0 transition-opacity group-hover/step:opacity-100 group-focus-visible/step:opacity-100">
+                  <span className="ml-auto text-xs font-semibold text-primary opacity-0 transition-opacity group-hover/step:opacity-100 group-focus-visible/step:opacity-100">
                     Add →
                   </span>
                 </button>

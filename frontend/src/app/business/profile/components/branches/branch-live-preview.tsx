@@ -41,9 +41,9 @@ export function BranchLivePreview({
 
   return (
     <div className="flex flex-col gap-3 rounded-xl border bg-card p-4">
-      <div className="flex items-center justify-between text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
+      <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-muted-foreground">
         Preview
-        <span className="flex items-center gap-1.5 text-emerald-600 dark:text-emerald-400">
+        <span className="flex items-center gap-1.5 text-success">
           <span className="animate-ai-pulse size-1.5 rounded-full bg-current" /> Live
         </span>
       </div>
@@ -57,7 +57,7 @@ export function BranchLivePreview({
         </div>
         <div className="min-w-0">
           <p className="truncate text-xs font-semibold">{parent?.business_name ?? "Head office"}</p>
-          <p className="truncate text-[11px] text-muted-foreground">Head office{parentLocation && ` · ${parentLocation}`}</p>
+          <p className="truncate text-xs text-muted-foreground">Head office{parentLocation && ` · ${parentLocation}`}</p>
         </div>
       </div>
 
@@ -72,18 +72,18 @@ export function BranchLivePreview({
         >
           <span aria-hidden className="absolute -left-[15px] top-1/2 h-0.5 w-[13px] rounded-full bg-primary" />
           <div
-            className="flex size-8 shrink-0 items-center justify-center rounded-lg text-[11px] font-semibold uppercase bg-[hsl(var(--h)_70%_94%)] text-[hsl(var(--h)_55%_32%)] dark:bg-[hsl(var(--h)_35%_20%)] dark:text-[hsl(var(--h)_70%_78%)]"
+            className="flex size-8 shrink-0 items-center justify-center rounded-lg text-xs font-semibold uppercase bg-[hsl(var(--h)_70%_94%)] text-[hsl(var(--h)_55%_32%)] dark:bg-[hsl(var(--h)_35%_20%)] dark:text-[hsl(var(--h)_70%_78%)]"
             style={{ "--h": n ? hueOf(n) : 220 } as React.CSSProperties}
           >
             {n ? n.slice(0, 2) : "?"}
           </div>
           <div className="min-w-0 flex-1">
             <p className={cn("truncate text-xs", n ? "font-semibold" : "italic text-muted-foreground")}>{n || "Your new branch"}</p>
-            <p className="truncate text-[11px] text-muted-foreground">{[city, country].filter(Boolean).join(", ") || "Location appears here"}</p>
+            <p className="truncate text-xs text-muted-foreground">{[city, country].filter(Boolean).join(", ") || "Location appears here"}</p>
             <div className="mt-1 flex flex-wrap gap-1">
-              <Badge className="h-4 px-1.5 text-[10px]">New</Badge>
-              {typeLabel && <Badge variant="outline" className="h-4 px-1.5 text-[10px]">{typeLabel}</Badge>}
-              {services && <Badge variant="outline" className="h-4 px-1.5 text-[10px]">{services}</Badge>}
+              <Badge className="h-4 px-1.5 text-xs">New</Badge>
+              {typeLabel && <Badge variant="outline" className="h-4 px-1.5 text-xs">{typeLabel}</Badge>}
+              {services && <Badge variant="outline" className="h-4 px-1.5 text-xs">{services}</Badge>}
             </div>
           </div>
         </div>
@@ -95,7 +95,7 @@ export function BranchLivePreview({
             <span
               className={cn(
                 "flex size-4 items-center justify-center rounded-full border-[1.5px] transition-colors",
-                ok ? "border-emerald-600 bg-emerald-600 text-white dark:border-emerald-500 dark:bg-emerald-500" : "border-border",
+                ok ? "border-success bg-success text-success-foreground" : "border-border",
               )}
             >
               {ok && <Check className="animate-pop-in size-2.5" strokeWidth={3} />}

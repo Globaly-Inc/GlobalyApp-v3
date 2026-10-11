@@ -183,7 +183,7 @@ export function BranchesTab({
           <div>
             <div className="flex items-center gap-2">
               <h2 className="text-base font-bold">Branches</h2>
-              <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[11px] tabular-nums text-primary">{branchesTotal}</span>
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-xs tabular-nums text-primary">{branchesTotal}</span>
             </div>
             <p className="text-xs text-muted-foreground">Campuses and offices under your head office</p>
           </div>

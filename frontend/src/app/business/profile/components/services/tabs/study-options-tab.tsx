@@ -79,7 +79,7 @@ export function StudyOptionsTab({ serviceId }: Readonly<{ serviceId: string }>) 
         emptyTitle="No study options yet"
         emptyHint="Add how students can take this course — on campus, online or hybrid, full- or part-time."
         summary={
-          <p className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <p className="font-mono text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             {rows.length} {rows.length === 1 ? "way" : "ways"} to study
           </p>
         }

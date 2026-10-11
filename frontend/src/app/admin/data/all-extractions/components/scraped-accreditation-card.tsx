@@ -91,7 +91,7 @@ export function ScrapedAccreditationCard({
               <div className="flex flex-wrap items-center gap-1.5">
                 <BookOpen className="h-3 w-3 text-muted-foreground" />
                 {courseNames.map((name) => (
-                  <Badge key={name} variant="secondary" className="text-[10px]">{name}</Badge>
+                  <Badge key={name} variant="secondary" className="text-xs">{name}</Badge>
                 ))}
               </div>
             )}

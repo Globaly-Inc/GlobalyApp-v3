@@ -94,7 +94,7 @@ export function FeedCommentList({
                     onClick={() => applyReaction(comment, group.emoji)}
                     title={`${group.count} × ${group.emoji}`}
                     className={cn(
-                      "flex cursor-pointer items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-[11px] transition-colors",
+                      "flex cursor-pointer items-center gap-0.5 rounded-full border px-1.5 py-0.5 text-xs transition-colors",
                       comment.my_reaction === group.emoji
                         ? "border-primary/40 bg-primary/10"
                         : "border-transparent bg-muted hover:bg-muted/70",

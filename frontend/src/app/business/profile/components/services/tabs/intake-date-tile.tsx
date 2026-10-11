@@ -16,9 +16,9 @@ export function IntakeDateTile({ parts, muted = false, large = false }: Readonly
     >
       {parts ? (
         <>
-          {parts.top && <span className="font-mono text-[10px] font-semibold uppercase tracking-wider opacity-85">{parts.top}</span>}
+          {parts.top && <span className="font-mono text-xs font-semibold uppercase tracking-wider opacity-85">{parts.top}</span>}
           <span className={cn("font-bold", large ? "text-[22px]" : "text-[17px]")}>{parts.main}</span>
-          {parts.bottom && <span className="font-mono text-[9.5px] opacity-75">{parts.bottom}</span>}
+          {parts.bottom && <span className="font-mono text-xs opacity-75">{parts.bottom}</span>}
         </>
       ) : (
         <Calendar className="h-5 w-5" aria-label="No date set" />
