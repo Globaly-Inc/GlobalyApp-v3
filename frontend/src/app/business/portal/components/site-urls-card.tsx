@@ -6,6 +6,7 @@ import { toast } from "sonner";
 import { Card } from "@/components/ui/card";
 import { Pagination } from "@/components/ui/pagination";
 import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
 import { PortalPageHeader } from "@/app/business/profile/components/portal-ui/portal-page-header";
 import { PortalStats } from "@/app/business/profile/components/portal-ui/portal-stats";
 import { PortalStatTile } from "@/app/business/profile/components/portal-ui/portal-stat-tile";
@@ -109,9 +110,9 @@ export function SiteUrlsCard({ sharedFrom = null }: Readonly<{ sharedFrom?: stri
   const changeCategory = (c: SiteUrlCategory | null) => { setCategory(c); setPageNum(1); };
   const empty = page !== null && (!counts || counts.total === 0);
 
-  // Mockup `.page`: one bordered panel, 22px padding, 16px between blocks.
+  // One bordered panel (the profile tab's whole body), 16px between blocks.
   return (
-    <Card className="stagger-in gap-4 rounded-[18px] p-5.5">
+    <Card className="stagger-in gap-4 px-5">
       <div>
         <PortalPageHeader
           title="Pages on your site"
@@ -127,11 +128,13 @@ export function SiteUrlsCard({ sharedFrom = null }: Readonly<{ sharedFrom?: stri
       </div>
 
       {empty ? (
-        <div className="grid justify-items-center gap-1.5 rounded-[14px] border-[1.5px] border-dashed p-7.5 text-center text-muted-foreground">
-          <Globe className="h-8 w-8 text-muted-foreground/40" />
-          <b className="text-sm font-semibold text-foreground">No pages discovered yet</b>
-          <span className="text-xs">Once your website extraction finishes crawling, the pages it found will show up here.</span>
-        </div>
+        <EmptyState
+          compact
+          icon={Globe}
+          title="No pages discovered yet"
+          description="Once your website extraction finishes crawling, the pages it found will show up here."
+          className="w-full max-w-none rounded-lg border border-dashed"
+        />
       ) : (
         <>
           {counts && (
@@ -145,7 +148,7 @@ export function SiteUrlsCard({ sharedFrom = null }: Readonly<{ sharedFrom?: stri
 
           {counts && <SiteUrlDistribution counts={counts} category={category} onCategoryChange={changeCategory} />}
 
-          <div className="overflow-hidden rounded-[14px] border">
+          <div className="overflow-hidden rounded-lg border">
             {page === null ? (
               Array.from({ length: 4 }).map((_, i) => (
                 <div key={i} className="flex items-center gap-3 border-b px-3.5 py-2.75 last:border-b-0">
@@ -154,10 +157,7 @@ export function SiteUrlsCard({ sharedFrom = null }: Readonly<{ sharedFrom?: stri
                 </div>
               ))
             ) : page.data.length === 0 ? (
-              <div className="grid justify-items-center gap-1.5 p-7.5 text-center text-muted-foreground">
-                <b className="text-sm font-semibold text-foreground">No pages match</b>
-                <span className="text-xs">Try another category.</span>
-              </div>
+              <EmptyState compact title="No pages match" description="Try another category." />
             ) : (
               page.data.map((u, i) => (
                 <SiteUrlRow

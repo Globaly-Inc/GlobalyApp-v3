@@ -25,7 +25,7 @@ export function SiteUrlDistribution({
   const toggle = (c: SiteUrlCategory) => onCategoryChange(category === c ? null : c);
 
   const chip = (selected: boolean) => cn(
-    "inline-flex items-center gap-1.5 rounded-full border px-[11px] py-[5px] text-xs font-semibold transition-colors",
+    "inline-flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs font-semibold transition-colors",
     selected ? "border-foreground bg-foreground text-background" : "border-border bg-card text-muted-foreground",
   );
   const hover = (c: SiteUrlCategory) => ({
@@ -55,13 +55,13 @@ export function SiteUrlDistribution({
       <div className="flex flex-wrap gap-1.5">
         <button type="button" aria-pressed={category === null} className={chip(category === null)} onClick={() => onCategoryChange(null)}>
           All
-          <span className="font-mono text-[10.5px] font-semibold">{counts.total - counts.excluded}</span>
+          <span className="font-mono text-xs font-semibold">{counts.total - counts.excluded}</span>
         </button>
         {active.map((c) => (
           <button key={c} type="button" aria-pressed={category === c} className={chip(category === c)} onClick={() => toggle(c)} {...hover(c)}>
-            <i className={cn("size-2.25 rounded-[3px]", SITE_URL_CATEGORIES[c].dot)} />
+            <i className={cn("size-2.25 rounded-xs", SITE_URL_CATEGORIES[c].dot)} />
             {SITE_URL_CATEGORIES[c].label}
-            <span className="font-mono text-[10.5px] font-semibold">{counts.by_category[c]}</span>
+            <span className="font-mono text-xs font-semibold">{counts.by_category[c]}</span>
           </button>
         ))}
       </div>

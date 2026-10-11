@@ -1,11 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import { Cloud, CloudFog, CloudRain, CloudSnow, Droplets, MapPinOff, Sun, Wind, Zap } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ScrollRow } from "@/components/scroll-row";
-import { weatherCondition } from "../utils";
-import type { WeatherSnapshot } from "../types";
+import { weatherCondition, type WeatherSnapshot } from "./utils";
 
 /**
  * WMO weather code → icon, as a component rather than a returned component reference: picking a component
@@ -22,21 +21,22 @@ function WeatherIcon({ code, className }: { code: number; className?: string }) 
   return <Cloud className={className} />;
 }
 
+const noopSubscribe = () => () => {};
+
 /**
  * Secondary by design. Open-Meteo and Nominatim are unauthenticated third parties, so a denied permission or
  * any fetch failure just shows a message here — it never touches which widget the toggle has selected.
  */
 export function WeatherWidget() {
   const [weather, setWeather] = useState<WeatherSnapshot | null>(null);
-  const [unavailable, setUnavailable] = useState(false);
+  const [failed, setFailed] = useState(false);
+  const supported = useSyncExternalStore(noopSubscribe, () => !!navigator.geolocation, () => true);
+  const unavailable = failed || !supported;
 
   useEffect(() => {
     let cancelled = false;
 
-    if (typeof navigator === "undefined" || !navigator.geolocation) {
-      setUnavailable(true);
-      return;
-    }
+    if (!navigator.geolocation) return;
 
     navigator.geolocation.getCurrentPosition(
       async ({ coords }) => {
@@ -79,12 +79,12 @@ export function WeatherWidget() {
             })),
           });
         } catch {
-          if (!cancelled) setUnavailable(true);
+          if (!cancelled) setFailed(true);
         }
       },
       // Permission denied or position unavailable — fall back, silently.
       () => {
-        if (!cancelled) setUnavailable(true);
+        if (!cancelled) setFailed(true);
       },
       { timeout: 8000 },
     );
@@ -121,12 +121,12 @@ export function WeatherWidget() {
     <div className="space-y-2">
       <div className="flex items-center gap-3">
         <WeatherIcon code={weather.code} className="h-8 w-8 shrink-0 text-white" />
-        <span className="text-3xl font-bold leading-none text-white">{weather.temperature}°</span>
+        <span className="font-heading text-3xl font-medium leading-none tabular-nums text-white">{weather.temperature}°</span>
         <div className="min-w-0 text-xs text-white/80">
           <p className="truncate font-medium text-white">{weather.condition}</p>
           <p className="truncate">{weather.location}</p>
         </div>
-        <div className="ml-auto space-y-0.5 text-[11px] text-white/70">
+        <div className="ml-auto space-y-0.5 text-xs text-white/70">
           <p className="flex items-center gap-1">
             <Droplets className="h-3 w-3" /> {weather.humidity}%
           </p>
@@ -139,11 +139,11 @@ export function WeatherWidget() {
       <ScrollRow rowClassName="flex gap-1.5">
         {weather.forecast.map((day) => (
           <div key={day.date} className="min-w-13 rounded-lg bg-white/10 px-2 py-1.5 text-center">
-            <p className="text-[10px] text-white/70">
+            <p className="text-xs text-white/70">
               {new Date(day.date).toLocaleDateString(undefined, { weekday: "short" })}
             </p>
             <WeatherIcon code={day.code} className="mx-auto my-0.5 h-3.5 w-3.5 text-white/90" />
-            <p className="text-[11px] font-semibold text-white">
+            <p className="text-xs font-semibold text-white">
               {day.tempMax}°<span className="font-normal text-white/60">/{day.tempMin}°</span>
             </p>
           </div>

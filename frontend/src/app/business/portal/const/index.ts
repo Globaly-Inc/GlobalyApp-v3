@@ -37,10 +37,6 @@ export const WELCOME_FEATURES: { id: "autofill" | "counsellor" | "leads"; icon: 
   },
 ];
 
-export const HERO_WIDGET_KEY = "business-home-widget";
-export const TIMEZONE_KEY = "business-timezone";
-export const WORLD_CLOCKS_KEY = "business-world-clocks";
-
 /** What a crawl collects. Named in the same order wherever it is listed, so the promise made before
  *  it runs and the counts reported while it runs read as one list. */
 export const EXTRACTION_CATEGORIES = [
@@ -52,5 +48,3 @@ export const EXTRACTION_POLL_INTERVAL_MS = 4000;
 export const EXTRACTION_MAX_POLLS = 150;
 /** Job statuses after which the crawl is over — the portal unlocks on any of them. */
 export const EXTRACTION_TERMINAL_STATUSES = new Set(["done", "exported", "approved", "verified", "review", "failed", "declined"]);
-/** Including the business's own zone, which always leads the row. Keeps the hero one line on a laptop. */
-export const MAX_WORLD_CLOCKS = 5;

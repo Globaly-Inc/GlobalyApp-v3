@@ -4,7 +4,7 @@ import { Copy, Lock, RefreshCw } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { regenerateAccessCode, toggleSiteLock } from "../store/overview-slice";
@@ -26,17 +26,19 @@ export function SiteAccessCard() {
       : "";
 
   return (
-    <Card className="mt-6">
-      <CardContent className="p-5">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="font-semibold flex items-center gap-2">
-            <Lock className="h-4 w-4 text-primary" />
-            Site access lock
-          </h2>
+    <Card>
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2">
+          <Lock className="size-4 text-muted-foreground" />
+          Site access lock
+        </CardTitle>
+        <CardAction>
           <Badge variant={settings.is_locked ? "destructive" : "secondary"}>
             {settings.is_locked ? "Locked" : "Open"}
           </Badge>
-        </div>
+        </CardAction>
+      </CardHeader>
+      <CardContent>
         <p className="text-sm text-muted-foreground mb-4">
           When locked, public pages require an access code to view.
         </p>

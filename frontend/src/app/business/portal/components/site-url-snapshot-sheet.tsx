@@ -97,7 +97,7 @@ export function SiteUrlSnapshotSheet({
             <Textarea
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
-              className="min-h-[50vh] font-mono text-[11px] leading-relaxed"
+              className="min-h-[50vh] font-mono text-xs leading-relaxed"
             />
             <div className="flex justify-end gap-2">
               <Button variant="outline" size="sm" disabled={saving} onClick={() => setEditing(false)}>
@@ -110,7 +110,7 @@ export function SiteUrlSnapshotSheet({
             </div>
           </div>
         ) : (
-          <pre className="mx-4 mb-4 whitespace-pre-wrap break-words rounded-md border border-border bg-muted/30 p-3 font-mono text-[11px] leading-relaxed">
+          <pre className="mx-4 mb-4 whitespace-pre-wrap break-words rounded-md border border-border bg-muted/30 p-3 font-mono text-xs leading-relaxed">
             {snapshot?.markdown}
           </pre>
         )}

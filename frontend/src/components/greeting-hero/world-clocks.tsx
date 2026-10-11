@@ -5,8 +5,8 @@ import { Plus, Search, X } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
-import { MAX_WORLD_CLOCKS, WORLD_CLOCKS_KEY } from "../const";
-import { usePersistedChoice } from "../utils/use-persisted-choice";
+import { usePersistedChoice } from "./use-persisted-choice";
+import { allZones, MAX_WORLD_CLOCKS } from "./utils";
 
 /** Stored as a comma-separated zone list so it round-trips through the same localStorage helper. */
 const isZoneList = (value: string): value is string => typeof value === "string";
@@ -26,19 +26,13 @@ function offsetLabel(zone: string, now: Date): string {
   }
 }
 
-function allZones(): string[] {
-  return typeof Intl.supportedValuesOf === "function"
-    ? Intl.supportedValuesOf("timeZone")
-    : [Intl.DateTimeFormat().resolvedOptions().timeZone];
-}
-
-export function WorldClocks({ now, homeTimezone }: { now: Date; homeTimezone: string }) {
-  const [stored, setStored] = usePersistedChoice<string>(WORLD_CLOCKS_KEY, "", isZoneList);
+export function WorldClocks({ now, homeTimezone, storageKey }: { now: Date; homeTimezone: string; storageKey: string }) {
+  const [stored, setStored] = usePersistedChoice<string>(storageKey, "", isZoneList);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [query, setQuery] = useState("");
 
   const added = useMemo(() => stored.split(",").filter(Boolean), [stored]);
-  // The user's own zone always leads the row and cannot be removed — it is the reference the rest read against.
+  // The viewer's own zone always leads the row and cannot be removed — it is the reference the rest read against.
   const zones = useMemo(() => [homeTimezone, ...added.filter((z) => z !== homeTimezone)], [homeTimezone, added]);
 
   const options = useMemo(() => {
@@ -67,16 +61,16 @@ export function WorldClocks({ now, homeTimezone }: { now: Date; homeTimezone: st
             className="group relative min-w-30 rounded-lg bg-white/10 px-2.5 py-2 text-left backdrop-blur-sm"
           >
             <div className="flex items-center gap-1.5">
-              <span className="truncate text-[11px] font-medium text-white">{cityOf(zone)}</span>
-              {isHome && <span className="text-[10px] text-white/60">Default</span>}
+              <span className="truncate text-xs font-medium text-white">{cityOf(zone)}</span>
+              {isHome && <span className="text-xs text-white/60">Default</span>}
             </div>
-            <p className="text-base font-bold leading-tight text-white">
+            <p className="font-heading text-base font-medium leading-tight tabular-nums text-white">
               {new Intl.DateTimeFormat(undefined, { timeZone: zone, hour: "numeric", minute: "2-digit" }).format(now)}
-              <span className="ml-0.5 text-[10px] font-normal text-white/70">
+              <span className="ml-0.5 text-xs font-normal text-white/70">
                 {new Intl.DateTimeFormat(undefined, { timeZone: zone, second: "2-digit" }).format(now)}
               </span>
             </p>
-            <p className="text-[10px] text-white/60">
+            <p className="text-xs text-white/60">
               {new Intl.DateTimeFormat(undefined, { timeZone: zone, weekday: "short", day: "numeric", month: "short" }).format(now)}
             </p>
 
@@ -85,7 +79,7 @@ export function WorldClocks({ now, homeTimezone }: { now: Date; homeTimezone: st
                 type="button"
                 aria-label={`Remove ${cityOf(zone)}`}
                 onClick={() => removeZone(zone)}
-                className="absolute -right-1 -top-1 hidden cursor-pointer rounded-full bg-white/90 p-0.5 text-neutral-700 shadow group-hover:block hover:text-destructive"
+                className="absolute -right-1 -top-1 cursor-pointer rounded-full bg-card p-0.5 text-foreground shadow opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100 hover:text-destructive"
               >
                 <X className="h-3 w-3" />
               </button>

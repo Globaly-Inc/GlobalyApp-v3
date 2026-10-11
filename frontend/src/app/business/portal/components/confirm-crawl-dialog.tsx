@@ -55,7 +55,7 @@ export function ConfirmCrawlDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-[35rem] rounded-2xl">
+      <DialogContent className="max-w-[35rem]">
         <DialogHeader>
           <DialogTitle className="font-heading text-xl">Ready to read your website?</DialogTitle>
           <DialogDescription>
@@ -65,8 +65,8 @@ export function ConfirmCrawlDialog({
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
-          <div className="rounded-xl border bg-muted/40 p-3.5">
-            <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">We will crawl</p>
+          <div className="rounded-lg border bg-muted/40 p-3.5">
+            <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">We will crawl</p>
             <p className="mt-1 text-sm font-medium break-all">{origin}</p>
             <p className="mt-1 text-xs leading-5 text-muted-foreground">
               and every public page underneath it.{changed ? ` ${changed}` : ""}
@@ -74,7 +74,7 @@ export function ConfirmCrawlDialog({
           </div>
 
           <div>
-            <p className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">We&apos;ll collect</p>
+            <p className="text-xs font-semibold tracking-wider text-muted-foreground uppercase">We&apos;ll collect</p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               {EXTRACTION_CATEGORIES.map((c) => (
                 <Badge key={c} variant="outline" className="font-normal">{c}</Badge>
@@ -94,7 +94,7 @@ export function ConfirmCrawlDialog({
           </p>
         </div>
 
-        <DialogFooter className="-mx-6 -mb-6 mt-1 items-center gap-2 rounded-b-2xl border-t bg-muted/30 px-6 py-4 sm:justify-end">
+        <DialogFooter className="-mx-6 -mb-6 mt-1 items-center gap-2 border-t bg-muted/30 px-6 py-4 sm:justify-end">
           <Button type="button" variant="outline" className="cursor-pointer" disabled={starting} onClick={() => onOpenChange(false)}>
             Change the website
           </Button>

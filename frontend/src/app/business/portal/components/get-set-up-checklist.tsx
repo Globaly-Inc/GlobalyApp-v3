@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { useAppSelector } from "@/lib/hooks";
 import { ArrowUpRight, Check, Eye, Lock, type LucideIcon } from "lucide-react";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
@@ -24,7 +25,7 @@ const STEP_LINKS: Record<string, string> = {
  * only the chat widget waits). A prerequisite missing from the list doesn't lock anything.
  */
 // The suggested next step gets the one filled button; every other step gets a one-line StepNote.
-const STEP_BUTTON_PRIMARY = "mt-1.5 inline-flex h-7 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90";
+const STEP_BUTTON_PRIMARY = buttonVariants({ size: "xs", className: "mt-2 px-3" });
 
 /** "🔒 Unlocks after Customise…" / "↗ Available now Open" — icon, optional muted text, link. */
 function StepNote({ icon: Icon, text, link, fallback }: Readonly<{
@@ -67,8 +68,8 @@ export function GetSetUpChecklist({ progress }: Readonly<{ progress: OnboardingP
 
   return (
     <Card id="get-set-up">
-      <CardHeader className="space-y-2 pb-3">
-        <div className="flex items-center justify-between">
+      <CardHeader className="gap-3">
+        <div className="flex items-center justify-between gap-2">
           <CardTitle>Get set up</CardTitle>
           <span className="text-xs font-medium tabular-nums text-muted-foreground">
             {progress.completed}/{progress.total}
@@ -76,7 +77,7 @@ export function GetSetUpChecklist({ progress }: Readonly<{ progress: OnboardingP
         </div>
         <Progress value={percent} className="h-1.5" />
       </CardHeader>
-      <CardContent className="pb-4">
+      <CardContent>
         <ol className="flex flex-col">
         {progress.steps.map((step, i) => {
           const isCurrent = i === firstIncompleteIndex;
