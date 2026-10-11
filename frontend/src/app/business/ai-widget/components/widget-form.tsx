@@ -1,9 +1,10 @@
 "use client";
 
-import { Check, MessageSquareText, Palette, UserRound, type LucideIcon } from "lucide-react";
+import { Check, MessageSquareText, Palette, UserRound } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { FormField } from "@/components/ui/form-field";
+import { FormSection } from "@/components/ui/form-section";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { radioGroupKeyDown, radioTabIndex } from "../utils";
 import type {
@@ -56,45 +57,13 @@ export const toUpdateInput = (form: WidgetFormValues): UpdateEmbedConfigInput =>
 /** One-click brand colours; any other hex can still be typed or picked. */
 const SWATCHES = ["#012E8A", "#4F46E5", "#0891B2", "#0D9488", "#16A34A", "#D97706", "#DC2626", "#DB2777", "#111827"];
 
-function Section({ icon: Icon, title, hint, children }: Readonly<{ icon: LucideIcon; title: string; hint: string; children: React.ReactNode }>) {
-  return (
-    <section className="flex flex-col gap-4 border-b p-5 last:border-b-0">
-      <div className="flex items-start gap-3">
-        <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <Icon className="size-4" aria-hidden />
-        </span>
-        <div>
-          <h3 className="text-base font-semibold">{title}</h3>
-          <p className="text-xs text-muted-foreground">{hint}</p>
-        </div>
-      </div>
-      {children}
-    </section>
-  );
-}
-
-/** Label row: name, a muted "Optional", and a character count when the field has a cap. */
-function FieldLabel({ htmlFor, id, optional, count, max, children }: Readonly<{
-  htmlFor?: string; id?: string; optional?: boolean; count?: number; max?: number; children: React.ReactNode;
-}>) {
-  return (
-    <div className="flex items-baseline justify-between gap-2">
-      <Label htmlFor={htmlFor} id={id}>
-        {children}
-        {optional && <span className="ml-1.5 text-xs font-normal text-muted-foreground">Optional</span>}
-      </Label>
-      {max != null && <span className="text-xs text-muted-foreground tabular-nums">{count}/{max}</span>}
-    </div>
-  );
-}
-
-/** One settings card; scrolls inside itself when the editor is pinned to the screen's height. */
-const CARD = "flex flex-col overflow-hidden rounded-2xl border bg-card xl:min-h-0 xl:overflow-y-auto";
+/** Character count for a capped field, shown as the field's hint. */
+const counter = (count: number, max: number) => <span className="tabular-nums">{count}/{max}</span>;
 
 /**
  * The widget's settings, controlled — the editor page owns the values so its preview can follow
- * them. Two cards (Identity + Conversation, then Appearance) that the editor lays out as its two
- * settings columns.
+ * them. Three settings cards — Identity, Conversation, Appearance — stacked in the editor's
+ * settings column.
  */
 export function WidgetFormFields({
   form,
@@ -115,25 +84,23 @@ export function WidgetFormFields({
   const swatchChecked = SWATCHES.some((hex) => hex.toLowerCase() === form.brand_color.toLowerCase());
 
   const identity = (
-    <Section icon={UserRound} title="Identity" hint="How the counsellor introduces itself in the header.">
-      <div className="grid gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-1.5">
-          <FieldLabel htmlFor="widget-name">Display name</FieldLabel>
-          <Input id="widget-name" value={form.display_name} onChange={set("display_name")} placeholder="Acme University Counsellor" />
-        </div>
-        <div className="flex flex-col gap-1.5">
-          <FieldLabel htmlFor="widget-subtitle" optional count={form.subtitle.length} max={120}>Subtitle</FieldLabel>
-          <Input id="widget-subtitle" value={form.subtitle} onChange={set("subtitle")} maxLength={120} placeholder="Usually replies in seconds" />
-        </div>
-      </div>
-    </Section>
+    <FormSection title={<><UserRound aria-hidden /> Identity</>} description="How the counsellor introduces itself in the header.">
+      <FormField label="Display name" htmlFor="widget-name">
+        <Input id="widget-name" value={form.display_name} onChange={set("display_name")} placeholder="Acme University Counsellor" />
+      </FormField>
+      <FormField label="Subtitle" htmlFor="widget-subtitle" optional hint={counter(form.subtitle.length, 120)}>
+        <Input id="widget-subtitle" value={form.subtitle} onChange={set("subtitle")} maxLength={120} placeholder="Usually replies in seconds" />
+      </FormField>
+    </FormSection>
   );
 
   const appearance = (
-
-    <Section icon={Palette} title="Appearance" hint="Aly, the launcher and every button take on your colour.">
-      <div className="flex flex-col gap-2">
-        <FieldLabel htmlFor="widget-color-hex">Brand colour</FieldLabel>
+    <FormSection
+      title={<><Palette aria-hidden /> Appearance</>}
+      description="Aly, the launcher and every button take on your colour."
+      columns={1}
+    >
+      <FormField label="Brand colour" htmlFor="widget-color-hex">
         {/* No logo upload: every widget shows Aly, in this colour. */}
         <div className="flex items-center gap-2">
           <label className="relative size-10 shrink-0 cursor-pointer overflow-hidden rounded-lg border" style={{ backgroundColor: isHex ? form.brand_color : undefined }}>
@@ -153,6 +120,7 @@ export function WidgetFormFields({
                 tabIndex={radioTabIndex(on, i, swatchChecked)}
                 aria-label={hex}
                 onClick={() => setColor(hex)}
+                // ponytail: white check on the swatch's own hex, the swatches are data not theme colours.
                 className={cn("flex size-8 items-center justify-center rounded-full text-white transition-transform hover:scale-110", on && "ring-2 ring-offset-2 ring-offset-card")}
                 style={{ backgroundColor: hex, ...(on ? { ["--tw-ring-color" as string]: hex } : {}) }}
               >
@@ -161,9 +129,8 @@ export function WidgetFormFields({
             );
           })}
         </div>
-      </div>
-      <div className="flex flex-col gap-2">
-        <FieldLabel id="widget-position">Position on your website</FieldLabel>
+      </FormField>
+      <FormField label={<span id="widget-position">Position on your website</span>}>
         <div role="radiogroup" aria-labelledby="widget-position" className="grid grid-cols-2 gap-3" onKeyDown={radioGroupKeyDown}>
           {(["left", "right"] as const).map((side) => {
             const on = form.position === side;
@@ -175,7 +142,7 @@ export function WidgetFormFields({
                 aria-checked={on}
                 tabIndex={on ? 0 : -1}
                 onClick={() => setForm((f) => ({ ...f, position: side }))}
-                className={cn("flex flex-col gap-2 rounded-xl border p-3 text-left transition-colors", on ? "border-2 border-primary bg-primary/5" : "hover:bg-muted/50")}
+                className={cn("flex flex-col gap-2 rounded-xl border p-3 text-left transition-colors", on ? "border-primary bg-primary/5 ring-1 ring-primary" : "hover:bg-muted/50")}
               >
                 {/* A tiny page with the orb in that corner. */}
                 <span className="relative flex h-14 flex-col gap-1.5 rounded-md border bg-background p-2" aria-hidden>
@@ -191,36 +158,36 @@ export function WidgetFormFields({
             );
           })}
         </div>
-      </div>
-    </Section>
+      </FormField>
+      {appearanceFooter}
+    </FormSection>
   );
 
   const conversation = (
-    <Section icon={MessageSquareText} title="Conversation" hint="What visitors read first, and how the counsellor should answer.">
-      <div className="flex flex-col gap-1.5">
-        <FieldLabel htmlFor="widget-greeting" optional count={form.greeting.length} max={300}>Greeting</FieldLabel>
+    <FormSection
+      title={<><MessageSquareText aria-hidden /> Conversation</>}
+      description="What visitors read first, and how the counsellor should answer."
+      columns={1}
+    >
+      <FormField label="Greeting" htmlFor="widget-greeting" optional hint={counter(form.greeting.length, 300)}>
         <Textarea id="widget-greeting" value={form.greeting} onChange={set("greeting")} maxLength={300} rows={2} placeholder="Hi! Ask me anything about studying with us." />
-      </div>
-      <div className="flex flex-col gap-1.5">
-        <FieldLabel htmlFor="widget-instructions" optional>Custom instructions</FieldLabel>
+      </FormField>
+      <FormField
+        label="Custom instructions"
+        htmlFor="widget-instructions"
+        optional
+        hint="Extra guidance for every answer. Instructions that try to override the counsellor's behaviour are ignored."
+      >
         <Textarea id="widget-instructions" value={form.custom_instructions} onChange={set("custom_instructions")} rows={3} placeholder="e.g. Always mention our February and July intakes." />
-        <p className="text-xs text-muted-foreground">
-          Extra guidance for every answer. Instructions that try to override the counsellor&apos;s behaviour are ignored.
-        </p>
-      </div>
-    </Section>
+      </FormField>
+    </FormSection>
   );
 
   return (
     <>
-      <div className={CARD}>
-        {identity}
-        {conversation}
-      </div>
-      <div className={CARD}>
-        {appearance}
-        {appearanceFooter}
-      </div>
+      {identity}
+      {conversation}
+      {appearance}
     </>
   );
 }

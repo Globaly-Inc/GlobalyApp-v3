@@ -107,21 +107,21 @@ export function CoverLogoEditor({
           type="button"
           className="group absolute -bottom-12 left-10 cursor-pointer"
           onClick={() => logoPickerRef.current?.pick()}
-          aria-label="Edit logo"
+          aria-label={roundPhoto ? "Edit photo" : "Edit logo"}
         >
           <Avatar
-            className={cn("size-24 rounded-xl border-4 border-background shadow-lg", !roundPhoto && "bg-white")}
+            className={cn("size-24 border-4 border-background shadow-lg", roundPhoto ? "rounded-full" : "rounded-xl bg-white")}
           >
             {logoUrl && (
               <AvatarImage
                 src={logoUrl}
                 alt=""
-                className={cn("rounded-lg", roundPhoto ? "object-cover" : "object-contain p-1")}
+                className={cn(roundPhoto ? "rounded-full object-cover" : "rounded-lg object-contain p-1")}
               />
             )}
-            <AvatarFallback className="rounded-lg text-2xl">{logoFallback}</AvatarFallback>
+            <AvatarFallback className={cn("text-2xl", !roundPhoto && "rounded-lg")}>{logoFallback}</AvatarFallback>
           </Avatar>
-          <span className="absolute inset-0 flex items-center justify-center rounded-xl bg-black/0 opacity-0 transition-opacity group-hover:bg-black/40 group-hover:opacity-100">
+          <span className={cn("absolute inset-0 flex items-center justify-center bg-black/0", roundPhoto ? "rounded-full" : "rounded-xl", "opacity-0 transition-opacity group-hover:bg-black/40 group-hover:opacity-100")}>
             {logoUploading ? <Loader2 className="h-5 w-5 animate-spin text-white" /> : <Camera className="h-5 w-5 text-white" />}
           </span>
         </button>

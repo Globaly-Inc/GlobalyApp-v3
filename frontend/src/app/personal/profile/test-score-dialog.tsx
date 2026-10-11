@@ -94,7 +94,7 @@ export function TestScoreDialog({
         <DialogHeader>
           <DialogTitle>{item ? "Edit Test Score" : "Add Test Score"}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4">
+        <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label>Test Type *</Label>
             <Combobox
@@ -127,7 +127,7 @@ export function TestScoreDialog({
           {completed && (
             <>
               <div className="grid grid-cols-2 gap-3">
-                <div className="space-y-2">
+                <div className="flex flex-col gap-2">
                   <Label>
                     Overall Score
                     {overallScoreRange(form.test_type ?? "") && (
@@ -159,14 +159,14 @@ export function TestScoreDialog({
                 </div>
               </div>
               {subFields.length > 0 && (
-                <div className="space-y-2">
+                <div className="flex flex-col gap-2">
                   <p className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Sub-scores</p>
                   <div className="grid grid-cols-2 gap-3">
                     {subFields.map((label) => {
                       const key = label.toLowerCase().replace(/[^a-z]+/g, "_").replace(/^_|_$/g, "");
                       const range = subScoreRange(form.test_type ?? "", label);
                       return (
-                        <div className="space-y-2" key={key}>
+                        <div className="flex flex-col gap-2" key={key}>
                           <Label>
                             {label}
                             {range && <span className="font-normal text-muted-foreground">{rangeHint(range)}</span>}

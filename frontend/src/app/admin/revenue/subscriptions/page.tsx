@@ -1,4 +1,7 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CreditCard } from "lucide-react";
+import { PageBody } from "@/components/ui/page-body";
+import { PageHeader } from "@/components/ui/page-header";
+import { StatCard } from "@/components/ui/stat-card";
 
 const STATS = [
   { label: "Active subscriptions", value: "—" },
@@ -9,24 +12,13 @@ const STATS = [
 
 export default function AdminSubscriptionsOverviewPage() {
   return (
-    <div>
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold text-foreground">Subscriptions</h1>
-        <p className="text-muted-foreground mt-1">Revenue overview across plans, credits, and referrals.</p>
-      </div>
-
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+    <PageBody>
+      <PageHeader title={<><CreditCard /> Subscriptions</>} subtitle="Revenue overview across plans, credits, and referrals." />
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {STATS.map((stat) => (
-          <Card key={stat.label}>
-            <CardHeader className="pb-1">
-              <CardTitle className="text-sm font-medium text-muted-foreground">{stat.label}</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <p className="text-2xl font-bold text-foreground">{stat.value}</p>
-            </CardContent>
-          </Card>
+          <StatCard key={stat.label} label={stat.label} value={stat.value} />
         ))}
       </div>
-    </div>
+    </PageBody>
   );
 }

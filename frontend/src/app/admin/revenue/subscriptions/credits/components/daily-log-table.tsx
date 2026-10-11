@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { CalendarDays } from "lucide-react";
+import { FilterBar, SearchInput } from "@/components/ui/filter-bar";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCard, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchDailyLog } from "../store/credits-ledger-slice";
 
@@ -13,11 +15,11 @@ function today() {
 
 function SkeletonRows() {
   return Array.from({ length: 6 }).map((_, i) => (
-    <tr key={i} className="border-b">
+    <TableRow key={i}>
       {Array.from({ length: 7 }).map((__, j) => (
-        <td key={j} className="px-4 py-3"><Skeleton className="h-4 w-full" /></td>
+        <TableCell key={j} className={j > 1 && j < 6 ? "hidden md:table-cell" : undefined}><Skeleton className="h-4 w-full" /></TableCell>
       ))}
-    </tr>
+    </TableRow>
   ));
 }
 
@@ -42,81 +44,79 @@ export function DailyLogTable() {
 
   const loading = dailyStatus === "loading";
 
+  const signed = (n: number) => (n >= 0 ? `+${n}` : `${n}`);
+
   return (
-    <div>
-      <div className="flex flex-wrap items-center gap-3 mb-4">
+    <div className="flex flex-col gap-4">
+      <FilterBar>
         <div className="relative">
-          <CalendarDays className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-muted-foreground pointer-events-none" />
-          <input
+          <CalendarDays className="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
             type="date"
+            aria-label="Date"
             value={date}
             max={today()}
             onChange={(e) => setDate(e.target.value)}
-            className="h-10 pl-9 pr-3 text-sm rounded-md border border-input bg-background text-foreground focus:outline-none focus:ring-2 focus:ring-ring"
+            className="h-10 bg-background pl-9"
           />
         </div>
-        <Input
-          className="max-w-xs"
-          placeholder="Search user..."
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-        />
-        <span className="text-sm text-muted-foreground ml-auto">
+        <SearchInput className="max-w-xs" placeholder="Search user..." value={search} onChange={(e) => setSearch(e.target.value)} />
+        <span className="ml-auto px-2 text-sm text-muted-foreground">
           {!loading && `${dailyTotal} user${dailyTotal !== 1 ? "s" : ""} active on ${date}`}
         </span>
-      </div>
+      </FilterBar>
 
-      <div className="border rounded-lg overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/30">
-            <tr>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">User</th>
-              <th className="px-4 py-3 text-left font-medium text-muted-foreground">Country</th>
-              <th className="px-4 py-3 text-right font-medium text-muted-foreground">Used</th>
-              <th className="px-4 py-3 text-right font-medium text-muted-foreground">Granted</th>
-              <th className="px-4 py-3 text-right font-medium text-muted-foreground">Net</th>
-              <th className="px-4 py-3 text-right font-medium text-muted-foreground">Txns</th>
-              <th className="px-4 py-3 text-right font-medium text-muted-foreground">Balance EOD</th>
-            </tr>
-          </thead>
-          <tbody>
+      <TableCard>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>User</TableHead>
+              <TableHead>Country</TableHead>
+              <TableHead numeric className="hidden md:table-cell">Used</TableHead>
+              <TableHead numeric className="hidden md:table-cell">Granted</TableHead>
+              <TableHead numeric className="hidden md:table-cell">Net</TableHead>
+              <TableHead numeric className="hidden md:table-cell">Txns</TableHead>
+              <TableHead numeric>Balance EOD</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {loading && <SkeletonRows />}
             {!loading && dailyEntries.length === 0 && (
-              <tr>
-                <td colSpan={7} className="px-4 py-10 text-center text-muted-foreground">
+              <TableRow>
+                <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
                   No activity on {date}
-                </td>
-              </tr>
+                </TableCell>
+              </TableRow>
             )}
             {!loading && dailyEntries.length > 0 && dailyEntries.map((entry) => (
-                <tr key={entry.platform_user_id} className="border-b hover:bg-muted/20 transition-colors">
-                  <td className="px-4 py-3">
-                    <p className="text-sm font-medium text-foreground">{entry.owner_name}</p>
-                    <p className="text-xs text-muted-foreground">{entry.owner_email}</p>
-                  </td>
-                  <td className="px-4 py-3 text-muted-foreground text-sm">
-                    {entry.country_name ?? "—"}
-                  </td>
-                  <td className="px-4 py-3 text-right font-medium text-destructive">
-                    {entry.total_used > 0 ? `-${entry.total_used} cr` : "—"}
-                  </td>
-                  <td className="px-4 py-3 text-right font-medium text-green-600">
-                    {entry.total_granted > 0 ? `+${entry.total_granted} cr` : "—"}
-                  </td>
-                  <td className={`px-4 py-3 text-right font-medium ${entry.net_change >= 0 ? "text-green-600" : "text-destructive"}`}>
-                    {entry.net_change >= 0 ? `+${entry.net_change}` : entry.net_change} cr
-                  </td>
-                  <td className="px-4 py-3 text-right text-muted-foreground">
-                    {entry.transaction_count}
-                  </td>
-                  <td className="px-4 py-3 text-right text-muted-foreground">
-                    {entry.closing_balance} cr
-                  </td>
-                </tr>
+              <TableRow key={entry.platform_user_id}>
+                <TableCell primary>
+                  {entry.owner_name}
+                  <span className="block text-xs font-normal text-muted-foreground">{entry.owner_email}</span>
+                  {/* Phones: the hidden money columns as one line. */}
+                  <span className="block text-xs font-normal text-muted-foreground md:hidden">
+                    {entry.total_used > 0 ? `-${entry.total_used} used · ` : ""}
+                    {entry.total_granted > 0 ? `+${entry.total_granted} granted · ` : ""}
+                    {signed(entry.net_change)} cr net · {entry.transaction_count} txns
+                  </span>
+                </TableCell>
+                <TableCell className="text-muted-foreground">{entry.country_name ?? "—"}</TableCell>
+                <TableCell numeric className="hidden font-medium text-destructive md:table-cell">
+                  {entry.total_used > 0 ? `-${entry.total_used} cr` : "—"}
+                </TableCell>
+                <TableCell numeric className="hidden font-medium text-success md:table-cell">
+                  {entry.total_granted > 0 ? `+${entry.total_granted} cr` : "—"}
+                </TableCell>
+                <TableCell numeric className={`hidden font-medium md:table-cell ${entry.net_change >= 0 ? "text-success" : "text-destructive"}`}>
+                  {signed(entry.net_change)} cr
+                </TableCell>
+                <TableCell numeric className="hidden text-muted-foreground md:table-cell">{entry.transaction_count}</TableCell>
+                <TableCell numeric className="text-muted-foreground">{entry.closing_balance} cr</TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </TableBody>
+        </Table>
+      </TableCard>
     </div>
   );
 }

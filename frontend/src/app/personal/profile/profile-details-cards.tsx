@@ -4,7 +4,8 @@ import { User, Mail } from "lucide-react";
 import { PrivacyBadge } from "@/components/privacy-badge";
 import { Button } from "@/components/ui/button";
 import { flagEmoji } from "@/components/ui/phone-input";
-import { SectionCard, Field } from "./section-card";
+import { DescriptionItem, DescriptionList } from "@/components/ui/description-list";
+import { SectionCard } from "./section-card";
 import type { Country } from "@/app/geo/apis";
 import type { StudentProfile } from "../apis/types";
 
@@ -48,43 +49,34 @@ export function ProfileDetailsCards({
   return (
     <>
       <SectionCard icon={User} title="Personal Details" badge={<PrivacyBadge isPublic={false} />} onEdit={onEditPersonal}>
-        <div className="grid grid-cols-2 gap-x-8 gap-y-3 sm:grid-cols-4">
-          <Field label="Full Name" value={`${profile.first_name} ${profile.last_name}`} />
-          <Field label="Date of Birth" value={formatDate(profile.date_of_birth)} />
-          <Field label="Gender" value={profile.gender} />
-          <Field label="Nationality" value={countryName(profile.nationality_id)} />
-        </div>
+        <DescriptionList>
+          <DescriptionItem label="Full Name">{`${profile.first_name} ${profile.last_name}`}</DescriptionItem>
+          <DescriptionItem label="Date of Birth">{formatDate(profile.date_of_birth) || "—"}</DescriptionItem>
+          <DescriptionItem label="Gender">{profile.gender || "—"}</DescriptionItem>
+          <DescriptionItem label="Nationality">{countryName(profile.nationality_id) || "—"}</DescriptionItem>
+        </DescriptionList>
       </SectionCard>
 
       <SectionCard icon={Mail} title="Contact Details" badge={<PrivacyBadge isPublic={false} />} onEdit={onEditContact}>
-        <div className="grid grid-cols-1 gap-x-8 gap-y-3 sm:grid-cols-2">
-          <div>
-            <p className="text-xs text-muted-foreground">Email</p>
-            <div className="mt-0.5 flex items-center gap-2">
-              <p className="text-sm font-medium text-foreground">{profile.email}</p>
-              <Button variant="outline" size="sm" className="h-6 px-2 text-xs" onClick={onEditContact}>
+        <DescriptionList>
+          <DescriptionItem label="Email">
+            <span className="flex flex-wrap items-center gap-2">
+              <span className="min-w-0 break-all">{profile.email}</span>
+              <Button variant="outline" size="xs" onClick={onEditContact}>
                 Change
               </Button>
-            </div>
-          </div>
-          <Field
-            label="Phone"
-            value={profile.phone ? `${addressCountry ? flagEmoji(addressCountry.iso2) : ""} ${profile.phone}` : null}
-          />
-        </div>
-        {fullAddress && (
-          <div className="mt-3">
-            <Field
-              label="Personal Address"
-              value={
-                <>
-                  {addressCountry && `${flagEmoji(addressCountry.iso2)} `}
-                  {fullAddress}
-                </>
-              }
-            />
-          </div>
-        )}
+            </span>
+          </DescriptionItem>
+          <DescriptionItem label="Phone">
+            {profile.phone ? `${addressCountry ? flagEmoji(addressCountry.iso2) : ""} ${profile.phone}` : "—"}
+          </DescriptionItem>
+          {fullAddress && (
+            <DescriptionItem label="Personal Address" wide>
+              {addressCountry && `${flagEmoji(addressCountry.iso2)} `}
+              {fullAddress}
+            </DescriptionItem>
+          )}
+        </DescriptionList>
       </SectionCard>
     </>
   );

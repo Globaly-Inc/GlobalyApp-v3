@@ -26,11 +26,11 @@ export function WidgetPreview({ form, ownerKind }: Readonly<{ form: WidgetFormVa
       {/* Browser chrome, so the panel reads as sitting on someone's website. */}
       <div className="flex items-center gap-3 border-b px-4 py-2.5">
         <span className="flex gap-1.5" aria-hidden>
-          <span className="size-2.5 rounded-full bg-red-400" />
-          <span className="size-2.5 rounded-full bg-amber-400" />
-          <span className="size-2.5 rounded-full bg-emerald-400" />
+          <span className="size-2.5 rounded-full bg-destructive/60" />
+          <span className="size-2.5 rounded-full bg-warning/60" />
+          <span className="size-2.5 rounded-full bg-success/60" />
         </span>
-        <span className="flex flex-1 items-center gap-1.5 text-xs text-muted-foreground">
+        <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-xs text-muted-foreground">
           <Lock className="size-3" aria-hidden /> yourwebsite.com
         </span>
         <div role="radiogroup" aria-label="Preview state" className="inline-flex rounded-lg bg-muted p-0.5" onKeyDown={radioGroupKeyDown}>
@@ -53,7 +53,7 @@ export function WidgetPreview({ form, ownerKind }: Readonly<{ form: WidgetFormVa
         </div>
       </div>
 
-    <div className="relative h-[660px] overflow-hidden bg-muted/30 xl:h-auto xl:min-h-0 xl:flex-1">
+    <div className="relative h-[560px] overflow-hidden bg-muted/30 sm:h-[660px] lg:h-[min(660px,calc(100dvh-9rem))]">
       {/* A sketch of the institution's site. */}
       <div className="flex flex-col gap-5 p-6" aria-hidden>
         <div className="flex justify-between">
@@ -90,13 +90,14 @@ export function WidgetPreview({ form, ownerKind }: Readonly<{ form: WidgetFormVa
         )}
       >
         {/* Same surface as the real header: the brand fill with its measured readable ink. */}
+        {/* bg-white below mirrors the real widget's orb disc (embed/[key] widget-header), not a theme colour. */}
         <div className="flex items-center gap-2 bg-primary px-3 py-2.5 text-primary-foreground">
           <span className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white">
             <AlyOrbIcon className="size-9" color={form.brand_color} />
           </span>
           <div className="min-w-0 flex-1">
             <p className="truncate text-xs font-semibold">{form.display_name || "AI Counsellor"}</p>
-            <p className="truncate text-[10px] opacity-80">{form.subtitle || "AI counsellor"}</p>
+            <p className="truncate text-xs opacity-80">{form.subtitle || "AI counsellor"}</p>
           </div>
           <Expand className="size-3.5 opacity-80" aria-hidden />
           <Minus className="size-3.5 opacity-80" aria-hidden />
@@ -115,7 +116,7 @@ export function WidgetPreview({ form, ownerKind }: Readonly<{ form: WidgetFormVa
                   <span
                     key={c.label}
                     className={cn(
-                      "rounded-full border px-2.5 py-1 text-[11px]",
+                      "rounded-full border px-2.5 py-1 text-xs",
                       i === 0 ? "border-primary bg-primary text-primary-foreground" : "bg-card",
                     )}
                   >
@@ -125,7 +126,7 @@ export function WidgetPreview({ form, ownerKind }: Readonly<{ form: WidgetFormVa
               </div>
               <div className="flex flex-col gap-1.5">
                 {category.questions.slice(0, 3).map((q) => (
-                  <span key={q} className="rounded-lg border bg-card px-3 py-2 text-[11px]">{q}</span>
+                  <span key={q} className="rounded-lg border bg-card px-3 py-2 text-xs">{q}</span>
                 ))}
               </div>
             </>
@@ -134,7 +135,7 @@ export function WidgetPreview({ form, ownerKind }: Readonly<{ form: WidgetFormVa
 
         <div className="px-3 pt-2">
           <div className="flex items-center gap-2 rounded-xl border bg-background px-3 py-2.5 shadow-sm">
-            <span className="flex-1 text-[11px] text-muted-foreground">How can I help you today?</span>
+            <span className="flex-1 text-xs text-muted-foreground">How can I help you today?</span>
             <span className="flex size-6 items-center justify-center rounded-full bg-primary text-primary-foreground">
               <ArrowUp className="size-3.5" aria-hidden />
             </span>
