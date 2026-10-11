@@ -34,7 +34,7 @@ function PageHeader({ title, subtitle, leading, badges, children, className }: R
     <header
       data-slot="page-header"
       className={cn(
-        "mb-6 flex flex-col gap-4 border-b border-border pt-2 pb-5 sm:flex-row sm:items-end sm:justify-between",
+        "flex flex-col gap-4 border-b border-border pt-2 pb-5 sm:flex-row sm:items-end sm:justify-between",
         className
       )}
     >

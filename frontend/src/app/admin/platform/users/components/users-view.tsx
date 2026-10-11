@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { Users } from "lucide-react";
+import { PageBody } from "@/components/ui/page-body";
+import { PageHeader } from "@/components/ui/page-header";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs";
 import { fetchInvitations } from "../store/users-slice";
@@ -37,11 +40,8 @@ export function UsersView() {
   }, [dispatch, tab, debouncedInvitationsSearch]);
 
   return (
-    <div className="mx-auto max-w-3xl">
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold text-foreground">Users</h1>
-        <p className="text-muted-foreground mt-1">Manage users and pending admin invitations.</p>
-      </div>
+    <PageBody>
+      <PageHeader title={<><Users /> Users</>} subtitle="Manage users and pending admin invitations." />
 
       <AdminSegmentedTabs options={TABS} value={tab} onChange={setTab} />
 
@@ -55,6 +55,6 @@ export function UsersView() {
           onPageChange={(page) => dispatch(fetchInvitations({ search: debouncedInvitationsSearch || undefined, page, limit: 10 }))}
         />
       )}
-    </div>
+    </PageBody>
   );
 }

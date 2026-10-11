@@ -5,10 +5,20 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { TableCell, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchPlatformUsers, setPlatformUserAdminRole } from "../store/platform-users-slice";
 import type { ListParams, PlatformUser, PlatformUserAdminRole } from "../apis/types";
+
+/** Column headers for the rows below — kept beside the row so the two can't drift apart. */
+export const PLATFORM_USER_COLUMNS = [
+  { label: "User" },
+  { label: "Country", className: "hidden lg:table-cell" },
+  { label: "Joined", className: "hidden md:table-cell" },
+  { label: "Status" },
+  { label: "Actions", className: "w-px", srOnly: true },
+] as const;
 
 export function PlatformUserRow({
   user, refreshParams, onSuspend, onSuperAdminAction,
@@ -41,86 +51,87 @@ export function PlatformUserRow({
   const joined = new Date(user.created_at).toLocaleDateString("en-GB", { day: "numeric", month: "short", year: "numeric" });
 
   return (
-    <div className="group flex items-center justify-between gap-4 rounded-xl border border-border/60 bg-card p-4 transition-colors duration-150 ease-out hover:border-border hover:bg-muted/50">
-      <div className="flex min-w-0 items-center gap-3.5">
-        <div
-          className={cn(
-            "flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-semibold uppercase ring-2 ring-offset-2 ring-offset-card",
-            isAdmin ? "bg-primary/10 text-primary ring-primary/20" : "bg-muted text-muted-foreground ring-transparent",
-          )}
-        >
-          {initial}
-        </div>
-        <div className="min-w-0">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="truncate text-sm font-semibold text-foreground">
-              {user.first_name} {user.last_name}
-            </span>
-            {isSuperAdmin && (
-              <Badge variant="secondary" className="gap-1 px-1.5 py-0 text-[10px] font-medium">
-                <Shield className="h-3 w-3" /> Super Admin
-              </Badge>
+    <TableRow>
+      <TableCell className="max-w-0 w-full">
+        <div className="flex min-w-0 items-center gap-3">
+          <div
+            className={cn(
+              "flex size-8 shrink-0 items-center justify-center rounded-full text-xs font-semibold uppercase",
+              isAdmin ? "bg-primary-light text-primary" : "bg-muted text-muted-foreground",
             )}
-            {isDataAdmin && (
-              <Badge variant="outline" className="gap-1 px-1.5 py-0 text-[10px] font-medium">
-                <Database className="h-3 w-3" /> Data Admin
-              </Badge>
-            )}
-            {!active && (
-              <Badge variant="destructive" className="px-1.5 py-0 text-[10px] font-medium">
-                Suspended
-              </Badge>
-            )}
+          >
+            {initial}
           </div>
-          <p className="mt-0.5 truncate text-xs text-muted-foreground">
-            {[user.email, user.country, `Joined ${joined}`].filter(Boolean).join(" · ")}
-          </p>
+          <div className="min-w-0">
+            <div className="flex flex-wrap items-center gap-1.5">
+              <span className="truncate font-medium text-foreground">
+                {user.first_name} {user.last_name}
+              </span>
+              {isSuperAdmin && (
+                <Badge variant="secondary"><Shield /> Super Admin</Badge>
+              )}
+              {isDataAdmin && (
+                <Badge variant="outline"><Database /> Data Admin</Badge>
+              )}
+            </div>
+            <p className="truncate text-xs text-muted-foreground">{user.email}</p>
+          </div>
         </div>
-      </div>
-      <div className="flex shrink-0 items-center gap-1.5 opacity-80 transition-opacity duration-150 ease-out group-hover:opacity-100">
-        <Button
-          variant="ghost"
-          size="sm"
-          className={active ? "text-destructive hover:bg-destructive/10 hover:text-destructive" : "text-emerald-600 hover:bg-emerald-500/10 hover:text-emerald-600"}
-          onClick={onSuspend}
-        >
-          <ShieldOff className="mr-1 h-3.5 w-3.5" />
-          {active ? "Suspend" : "Unsuspend"}
-        </Button>
-        {canManage && (
-          <DropdownMenu>
-            <DropdownMenuTrigger className="flex h-8 w-8 items-center justify-center rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground">
-              <MoreHorizontal className="h-4 w-4" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end">
-              {isSuperAdmin ? (
-                !isSelf && (
-                  <DropdownMenuItem className="text-destructive" onClick={() => onSuperAdminAction(false)}>
-                    <Shield className="mr-2 h-4 w-4" /> Remove Super Admin
+      </TableCell>
+      <TableCell className="hidden text-muted-foreground lg:table-cell">{user.country || "—"}</TableCell>
+      <TableCell className="hidden text-muted-foreground md:table-cell">{joined}</TableCell>
+      <TableCell>
+        <Badge variant={active ? "success" : "destructive"}>{active ? "Active" : "Suspended"}</Badge>
+      </TableCell>
+      <TableCell>
+        <div className="flex items-center justify-end gap-1.5">
+          <Button
+            variant="ghost"
+            size="sm"
+            className={active ? "text-destructive hover:bg-destructive/10 hover:text-destructive" : "text-success hover:bg-success/10 hover:text-success"}
+            onClick={onSuspend}
+          >
+            <ShieldOff className="mr-1 h-3.5 w-3.5" />
+            {active ? "Suspend" : "Unsuspend"}
+          </Button>
+          {canManage && (
+            <DropdownMenu>
+              <DropdownMenuTrigger
+                aria-label={`More actions for ${user.first_name || user.email}`}
+                className="flex h-8 w-8 items-center justify-center rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground"
+              >
+                <MoreHorizontal className="h-4 w-4" />
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end">
+                {isSuperAdmin ? (
+                  !isSelf && (
+                    <DropdownMenuItem className="text-destructive" onClick={() => onSuperAdminAction(false)}>
+                      <Shield className="mr-2 h-4 w-4" /> Remove Super Admin
+                    </DropdownMenuItem>
+                  )
+                ) : (
+                  <DropdownMenuItem onClick={() => onSuperAdminAction(true)}>
+                    <Shield className="mr-2 h-4 w-4" /> Make Super Admin
                   </DropdownMenuItem>
-                )
-              ) : (
-                <DropdownMenuItem onClick={() => onSuperAdminAction(true)}>
-                  <Shield className="mr-2 h-4 w-4" /> Make Super Admin
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuSeparator />
-              {isDataAdmin ? (
-                <DropdownMenuItem
-                  className="text-destructive"
-                  onClick={() => applyRole(null, `Data Admin removed from ${user.first_name || user.email}`)}
-                >
-                  <Database className="mr-2 h-4 w-4" /> Remove Data Admin
-                </DropdownMenuItem>
-              ) : (
-                <DropdownMenuItem onClick={() => applyRole("data_admin", `${user.first_name || user.email} is now Data Admin`)}>
-                  <Database className="mr-2 h-4 w-4" /> Make Data Admin
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        )}
-      </div>
-    </div>
+                )}
+                <DropdownMenuSeparator />
+                {isDataAdmin ? (
+                  <DropdownMenuItem
+                    className="text-destructive"
+                    onClick={() => applyRole(null, `Data Admin removed from ${user.first_name || user.email}`)}
+                  >
+                    <Database className="mr-2 h-4 w-4" /> Remove Data Admin
+                  </DropdownMenuItem>
+                ) : (
+                  <DropdownMenuItem onClick={() => applyRole("data_admin", `${user.first_name || user.email} is now Data Admin`)}>
+                    <Database className="mr-2 h-4 w-4" /> Make Data Admin
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          )}
+        </div>
+      </TableCell>
+    </TableRow>
   );
 }
