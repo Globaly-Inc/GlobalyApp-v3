@@ -1,29 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import Image from "next/image";
-import Link from "next/link";
-import { ThemeToggle } from "@/components/theme-toggle";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
-import { ChevronDown, Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { logout, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchMe } from "./store/admin-slice";
 import { ROLE_DISPLAY } from "./consts";
 import { getVisibleNavGroups, isNavPathActive } from "./nav-config";
-import { AdminMobileNav } from "./components/admin-mobile-nav";
 import { AdminPortalSwitcher } from "./components/admin-portal-switcher";
-import { PortalSidebar } from "@/components/portal-sidebar";
-import { ICON } from "@/lib/public-assets";
-import { PERSONAL_PORTAL_HOME, SHOW_PERSONAL_PORTAL } from "@/app/personal/const";
+import { PortalShell } from "@/components/portal-shell/portal-shell";
+import { PortalLoadError, PortalLoading } from "@/components/portal-shell/portal-status";
 import { SIGN_IN_HREF } from "@/app/auth/const";
 
 export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -66,149 +52,35 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
     router.push(SIGN_IN_HREF);
   };
 
-  if (initializing) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
+  if (initializing) return <PortalLoading />;
 
   if (!isAdmin) return null;
 
   if (mounted && status === "failed") {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background text-center px-4">
-        <p className="text-sm text-muted-foreground">
-          {error ?? "Failed to load admin profile."}
-        </p>
-        <button
-          type="button"
-          onClick={handleSignOut}
-          className="text-sm font-medium text-primary underline underline-offset-4"
-        >
-          Sign out
-        </button>
-      </div>
-    );
+    return <PortalLoadError message={error ?? "Failed to load admin profile."} onSignOut={handleSignOut} />;
   }
 
-  if (!me) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-
-  const initial = me.email?.charAt(0).toUpperCase() ?? "A";
+  if (!me) return <PortalLoading />;
 
   return (
-    <div data-shell="portal" className="min-h-screen flex flex-col bg-background">
-      <a
-        href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-card focus:px-3 focus:py-2 focus:text-sm focus:shadow-md"
-      >
-        Skip to content
-      </a>
-      {/* Full-width bar above the rail, matching the personal and business portals: the mark sits over the
-          rail (hence the w-20 box), navigation lives in the sidebar, and this keeps identity only. */}
-      <header className="sticky top-0 z-40 h-16 w-full border-b border-border bg-card/95 backdrop-blur flex items-center justify-between pr-4 md:pr-6">
-        <div className="flex items-center min-w-0">
-          <div className="flex h-16 shrink-0 items-center px-4 md:w-20 md:justify-center md:px-0">
-            <Link href="/" className="flex items-center shrink-0">
-              <Image src={ICON.src} alt="GlobalyAI" width={ICON.width} height={ICON.height} className="size-9 rounded-lg" />
-            </Link>
-          </div>
-          {/* ~60% of the bar's height: it marks the rail's edge without reading as a second border. */}
-          <span className="hidden md:block h-10 w-px shrink-0 bg-border" aria-hidden />
-          <div className="ml-3 md:ml-4 shrink-0">
-            <AdminPortalSwitcher
-              roleLabel={ROLE_DISPLAY[me.role]}
-              isSuperAdmin={me.role === "super_admin"}
-              businesses={authUser.businesses}
-              institutions={authUser.institutions}
-              activeOrgId={authUser.orgId}
-            />
-          </div>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          <ThemeToggle />
-          <AdminMobileNav />
-
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <button
-                  type="button"
-                  className="flex items-center gap-2 rounded-md border border-border px-1.5 py-1 text-foreground hover:bg-muted focus-visible:ring-0 focus-visible:ring-offset-0 cursor-pointer"
-                />
-              }
-            >
-              <div
-                className={cn(
-                  "h-7 w-7 rounded-full flex items-center justify-center overflow-hidden shrink-0",
-                  me.photo_url ? "bg-transparent" : "bg-primary",
-                )}
-              >
-                {me.photo_url ? (
-                  <img src={me.photo_url} alt="" className="h-full w-full rounded-full object-cover" />
-                ) : (
-                  <span className="text-primary-foreground text-xs font-semibold">{initial}</span>
-                )}
-              </div>
-              <ChevronDown className="h-4 w-4" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 p-1.5 rounded-md">
-              <DropdownMenuItem
-                className="cursor-pointer px-1.5 py-1.5 flex items-center gap-2"
-                onClick={() => router.push("/personal/profile")}
-              >
-                <div
-                  className={cn(
-                    "h-8 w-8 rounded-full flex items-center justify-center overflow-hidden shrink-0",
-                    me.photo_url ? "bg-transparent" : "bg-primary",
-                  )}
-                >
-                  {me.photo_url ? (
-                    <img src={me.photo_url} alt="" className="h-full w-full rounded-full object-cover" />
-                  ) : (
-                    <span className="text-primary-foreground! text-xs font-semibold">{initial}</span>
-                  )}
-                </div>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">{me.name}</p>
-                  <p className="text-xs text-muted-foreground truncate">{me.email}</p>
-                </div>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              {SHOW_PERSONAL_PORTAL && (
-                <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push(PERSONAL_PORTAL_HOME)}>
-                  Personal Portal
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/business/portal")}>
-                Business Portal
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/admin/overview")}>
-                Super Admin
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" variant="destructive" onClick={handleSignOut}>
-                Sign Out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </header>
-
-      <div className="flex flex-1">
-        <PortalSidebar groups={getVisibleNavGroups(authUser.role)} />
-
-        <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 px-3 md:px-8 py-4 md:py-8 outline-none">{children}</main>
-      </div>
-    </div>
+    <PortalShell
+      title="Super Admin"
+      groups={getVisibleNavGroups(authUser.role)}
+      context={
+        <AdminPortalSwitcher
+          roleLabel={ROLE_DISPLAY[me.role]}
+          isSuperAdmin={me.role === "super_admin"}
+          businesses={authUser.businesses}
+          institutions={authUser.institutions}
+          activeOrgId={authUser.orgId}
+        />
+      }
+      account={{ name: me.name, email: me.email, photoUrl: me.photo_url, isAdmin: true }}
+      onSignOut={handleSignOut}
+      // Admin tables use the full content width.
+      width="wide"
+    >
+      {children}
+    </PortalShell>
   );
 }

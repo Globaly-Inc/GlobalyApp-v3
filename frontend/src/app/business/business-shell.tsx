@@ -1,21 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import Image from "next/image";
-import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Bell, ChevronDown, Coins, Loader2 } from "lucide-react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { ThemeToggle } from "@/components/theme-toggle";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { currentOrgId, ensureBusinessContext, refreshAccessToken } from "@/lib/api/http";
+import { currentOrgId, ensureBusinessContext } from "@/lib/api/http";
 import { getSelectedOrgId, saveSelectedOrgId } from "@/lib/session";
 import { authApi } from "@/app/auth/apis";
 import type { AuthMeInstitution } from "@/app/auth/apis";
@@ -25,24 +13,18 @@ import { useExtractionLock } from "./utils/use-extraction-lock";
 import { BUSINESS_NAV_GROUPS, INSTITUTION_SCHOLARSHIPS_ITEM, withBusinessId } from "./const";
 import { BusinessSwitcher, type SwitcherOrg } from "./components/business-switcher";
 import { ExtractionInProgress } from "./components/extraction-in-progress";
-import { PortalSidebar } from "@/components/portal-sidebar";
-import { PortalMobileNav } from "@/components/portal-mobile-nav";
-import { cn } from "@/lib/utils";
-import { ICON, APP_ICON_ATTR } from "@/lib/public-assets";
-import { PERSONAL_PORTAL_HOME, SHOW_HEADER_EXTRAS, SHOW_PERSONAL_PORTAL } from "@/app/personal/const";
+import { PortalShell, type PortalWidth } from "@/components/portal-shell/portal-shell";
+import { PortalHeaderLinks } from "@/components/portal-shell/portal-header";
+import { PortalLoadError, PortalLoading } from "@/components/portal-shell/portal-status";
+import { SHOW_HEADER_EXTRAS } from "@/app/personal/const";
 import { SIGN_IN_HREF } from "@/app/auth/const";
 
-const SHELL_WIDTH = "mx-auto w-full max-w-7xl px-3 md:px-8";
-
 /**
- * Routes that render edge-to-edge under the header instead of inside SHELL_WIDTH. Chat is
+ * Routes that render edge-to-edge under the header (PortalShell `width="full"`). Chat is
  * an app surface, not a page in the content column: it owns the whole space below the
  * header and does its own bottom-nav math. Mirrors PersonalShell's list.
  */
 const FULL_BLEED_ROUTES = ["/business/messages"] as const;
-
-/** Same padding as SHELL_WIDTH but no max width — for the business profile's wide tables. */
-const SHELL_WIDE = "w-full px-3 md:px-8";
 // Institution accounts act as businesses throughout this shell — their records are adapted
 // to the SwitcherOrg shape so the switcher can render them uniformly, with kind="institution"
 // to distinguish them visually and drive the nav-group filter.
@@ -165,40 +147,16 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
   }, [needsOnboardingRedirect, router]);
 
   if (bareOnboarding) {
-    return contextReady ? <>{children}</> : (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
+    return contextReady ? <>{children}</> : <PortalLoading />;
   }
 
   if (mounted && status === "failed" && !profile) {
-    return (
-      <div className="min-h-screen flex flex-col items-center justify-center gap-4 bg-background text-center px-4">
-        <p className="text-sm text-muted-foreground">
-          {error ?? "Failed to load your business profile."}
-        </p>
-        <button
-          type="button"
-          onClick={handleSignOut}
-          className="text-sm font-medium text-primary underline underline-offset-4"
-        >
-          Sign out
-        </button>
-      </div>
-    );
+    return <PortalLoadError message={error ?? "Failed to load your business profile."} onSignOut={handleSignOut} />;
   }
 
-  if (!contextReady || !profile) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
+  if (!contextReady || !profile) return <PortalLoading />;
 
   const isInstitution = institutionOrgIds.has(activeOrgId ?? "");
-  const initial = (user?.first_name?.[0] ?? user?.email?.[0])?.toUpperCase() ?? "U";
   // Falls back to the loaded profile, so the nav's tab links always carry an id — a bare
   // /business/profile?tab=… link used to land back on the profile tab.
   const activeBusinessId = businesses.find((b) => b.org_id === activeOrgId)?.id ?? profile.id ?? null;
@@ -209,130 +167,27 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
     ? INSTITUTION_NAV_GROUPS
     : isInstitutionCategory ? BUSINESS_NAV_GROUPS.map((g) => ({ ...g, items: g.items.filter((i) => i.label !== "Representative") })) : BUSINESS_NAV_GROUPS;
   const navGroups = withBusinessId(baseNav, activeBusinessId);
-  const content = lockedOut ? <ExtractionInProgress status={extractionStatus} /> : children;
+  // The extraction lock replaces even a full-bleed page, so it gets the normal content column.
+  const width: PortalWidth = lockedOut ? "default" : isFullBleed ? "full" : isWide ? "wide" : "default";
 
   return (
-    <div data-shell="portal" className="min-h-screen flex flex-col bg-background">
-      <a
-        href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-card focus:px-3 focus:py-2 focus:text-sm focus:shadow-md"
-      >
-        Skip to content
-      </a>
-      {/* Full-width bar above the rail, matching the personal portal and GlobalyOS: the mark sits over the
-          rail (hence the w-20 box), navigation lives in the sidebar, and this keeps identity only. */}
-      <header className="sticky top-0 z-40 h-16 shrink-0 border-b border-border bg-card/95 backdrop-blur">
-        <div className="flex h-16 items-center">
-          <div className="flex h-16 shrink-0 items-center px-3 sm:px-4 md:w-20 md:justify-center md:px-0">
-            <Link href="/" className="flex shrink-0 items-center" {...{ [APP_ICON_ATTR]: "" }}>
-              <Image src={ICON.src} alt="GlobalyAI" width={ICON.width} height={ICON.height} className="size-9 rounded-lg" />
-            </Link>
-          </div>
-          {/* ~60% of the bar's height: it marks the rail's edge without reading as a second border. */}
-          <span className="hidden md:block h-10 w-px shrink-0 bg-border" aria-hidden />
-          <div className="flex min-w-0 items-center pl-3 md:pl-4">
-            <BusinessSwitcher
-              businesses={businesses}
-              activeOrgId={activeOrgId}
-              onSwitch={handleSwitchBusiness}
-            />
-          </div>
-
-          <div className="flex items-center gap-2 ml-auto pr-3 sm:pr-4 md:pr-2">
-            <ThemeToggle />
-            {SHOW_HEADER_EXTRAS && (
-              <>
-                <Link
-                  href="/business/notifications"
-                  className="hidden md:inline-flex relative items-center justify-center rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
-                  aria-label="Notifications"
-                >
-                  <Bell className="h-4.5 w-4.5" />
-                </Link>
-                <Link
-                  href="/business/credits"
-                  className="hidden md:inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 h-8 text-xs font-medium text-muted-foreground hover:bg-muted"
-                >
-                  <Coins className="h-3.5 w-3.5" />
-                  Credits
-                </Link>
-              </>
-            )}
-          </div>
-
-          {/* Account menu carries identity actions only — business switching lives in
-              BusinessSwitcher above, matching V1's split between the two menus. */}
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <button
-                  className="mr-3 sm:mr-4 md:mr-6 flex items-center gap-1.5 rounded-md border border-border py-1 pl-1 pr-2 hover:bg-muted cursor-pointer"
-                  type="button"
-                  aria-label="Account menu"
-                />
-              }
-            >
-              <Avatar className="size-7">
-                {user?.photo_url && <AvatarImage src={user.photo_url} alt={user?.first_name ?? "User"} />}
-                <AvatarFallback>{initial}</AvatarFallback>
-              </Avatar>
-              <ChevronDown className="h-4 w-4 text-muted-foreground" />
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56 p-1.5 rounded-md">
-              <DropdownMenuItem
-                className="cursor-pointer px-1.5 py-1.5 flex items-center gap-2"
-                onClick={() => router.push("/personal/profile")}
-              >
-                <Avatar className="size-8 shrink-0">
-                  {user?.photo_url && <AvatarImage src={user.photo_url} alt={user?.first_name ?? "User"} />}
-                  <AvatarFallback className="text-primary-foreground!">{initial}</AvatarFallback>
-                </Avatar>
-                <div className="min-w-0">
-                  <p className="text-sm font-medium truncate">
-                    {[user?.first_name, user?.last_name].filter(Boolean).join(" ") || "User"}
-                  </p>
-                  <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
-                </div>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              {SHOW_PERSONAL_PORTAL && (
-                <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push(PERSONAL_PORTAL_HOME)}>
-                  Personal Portal
-                </DropdownMenuItem>
-              )}
-              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/business/portal")}>
-                Business Portal
-              </DropdownMenuItem>
-              {user?.is_admin && (
-                <>
-                  <DropdownMenuSeparator />
-                  <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={async () => { await refreshAccessToken(); window.location.assign("/admin/overview"); }}>
-                    Super Admin
-                  </DropdownMenuItem>
-                </>
-              )}
-              <DropdownMenuSeparator />
-              <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" variant="destructive" onClick={handleSignOut}>
-                Sign Out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </header>
-
-      <div className="flex flex-1">
-        <PortalSidebar groups={navGroups} />
-
-        <main
-          id="main-content"
-          tabIndex={-1}
-          className={cn("min-w-0 flex-1 overflow-x-clip outline-none", isFullBleed ? "" : "py-4 pb-24 md:py-8")}
-        >
-          {isFullBleed && !lockedOut ? content : <div className={isWide ? SHELL_WIDE : SHELL_WIDTH}>{content}</div>}
-        </main>
-      </div>
-      {/* Chat owns the full height below the header, so it keeps the screen to itself on mobile. */}
-      {!isFullBleed && <PortalMobileNav title="Business Portal" groups={navGroups} onSignOut={handleSignOut} />}
-    </div>
+    <PortalShell
+      title="Business Portal"
+      groups={navGroups}
+      context={<BusinessSwitcher businesses={businesses} activeOrgId={activeOrgId} onSwitch={handleSwitchBusiness} />}
+      headerActions={SHOW_HEADER_EXTRAS && <PortalHeaderLinks notificationsHref="/business/notifications" creditsHref="/business/credits" />}
+      account={{
+        name: [user?.first_name, user?.last_name].filter(Boolean).join(" "),
+        email: user?.email,
+        photoUrl: user?.photo_url,
+        isAdmin: !!user?.is_admin,
+      }}
+      onSignOut={handleSignOut}
+      width={width}
+      // Chat owns the full height below the header, so it keeps the screen to itself on mobile.
+      showMobileNav={!isFullBleed}
+    >
+      {lockedOut ? <ExtractionInProgress status={extractionStatus} /> : children}
+    </PortalShell>
   );
 }
