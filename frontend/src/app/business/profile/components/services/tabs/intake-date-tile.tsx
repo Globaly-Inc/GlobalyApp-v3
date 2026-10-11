@@ -9,7 +9,7 @@ export function IntakeDateTile({ parts, muted = false, large = false }: Readonly
   return (
     <div
       className={cn(
-        "flex shrink-0 flex-col items-center justify-center rounded-[10px] text-center leading-tight",
+        "flex shrink-0 flex-col items-center justify-center rounded-lg text-center leading-tight",
         large ? "min-h-16 w-[58px] py-2" : "min-h-12 w-11 py-1.5",
         muted || !parts ? "bg-muted text-muted-foreground" : "bg-primary text-primary-foreground",
       )}

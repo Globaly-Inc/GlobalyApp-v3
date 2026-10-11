@@ -1,7 +1,7 @@
 /** Placeholder rows in the table's shape while a page loads. */
 export function ServiceTableSkeleton({ columns }: Readonly<{ columns: number }>) {
   return (
-    <div className="overflow-hidden rounded-[14px] border" aria-busy="true" aria-label="Loading services">
+    <div className="overflow-hidden rounded-xl border" aria-busy="true" aria-label="Loading services">
       <div className="h-[41px] border-b bg-muted" />
       {Array.from({ length: 6 }, (_, r) => (
         <div key={r} className="flex animate-pulse items-center gap-4 border-b px-3 py-2.5 last:border-0" style={{ animationDelay: `${r * 80}ms` }}>

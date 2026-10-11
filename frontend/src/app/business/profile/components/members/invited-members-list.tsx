@@ -107,7 +107,7 @@ export function InvitedMembersList({ businessId }: Readonly<{ businessId: number
                     <Button
                       size="sm"
                       variant="outline"
-                      className="h-auto rounded-[10px] px-2.5 py-1.5 text-xs font-semibold"
+                      className="h-auto rounded-lg px-2.5 py-1.5 text-xs font-semibold"
                       onClick={() => handleResend(i.id)}
                       aria-label="Resend invitation"
                     >

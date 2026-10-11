@@ -7,16 +7,16 @@
 
 /** Search input: soft fill, brand ring on focus. Pair with a Search icon at left-3. */
 export const SEARCH_INPUT =
-  "h-10 rounded-[10px] border-[1.5px] border-transparent bg-muted/60 pl-9 transition-[background-color,border-color,box-shadow] focus-visible:border-primary focus-visible:bg-background focus-visible:ring-4 focus-visible:ring-primary/15 dark:bg-muted/60 dark:focus-visible:bg-background";
+  "h-10 rounded-lg border-[1.5px] border-transparent bg-muted/60 pl-9 transition-[background-color,border-color,box-shadow] focus-visible:border-primary focus-visible:bg-background focus-visible:ring-4 focus-visible:ring-primary/15 dark:bg-muted/60 dark:focus-visible:bg-background";
 
 /** Combobox filter trigger; add FILTER_ACTIVE when it has a value. */
 // The Input/Button primitives carry dark:bg-input/30, which tailwind-merge keeps alongside bg-*, so
 // every fill here needs its own dark: twin or dark mode shows the primitive's fill instead.
-export const FILTER = "h-10 rounded-[10px] border-[1.5px] border-transparent bg-muted/60 text-[12.5px] font-semibold dark:bg-muted/60";
+export const FILTER = "h-10 rounded-lg border-[1.5px] border-transparent bg-muted/60 text-[12.5px] font-semibold dark:bg-muted/60";
 export const FILTER_ACTIVE = "border-primary bg-primary/10 text-primary dark:bg-primary/10";
 
 /** Table frame: its own scroll box so the header can stick and wide tables scroll inside it. */
-export const TABLE_WRAP = "max-h-[620px] overflow-auto rounded-[14px] border";
+export const TABLE_WRAP = "max-h-[620px] overflow-auto rounded-xl border";
 export const TABLE = "w-full border-separate border-spacing-0 text-[13.5px]";
 export const TH =
   "sticky top-0 z-[2] whitespace-nowrap border-b bg-muted px-3 py-[11px] text-left text-xs font-semibold text-muted-foreground";

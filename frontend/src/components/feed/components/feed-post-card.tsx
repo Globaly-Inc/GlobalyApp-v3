@@ -32,6 +32,8 @@ import { initials, relativeTime } from "../utils";
 import { renderFormattedContent } from "../utils/format-content";
 import { FeedCommentComposer } from "./feed-comment-composer";
 import { FeedCommentList } from "./feed-comment-list";
+import { FeedPostMedia } from "./feed-post-media";
+import { FeedPostReactionChips } from "./feed-post-reaction-chips";
 import type { FeedPostCardProps } from "../types";
 
 const VISIBILITY_ICONS: Record<string, typeof Globe> = { everyone: Globe, business: Users, private: Lock };
@@ -173,69 +175,11 @@ export function FeedPostCard({ post, currentUserIsAuthor }: FeedPostCardProps) {
           </div>
         )}
 
-        {media.length > 0 && (
-          <div className={cn("grid gap-2", media.length === 1 ? "grid-cols-1" : "grid-cols-2")}>
-            {media.map((item) =>
-              item.type === "image" ? (
-                // eslint-disable-next-line @next/next/no-img-element -- signed storage URL, not a static asset
-                <img
-                  key={item.storage_path}
-                  src={item.url}
-                  alt=""
-                  className="max-h-96 w-full rounded-lg border border-border object-cover"
-                />
-              ) : (
-                <video
-                  key={item.storage_path}
-                  src={item.url}
-                  controls
-                  playsInline
-                  className="max-h-96 w-full rounded-lg border border-border bg-black object-cover"
-                />
-              ),
-            )}
-          </div>
-        )}
+        {media.length > 0 && <FeedPostMedia media={media} />}
 
         {/* ── Reactions ── */}
         <div className="-mx-4 flex items-center gap-1.5 border-t border-border px-4 py-2">
-          {reactions.map((group) => {
-            const mine = post.my_reaction === group.emoji;
-            return (
-              <button
-                key={group.emoji}
-                type="button"
-                onClick={() => applyReaction(group.emoji)}
-                aria-pressed={mine}
-                title={`${group.count} × ${group.emoji}`}
-                className={cn(
-                  "flex cursor-pointer items-center gap-1 rounded-full border px-1.5 py-0.5 transition-colors",
-                  mine ? "border-primary/40 bg-primary/10" : "border-transparent bg-muted hover:bg-muted/70",
-                )}
-              >
-                <span className="text-sm leading-none">{group.emoji}</span>
-                {/* Reactor avatars, overlapping, with a +N overflow — who reacted, not just how many. */}
-                <span className="flex items-center">
-                  {group.reactors.map((reactor, index) => (
-                    <Avatar
-                      key={`${group.emoji}-${index}`}
-                      className="size-4 -ml-1 border border-background first:ml-0"
-                    >
-                      {reactor.photo_url && <AvatarImage src={reactor.photo_url} alt={reactor.first_name ?? ""} />}
-                      <AvatarFallback className="text-[8px]">
-                        {reactor.first_name?.[0]?.toUpperCase() ?? "U"}
-                      </AvatarFallback>
-                    </Avatar>
-                  ))}
-                  {group.count > group.reactors.length && (
-                    <span className="ml-0.5 text-xs font-medium text-muted-foreground">
-                      +{group.count - group.reactors.length}
-                    </span>
-                  )}
-                </span>
-              </button>
-            );
-          })}
+          <FeedPostReactionChips post={post} reactions={reactions} applyReaction={applyReaction} />
 
           <Popover open={pickerOpen} onOpenChange={setPickerOpen}>
             <PopoverTrigger

@@ -172,9 +172,9 @@ export function SiteUrlsTab({ jobId }: Readonly<{ jobId: string }>) {
         )}
       </div>
 
-      <div className="overflow-x-auto rounded-md border border-border">
+      <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full text-xs">
-          <thead className="bg-muted/50 text-left text-muted-foreground">
+          <thead className="bg-muted/60 text-left text-muted-foreground">
             <tr>
               <th className="w-8 px-2 py-2"><Checkbox checked={allOnPageSelected} onCheckedChange={toggleAll} aria-label="Select all on page" /></th>
               <th className="px-2 py-2">URL</th>

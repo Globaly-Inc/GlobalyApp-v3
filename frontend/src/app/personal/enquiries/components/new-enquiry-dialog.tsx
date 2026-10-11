@@ -5,7 +5,6 @@ import { z } from "zod";
 import { toast } from "sonner";
 import { LoaderCircle, Send } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -26,6 +25,7 @@ import { durationLabel, prettyMode } from "../utils";
 import { CoursePickerFields } from "./course-picker-fields";
 import { EligibilityBanner } from "./eligibility-banner";
 import { IntakeFields } from "./intake-fields";
+import { ShareContactField } from "./share-contact-field";
 
 import type { CreateEnquiryInput } from "../apis/types";
 
@@ -266,26 +266,12 @@ export function NewEnquiryDialog({
             onYearChange={(v) => setForm((f) => ({ ...f, preferred_year: v ? Number(v) : null }))}
           />
 
-          {/* Opt-in, and never a blocker on submitting — declining is a valid choice, so this
-              carries no Required marker and no validation. The distinction between this and the
-              profile data shared regardless is made in EnquirySubmittedDialog, not here. */}
-          <Label
-            htmlFor="share-contact"
-            className="flex cursor-pointer items-start gap-3 rounded-lg border border-border bg-muted/30 px-3 py-2.5 font-normal"
-          >
-            <Checkbox
-              id="share-contact"
-              checked={form.share_contact_number ?? false}
-              onCheckedChange={(checked) =>
-                setForm((f) => ({ ...f, share_contact_number: checked === true }))
-              }
-              className="mt-0.5"
-            />
-            <span className="text-sm">
-              I&apos;m okay with sharing my contact number and receiving calls from the
-              business/institution.
-            </span>
-          </Label>
+          <ShareContactField
+            checked={form.share_contact_number ?? false}
+            onCheckedChange={(checked) =>
+              setForm((f) => ({ ...f, share_contact_number: checked === true }))
+            }
+          />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={saving}>

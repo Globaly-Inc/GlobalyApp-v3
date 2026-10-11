@@ -197,7 +197,7 @@ export function ServicesTab({
       {!hasLoaded || status === "loading" ? (
         <ServiceTableSkeleton columns={visibleColumns.size} />
       ) : pageRows.length === 0 ? (
-        <div className="grid justify-items-center gap-1.5 rounded-[14px] border-[1.5px] border-dashed p-[30px] text-center text-muted-foreground">
+        <div className="grid justify-items-center gap-1.5 rounded-xl border-[1.5px] border-dashed p-[30px] text-center text-muted-foreground">
           {filtering ? (
             <>
               <b className="text-foreground">{readOnly ? "No courses match these filters" : "No services match these filters"}</b>

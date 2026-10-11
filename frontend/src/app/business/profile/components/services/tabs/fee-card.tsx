@@ -94,7 +94,7 @@ export function FeeCard({
             return (
               <li
                 key={`${inst.label}-${j}`}
-                className={cn("relative grid grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-3 rounded-[10px] py-[7px] pr-2.5 transition-colors", hot === j && "bg-muted")}
+                className={cn("relative grid grid-cols-[24px_minmax(0,1fr)_auto] items-center gap-3 rounded-lg py-[7px] pr-2.5 transition-colors", hot === j && "bg-muted")}
                 onMouseEnter={() => setHot(j)}
               >
                 <span className={cn("relative z-10 grid size-6 place-items-center rounded-full font-mono text-xs font-semibold text-primary-foreground shadow-[0_0_0_3px_var(--color-card)]", tone(j), j % TONES.length >= 2 && "text-foreground")}>

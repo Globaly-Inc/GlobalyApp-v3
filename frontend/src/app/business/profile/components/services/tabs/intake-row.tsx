@@ -33,7 +33,7 @@ export function IntakeRow({
   return (
     <div
       className={cn(
-        "group/row flex items-center gap-3.5 rounded-[14px] border bg-card p-3 transition-[transform,box-shadow,border-color,opacity] duration-200",
+        "group/row flex items-center gap-3.5 rounded-xl border bg-card p-3 transition-[transform,box-shadow,border-color,opacity] duration-200",
         "hover:-translate-y-px hover:border-primary/25 hover:shadow-[0_10px_28px_-16px_color-mix(in_oklab,var(--primary)_45%,transparent)]",
         status === "past" && "opacity-60 hover:opacity-100",
       )}

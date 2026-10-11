@@ -35,7 +35,7 @@ export function NextIntakePreview({ intakes }: Readonly<{ intakes: ServiceIntake
   const daysLeft = deadline ? Math.ceil((deadline.getTime() - today.getTime()) / DAY) : null;
   return (
     <div className="flex items-center gap-3">
-      <div className="w-11 shrink-0 rounded-[10px] bg-primary py-1 text-center leading-tight text-primary-foreground">
+      <div className="w-11 shrink-0 rounded-lg bg-primary py-1 text-center leading-tight text-primary-foreground">
         {hasMonth && <div className="font-mono text-xs font-semibold tracking-[.06em] opacity-85">{start.toLocaleDateString("en-US", { month: "short" }).toUpperCase()}</div>}
         {exact ? (
           <>

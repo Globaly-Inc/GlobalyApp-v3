@@ -90,7 +90,7 @@ export function MyProfileView() {
               />
             </div>
             <div className="pt-4 sm:pt-14 ml-10 m-4">
-              <h1 className="text-xl font-bold text-foreground">{me.name}</h1>
+              <h1 className="text-2xl font-bold text-foreground">{me.name}</h1>
               <p className="text-sm text-muted-foreground">{me.email}</p>
             </div>
           </div>
