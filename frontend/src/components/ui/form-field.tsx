@@ -31,7 +31,7 @@ function FormField({ label, htmlFor, required, optional, hint, error, wide, clas
         {optional && <span className="font-normal text-muted-foreground">(optional)</span>}
       </Label>
       {children}
-      {hint && !error && <p className="text-xs text-muted-foreground">{hint}</p>}
+      {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
       <FieldError id={errorId} message={error} />
     </div>
   )

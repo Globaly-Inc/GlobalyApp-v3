@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import type { LucideIcon } from "lucide-react";
 import { Award, BookOpen, CalendarDays, DollarSign, GraduationCap, Image as ImageIcon, ShieldCheck } from "lucide-react";
 import { Combobox } from "@/components/combobox";
-import { Label } from "@/components/ui/label";
-import { SectionCard } from "@/app/personal/profile/section-card";
+import { FormSection } from "@/components/ui/form-section";
+import { FormField } from "@/components/ui/form-field";
 import { businessProfileDetailApi } from "../../../apis";
 import { SectionSummaryCard } from "../section-summary-card";
 import { ServiceSetupChecklist } from "../service-setup-checklist";
@@ -105,36 +105,34 @@ export function SummaryTab({
             onNavigateTab={onNavigateTab}
           />
         )}
-        <SectionCard icon={GraduationCap} title="Course details">
-          <div className="flex flex-col gap-4">
-            {COURSE_FIELDS.map((field) => {
-              const fieldId = schemaFieldIdByKey[field.key];
-              const value = fieldId != null && fieldValues[fieldId] != null ? String(fieldValues[fieldId]) : "";
-              return (
-                <div key={field.key} className="flex flex-col gap-2">
-                  <Label>{field.label}</Label>
-                  <Combobox
-                    options={courseFieldOptions(field.key, value)}
-                    value={value}
-                    onChange={(v) => {
-                      if (fieldId != null) setFieldValues((f) => ({ ...f, [fieldId]: v }));
-                    }}
-                    onQueryChange={(query) => debouncedSearchCourseField(field.key, query)}
-                    loading={courseSearchLoading[field.key] ?? false}
-                    disabled={fieldId == null}
-                    placeholder={fieldId == null ? "Not set up for this category yet" : `Select ${field.label.toLowerCase()}`}
-                    searchPlaceholder={`Search ${field.label.toLowerCase()}...`}
-                  />
-                  {fieldId == null && (
-                    <p className="text-xs text-muted-foreground">
-                      An admin needs to add a &quot;{field.label}&quot; field to this service category before it can be set here.
-                    </p>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        </SectionCard>
+        <FormSection title={<><GraduationCap /> Course details</>} columns={1}>
+          {COURSE_FIELDS.map((field) => {
+            const fieldId = schemaFieldIdByKey[field.key];
+            const value = fieldId != null && fieldValues[fieldId] != null ? String(fieldValues[fieldId]) : "";
+            return (
+              <FormField
+                key={field.key}
+                label={field.label}
+                htmlFor={`course-${field.key}`}
+                hint={fieldId == null && <>An admin needs to add a &quot;{field.label}&quot; field to this service category before it can be set here.</>}
+              >
+                <Combobox
+                  id={`course-${field.key}`}
+                  options={courseFieldOptions(field.key, value)}
+                  value={value}
+                  onChange={(v) => {
+                    if (fieldId != null) setFieldValues((f) => ({ ...f, [fieldId]: v }));
+                  }}
+                  onQueryChange={(query) => debouncedSearchCourseField(field.key, query)}
+                  loading={courseSearchLoading[field.key] ?? false}
+                  disabled={fieldId == null}
+                  placeholder={fieldId == null ? "Not set up for this category yet" : `Select ${field.label.toLowerCase()}`}
+                  searchPlaceholder={`Search ${field.label.toLowerCase()}...`}
+                />
+              </FormField>
+            );
+          })}
+        </FormSection>
 
         {serviceId && (
           <>
