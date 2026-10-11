@@ -4,9 +4,8 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCard, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { cn } from "@/lib/utils";
 import type { Order } from "../apis";
-import { STATUS_LABELS, STATUS_STYLES } from "../const";
+import { STATUS_LABELS, STATUS_VARIANT } from "../const";
 import { formatDate, formatMoney } from "../utils";
 
 /**
@@ -36,7 +35,7 @@ export function OrderRow({ order }: Readonly<{ order: Order }>) {
       </TableCell>
       <TableCell>
         <div className="flex flex-wrap items-center gap-1.5">
-          <Badge variant="secondary" className={cn("shrink-0", STATUS_STYLES[order.status])}>
+          <Badge variant={STATUS_VARIANT[order.status]} className="shrink-0">
             {STATUS_LABELS[order.status]}
           </Badge>
           {flag && (

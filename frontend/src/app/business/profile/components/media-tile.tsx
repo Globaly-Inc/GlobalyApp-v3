@@ -30,7 +30,7 @@ export function MediaTile({
   const name = fileName(url);
   return (
     <div
-      className={cn("group relative animate-row-rise overflow-hidden rounded-xl border bg-muted", featured && "col-span-2 row-span-2")}
+      className={cn("group relative animate-row-rise overflow-hidden rounded-lg border bg-muted", featured && "col-span-2 row-span-2")}
       style={{ animationDelay: `${index * 50}ms` }}
       title={name}
     >
@@ -54,7 +54,7 @@ export function MediaTile({
           aria-label={type === "gallery" ? "Remove image" : "Remove video"}
           disabled={deleting}
           onClick={onRemove}
-          className="absolute right-1.5 top-1.5 z-10 flex size-7 cursor-pointer items-center justify-center rounded-full bg-background/90 text-foreground opacity-0 shadow transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100"
+          className="absolute right-1.5 top-1.5 z-10 flex size-7 cursor-pointer items-center justify-center rounded-full bg-background/90 text-foreground opacity-0 shadow transition-opacity hover:text-destructive focus-visible:opacity-100 group-hover:opacity-100 pointer-coarse:opacity-100"
         >
           {deleting ? <Loader2 className="size-3.5 animate-spin" /> : <X className="size-3.5" />}
         </button>

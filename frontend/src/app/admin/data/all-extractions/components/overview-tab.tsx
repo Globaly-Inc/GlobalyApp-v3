@@ -102,12 +102,12 @@ export function OverviewTab({
   );
 
   return (
-    <div className="space-y-6">
+    <div className="flex flex-col gap-6">
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Extraction Details by Tab</CardTitle>
+          <CardTitle>Extraction Details by Tab</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-6">
+        <CardContent className="flex flex-col gap-6">
           <section>
             <SectionHeader
               title={isVisaServiceJob ? "Business Data" : "Institution Data"}

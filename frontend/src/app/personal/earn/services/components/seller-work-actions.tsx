@@ -4,7 +4,7 @@ import { useState } from "react";
 import { CheckCircle2, PlayCircle } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { servicesApi } from "../apis";
 import type { Order } from "../apis";
 
@@ -41,18 +41,15 @@ export function SellerWorkActions({
 
   return (
     <Card>
-      <CardContent className="flex flex-col gap-3 py-5">
-        <div>
-          <p className="text-sm font-medium text-foreground">
-            {started ? "This job is in progress" : "Ready to start?"}
-          </p>
-          <p className="text-xs text-muted-foreground">
-            {started
-              ? "Mark it complete once you've finished. The buyer can see this status."
-              : "Let the buyer know you've started. You can also mark it complete directly."}
-          </p>
-        </div>
-
+      <CardHeader>
+        <CardTitle>{started ? "This job is in progress" : "Ready to start?"}</CardTitle>
+        <CardDescription>
+          {started
+            ? "Mark it complete once you've finished. The buyer can see this status."
+            : "Let the buyer know you've started. You can also mark it complete directly."}
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
         <div className="flex flex-wrap gap-2">
           {!started && (
             <Button

@@ -6,10 +6,11 @@
 // entities. ALLOWED_TAGS: [] asks the real parser for the text instead.
 import DOMPurify from "isomorphic-dompurify";
 
+import { DescriptionItem, DescriptionList } from "@/components/ui/description-list";
 import type { BusinessProfile } from "@/app/business/apis/types";
 import { businessTypeLabel } from "../utils";
 
-/** The About card's read mode: classification tiles above the description. */
+/** The About card's read mode: classification fields above the description. */
 export function AboutView({ profile, isInstitution }: Readonly<{ profile: BusinessProfile; isInstitution: boolean }>) {
   const tiles = [
     { label: "Category", value: profile.business_category_name },
@@ -18,23 +19,20 @@ export function AboutView({ profile, isInstitution }: Readonly<{ profile: Busine
   ].filter((t): t is { label: string; value: string } => Boolean(t.value));
 
   return (
-    <div className="flex flex-col gap-4">
+    <div className="flex flex-col gap-5">
       {tiles.length > 0 && (
-        <dl className="grid grid-cols-[repeat(auto-fit,minmax(160px,1fr))] gap-3">
+        <DescriptionList>
           {tiles.map((t) => (
-            <div key={t.label} className="rounded-xl bg-muted/50 px-3 py-2.5">
-              <dt className="text-[11px] font-bold uppercase tracking-wider text-muted-foreground">{t.label}</dt>
-              <dd className="truncate text-sm font-semibold text-foreground" title={t.value}>{t.value}</dd>
-            </div>
+            <DescriptionItem key={t.label} label={t.label}>{t.value}</DescriptionItem>
           ))}
-        </dl>
+        </DescriptionList>
       )}
       {profile.description ? (
-        <p className="max-w-[72ch] whitespace-pre-line text-sm leading-relaxed text-foreground sm:text-[15px]">
+        <p className="max-w-[72ch] whitespace-pre-line text-sm leading-relaxed text-foreground">
           {DOMPurify.sanitize(profile.description, { ALLOWED_TAGS: [], ALLOWED_ATTR: [] })}
         </p>
       ) : (
-        <p className="text-sm italic text-muted-foreground">No description added yet.</p>
+        <p className="text-sm text-muted-foreground">No description added yet.</p>
       )}
     </div>
   );

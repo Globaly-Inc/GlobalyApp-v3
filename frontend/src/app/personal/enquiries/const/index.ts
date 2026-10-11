@@ -34,35 +34,22 @@ export const STATUS_LABEL: Record<EnquiryStatus, string> = {
 };
 
 /**
- * Badge styling per status, in the same shape as `personal/earn/services/const` —
- * full class strings so Tailwind's scanner can see them, and one flat record so a
- * new status can't be added with a label but no colour.
+ * Badge variant per status, in the same shape as `personal/earn/services/const` — one flat
+ * record so a new status can't be added with a label but no colour.
  *
  * Green is reserved for the two statuses that mean something good actually happened
  * (a business paid to unlock, or the enquiry converted); everything else is a mood,
  * not an outcome.
  */
-export const STATUS_STYLES: Record<EnquiryStatus, string> = {
-  pending: "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300",
-  distributed: "bg-blue-100 text-blue-800 dark:bg-blue-500/15 dark:text-blue-300",
-  unlocked: "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300",
-  in_conversation: "bg-indigo-100 text-indigo-800 dark:bg-indigo-500/15 dark:text-indigo-300",
-  converted: "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300",
-  closed: "bg-muted text-muted-foreground",
-  no_match: "bg-muted text-muted-foreground/80",
-  expired: "bg-muted text-muted-foreground/80",
-};
-
-/** The badge's leading dot — same hue as its text, at full strength so it reads at 6px. */
-export const STATUS_DOT: Record<EnquiryStatus, string> = {
-  pending: "bg-amber-500",
-  distributed: "bg-blue-500",
-  unlocked: "bg-emerald-500",
-  in_conversation: "bg-indigo-500",
-  converted: "bg-emerald-500",
-  closed: "bg-muted-foreground/50",
-  no_match: "bg-muted-foreground/40",
-  expired: "bg-muted-foreground/40",
+export const STATUS_VARIANT: Record<EnquiryStatus, "secondary" | "outline" | "warning" | "info" | "success"> = {
+  pending: "warning",
+  distributed: "info",
+  unlocked: "success",
+  in_conversation: "info",
+  converted: "success",
+  closed: "secondary",
+  no_match: "outline",
+  expired: "outline",
 };
 
 export const STATUS_ICON: Record<EnquiryStatus, typeof Clock> = {

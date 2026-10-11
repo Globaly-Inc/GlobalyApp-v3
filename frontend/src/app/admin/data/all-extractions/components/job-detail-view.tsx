@@ -2,7 +2,9 @@
 
 import { useEffect, useRef } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { FileSearch, Loader2 } from "lucide-react";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageBody } from "@/components/ui/page-body";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchJobFull } from "../store/all-extractions-slice";
 import { JobHeader } from "./job-header";
@@ -67,10 +69,10 @@ export function JobDetailView({ jobId }: Readonly<{ jobId: string }>) {
   const visibleTabs = isVisaServiceJob ? VISA_SERVICE_JOB_TABS : COURSE_JOB_TABS;
 
   if (!full) {
-    if (jobFullStatus === "failed") return <p className="text-sm text-muted-foreground">Job not found.</p>;
+    if (jobFullStatus === "failed") return <EmptyState icon={FileSearch} title="Job not found." />;
     return (
       <div className="flex justify-center py-20">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
       </div>
     );
   }
@@ -115,9 +117,9 @@ export function JobDetailView({ jobId }: Readonly<{ jobId: string }>) {
   };
 
   return (
-    <div className="space-y-6">
+    <PageBody>
       <JobHeader job={full.job} onReload={reload} />
-      <JobStats job={full.job} coursesTotal={full.tabCounts.courses} />
+      <JobStats job={full.job} overview={full.overview} coursesTotal={full.tabCounts.courses} />
       <JobTabsBar
         active={activeTab}
         onChange={setTab}
@@ -126,6 +128,6 @@ export function JobDetailView({ jobId }: Readonly<{ jobId: string }>) {
         counts={full.tabCounts}
       />
       {renderTab()}
-    </div>
+    </PageBody>
   );
 }

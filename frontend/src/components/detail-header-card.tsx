@@ -9,7 +9,10 @@ export type DetailStat = { label: string; value: React.ReactNode };
 type DetailHeaderCardProps = {
   coverUrl: string | null;
   logoUrl: string | null;
-  logoFallback: string;
+  /** Text for the editable logo; read-only banners may pass an icon. */
+  logoFallback: React.ReactNode;
+  /** A person's photo: round and cover-cropped instead of a padded square logo tile. */
+  roundPhoto?: boolean;
   /** Pass both upload handlers to make the cover and logo editable; omit them for a read-only banner. */
   onCoverFile?: (file: File) => void;
   onLogoFile?: (file: File) => void;
@@ -26,7 +29,7 @@ type DetailHeaderCardProps = {
  * The page's name lives in `PageHeader`, so this card never repeats it as a heading.
  */
 export function DetailHeaderCard({
-  coverUrl, logoUrl, logoFallback, onCoverFile, onLogoFile, uploading = null, children, stats, className,
+  coverUrl, logoUrl, logoFallback, roundPhoto = false, onCoverFile, onLogoFile, uploading = null, children, stats, className,
 }: Readonly<DetailHeaderCardProps>) {
   return (
     <section data-slot="detail-header-card" className={cn("overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm", className)}>
@@ -36,7 +39,8 @@ export function DetailHeaderCard({
           onCoverFile={onCoverFile}
           coverUploading={uploading === "cover"}
           logoUrl={logoUrl}
-          logoFallback={logoFallback}
+          logoFallback={typeof logoFallback === "string" ? logoFallback : ""}
+          roundPhoto={roundPhoto}
           onLogoFile={onLogoFile}
           logoUploading={uploading === "logo"}
           className="h-32 sm:h-36"
@@ -47,9 +51,9 @@ export function DetailHeaderCard({
             // eslint-disable-next-line @next/next/no-img-element
             <img src={coverUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
           )}
-          <Avatar className="absolute -bottom-12 left-10 size-24 rounded-xl border-4 border-background bg-white shadow-lg">
-            {logoUrl && <AvatarImage src={logoUrl} alt="" className="rounded-lg object-contain p-1" />}
-            <AvatarFallback className="rounded-lg text-2xl">{logoFallback}</AvatarFallback>
+          <Avatar className={cn("absolute -bottom-12 left-10 size-24 border-4 border-background shadow-lg", roundPhoto ? "rounded-full" : "rounded-xl bg-white")}>
+            {logoUrl && <AvatarImage src={logoUrl} alt="" className={roundPhoto ? "object-cover" : "rounded-lg object-contain p-1"} />}
+            <AvatarFallback className={cn("text-2xl", !roundPhoto && "rounded-lg")}>{logoFallback}</AvatarFallback>
           </Avatar>
         </div>
       )}

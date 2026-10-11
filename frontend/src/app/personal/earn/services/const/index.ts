@@ -28,17 +28,17 @@ export const STATUS_LABELS: Record<OrderStatus, string> = {
   in_progress: "In progress",
 };
 
-/** Badge styling per status. Kept as full class strings so Tailwind's scanner can see them. */
-export const STATUS_STYLES: Record<OrderStatus, string> = {
-  pending_payment: "bg-yellow-100 text-yellow-800 dark:bg-yellow-500/15 dark:text-yellow-300",
-  paid: "bg-blue-100 text-blue-800 dark:bg-blue-500/15 dark:text-blue-300",
-  completed: "bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-300",
-  disputed: "bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300",
-  refunded: "bg-muted text-muted-foreground",
-  cancelled: "bg-muted text-muted-foreground/70",
-  requested: "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300",
-  declined: "bg-red-100 text-red-800 dark:bg-red-500/15 dark:text-red-300",
-  in_progress: "bg-indigo-100 text-indigo-800 dark:bg-indigo-500/15 dark:text-indigo-300",
+/** Badge variant per status. */
+export const STATUS_VARIANT: Record<OrderStatus, "secondary" | "outline" | "warning" | "info" | "success" | "destructive"> = {
+  pending_payment: "warning",
+  paid: "info",
+  completed: "success",
+  disputed: "destructive",
+  refunded: "secondary",
+  cancelled: "outline",
+  requested: "warning",
+  declined: "destructive",
+  in_progress: "info",
 };
 
 /** One-line explanation shown on the order detail, so a status never has to be guessed at. */

@@ -14,7 +14,7 @@ import { useAppDispatch } from "@/lib/hooks";
 import { businessApi } from "@/app/business/apis";
 import { updateMyProfile } from "@/app/business/store/business-onboarding-slice";
 import type { BusinessCategoryOption, BusinessProfile } from "@/app/business/apis/types";
-import { HEADER_PENCIL, INSTITUTION_TYPE_OPTIONS } from "../const";
+import { INSTITUTION_TYPE_OPTIONS } from "../const";
 import { businessTypeLabel } from "../utils";
 import { PrivacyBadge } from "@/components/privacy-badge";
 import { ProfileCard } from "./profile-card";
@@ -176,7 +176,6 @@ export function GeneralInformationCard({
           <Button
             size="icon-sm"
             variant="ghost"
-            className={HEADER_PENCIL}
             aria-label={editing ? "Stop editing about" : "Edit about"}
             onClick={() => (editing ? setEditing(false) : startEditing())}
           >
@@ -186,7 +185,7 @@ export function GeneralInformationCard({
       }
     >
       {editing ? (
-        <div className="space-y-4">
+        <div className="flex flex-col gap-4">
           <div className="space-y-2">
             <Label>
               Business Name <span className="text-destructive">*</span>

@@ -3,6 +3,7 @@
 import { useEffect, useRef } from "react";
 import { useRouter, usePathname, useSearchParams } from "next/navigation";
 import { ChevronRight, Users } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
@@ -51,7 +52,7 @@ export function TeamMembersCard({ profile, readOnly }: Readonly<{ profile: Busin
       }
     >
       {members.length === 0 ? (
-        <p className="text-sm italic text-muted-foreground">No team members added yet.</p>
+        <p className="text-sm text-muted-foreground">No team members added yet.</p>
       ) : (
         <div className="stagger-in grid gap-2.5">
           {members.slice(0, 5).map((member) => {
@@ -65,11 +66,11 @@ export function TeamMembersCard({ profile, readOnly }: Readonly<{ profile: Busin
                   </AvatarFallback>
                 </Avatar>
                 <div className="min-w-0 flex-1">
-                  <p className="truncate text-[13.5px] font-semibold">{name}</p>
+                  <p className="truncate text-sm font-medium">{name}</p>
                   <p className="truncate text-xs text-muted-foreground">{member.role_display}</p>
                 </div>
                 {member.is_owner && (
-                  <span className="shrink-0 rounded-full bg-primary/10 px-2 py-0.5 text-[10.5px] font-semibold text-primary">Owner</span>
+                  <Badge variant="info" className="shrink-0">Owner</Badge>
                 )}
               </div>
             );
