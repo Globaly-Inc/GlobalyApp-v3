@@ -3,8 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowLeft, CheckCircle, EyeOff, Globe, Loader2, XCircle } from "lucide-react";
+import { Briefcase, CheckCircle, EyeOff, Globe, GraduationCap, Loader2, Pencil, XCircle } from "lucide-react";
+import { BackButton } from "@/components/ui/back-button";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { PageBody } from "@/components/ui/page-body";
+import { PageHeader } from "@/components/ui/page-header";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchBusinessCategories, fetchCountries } from "@/app/admin/platform/categories/store/categories-slice";
 import {
@@ -13,17 +17,16 @@ import {
 import {
   fetchInstitutionDetail, updateInstitutionDetail, updateInstitutionPublished, updateInstitutionStatus,
 } from "../store/institution-detail-slice";
-import { STATUS_COLORS, STATUS_LABELS } from "../const";
+import { STATUS_LABELS, STATUS_VARIANT } from "../const";
 import type { BusinessPatch, BusinessStatus, InstitutionPatch } from "../apis/types";
-import { BusinessHeaderCard } from "./business-detail/business-header-card";
 import { BusinessHeaderDialog } from "./business-detail/business-header-dialog";
 import { BusinessOverviewDialog } from "./business-detail/business-overview-dialog";
-import { InstitutionHeaderCard } from "./institution-header-card";
 import { InstitutionHeaderDialog } from "./institution-header-dialog";
 import { InstitutionOverviewDialog } from "./institution-overview-dialog";
 import { SocialMediaDialog } from "./social-media-dialog";
 import { DetailSidebar } from "./detail-sidebar";
 import { DetailTabs } from "./detail-tabs";
+import { ListingHeaderCard } from "./listing-header-card";
 
 export function DetailView({ kind, id }: Readonly<{ kind: "business" | "institution"; id: number }>) {
   const router = useRouter();
@@ -143,76 +146,90 @@ export function DetailView({ kind, id }: Readonly<{ kind: "business" | "institut
     }
   };
 
+  const TitleIcon = kind === "institution" ? GraduationCap : Briefcase;
+
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <Button variant="ghost" className="gap-1.5" onClick={() => router.back()}>
-          <ArrowLeft className="h-4 w-4" /> Back
-        </Button>
-        <div className="flex flex-wrap items-start gap-2">
-          {detail.status !== "verified" && (
-            <div className="text-right">
-              <Button className="h-10" variant="outline" onClick={() => runStatus("verified")} disabled={!canVerify}>
-                <CheckCircle className="mr-1.5 h-3.5 w-3.5" />
-                {detail.status === "suspended" ? "Reinstate" : "Verify"}
-              </Button>
-              {!canVerify && <p className="mt-0.5 text-[11px] text-muted-foreground">Available after the owner claims this profile.</p>}
-            </div>
-          )}
-          {detail.status === "verified" && (
-            <Button className="h-10 border-destructive/30 text-destructive hover:bg-destructive/10" variant="outline" onClick={() => runStatus("suspended")}>
-              <XCircle className="mr-1.5 h-3.5 w-3.5" /> Suspend
+    <PageBody>
+      <PageHeader
+        leading={<BackButton onClick={() => router.back()} label="Back" />}
+        title={<><TitleIcon /> {detail.business_name}</>}
+        badges={
+          <>
+            <Badge variant={STATUS_VARIANT[detail.status]}>{STATUS_LABELS[detail.status]}</Badge>
+            <Badge variant="outline">{kind === "institution" ? "Institution" : "Business"}</Badge>
+            {detail.category_name && <Badge variant="secondary">{detail.category_name}</Badge>}
+          </>
+        }
+        subtitle={location || undefined}
+      >
+        {detail.status !== "verified" && (
+          <div className="text-right">
+            <Button variant="outline" onClick={() => runStatus("verified")} disabled={!canVerify}>
+              <CheckCircle /> {detail.status === "suspended" ? "Reinstate" : "Verify"}
             </Button>
-          )}
-          {/* Publish/unpublish is institution-only for now — deliberately hidden for businesses, see business-detail-view history. */}
-          {(detail.is_published ? (
-            <Button className="h-10" variant="outline" disabled={publishBusy} onClick={runTogglePublish}>
-              <EyeOff className="mr-1.5 h-3.5 w-3.5" /> Unpublish
-            </Button>
-          ) : (
-            <Button className="h-10" disabled={publishBusy || detail.status !== "verified"} onClick={runTogglePublish}>
-              <Globe className="mr-1.5 h-3.5 w-3.5" /> Publish
-            </Button>
-          ))}
-        </div>
-      </div>
+            {!canVerify && <p className="mt-1 text-xs text-muted-foreground">Available after the owner claims this profile.</p>}
+          </div>
+        )}
+        {detail.status === "verified" && (
+          <Button variant="outline" className="border-destructive/30 text-destructive hover:bg-destructive/10" onClick={() => runStatus("suspended")}>
+            <XCircle /> Suspend
+          </Button>
+        )}
+        {detail.is_published ? (
+          <Button variant="outline" disabled={publishBusy} onClick={runTogglePublish}>
+            <EyeOff /> Unpublish
+          </Button>
+        ) : (
+          <Button disabled={publishBusy || detail.status !== "verified"} onClick={runTogglePublish}>
+            <Globe /> Publish
+          </Button>
+        )}
+        {!readOnly && (
+          <Button variant="outline" onClick={() => setHeaderOpen(true)}>
+            <Pencil /> Edit details
+          </Button>
+        )}
+      </PageHeader>
 
-      {kind === "business" ? (
-        <BusinessHeaderCard business={business!} location={location} onSave={handleSave} onEdit={() => setHeaderOpen(true)} readOnly={readOnly} />
-      ) : (
-        <InstitutionHeaderCard institution={institution!} location={location} onSave={handleSave} onEdit={() => setHeaderOpen(true)} readOnly={readOnly} />
-      )}
+      <ListingHeaderCard detail={detail} onSave={handleSave} readOnly={readOnly} />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <DetailSidebar
-          description={detail.description}
-          onEditOverview={() => setOverviewOpen(true)}
-          statusLabel={STATUS_LABELS[detail.status]}
-          statusColor={STATUS_COLORS[detail.status]}
-          sourceLabel={detail.is_unclaimed ? "Pre-seeded" : "Claimed"}
-          readOnly={readOnly}
-          social={{
-            linkedin_url: detail.linkedin_url,
-            facebook_url: detail.facebook_url,
-            instagram_url: detail.instagram_url,
-            twitter_url: detail.twitter_url,
-            youtube_url: detail.youtube_url,
-            whatsapp_url: detail.whatsapp_url,
-          }}
-          onEditSocial={() => setSocialOpen(true)}
-          enquiry={
-            kind === "business" && business
-              ? {
-                  enabled: business.enquiry_enabled,
-                  coinCost: business.enquiry_coin_cost,
-                  maxDistributions: business.enquiry_max_distributions,
-                  onPatch: runEnquiryPatch,
-                }
-              : null
-          }
-        />
-        <DetailTabs kind={kind} id={id} businessName={business?.business_name} businessType={business?.business_type} readOnly={readOnly} isPreSeeded={isPreSeeded} />
-      </div>
+      <DetailTabs
+        kind={kind}
+        id={id}
+        businessName={business?.business_name}
+        businessType={business?.business_type}
+        readOnly={readOnly}
+        isPreSeeded={isPreSeeded}
+        sidebar={
+          <DetailSidebar
+            description={detail.description}
+            onEditOverview={() => setOverviewOpen(true)}
+            statusLabel={STATUS_LABELS[detail.status]}
+            statusVariant={STATUS_VARIANT[detail.status]}
+            sourceLabel={detail.is_unclaimed ? "Pre-seeded" : "Claimed"}
+            readOnly={readOnly}
+            social={{
+              linkedin_url: detail.linkedin_url,
+              facebook_url: detail.facebook_url,
+              instagram_url: detail.instagram_url,
+              twitter_url: detail.twitter_url,
+              youtube_url: detail.youtube_url,
+              whatsapp_url: detail.whatsapp_url,
+            }}
+            onEditSocial={() => setSocialOpen(true)}
+            enquiry={
+              kind === "business" && business
+                ? {
+                    enabled: business.enquiry_enabled,
+                    coinCost: business.enquiry_coin_cost,
+                    maxDistributions: business.enquiry_max_distributions,
+                    onPatch: runEnquiryPatch,
+                  }
+                : null
+            }
+          />
+        }
+      />
 
       {kind === "business" ? (
         <>
@@ -240,6 +257,6 @@ export function DetailView({ kind, id }: Readonly<{ kind: "business" | "institut
         onSave={handleSave}
         saving={saving}
       />
-    </div>
+    </PageBody>
   );
 }
