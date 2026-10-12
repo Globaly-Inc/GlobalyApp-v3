@@ -11,6 +11,8 @@ import {
 } from "../const";
 import type { WidgetVisitor } from "../apis/types";
 import { visitorNationality } from "../utils";
+import { ChannelGlyph } from "@/app/business/messages/components/channel-glyph";
+import { INBOX_CHANNELS } from "@/app/business/messages/const";
 
 /**
  * Every card on this page carries this. The fields below are not a profile the person filled
@@ -54,6 +56,14 @@ export function VisitorDetailCards({
             value={visitor.email ? <a href={`mailto:${visitor.email}`} className="hover:underline">{visitor.email}</a> : null}
           />
           <Field label="Contact card" value={CONTACT_STATUS_LABELS[visitor.contact_status] ?? visitor.contact_status} />
+          <Field label="Phone" value={visitor.phone} />
+          {/* WhatsApp, Instagram or Facebook: where this conversation came in, and their handle there. */}
+          {visitor.channel && visitor.channel !== "ai_embed" && (
+            <Field
+              label={INBOX_CHANNELS[visitor.channel].label}
+              value={<span className="inline-flex items-center gap-1.5"><ChannelGlyph channel={visitor.channel} size="xs" />{visitor.channel_handle ?? "—"}</span>}
+            />
+          )}
         </div>
       </SectionCard>
 
@@ -98,6 +108,10 @@ export function VisitorActivityCard({ visitor }: Readonly<{ visitor: WidgetVisit
           value={CONVERSATION_STATE_LABELS[visitor.conversation_state] ?? visitor.conversation_state}
         />
         <Field label="Handled by" value={visitor.handled_by_name ?? "AI assistant"} />
+        <Field
+          label="Channel"
+          value={<span className="inline-flex items-center gap-1.5"><ChannelGlyph channel={visitor.channel ?? "ai_embed"} size="xs" />{INBOX_CHANNELS[visitor.channel ?? "ai_embed"].label}</span>}
+        />
         <Field
           label="Chat rating"
           value={visitor.rating ? `${RATING_FACES[visitor.rating - 1]?.emoji} ${RATING_FACES[visitor.rating - 1]?.label}` : null}

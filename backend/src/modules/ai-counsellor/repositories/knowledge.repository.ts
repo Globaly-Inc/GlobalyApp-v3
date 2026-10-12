@@ -443,6 +443,40 @@ export async function searchCourses(opts: {
   })) as CourseResult[];
 }
 
+/** One row of a widget owner's catalogue summary: how many courses it has at this level in this
+ *  subject area. Levels are free text as extracted ("Master", "Master's", "Doctoral (PhD)"). */
+export interface CatalogueShapeRow {
+  degree_level: string | null;
+  subject_area: string | null;
+  count: number;
+}
+
+/**
+ * What this catalogue actually contains, by level and subject area — no course names, no fees.
+ *
+ * The discovery turns need it: asked what levels or streams we have while course retrieval is
+ * switched off, the model answered from the institution's blurb and invented plausible ones
+ * ("business, environmental science, engineering"). This is one grouped count, cheap enough to
+ * run on the two turns that need it, and gated exactly like searchCourses — published, approved,
+ * and inside the widget's own job scope.
+ */
+export async function listCatalogueShape(jobIds: string[]): Promise<CatalogueShapeRow[]> {
+  if (!jobIds.length) return [];
+  const rows = await masterKnex(`${SA}.extraction_courses as c`)
+    .select("c.degree_level", "c.subject_area")
+    .count("c.id as count")
+    .whereIn("c.job_id", jobIds)
+    .where("c.is_published", true)
+    .whereRaw(approvedCourseSql("c"))
+    .groupBy("c.degree_level", "c.subject_area")
+    .orderBy("count", "desc");
+  return rows.map((r: Record<string, unknown>) => ({
+    degree_level: (r.degree_level as string | null) ?? null,
+    subject_area: (r.subject_area as string | null) ?? null,
+    count: Number(r.count),
+  }));
+}
+
 export interface CourseInstitutionMedia {
   course_id: string;
   institution_name: string | null;

@@ -30,6 +30,7 @@ import geoModule from "./modules/geo/index.js";
 import searchModule from "./modules/search/index.js";
 import scholarshipsPublicModule from "./modules/scholarships/index.js";
 import aiCounsellorModule, { publicAiCounsellorModule } from "./modules/ai-counsellor/index.js";
+import channelsModule, { publicChannelsModule } from "./modules/channels/index.js";
 import enquiriesModule from "./modules/enquiries/index.js";
 import coursesModule from "./modules/courses/index.js";
 import savedItemsModule from "./modules/saved-items/index.js";
@@ -88,7 +89,7 @@ export async function buildServer() {
   const app = Fastify({ logger: true, trustProxy });
 
   // --- Framework plugins ---
-  await app.register(cors, { origin: config.CORS_ORIGINS, credentials: true });
+  await app.register(cors, { origin: config.CORS_ORIGIN_LIST, credentials: true });
   // ponytail: 100/min per IP could not survive a single portal page load (a dozen endpoints, ×2 for
   // Strict Mode, × every open tab) — and IP is the wrong key twice over: every dev tab is 127.0.0.1,
   // and in production a whole office behind one NAT shared one bucket. Brute-force protection is not
@@ -114,6 +115,7 @@ export async function buildServer() {
     await protectedApp.register(feedModule);          // cross-portal social feed
     await protectedApp.register(otherServicesModule);      // service listings, orders, reviews
     await protectedApp.register(aiCounsellorModule);   // AI counsellor — chat, credits, sessions, embed configs
+    await protectedApp.register(channelsModule);       // Inbox channels — WhatsApp, Instagram, Facebook via Zernio
     await protectedApp.register(enquiriesModule);      // student enquiry creation + lookup
     await protectedApp.register(coursesModule);        // student course browse (extracted courses)
     await protectedApp.register(savedItemsModule);     // heart/shortlist of courses + institutions
@@ -128,6 +130,7 @@ export async function buildServer() {
   await app.register(searchModule);          // public search reads (no auth)
   await app.register(scholarshipsPublicModule); // public scholarships reads (no auth)
   await app.register(publicAiCounsellorModule); // guest + embed-widget AI chat (no auth)
+  await app.register(publicChannelsModule);     // Zernio webhook (no auth; HMAC-verified)
   // Reward config + the /join code lookup. Registered outside the protected scope so these two routes
   // never acquire the auth hook — public by construction, not by an allow-list.
   await app.register(publicReferralsModule);
