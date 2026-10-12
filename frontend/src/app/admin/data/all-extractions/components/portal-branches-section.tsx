@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Building2, MapPin } from "lucide-react";
+import { useCallback, useEffect, useState } from "react";
+import { Building2, MapPin, RotateCw } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { allExtractionsApi } from "../apis";
 import type { PortalBranch } from "../apis/types";
 
@@ -10,11 +11,27 @@ import type { PortalBranch } from "../apis/types";
  *  listed read-only here — edit them from the org's Branches tab. */
 export function PortalBranchesSection({ jobId }: Readonly<{ jobId: string }>) {
   const [branches, setBranches] = useState<PortalBranch[]>([]);
+  // A failed load must not look like "no portal branches" — that hides the section entirely.
+  const [failed, setFailed] = useState(false);
 
-  useEffect(() => {
-    allExtractionsApi.getPortalBranches(jobId).then(setBranches).catch(() => setBranches([]));
+  const load = useCallback(() => {
+    allExtractionsApi.getPortalBranches(jobId)
+      .then((rows) => { setBranches(rows); setFailed(false); })
+      .catch(() => setFailed(true));
   }, [jobId]);
 
+  useEffect(() => { load(); }, [load]);
+
+  if (failed) {
+    return (
+      <div className="flex items-center justify-between gap-3 rounded-lg border border-dashed px-3 py-2.5 text-sm text-muted-foreground">
+        <span>Couldn&apos;t load branches added in the portal.</span>
+        <Button variant="outline" size="sm" className="gap-1.5" onClick={load}>
+          <RotateCw className="h-3.5 w-3.5" /> Retry
+        </Button>
+      </div>
+    );
+  }
   if (branches.length === 0) return null;
   return (
     <div className="flex flex-col gap-2">

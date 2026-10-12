@@ -29,7 +29,6 @@ import type { InstitutionInviteInput } from "../../../../platform-users/services
 import * as representationsService from "../../business-representations/services/business-representations.service.js";
 import { withActivityTargets } from "./activity-targets.js";
 import * as branchService from "../../business-branches/services/business-branches.service.js";
-import { resolveSharedCourses } from "../../business-branches/repositories/business-branches.repository.js";
 import type { PaginationInput } from "../../../../../shared/pagination.js";
 import type {
   BusinessCreateInput, BusinessPatchInput, BusinessStatus, EnquirySettingsPatchInput, InstitutionPartnerInput, InstitutionPartnerPatch,
@@ -614,9 +613,8 @@ export async function listInstitutionMembers(id: number, opts: { search?: string
 export async function listInstitutionCourses(id: number, opts: { search?: string; limit: number; offset: number }) {
   const inst = await requireInstitution(id);
   if (!inst.source_job_id) return { rows: [], total: 0 };
-  // Same list as the institution's own portal Services tab: every course on its catalog (owner-added
-  // ones still awaiting approval included) plus what its parent shares with it.
-  const filters = { search: opts.search, shared: await resolveSharedCourses(id) };
+  // Approved only — this is what partners (and the admin's partner drawer) see, not the review screen.
+  const filters = { search: opts.search, approvedOnly: true };
   const [rows, total] = await Promise.all([
     coursesRepo.listCoursesByJob(inst.source_job_id, opts.limit, opts.offset, filters),
     coursesRepo.countCoursesByJob(inst.source_job_id, filters),
@@ -664,16 +662,17 @@ export async function listInstitutionBranches(id: number, opts: { search?: strin
   return branchService.listInstitutionBranches(id, opts.limit, opts.offset, "all", opts.search);
 }
 
-/** branch_count / service_count to match the Branches and Services tabs (the repo's job-only counts
- *  miss hand-added branches, converted campuses and courses shared by a parent). */
-async function withInstitutionBranchCount<T extends { id: number; kind: string; branch_count?: number; service_count?: number }>(row: T): Promise<T> {
+/** branch_count / service_count to match the Branches and Services tabs. Branches: the repo's
+ *  campus-only count misses hand-added branches and converted campuses. Services: the same scope as
+ *  the admin Services tab (institution-courses searchServices) — the job's own courses, any status. */
+async function withInstitutionBranchCount<T extends { id: number; kind: string; source_job_id?: string | null; branch_count?: number; service_count?: number }>(row: T): Promise<T> {
   if (row.kind !== "institution") return row;
   try {
-    const [branches, services] = await Promise.all([
+    const [branches, serviceCount] = await Promise.all([
       listInstitutionBranches(row.id, { limit: 1, offset: 0 }),
-      listInstitutionCourses(row.id, { limit: 1, offset: 0 }),
+      row.source_job_id ? coursesRepo.countCoursesByJob(row.source_job_id, {}) : Promise.resolve(0),
     ]);
-    return { ...row, branch_count: branches.total, service_count: services.total };
+    return { ...row, branch_count: branches.total, service_count: serviceCount };
   } catch {
     return row;
   }

@@ -3,15 +3,15 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Eye, EyeOff, FileText, Loader2, Package, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Loader2, Package, Plus, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { ServiceRowActions } from "../services/service-row-actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { deleteServiceThunk, fetchServices, toggleServicePublished } from "../../store/businesses-slice";
 import type { BusinessService } from "../../apis/types";
-import { CourseDetailsLinkButton } from "../services/course-details-link-button";
 import { DeleteServiceDialog } from "../services/delete-service-dialog";
 
 const PAGE_SIZE = 10;
@@ -103,42 +103,13 @@ export function ServicesTab({
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-1">
-              {/* Always available — a claimed org's services are read-only here, but still viewable. */}
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                title="View service"
-                aria-label="View service"
-                onClick={() => router.push(`/admin/platform/businesses/${businessId}/services/${s.id}/edit?view=1`)}
-              >
-                <FileText className="h-4 w-4" />
-              </Button>
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                onClick={() => handleTogglePublish(s.id, !s.is_published)}
-                aria-label={s.is_published ? "Unpublish service" : "Publish service"}
-              >
-                {s.is_published ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-              </Button>
-              {!readOnly && (
-                <>
-                  <Button
-                    size="icon-sm"
-                    variant="ghost"
-                    onClick={() => router.push(`/admin/platform/businesses/${businessId}/services/${s.id}/edit`)}
-                    aria-label="Edit service"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <CourseDetailsLinkButton onClick={() => router.push(`/admin/platform/businesses/${businessId}/services/${s.id}/edit`)} />
-                  <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => setDeletingService(s)} aria-label="Delete service">
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </>
-              )}
-            </div>
+            <ServiceRowActions
+              editHref={`/admin/platform/businesses/${businessId}/services/${s.id}/edit`}
+              isPublished={s.is_published}
+              readOnly={readOnly}
+              onTogglePublish={() => handleTogglePublish(s.id, !s.is_published)}
+              onDelete={() => setDeletingService(s)}
+            />
           </div>
         ))}
       </div>

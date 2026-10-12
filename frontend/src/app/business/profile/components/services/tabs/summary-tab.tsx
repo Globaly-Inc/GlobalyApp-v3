@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import { Award, BookOpen, CalendarDays, DollarSign, GraduationCap, Image as ImageIcon, ShieldCheck } from "lucide-react";
+import { Award, BookOpen, CalendarDays, DollarSign, GraduationCap, ShieldCheck } from "lucide-react";
 import { Combobox } from "@/components/combobox";
 import { FormSection } from "@/components/ui/form-section";
 import { FormField } from "@/components/ui/form-field";
@@ -12,6 +12,7 @@ import { ServiceSetupChecklist } from "../service-setup-checklist";
 import { PublicBadge } from "../public-badge";
 import { SummaryCardLink } from "../summary-card-link";
 import { DescriptionCard } from "./description-card";
+import { ServiceMediaCard } from "../service-media-card";
 import type { DetailTab } from "../service-form-view";
 
 const COURSE_FIELDS = [
@@ -32,6 +33,7 @@ export function SummaryTab({
   courseSearchLoading,
   onWriteWithAi,
   generatingDescription,
+  extraFields,
 }: Readonly<{
   serviceId: string | null;
   onNavigateTab: (tab: DetailTab) => void;
@@ -45,6 +47,8 @@ export function SummaryTab({
   courseSearchLoading: Record<string, boolean>;
   onWriteWithAi: () => void;
   generatingDescription: boolean;
+  /** The category's own fields beyond degree level / area of study (CategoryExtraFields). */
+  extraFields?: ReactNode;
 }>) {
   const { api } = useServiceEditor();
   const [counts, setCounts] = useState({ fees: 0, intakes: 0, eligibility: 0, studyUnits: 0, accreditations: 0 });
@@ -90,7 +94,7 @@ export function SummaryTab({
             {section(BookOpen, "Study units", counts.studyUnits, "No study units assigned yet.", "study-units", "Add unit")}
             {section(Award, "Accreditations", counts.accreditations, "No accreditations linked yet.", "accreditations")}
             {section(ShieldCheck, "Eligibility", counts.eligibility, "No eligibility requirements configured yet.", "eligibility")}
-            <SectionSummaryCard icon={ImageIcon} title="Media" count={0} badge={<PublicBadge />} emptyText="No media uploaded yet." />
+            <ServiceMediaCard serviceId={serviceId} badge={<PublicBadge />} />
           </>
         )}
       </div>
@@ -134,6 +138,7 @@ export function SummaryTab({
             );
           })}
         </FormSection>
+        {extraFields}
 
         {serviceId && (
           <>

@@ -44,6 +44,8 @@ export type ServiceEditor = {
   readOnly: boolean;
   /** The public /course page for Preview, with whatever token lets this viewer see a draft. */
   coursePreviewHref: (name: string, serviceId: string) => Promise<string>;
+  /** In-page preview of a business service (it has no public page); absent → no Preview button. */
+  renderPreview?: (serviceId: string) => ReactNode;
 };
 
 const Ctx = createContext<ServiceEditor | null>(null);

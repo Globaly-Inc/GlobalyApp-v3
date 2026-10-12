@@ -35,6 +35,7 @@ export function useServiceForm(businessId: number, serviceId?: string) {
     return existing ? toForm(existing) : EMPTY_FORM;
   });
   const [fieldValues, setFieldValues] = useState<Record<number, unknown>>({});
+  const [isPublished, setIsPublished] = useState(() => services.find((s) => s.id === serviceId)?.is_published ?? false);
   const [saving, setSaving] = useState(false);
   const [generatingDescription, setGeneratingDescription] = useState(false);
 
@@ -50,7 +51,7 @@ export function useServiceForm(businessId: number, serviceId?: string) {
     api.getAccreditations().then((res) => setAccreditations(res.data));
     if (isEdit && serviceId) {
       if (!services.some((s) => s.id === serviceId)) {
-        api.getService(serviceId).then((found) => setForm(toForm(found))).catch(() => {});
+        api.getService(serviceId).then((found) => { setForm(toForm(found)); setIsPublished(found.is_published); }).catch(() => {});
       }
       api.getServiceFieldValues(serviceId).then((values) => {
         const map: Record<number, unknown> = {};
@@ -129,7 +130,7 @@ export function useServiceForm(businessId: number, serviceId?: string) {
 
   return {
     isEdit, profile, servicesHref, readOnly, coursePreviewHref, serviceCategories, form, set, fieldValues, setFieldValues, saving, generatingDescription,
-    canSave, schemaFieldIdByKey, courseSearchLoading, debouncedSearchCourseField, courseFieldOptions,
+    isPublished, setIsPublished, canSave, selectedCategory, schemaFieldIdByKey, courseSearchLoading, debouncedSearchCourseField, courseFieldOptions,
     handleWriteWithAi, handleSubmit,
   };
 }

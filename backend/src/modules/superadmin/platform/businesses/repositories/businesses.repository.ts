@@ -487,6 +487,16 @@ export async function listBusinessMembers(
   return { rows: rows.map((r) => ({ ...r, user: byId.get(r.platform_user_id) ?? null })), total };
 }
 
+/** The columns every Activity source selects (see listBusinessActivity). */
+type ActivityRow = {
+  id: string | number;
+  action: string;
+  details: Record<string, unknown> | string | null;
+  created_at: string | Date;
+  admin_first_name: string | null;
+  admin_last_name: string | null;
+};
+
 /**
  * The Activity tab: what superadmins did (admin_audit_logs) merged with what the org's own people
  * did in the portal — an institution's portal actions go to audit_logs (entity "institution"), a
@@ -522,7 +532,7 @@ export async function listBusinessActivity(
     const [{ count }] = await base().count<{ count: string }[]>("l.id as count");
     const rows = await select(base()).orderBy("l.created_at", "desc").limit(offset + limit);
     // Ids collide across tables (uuid vs serial), so prefix them.
-    return { total: Number(count), rows: rows.map((r: { id: unknown }) => ({ ...r, id: `${source}-${r.id}`, source })) };
+    return { total: Number(count), rows: (rows as ActivityRow[]).map((r) => ({ ...r, id: `${source}-${r.id}`, source })) };
   }));
   const rows = results.flatMap((r) => r.rows)
     .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())

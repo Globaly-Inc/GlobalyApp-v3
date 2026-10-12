@@ -12,6 +12,8 @@ import { PageHeader } from "@/components/ui/page-header";
 import { StickySaveBar } from "@/components/ui/sticky-save-bar";
 import { SectionTabs } from "@/components/section-tabs";
 import { SummaryTab } from "./tabs/summary-tab";
+import { ServiceHeaderActions } from "./service-header-actions";
+import { ServiceExtraFields } from "./service-extra-fields";
 import { CourseFeesTab } from "./tabs/course-fees-tab";
 import { IntakesTab } from "./tabs/intakes-tab";
 import { EligibilityTab } from "./tabs/eligibility-tab";
@@ -49,6 +51,7 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
     courseSearchLoading: f.courseSearchLoading,
     onWriteWithAi: f.handleWriteWithAi,
     generatingDescription: f.generatingDescription,
+    extraFields: <ServiceExtraFields serviceId={serviceId} category={f.selectedCategory} values={f.fieldValues} setValues={f.setFieldValues} />,
   };
 
   const saveButton = readOnly ? <Badge variant="secondary">View only</Badge> : (
@@ -65,6 +68,7 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
         title={<><Briefcase /> {isEdit ? form.name || "Untitled service" : "Add service"}</>}
         subtitle={`${f.profile?.business_name ?? "Business"} · Services`}
       >
+        {isEdit && serviceId && <ServiceHeaderActions serviceId={serviceId} isPublished={f.isPublished} onPublishedChange={f.setIsPublished} />}
         {saveButton}
       </PageHeader>
 
@@ -104,7 +108,9 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
           </fieldset>
         </>
       ) : (
-        <SummaryTab serviceId={null} onNavigateTab={() => {}} {...summaryProps} />
+        <fieldset disabled={readOnly} className="contents">
+          <SummaryTab serviceId={null} onNavigateTab={() => {}} {...summaryProps} />
+        </fieldset>
       )}
 
       {!readOnly && <StickySaveBar status={isEdit ? "Fees, intakes and the other tabs save on their own." : undefined}>

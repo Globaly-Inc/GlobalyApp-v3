@@ -9,6 +9,7 @@ import { ServiceFormView } from "@/app/business/profile/components/services/serv
 import { coursePublicSlug } from "@/app/business/profile/utils";
 import { businessesApi } from "../../apis";
 import { adminServiceEditorApi } from "../../apis/service-editor-api";
+import { ServicePreviewView } from "./service-preview-view";
 
 type Kind = "business" | "institution";
 
@@ -43,6 +44,10 @@ export function AdminServiceEditor({
         return path;
       }
     },
+    // A business service has no public page, so Preview shows the admin's read-only preview in place.
+    renderPreview: kind === "business"
+      ? (id: string) => <ServicePreviewView kind="business" orgId={orgId} serviceId={id} embedded />
+      : undefined,
   }), [api, org, readOnly, orgId, kind]);
 
   return (

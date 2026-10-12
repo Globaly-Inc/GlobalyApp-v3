@@ -138,12 +138,14 @@ async function requireBusiness(id: number) {
 }
 
 /** A campus scraped by the source extraction job, shaped like a real (but uneditable) branch. */
-function campusAsBranch(c: { id: string; name: string | null; country: string | null; state: string | null; city: string | null; address: string | null; phone: string | null; email: string | null; created_at: string }) {
+function campusAsBranch(c: { id: string; name: string | null; country: string | null; state: string | null; city: string | null; address: string | null; phone: string | null; email: string | null; created_at: string; source_url?: string | null }) {
   return {
     id: c.id, name: c.name ?? "Unnamed campus", country: c.country, state: c.state, city: c.city,
     address: c.address, phone: c.phone, email: c.email, is_primary: false, linked_business_id: null,
     branch_type: "same_company", share_description: false, shared_services: [], created_at: c.created_at,
     extracted: true,
+    // The page it was scraped from — the admin Branches tab's "Open source" link.
+    source_url: c.source_url ?? null,
   };
 }
 
