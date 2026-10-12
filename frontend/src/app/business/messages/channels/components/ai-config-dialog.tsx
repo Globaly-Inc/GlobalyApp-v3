@@ -28,7 +28,7 @@ function Check({ checked, onChange, label, hint }: Readonly<{ checked: boolean; 
 
 const Section = ({ title, children }: Readonly<{ title: string; children: React.ReactNode }>) => (
   <div className="flex flex-col gap-2 border-t border-border pt-3 first:border-t-0 first:pt-0">
-    <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{title}</p>
+    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</p>
     {children}
   </div>
 );

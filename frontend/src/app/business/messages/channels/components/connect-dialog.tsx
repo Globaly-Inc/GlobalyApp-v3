@@ -64,7 +64,7 @@ export function ConnectDialog({
             {!step.reconnect && (
               <ul className="flex flex-col gap-1.5 text-sm">
                 {[`AI answers new ${label} messages within seconds, day and night`, "Conversations that need a person move to Needs Attention", "Take over any conversation and hand it back to AI"].map((t) => (
-                  <li key={t} className="flex gap-2"><CheckCircle2 className="mt-0.5 size-4 shrink-0 text-emerald-600" aria-hidden />{t}</li>
+                  <li key={t} className="flex gap-2"><CheckCircle2 className="mt-0.5 size-4 shrink-0 text-success" aria-hidden />{t}</li>
                 ))}
               </ul>
             )}
@@ -83,7 +83,7 @@ export function ConnectDialog({
         {step?.kind === "success" && (
           <>
             <DialogHeader>
-              <div className="mb-1 flex size-12 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-600"><CheckCircle2 className="size-6" aria-hidden /></div>
+              <div className="mb-1 flex size-12 items-center justify-center rounded-full bg-success/10 text-success"><CheckCircle2 className="size-6" aria-hidden /></div>
               <DialogTitle>{label} connected successfully</DialogTitle>
               <DialogDescription>AI can now automatically respond to incoming {label} conversations.</DialogDescription>
             </DialogHeader>

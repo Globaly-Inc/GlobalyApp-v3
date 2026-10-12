@@ -38,7 +38,7 @@ export function EmbedRow({ visitor, isActive, onOpen }: Readonly<{ visitor: Widg
         "cursor-pointer items-start",
         isActive ? SIDEBAR_ROW_ACTIVE : "hover:bg-muted/60",
         // Waiting for a person: an amber edge, so the queue reads at a glance.
-        !isActive && (state === "waiting" || state === "attention") && "border-l-2 border-amber-500",
+        !isActive && (state === "waiting" || state === "attention") && "border-l-2 border-warning",
         unread > 0 && "font-semibold",
       )}
     >
@@ -70,12 +70,12 @@ export function EmbedRow({ visitor, isActive, onOpen }: Readonly<{ visitor: Widg
             {visitor.email ?? visitor.channel_handle ?? visitor.study_preference ?? `${visitor.message_count} message${visitor.message_count === 1 ? "" : "s"}`}
           </span>
           <span className="ml-auto flex shrink-0 items-center gap-1">
-            {visitor.starred && <Star className="size-3 fill-amber-400 text-amber-400" aria-label="Starred" />}
+            {visitor.starred && <Star className="size-3 fill-rating text-rating" aria-label="Starred" />}
             {state === "waiting" && (
               <Badge variant="warning" className="h-4 px-1.5">Wants a person</Badge>
             )}
             {state === "attention" && visitor.attention_reason && (
-              <span className="rounded bg-amber-500/15 px-1.5 text-[10px] font-medium text-amber-800">{ATTENTION_LABEL[visitor.attention_reason]}</span>
+              <span className="rounded bg-warning/15 px-1.5 text-xs font-medium text-warning">{ATTENTION_LABEL[visitor.attention_reason]}</span>
             )}
             {state === "human" && (
               <Badge variant="info" className="h-4 px-1.5">{handlerLabel(visitor)}</Badge>

@@ -116,7 +116,7 @@ export function EmbedVisitorPanel({ visitor, actions }: Readonly<{ visitor: Widg
         ) : (
           <div className="flex flex-wrap gap-1.5">
             {known.map((k) => (
-              <span key={k} className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2 py-0.5 text-[11px] text-foreground">
+              <span key={k} className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2 py-0.5 text-xs text-foreground">
                 <ChannelGlyph channel={channel} size="xs" />
                 {k}
               </span>
@@ -128,9 +128,9 @@ export function EmbedVisitorPanel({ visitor, actions }: Readonly<{ visitor: Widg
       <Section title="Internal notes">
         {notes?.length ? (
           [...notes].reverse().map((n) => (
-            <div key={n.id} className="rounded-lg border border-amber-200 bg-amber-50 px-2.5 py-2 text-xs">
+            <div key={n.id} className="rounded-lg border border-warning/30 bg-warning/10 px-2.5 py-2 text-xs">
               <p className="text-foreground">{previewText(n.content) || "Attachment"}</p>
-              <p className="mt-1 text-[11px] text-amber-800">{n.author_name} · {messageTime(n.created_at)}</p>
+              <p className="mt-1 text-xs text-warning">{n.author_name} · {messageTime(n.created_at)}</p>
             </div>
           ))
         ) : (

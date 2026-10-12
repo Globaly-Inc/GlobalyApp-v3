@@ -36,7 +36,7 @@ export function InboxChannelBar() {
           >
             <ChannelGlyph channel={c.channel} size="xs" />
             {INBOX_CHANNELS[c.channel].label}
-            <span className={cn("size-1.5 rounded-full", c.status === "connected" ? "bg-emerald-500" : "bg-red-500")} />
+            <span className={cn("size-1.5 rounded-full", c.status === "connected" ? "bg-success" : "bg-destructive")} />
             <span className="text-muted-foreground">
               {c.status !== "connected" ? "Reconnect" : c.ai_mode === "auto" ? "AI active" : "Suggest only"}
             </span>

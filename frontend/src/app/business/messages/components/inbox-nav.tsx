@@ -32,9 +32,9 @@ function Count({ value, hot, mini }: Readonly<{ value: number; hot?: boolean; mi
   return (
     <span
       className={cn(
-        "grid h-[18px] min-w-5 place-items-center rounded-full px-1.5 text-[11px] font-medium tabular-nums",
-        hot && value ? "bg-amber-500 text-white" : "bg-muted text-muted-foreground",
-        mini && "absolute -right-0.5 top-0 h-4 min-w-4 px-1 text-[9.5px]",
+        "grid h-[18px] min-w-5 place-items-center rounded-full px-1.5 text-xs font-medium tabular-nums",
+        hot && value ? "bg-warning text-warning-foreground" : "bg-muted text-muted-foreground",
+        mini && "absolute -right-0.5 top-0 h-4 min-w-4 px-1 text-xs",
       )}
     >
       {value}
@@ -92,7 +92,7 @@ export function InboxNav({
         </button>
       ))}
 
-      {mini ? <span className="my-2 h-px w-7 bg-border" /> : <p className="px-2.5 pb-1 pt-4 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Channels</p>}
+      {mini ? <span className="my-2 h-px w-7 bg-border" /> : <p className="px-2.5 pb-1 pt-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Channels</p>}
 
       {(["all", ...INBOX_CHANNEL_ORDER] as ChannelFilter[]).map((c) => {
         const label = c === "all" ? "All channels" : INBOX_CHANNELS[c].label;

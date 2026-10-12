@@ -11,9 +11,9 @@ import type { EmbedChatActions } from "./use-embed-chat-actions";
 
 const TONE = {
   ai: "bg-primary/5 text-primary",
-  attention: "bg-amber-500/15 text-amber-900",
-  human: "bg-cyan-500/10 text-cyan-900",
-  resolved: "bg-emerald-500/10 text-emerald-800",
+  attention: "bg-warning/15 text-warning",
+  human: "bg-info/10 text-info",
+  resolved: "bg-success/10 text-success",
 } as const;
 
 /**
@@ -74,7 +74,7 @@ export function ConversationStrip({ visitor, actions }: Readonly<{ visitor: Widg
         {action && <div className="flex shrink-0 gap-1.5">{action}</div>}
       </div>
       {whatsapp && (
-        <p className={cn("flex items-center gap-2 px-4 py-1.5 text-xs", windowOpen ? "bg-emerald-500/5 text-emerald-800" : "bg-amber-50 text-amber-900")}>
+        <p className={cn("flex items-center gap-2 px-4 py-1.5 text-xs", windowOpen ? "bg-success/5 text-success" : "bg-warning/10 text-warning")}>
           {windowOpen ? <CheckCircle2 className="size-3.5" aria-hidden /> : <Clock className="size-3.5" aria-hidden />}
           {windowOpen
             ? "Customer service window open: free-form replies can be sent."
