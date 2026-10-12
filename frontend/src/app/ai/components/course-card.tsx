@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { CalendarDays, Check, GraduationCap, MapPin, Monitor, Plus } from "lucide-react";
@@ -10,6 +11,7 @@ import type { CompareCourseItem } from "@/app/(web)/search/types";
 import type { CourseCard as CourseCardType } from "../apis/types";
 import { InstitutionLogo } from "@/components/institution-logo";
 import { FallbackImage } from "@/components/fallback-image";
+import { getFingerprint } from "@/app/embed/[key]/utils";
 
 type CourseCardProps = { card: CourseCardType };
 
@@ -72,7 +74,18 @@ export function CourseCard({ card }: CourseCardProps) {
   // it here beats threading an embedKey prop down through ChatMessage and the card list, which
   // the dashboard chat would carry for nothing.
   const embedKey = /^\/embed\/([^/]+)/.exec(usePathname() ?? "")?.[1];
-  const coursePath = embedKey ? `/embed/${embedKey}/course/${card.slug}` : `/course/${card.slug}`;
+  // The card opens a TOP-LEVEL tab, and a third-party iframe's storage is partitioned by top-level
+  // site — so that tab cannot see the visitor id the panel is using, and anything it offers back
+  // to the chat would land on a stranger's empty thread. Hand the id over the way embed.js already
+  // does it: in the hash, which no browser sends to a server. After mount, not during render —
+  // localStorage during SSR is a hydration mismatch, and the hash is only needed once clicked.
+  const [handoff, setHandoff] = useState("");
+  useEffect(() => {
+    if (embedKey) setHandoff(`#fp=${encodeURIComponent(getFingerprint())}`);
+  }, [embedKey]);
+  const coursePath = embedKey
+    ? `/embed/${embedKey}/course/${card.slug}${handoff}`
+    : `/course/${card.slug}`;
   const href = card.slug ? coursePath : (card.source_url ?? null);
   const isExternal = !card.slug && !!card.source_url;
 

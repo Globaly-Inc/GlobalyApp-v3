@@ -60,6 +60,29 @@ assert.ok(!second.includes("Doctoral"), "another level's streams are not offered
 const withLevels = buildSystemPrompt({ ...base, discoveryTurn: true, catalogue: CATALOGUE, embedConfig: widget });
 assert.match(withLevels, /OUR LEVELS \(level, course count — offer only these\): Master's \(18\), Doctoral \(PhD\) \(4\)/);
 
+// The broad "short course" bucket is ours, not a value any catalogue spells: it has to reach the
+// certificates and diplomas, which are what an institution actually lists (Greptile). A named
+// qualification still matches only its own rows.
+const SHORT = [
+  { degree_level: "Certificate", subject_area: "Engineering", count: 7 },
+  { degree_level: "Advanced Diploma", subject_area: "Management", count: 3 },
+  { degree_level: "Master's", subject_area: "Engineering", count: 12 },
+];
+const shortTurn = buildSystemPrompt({
+  profile: null, isFirstMessage: false, ragContext: "",
+  streamTurn: "Short course", catalogue: SHORT, embedConfig: widget,
+});
+assert.match(shortTurn, /Engineering \(7\), Management \(3\)/, "short course reaches certificates and diplomas");
+assert.ok(!shortTurn.includes("You have no stream list"), "a catalogue of certificates is not an empty catalogue");
+assert.ok(!shortTurn.includes("(12)"), "and does not drag the master's rows in with them");
+
+const certTurn = buildSystemPrompt({
+  profile: null, isFirstMessage: false, ragContext: "",
+  streamTurn: "Certificate", catalogue: SHORT, embedConfig: widget,
+});
+assert.match(certTurn, /Engineering \(7\)/, "a named certificate matches its own rows");
+assert.ok(!certTurn.includes("Management"), "and not the diplomas beside them");
+
 // No catalogue (the query failed, or a widget with no jobs): ask openly, never guess a stream.
 const blind = buildSystemPrompt({
   profile: null, isFirstMessage: false, ragContext: "", streamTurn: "Master's", embedConfig: widget,

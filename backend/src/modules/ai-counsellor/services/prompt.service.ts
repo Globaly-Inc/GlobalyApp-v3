@@ -32,10 +32,16 @@ function levelsLine(rows: readonly CatalogueShapeRow[]): string | null {
   return parts.length ? parts.join(", ") : null;
 }
 
+/** Our own broad bucket from the level question, which no single catalogue value spells. It has to
+ *  be expanded here rather than in LEVEL_SYNONYMS: that table also drives course search, where
+ *  widening "short course" to every certificate and diploma would answer the wrong level. */
+const SHORT_COURSE_PATTERNS = ["short", "training", "certificate", "diploma"];
+
 /** Subject areas at one level, commonest first. `level` is the visitor's own words ("master's"),
  *  matched through the same synonym table course search uses, so "masters" finds "Master's". */
 function streamsLine(rows: readonly CatalogueShapeRow[], level: string): string | null {
-  const patterns = levelPatterns(level).map((p) => p.toLowerCase());
+  const patterns = (level === "Short course" ? SHORT_COURSE_PATTERNS : levelPatterns(level))
+    .map((p) => p.toLowerCase());
   const byArea = new Map<string, number>();
   for (const r of rows) {
     const haystack = (r.degree_level ?? "").toLowerCase();

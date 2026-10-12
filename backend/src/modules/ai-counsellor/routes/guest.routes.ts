@@ -139,16 +139,35 @@ async function persistVisitorTurn(
 /** Public: anonymous chat — plain guests (1 reply, signup wall) and embed-widget visitors. */
 const norm = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, " ");
 
+/**
+ * Is this the widget's first intake turn — the one that withholds courses and asks the level?
+ *
+ * Widgets only. A plain guest (no embed key) is STATELESS: `guestService` gives them no session,
+ * so `history.length` is 0 on every message they ever send, and they are capped at one reply by
+ * the signup gate. Discovery there would spend that single reply asking a question they are not
+ * allowed to answer, and they would never see a course (Greptile).
+ */
+export function isDiscoveryTurn(hasEmbed: boolean, historyLength: number): boolean {
+  return hasEmbed && historyLength === 0;
+}
+
 /** The study level the visitor just named, in their own words, or null if they named none.
  *  Only meaningful as the answer to the level question — a message about anything else returns
  *  null, which puts the turn back on the normal path with its courses. */
 export function statedLevel(asked: string): string | null {
   const text = norm(asked);
+  // A named qualification keeps its own name: folding "certificate" and "diploma" into the generic
+  // bucket threw away the one word that matches the catalogue, which stores Certificate, Diploma,
+  // Graduate Certificate and Advanced Diploma as distinct levels (Greptile). Only a visitor who
+  // says something genuinely broad — "short course", "training" — gets the broad bucket, and the
+  // prompt expands THAT across all of them.
   const LEVELS: Array<[RegExp, string]> = [
     [/\b(phd|doctoral|doctorate)\b/, "PhD"],
     [/\b(masters?|msc|ma|mba|meng|postgraduate)\b/, "Master's"],
     [/\b(bachelors?|undergraduate|bsc|beng|ba)\b/, "Bachelor's"],
-    [/\b(short course|short courses|training|professional training|certificate|diploma)\b/, "Short course"],
+    [/\bcertificates?\b/, "Certificate"],
+    [/\bdiplomas?\b/, "Diploma"],
+    [/\b(short courses?|trainings?|professional training)\b/, "Short course"],
   ];
   return LEVELS.find(([re]) => re.test(text))?.[1] ?? null;
 }
@@ -358,7 +377,7 @@ export async function guestRoutes(app: FastifyInstance) {
       // quick_replies block, and the messaging channels strip blocks before sending — on WhatsApp
       // the visitor would get a reply with the question missing. This is the widget's flow, so the
       // widget's own route decides it, and the shared helper simply honours what it is given.
-      const discoveryTurn = history.length === 0;
+      const discoveryTurn = isDiscoveryTurn(!!embed, history.length);
       const catalogue = embed?.jobIds?.length && history.length <= 2
         ? await visitorService.attempt("catalogueShape", () => knowledgeRepo.listCatalogueShape(embed.jobIds!)) ?? []
         : [];

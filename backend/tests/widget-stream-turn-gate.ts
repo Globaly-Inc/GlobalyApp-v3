@@ -9,7 +9,15 @@
  * Run: npm run test:widget-stream-turn-gate    Pure functions, no DB, no network.
  */
 import assert from "node:assert/strict";
-import { namesSubject, statedLevel } from "../src/modules/ai-counsellor/routes/guest.routes.js";
+import { isDiscoveryTurn, namesSubject, statedLevel } from "../src/modules/ai-counsellor/routes/guest.routes.js";
+
+// ── Discovery belongs to widgets, not to the one-reply guest trial ──
+// A plain guest is stateless: no session, so history.length is 0 on EVERY message, and the signup
+// gate caps them at one reply. Discovery there spends that reply on a question they are never
+// allowed to answer, and they see no course at all (Greptile P1).
+assert.equal(isDiscoveryTurn(true, 0), true, "a widget's first turn is discovery");
+assert.equal(isDiscoveryTurn(true, 2), false, "a widget's later turns are not");
+assert.equal(isDiscoveryTurn(false, 0), false, "a plain guest's single trial reply keeps its courses");
 
 // ── statedLevel: their own words, in any of the shapes a quick_replies value arrives as ──
 for (const [said, expected] of [
@@ -19,6 +27,9 @@ for (const [said, expected] of [
   ["doctoral study", "PhD"],
   ["undergraduate", "Bachelor's"],
   ["I want short professional training", "Short course"],
+  // A named qualification keeps its own name — it is what matches the catalogue's own levels.
+  ["I am looking at a certificate", "Certificate"],
+  ["do you have diplomas?", "Diploma"],
   // A level named inside a fuller sentence still counts — that is the answer, however phrased.
   ["I finished my bachelors, now I want a masters", "Master's"],
   // Not an answer to the level question at all: the turn goes back on the normal path.

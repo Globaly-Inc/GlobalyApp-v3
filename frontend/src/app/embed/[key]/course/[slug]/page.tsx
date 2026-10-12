@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { notFound } from "next/navigation";
-import { MessageCircle } from "lucide-react";
 import { getCourseBySlug, getTests } from "@/app/(web)/search/api";
 import { DEGREE_LABEL } from "@/app/(web)/search/types";
 import { CourseStats } from "@/app/(web)/course/[slug]/components/course-stats";
@@ -11,10 +9,10 @@ import { CourseIntakesCard } from "@/app/(web)/course/[slug]/components/course-i
 import { CourseStudyOptionsCard, CourseStudyUnitsCard } from "@/app/(web)/course/[slug]/components/course-curriculum-card";
 import { CourseEntryRequirementsCard } from "@/app/(web)/course/[slug]/components/course-entry-requirements-card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { FallbackImage } from "@/components/fallback-image";
 import { InstitutionLogo } from "@/components/institution-logo";
 import { embedApi } from "../../apis";
+import { AskAgainLink } from "./ask-again-link";
 import { widgetTheme } from "../../utils";
 
 /**
@@ -81,15 +79,7 @@ export default async function EmbedCoursePage({ params }: PageProps) {
           className="size-9 rounded-lg bg-white/90"
         />
         <p className="min-w-0 flex-1 truncate text-sm font-semibold">{widgetName}</p>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="text-primary-foreground hover:bg-white/15 hover:text-primary-foreground"
-          render={<Link href={`/embed/${key}`} />}
-        >
-          <MessageCircle className="size-4" />
-          Ask a question
-        </Button>
+        <AskAgainLink embedKey={key} />
       </header>
 
       <main className="mx-auto max-w-5xl space-y-4 px-4 py-6 md:space-y-6">
