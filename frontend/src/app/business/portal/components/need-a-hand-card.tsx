@@ -14,7 +14,7 @@ export function NeedAHandCard() {
           {/* A bordered control, as the boards draw it — the aside's one offer, not a buried link.
               A mailto, so it asks for a time rather than claiming to be a calendar. */}
           <a
-            href="mailto:support@globalyapp.com"
+            href="mailto:support@globalyai.com"
             className="mt-2.5 inline-flex h-9 items-center rounded-lg border bg-background px-3.5 text-[13px] font-semibold transition-colors hover:bg-muted"
           >
             Ask for a time

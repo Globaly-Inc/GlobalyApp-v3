@@ -19,12 +19,17 @@ const envSchema = z.object({
   OTP_MAX_ATTEMPTS: z.coerce.number().default(5),
   OTP_LOCKOUT_MINUTES: z.coerce.number().default(30),
   SESSION_EXPIRY_DAYS: z.coerce.number().default(30),
+  // Parent domain for the readable "a session may exist" hint cookie (production: ".globalyai.com"),
+  // so web. and app. both see it. Unset = the API's own host. See modules/auth/refresh-cookie.ts.
+  SESSION_HINT_COOKIE_DOMAIN: z.string().optional(),
 
   // Server
   NODE_ENV: z.string().default("development"),
   PORT: z.coerce.number().default(3000),
   API_URL: z.string().optional(),
   APP_URL: z.string().default("http://localhost:3000"),
+  // Comma-separated browser origins, e.g. "https://web.globalyai.com,https://app.globalyai.com".
+  // Use CORS_ORIGIN_LIST below, never this raw string, as a URL or a cors `origin`.
   CORS_ORIGINS: z.string().default("http://localhost:3001"),
   /**
    * Fastify `trustProxy` — decides what `req.ip` means, and `req.ip` is the only
@@ -54,6 +59,8 @@ const envSchema = z.object({
   MAIL_PORT: z.coerce.number().default(587),
   MAIL_USERNAME: z.string().optional(),
   MAIL_PASSWORD: z.string().optional(),
+  // The sending domain must be verified with the SMTP provider (SPF/DKIM) before this changes.
+  MAIL_FROM: z.string().email().default("noreply@globalyai.com"),
   POSTMARK_SERVER_TOKEN: z.string().optional(),
   CHARGEBEE_SITE: z.string().optional(),
   CHARGEBEE_API_KEY: z.string().optional(),
@@ -120,10 +127,22 @@ const envSchema = z.object({
 
 const parsed = envSchema.parse(process.env);
 
+/** "a, b,,c" -> ["a","b","c"]; trailing slashes dropped, since browsers send Origin without one. */
+export function parseOriginList(raw: string): string[] {
+  return raw.split(",").map((o) => o.trim().replace(/\/+$/, "")).filter(Boolean);
+}
+
 export const config = {
   ...parsed,
   API_URL: parsed.API_URL ?? `http://localhost:${parsed.PORT}`,
+  CORS_ORIGIN_LIST: parseOriginList(parsed.CORS_ORIGINS),
   MASTER_DB_URL: `postgresql://${parsed.DB_USERNAME}:${parsed.DB_PASSWORD}@${parsed.DB_HOST}:${parsed.DB_PORT}/${parsed.DB_NAME}`,
 };
+
+// Two browser origins means the web./app. split: without the hint on their parent domain the
+// shared sign-in silently never restores on the other host. Fail at boot, not in the field.
+if (config.CORS_ORIGIN_LIST.length > 1 && !config.SESSION_HINT_COOKIE_DOMAIN) {
+  throw new Error("SESSION_HINT_COOKIE_DOMAIN is required when CORS_ORIGINS lists more than one origin (e.g. .globalyai.com)");
+}
 
 export type Config = typeof config;
