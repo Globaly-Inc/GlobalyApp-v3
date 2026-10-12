@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { Bot, Loader2, MessageSquare, Search } from "lucide-react";
+import { ArrowDownUp, Bot, Loader2, MessageSquare, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -11,25 +11,11 @@ import { activityDate, threadTitle } from "@/components/chat/utils";
 import type { ChatThread, EnquiryMessage } from "@/components/chat/types";
 import { cn } from "@/lib/utils";
 import type { WidgetVisitor } from "@/app/business/ai-widget/apis/types";
-import { embedChatState } from "../utils";
+import { INBOX_CHANNELS, INBOX_VIEWS, type InboxView } from "../const";
+import { inChannel, matchesView, needsAttention } from "../utils";
+import { ChannelGlyph } from "./channel-glyph";
 import { EmbedRow } from "./embed-row";
-
-/** The AI Conversations tab's quick filters, over the rows already loaded. */
-const EMBED_FILTERS = [
-  { value: "all", label: "All" },
-  { value: "waiting", label: "Wants a person" },
-  { value: "ai", label: "AI handling" },
-  { value: "human", label: "With team" },
-  { value: "unread", label: "Unread" },
-  { value: "resolved", label: "Resolved" },
-] as const;
-type EmbedFilter = (typeof EMBED_FILTERS)[number]["value"];
-
-function matchesFilter(v: WidgetVisitor, filter: EmbedFilter): boolean {
-  if (filter === "all") return true;
-  if (filter === "unread") return (v.unread_count ?? 0) > 0;
-  return embedChatState(v) === filter;
-}
+import type { ChannelFilter } from "./channel-picker";
 
 type Item =
   /** `messageId`: the newest loaded message matching the search, revealed on open. */
@@ -64,6 +50,10 @@ export function InboxListSidebar({
   onToggleFavorite,
   onSearchVisitors,
   onLoadMore,
+  view,
+  onView,
+  channel,
+  onChannel,
 }: Readonly<{
   header: React.ReactNode;
   /** Empty on the AI Conversations tab. */
@@ -82,10 +72,16 @@ export function InboxListSidebar({
   /** Debounced; the parent refetches page 1 only when the term actually changed. */
   onSearchVisitors: (term: string) => void;
   onLoadMore: () => void;
+  /** The view and channel picked in the Inbox sidebar (`InboxNav`). */
+  view: InboxView;
+  /** Phones have no sidebar: the views show as a chip row here instead. */
+  onView: (view: InboxView) => void;
+  channel: ChannelFilter;
+  onChannel: (channel: ChannelFilter) => void;
 }>) {
   const [query, setQuery] = useState("");
-  const [filter, setFilter] = useState<EmbedFilter>("all");
   const embedOnly = threads.length === 0;
+  const current = INBOX_VIEWS.find((v) => v.value === view) ?? INBOX_VIEWS[INBOX_VIEWS.length - 2]!;
 
   useEffect(() => {
     const t = setTimeout(() => onSearchVisitors(query.trim()), 300);
@@ -111,18 +107,41 @@ export function InboxListSidebar({
     const all: Item[] = [
       ...enquiries,
       ...visitors
-        .filter((v) => hit(v.name, v.email, v.study_preference) && (!embedOnly || matchesFilter(v, filter)))
+        .filter((v) => hit(v.name, v.email, v.study_preference, v.channel_handle) && (!embedOnly || (matchesView(v, view) && inChannel(v, channel))))
         .map((visitor) => ({ kind: "embed" as const, at: new Date(visitor.last_activity_at).getTime(), visitor })),
     ];
     const unread = (i: Item) => Number(i.kind === "enquiry" ? i.thread.unread_count > 0 : (i.visitor.unread_count ?? 0) > 0);
-    // A visitor waiting for a person outranks everything: they were promised someone.
-    const waiting = (i: Item) => Number(i.kind === "embed" && embedChatState(i.visitor) === "waiting");
+    // Needs Attention outranks everything: a customer was promised someone, or AI flagged them.
+    const waiting = (i: Item) => Number(i.kind === "embed" && needsAttention(i.visitor));
     return all.sort((a, b) => waiting(b) - waiting(a) || unread(b) - unread(a) || b.at - a.at);
-  }, [threads, visitors, messagesByThread, query, embedOnly, filter]);
+  }, [threads, visitors, messagesByThread, query, embedOnly, view, channel]);
 
   return (
     <div className="flex h-full flex-col border-border bg-card md:border-r">
       <div className="shrink-0 p-3">
+        {embedOnly && (
+          <div className="mb-3 px-1">
+            <div className="flex flex-wrap items-center gap-2">
+              <h2 className="text-base font-semibold">{current.label}</h2>
+              {channel !== "all" && (
+                <span className="inline-flex items-center gap-1 rounded-full border border-primary/20 bg-primary/5 py-0.5 pl-1 pr-1 text-xs font-medium text-primary">
+                  <ChannelGlyph channel={channel} size="xs" />
+                  {INBOX_CHANNELS[channel].label}
+                  <button type="button" onClick={() => onChannel("all")} aria-label="Show all channels" className="rounded-full p-0.5 hover:bg-primary/10">
+                    <X className="size-3" aria-hidden />
+                  </button>
+                </span>
+              )}
+              <span className="ml-auto flex items-center gap-1 text-xs text-muted-foreground">
+                <ArrowDownUp className="size-3" aria-hidden />
+                Needs you first
+              </span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {current.hint} · {items.length} conversation{items.length === 1 ? "" : "s"}
+            </p>
+          </div>
+        )}
         <div className="relative w-full">
           <Search
             className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground"
@@ -131,28 +150,26 @@ export function InboxListSidebar({
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search by name, programme or message"
+            placeholder="Search people, messages, handle"
             aria-label="Search conversations"
             className="h-9 w-full border-border bg-muted/50 pl-9 focus-visible:bg-background"
           />
         </div>
         {header}
         {embedOnly && (
-          <div className="mt-2 flex flex-wrap gap-1" role="group" aria-label="Filter AI conversations">
-            {EMBED_FILTERS.map((f) => (
+          <div className="mt-2 flex gap-1 overflow-x-auto md:hidden" role="group" aria-label="Views">
+            {INBOX_VIEWS.map((v) => (
               <button
-                key={f.value}
+                key={v.value}
                 type="button"
-                aria-pressed={filter === f.value}
-                onClick={() => setFilter(f.value)}
+                aria-pressed={view === v.value}
+                onClick={() => onView(v.value)}
                 className={cn(
-                  "rounded-full border px-2.5 py-0.5 text-xs transition-colors",
-                  filter === f.value
-                    ? "border-primary bg-primary text-primary-foreground"
-                    : "border-border text-muted-foreground hover:bg-muted",
+                  "shrink-0 rounded-full border px-2.5 py-0.5 text-xs",
+                  view === v.value ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground",
                 )}
               >
-                {f.label}
+                {v.label}
               </button>
             ))}
           </div>
@@ -160,7 +177,7 @@ export function InboxListSidebar({
       </div>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
-        <p className={cn(SIDEBAR_LABEL, "mb-2 px-2")}>{embedOnly ? "AI Conversations" : "Conversations"}</p>
+        {!embedOnly && <p className={cn(SIDEBAR_LABEL, "mb-2 px-2")}>Conversations</p>}
 
         {loading ? (
           <div className="space-y-1 px-2">
@@ -182,9 +199,9 @@ export function InboxListSidebar({
               <MessageSquare className="mb-2 size-8 text-muted-foreground/40" aria-hidden />
             )}
             <p className="text-sm text-muted-foreground">
-              {query || filter !== "all" ? "No matching conversations" : "No conversations yet"}
+              {query ? "No matching conversations" : view !== "all" || channel !== "all" ? "Nothing here right now" : "No conversations yet"}
             </p>
-            {!query && filter === "all" && (
+            {!query && view === "all" && channel === "all" && (
               <p className="mt-1 text-xs text-muted-foreground/80">
                 {embedOnly
                   ? "Conversations visitors have with the AI assistant on your website appear here."

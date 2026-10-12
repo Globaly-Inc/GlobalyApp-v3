@@ -65,6 +65,15 @@ const envSchema = z.object({
   // own APP_URL is a different host.
   WEB_APP_URL: z.string().default("http://localhost:3001"),
 
+  // Zernio — WhatsApp, Instagram and Facebook Messenger for the Inbox (modules/channels).
+  // Without an API key the channels routes answer 503 and nothing calls Zernio.
+  ZERNIO_API_KEY: z.string().optional(),
+  ZERNIO_API_URL: z.string().default("https://zernio.com/api"),
+  // HMAC secret set on our webhook endpoint in Zernio. Unset: the webhook rejects every event in
+  // production and accepts unsigned ones only outside it, so local development works before a
+  // secret exists.
+  ZERNIO_WEBHOOK_SECRET: z.string().optional(),
+
   // AI / LLM
   GEMINI_API_KEY: z.string().optional(),
   GEMINI_MODEL: z.string().default("gemini-3.5-flash"),

@@ -14,6 +14,7 @@ import { fetchVisitors } from "../store/ai-widget-visitors-slice";
 import { VISITORS_PAGE_SIZE, VISITOR_TABS } from "../const";
 import { downloadCsv, visitorsToCsv } from "../utils";
 import { VisitorsTable } from "./visitors-table";
+import { ChannelPicker, type ChannelFilter } from "@/app/business/messages/components/channel-picker";
 import type { VisitorStatusFilter } from "../apis/types";
 
 /**
@@ -32,6 +33,7 @@ export function VisitorsTab() {
   const { items, total, counts, status, error } = useAppSelector((s) => s.aiWidgetVisitors);
 
   const [tab, setTab] = useState<VisitorStatusFilter>("all");
+  const [channel, setChannel] = useState<ChannelFilter>("all");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -42,10 +44,10 @@ export function VisitorsTab() {
   // a mount sends one request, not two.
   useEffect(() => {
     const timer = setTimeout(() => {
-      dispatch(fetchVisitors({ page, limit: VISITORS_PAGE_SIZE, status: tab, search: search.trim() || undefined }));
+      dispatch(fetchVisitors({ page, limit: VISITORS_PAGE_SIZE, status: tab, search: search.trim() || undefined, channel: channel === "all" ? undefined : channel }));
     }, search ? 300 : 0);
     return () => clearTimeout(timer);
-  }, [dispatch, page, tab, search]);
+  }, [dispatch, page, tab, search, channel]);
 
   // Selection is per result set. Keeping it across a filter change would let "3 selected" mean
   // three rows nobody can see any more — and the export below would then quietly disagree with
@@ -67,19 +69,22 @@ export function VisitorsTab() {
         <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
           <div>
             <h1 className="text-2xl font-bold">Visitors &amp; Leads</h1>
-            <p className="text-muted-foreground">Everyone who has chatted with your AI widget.</p>
+            <p className="text-muted-foreground">Everyone who has messaged you, on your website, WhatsApp, Instagram or Facebook.</p>
           </div>
           <div className="relative w-full sm:w-64">
             <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
             <Input
               className="h-10 pl-8"
-              placeholder="Search name, email or programme"
+              placeholder="Search name, email, phone or handle"
               value={search}
               onChange={(e) => changeQuery(() => setSearch(e.target.value))}
             />
           </div>
         </div>
 
+        <div className="mb-4 w-full sm:w-60">
+          <ChannelPicker value={channel} onChange={(next) => changeQuery(() => setChannel(next))} />
+        </div>
         <AdminSegmentedTabs
           options={VISITOR_TABS.map((t) => ({ ...t, count: counts[t.value] }))}
           value={tab}

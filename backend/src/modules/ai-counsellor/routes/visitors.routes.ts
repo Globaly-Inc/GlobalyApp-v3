@@ -9,7 +9,7 @@ import type { Knex } from "knex";
 import { requireBusinessOrInstitutionContext } from "../../../core/plugins/auth.plugin.js";
 import { BadRequestError, NotFoundError } from "../../../shared/errors.js";
 import {
-  VisitorHandoffSchema, VisitorIdParamSchema, VisitorNoteSchema, VisitorPatchSchema, VisitorReplySchema, VisitorResolveSchema,
+  VisitorHandoffSchema, VisitorIdParamSchema, VisitorNoteSchema, VisitorPatchSchema, VisitorReplySchema, VisitorResolveSchema, VisitorTemplateSchema,
 } from "../schemas/visitor.schema.js";
 import * as repo from "../repositories/visitor-edit.repository.js";
 import * as messagesRepo from "../repositories/messages.repository.js";
@@ -17,6 +17,17 @@ import * as sessionsRepo from "../repositories/sessions.repository.js";
 import { refreshChatSummary, refreshContactSummary } from "../services/chat-summaries.service.js";
 import * as takeover from "../services/takeover.service.js";
 import * as mediaService from "../../enquiries/services/message-media.service.js";
+import { randomUUID } from "node:crypto";
+import { recipientFromRequest } from "../../enquiries/shared/recipient.js";
+import * as channelVisitors from "../../channels/repositories/channel-visitors.repository.js";
+import * as connections from "../../channels/repositories/connections.repository.js";
+import { sendToCustomer } from "../../channels/services/outbound.service.js";
+import { answerPending } from "../../channels/services/inbound.service.js";
+import * as zernio from "../../channels/lib/zernio-client.js";
+import { CHANNEL_LABEL } from "../../channels/consts.js";
+import { createChildLogger } from "../../../shared/logger.js";
+
+const logger = createChildLogger("visitor-routes");
 
 /** Newest turns the inbox shows. ponytail: no paging — widget chats are short; page if they aren't. */
 const TRANSCRIPT_LIMIT = 200;
@@ -35,6 +46,11 @@ async function toTranscriptMessage(m: messagesRepo.MessageRow) {
     created_at: m.created_at,
     sender_name: m.sender_name ?? null,
     attachments: m.role === "agent" ? await mediaService.withViewUrls(m.attachments as mediaService.MessageAttachment[]) : [],
+    // Channel conversations only (WhatsApp, Instagram, Facebook); absent fields read as null.
+    delivery_status: m.delivery_status ?? null,
+    delivery_error: m.delivery_error ?? null,
+    sent_from: m.sent_from ?? null,
+    deleted: !!m.sender_deleted_at,
   };
 }
 
@@ -76,7 +92,7 @@ export async function visitorRoutes(app: FastifyInstance) {
     const chats = await sessionsRepo.findChatsByVisitor(v.visitor_key, v.embed_config_id);
     // A visitor whose only chat was adopted into an account has no visitor-key sessions left.
     const ids = chats.length ? chats.map((c) => c.id) : v.session_id != null ? [v.session_id] : [];
-    const rows = await messagesRepo.findBySessions(ids, TRANSCRIPT_LIMIT);
+    const rows = await messagesRepo.findBySessions(ids, TRANSCRIPT_LIMIT, { inbox: true });
     const byId = new Map(chats.map((c) => [c.id, c]));
     const seen = new Set<number>();
     const messages = await Promise.all(rows.map(async (m) => {
@@ -118,15 +134,30 @@ export async function visitorRoutes(app: FastifyInstance) {
     if (!open) await sessionsRepo.reopenSession(sessionId);
 
     const staff = await takeover.staffFor(Number(req.auth.sub));
-    const attachments = await mediaService.resolveOwned(staff.id, input.attachments);
-    const message = await messagesRepo.create({
-      session_id: sessionId,
-      role: "agent",
-      content: input.body,
-      attachments,
-      sender_user_id: staff.id,
-      sender_name: staff.name,
-    });
+    const cv = await channelVisitors.findById(req.db, id);
+    let message: messagesRepo.MessageRow;
+    if (cv && cv.channel !== "ai_embed") {
+      // WhatsApp, Instagram, Facebook: the reply goes out through Zernio. ponytail: text only —
+      // staff files are private objects and Zernio needs a public URL; add signed links when asked.
+      if (input.attachments.length) throw new BadRequestError(`Attachments can't be sent on ${CHANNEL_LABEL[cv.channel]} yet`);
+      if (!input.body) throw new BadRequestError("Write a message first");
+      message = await sendToCustomer({
+        db: req.db, visitor: cv, sessionId, role: "agent", content: input.body,
+        sender: { userId: staff.id, name: staff.name }, idempotencyKey: `staff:${randomUUID()}`,
+      });
+      // A person has answered: whatever AI had flagged (a draft, a question for the team) is handled.
+      if (cv.attention_reason) await channelVisitors.clearAttention(req.db, id);
+    } else {
+      const attachments = await mediaService.resolveOwned(staff.id, input.attachments);
+      message = await messagesRepo.create({
+        session_id: sessionId,
+        role: "agent",
+        content: input.body,
+        attachments,
+        sender_user_id: staff.id,
+        sender_name: staff.name,
+      });
+    }
     await sessionsRepo.incrementMessageCount(sessionId);
     const control = await takeover.claimForReply(req.db, id, staff);
     void refreshChatSummary(sessionId, null, { db: req.db, visitorId: id });
@@ -168,7 +199,52 @@ export async function visitorRoutes(app: FastifyInstance) {
     const userId = Number(req.auth.sub);
     const control = await takeover.setHandoff(req.db, id, mode === "human" ? await takeover.staffFor(userId) : null);
     if (!control) throw new NotFoundError("Visitor not found");
+    const cv = await channelVisitors.findById(req.db, id);
+    if (cv && cv.channel !== "ai_embed") {
+      if (mode === "human" && cv.attention_reason === "other_app" && cv.zernio_conversation_id && cv.channel_connection_id != null) {
+        // Another app (Page Inbox, Meta Business Agent) held the thread: take it back, or Meta
+        // would refuse every reply with not_thread_owner.
+        const conn = await connections.findById(req.db, cv.channel_connection_id);
+        if (conn) await zernio.takeThreadControl(cv.zernio_conversation_id, conn.zernio_account_id);
+        await channelVisitors.clearAttention(req.db, id);
+      }
+      // Resume AI: answer what the customer said while a person had it, now rather than on their
+      // next message. Not awaited — the model call must not hold the button.
+      if (mode === "ai") {
+        const owner = recipientFromRequest(req);
+        void answerPending(owner, id).catch((err) => logger.warn("Resume answer failed", { visitorId: id, err: err instanceof Error ? err.message : String(err) }));
+      }
+    }
     return reply.send({ control: takeover.withMe(control, userId) });
+  });
+
+  // Per-person star — one teammate's star never changes another's list.
+  app.put("/embed/visitors/:id/star", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
+    const { id } = VisitorIdParamSchema.parse(req.params);
+    await req.db("ai_widget_visitor_stars").insert({ visitor_id: id, user_id: Number(req.auth.sub) }).onConflict(["visitor_id", "user_id"]).ignore();
+    return reply.code(204).send();
+  });
+  app.delete("/embed/visitors/:id/star", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
+    const { id } = VisitorIdParamSchema.parse(req.params);
+    await req.db("ai_widget_visitor_stars").where({ visitor_id: id, user_id: Number(req.auth.sub) }).delete();
+    return reply.code(204).send();
+  });
+
+  // WhatsApp only: an approved template, the one thing WhatsApp allows after its 24-hour window.
+  app.post("/embed/visitors/:id/template", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
+    const { id } = VisitorIdParamSchema.parse(req.params);
+    const input = VisitorTemplateSchema.parse(req.body ?? {});
+    const cv = await channelVisitors.findById(req.db, id);
+    if (!cv || cv.channel !== "whatsapp" || !cv.session_id) throw new NotFoundError("WhatsApp conversation not found");
+    const staff = await takeover.staffFor(Number(req.auth.sub));
+    const message = await sendToCustomer({
+      db: req.db, visitor: cv, sessionId: cv.session_id, role: "agent", content: input.preview,
+      sender: { userId: staff.id, name: staff.name }, idempotencyKey: `template:${randomUUID()}`,
+      template: { name: input.name, language: input.language },
+    });
+    await sessionsRepo.incrementMessageCount(cv.session_id);
+    const control = await takeover.claimForReply(req.db, id, staff);
+    return reply.status(201).send({ message: await toTranscriptMessage(message), control: takeover.withMe(control ?? {}, staff.id) });
   });
 
   app.patch("/embed/visitors/:id/resolve", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
@@ -177,6 +253,8 @@ export async function visitorRoutes(app: FastifyInstance) {
     const userId = Number(req.auth.sub);
     const control = await takeover.setResolved(req.db, id, await takeover.staffFor(userId), resolved);
     if (!control) throw new NotFoundError("Visitor not found");
+    // Resolved means nothing is waiting on the team, including whatever AI had flagged.
+    if (resolved) await channelVisitors.clearAttention(req.db, id);
     return reply.send({ control: takeover.withMe(control, userId) });
   });
 

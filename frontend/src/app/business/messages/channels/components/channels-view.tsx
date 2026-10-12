@@ -1,21 +1,77 @@
 "use client";
 
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { useRouter, useSearchParams } from "next/navigation";
 import { WIDGET_SETTINGS_HREF } from "@/app/business/ai-widget/const";
-import { ArrowLeft, Globe } from "lucide-react";
+import { ArrowLeft, Globe, Loader2, TriangleAlert } from "lucide-react";
+import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { WidgetSwitch } from "../../components/widget-switch";
-import { UPCOMING_CHANNELS } from "../const";
+import { CHANNELS_HREF } from "../../const";
+import type { ChannelConnection, ChannelKey } from "../apis/types";
+import { CHANNEL_CARDS } from "../const";
+import { confirmChannel, fetchChannels } from "../store/channels-slice";
+import { AiConfigDialog } from "./ai-config-dialog";
+import { ChannelCard } from "./channel-card";
+import { ConnectDialog, type ConnectStep } from "./connect-dialog";
+import { DisconnectDialog } from "./disconnect-dialog";
 
 function SectionLabel({ children }: Readonly<{ children: React.ReactNode }>) {
   return <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{children}</h2>;
 }
 
+const isChannel = (v: string | null): v is ChannelKey => v === "whatsapp" || v === "instagram" || v === "facebook";
+
 /**
  * Where messages reach the Inbox from, laid out like GlobalyOS's Channels page: the website's AI
- * chat widget (the one live channel, switchable here as it is above the Inbox), then the
- * channels still to come.
+ * chat widget, then WhatsApp, Instagram and Facebook, connected through Zernio.
+ *
+ * Connecting leaves the app (Meta's login, hosted by Zernio) and comes back here with
+ * ?zernio_channel=… plus Zernio's success or error params, which this page finishes.
  */
 export function ChannelsView() {
+  const dispatch = useAppDispatch();
+  const router = useRouter();
+  const params = useSearchParams();
+  const { connections, configured, loaded } = useAppSelector((s) => s.inboxChannels);
+  // Back from Zernio: read once, on the first render. An error is shown straight away; a success
+  // is confirmed with our server below.
+  const [returned] = useState(() => {
+    const channel = params.get("zernio_channel");
+    if (!isChannel(channel)) return null;
+    return { channel, error: params.get("error") ? params.get("error_message") ?? "Meta didn't grant access. Nothing was changed — try again and accept every permission." : null, accountId: params.get("accountId") ?? undefined };
+  });
+  const [step, setStep] = useState<ConnectStep | null>(() => (returned?.error ? { kind: "error", channel: returned.channel, message: returned.error } : null));
+  const [configuring, setConfiguring] = useState<ChannelConnection | null>(null);
+  const [disconnecting, setDisconnecting] = useState<ChannelConnection | null>(null);
+  const [confirming, setConfirming] = useState(() => !!returned && !returned.error);
+
+  const fetchedRef = useRef(false);
+  useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
+    dispatch(fetchChannels());
+  }, [dispatch]);
+
+  // Handled once, then the params are dropped so a reload doesn't repeat it.
+  const returnedRef = useRef(false);
+  useEffect(() => {
+    if (returnedRef.current || !returned) return;
+    returnedRef.current = true;
+    router.replace(CHANNELS_HREF);
+    if (returned.error) return;
+    const { channel } = returned;
+    // The server checks this account belongs to our organisation before saving anything.
+    dispatch(confirmChannel({ channel, accountId: returned.accountId })).then((result) => {
+      setConfirming(false);
+      if ("error" in result) setStep({ kind: "error", channel, message: result.error.message ?? "Something went wrong saving the connection." });
+      else if (result.payload[0]) setStep({ kind: "success", channel, connection: result.payload[0] });
+      else setStep({ kind: "error", channel, message: "No account came back from Meta. Try again and pick the account to connect." });
+    });
+  }, [returned, router, dispatch]);
+
+  const byChannel = (key: ChannelKey) => connections.find((c) => c.channel === key && c.status !== "disconnected");
+
   return (
     // /business/messages is full-bleed in the shell, so this page brings its own gutter.
     <div className="mx-auto flex w-full max-w-5xl flex-col gap-8 px-4 py-8 sm:px-6">
@@ -51,23 +107,41 @@ export function ChannelsView() {
 
       <section className="flex flex-col gap-3">
         <SectionLabel>Available channels</SectionLabel>
+        {!configured && (
+          <p className="flex items-center gap-2 rounded-lg bg-amber-500/10 px-3 py-2 text-sm text-amber-900">
+            <TriangleAlert className="size-4 shrink-0" aria-hidden />
+            WhatsApp, Instagram and Facebook aren&apos;t switched on for this server yet.
+          </p>
+        )}
+        {confirming && (
+          <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" aria-hidden />Finishing the connection…</p>
+        )}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {UPCOMING_CHANNELS.map((channel) => (
-            <div key={channel.key} className="flex items-start gap-3 rounded-xl border border-dashed border-border bg-card p-4">
-              <span className={`flex size-10 shrink-0 items-center justify-center rounded-lg ${channel.tint}`}>
-                <channel.icon className="size-5" aria-hidden />
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="font-medium text-foreground">{channel.name}</p>
-                <p className="text-sm text-muted-foreground">{channel.description}</p>
-              </div>
-              <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-                Coming soon
-              </span>
-            </div>
+          {CHANNEL_CARDS.map((card) => (
+            <ChannelCard
+              key={card.key}
+              channel={card.key}
+              description={card.description}
+              connection={loaded ? byChannel(card.key) : undefined}
+              disabled={!configured || !loaded}
+              onConnect={() => setStep({ kind: "intro", channel: card.key })}
+              onReconnect={(c) => setStep({ kind: "intro", channel: c.channel, reconnect: c })}
+              onConfigure={setConfiguring}
+              onDisconnect={setDisconnecting}
+            />
           ))}
         </div>
+        <p className="text-xs text-muted-foreground">WhatsApp, Instagram and Facebook connect through our messaging partner Zernio. You can disconnect any time.</p>
       </section>
+
+      <ConnectDialog
+        step={step}
+        onClose={() => setStep(null)}
+        onConfigure={(c) => { setStep(null); setConfiguring(c); }}
+        onRetry={(channel) => setStep({ kind: "intro", channel })}
+      />
+      <AiConfigDialog connection={configuring} onClose={() => setConfiguring(null)} />
+      <DisconnectDialog connection={disconnecting} onClose={() => setDisconnecting(null)} />
     </div>
   );
 }

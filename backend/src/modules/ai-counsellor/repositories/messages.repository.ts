@@ -21,7 +21,14 @@ export interface MessageRow {
   /** Agent rows only — a snapshot of the staff member's name, so the public widget never joins. */
   sender_name: string | null;
   created_at: Date;
+  /** Channel conversations only (20261008_001), and only in INBOX_COLUMNS reads. */
+  delivery_status?: DeliveryStatus | null;
+  delivery_error?: string | null;
+  sent_from?: "phone_app" | null;
+  sender_deleted_at?: Date | null;
 }
+
+export type DeliveryStatus = "queued" | "sent" | "delivered" | "read" | "failed";
 
 const TABLE = "ai_counselor_messages";
 
@@ -31,6 +38,10 @@ const STUDENT_COLUMNS = [
   "id", "session_id", "role", "content", "sources", "cards", "chips", "blocks", "attachments",
   "feedback", "prompt_tokens", "completion_tokens", "total_tokens", "latency_ms", "sender_name", "created_at",
 ];
+
+// The staff Inbox also sees how a channel message travelled (20261008_001). Never the public
+// widget: delivery bookkeeping is the business's, not the visitor's.
+const INBOX_COLUMNS = [...STUDENT_COLUMNS, "delivery_status", "delivery_error", "sent_from", "sender_deleted_at"];
 
 export async function create(data: {
   session_id: number;
@@ -52,6 +63,12 @@ export async function create(data: {
    * Only written when present, so the column default holds and a DB behind the
    * 20260925_001 migration is not asked for a column it lacks. */
   memory_ids?: string[];
+  /** Channel conversations (20261008_001). Each is only written when present, so the widget's
+   * inserts never name a column a database behind that migration lacks. */
+  provider_message_id?: string;
+  delivery_status?: DeliveryStatus;
+  delivery_error?: string;
+  sent_from?: "phone_app";
 }): Promise<MessageRow> {
   const [row] = await masterKnex(TABLE)
     .insert({
@@ -69,6 +86,10 @@ export async function create(data: {
       latency_ms: data.latency_ms ?? null,
       ...(data.sender_name ? { sender_user_id: data.sender_user_id ?? null, sender_name: data.sender_name } : {}),
       ...(data.memory_ids?.length ? { memory_ids: JSON.stringify(data.memory_ids) } : {}),
+      ...(data.provider_message_id ? { provider_message_id: data.provider_message_id } : {}),
+      ...(data.delivery_status ? { delivery_status: data.delivery_status } : {}),
+      ...(data.delivery_error ? { delivery_error: data.delivery_error } : {}),
+      ...(data.sent_from ? { sent_from: data.sent_from } : {}),
     })
     .returning("*");
   return row;
@@ -100,10 +121,10 @@ export async function findBySession(
 }
 
 /** The newest `limit` messages across several sessions (a visitor's chats), oldest first. */
-export async function findBySessions(sessionIds: number[], limit: number): Promise<MessageRow[]> {
+export async function findBySessions(sessionIds: number[], limit: number, opts: { inbox?: boolean } = {}): Promise<MessageRow[]> {
   if (!sessionIds.length) return [];
   const rows = await masterKnex(TABLE)
-    .select(STUDENT_COLUMNS)
+    .select(opts.inbox ? INBOX_COLUMNS : STUDENT_COLUMNS)
     .whereIn("session_id", sessionIds)
     .orderBy([{ column: "created_at", order: "desc" }, { column: "id", order: "desc" }])
     .limit(limit);
@@ -112,4 +133,34 @@ export async function findBySessions(sessionIds: number[], limit: number): Promi
 
 export async function updateFeedback(id: number, feedback: "positive" | "negative" | null): Promise<void> {
   await masterKnex(TABLE).where({ id }).update({ feedback });
+}
+
+/** Delivery update from a Zernio webhook, matched on the platform message id. */
+export async function setDelivery(providerMessageId: string, status: DeliveryStatus, error?: string | null): Promise<number> {
+  // Never step backwards: a late "delivered" must not overwrite "read".
+  const order = ["queued", "sent", "delivered", "read"];
+  const q = masterKnex(TABLE).where({ provider_message_id: providerMessageId });
+  if (status !== "failed") q.where((b) => b.whereNull("delivery_status").orWhereIn("delivery_status", order.slice(0, order.indexOf(status))).orWhere("delivery_status", "failed"));
+  return q.update({ delivery_status: status, delivery_error: status === "failed" ? error ?? null : null });
+}
+
+/** A message we sent is confirmed by Zernio after the fact (or failed before it got an id). */
+export async function setDeliveryById(id: number, patch: { provider_message_id?: string | null; delivery_status: DeliveryStatus; delivery_error?: string | null }): Promise<void> {
+  await masterKnex(TABLE).where({ id }).update({
+    ...(patch.provider_message_id ? { provider_message_id: patch.provider_message_id } : {}),
+    delivery_status: patch.delivery_status,
+    delivery_error: patch.delivery_error ?? null,
+  });
+}
+
+export async function markSenderDeleted(providerMessageId: string): Promise<number> {
+  return masterKnex(TABLE).where({ provider_message_id: providerMessageId }).update({ sender_deleted_at: masterKnex.fn.now() });
+}
+
+export async function editByProvider(providerMessageId: string, content: string): Promise<number> {
+  return masterKnex(TABLE).where({ provider_message_id: providerMessageId }).update({ content });
+}
+
+export async function existsByProvider(providerMessageId: string): Promise<boolean> {
+  return !!(await masterKnex(TABLE).where({ provider_message_id: providerMessageId }).first("id"));
 }

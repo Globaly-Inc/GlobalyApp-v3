@@ -11,6 +11,8 @@ import { cn } from "@/lib/utils";
 import { VISITOR_STATUS_BADGE } from "../const";
 import { visitorDisplayName, visitorInitials } from "../utils";
 import type { WidgetVisitor } from "../apis/types";
+import { ChannelGlyph } from "@/app/business/messages/components/channel-glyph";
+import { INBOX_CHANNELS } from "@/app/business/messages/const";
 
 /**
  * The list itself — a real table, because Status and Last activity were asked for as columns
@@ -69,6 +71,7 @@ export function VisitorsTable({
               <Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label="Select all on this page" />
             </TableHead>
             <TableHead className="text-xs text-muted-foreground">Visitor</TableHead>
+            <TableHead className="w-28 text-xs text-muted-foreground">Channel</TableHead>
             <TableHead className="hidden w-14 text-xs text-muted-foreground lg:table-cell">Age</TableHead>
             <TableHead className="hidden w-20 text-xs text-muted-foreground lg:table-cell">Gender</TableHead>
             <TableHead className="hidden w-28 text-xs text-muted-foreground lg:table-cell">Nationality</TableHead>
@@ -113,6 +116,7 @@ export function VisitorsTable({
                       <p className={cn("truncate font-medium", anonymous && "text-muted-foreground italic")}>
                         {visitorDisplayName(v)}
                       </p>
+                      {!v.email && v.channel_handle && <p className="truncate text-xs text-muted-foreground">{v.channel_handle}</p>}
                       {v.email && (
                         <a
                           href={`mailto:${v.email}`}
@@ -126,6 +130,12 @@ export function VisitorsTable({
                   </div>
                 </TableCell>
                 {/* Verbatim, never a bucket — "early 30s" is a real stored value. */}
+                <TableCell>
+                  <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" title={v.channel_handle ?? undefined}>
+                    <ChannelGlyph channel={v.channel ?? "ai_embed"} size="sm" />
+                    <span className="truncate">{INBOX_CHANNELS[v.channel ?? "ai_embed"].label}</span>
+                  </span>
+                </TableCell>
                 <TableCell className="hidden truncate lg:table-cell" title={v.age ?? undefined}>{orDash(v.age)}</TableCell>
                 <TableCell className="hidden truncate capitalize lg:table-cell">{orDash(v.gender)}</TableCell>
                 {/* The resolved country when there is one, otherwise the visitor's own wording.

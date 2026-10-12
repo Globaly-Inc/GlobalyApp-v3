@@ -4,6 +4,8 @@ import { useEffect, useRef } from "react";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import type { WidgetVisitor } from "@/app/business/ai-widget/apis/types";
 import { fetchEmbedNotes, fetchEmbedTranscript, markEmbedChatRead } from "../store/embed-chats-slice";
+import { ConfirmModeDialog } from "./confirm-mode-dialog";
+import { ConversationStrip } from "./conversation-strip";
 import { EmbedChatComposer } from "./embed-chat-composer";
 import { EmbedConversationHeader } from "./embed-conversation-header";
 import { EmbedTranscript } from "./embed-transcript";
@@ -18,9 +20,9 @@ import { useEmbedChatActions } from "./use-embed-chat-actions";
 const POLL_MS = 5_000;
 
 /**
- * An AI conversation (embed widget chat) in a support-inbox layout, modelled on GlobalyOS's
- * Support Inbox: the header with who is answering, the transcript, and a composer that lets
- * staff take the chat over from the AI. The visitor panel sits beside it from lg up.
+ * One conversation — website widget, WhatsApp, Instagram or Facebook — in a support-inbox layout:
+ * the header, a strip saying who is answering, the transcript, and a composer that only opens
+ * once you have the conversation. The visitor panel sits beside it from lg up.
  */
 export function EmbedConversationView({ visitor, onBack }: Readonly<{ visitor: WidgetVisitor; onBack: () => void }>) {
   const dispatch = useAppDispatch();
@@ -63,8 +65,10 @@ export function EmbedConversationView({ visitor, onBack }: Readonly<{ visitor: W
     <div className="flex h-full">
       <div className="flex min-w-0 flex-1 flex-col">
         <EmbedConversationHeader visitor={visitor} actions={actions} onBack={onBack} />
+        <ConversationStrip visitor={visitor} actions={actions} />
         <EmbedTranscript visitor={visitor} messages={messages} notes={notes} failed={failed} />
-        <EmbedChatComposer visitor={visitor} />
+        <EmbedChatComposer visitor={visitor} actions={actions} />
+        <ConfirmModeDialog actions={actions} />
       </div>
       {/* Hidden below lg, as the enquiry chat's info panel is: at md the transcript beside
           the list and a panel would be too narrow to read. */}

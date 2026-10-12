@@ -1,5 +1,6 @@
 "use client";
 
+import { DEFAULT_WIDGET_NAME } from "@/app/embed/[key]/const";
 import { useState } from "react";
 import { ArrowUp, ChevronDown, Expand, Lock, Minus, Sparkles } from "lucide-react";
 import { AlyOrbIcon } from "@/components/aly-orb-icon";
@@ -95,7 +96,7 @@ export function WidgetPreview({ form, ownerKind }: Readonly<{ form: WidgetFormVa
             <AlyOrbIcon className="size-9" color={form.brand_color} />
           </span>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-xs font-semibold">{form.display_name || "AI Counsellor"}</p>
+            <p className="truncate text-xs font-semibold">{form.display_name.trim() || DEFAULT_WIDGET_NAME}</p>
             <p className="truncate text-[10px] opacity-80">{form.subtitle || "AI counsellor"}</p>
           </div>
           <Expand className="size-3.5 opacity-80" aria-hidden />

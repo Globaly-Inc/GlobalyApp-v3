@@ -56,7 +56,39 @@ function mockChats(id: number): VisitorChat[] {
   ];
 }
 
+/** WhatsApp, Instagram and Facebook conversations, with delivery ticks on what we sent. */
+const CHANNEL_TRANSCRIPTS: Record<number, () => VisitorMessage[]> = {
+  5: () => [
+    { id: 51, role: "user", content: "Hi, I want to study in Australia.", created_at: ago(9) },
+    { id: 52, role: "assistant", content: "Hi Sarah! I'd be happy to help you with studying in Australia.\n\nWhat course are you interested in?", created_at: ago(9), delivery_status: "read" },
+    { id: 53, role: "user", content: "I'm interested in IT.", created_at: ago(7) },
+    { id: 54, role: "assistant", content: "Great! We have several IT programs. Are you looking for a Bachelor's or Master's program?", created_at: ago(7), delivery_status: "read" },
+    { id: 55, role: "user", content: "Bachelor's. What IELTS score do I need?", created_at: ago(3) },
+    { id: 56, role: "assistant", content: "For a Bachelor's in IT in Australia you'll usually need IELTS 6.0 overall, with no band below 5.5.\n\nDo you already have a test score?", created_at: ago(2), delivery_status: "delivered" },
+  ],
+  6: () => [
+    { id: 61, role: "user", content: "Hi! Do you have scholarships for Canada?", created_at: ago(11) },
+    { id: 62, role: "assistant", content: "Yes, several Canadian universities offer merit scholarships for international students. Which level are you planning to study?", created_at: ago(11), delivery_status: "read" },
+    { id: 63, role: "user", content: "Can someone help me with scholarships? I want to speak to a human.", created_at: ago(8) },
+    { id: 64, role: "assistant", content: "I've asked our team to join this chat. Someone will reply here as soon as they can — you can keep writing in the meantime.", created_at: ago(8), delivery_status: "read" },
+  ],
+  7: () => [
+    { id: 71, role: "user", content: "I'm applying for a Master's in Australia.", created_at: ago(32) },
+    { id: 72, role: "assistant", content: "Great, Omar! Which field and which universities are you looking at?", created_at: ago(32), delivery_status: "read" },
+    { id: 73, role: "user", content: "deleted", created_at: ago(31), deleted: true },
+    { id: 74, role: "user", content: "Can you guarantee my admission to the University of Melbourne?", created_at: ago(30) },
+    { id: 75, role: "assistant", content: "That's a question our admissions team should answer for you, so I've passed it on. Someone will reply here as soon as they can.", created_at: ago(30), delivery_status: "failed", delivery_error: "Meta didn't accept the message. Try again in a minute." },
+  ],
+  8: () => [
+    { id: 81, role: "user", content: "Do you have Business programs in the UK?", created_at: ago(27 * 60) },
+    { id: 82, role: "assistant", content: "Yes! We have BBA and MBA options across several UK universities. Are you looking at undergraduate or postgraduate?", created_at: ago(27 * 60), delivery_status: "read" },
+    { id: 83, role: "user", content: "Thanks, I'll think about it and get back to you.", created_at: ago(26 * 60) },
+    { id: 84, role: "assistant", content: "Sounds good, Priya! Message me any time.", created_at: ago(26 * 60), delivery_status: "read" },
+  ],
+};
+
 function transcript(id: number): VisitorMessage[] {
+  if (!transcripts[id] && CHANNEL_TRANSCRIPTS[id]) transcripts[id] = CHANNEL_TRANSCRIPTS[id]();
   if (!transcripts[id]) {
     transcripts[id] = [
       { id: id * 10 + 1, role: "user", content: "Hi, do you offer a Masters in Data Science?", created_at: ago(30) },
@@ -148,7 +180,11 @@ export const aiWidgetInboxMock = {
       content: body,
       attachments: attachments.flatMap((path) => uploads.get(path) ?? []),
       created_at: new Date().toISOString(),
+      ...(v.channel && v.channel !== "ai_embed" ? { delivery_status: "sent" as const } : {}),
     };
+    // A person answered: whatever AI had flagged is handled.
+    v.attention_reason = null;
+    v.ai_draft = null;
     transcript(id).push(message);
     Object.assign(v, { unread_count: 0, resolved_at: null, resolved_by_name: null, last_activity_at: message.created_at, message_count: v.message_count + 1 });
     scheduleVisitorReply(v);
@@ -176,6 +212,23 @@ export const aiWidgetInboxMock = {
       Object.assign(v, { resolved_at: null, resolved_by_name: null });
     }
     return { control: control(v) };
+  },
+
+  setVisitorStar: async (id: number, starred: boolean): Promise<void> => {
+    console.log("[mock] " + (starred ? "PUT" : "DELETE") + " /ai-chat/embed/visitors/" + id + "/star");
+    await delay(150);
+    find(id).starred = starred;
+  },
+
+  sendVisitorTemplate: async (id: number, template: { name: string; language: string; preview: string }): Promise<SendVisitorMessageResult> => {
+    console.log("[mock] POST /ai-chat/embed/visitors/" + id + "/template", template);
+    await delay(350);
+    const v = find(id);
+    if (!v.handled_by_user_id) takeOver(v);
+    const message: VisitorMessage = { id: nextId++, role: "agent", sender_name: MOCK_AGENT.name, content: template.preview, created_at: new Date().toISOString(), delivery_status: "sent" };
+    transcript(id).push(message);
+    Object.assign(v, { last_activity_at: message.created_at, message_count: v.message_count + 1 });
+    return { message: { ...message }, control: control(v) };
   },
 
   markVisitorChatRead: async (id: number): Promise<void> => {
