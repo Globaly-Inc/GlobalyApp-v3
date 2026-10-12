@@ -41,12 +41,12 @@ export function EmbedChatControls({
           {spin("handBack") ?? <Bot className="size-3.5" aria-hidden />}
           Resume AI
         </Button>
-      ) : (
+      ) : actions.canTakeOver ? (
         <Button size={size} className={cn(wide)} disabled={busy} onClick={actions.takeOver}>
           {spin("takeOver") ?? <Hand className="size-3.5" aria-hidden />}
           {state === "human" ? `Take over from ${handlerLabel(visitor)}` : "Take over"}
         </Button>
-      )}
+      ) : null}
       {state === "human" && !mine && stacked && (
         <Button variant="outline" size={size} className={cn(wide)} disabled={busy} onClick={actions.handBack}>
           {spin("handBack") ?? <Bot className="size-3.5" aria-hidden />}

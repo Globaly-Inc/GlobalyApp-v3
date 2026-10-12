@@ -17,6 +17,9 @@ export const authPlugin = fp(async (app) => {
     "/api/v3/auth/send-otp",
     "/api/v3/auth/verify-otp",
     "/api/v3/auth/refresh",
+    // Authenticated by the refresh cookie/body token, not the Bearer token, so sign-out still
+    // works once the access token has expired (see auth.routes.ts).
+    "/api/v3/auth/logout",
     // Public registration / invitation accept
     "/api/v3/admin/users/invite/accept",
     "/api/v3/auth/register",

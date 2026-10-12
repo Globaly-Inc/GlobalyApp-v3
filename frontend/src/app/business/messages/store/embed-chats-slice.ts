@@ -7,7 +7,7 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { aiWidgetApi } from "@/app/business/ai-widget/apis";
 import { switchAccount } from "@/app/auth/store/auth-slice";
-import type { ConversationControl, HandoffMode, VisitorMessage, VisitorNote, WidgetVisitor } from "@/app/business/ai-widget/apis/types";
+import type { HandoffMode, VisitorMessage, VisitorNote, WidgetVisitor } from "@/app/business/ai-widget/apis/types";
 
 /** The API's max page size. "Load more" walks further pages. */
 const PAGE_SIZE = 100;
@@ -58,6 +58,18 @@ export const markEmbedChatRead = createAsyncThunk("embedChats/read", (visitorId:
   aiWidgetApi.markVisitorChatRead(visitorId),
 );
 
+/** Per-person star, optimistic — reverted if the server refuses. */
+export const starEmbedChat = createAsyncThunk("embedChats/star", (arg: { visitorId: number; starred: boolean }) =>
+  aiWidgetApi.setVisitorStar(arg.visitorId, arg.starred),
+);
+
+/** WhatsApp only: an approved template, after the 24-hour window has closed. */
+export const sendEmbedTemplate = createAsyncThunk(
+  "embedChats/template",
+  (arg: { visitorId: number; template: { name: string; language: string; preview: string; params: string[] } }) =>
+    aiWidgetApi.sendVisitorTemplate(arg.visitorId, arg.template),
+);
+
 type EmbedChatsState = {
   visitors: WidgetVisitor[];
   /** All of this org's visitors, unsearched — the tab count. May exceed `visitors`. */
@@ -93,7 +105,7 @@ const initialState: EmbedChatsState = {
 };
 
 /** The list row is where the header, panel and sidebar all read who is answering. */
-function applyControl(state: EmbedChatsState, visitorId: number, control: ConversationControl) {
+function applyControl(state: EmbedChatsState, visitorId: number, control: Partial<WidgetVisitor>) {
   const visitor = state.visitors.find((v) => v.id === visitorId);
   if (visitor) Object.assign(visitor, control);
 }
@@ -150,7 +162,21 @@ const embedChatsSlice = createSlice({
         if (transcript && !transcript.some((m) => m.id === message.id)) transcript.push(message);
         applyControl(state, visitorId, control);
         const visitor = state.visitors.find((v) => v.id === visitorId);
-        if (visitor) visitor.last_activity_at = message.created_at;
+        // A person answered, so whatever AI had flagged is handled (the server clears it too).
+        if (visitor) Object.assign(visitor, { last_activity_at: message.created_at, attention_reason: null, ai_draft: null });
+      })
+      .addCase(sendEmbedTemplate.fulfilled, (state, action) => {
+        const { visitorId } = action.meta.arg;
+        const { message, control } = action.payload;
+        const transcript = state.transcripts[visitorId];
+        if (transcript && !transcript.some((m) => m.id === message.id)) transcript.push(message);
+        applyControl(state, visitorId, control);
+      })
+      .addCase(starEmbedChat.pending, (state, action) => {
+        applyControl(state, action.meta.arg.visitorId, { starred: action.meta.arg.starred });
+      })
+      .addCase(starEmbedChat.rejected, (state, action) => {
+        applyControl(state, action.meta.arg.visitorId, { starred: !action.meta.arg.starred });
       })
       .addCase(fetchEmbedNotes.fulfilled, (state, action) => {
         state.notes[action.meta.arg] = action.payload;
@@ -161,9 +187,14 @@ const embedChatsSlice = createSlice({
       })
       .addCase(setEmbedHandoff.fulfilled, (state, action) => {
         applyControl(state, action.meta.arg.visitorId, action.payload.control);
+        // Taking over a thread another app held brings it back here (the server took control).
+        const visitor = state.visitors.find((v) => v.id === action.meta.arg.visitorId);
+        if (visitor && action.meta.arg.mode === "human" && visitor.attention_reason === "other_app") visitor.attention_reason = null;
       })
       .addCase(resolveEmbedChat.fulfilled, (state, action) => {
         applyControl(state, action.meta.arg.visitorId, action.payload.control);
+        const visitor = state.visitors.find((v) => v.id === action.meta.arg.visitorId);
+        if (visitor && action.meta.arg.resolved) Object.assign(visitor, { attention_reason: null, ai_draft: null });
       })
       // Optimistic: opening the chat is the read. A failed call just leaves the count stale
       // until the next list poll brings the server's number back.
