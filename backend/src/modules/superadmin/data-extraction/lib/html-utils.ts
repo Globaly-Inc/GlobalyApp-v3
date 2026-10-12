@@ -522,6 +522,35 @@ export function stripMarkdownJunk(md: string): string {
   return out.replace(/\n{3,}/g, "\n\n");
 }
 
+/**
+ * The longest opening text every one of these pages shares — a site's header/nav, LEARNED from the
+ * pages. Markdown links wrap across lines, so a "nav-looking lines" filter misses chrome this
+ * cannot (see CLAUDE.md 2026-10-12 for the measured defect this fixes). "" for fewer than three
+ * pages: two pages off one template share far more than boilerplate, and stripping that would eat
+ * the content.
+ */
+export function sharedPrefix(pages: string[]): string {
+  if (pages.length < 3) return "";
+  return pages.reduce(commonPrefix);
+}
+
+function commonPrefix(a: string, b: string): string {
+  const n = Math.min(a.length, b.length);
+  let i = 0;
+  while (i < n && a[i] === b[i]) i++;
+  return a.slice(0, i);
+}
+
+/** A page's own opening text: boilerplate dropped, images dropped, whitespace collapsed. The strip
+ *  is by COMMON PREFIX with the boilerplate, not startsWith — a header that varies by one byte per
+ *  page (active-nav marker, breadcrumb) still sheds everything up to the divergence point, instead
+ *  of silently reverting the whole page to a nav excerpt. Cut to `chars` LAST, so what the removals
+ *  buy back is spent on content. */
+export function pageExcerpt(markdown: string, boilerplate: string, chars: number): string {
+  const body = boilerplate ? markdown.slice(commonPrefix(markdown, boilerplate).length) : markdown;
+  return body.replace(/!\[[^\]]*\]\([^)]*\)/g, "").slice(0, chars * 4).replace(/\s+/g, " ").trim().slice(0, chars);
+}
+
 /** Truncate markdown to a max character length, breaking at line boundaries */
 // ponytail: 120K chars — Gemini 2.5 Flash handles ~1M tokens, 60K was leaving data on the table
 /**

@@ -1390,6 +1390,123 @@ Template `extractionCompleteEmail` (`shared/mail/templates.ts`, shared `emailLay
 `WEB_APP_URL/business/portal`); timeline events `completion_email_sent` (masked address) / `_skipped` /
 `_failed`. Never throws. `test:completion-email`.
 
+## A course comes from where the page SELLS it, not from anywhere it is named (2026-10-12)
+
+Reported on heraldcollege.edu.np: BSc (Hons) Computing, BSc CSIT, BCA and BIM were staged as that
+college's courses. It runs four programmes and none of those is among them — they come from an FAQ
+block on a marketing post, `/bit-cybersecurity-in-nepal` ("Popular IT programs in Nepal include BIT,
+BSc CSIT, BCA, BIM and BSc (Hons) Computing"). Two independent defects, both fixed:
+
+**1. `excerptsFor` fed the URL classifier the site's nav, not the page.** It took
+`markdown.slice(0, EXCERPT_CHARS)` — and a page's first 300 characters are its header. Herald's
+header is 1,023 characters, so the excerpt beside every one of its URLs was byte-identical and the
+lite classifier was choosing from the slug alone: `/bit-cybersecurity-in-nepal` reads as a course
+page, so `queue_pages` queued a blog post. The same blindness cost a real course —
+`/international-master-of-business-administration`, which `looksLikeCourseUrl` also misses (its path
+reads `-master`, not `/master`).
+
+`html-utils.sharedPrefix` now LEARNS the boilerplate — the longest opening text the pages share —
+from the first `BOILERPLATE_SAMPLE` (50) pages, and `pageExcerpt` strips it, drops images and
+collapses whitespace before cutting to `EXCERPT_CHARS`. Learned, not pattern-matched, because
+markdown links wrap across lines and every CMS nests its chrome differently; `sharedPrefix` returns
+"" for fewer than three pages or when they share nothing, so a mixed list behaves exactly as before.
+Only the sample's heads are held in memory at once — this list can be `CLASSIFY_ALL_CAP` long.
+
+The better excerpt alone was measured NOT to be enough: live lite-tier runs still called the
+marketing post a course page (the `course` description read "a specific course/programme/degree/
+service, or a listing of them", which an article about degrees satisfies). The description in
+`SITE_URL_CATEGORY_DESCRIPTIONS` now excludes articles ABOUT degrees; with excerpt + description
+together, 3 of 3 live runs filed the post as `other` and kept all three real course pages —
+including `/international-master-of-business-administration`, which the heuristic misses.
+
+**2. `classifyEntity` had no way to say "named, not offered".** Its strongest signal is
+`award_in_name`, and "BSc (Hons) Computing" in an FAQ answer states an award exactly as a real
+programme does — the function explicitly never reclassifies a name that states its own award. The
+course prompt gained `mentioned_only_in_prose` evidence (FAQ/Q&A answer, comparison, "related
+programmes" aside, marketing paragraph) and a rule saying an award in the name is NOT evidence the
+institution offers it; `classifyEntity` drops such an item unless the page also did something with
+it — `own_detail_page`, `fees_stated` or `duration_stated` (`OFFERING_EVIDENCE`, which deliberately
+excludes `award_in_name`). Verdict `drop`, reason `mentioned_not_offered`, so `writeCourse` writes
+the usual warn-level `dropped_entity` timeline event rather than failing silently.
+
+Both are at chokepoints: `excerptsFor` serves every URL-classification path (heuristic narrowing,
+full classify, Jev), and `writeCourse` → `classifyEntity` is the only way the pipeline creates an
+`extraction_courses` row. `test:course-mention-not-offered` (fixture: the real first 1,800
+characters of five live pages).
+
+Verified end to end against the live model (2026-10-12): the course prompt run on the real post's
+full markdown returned two mention-tagged items and nothing from the FAQ, and `classifyEntity`
+dropped both — zero staged courses from that page even when it IS queued; the same prompt on the
+real `/our-courses` returned the college's four real programmes, all kept. The two layers are
+independent on purpose: real course pages carry FAQ/"related programmes" blocks too, so a perfect
+URL classifier would not make the second guard redundant.
+
+Second round, from the first Herald run on the fixed code (job 766e8898, 2026-10-12 11:09):
+
+- **Jev reads the category descriptions at module load** (`jev-url-classify.CRITERIA` is a
+  top-level const), so a description fix does nothing until the STEP worker restarts — that run's
+  Jev filed a blog guide as `course` on the old wording while the restarted page worker's new
+  guards were already dropping mentions. Re-probed with current code: Jev files both marketing
+  posts as `other` and keeps every real course page.
+- **A generic degree GUIDE defeats the mention guard legitimately** — `/students-guide-to-business-
+  management-degree-in-nepal` describes a generic BM degree at length (curriculum outline,
+  eligibility, duration), so the model returns `award_in_name, duration_stated`, no mention tag.
+  And the Jev page gate cannot catch it either: measured P(programme) 0.90 for the guide and 0.87
+  for the marketing post vs 0.99 for a real course page — no threshold separates articles that
+  describe degrees from pages that sell them. Classification (above) is the layer that owns this
+  page shape; don't try to re-fix it in the gate.
+- **Resolver tier 2d (cross-field discipline match).** "BSc (Hons) International Business
+  Management" parses to (bachelor, "science", "international business management") and the guide's
+  colloquial "Bachelors in International Business Management" to (bachelor, "international business
+  management", null) — same qualifier, same discipline, zero field-by-field overlap, so tiers 1–3
+  all whiffed and one real programme was silently staged twice ("hons" + "normal"). 2d flags the
+  shape where one side's whole subject IS the other side's specialisation under the same qualifier —
+  but only when the specific side's subject is an UMBRELLA award word (science/arts): "MBA (Finance)"
+  has subject "business administration", a real discipline, and flagging it against a genuine
+  "Masters in Finance" would be reviewer noise over two real programmes. Flag only, like 2c — a BA
+  and a BSc in one subject both match the bare form. Related guard in the classifier: the
+  mention-drop skips anything unit-shaped (module label, unit code, unit evidence), so a "modules
+  covered include…" prose unit is reclassified as a study unit, never silently deleted.
+- **The merge now upgrades `source_url` to the course's own page.** The public course sidebar and
+  the AI-embed card link `source_url`; the merge previously only filled a BLANK, so a row born from
+  a listing kept the listing's URL after its detail page was processed. Upgrade fires only when the
+  matched row has no own-page URL (`res.match.canonical_url` null) and never replaces one —
+  verified against the live DB: listing → upgraded on own-page merge → kept on a later listing
+  write. Known ceiling: a single-course junk page's URL counts as "own" to `jobCourseIndex`
+  (per-URL count 1), so such a row's URL is not upgraded away — the classification layer is what
+  keeps those rows out entirely.
+
+## Accreditations are extracted by the pipeline, and a logo IS the data (2026-10-12)
+
+Until now NOTHING automatic staged accreditations: the main course prompt had no accreditations
+field, writeCourse wrote every other child entity but not this one, and `link_entities` can only
+link bodies already staged. The only producers were the admin's per-course re-extract button
+(`course_data` / `accreditations`) and the spreadsheet import — so a crawled job always showed an
+empty Accreditations tab (heraldcollege.edu.np: zero rows despite literal "accredited by" sections).
+
+- The course prompt now has an `accreditations` array, and a rule for the shape that actually
+  defeats extraction: these sections are frequently LOGO-ONLY — a heading, then an image linking
+  out, the body's name never in text. The model reads the name from the link target or image
+  filename. Verified live on the real IMBA/BIBM pages: CIM, CMI, CIMA, ACCA, AACSB and the
+  Tribhuvan University equivalency all extracted, every domain confirmed present in the page
+  markdown. Equivalency/recognition bodies count; the AWARDING body does not — `awarding_institution`
+  (which until now sat in the prompt as a bare `null` with no description, and was filled on only
+  2 of 5 Herald courses) now has a real description and is explicitly kept out of accreditations.
+- `stageCourseAccreditation` (staging-writer) is the ONE find-or-create + link path, shared by
+  writeCourse and the step worker's re-extract case. Identity, in order: case-insensitive name; the
+  parenthesised abbreviation bridging "CIM" and "Chartered Institute of Marketing (CIM)" (two
+  spellings of one body seen in a single live run — and the only key available when neither entry
+  carries a website); the body's website domain. `website`/`issuing_organization` are backfilled
+  onto a matched row that lacks them, so later domain lookups have something to match. The body
+  table is global (no job_id) and now has a unique index on `lower(trim(name))` (migration
+  `20261012_001`, **migrate before deploy**) — concurrent page workers racing the find both land on
+  one row via `onConflict`; the assignment carries the job, `onConflict(course_id,
+  extraction_accreditation_id)` for rerun idempotency.
+- `is_awarded_by` on the junction stays the self-service/curated flow's column
+  (institution-courses.repository) — the scraper never writes it.
+
+`test:course-accreditations` (prompt shape + a live-DB roundtrip of the helper).
+
 ## External FK columns
 
 7 columns reference tables that may not exist yet in V3. These are plain

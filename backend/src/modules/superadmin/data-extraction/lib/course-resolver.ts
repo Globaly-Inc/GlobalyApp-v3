@@ -50,7 +50,7 @@ export interface Resolution {
   outcome: ResolutionOutcome;
   match: CandidateRow | null;
   matches?: CandidateRow[];
-  tier: "1" | "2" | "2b" | "2c" | "3" | null;
+  tier: "1" | "2" | "2b" | "2c" | "2d" | "3" | null;
   reason: string | null;
 }
 
@@ -138,6 +138,27 @@ export function resolveCourse(incoming: Incoming, candidates: CandidateRow[]): R
     return scoped({
       outcome: "possible_duplicate", match: bareQualifierMatches[0], matches: bareQualifierMatches,
       tier: "2c", reason: "qualifier_missing_one_side",
+    });
+  }
+
+  // Tier 2d — same qualifier, but the DISCIPLINE sits in different fields: "BSc (Hons) X" parses to
+  // (bachelor, "science", X) while the colloquial "Bachelors in X" parses to (bachelor, X, null), so
+  // tiers 1-3 all whiff and one programme was staged twice, silently (heraldcollege.edu.np, live).
+  // The specific side's subject must be an UMBRELLA award word: "MBA (Finance)" has subject
+  // "business administration" — a real discipline — and flagging it against a genuine "Masters in
+  // Finance" is noise, while "science"/"arts" carry no discipline at all. Flag only, like 2c; flags
+  // are ignored on purpose (the colloquial form never states "(Hons)").
+  const UMBRELLA_SUBJECTS = new Set(["science", "arts"]);
+  const crossField = p.subject ? candidates.filter((c) =>
+    !codeConflicts(c) &&
+    c.qualifier_norm != null && c.qualifier_norm === p.qualifier &&
+    ((p.specialisation == null && UMBRELLA_SUBJECTS.has(c.subject_norm ?? "") && (c.specialisation_norm ?? "") === p.subject)
+      || (!!p.specialisation && UMBRELLA_SUBJECTS.has(p.subject) && (c.specialisation_norm ?? null) == null && p.specialisation === (c.subject_norm ?? ""))),
+  ) : [];
+  if (crossField.length) {
+    return scoped({
+      outcome: "possible_duplicate", match: crossField[0], matches: crossField,
+      tier: "2d", reason: "generic_name_for_qualified_award",
     });
   }
 
