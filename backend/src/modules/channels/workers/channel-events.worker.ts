@@ -19,6 +19,8 @@ import { processEvent } from "../services/inbound.service.js";
 
 const logger = createChildLogger("channel-events-worker");
 const SWEEP_MS = 60_000;
+/** A failed event is retried by the sweep for this long, then left with its error for a person. */
+const RETRY_FOR_MS = 24 * 60 * 60_000;
 
 let lane: Promise<unknown> = Promise.resolve();
 function run(eventRowId: number): Promise<void> {
@@ -30,7 +32,9 @@ function run(eventRowId: number): Promise<void> {
 await queueService.consume(CHANNEL_QUEUES.EVENTS, async (msg) => {
   if (!msg) return;
   const { eventRowId } = JSON.parse(msg.content.toString()) as { eventRowId?: unknown };
-  if (typeof eventRowId === "number") await run(eventRowId);
+  // A number or a numeric string (older messages carried pg's int8 string): both are a row id.
+  const id = Number(eventRowId);
+  if (Number.isSafeInteger(id) && id > 0) await run(id);
 }, { noAck: false }, 1);
 
 setInterval(async () => {
@@ -38,10 +42,13 @@ setInterval(async () => {
     const rows: { id: number }[] = await masterKnex("zernio_events")
       .whereNull("processed_at")
       .where("received_at", "<", new Date(Date.now() - SWEEP_MS))
+      // ponytail: age bounds the retries of an event that keeps failing; add an attempts column
+      // if a day of minute-by-minute retries ever proves too many.
+      .where("received_at", ">", new Date(Date.now() - RETRY_FOR_MS))
       .orderBy("id", "asc")
       .limit(50)
       .select("id");
-    for (const r of rows) await run(r.id);
+    for (const r of rows) await run(Number(r.id));
   } catch (err) {
     logger.warn("Sweep failed", { err: err instanceof Error ? err.message : String(err) });
   }

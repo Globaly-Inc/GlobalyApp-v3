@@ -220,7 +220,7 @@ export const aiWidgetInboxMock = {
     find(id).starred = starred;
   },
 
-  sendVisitorTemplate: async (id: number, template: { name: string; language: string; preview: string }): Promise<SendVisitorMessageResult> => {
+  sendVisitorTemplate: async (id: number, template: { name: string; language: string; preview: string; params: string[] }): Promise<SendVisitorMessageResult> => {
     console.log("[mock] POST /ai-chat/embed/visitors/" + id + "/template", template);
     await delay(350);
     const v = find(id);

@@ -66,7 +66,7 @@ export const starEmbedChat = createAsyncThunk("embedChats/star", (arg: { visitor
 /** WhatsApp only: an approved template, after the 24-hour window has closed. */
 export const sendEmbedTemplate = createAsyncThunk(
   "embedChats/template",
-  (arg: { visitorId: number; template: { name: string; language: string; preview: string } }) =>
+  (arg: { visitorId: number; template: { name: string; language: string; preview: string; params: string[] } }) =>
     aiWidgetApi.sendVisitorTemplate(arg.visitorId, arg.template),
 );
 

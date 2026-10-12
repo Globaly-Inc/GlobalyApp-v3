@@ -91,7 +91,7 @@ export const aiWidgetRealApi = {
   },
 
   /** WhatsApp only: an approved template, after the 24-hour window has closed. */
-  sendVisitorTemplate: (id: number, template: { name: string; language: string; preview: string }): Promise<SendVisitorMessageResult> =>
+  sendVisitorTemplate: (id: number, template: { name: string; language: string; preview: string; params: string[] }): Promise<SendVisitorMessageResult> =>
     httpPost(`/ai-chat/embed/visitors/${id}/template`, template),
 
   /** 204 — the caller has already zeroed the count. */

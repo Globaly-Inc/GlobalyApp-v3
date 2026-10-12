@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useAppDispatch } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
@@ -12,11 +13,16 @@ import type { WidgetVisitor } from "@/app/business/ai-widget/apis/types";
 import { channelsApi, type WhatsAppTemplate } from "../channels/apis";
 import { sendEmbedTemplate } from "../store/embed-chats-slice";
 
-/** A template's body with {{1}} filled with the customer's first name — what they will read. */
-function preview(t: WhatsAppTemplate, firstName: string): string {
-  const body = (t.components as { type?: string; text?: string }[]).find((c) => c.type?.toUpperCase() === "BODY")?.text ?? t.name;
-  return body.replace(/\{\{1\}\}/g, firstName);
-}
+const bodyOf = (t: WhatsAppTemplate) =>
+  ((t.components ?? []) as { type?: string; text?: string }[]).find((c) => c.type?.toUpperCase() === "BODY")?.text ?? t.name;
+
+/** The body's numbered variables, in order: "Hi {{1}}, your {{2}}…" → [1, 2]. */
+const variablesOf = (t: WhatsAppTemplate) =>
+  [...new Set([...bodyOf(t).matchAll(/\{\{(\d+)\}\}/g)].map((m) => Number(m[1])))].sort((a, b) => a - b);
+
+/** The body with every variable filled — exactly what the customer will read. */
+const preview = (t: WhatsAppTemplate, values: Record<number, string>) =>
+  bodyOf(t).replace(/\{\{(\d+)\}\}/g, (_, n: string) => values[Number(n)] || `{{${n}}}`);
 
 /** WhatsApp after its 24-hour window: only a template Meta has approved can be sent. */
 export function TemplatePickerDialog({
@@ -41,10 +47,20 @@ export function TemplatePickerDialog({
   }, [open, connectionId]);
 
   const chosen = templates?.[picked];
+  // {{1}} starts as the customer's first name; every variable is editable, and all are sent to
+  // Meta (not only shown here), so the message delivered matches this preview.
+  const [edited, setEdited] = useState<Record<number, string>>({});
+  const vars = chosen ? variablesOf(chosen) : [];
+  const values: Record<number, string> = { 1: firstName, ...edited };
+  const missing = vars.some((n) => !values[n]?.trim());
+  const pick = (i: number) => { setPicked(i); setEdited({}); };
   const send = async () => {
-    if (!chosen) return;
+    if (!chosen || missing) return;
     setSending(true);
-    const result = await dispatch(sendEmbedTemplate({ visitorId: visitor.id, template: { name: chosen.name, language: chosen.language, preview: preview(chosen, firstName) } }));
+    const result = await dispatch(sendEmbedTemplate({
+      visitorId: visitor.id,
+      template: { name: chosen.name, language: chosen.language, preview: preview(chosen, values), params: vars.map((n) => values[n]!.trim()) },
+    }));
     setSending(false);
     if ("error" in result) {
       toast.error("Couldn't send the template", { description: result.error.message ?? "Please try again." });
@@ -75,7 +91,7 @@ export function TemplatePickerDialog({
               <button
                 key={`${t.name}-${t.language}`}
                 type="button"
-                onClick={() => setPicked(i)}
+                onClick={() => pick(i)}
                 aria-pressed={picked === i}
                 className={cn("rounded-lg border px-3 py-2 text-left", picked === i ? "border-primary bg-primary/5" : "border-border hover:bg-muted")}
               >
@@ -83,12 +99,18 @@ export function TemplatePickerDialog({
                 <span className="block text-xs text-muted-foreground">{t.language}{t.category ? ` · ${t.category.toLowerCase()}` : ""}</span>
               </button>
             ))}
-            {chosen && <p className="rounded-lg bg-muted px-3 py-2 text-sm">{preview(chosen, firstName)}</p>}
+            {vars.map((n) => (
+              <label key={n} className="flex items-center gap-2 text-xs text-muted-foreground">
+                <span className="w-10 shrink-0 font-mono">{`{{${n}}}`}</span>
+                <Input value={values[n] ?? ""} onChange={(e) => setEdited((v) => ({ ...v, [n]: e.target.value }))} placeholder="Value for this variable" />
+              </label>
+            ))}
+            {chosen && <p className="whitespace-pre-wrap rounded-lg bg-muted px-3 py-2 text-sm">{preview(chosen, values)}</p>}
           </div>
         )}
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)} disabled={sending}>Cancel</Button>
-          <Button onClick={send} disabled={!chosen || sending}>
+          <Button onClick={send} disabled={!chosen || missing || sending}>
             {sending ? <Loader2 className="size-3.5 animate-spin" aria-hidden /> : <Send className="size-3.5" aria-hidden />}
             Send template
           </Button>

@@ -4,7 +4,8 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { WIDGET_SETTINGS_HREF } from "@/app/business/ai-widget/const";
-import { ArrowLeft, Globe, Loader2, TriangleAlert } from "lucide-react";
+import { ArrowLeft, Globe, Loader2, Plus, TriangleAlert } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { WidgetSwitch } from "../../components/widget-switch";
 import { CHANNELS_HREF } from "../../const";
@@ -19,6 +20,12 @@ import { DisconnectDialog } from "./disconnect-dialog";
 function SectionLabel({ children }: Readonly<{ children: React.ReactNode }>) {
   return <h2 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{children}</h2>;
 }
+
+const ADD_ANOTHER: Record<ChannelKey, string> = {
+  whatsapp: "Add another WhatsApp number",
+  instagram: "Add another Instagram account",
+  facebook: "Add another Facebook Page",
+};
 
 const isChannel = (v: string | null): v is ChannelKey => v === "whatsapp" || v === "instagram" || v === "facebook";
 
@@ -70,7 +77,9 @@ export function ChannelsView() {
     });
   }, [returned, router, dispatch]);
 
-  const byChannel = (key: ChannelKey) => connections.find((c) => c.channel === key && c.status !== "disconnected");
+  // Every live account, not the first: one organisation can connect several WhatsApp numbers or
+  // Facebook Pages, and each needs its own configure / reconnect / disconnect.
+  const live = (key: ChannelKey) => (loaded ? connections.filter((c) => c.channel === key && c.status !== "disconnected") : []);
 
   return (
     // /business/messages is full-bleed in the shell, so this page brings its own gutter.
@@ -117,20 +126,32 @@ export function ChannelsView() {
           <p className="flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="size-4 animate-spin" aria-hidden />Finishing the connection…</p>
         )}
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {CHANNEL_CARDS.map((card) => (
-            <ChannelCard
-              key={card.key}
-              channel={card.key}
-              description={card.description}
-              connection={loaded ? byChannel(card.key) : undefined}
-              disabled={!configured || !loaded}
-              onConnect={() => setStep({ kind: "intro", channel: card.key })}
-              onReconnect={(c) => setStep({ kind: "intro", channel: c.channel, reconnect: c })}
-              onConfigure={setConfiguring}
-              onDisconnect={setDisconnecting}
-            />
-          ))}
+          {CHANNEL_CARDS.flatMap((card) => {
+            const accounts = live(card.key);
+            const props = {
+              channel: card.key,
+              description: card.description,
+              disabled: !configured || !loaded,
+              onConnect: () => setStep({ kind: "intro", channel: card.key }),
+              onReconnect: (c: ChannelConnection) => setStep({ kind: "intro", channel: c.channel, reconnect: c }),
+              onConfigure: setConfiguring,
+              onDisconnect: setDisconnecting,
+            };
+            return accounts.length
+              ? accounts.map((c) => <ChannelCard key={c.id} {...props} connection={c} />)
+              : [<ChannelCard key={card.key} {...props} connection={undefined} />];
+          })}
         </div>
+        {CHANNEL_CARDS.some((card) => live(card.key).length > 0) && (
+          <div className="flex flex-wrap gap-2">
+            {CHANNEL_CARDS.filter((card) => live(card.key).length > 0).map((card) => (
+              <Button key={card.key} size="sm" variant="outline" className="gap-1.5" disabled={!configured} onClick={() => setStep({ kind: "intro", channel: card.key })}>
+                <Plus className="size-3.5" aria-hidden />
+                {ADD_ANOTHER[card.key]}
+              </Button>
+            ))}
+          </div>
+        )}
         <p className="text-xs text-muted-foreground">WhatsApp, Instagram and Facebook connect through our messaging partner Zernio. You can disconnect any time.</p>
       </section>
 

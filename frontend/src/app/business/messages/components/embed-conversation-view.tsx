@@ -29,7 +29,7 @@ export function EmbedConversationView({ visitor, onBack }: Readonly<{ visitor: W
   const messages = useAppSelector((s) => s.embedChats.transcripts[visitor.id]);
   const notes = useAppSelector((s) => s.embedChats.notes[visitor.id]);
   const failed = useAppSelector((s) => s.embedChats.transcriptStatus[visitor.id] === "failed");
-  const actions = useEmbedChatActions(visitor.id);
+  const actions = useEmbedChatActions(visitor);
 
   // Strict Mode double-invokes effects; only refetch when the open chat actually changes.
   const fetchedFor = useRef<number | null>(null);

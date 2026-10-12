@@ -25,7 +25,7 @@ import * as zernioRepo from "../repositories/zernio.repository.js";
 import * as connections from "../repositories/connections.repository.js";
 import * as channelVisitors from "../repositories/channel-visitors.repository.js";
 import { channelConfigFor, sendToCustomer, showTyping } from "./outbound.service.js";
-import { aiConfigOf, CHANNEL_LABEL, channelVisitorKey, isChannel, PHONE_APP_HANDLER, type Channel } from "../consts.js";
+import { aiConfigOf, CHANNEL_LABEL, channelVisitorKey, isChannel, PHONE_APP_HANDLER, type AiConfig, type Channel } from "../consts.js";
 
 const logger = createChildLogger("channels-inbound");
 
@@ -41,12 +41,16 @@ const HOLDING_LINE: Record<EscalationReason, string> = {
 
 // The answer itself is the widget's — lists, bold, course cards — and formatForChannel turns it
 // into the platform's own formatting. This only says where it is going and how long it may be.
-const surfaceNote = (channel: Channel) => [
+const surfaceNote = (channel: Channel, cfg: AiConfig) => [
   `CHANNEL: you are replying to a customer on ${CHANNEL_LABEL[channel]}, in a phone chat — not on a website.`,
   "Answer exactly as you would on the website: lead with what they asked, use short bullet points for options, programmes or steps, and bold the key names. It is converted to the app's formatting.",
   `No tables or code blocks. Keep the whole reply under ${Math.round(CHANNEL_TEXT_LIMIT[channel] * 0.8)} characters, course details included.`,
   "Never mention buttons, cards, links to click or a website chat window.",
-].join("\n");
+  // The channel's AI settings (Channels → AI configuration).
+  !cfg.capabilities.programs && "Do not give details of specific programmes (fees, duration, intakes, requirements). Say the team will follow up with programme details.",
+  !cfg.capabilities.recommend && "Do not recommend or suggest specific programmes.",
+  !cfg.capabilities.collect && "Do not ask for the customer's personal details (name, email, phone, age, nationality, education).",
+].filter(Boolean).join("\n");
 
 // ---------------------------------------------------------------- payload shapes (the parts we read)
 
@@ -101,9 +105,11 @@ export async function processEvent(eventRowId: number): Promise<void> {
     if (outcome) logger.info("Zernio event skipped", { eventId: ev.event_id, event: ev.event, reason: outcome });
     await zernioRepo.markEventProcessed(ev.id, outcome ?? undefined);
   } catch (err) {
+    // Left unprocessed: a database or model blip must not end the job. The sweep retries it, and a
+    // message already stored is picked up again below (messageReceived's retry path).
     const message = err instanceof Error ? err.message : String(err);
-    logger.error("Zernio event failed", { eventId: ev.event_id, event: ev.event, err: message });
-    await zernioRepo.markEventProcessed(ev.id, message.slice(0, 500));
+    logger.error("Zernio event failed; will retry", { eventId: ev.event_id, event: ev.event, err: message });
+    await zernioRepo.markEventFailed(ev.id, message.slice(0, 500));
   }
 }
 
@@ -207,7 +213,11 @@ async function messageReceived(p: InboxPayload): Promise<string | null> {
   const attachments = (p.message?.attachments ?? []).filter((a) => a.url);
   if (!text && !attachments.length) return "empty message";
   const platformId = p.message?.platformMessageId;
-  if (platformId && (await messagesRepo.existsByProvider(platformId))) return "duplicate";
+  // Stored already: a redelivery, or a retry of an event that failed after storing the message.
+  // The message is not stored twice, but a reply that never went out is still owed.
+  const stored = !!platformId && (await messagesRepo.existsByProvider(platformId));
+  // ponytail: attachments are noted in the text; showing the media itself needs Zernio's signed URLs.
+  const content = [text, ...attachments.map((a) => `[${a.type ?? a.originalType ?? "attachment"}]`)].filter(Boolean).join("\n");
 
   const visitorKey = channelVisitorKey(convId);
   const session = await guestService.resolveVisitorSession(visitorKey, t.config.id);
@@ -228,22 +238,29 @@ async function messageReceived(p: InboxPayload): Promise<string | null> {
   }
 
   // History BEFORE this message is stored, so the model isn't handed the question it is answering.
-  const prevMessages = await messagesRepo.findBySession(session.id, { limit: HISTORY_LIMIT });
-  // ponytail: attachments are noted in the text; showing the media itself needs Zernio's signed URLs.
-  const content = [text, ...attachments.map((a) => `[${a.type ?? a.originalType ?? "attachment"}]`)].filter(Boolean).join("\n");
-  try {
-    await messagesRepo.create({ session_id: session.id, role: "user", content, ...(platformId ? { provider_message_id: platformId } : {}) });
-  } catch (err) {
-    // A concurrent copy of this event got there first (unique provider_message_id).
-    if ((err as { code?: string }).code === "23505") return "duplicate";
-    throw err;
+  let prevMessages = await messagesRepo.findBySession(session.id, { limit: HISTORY_LIMIT });
+  let latest = text || content;
+  if (stored) {
+    // Owed only while the customer's message is still the last word (and no draft is waiting).
+    const last = prevMessages[prevMessages.length - 1];
+    if (last?.role !== "user" || visitor.attention_reason === "suggest") return "duplicate";
+    prevMessages = prevMessages.slice(0, -1);
+    latest = last.content;
+  } else {
+    try {
+      await messagesRepo.create({ session_id: session.id, role: "user", content, ...(platformId ? { provider_message_id: platformId } : {}) });
+    } catch (err) {
+      // A concurrent copy of this event got there first (unique provider_message_id).
+      if ((err as { code?: string }).code === "23505") return "duplicate";
+      throw err;
+    }
+    await sessionsRepo.incrementMessageCount(session.id);
+    await channelVisitors.recordInbound(t.db, visitor.id);
+    await takeover.bumpUnread(t.db, visitor.id);
   }
-  await sessionsRepo.incrementMessageCount(session.id);
-  await channelVisitors.recordInbound(t.db, visitor.id);
   // Keep the in-memory row in step: the WhatsApp window check reads last_inbound_at, and on a
   // first message it would otherwise still be null and refuse the reply.
   visitor = { ...visitor, last_inbound_at: new Date() };
-  await takeover.bumpUnread(t.db, visitor.id);
   const summarise = () => void refreshChatSummary(session.id, t.config.display_name, { db: t.db, visitorId: visitor.id });
 
   // Another app (Page Inbox, Meta Business Agent) owns the thread: Meta wouldn't deliver our reply.
@@ -262,7 +279,7 @@ async function messageReceived(p: InboxPayload): Promise<string | null> {
     return null;
   }
 
-  await answer({ ...t, conn }, visitor, session, prevMessages, text || content);
+  await answer({ ...t, conn }, visitor, session, prevMessages, latest);
   return null;
 }
 
@@ -281,7 +298,7 @@ async function answer(
   const summarise = () => void refreshChatSummary(session.id, t.config.display_name, { db: t.db, visitorId: visitor.id });
   const say = (content: string, key: string) => sendToCustomer({ db: t.db, visitor, sessionId: session.id, role: "assistant", content, idempotencyKey: key });
 
-  if (latest && cfg.escalation.human && (await judgeWantsHuman(latest)) && (await takeover.requestHandover(t.db, visitor.id))) {
+  if (latest && cfg.capabilities.escalate && cfg.escalation.human && (await judgeWantsHuman(latest)) && (await takeover.requestHandover(t.db, visitor.id))) {
     await say(HANDOVER_LINE, `handover:${session.id}:${prevMessages.length}:${latest.length}`);
     takeover.notifyHandoverRequest(t.config, visitor, latest)
       .catch((err) => logger.warn("Handover email not sent", { visitorId: visitor.id, err: err instanceof Error ? err.message : String(err) }));
@@ -293,6 +310,13 @@ async function answer(
   if (reason) {
     await channelVisitors.setAttention(t.db, visitor.id, reason);
     await say(HOLDING_LINE[reason], `escalate:${session.id}:${prevMessages.length}:${reason}`);
+    summarise();
+    return;
+  }
+
+  // "Answer customer questions" off: AI writes nothing; the conversation waits in Needs attention.
+  if (!cfg.capabilities.answer) {
+    await channelVisitors.setAttention(t.db, visitor.id, "ai_unsure");
     summarise();
     return;
   }
@@ -309,10 +333,20 @@ async function answer(
   await showTyping(t.db, visitor);
   const embed = await embedService.buildEmbedContext(t.config);
   const rules = await loadVisitorRules(embed);
-  const reply = await generateVisitorReply({ embed, rules, tenantDb: t.db, visitor, prevMessages, history, asked, surfaceNote: surfaceNote(t.conn.channel) });
-  // What the customer will see — and what is stored, so the Inbox shows the same message.
-  const text = formatForChannel(reply, t.conn.channel);
+  const reply = await generateVisitorReply({ embed, rules, tenantDb: t.db, visitor, prevMessages, history, asked, surfaceNote: surfaceNote(t.conn.channel, cfg) });
+  // What the customer will see — and what is stored, so the Inbox shows the same message. Course
+  // cards are recommendations of programmes, so they follow both of those switches.
+  const showCards = cfg.capabilities.programs && cfg.capabilities.recommend;
+  const text = formatForChannel(showCards ? reply : { ...reply, cards: [] }, t.conn.channel);
   if (!text.trim()) return;
+
+  // The model takes seconds; a teammate may have taken over (or resolved it) meanwhile. Their
+  // claim wins: the AI's reply is dropped, not sent over them.
+  const now = await channelVisitors.findById(t.db, visitor.id);
+  if (!now || now.resolved_at || takeover.whoAnswers(now).answerer !== "ai" || now.attention_reason === "sensitive" || now.attention_reason === "other_app") {
+    logger.info("AI reply dropped: a person has the conversation now", { visitorId: visitor.id });
+    return;
+  }
 
   if (t.conn.ai_mode === "suggest") {
     // Suggest-only: a person reviews and sends it from the Inbox.
@@ -329,7 +363,7 @@ async function answer(
     if (visitor.attention_reason === "ai_unsure") await channelVisitors.clearAttention(t.db, visitor.id);
   }
 
-  await captureVisitorDetails({ embed, rules, tenantDb: t.db, visitor, visitorKey: visitor.visitor_key, history, asked });
+  if (cfg.capabilities.collect) await captureVisitorDetails({ embed, rules, tenantDb: t.db, visitor, visitorKey: visitor.visitor_key, history, asked });
   embedRepo.incrementMonthlyUsage(t.config.id)
     .catch((err) => logger.warn("Usage increment failed", { configId: t.config.id, err: String(err) }));
   summarise();

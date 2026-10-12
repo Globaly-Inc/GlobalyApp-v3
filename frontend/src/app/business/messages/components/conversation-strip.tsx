@@ -25,7 +25,7 @@ export function ConversationStrip({ visitor, actions }: Readonly<{ visitor: Widg
   const name = visitorDisplayName(visitor).split(" ")[0];
   const channel = INBOX_CHANNELS[channelOf(visitor)].label;
   const busy = actions.pending !== null;
-  const takeOver = (label = "Take over") => (
+  const takeOver = (label = "Take over") => actions.canTakeOver && (
     <Button size="sm" disabled={busy} onClick={actions.takeOver}><Hand className="size-3.5" aria-hidden />{label}</Button>
   );
   const resume = <Button size="sm" variant="outline" disabled={busy} onClick={actions.handBack}><Bot className="size-3.5" aria-hidden />Resume AI</Button>;

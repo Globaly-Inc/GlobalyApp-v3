@@ -18,6 +18,8 @@ export interface ChannelFields {
   last_inbound_at: Date | null;
   attention_reason: AttentionReason | null;
   ai_draft: string | null;
+  /** A takeover column (not channel-specific), read when re-checking who answers before a send. */
+  resolved_at?: Date | null;
 }
 
 export type ChannelVisitorRow = VisitorRow & ChannelFields;

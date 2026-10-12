@@ -26,8 +26,9 @@ export type VisitorDetail = Record<string, unknown>;
  *
  * page/limit are the degenerate one-row case; `.first()` supersedes the builder's own LIMIT.
  */
-export function findVisitorById(db: Knex, id: number): Promise<VisitorDetail | undefined> {
-  return listQuery(db, { page: 1, limit: 1, status: "all" }).where({ id }).first();
+export function findVisitorById(db: Knex, id: number, userId?: number): Promise<VisitorDetail | undefined> {
+  // userId: whose star `starred` reports — the viewer's, as on the list.
+  return listQuery(db, { page: 1, limit: 1, status: "all", userId }).where({ id }).first();
 }
 
 /**
@@ -48,13 +49,14 @@ export async function updateVisitor(
   db: Knex,
   id: number,
   patch: VisitorPatch,
+  userId?: number,
 ): Promise<VisitorDetail | undefined> {
   const updated = await db(TABLE)
     .where({ id })
     .update({ ...serialiseSections(patch), updated_at: db.fn.now() });
 
   if (!updated) return undefined;
-  return findVisitorById(db, id);
+  return findVisitorById(db, id, userId);
 }
 
 /**

@@ -71,11 +71,19 @@ export async function insertEvent(e: { event_id: string; event: string; account_
     .insert({ event_id: e.event_id, event: e.event, account_id: e.account_id, payload: JSON.stringify(e.payload) })
     .onConflict("event_id").ignore()
     .returning("id");
-  return rows[0]?.id ?? null;
+  // bigserial: pg hands int8 back as a string. A number from here on, so the queue message and
+  // the worker's guard agree.
+  const id = rows[0]?.id;
+  return id == null ? null : Number(id);
 }
 
 export async function findEvent(id: number): Promise<ZernioEventRow | undefined> {
   return masterKnex("zernio_events").where({ id }).first();
+}
+
+/** A failure: noted, but left unprocessed so the worker's sweep tries it again. */
+export async function markEventFailed(id: number, error: string): Promise<void> {
+  await masterKnex("zernio_events").where({ id }).update({ error });
 }
 
 export async function markEventProcessed(id: number, error?: string): Promise<void> {

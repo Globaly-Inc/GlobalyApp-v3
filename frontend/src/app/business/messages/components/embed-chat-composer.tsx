@@ -83,13 +83,13 @@ export function EmbedChatComposer({ visitor, actions }: Readonly<{ visitor: Widg
   } else if (state === "human" && isPhoneApp(visitor)) {
     reply = (
       <Locked icon={Smartphone} tone="border-cyan-300 bg-cyan-500/10 text-cyan-900" title="Replies are coming from the WhatsApp Business app." body="Take over here to reply from the Inbox instead.">
-        <Button size="sm" disabled={busy} onClick={actions.takeOver}><Hand className="size-3.5" aria-hidden />Take over here</Button>
+        {actions.canTakeOver && <Button size="sm" disabled={busy} onClick={actions.takeOver}><Hand className="size-3.5" aria-hidden />Take over here</Button>}
       </Locked>
     );
   } else if (state === "human" && !visitor.handled_by_me) {
     reply = (
       <Locked icon={UserRound} tone="border-cyan-300 bg-cyan-500/10 text-cyan-900" title={`${handlerLabel(visitor)} is handling this conversation.`} body={`Take over from ${handlerLabel(visitor)} to reply, or leave an internal note.`}>
-        <Button size="sm" disabled={busy} onClick={actions.takeOver}><Hand className="size-3.5" aria-hidden />Take over</Button>
+        {actions.canTakeOver && <Button size="sm" disabled={busy} onClick={actions.takeOver}><Hand className="size-3.5" aria-hidden />Take over</Button>}
       </Locked>
     );
   } else if (state !== "human") {
@@ -99,9 +99,9 @@ export function EmbedChatComposer({ visitor, actions }: Readonly<{ visitor: Widg
         icon={Bot}
         tone="border-primary/25 bg-primary/5 text-primary"
         title={draft ? "AI drafted a reply." : state === "waiting" ? `${name} is waiting for a person.` : `AI is replying to ${name} automatically.`}
-        body={draft ? "Take over to review it and send it yourself." : "Take over to reply yourself. AI pauses until you resume it, or 15 minutes pass with no reply from you."}
+        body={!actions.canTakeOver ? "Taking over is turned off for this channel in its AI settings (Channels → AI configuration)." : draft ? "Take over to review it and send it yourself." : "Take over to reply yourself. AI pauses until you resume it, or 15 minutes pass with no reply from you."}
       >
-        <Button size="sm" disabled={busy} onClick={actions.takeOver}><Hand className="size-3.5" aria-hidden />{draft ? "Review draft" : "Take over to reply"}</Button>
+        {actions.canTakeOver && <Button size="sm" disabled={busy} onClick={actions.takeOver}><Hand className="size-3.5" aria-hidden />{draft ? "Review draft" : "Take over to reply"}</Button>}
       </Locked>
     );
   } else if (!whatsappWindowOpen(visitor)) {

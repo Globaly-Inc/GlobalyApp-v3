@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { useAppDispatch } from "@/lib/hooks";
+import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import type { WidgetVisitor } from "@/app/business/ai-widget/apis/types";
 import { resolveEmbedChat, setEmbedHandoff, starEmbedChat } from "../store/embed-chats-slice";
 
 type Action = "takeOver" | "handBack" | "resolve" | "reopen";
@@ -25,8 +26,13 @@ const FAILED: Record<Action, string> = {
  */
 export type EmbedChatActions = ReturnType<typeof useEmbedChatActions>;
 
-export function useEmbedChatActions(visitorId: number) {
+export function useEmbedChatActions(visitor: Pick<WidgetVisitor, "id" | "channel" | "channel_connection_id">) {
   const dispatch = useAppDispatch();
+  const visitorId = visitor.id;
+  // A channel's AI settings can turn human takeover off; the widget always allows it. The server
+  // enforces it too — this only keeps buttons that would be refused off the screen.
+  const canTakeOver = useAppSelector((s) =>
+    s.inboxChannels.connections.find((c) => c.id === visitor.channel_connection_id)?.ai_config?.takeover !== false);
   const [pending, setPending] = useState<Action | null>(null);
   const [confirming, setConfirming] = useState<ConfirmAction | null>(null);
 
@@ -44,6 +50,7 @@ export function useEmbedChatActions(visitorId: number) {
   return {
     pending,
     confirming,
+    canTakeOver,
     takeOver: () => setConfirming("takeOver"),
     handBack: () => setConfirming("handBack"),
     confirm: () => (confirming ? run(confirming) : undefined),

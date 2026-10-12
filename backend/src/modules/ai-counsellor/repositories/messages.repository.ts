@@ -114,6 +114,9 @@ export async function findBySession(
   const q = masterKnex(TABLE)
     .select(STUDENT_COLUMNS)
     .where({ session_id: sessionId })
+    // What the customer deleted on their side (message.deleted) leaves the AI's history and the
+    // summaries too; only the Inbox transcript (findBySessions) still shows "Message deleted".
+    .whereNull("sender_deleted_at")
     .orderBy([{ column: "created_at", order: "desc" }, { column: "id", order: "desc" }]);
   if (opts.limit) q.limit(opts.limit);
   const rows = await q;

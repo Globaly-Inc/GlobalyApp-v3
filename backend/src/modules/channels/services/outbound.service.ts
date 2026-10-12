@@ -3,7 +3,7 @@
 // are written one way.
 
 import type { Knex } from "knex";
-import { BadRequestError } from "../../../shared/errors.js";
+import { BadRequestError, ForbiddenError } from "../../../shared/errors.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import * as messagesRepo from "../../ai-counsellor/repositories/messages.repository.js";
 import * as embedRepo from "../../ai-counsellor/repositories/embed.repository.js";
@@ -11,7 +11,7 @@ import * as zernio from "../lib/zernio-client.js";
 import * as connections from "../repositories/connections.repository.js";
 import * as channelVisitors from "../repositories/channel-visitors.repository.js";
 import type { Recipient } from "../../enquiries/shared/recipient.js";
-import { WHATSAPP_WINDOW_MS } from "../consts.js";
+import { aiConfigOf, CHANNEL_LABEL, WHATSAPP_WINDOW_MS } from "../consts.js";
 
 const logger = createChildLogger("channels-outbound");
 
@@ -23,6 +23,19 @@ const logger = createChildLogger("channels-outbound");
 export async function channelConfigFor(owner: Recipient): Promise<embedRepo.EmbedConfigRow> {
   const all = await embedRepo.findByOwner(owner); // newest first
   return all[all.length - 1] ?? (await embedRepo.ensureForOwner(owner));
+}
+
+/**
+ * A channel's AI settings can switch off human takeover ("Allow business users to take over").
+ * Every way a person claims a channel conversation — Take over, a reply, a template — checks it.
+ * Website widget chats always allow it.
+ */
+export async function assertTakeoverAllowed(db: Knex, visitor: Pick<channelVisitors.ChannelVisitorRow, "channel" | "channel_connection_id"> | undefined): Promise<void> {
+  if (!visitor || visitor.channel === "ai_embed" || visitor.channel_connection_id == null) return;
+  const conn = await connections.findById(db, visitor.channel_connection_id);
+  if (conn && !aiConfigOf(conn.ai_config).takeover) {
+    throw new ForbiddenError(`Taking over is turned off for ${CHANNEL_LABEL[conn.channel]} in its AI settings`);
+  }
 }
 
 /** WhatsApp only: free-form messages are allowed within 24h of the customer's last message. */

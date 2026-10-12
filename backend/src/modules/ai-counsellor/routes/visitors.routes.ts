@@ -21,7 +21,7 @@ import { randomUUID } from "node:crypto";
 import { recipientFromRequest } from "../../enquiries/shared/recipient.js";
 import * as channelVisitors from "../../channels/repositories/channel-visitors.repository.js";
 import * as connections from "../../channels/repositories/connections.repository.js";
-import { sendToCustomer } from "../../channels/services/outbound.service.js";
+import { assertTakeoverAllowed, sendToCustomer } from "../../channels/services/outbound.service.js";
 import { answerPending } from "../../channels/services/inbound.service.js";
 import * as zernio from "../../channels/lib/zernio-client.js";
 import { CHANNEL_LABEL } from "../../channels/consts.js";
@@ -70,7 +70,8 @@ function toChat(c: sessionsRepo.VisitorChat) {
 export async function visitorRoutes(app: FastifyInstance) {
   app.get("/embed/visitors/:id", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
     const { id } = VisitorIdParamSchema.parse(req.params);
-    const visitor = await repo.findVisitorById(req.db, id);
+    // The viewer's id, so `starred` is THEIR star — the same as the list shows.
+    const visitor = await repo.findVisitorById(req.db, id, Number(req.auth.sub));
     if (!visitor) throw new NotFoundError("Visitor not found");
     return reply.send(takeover.withMe(visitor, Number(req.auth.sub)));
   });
@@ -139,6 +140,7 @@ export async function visitorRoutes(app: FastifyInstance) {
     if (cv && cv.channel !== "ai_embed") {
       // WhatsApp, Instagram, Facebook: the reply goes out through Zernio. ponytail: text only —
       // staff files are private objects and Zernio needs a public URL; add signed links when asked.
+      await assertTakeoverAllowed(req.db, cv);
       if (input.attachments.length) throw new BadRequestError(`Attachments can't be sent on ${CHANNEL_LABEL[cv.channel]} yet`);
       if (!input.body) throw new BadRequestError("Write a message first");
       message = await sendToCustomer({
@@ -197,8 +199,12 @@ export async function visitorRoutes(app: FastifyInstance) {
     const { id } = VisitorIdParamSchema.parse(req.params);
     const { mode } = VisitorHandoffSchema.parse(req.body ?? {});
     const userId = Number(req.auth.sub);
+    if (mode === "human") await assertTakeoverAllowed(req.db, await channelVisitors.findById(req.db, id));
     const control = await takeover.setHandoff(req.db, id, mode === "human" ? await takeover.staffFor(userId) : null);
     if (!control) throw new NotFoundError("Visitor not found");
+    // Resume AI is the team's explicit "AI may answer again": whatever was flagged (sensitive,
+    // unsure, another app, a draft) is dealt with, or AI would stay silent behind its own guard.
+    if (mode === "ai") await channelVisitors.clearAttention(req.db, id);
     const cv = await channelVisitors.findById(req.db, id);
     if (cv && cv.channel !== "ai_embed") {
       if (mode === "human" && cv.attention_reason === "other_app" && cv.zernio_conversation_id && cv.channel_connection_id != null) {
@@ -236,11 +242,18 @@ export async function visitorRoutes(app: FastifyInstance) {
     const input = VisitorTemplateSchema.parse(req.body ?? {});
     const cv = await channelVisitors.findById(req.db, id);
     if (!cv || cv.channel !== "whatsapp" || !cv.session_id) throw new NotFoundError("WhatsApp conversation not found");
+    await assertTakeoverAllowed(req.db, cv);
     const staff = await takeover.staffFor(Number(req.auth.sub));
     const message = await sendToCustomer({
       db: req.db, visitor: cv, sessionId: cv.session_id, role: "agent", content: input.preview,
       sender: { userId: staff.id, name: staff.name }, idempotencyKey: `template:${randomUUID()}`,
-      template: { name: input.name, language: input.language },
+      // The values the preview shows, in order ({{1}}, {{2}}…): Meta fills the approved body with
+      // these, so what the customer receives matches what the transcript stores.
+      template: {
+        name: input.name,
+        language: input.language,
+        ...(input.params.length ? { components: [{ type: "body", parameters: input.params.map((text) => ({ type: "text", text })) }] } : {}),
+      },
     });
     await sessionsRepo.incrementMessageCount(cv.session_id);
     const control = await takeover.claimForReply(req.db, id, staff);
@@ -297,7 +310,7 @@ export async function visitorRoutes(app: FastifyInstance) {
   app.patch("/embed/visitors/:id", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
     const { id } = VisitorIdParamSchema.parse(req.params);
     const patch = VisitorPatchSchema.parse(req.body ?? {});
-    const visitor = await repo.updateVisitor(req.db, id, patch);
+    const visitor = await repo.updateVisitor(req.db, id, patch, Number(req.auth.sub));
     if (!visitor) throw new NotFoundError("Visitor not found");
     // An owner's correction changes who the person is, so the contact summary follows it.
     void refreshContactSummary(req.db, id);
