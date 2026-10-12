@@ -390,16 +390,12 @@ const BOILERPLATE_SAMPLE = 50;
 /** Enough of each page to contain any plausible header (heraldcollege.edu.np: 1,023 chars). */
 const EXCERPT_HEAD_CHARS = 8_000;
 
-/** EXCERPT_CHARS of each snapshotted page's OWN content, keyed by normalised URL. Pages not yet
- *  snapshotted are absent. One file read per URL, a few at a time — never a scrape.
- *
- *  The site's header is stripped first (sharedPrefix): taking the raw first EXCERPT_CHARS handed
- *  the classifier the same nav text for every URL on the site, leaving it nothing but the slug to
- *  judge by. A page with no excerpt is shown to the model as a bare URL, exactly as before. */
-async function excerptsFor(urls: string[]): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
+/** The site's boilerplate (sharedPrefix of the first BOILERPLATE_SAMPLE snapshotted heads), plus
+ *  those heads so sampled pages aren't read twice when their excerpts are requested later. A raw
+ *  first-EXCERPT_CHARS slice handed the classifier the same nav text for every URL on the site,
+ *  leaving it nothing but the slug to judge by. */
+async function learnBoilerplate(urls: string[]): Promise<{ boilerplate: string; heads: Map<string, string> }> {
   const heads = new Map<string, string>();
-
   const sample = urls.slice(0, BOILERPLATE_SAMPLE);
   for (let i = 0; i < sample.length; i += EXCERPT_CONCURRENCY) {
     await Promise.all(sample.slice(i, i + EXCERPT_CONCURRENCY).map(async (url) => {
@@ -407,18 +403,26 @@ async function excerptsFor(urls: string[]): Promise<Map<string, string>> {
       if (page) heads.set(url, page.markdown.slice(0, EXCERPT_HEAD_CHARS));
     }));
   }
-  const boilerplate = sharedPrefix([...heads.values()]);
-  for (const [url, head] of heads) out.set(url, pageExcerpt(head, boilerplate, EXCERPT_CHARS));
+  return { boilerplate: sharedPrefix([...heads.values()]), heads };
+}
 
-  // The rest stream through the boilerplate already learned — their heads are never all held at once.
-  const rest = urls.slice(BOILERPLATE_SAMPLE);
-  for (let i = 0; i < rest.length; i += EXCERPT_CONCURRENCY) {
-    await Promise.all(rest.slice(i, i + EXCERPT_CONCURRENCY).map(async (url) => {
-      const page = await readSnapshot(url, "main");
-      if (page) out.set(url, pageExcerpt(page.markdown.slice(0, EXCERPT_HEAD_CHARS), boilerplate, EXCERPT_CHARS));
+/** Add EXCERPT_CHARS of each page's OWN content to `out`, reading only URLs not already present —
+ *  snapshots are fetched ONLY for pages some model/Jev pass will actually see (guided, heuristic-
+ *  placed and beyond-cap URLs never cost a read). A page with no snapshot stays absent and is shown
+ *  to the model as a bare URL, exactly as before. One file read per URL, a few at a time — never a
+ *  scrape. */
+async function addExcerpts(
+  out: Map<string, string>, urls: string[],
+  site: { boilerplate: string; heads: Map<string, string> },
+): Promise<void> {
+  const missing = urls.filter((u) => !out.has(u));
+  for (let i = 0; i < missing.length; i += EXCERPT_CONCURRENCY) {
+    await Promise.all(missing.slice(i, i + EXCERPT_CONCURRENCY).map(async (url) => {
+      const head = site.heads.get(url)
+        ?? (await readSnapshot(url, "main"))?.markdown.slice(0, EXCERPT_HEAD_CHARS);
+      if (head != null) out.set(url, pageExcerpt(head, site.boilerplate, EXCERPT_CHARS));
     }));
   }
-  return out;
 }
 
 /** A URL line for the prompt: the URL, then what the page actually says, when we have it. */
@@ -478,11 +482,13 @@ export async function runUrlClassify(jobId: string, job: JobRow): Promise<{ cour
 
   let picked = new Set(urls.filter(isVisaService ? looksLikeVisaServiceUrl : looksLikeCourseUrl));
   let usedLlm = false;
-  // ONE excerpt map for every model/Jev pass below. Each pass computing its own re-read the same
-  // snapshots from the bucket and re-learned the boilerplate from a different sample — the fallback
-  // pass over the leftovers could learn from under 3 pages and regress to nav-laden excerpts for
-  // exactly the URLs that were hardest to place.
-  const excerpts = await excerptsFor(urls);
+  // ONE boilerplate and ONE excerpt map for every model/Jev pass below. Each pass learning its own
+  // re-read snapshots and re-learned the boilerplate from a different sample — the fallback pass
+  // over the leftovers could learn from under 3 pages and regress to nav-laden excerpts for exactly
+  // the URLs that were hardest to place. The map fills per candidate set (addExcerpts), so pages no
+  // pass will see are never read.
+  const site = await learnBoilerplate(urls);
+  const excerpts = new Map<string, string>();
 
   // Jev path (TYPESAFE_API_KEY set, not a visa-service job): one per-URL question replaces both
   // lite-model passes below. See lib/jev-url-classify.ts.
@@ -490,12 +496,14 @@ export async function runUrlClassify(jobId: string, job: JobRow): Promise<{ cour
   if (jevMin != null) {
     const guidedMap = guidedUrlCategories(guidedRaw, normaliseUrl);
     const candidates = urls.filter((u) => !guidedMap.has(u)).slice(0, CLASSIFY_ALL_CAP);
+    await addExcerpts(excerpts, candidates, site);
     const jev = await jevCategorise(candidates, excerpts, jevMin, () =>
       masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({ processing_heartbeat_at: masterKnex.fn.now() }).then(() => undefined));
     const placed = jevVerdicts(urls, jev, guidedMap, looksLikeCourseUrl, heuristicCategory);
     // What neither Jev (confidently) nor a heuristic could place still gets the lite-model pass —
     // Jev unsure must mean "no Jev", never "other" (review, 2026-09-30).
     const unplaced = [...placed].filter(([, v]) => v === null).map(([u]) => u).slice(0, CLASSIFY_ALL_CAP);
+    await addExcerpts(excerpts, unplaced, site);
     // A failed fallback must not fail the step: every URL already placed keeps its verdict and the
     // unplaced remainder becomes "other" (the same as a URL the model was shown and did not return).
     const modelled = unplaced.length
@@ -533,6 +541,7 @@ export async function runUrlClassify(jobId: string, job: JobRow): Promise<{ cour
 
   const classify = async (candidates: string[], narrowing: boolean) => {
     usedLlm = true;
+    await addExcerpts(excerpts, candidates, site);
     const kept = new Set<string>();
     let distrusted = 0;
     const batches = Math.ceil(candidates.length / CLASSIFIER_BATCH);
@@ -574,6 +583,7 @@ export async function runUrlClassify(jobId: string, job: JobRow): Promise<{ cour
   // the course pass — past it the tail is "other", not another round of lite calls.
   const unplaced = [...merged].filter(([, v]) => v === null).map(([u]) => u);
   const attempted = new Set(unplaced.slice(0, CLASSIFY_ALL_CAP));
+  await addExcerpts(excerpts, [...attempted], site);
   const modelled = attempted.size ? await categoriseWithModel(jobId, [...attempted], excerpts) : new Map<string, SiteUrlCategory>();
   if (modelled.size) usedLlm = true;
 
