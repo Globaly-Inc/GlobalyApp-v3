@@ -179,6 +179,12 @@ export const businessesRealApi = {
   linkExistingBranch: (id: number, input: LinkExistingBranchInput): Promise<LinkExistingBranchResult> =>
     httpPost(`${BASE}/${id}/branches/link-existing`, input),
   deleteBranch: (id: number, branchId: string): Promise<void> => httpDelete(`${BASE}/${id}/branches/${branchId}`),
+  getBranch: (id: number, branchId: string): Promise<Branch> => httpGet(`${BASE}/${id}/branches/${branchId}`),
+  getInstitutionBranch: (id: number, branchId: string): Promise<Branch> => httpGet(`/admin/platform/institutions/${id}/branches/${branchId}`),
+  createInstitutionBranch: (id: number, input: BranchInput): Promise<Branch> => httpPost(`/admin/platform/institutions/${id}/branches`, input),
+  updateInstitutionBranch: (id: number, branchId: string, patch: BranchPatch): Promise<Branch> =>
+    httpPatch(`/admin/platform/institutions/${id}/branches/${branchId}`, patch),
+  deleteInstitutionBranch: (id: number, branchId: string): Promise<void> => httpDelete(`/admin/platform/institutions/${id}/branches/${branchId}`),
 
   getServices: (id: number): Promise<BusinessService[]> => httpGet(`${BASE}/${id}/services`),
   searchServices: async (id: number, params: ServiceSearchParams = {}): Promise<ServiceSearchResult> => {

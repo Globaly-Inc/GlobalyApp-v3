@@ -73,7 +73,7 @@ export function DetailTabs({
             {tab === "branches" && (kind === "business" ? (
               <BranchesTab businessId={id} readOnly={readOnly || isPreSeeded} />
             ) : (
-              <InstitutionBranchesTab institutionId={id} />
+              <InstitutionBranchesTab institutionId={id} readOnly={readOnly} />
             ))}
             {tab === "partners" && (kind === "business" ? (
               <PartnersTab businessId={id} businessName={businessName} businessType={businessType} readOnly={readOnly} />

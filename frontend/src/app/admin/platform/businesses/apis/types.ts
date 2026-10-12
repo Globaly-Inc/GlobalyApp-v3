@@ -189,6 +189,8 @@ export type InstitutionBranch = {
   phone: string | null;
   email: string | null;
   source_url: string | null;
+  /** A scraped campus not yet turned into a branch — read-only here. Own branches omit it. */
+  extracted?: boolean;
 };
 
 /** A subset of `extraction_agents` columns — same provenance rule as InstitutionCourse. */

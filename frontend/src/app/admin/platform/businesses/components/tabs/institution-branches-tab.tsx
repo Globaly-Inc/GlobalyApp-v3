@@ -1,8 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Building2, ExternalLink, Loader2, MapPin, Search } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { Building2, ExternalLink, Loader2, MapPin, MoreVertical, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { businessesApi } from "../../apis";
+import type { InstitutionBranch } from "../../apis/types";
 import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
@@ -10,13 +16,14 @@ import { fetchInstitutionBranches } from "../../store/institution-detail-slice";
 
 const PAGE_SIZE = 10;
 
-// Read-only: these rows come from extraction_campuses via the institution's source_job_id —
-// editing them happens on the extraction job's own admin screen, not here.
-export function InstitutionBranchesTab({ institutionId }: Readonly<{ institutionId: number }>) {
+// The institution's own branches (editable unless claimed) followed by scraped campuses not yet
+// turned into a branch — those stay read-only; they're edited on the extraction job's screen.
+export function InstitutionBranchesTab({ institutionId, readOnly = false }: Readonly<{ institutionId: number; readOnly?: boolean }>) {
   const dispatch = useAppDispatch();
   const { items: branches, status, total } = useAppSelector((state) => state.platformInstitutionDetail.branches);
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
+  const router = useRouter();
 
   const fetchPage = (p: number) => {
     dispatch(fetchInstitutionBranches({ id: institutionId, params: { search: search || undefined, page: p, limit: PAGE_SIZE } }));
@@ -31,6 +38,20 @@ export function InstitutionBranchesTab({ institutionId }: Readonly<{ institution
   const handlePageChange = (p: number) => {
     setPage(p);
     fetchPage(p);
+  };
+
+  const base = `/admin/platform/institutions/${institutionId}/branches`;
+  const openForm = (branch: InstitutionBranch | null) => router.push(branch ? `${base}/${branch.id}/edit` : `${base}/add`);
+
+  const handleDelete = async (branch: InstitutionBranch) => {
+    if (!window.confirm(`Delete branch "${branch.name ?? "Unnamed"}"?`)) return;
+    try {
+      await businessesApi.deleteInstitutionBranch(institutionId, branch.id);
+      toast.success("Branch deleted");
+      fetchPage(page);
+    } catch (e) {
+      toast.error("Couldn't delete branch", { description: (e as Error).message });
+    }
   };
 
   let list: React.ReactNode;
@@ -71,6 +92,19 @@ export function InstitutionBranchesTab({ institutionId }: Readonly<{ institution
                 </p>
               )}
             </div>
+            {!readOnly && !b.extracted && (
+              <DropdownMenu>
+                <DropdownMenuTrigger aria-label="Branch actions" className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground">
+                  <MoreVertical className="h-4 w-4" />
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end">
+                  <DropdownMenuItem onClick={() => openForm(b)}><Pencil className="h-4 w-4" /> Edit</DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => handleDelete(b)} className="text-destructive focus:text-destructive">
+                    <Trash2 className="h-4 w-4" /> Delete
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
           </div>
         ))}
       </div>
@@ -79,10 +113,17 @@ export function InstitutionBranchesTab({ institutionId }: Readonly<{ institution
 
   return (
     <div>
-      <div className="mb-3 flex items-center gap-2">
-        <Building2 className="h-4 w-4 text-muted-foreground" />
-        <span className="text-sm font-semibold">Branches</span>
-        <Badge variant="secondary">{total}</Badge>
+      <div className="mb-3 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Building2 className="h-4 w-4 text-muted-foreground" />
+          <span className="text-sm font-semibold">Branches</span>
+          <Badge variant="secondary">{total}</Badge>
+        </div>
+        {!readOnly && (
+          <Button className="h-10" onClick={() => openForm(null)}>
+            <Plus className="mr-1.5 h-3.5 w-3.5" /> Create branch
+          </Button>
+        )}
       </div>
 
       <div className="relative mb-3 w-1/3">

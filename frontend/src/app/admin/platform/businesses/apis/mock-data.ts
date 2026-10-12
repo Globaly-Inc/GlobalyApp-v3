@@ -638,6 +638,18 @@ export const businessesMockApi = {
     await delay(150);
     mockBranches[id] = (mockBranches[id] ?? []).filter((b) => b.id !== branchId);
   },
+  getBranch: async (id: number, branchId: string): Promise<Branch> => {
+    await delay(100);
+    const found = (mockBranches[id] ?? []).find((b) => b.id === branchId);
+    if (!found) throw new Error("Branch not found");
+    return found;
+  },
+  getInstitutionBranch: async (id: number, branchId: string): Promise<Branch> => businessesMockApi.getBranch(id, branchId),
+  // Institution twins share the business mock store — enough for clicking through offline.
+  createInstitutionBranch: async (id: number, input: BranchInput): Promise<Branch> => businessesMockApi.createBranch(id, input),
+  updateInstitutionBranch: async (id: number, branchId: string, patch: BranchPatch): Promise<Branch> =>
+    businessesMockApi.updateBranch(id, branchId, patch),
+  deleteInstitutionBranch: async (id: number, branchId: string): Promise<void> => businessesMockApi.deleteBranch(id, branchId),
 
   getServices: async (id: number): Promise<BusinessService[]> => {
     await delay(150);
