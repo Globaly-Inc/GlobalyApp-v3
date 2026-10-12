@@ -1509,9 +1509,16 @@ empty Accreditations tab (heraldcollege.edu.np: zero rows despite literal "accre
   on the strongest identity the spellings share (abbreviation, else domain, else name), so "CIM" and
   "Chartered Institute of Marketing (CIM)" staged concurrently also serialise onto one row. The
   assignment carries the job, `onConflict(course_id, extraction_accreditation_id)` for rerun
-  idempotency. The spreadsheet import's accreditation lookup is GLOBAL for the same reason
-  (spreadsheet-extras-staging) — its old job-scoped lookup + bare insert would fail the whole import
-  whenever any other job had already staged the same body.
+  idempotency. EVERY producer reuses the global row: the spreadsheet import's lookup is global, not
+  job-scoped, and the admin's add-accreditation (staged.repository) finds-or-reuses too — either
+  one's old bare insert failed outright once any other job had staged the same body. All three
+  writers collapse inner whitespace and look up with a whitespace-collapsed comparison ("Chartered
+  Institute" finds a legacy "Chartered  Institute" row): lower(trim()) alone misses it, the insert
+  then hits the unique index, and the undefined reselect crashed the whole spreadsheet import.
+  The page worker also records `courses_found` on the queue row BEFORE writing the page's course
+  rows (not only at completion), because pageWasAListing reads it while a concurrently-processed
+  detail page decides its source_url upgrade — completion-only left that window blind and the
+  merged course stuck on the listing link.
 - `is_awarded_by` on the junction stays the self-service/curated flow's column
   (institution-courses.repository) — the scraper never writes it.
 

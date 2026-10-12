@@ -73,10 +73,31 @@ async function main() {
     assert(links.length === 1, `one assignment despite four stagings (got ${links.length})`);
     assert(links[0]?.job_id === jobId && links[0]?.extraction_accreditation_id === bodies[0]?.id,
       "assignment links the right body to the right job");
+
+    // Inner whitespace: a legacy row stored with a double space (pre-dating the collapse-at-entry
+    // rule) must still be found — lower(trim()) alone misses it, hits the unique index on insert,
+    // and the reselect comes back undefined (the spreadsheet import's crash shape).
+    const [legacy] = await masterKnex(`${S}.extraction_accreditations`)
+      .insert({ name: "Probe  Legacy Body (PLB)" }).returning("id");
+    assert(await stageCourseAccreditation(jobId, courseId, { name: "Probe Legacy Body (PLB)" }) === true,
+      "single-spaced spelling reuses the double-spaced legacy row");
+    const legacyRows = await masterKnex(`${S}.extraction_accreditations`)
+      .whereRaw("lower(regexp_replace(trim(name), '\\s+', ' ', 'g')) = ?", ["probe legacy body (plb)"]);
+    assert(legacyRows.length === 1 && legacyRows[0].id === legacy.id, `legacy row reused, not duplicated (got ${legacyRows.length})`);
+
+    // The admin's add-accreditation (staged.repository) must REUSE an existing global body, never
+    // fail its insert against the unique index.
+    const { accreditations: adminRepo } = await import("../src/modules/superadmin/data-extraction/repositories/staged.repository.js");
+    const adminRow = await adminRepo.insert({ name: "probe accreditor (pax)", description: "added by admin" }, 1);
+    assert(adminRow.id === bodies[0]?.id, "admin create returns the existing global row");
+    const afterAdmin = await masterKnex(`${S}.extraction_accreditations`).where({ id: bodies[0]?.id }).first("description");
+    assert(afterAdmin?.description === "added by admin", "admin create backfills blank fields on the reused row");
   } finally {
     const courseIds = (await masterKnex(`${S}.extraction_courses`).where({ job_id: jobId }).select("id")).map((r: { id: string }) => r.id);
     await masterKnex(`${S}.extraction_course_accreditation_assignments`).whereIn("course_id", courseIds).delete();
     await masterKnex(`${S}.extraction_accreditations`).whereRaw("LOWER(name) = LOWER(?)", ["Probe Accreditor (PAX)"]).delete();
+    await masterKnex(`${S}.extraction_accreditations`)
+      .whereRaw("lower(regexp_replace(trim(name), '\\s+', ' ', 'g')) = ?", ["probe legacy body (plb)"]).delete();
     await masterKnex(`${S}.extraction_courses`).where({ job_id: jobId }).delete();
     await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).delete();
     await masterKnex.destroy();

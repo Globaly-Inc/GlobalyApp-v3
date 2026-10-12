@@ -1620,7 +1620,9 @@ export async function upsertScholarship(jobId: string, s: ExtractedScholarship, 
 export async function stageCourseAccreditation(
   jobId: string, courseId: string, acc: ExtractedAccreditation,
 ): Promise<boolean> {
-  const name = acc.name?.trim();
+  // Inner whitespace collapsed, same as the spreadsheet and admin writers — one normalisation
+  // across every producer, or "Chartered  Institute" and "Chartered Institute" become two bodies.
+  const name = acc.name?.trim().replace(/\s+/g, " ");
   if (!name) return false;
   const T = `${S}.extraction_accreditations`;
   // Identity, in order of trust: exact name; the parenthesised abbreviation bridging "CIM" and
@@ -1639,7 +1641,7 @@ export async function stageCourseAccreditation(
   const lockKey = `accred:${(abbr ?? inParens)?.toLowerCase() ?? (domain !== "unknown" ? domain : name.toLowerCase())}`;
   const accId = await masterKnex.transaction(async (trx) => {
     await trx.raw("select pg_advisory_xact_lock(hashtext(?))", [lockKey]);
-    const existing = await trx(T).whereRaw("LOWER(TRIM(name)) = LOWER(?)", [name]).first("id", "website", "issuing_organization")
+    const existing = await trx(T).whereRaw("lower(regexp_replace(trim(name), '\\s+', ' ', 'g')) = LOWER(?)", [name]).first("id", "website", "issuing_organization")
       ?? (abbr ? await trx(T).whereRaw("LOWER(name) LIKE ?", [`%(${likeEsc(abbr)})%`]).first("id", "website", "issuing_organization") : undefined)
       ?? (inParens ? await trx(T).whereRaw("LOWER(TRIM(name)) = LOWER(?)", [inParens]).first("id", "website", "issuing_organization") : undefined)
       ?? (domain !== "unknown"
