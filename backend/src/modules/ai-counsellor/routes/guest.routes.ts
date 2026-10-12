@@ -18,6 +18,7 @@ import * as mediaService from "../../enquiries/services/message-media.service.js
 import { judgeWantsHuman } from "../lib/handover-detect.js";
 import { refreshChatSummary } from "../services/chat-summaries.service.js";
 import * as embedRepo from "../repositories/embed.repository.js";
+import * as knowledgeRepo from "../repositories/knowledge.repository.js";
 import * as sessionsRepo from "../repositories/sessions.repository.js";
 import * as messagesRepo from "../repositories/messages.repository.js";
 import { initSSE, writeEvent, writeData, writeDone } from "../lib/sse-writer.js";
@@ -136,6 +137,36 @@ async function persistVisitorTurn(
 }
 
 /** Public: anonymous chat — plain guests (1 reply, signup wall) and embed-widget visitors. */
+const norm = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, " ");
+
+/** The study level the visitor just named, in their own words, or null if they named none.
+ *  Only meaningful as the answer to the level question — a message about anything else returns
+ *  null, which puts the turn back on the normal path with its courses. */
+export function statedLevel(asked: string): string | null {
+  const text = norm(asked);
+  const LEVELS: Array<[RegExp, string]> = [
+    [/\b(phd|doctoral|doctorate)\b/, "PhD"],
+    [/\b(masters?|msc|ma|mba|meng|postgraduate)\b/, "Master's"],
+    [/\b(bachelors?|undergraduate|bsc|beng|ba)\b/, "Bachelor's"],
+    [/\b(short course|short courses|training|professional training|certificate|diploma)\b/, "Short course"],
+  ];
+  return LEVELS.find(([re]) => re.test(text))?.[1] ?? null;
+}
+
+/** Has the visitor already named one of the subject areas we teach? Then the stream question is
+ *  answered and asking it would be the interrogation discovery exists to avoid. Matches the whole
+ *  area ("business and management") or any distinctive word of it ("engineering"). */
+export function namesSubject(asked: string, catalogue: readonly knowledgeRepo.CatalogueShapeRow[]): boolean {
+  const text = ` ${norm(asked)} `;
+  const SKIP = new Set(["and", "the", "of", "for", "with", "other", "general", "studies", "sciences", "science"]);
+  return catalogue.some((row) => {
+    const area = norm(row.subject_area ?? "").trim();
+    if (!area) return false;
+    if (text.includes(` ${area} `)) return true;
+    return area.split(" ").some((word) => word.length >= 5 && !SKIP.has(word) && text.includes(` ${word} `));
+  });
+}
+
 export async function guestRoutes(app: FastifyInstance) {
   // POST /guest/messages — no auth, SSE stream
   app.post("/guest/messages", {
@@ -308,6 +339,35 @@ export async function guestRoutes(app: FastifyInstance) {
       // memory — the same pairing as chat.service, and the memory call never throws.
       const trace = (step: string) => writeEvent(reply, "trace", { step });
 
+      // Two discovery turns, then courses. Turn 1 asks the LEVEL, turn 2 the STREAM, and both run
+      // with course retrieval switched off — instructions alone don't stop a recommendation when
+      // CONTEXT is full of matching courses. What the catalogue actually holds (levels, subject
+      // areas, counts) is handed to the model instead, so neither question invents an option.
+      //
+      // Turn 2 is skipped when the visitor has already named a subject we teach: they answered the
+      // question before it was asked, and asking it anyway is the interrogation this is meant to
+      // avoid. `history.length === 2` is exactly one prior exchange — their second message.
+      //
+      // No exemption for a visitor we have already met. A stored `study_preference` is one course
+      // this fingerprint once discussed, not what they came back for, and skipping discovery on it
+      // meant anyone who had ever used the widget — the owner testing it, most of all — kept getting
+      // the catalogue dump this exists to stop. What we hold still reaches the model through the
+      // visitor context, so turn 1 asks a sharper question rather than the same one twice.
+      //
+      // Computed HERE and not inside generateVisitorReply: the intake asks its question through a
+      // quick_replies block, and the messaging channels strip blocks before sending — on WhatsApp
+      // the visitor would get a reply with the question missing. This is the widget's flow, so the
+      // widget's own route decides it, and the shared helper simply honours what it is given.
+      const discoveryTurn = history.length === 0;
+      const catalogue = embed?.jobIds?.length && history.length <= 2
+        ? await visitorService.attempt("catalogueShape", () => knowledgeRepo.listCatalogueShape(embed.jobIds!)) ?? []
+        : [];
+      // Their stated level is their own words — the prompt matches it to the catalogue's free-text
+      // levels through the same synonym table course search uses.
+      const streamTurn = !discoveryTurn && history.length === 2 && !!embed && !namesSubject(asked, catalogue)
+        ? statedLevel(asked)
+        : null;
+
       // What may be asked for, read back and kept — the organisation's collection rules, read once
       // for the whole turn. The reply itself (RAG, prompt, model) is the shared visitor reply, the
       // same one WhatsApp, Instagram and Facebook use, so the surfaces cannot drift apart.
@@ -315,6 +375,7 @@ export async function guestRoutes(app: FastifyInstance) {
       const { contactAsk } = rules;
       const { result, cleanText, cards, chips, blocks, ragOutput, memory, visitorLocation } = await generateVisitorReply({
         embed, rules, tenantDb, visitor, prevMessages, history, asked,
+        discoveryTurn, streamTurn, catalogue,
         headers: req.headers,
         onTrace: trace,
         onSources: (sources) => writeEvent(reply, "sources", sources),

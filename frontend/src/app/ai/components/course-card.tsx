@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { CalendarDays, Check, Clock, GraduationCap, MapPin, Monitor, Plus } from "lucide-react";
+import { usePathname } from "next/navigation";
+import { CalendarDays, Check, GraduationCap, MapPin, Monitor, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { useCompareTray } from "@/app/(web)/search/use-compare-tray";
@@ -66,7 +67,13 @@ export function CourseCard({ card }: CourseCardProps) {
   const studyMode = card.study_modes?.[0] ? prettify(card.study_modes[0]) : null;
   const degreeLabel = degreeLevelOf(card);
 
-  const href = card.slug ? `/course/${card.slug}` : (card.source_url ?? null);
+  // Inside a widget the card opens the institution's own branded course page, everywhere else
+  // the website's. The panel runs at /embed/<key>, so the key is already in the path — reading
+  // it here beats threading an embedKey prop down through ChatMessage and the card list, which
+  // the dashboard chat would carry for nothing.
+  const embedKey = /^\/embed\/([^/]+)/.exec(usePathname() ?? "")?.[1];
+  const coursePath = embedKey ? `/embed/${embedKey}/course/${card.slug}` : `/course/${card.slug}`;
+  const href = card.slug ? coursePath : (card.source_url ?? null);
   const isExternal = !card.slug && !!card.source_url;
 
   return (
@@ -167,32 +174,29 @@ export function CourseCard({ card }: CourseCardProps) {
             </div>
           )}
 
-          {/* Divider */}
-          {(fee || card.duration || nextIntake) && (
-            <div className="mt-1.5 border-t border-white/20" />
-          )}
+          {/* Divider — the facts below always render, so it always has something to divide. */}
+          <div className="mt-1.5 border-t border-white/20" />
 
-          {/* Fee + meta */}
-          <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 pt-1 @max-[14rem]/card:pt-0.5">
-            <div className="flex flex-wrap gap-x-3 gap-y-0.5">
-              {card.duration && (
-                <span className="flex items-center gap-1 text-[11px] text-white/85 @max-[14rem]/card:text-[10px]">
-                  <Clock className="size-3 shrink-0" />{card.duration}
-                </span>
-              )}
-              {nextIntake && (
-                <span className="flex items-center gap-1 text-[11px] text-white/85 @max-[14rem]/card:hidden">
-                  <CalendarDays className="size-3 shrink-0" />Intake: {nextIntake}
-                </span>
-              )}
+          {/* Intake on the left, fee on the right, icons instead of label words — in a 260px card
+              the labels ate the width the values need. Both ALWAYS render ("Not listed" / "On
+              enquiry" when absent): the old block dropped whichever fact a course lacked, so two
+              cards in one reply had different rows and heights.
+              ponytail: duration pulled out on request — extraction fills it from study options and
+              a 208-week "duration" for a 2-year master's was doing more harm than good. Put the
+              row back here when that number can be trusted. */}
+          <div className="flex items-end justify-between gap-2 pt-1 @max-[14rem]/card:pt-0.5">
+            <div className="flex min-w-0 flex-col gap-0.5 text-[11px] text-white/85 @max-[14rem]/card:text-[10px]">
+              <span className="flex items-center gap-1 truncate" title={nextIntake ?? undefined}>
+                <CalendarDays className="size-3 shrink-0" />{nextIntake ?? "Not listed"}
+              </span>
             </div>
-            {fee && (
+            {fee ? (
               <span className="shrink-0 text-sm font-bold tabular-nums text-white @max-[14rem]/card:text-xs">
                 {fee}
-                {feeSuffix && (
-                  <span className="ml-0.5 text-[10px] font-normal text-white/70">{feeSuffix}</span>
-                )}
+                {feeSuffix && <span className="ml-0.5 text-[10px] font-normal text-white/70">{feeSuffix}</span>}
               </span>
+            ) : (
+              <span className="shrink-0 text-xs font-medium text-white/75 @max-[14rem]/card:text-[10px]">On enquiry</span>
             )}
           </div>
         </div>
