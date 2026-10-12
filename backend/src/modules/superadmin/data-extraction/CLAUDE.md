@@ -1411,6 +1411,9 @@ collapses whitespace before cutting to `EXCERPT_CHARS`. Learned, not pattern-mat
 markdown links wrap across lines and every CMS nests its chrome differently; `sharedPrefix` returns
 "" for fewer than three pages or when they share nothing, so a mixed list behaves exactly as before.
 Only the sample's heads are held in memory at once — this list can be `CLASSIFY_ALL_CAP` long.
+One boilerplate per `url_classify` run (`learnBoilerplate`, first 50 snapshotted heads), and
+snapshot reads happen ONLY for the URLs a model/Jev pass will actually see (`addExcerpts` fills one
+shared map per candidate set) — guided, heuristic-placed and beyond-cap URLs never cost a read.
 
 The better excerpt alone was measured NOT to be enough: live lite-tier runs still called the
 marketing post a course page (the `course` description read "a specific course/programme/degree/
@@ -1469,12 +1472,14 @@ Second round, from the first Herald run on the fixed code (job 766e8898, 2026-10
   covered include…" prose unit is reclassified as a study unit, never silently deleted.
 - **The merge now upgrades `source_url` to the course's own page.** The public course sidebar and
   the AI-embed card link `source_url`; the merge previously only filled a BLANK, so a row born from
-  a listing kept the listing's URL after its detail page was processed. Upgrade fires only when the
-  matched row has no own-page URL (`res.match.canonical_url` null) and never replaces one —
-  verified against the live DB: listing → upgraded on own-page merge → kept on a later listing
-  write. Known ceiling: a single-course junk page's URL counts as "own" to `jobCourseIndex`
-  (per-URL count 1), so such a row's URL is not upgraded away — the classification layer is what
-  keeps those rows out entirely.
+  a listing kept the listing's URL after its detail page was processed. "Born from a listing" is the
+  QUEUE ROW's recorded `courses_found > 1` (`pageWasAListing`), never the live per-URL row count —
+  that count shrinks to 1 as siblings upgrade, which left the LAST course of every listing
+  permanently un-upgradable (review, 2026-10-12). Verified against the live DB: both listing-born
+  courses upgrade in sequence, a later listing re-extraction never downgrades, and a single-course
+  page's URL (`courses_found` 1) is never replaced. Known ceiling: a junk page that yielded exactly
+  one course is indistinguishable from a detail page here — the classification layer is what keeps
+  those rows out entirely.
 
 ## Accreditations are extracted by the pipeline, and a logo IS the data (2026-10-12)
 
@@ -1500,8 +1505,13 @@ empty Accreditations tab (heraldcollege.edu.np: zero rows despite literal "accre
   onto a matched row that lacks them, so later domain lookups have something to match. The body
   table is global (no job_id) and now has a unique index on `lower(trim(name))` (migration
   `20261012_001`, **migrate before deploy**) — concurrent page workers racing the find both land on
-  one row via `onConflict`; the assignment carries the job, `onConflict(course_id,
-  extraction_accreditation_id)` for rerun idempotency.
+  one row via `onConflict`, and the whole find-or-create runs under a `pg_advisory_xact_lock` keyed
+  on the strongest identity the spellings share (abbreviation, else domain, else name), so "CIM" and
+  "Chartered Institute of Marketing (CIM)" staged concurrently also serialise onto one row. The
+  assignment carries the job, `onConflict(course_id, extraction_accreditation_id)` for rerun
+  idempotency. The spreadsheet import's accreditation lookup is GLOBAL for the same reason
+  (spreadsheet-extras-staging) — its old job-scoped lookup + bare insert would fail the whole import
+  whenever any other job had already staged the same body.
 - `is_awarded_by` on the junction stays the self-service/curated flow's column
   (institution-courses.repository) — the scraper never writes it.
 

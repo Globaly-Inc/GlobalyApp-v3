@@ -1630,34 +1630,39 @@ export async function stageCourseAccreditation(
   const abbr = /^\(?[A-Za-z]{2,12}\)?$/.test(name) ? name.replace(/[()]/g, "") : null; // incoming IS an abbreviation
   const inParens = name.match(/\(([A-Za-z]{2,12})\)/)?.[1] ?? null; // incoming carries one
   const likeEsc = (s: string) => s.toLowerCase().replace(/[%_\\]/g, (m) => `\\${m}`);
-  const existing = await masterKnex(T).whereRaw("LOWER(TRIM(name)) = LOWER(?)", [name]).first("id", "website", "issuing_organization")
-    ?? (abbr ? await masterKnex(T).whereRaw("LOWER(name) LIKE ?", [`%(${likeEsc(abbr)})%`]).first("id", "website", "issuing_organization") : undefined)
-    ?? (inParens ? await masterKnex(T).whereRaw("LOWER(TRIM(name)) = LOWER(?)", [inParens]).first("id", "website", "issuing_organization") : undefined)
-    ?? (domain !== "unknown"
-      ? await masterKnex(T).whereRaw(
-        "website is not null and regexp_replace(lower(split_part(split_part(website, '://', 2), '/', 1)), '^www\\.', '') = ?",
-        [domain],
-      ).first("id", "website", "issuing_organization")
-      : undefined);
-  let accId: string;
-  if (existing) {
-    accId = existing.id;
-    // Fill blanks so a later domain/name lookup has something to match on.
-    const fill: Record<string, unknown> = {};
-    if (acc.website && !existing.website) fill.website = acc.website;
-    if (acc.issuing_organization && !existing.issuing_organization) fill.issuing_organization = acc.issuing_organization;
-    if (Object.keys(fill).length) await masterKnex(T).where({ id: accId }).update(fill);
-  } else {
-    // onConflict on the lower(trim(name)) unique index (migration 20261012_001): two page workers
-    // staging the same body concurrently race the SELECTs above, and the loser must land on the
-    // winner's row, not a duplicate.
-    const [row] = await masterKnex(T)
+  // The unique index (20261012_001) stops concurrent duplicates of the SAME spelling, but two
+  // workers staging "CIM" and "Chartered Institute of Marketing (CIM)" at once both miss the
+  // lookups and insert names that never collide on it. Serialise on the strongest identity the
+  // spellings SHARE — the abbreviation, else the domain, else the name — so the loser's lookups
+  // run after the winner's insert. Spellings that share none of these have no identity to merge
+  // on anyway, concurrent or not.
+  const lockKey = `accred:${(abbr ?? inParens)?.toLowerCase() ?? (domain !== "unknown" ? domain : name.toLowerCase())}`;
+  const accId = await masterKnex.transaction(async (trx) => {
+    await trx.raw("select pg_advisory_xact_lock(hashtext(?))", [lockKey]);
+    const existing = await trx(T).whereRaw("LOWER(TRIM(name)) = LOWER(?)", [name]).first("id", "website", "issuing_organization")
+      ?? (abbr ? await trx(T).whereRaw("LOWER(name) LIKE ?", [`%(${likeEsc(abbr)})%`]).first("id", "website", "issuing_organization") : undefined)
+      ?? (inParens ? await trx(T).whereRaw("LOWER(TRIM(name)) = LOWER(?)", [inParens]).first("id", "website", "issuing_organization") : undefined)
+      ?? (domain !== "unknown"
+        ? await trx(T).whereRaw(
+          "website is not null and regexp_replace(lower(split_part(split_part(website, '://', 2), '/', 1)), '^www\\.', '') = ?",
+          [domain],
+        ).first("id", "website", "issuing_organization")
+        : undefined);
+    if (existing) {
+      // Fill blanks so a later domain/name lookup has something to match on.
+      const fill: Record<string, unknown> = {};
+      if (acc.website && !existing.website) fill.website = acc.website;
+      if (acc.issuing_organization && !existing.issuing_organization) fill.issuing_organization = acc.issuing_organization;
+      if (Object.keys(fill).length) await trx(T).where({ id: existing.id }).update(fill);
+      return existing.id as string;
+    }
+    const [row] = await trx(T)
       .insert({ name, issuing_organization: acc.issuing_organization ?? null, website: acc.website ?? null })
       .onConflict(masterKnex.raw("((LOWER(TRIM(name))))"))
       .ignore()
       .returning("id");
-    accId = row?.id ?? (await masterKnex(T).whereRaw("LOWER(TRIM(name)) = LOWER(?)", [name]).first("id"))!.id;
-  }
+    return (row?.id ?? (await trx(T).whereRaw("LOWER(TRIM(name)) = LOWER(?)", [name]).first("id"))!.id) as string;
+  });
   await masterKnex(`${S}.extraction_course_accreditation_assignments`)
     .insert({ job_id: jobId, course_id: courseId, extraction_accreditation_id: accId })
     .onConflict(["course_id", "extraction_accreditation_id"]).ignore();
@@ -2167,6 +2172,14 @@ export interface WriteCourseContext {
   coursesOnPage?: number;
 }
 
+/** Did this page yield several courses when it was processed? A stable fact from its queue row —
+ *  unlike the live per-URL row count, which shrinks as siblings move to their own detail pages. */
+async function pageWasAListing(jobId: string, url: string): Promise<boolean> {
+  const row = await masterKnex(`${S}.extraction_queue`).where({ job_id: jobId, url })
+    .first(masterKnex.raw("(extracted_data->>'courses_found')::int as n"));
+  return ((row as { n: number | null } | undefined)?.n ?? 0) > 1;
+}
+
 const jobInstitutionUrlCache = new Map<string, string | null>();
 async function jobInstitutionUrl(jobId: string): Promise<string | null> {
   if (!jobInstitutionUrlCache.has(jobId)) {
@@ -2338,13 +2351,15 @@ export async function writeCourse(
         updates[field] = newVal;
       }
     }
-    // A course's OWN page outranks the list/blog page it was first seen on. The public course
-    // sidebar and the AI-embed card link straight to source_url, and the loop above only fills a
-    // BLANK — so a row born from a listing kept the listing's URL forever, even after its real
-    // detail page was processed. Upgrade only when the existing row has no own-page URL
-    // (res.match.canonical_url null: its stored URL is shared with other courses, or absent);
-    // an own-page URL, once set, is never replaced.
-    if (course.source_url && canonicalUrl && !res.match?.canonical_url && existing.source_url !== course.source_url) {
+    // A course's OWN page outranks the listing page it was first seen on. The public course sidebar
+    // and the AI-embed card link straight to source_url, and the loop above only fills a BLANK — so
+    // a row born from a listing kept the listing's URL forever, even after its real detail page was
+    // processed. "Born from a listing" is read from the QUEUE ROW's recorded courses_found, never
+    // from how many rows currently share the URL: the live count shrinks to 1 as siblings upgrade,
+    // which left the LAST course of every listing permanently un-upgradable (review, 2026-10-12).
+    // A URL that yielded a single course is never replaced.
+    if (course.source_url && canonicalUrl && existing.source_url && existing.source_url !== course.source_url
+      && await pageWasAListing(jobId, existing.source_url)) {
       updates.source_url = course.source_url;
     }
     // A later page that names the qualification beats an earlier row that couldn't be linked;
