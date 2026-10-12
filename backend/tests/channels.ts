@@ -10,6 +10,7 @@ const { verifySignature } = await import("../src/modules/channels/lib/zernio-cli
 const { windowOpen } = await import("../src/modules/channels/services/outbound.service.js");
 const { aiConfigOf, DEFAULT_AI_CONFIG, channelVisitorKey, isChannel } = await import("../src/modules/channels/consts.js");
 const { formatForChannel, markdownToChannel } = await import("../src/modules/channels/lib/channel-format.js");
+const { isEventDue } = await import("../src/modules/channels/repositories/zernio.repository.js");
 
 let passed = 0;
 let failed = 0;
@@ -64,6 +65,13 @@ check("course cards become bulleted lines with their details", withCards.include
 check("a timeline block becomes a numbered list", withCards.includes("*How to apply*\n1. Submit transcripts\n2. Interview"));
 const long = formatForChannel({ cleanText: ("A paragraph of text. ".repeat(20) + "\n\n").repeat(5), cards: [card], blocks: [] }, "instagram");
 check("Instagram replies stay under its 1000-character limit", long.length <= 1000);
+
+// --- event retries: an attempt only starts when the event is due
+const at = Date.parse("2026-10-12T10:00:00Z");
+check("a never-attempted event is due", isEventDue({ processed_at: null, next_attempt_at: null }, at));
+check("a failed event is not due before its backoff ends", !isEventDue({ processed_at: null, next_attempt_at: new Date(at + 60_000) }, at));
+check("and is due once it has", isEventDue({ processed_at: null, next_attempt_at: new Date(at - 1) }, at));
+check("a processed event is never due", !isEventDue({ processed_at: new Date(at - 1), next_attempt_at: null }, at));
 
 console.log(`\nchannels: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

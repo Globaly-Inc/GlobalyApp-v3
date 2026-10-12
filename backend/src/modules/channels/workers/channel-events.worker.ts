@@ -21,8 +21,12 @@ const logger = createChildLogger("channel-events-worker");
 const SWEEP_MS = 60_000;
 
 let lane: Promise<unknown> = Promise.resolve();
+/** Events already waiting in the lane or running: the queue and the sweep never line one up twice. */
+const queued = new Set<number>();
 function run(eventRowId: number): Promise<void> {
-  const next = lane.then(() => processEvent(eventRowId));
+  if (queued.has(eventRowId)) return Promise.resolve();
+  queued.add(eventRowId);
+  const next = lane.then(() => processEvent(eventRowId)).finally(() => queued.delete(eventRowId));
   lane = next.catch((err) => logger.error("Event processing crashed", { eventRowId, err: err instanceof Error ? err.message : String(err) }));
   return next;
 }
@@ -35,7 +39,12 @@ await queueService.consume(CHANNEL_QUEUES.EVENTS, async (msg) => {
   if (Number.isSafeInteger(id) && id > 0) await run(id);
 }, { noAck: false }, 1);
 
+// A sweep can outlast the interval when the lane is slow (a model outage); the next one waits
+// rather than selecting the same unfinished rows again.
+let sweeping = false;
 setInterval(async () => {
+  if (sweeping) return;
+  sweeping = true;
   try {
     const rows: { id: number }[] = await masterKnex("zernio_events")
       .whereNull("processed_at")
@@ -51,6 +60,8 @@ setInterval(async () => {
     for (const r of rows) await run(Number(r.id));
   } catch (err) {
     logger.warn("Sweep failed", { err: err instanceof Error ? err.message : String(err) });
+  } finally {
+    sweeping = false;
   }
 }, SWEEP_MS);
 

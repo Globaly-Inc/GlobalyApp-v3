@@ -70,6 +70,13 @@ export interface ZernioEventRow {
 /** Tries before a failing event is given up (marked processed, error kept): about 3 hours. */
 export const MAX_EVENT_ATTEMPTS = 8;
 
+/**
+ * May this event be attempted now? Not once processed, and not before its backoff has passed — so a
+ * stale copy (a queue redelivery, an earlier sweep) can't spend its retries early.
+ */
+export const isEventDue = (ev: Pick<ZernioEventRow, "processed_at" | "next_attempt_at">, now = Date.now()) =>
+  !ev.processed_at && (!ev.next_attempt_at || new Date(ev.next_attempt_at).getTime() <= now);
+
 /** Stores an event once. Returns its row id, or null when this event id was already stored (a retry). */
 export async function insertEvent(e: { event_id: string; event: string; account_id: string | null; payload: unknown }): Promise<number | null> {
   const rows = await masterKnex("zernio_events")

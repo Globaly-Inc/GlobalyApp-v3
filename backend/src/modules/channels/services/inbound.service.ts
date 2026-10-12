@@ -99,7 +99,7 @@ async function tenantFor(accountId: string | null): Promise<Tenant | null> {
 
 export async function processEvent(eventRowId: number): Promise<void> {
   const ev = await zernioRepo.findEvent(eventRowId);
-  if (!ev || ev.processed_at) return;
+  if (!ev || !zernioRepo.isEventDue(ev)) return;
   try {
     const outcome = await route(ev.event, ev.payload as InboxPayload);
     if (outcome) logger.info("Zernio event skipped", { eventId: ev.event_id, event: ev.event, reason: outcome });
