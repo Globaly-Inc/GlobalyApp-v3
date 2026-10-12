@@ -1,4 +1,4 @@
-import { httpDelete, httpGet, httpPatch, httpPost, httpPostForm, httpPostNoContent } from "@/lib/api/http";
+import { httpDelete, httpGet, httpPatch, httpPost, httpPostForm, httpPostNoContent, httpPut } from "@/lib/api/http";
 import type { MessageAttachment } from "@/components/chat/types";
 import type {
   ConversationControlResult, CreateEmbedConfigInput, EmbedConfig, EmbedConfigListResponse, EnsureEmbedResult, HandoffMode,
@@ -14,6 +14,7 @@ function toVisitorQuery(params: VisitorListParams): string {
   if (params.search) q.set("search", params.search);
   // "all" is the backend default — sending it would just make the URL longer.
   if (params.status && params.status !== "all") q.set("status", params.status);
+  if (params.channel) q.set("channel", params.channel);
   const qs = q.toString();
   return qs ? `?${qs}` : "";
 }
@@ -69,9 +70,8 @@ export const aiWidgetRealApi = {
   },
 
   // ── Human takeover ─────────────────────────────────────────────────────────
-  // The contract from the takeover plan; these endpoints don't exist yet, so the Inbox runs on
-  // the mock until the backend lands. The server sets `role: "agent"` and the sender from the
-  // token — nothing here says who is sending.
+  // The server sets `role: "agent"` and the sender from the token — nothing here says who is
+  // sending. On WhatsApp, Instagram and Facebook the server also sends the reply through Zernio.
 
   /** Sends a staff reply. Takes the chat over from the AI if it was handling it. */
   sendVisitorMessage: (id: number, body: string, attachments: string[]): Promise<SendVisitorMessageResult> =>
@@ -83,6 +83,16 @@ export const aiWidgetRealApi = {
 
   resolveVisitorChat: (id: number, resolved: boolean): Promise<ConversationControlResult> =>
     httpPatch(`/ai-chat/embed/visitors/${id}/resolve`, { resolved }),
+
+  /** Per-person star. */
+  setVisitorStar: async (id: number, starred: boolean): Promise<void> => {
+    if (starred) await httpPut(`/ai-chat/embed/visitors/${id}/star`, {});
+    else await httpDelete(`/ai-chat/embed/visitors/${id}/star`);
+  },
+
+  /** WhatsApp only: an approved template, after the 24-hour window has closed. */
+  sendVisitorTemplate: (id: number, template: { name: string; language: string; preview: string; params: string[] }): Promise<SendVisitorMessageResult> =>
+    httpPost(`/ai-chat/embed/visitors/${id}/template`, template),
 
   /** 204 — the caller has already zeroed the count. */
   markVisitorChatRead: (id: number): Promise<void> => httpPostNoContent(`/ai-chat/embed/visitors/${id}/read`),

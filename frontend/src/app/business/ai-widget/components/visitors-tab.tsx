@@ -14,14 +14,19 @@ import { Pagination } from "@/components/ui/pagination";
 import { TableCard } from "@/components/ui/table";
 import { SectionTabs } from "@/components/section-tabs";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { PortalStats } from "@/app/business/profile/components/portal-ui/portal-stats";
+import { PortalStatTile } from "@/app/business/profile/components/portal-ui/portal-stat-tile";
 import { fetchVisitors } from "../store/ai-widget-visitors-slice";
 import { VISITORS_PAGE_SIZE, VISITOR_TABS } from "../const";
 import { downloadCsv, visitorsToCsv } from "../utils";
 import { VisitorsTable } from "./visitors-table";
+import { ChannelPicker, type ChannelFilter } from "@/app/business/messages/components/channel-picker";
 import type { VisitorStatusFilter } from "../apis/types";
 
 /**
- * Everyone who has talked to this org's AI embed widget.
+ * Everyone who has messaged this org, on the website widget, WhatsApp, Instagram or Facebook —
+ * laid out like the Team tab (header, summary tiles, pill tabs, portal table) so the two pages
+ * read as one app.
  *
  * Tenant scoping is entirely the backend's: `ai_widget_visitors` lives in the tenant schema, so
  * the endpoint has no org id to pass and this component has none to send. Nothing here can widen
@@ -36,6 +41,7 @@ export function VisitorsTab() {
   const { items, total, counts, status, error } = useAppSelector((s) => s.aiWidgetVisitors);
 
   const [tab, setTab] = useState<VisitorStatusFilter>("all");
+  const [channel, setChannel] = useState<ChannelFilter>("all");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -46,10 +52,10 @@ export function VisitorsTab() {
   // a mount sends one request, not two.
   useEffect(() => {
     const timer = setTimeout(() => {
-      dispatch(fetchVisitors({ page, limit: VISITORS_PAGE_SIZE, status: tab, search: search.trim() || undefined }));
+      dispatch(fetchVisitors({ page, limit: VISITORS_PAGE_SIZE, status: tab, search: search.trim() || undefined, channel: channel === "all" ? undefined : channel }));
     }, search ? 300 : 0);
     return () => clearTimeout(timer);
-  }, [dispatch, page, tab, search]);
+  }, [dispatch, page, tab, search, channel]);
 
   // Selection is per result set. Keeping it across a filter change would let "3 selected" mean
   // three rows nobody can see any more — and the export below would then quietly disagree with
@@ -65,10 +71,19 @@ export function VisitorsTab() {
     downloadCsv(`widget-${tab === "all" ? "visitors" : tab}s-${new Date().toISOString().slice(0, 10)}.csv`, visitorsToCsv(rows));
   };
 
+  const filtered = !!search || tab !== "all" || channel !== "all";
+
   // Rendered at /business/contacts/visitors, which BusinessShell gives PortalShell `width="wide"`.
   return (
     <PageBody>
-      <PageHeader title={<><Users /> Visitors &amp; Leads</>} subtitle="Everyone who has chatted with your AI widget." />
+      <PageHeader title={<><Users /> Visitors &amp; Leads</>} subtitle="Everyone who has messaged you, on your website, WhatsApp, Instagram or Facebook." />
+
+      {/* Counts are for the whole list (they ignore search and channel), like the Team tiles. */}
+      <PortalStats>
+        <PortalStatTile value={counts.all} label="People" />
+        <PortalStatTile value={counts.visitor} label="Visitors" />
+        <PortalStatTile value={counts.lead} label="Leads" />
+      </PortalStats>
 
       <SectionTabs
         options={VISITOR_TABS.map((t) => ({ ...t, count: counts[t.value] }))}
@@ -79,10 +94,14 @@ export function VisitorsTab() {
 
       <FilterBar>
         <SearchInput
-          placeholder="Search name, email or programme"
+          placeholder="Search name, email, phone or handle"
+          aria-label="Search visitors"
           value={search}
           onChange={(e) => changeQuery(() => setSearch(e.target.value))}
         />
+        <div className="w-full sm:w-60">
+          <ChannelPicker value={channel} onChange={(next) => changeQuery(() => setChannel(next))} />
+        </div>
         <span className="shrink-0 px-2 text-sm text-muted-foreground">
           {total} {VISITOR_TABS.find((t) => t.value === tab)?.label.toLowerCase()}
         </span>
@@ -113,11 +132,11 @@ export function VisitorsTab() {
       {status === "idle" && items.length === 0 && (
         <EmptyState
           icon={Users}
-          title={search || tab !== "all" ? "Nothing matches these filters" : "No one has used your AI widget yet"}
+          title={filtered ? "Nothing matches these filters" : "No one has messaged you yet"}
           description={
-            !search && tab === "all"
-              ? "Visitors appear here as soon as someone sends their first message, and become leads when they share their name and email."
-              : undefined
+            filtered
+              ? undefined
+              : "People appear here as soon as they send their first message, and become leads when they share their name and email."
           }
         />
       )}

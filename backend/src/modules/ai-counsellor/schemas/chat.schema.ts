@@ -111,6 +111,8 @@ export const EmbedKeyQuerySchema = z.object({
 export const VisitorListQuerySchema = PaginationSchema.extend({
   status: z.enum(["all", "visitor", "lead"]).default("all"),
   search: z.string().trim().max(120).optional(),
+  /** Omnichannel: one Inbox channel; absent = every channel. */
+  channel: z.enum(["ai_embed", "whatsapp", "instagram", "facebook"]).optional(),
 });
 
 export const GuestSessionQuerySchema = z.object({

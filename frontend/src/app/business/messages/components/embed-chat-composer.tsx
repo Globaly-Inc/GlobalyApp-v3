@@ -1,69 +1,127 @@
 "use client";
 
 import { useState } from "react";
-import { Bot, CheckCircle2, Hand, StickyNote } from "lucide-react";
+import { Bot, CheckCircle2, Clock, FileText, Hand, RotateCcw, Smartphone, StickyNote, UserRound } from "lucide-react";
 import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
 import { MessageComposer } from "@/components/chat/message-composer";
 import { useAppDispatch } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import { aiWidgetApi } from "@/app/business/ai-widget/apis";
 import { visitorDisplayName } from "@/app/business/ai-widget/utils";
 import type { WidgetVisitor } from "@/app/business/ai-widget/apis/types";
+import { INBOX_CHANNELS } from "../const";
 import { addEmbedNote, sendEmbedMessage } from "../store/embed-chats-slice";
-import { embedChatState, handlerLabel } from "../utils";
+import { channelOf, embedChatState, handlerLabel, isPhoneApp, whatsappWindowOpen } from "../utils";
+import { TemplatePickerDialog } from "./template-picker-dialog";
+import type { EmbedChatActions } from "./use-embed-chat-actions";
 
-/** What sending will do, said before it happens — a reply here is never "just a message". */
-function banner(visitor: WidgetVisitor): { icon: typeof Bot; text: string; className: string } {
-  switch (embedChatState(visitor)) {
-    case "resolved":
-      return { icon: CheckCircle2, text: "This chat is resolved. Replying reopens it and puts you in charge.", className: "bg-emerald-500/10 text-emerald-800" };
-    case "human":
-      return visitor.handled_by_me
-        ? { icon: Hand, text: "You're handling this chat, so the AI is paused. It takes over again 15 minutes after your last reply.", className: "bg-cyan-500/10 text-cyan-900" }
-        : { icon: Hand, text: `${handlerLabel(visitor)} is handling this chat. Your reply is sent, and they stay in charge.`, className: "bg-cyan-500/10 text-cyan-900" };
-    case "waiting":
-      return { icon: Hand, text: "This visitor asked to talk to a person, so the AI is paused. Reply to join the chat. If nobody does within 15 minutes, the AI picks it up again.", className: "bg-amber-500/15 text-amber-900" };
-    default:
-      return { icon: Bot, text: "The AI assistant is answering this visitor. Sending a reply takes the chat over.", className: "bg-amber-500/10 text-amber-900" };
-  }
+/** A locked composer: says who answers instead of offering a box that would change it silently. */
+function Locked({ icon: Icon, title, body, tone, children }: Readonly<{
+  icon: typeof Bot; title: string; body: string; tone: string; children?: React.ReactNode;
+}>) {
+  return (
+    <div className={cn("mx-3 my-2 flex flex-wrap items-center gap-3 rounded-xl border border-dashed px-3.5 py-3", tone)}>
+      <Icon className="size-4 shrink-0" aria-hidden />
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-semibold">{title}</p>
+        <p className="text-xs opacity-85">{body}</p>
+      </div>
+      {children}
+    </div>
+  );
 }
 
-const NOTE_BANNER = {
-  icon: StickyNote,
-  text: "Internal note. Only your team sees it — the visitor and the AI never do.",
-  className: "bg-amber-500/15 text-amber-900",
-};
-
 /**
- * Reply or Note, Gleap-style. A note never touches who is answering: it goes to its own
- * endpoint, so writing one doesn't take the chat over from the AI.
+ * Reply or Note. A note never touches who is answering: it goes to its own endpoint, so writing
+ * one never takes the conversation over from AI, and it never reaches the customer.
  *
- * The enquiry composer (emoji, attachments, formatting), sending as a staff reply. No saved
- * drafts: the Drafts shortcut lists enquiry threads only, so a widget-chat draft there would
- * be a row that opens nothing.
+ * Replying is only possible when YOU have the conversation: in AI mode the box is locked with
+ * "Take over to reply", so AI mode and human mode can't be confused.
  */
-export function EmbedChatComposer({ visitor }: Readonly<{ visitor: WidgetVisitor }>) {
+export function EmbedChatComposer({ visitor, actions }: Readonly<{ visitor: WidgetVisitor; actions: EmbedChatActions }>) {
   const dispatch = useAppDispatch();
   const [mode, setMode] = useState<"reply" | "note">("reply");
-  const note = mode === "note" ? NOTE_BANNER : banner(visitor);
-  const Icon = note.icon;
+  const [templates, setTemplates] = useState(false);
+  const state = embedChatState(visitor);
+  const name = visitorDisplayName(visitor).split(" ")[0];
+  const channel = channelOf(visitor);
+  const busy = actions.pending !== null;
 
   const handleSend = async (body: string, attachments: string[]) => {
-    if (mode === "note") {
-      const result = await dispatch(addEmbedNote({ visitorId: visitor.id, body, attachments }));
-      if ("error" in result) {
-        toast.error("Couldn't save your note", { description: result.error.message ?? "Please try again." });
-        return false;
-      }
-      return true;
-    }
-    const result = await dispatch(sendEmbedMessage({ visitorId: visitor.id, body, attachments }));
+    const result = mode === "note"
+      ? await dispatch(addEmbedNote({ visitorId: visitor.id, body, attachments }))
+      : await dispatch(sendEmbedMessage({ visitorId: visitor.id, body, attachments }));
     if ("error" in result) {
-      toast.error("Couldn't send your reply", { description: result.error.message ?? "Please try again." });
+      toast.error(mode === "note" ? "Couldn't save your note" : "Couldn't send your reply", { description: result.error.message ?? "Please try again." });
       return false;
     }
     return true;
   };
+
+  const box = (placeholder?: string, initialValue?: string) => (
+    <MessageComposer
+      // Keyed by mode too: a half-typed reply must not become a note on a tab switch.
+      key={`${visitor.id}-${mode}`}
+      placeholder={placeholder}
+      distributionId={`embed-${visitor.id}`}
+      counterpartName={visitorDisplayName(visitor)}
+      onUploadAttachment={aiWidgetApi.uploadVisitorAttachment}
+      persistDraft={false}
+      initialValue={initialValue}
+      onSend={handleSend}
+    />
+  );
+
+  let reply: React.ReactNode;
+  if (state === "resolved") {
+    reply = (
+      <Locked icon={CheckCircle2} tone="border-emerald-300 bg-emerald-500/10 text-emerald-800" title="This conversation is resolved." body={`Reopen it to reply, or let AI pick it up when ${name} writes again.`}>
+        <Button size="sm" variant="outline" disabled={busy} onClick={actions.reopen}><RotateCcw className="size-3.5" aria-hidden />Reopen</Button>
+      </Locked>
+    );
+  } else if (state === "human" && isPhoneApp(visitor)) {
+    reply = (
+      <Locked icon={Smartphone} tone="border-cyan-300 bg-cyan-500/10 text-cyan-900" title="Replies are coming from the WhatsApp Business app." body="Take over here to reply from the Inbox instead.">
+        {actions.canTakeOver && <Button size="sm" disabled={busy} onClick={actions.takeOver}><Hand className="size-3.5" aria-hidden />Take over here</Button>}
+      </Locked>
+    );
+  } else if (state === "human" && !visitor.handled_by_me) {
+    reply = (
+      <Locked icon={UserRound} tone="border-cyan-300 bg-cyan-500/10 text-cyan-900" title={`${handlerLabel(visitor)} is handling this conversation.`} body={`Take over from ${handlerLabel(visitor)} to reply, or leave an internal note.`}>
+        {actions.canTakeOver && <Button size="sm" disabled={busy} onClick={actions.takeOver}><Hand className="size-3.5" aria-hidden />Take over</Button>}
+      </Locked>
+    );
+  } else if (state !== "human") {
+    const draft = visitor.attention_reason === "suggest";
+    reply = (
+      <Locked
+        icon={Bot}
+        tone="border-primary/25 bg-primary/5 text-primary"
+        title={draft ? "AI drafted a reply." : state === "waiting" ? `${name} is waiting for a person.` : `AI is replying to ${name} automatically.`}
+        body={!actions.canTakeOver ? "Taking over is turned off for this channel in its AI settings (Channels → AI configuration)." : draft ? "Take over to review it and send it yourself." : "Take over to reply yourself. AI pauses until you resume it, or 15 minutes pass with no reply from you."}
+      >
+        {actions.canTakeOver && <Button size="sm" disabled={busy} onClick={actions.takeOver}><Hand className="size-3.5" aria-hidden />{draft ? "Review draft" : "Take over to reply"}</Button>}
+      </Locked>
+    );
+  } else if (!whatsappWindowOpen(visitor)) {
+    reply = (
+      <Locked icon={Clock} tone="border-amber-300 bg-amber-50 text-amber-900" title="WhatsApp's 24-hour window has closed." body="Send an approved template to restart the conversation.">
+        <Button size="sm" onClick={() => setTemplates(true)}><FileText className="size-3.5" aria-hidden />Choose template</Button>
+      </Locked>
+    );
+  } else {
+    reply = (
+      <>
+        <p className="mx-3 mt-2 flex items-center gap-2 rounded-md bg-cyan-500/10 px-3 py-1.5 text-xs text-cyan-900">
+          <UserRound className="size-3.5 shrink-0" aria-hidden />
+          {`Replying as you${channel === "ai_embed" ? "" : ` on ${INBOX_CHANNELS[channel].label}`} · AI is paused`}
+        </p>
+        {/* A suggest-only draft starts in the box, for a person to review and send. */}
+        {box(undefined, visitor.ai_draft ?? undefined)}
+      </>
+    );
+  }
 
   return (
     <div className={cn("shrink-0 border-t border-border", mode === "note" && "bg-amber-50/60")}>
@@ -77,29 +135,23 @@ export function EmbedChatComposer({ visitor }: Readonly<{ visitor: WidgetVisitor
             onClick={() => setMode(m)}
             className={cn(
               "rounded-md px-2.5 py-1 text-xs font-medium",
-              mode === m
-                ? m === "note" ? "bg-amber-100 text-amber-900" : "bg-primary/10 text-primary"
-                : "text-muted-foreground hover:bg-muted",
+              mode === m ? (m === "note" ? "bg-amber-100 text-amber-900" : "bg-primary/10 text-primary") : "text-muted-foreground hover:bg-muted",
             )}
           >
             {m === "reply" ? "Reply" : "Note"}
           </button>
         ))}
       </div>
-      <p className={cn("mx-3 mt-2 flex items-center gap-2 rounded-md px-3 py-1.5 text-xs", note.className)}>
-        <Icon className="size-3.5 shrink-0" aria-hidden />
-        {note.text}
-      </p>
-      <MessageComposer
-        // Keyed by mode too: a half-typed reply must not become a note on a tab switch.
-        key={`${visitor.id}-${mode}`}
-        placeholder={mode === "note" ? "Write a note for your team…" : undefined}
-        distributionId={`embed-${visitor.id}`}
-        counterpartName={visitorDisplayName(visitor)}
-        onUploadAttachment={aiWidgetApi.uploadVisitorAttachment}
-        persistDraft={false}
-        onSend={handleSend}
-      />
+      {mode === "note" ? (
+        <>
+          <p className="mx-3 mt-2 flex items-center gap-2 rounded-md bg-amber-500/15 px-3 py-1.5 text-xs text-amber-900">
+            <StickyNote className="size-3.5 shrink-0" aria-hidden />
+            Internal note. Only your team sees it — the customer and AI never do.
+          </p>
+          {box("Write a note for your team…")}
+        </>
+      ) : reply}
+      {channel === "whatsapp" && <TemplatePickerDialog key={visitor.id} visitor={visitor} open={templates} onOpenChange={setTemplates} />}
     </div>
   );
 }

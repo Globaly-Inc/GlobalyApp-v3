@@ -1,5 +1,6 @@
 "use client";
 
+import { DEFAULT_WIDGET_NAME } from "@/app/embed/[key]/const";
 import { useState } from "react";
 import Link from "next/link";
 import { Check, Copy, ExternalLink, KeyRound } from "lucide-react";
@@ -8,12 +9,14 @@ import { AlyOrbIcon } from "@/components/aly-orb-icon";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { EmbedConfig } from "../apis/types";
+import { WEB_ORIGIN } from "@/lib/hosts";
 
 // One script tag, not a raw iframe: public/embed.js renders the floating orb and only
 // loads the chat panel once a visitor opens it, so the host page doesn't have to find room
 // for a 420x640 block — or pay for a session nobody asked for.
 export function embedSnippet(embedKey: string): string {
-  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  // The widget is served from the public host; the portal runs on app.
+  const origin = WEB_ORIGIN || (typeof window !== "undefined" ? window.location.origin : "");
   return `<script src="${origin}/embed.js" data-key="${embedKey}" async></script>`;
 }
 
@@ -51,12 +54,11 @@ export function WidgetCard({
     <section className="@container overflow-hidden rounded-2xl border bg-card">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4 sm:flex-nowrap">
         <div className="flex min-w-0 flex-1 items-center gap-3">
-          <span className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white ring-2 ring-primary/20">
-            <AlyOrbIcon className="size-11" color={config.brand_color} />
-          </span>
+          {/* No disc or ring — same as the widget header: the clipped halo made a hard white edge. */}
+          <AlyOrbIcon className="size-11" color={config.brand_color} />
           <div className="min-w-0">
             <h2 className="flex items-center gap-2 text-lg font-semibold">
-              <span className="truncate">{config.display_name ?? "Untitled widget"}</span>
+              <span className="truncate">{config.display_name?.trim() || DEFAULT_WIDGET_NAME}</span>
               <span
                 className={cn(
                   "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 font-sans text-xs font-medium",
