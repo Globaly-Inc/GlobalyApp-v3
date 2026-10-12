@@ -11,7 +11,7 @@ import { INVITE_SOURCE, SETUP_HANDOFF_KEY, type SetupHandoff } from "@/app/auth/
 import { ICON } from "@/lib/public-assets";
 import { inviteApi } from "./apis";
 
-const SUPPORT_EMAIL = "support@globalyapp.com";
+const SUPPORT_EMAIL = "support@globalyai.com";
 const PORTAL = "/business/portal";
 
 /** Read once and cleared: the code is a bearer credential and this page is its only consumer. */

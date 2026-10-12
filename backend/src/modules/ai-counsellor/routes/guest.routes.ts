@@ -18,21 +18,14 @@ import * as mediaService from "../../enquiries/services/message-media.service.js
 import { judgeWantsHuman } from "../lib/handover-detect.js";
 import { refreshChatSummary } from "../services/chat-summaries.service.js";
 import * as embedRepo from "../repositories/embed.repository.js";
+import * as knowledgeRepo from "../repositories/knowledge.repository.js";
 import * as sessionsRepo from "../repositories/sessions.repository.js";
 import * as messagesRepo from "../repositories/messages.repository.js";
 import { initSSE, writeEvent, writeData, writeDone } from "../lib/sse-writer.js";
-import { streamChat } from "../lib/gemini-stream.js";
-import { buildSystemPrompt } from "../services/prompt.service.js";
-import * as rag from "../services/rag.service.js";
-import { parseBlocks, parseCards, parseChips, stripBlocks } from "../lib/card-parser.js";
 import { withInstitutionMedia } from "../services/chat.service.js";
 import { judgeConclusion } from "../lib/conclusion-detect.js";
-import { extractProfile } from "../lib/profile-extract.js";
-import { getProfile, mayKeepEmail, profileBlockFor, retrieveMemories } from "../../institution-memory/index.js";
-import {
-  applyCollectionRules as applyVisitorCollectionRules,
-  visitorCounsellingContext, visitorProfileContext,
-} from "../lib/visitor-context.js";
+import { getProfile, mayKeepEmail } from "../../institution-memory/index.js";
+import { captureVisitorDetails, generateVisitorReply, loadVisitorRules } from "../services/visitor-reply.service.js";
 import * as learningSignals from "../services/learning-signals.service.js";
 import { ForbiddenError } from "../../../shared/errors.js";
 import { createChildLogger } from "../../../shared/logger.js";
@@ -144,6 +137,55 @@ async function persistVisitorTurn(
 }
 
 /** Public: anonymous chat — plain guests (1 reply, signup wall) and embed-widget visitors. */
+const norm = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, " ");
+
+/**
+ * Is this the widget's first intake turn — the one that withholds courses and asks the level?
+ *
+ * Widgets only. A plain guest (no embed key) is STATELESS: `guestService` gives them no session,
+ * so `history.length` is 0 on every message they ever send, and they are capped at one reply by
+ * the signup gate. Discovery there would spend that single reply asking a question they are not
+ * allowed to answer, and they would never see a course (Greptile).
+ */
+export function isDiscoveryTurn(hasEmbed: boolean, historyLength: number): boolean {
+  return hasEmbed && historyLength === 0;
+}
+
+/** The study level the visitor just named, in their own words, or null if they named none.
+ *  Only meaningful as the answer to the level question — a message about anything else returns
+ *  null, which puts the turn back on the normal path with its courses. */
+export function statedLevel(asked: string): string | null {
+  const text = norm(asked);
+  // A named qualification keeps its own name: folding "certificate" and "diploma" into the generic
+  // bucket threw away the one word that matches the catalogue, which stores Certificate, Diploma,
+  // Graduate Certificate and Advanced Diploma as distinct levels (Greptile). Only a visitor who
+  // says something genuinely broad — "short course", "training" — gets the broad bucket, and the
+  // prompt expands THAT across all of them.
+  const LEVELS: Array<[RegExp, string]> = [
+    [/\b(phd|doctoral|doctorate)\b/, "PhD"],
+    [/\b(masters?|msc|ma|mba|meng|postgraduate)\b/, "Master's"],
+    [/\b(bachelors?|undergraduate|bsc|beng|ba)\b/, "Bachelor's"],
+    [/\bcertificates?\b/, "Certificate"],
+    [/\bdiplomas?\b/, "Diploma"],
+    [/\b(short courses?|trainings?|professional training)\b/, "Short course"],
+  ];
+  return LEVELS.find(([re]) => re.test(text))?.[1] ?? null;
+}
+
+/** Has the visitor already named one of the subject areas we teach? Then the stream question is
+ *  answered and asking it would be the interrogation discovery exists to avoid. Matches the whole
+ *  area ("business and management") or any distinctive word of it ("engineering"). */
+export function namesSubject(asked: string, catalogue: readonly knowledgeRepo.CatalogueShapeRow[]): boolean {
+  const text = ` ${norm(asked)} `;
+  const SKIP = new Set(["and", "the", "of", "for", "with", "other", "general", "studies", "sciences", "science"]);
+  return catalogue.some((row) => {
+    const area = norm(row.subject_area ?? "").trim();
+    if (!area) return false;
+    if (text.includes(` ${area} `)) return true;
+    return area.split(" ").some((word) => word.length >= 5 && !SKIP.has(word) && text.includes(` ${word} `));
+  });
+}
+
 export async function guestRoutes(app: FastifyInstance) {
   // POST /guest/messages — no auth, SSE stream
   app.post("/guest/messages", {
@@ -316,200 +358,58 @@ export async function guestRoutes(app: FastifyInstance) {
       // memory — the same pairing as chat.service, and the memory call never throws.
       const trace = (step: string) => writeEvent(reply, "trace", { step });
 
-      // What this visitor has told the counsellor in earlier turns. Until now the guest path
-      // passed `profile: null`, so everything extractProfile wrote to ai_widget_visitors was
-      // discarded and the counsellor re-asked for it. Scoped to this visitor_key and read on
-      // their own turn only — it is never pooled, embedded or retrieved by similarity.
-      // Read once, before the stream: the card decision is made while the socket is still open,
-      // and the extractor below needs the same rules. Cached 60s, never throws.
-      const rack = embed?.rackInstitutionId ? await getProfile(embed.rackInstitutionId) : null;
-      // `degraded` means the rules we hold are DEFAULTS standing in for a read that failed or a
-      // row that would not parse — not this institution's choice. Voice and behaviour can ride
-      // on defaults; permissions cannot, because the default allow-list is wider than a narrowed
-      // one, and a database blip would quietly widen it. Collect nothing until we can read the
-      // real rules.
-      const collection = rack && !rack.degraded ? rack.profile.collection : null;
-      const rulesUnknown = !!rack?.degraded;
-      const contactAsk = collection
-        ? {
-            // AND `email` being keepable, not just the card being switched on. The card asks for
-            // an address; an institution that has turned `email` off has said not to keep one,
-            // and showing a form whose answer must then be discarded is worse than not asking.
-            // Same predicate the submit endpoint uses — see mayKeepEmail.
-            enabled: collection.contact_ask.enabled && mayKeepEmail(rack),
-            first_at: collection.contact_ask.first_at,
-            gap: collection.contact_ask.gap,
-          }
-        // Do not ask for details we could not store lawfully this turn.
-        : rulesUnknown
-          ? { ...visitorService.DEFAULT_CONTACT_ASK, enabled: false }
-          : visitorService.DEFAULT_CONTACT_ASK;
+      // Two discovery turns, then courses. Turn 1 asks the LEVEL, turn 2 the STREAM, and both run
+      // with course retrieval switched off — instructions alone don't stop a recommendation when
+      // CONTEXT is full of matching courses. What the catalogue actually holds (levels, subject
+      // areas, counts) is handed to the model instead, so neither question invents an option.
+      //
+      // Turn 2 is skipped when the visitor has already named a subject we teach: they answered the
+      // question before it was asked, and asking it anyway is the interrogation this is meant to
+      // avoid. `history.length === 2` is exactly one prior exchange — their second message.
+      //
+      // No exemption for a visitor we have already met. A stored `study_preference` is one course
+      // this fingerprint once discussed, not what they came back for, and skipping discovery on it
+      // meant anyone who had ever used the widget — the owner testing it, most of all — kept getting
+      // the catalogue dump this exists to stop. What we hold still reaches the model through the
+      // visitor context, so turn 1 asks a sharper question rather than the same one twice.
+      //
+      // Computed HERE and not inside generateVisitorReply: the intake asks its question through a
+      // quick_replies block, and the messaging channels strip blocks before sending — on WhatsApp
+      // the visitor would get a reply with the question missing. This is the widget's flow, so the
+      // widget's own route decides it, and the shared helper simply honours what it is given.
+      const discoveryTurn = isDiscoveryTurn(!!embed, history.length);
+      const catalogue = embed?.jobIds?.length && history.length <= 2
+        ? await visitorService.attempt("catalogueShape", () => knowledgeRepo.listCatalogueShape(embed.jobIds!)) ?? []
+        : [];
+      // Their stated level is their own words — the prompt matches it to the catalogue's free-text
+      // levels through the same synonym table course search uses.
+      const streamTurn = !discoveryTurn && history.length === 2 && !!embed && !namesSubject(asked, catalogue)
+        ? statedLevel(asked)
+        : null;
 
-      // Stored details are filtered through the CURRENT rules before they reach the prompt or
-      // the memory query. Gating only the write meant a field switched off yesterday kept being
-      // read back from rows written while it was still on — "stop collecting this" has to cover
-      // what is already held, not just what arrives next.
-      const visible = applyVisitorCollectionRules(visitor, collection ? collection.allowed : rulesUnknown ? [] : undefined);
-      // Empty whenever the rules could not be read, by the same reasoning as `keepable` below:
-      // an institution's own subjects are neither asked for, kept, nor read back on a turn where
-      // we cannot tell which subjects it still has.
-      const customFields = collection?.custom ?? [];
-      // One indexed read, and only when this institution has defined a subject at all. Its own
-      // table rather than a column on the row above, so it is its own query — and its own
-      // failure: `attempt` keeps a lagging tenant schema costing the counsellor this memory
-      // rather than the turn.
-      const customValues = customFields.length && visitor && tenantDb
-        ? await visitorService.attempt("customValues", () =>
-            visitorService.customValuesFor(tenantDb, visitor.id)) ?? {}
-        : {};
-      const visitorProfile = visitorProfileContext(visible);
-      const visitorContext = visitorCounsellingContext(visible, customFields, customValues);
-      const situation = rag.situationText(visitorProfile, visitorContext);
-      const [ragOutput, memory, rackProfile, visitorLocation] = await Promise.all([
-        rag.searchAll({
-          query: asked,
-          userId: 0, // ponytail: guests have no userId, profile context will be empty
-          jobIds: embed?.jobIds,
-          rackInstitutionId: embed?.rackInstitutionId,
-          pinnedCourseIds: rag.pinnedCourseIdsFrom(prevMessages),
-          priorQuestion: rag.lastAssistantQuestion(prevMessages),
-          onTrace: trace,
-        }),
-        // Courtesy turns skip the memory EMBEDDING for the same reason searchAll skips its
-        // searches: there is nothing in "thanks" to retrieve guidance for. The pinned rules still
-        // come back — they are institution-wide and must not depend on how the student phrased the
-        // turn, least of all on a closing reply (Greptile).
-        embed?.rackInstitutionId
-          ? retrieveMemories({
-              institutionId: embed.rackInstitutionId,
-              institutionName: embed.config.display_name,
-              // Resolved, not raw: this embeds the question too (see rag.resolveQuery).
-              query: rag.resolveQuery(asked, rag.lastAssistantQuestion(prevMessages)),
-              // Situation-bound guidance could never match before: the query carried the
-              // message and nothing about who was asking.
-              situation,
-              pinnedOnly: rag.isCourtesyTurn(asked, rag.lastAssistantQuestion(prevMessages)),
-              onTrace: trace,
-            })
-          : null,
-        // The Rack's configuration half — voice, behaviour, what may be collected. Cached 60s
-        // and never throws, so it rides the same Promise.all rather than adding a round trip.
-        embed?.rackInstitutionId ? profileBlockFor(embed.rackInstitutionId) : "",
-        // Cloudflare location → the most relevant existing branch. Stores nothing; any failure
-        // (no headers locally, no branches, a lookup error) drops the section, never the turn.
-        embed
-          ? visitorService.attempt("branchRecommendation", () =>
-              visitorService.branchRecommendationFor(embed.config, req.headers))
-          : null,
-      ]);
-
-      if (ragOutput.sources.length) {
-        writeEvent(reply, "sources", ragOutput.sources);
-      }
-
-      // Same money guard as chat.service: widget visitors are the audience it exists for.
-      const withheldMoneyTopics = rag.askedMoneyTopics(asked)
-        .filter((topic) => !ragOutput.moneyTopics.includes(topic));
-      if (withheldMoneyTopics.length) trace(`Money question, no evidence for ${withheldMoneyTopics.join("/")}: that part withheld`);
-
-      const system = buildSystemPrompt({
-        profile: visitorProfile,
-        counsellingContext: visitorContext,
-        ragContext: ragOutput.contextText,
-        // A returning visitor mid-thread must not get the opening greeting again.
-        isFirstMessage: history.length === 0,
-        embedConfig: embed?.config,
-        rackProfile,
-        institutionGuidance: memory?.text,
-        withheldMoneyTopics,
-        visitorLocation: visitorLocation?.section ?? null,
-        retrievalSkipped: !ragOutput.searched,
+      // What may be asked for, read back and kept — the organisation's collection rules, read once
+      // for the whole turn. The reply itself (RAG, prompt, model) is the shared visitor reply, the
+      // same one WhatsApp, Instagram and Facebook use, so the surfaces cannot drift apart.
+      const rules = await loadVisitorRules(embed);
+      const { contactAsk } = rules;
+      const { result, cleanText, cards, chips, blocks, ragOutput, memory, visitorLocation } = await generateVisitorReply({
+        embed, rules, tenantDb, visitor, prevMessages, history, asked,
+        discoveryTurn, streamTurn, catalogue,
+        headers: req.headers,
+        onTrace: trace,
+        onSources: (sources) => writeEvent(reply, "sources", sources),
+        onChunk: (chunk) => writeData(reply, { choices: [{ delta: { content: chunk } }] }),
       });
-
-      const result = await streamChat({
-        system,
-        history,
-        userMessage: asked,
-        onChunk: (chunk) => {
-          writeData(reply, { choices: [{ delta: { content: chunk } }] });
-        },
-      });
-
-      // Same logo/cover/city enrichment as the app chat, so widget cards show the institution's logo.
-      // Already-shown courses are dropped, not re-carded — see rag.dropShownCards.
-      const cards = await withInstitutionMedia(
-        rag.dropShownCards(parseCards(result.fullText), rag.pinnedCourseIdsFrom(prevMessages)),
-      );
-      const chips = parseChips(result.fullText);
-      // The widget compares in prose (see prompt.service): a comparison table is unreadable in a
-      // 380px panel, so a stray one is dropped rather than rendered. The reply text carries it.
-      const blocks = parseBlocks(result.fullText).filter((b) => b.type !== "comparison");
-      const cleanText = stripBlocks(result.fullText);
 
       if (cards.length) writeEvent(reply, "cards", cards);
       if (chips.length) writeEvent(reply, "chips", chips);
       if (blocks.length) writeEvent(reply, "blocks", blocks);
 
-      // Anything the visitor told us about themselves this turn, read from THEIR message rather
-      // than the counsellor's reply — see profile-extract for why this is its own model call and
-      // no longer a block the reply was supposed to carry.
-      //
-      // Awaited rather than fired and forgotten: the reply has already streamed, so the only cost
-      // is a slightly later `done` event, and only on turns whose text mentions a test, a degree
-      // or a job at all. An orphaned promise here would outlive the request and write through a
-      // tenant connection nobody is holding open.
-      //
-      // Written in its own statement, deliberately not folded into recordTurn below: one UPDATE
-      // carrying a column a lagging tenant schema lacks fails the whole write and freezes
-      // message_count, which is exactly how both cards silently died a week ago. This one is
-      // allowed to fail alone.
-      // Same rules object read before the stream — what may be asked for, and what may be kept.
-      //
-      // `sensitive` is subtracted, not just announced to the model. The portal's own words for
-      // it are "use it to answer, never record it", and until this line the extractor was still
-      // handed the field and still wrote it: `sensitive` is a subset of `allowed`, so the stored
-      // rule said one thing and the storage did another. The model can still USE it — it is in
-      // the transcript either way — but nothing asks for it and nothing keeps it.
-      const keepable = collection
-        ? collection.allowed.filter((f) => !collection.sensitive.includes(f))
-        // Empty list, not `undefined`: undefined means "no institution, use the built-in set",
-        // while an unreadable rule set means "we do not know what we may keep" — so keep nothing.
-        : rulesUnknown ? [] : undefined;
-      const { profile, contact, custom } = visitor && tenantDb
-        ? await extractProfile(history, asked, keepable, customFields)
-        : { profile: null, contact: null, custom: null };
-
-      if (profile && visitor && tenantDb) {
-        await visitorService.attempt("recordProfile", () =>
-          visitorService.recordProfile(tenantDb, visitor.id, profile),
-        );
-      }
-
-      // The institution's own subjects. Its own statement for the same reason as the two around
-      // it: one jsonb column, one cleaner, and a lagging tenant schema costs this write alone.
-      if (custom && visitor && tenantDb) {
-        await visitorService.attempt("recordCustom", () =>
-          visitorService.recordCustom(tenantDb, visitor.id, custom),
-        );
-      }
-
-      // Details they gave in prose rather than in the card. An email settles the card for good
-      // and arms the summary; a name alone is stored and the card may still ask later, with
-      // their name already known. Separate statement from recordProfile for the same reason
-      // that one is separate from recordTurn: a lagging tenant schema must fail one write, not
-      // the turn.
-      // Every decision below reads `current`, not `visitor`: an address volunteered in prose
-      // settles the contact card on this very turn, and deciding off the row we loaded before
-      // the write asks for the name and email the visitor just handed over. The update returns
-      // the row it wrote for exactly this; a failed or no-op write leaves the loaded one.
-      let current = visitor;
-      if (contact && visitor && tenantDb && visitorKey && embed) {
-        current = await visitorService.attempt("recordVolunteeredContact", () =>
-          visitorService.recordVolunteeredContact(tenantDb, {
-            visitorKey, embedConfigId: embed.config.id, ...contact,
-          }),
-        ) ?? visitor;
-      }
+      // Anything the visitor told us about themselves this turn. Awaited rather than fired and
+      // forgotten: an orphaned promise would outlive the request and write through a tenant
+      // connection nobody holds open. `current` is the row as written, so the decisions below see
+      // an address volunteered on this very turn.
+      const { profile, current } = await captureVisitorDetails({ embed, rules, tenantDb, visitor, visitorKey, history, asked });
 
       // Which offer this turn carries — at most one. The model proposes a conclusion; state,
       // cooldown and whether we even have an address decide whether anything is shown.

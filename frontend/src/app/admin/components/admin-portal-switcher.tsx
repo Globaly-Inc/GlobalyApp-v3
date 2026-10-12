@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Check, ChevronDown, Plus, ShieldCheck, User as UserIcon } from "lucide-react";
+import { ChevronDown, Plus, ShieldCheck, User as UserIcon } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -9,21 +9,12 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { OrgSwitcherItems, toSwitcherOrgs, useBranchGroups } from "@/app/business/components/org-switcher-items";
 import { useAppDispatch } from "@/lib/hooks";
 import { switchAccount } from "@/app/auth/store/auth-slice";
 import { saveSelectedOrgId } from "@/lib/session";
 import type { AuthMeBusiness, AuthMeInstitution } from "@/app/auth/apis";
 import { PERSONAL_PORTAL_HOME, SHOW_PERSONAL_PORTAL } from "@/app/personal/const";
-
-type Org = { org_id: string; name: string; logo_url: string | null };
-
-function toOrgs(businesses: AuthMeBusiness[], institutions: AuthMeInstitution[]): Org[] {
-  return [
-    ...businesses.map((b) => ({ org_id: b.org_id, name: b.business_name, logo_url: b.logo_url })),
-    ...institutions.map((i) => ({ org_id: i.org_id, name: i.institution_name, logo_url: i.logo_url })),
-  ];
-}
 
 // Ported from V1's AdminLayout portalLabel — the header's "Super Admin ▾" trigger doubles as an
 // account/org switcher: personal portal, any businesses or institutions this admin also owns
@@ -44,7 +35,8 @@ export function AdminPortalSwitcher({
 }>) {
   const router = useRouter();
   const dispatch = useAppDispatch();
-  const orgs = toOrgs(businesses, institutions);
+  // Same rows as the business portal's switcher: branches fold under their head office.
+  const groups = useBranchGroups(toSwitcherOrgs(businesses, institutions), activeOrgId);
 
   // Full reload, matching business-shell's own switch rationale — every slice needs a clean
   // re-fetch under the newly entered tenant context.
@@ -55,7 +47,7 @@ export function AdminPortalSwitcher({
   };
 
   return (
-    <DropdownMenu>
+    <DropdownMenu onOpenChange={groups.onOpenChange}>
       <DropdownMenuTrigger
         render={
           <button
@@ -68,7 +60,7 @@ export function AdminPortalSwitcher({
         <span>{roleLabel}</span>
         <ChevronDown className="h-3.5 w-3.5 text-muted-foreground" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-56">
+      <DropdownMenuContent align="start" className="w-64">
         {SHOW_PERSONAL_PORTAL && (
           <>
             <DropdownMenuItem className="cursor-pointer gap-2" onClick={() => router.push(PERSONAL_PORTAL_HOME)}>
@@ -80,18 +72,7 @@ export function AdminPortalSwitcher({
         <div className="px-2 py-1.5">
           <p className="text-xs font-medium text-muted-foreground">Organizations</p>
         </div>
-        {orgs.map((org) => (
-          <DropdownMenuItem key={org.org_id} className="cursor-pointer gap-2" onClick={() => handleSwitch(org.org_id)}>
-            <Avatar className="h-5 w-5 rounded-md">
-              {org.logo_url && <AvatarImage src={org.logo_url} alt="" />}
-              <AvatarFallback className="rounded-md bg-primary/10 text-primary text-xs font-semibold">
-                {org.name.charAt(0).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            <span className="flex-1 min-w-0 truncate">{org.name}</span>
-            {org.org_id === activeOrgId && <Check className="h-4 w-4 text-primary shrink-0" />}
-          </DropdownMenuItem>
-        ))}
+        <OrgSwitcherItems groups={groups} activeOrgId={activeOrgId} onSwitch={handleSwitch} />
         <DropdownMenuSeparator />
         <DropdownMenuItem className="cursor-pointer gap-2" onClick={() => router.push("/business/onboarding?new=1")}>
           <Plus className="h-4 w-4" /> Create new business

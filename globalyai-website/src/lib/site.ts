@@ -17,7 +17,7 @@ export const siteConfig = {
   founder: { name: "Amit Ranjitkar", role: "Founder & CEO", email: "amit@globalyapp.com" },
   /** Where the legal pages send questions and data requests. Same inbox the
       Globaly app's own legal pages use. */
-  legalEmail: "support@globalyapp.com",
+  legalEmail: "support@globalyai.com",
   /** Governing law for the Terms, matching the Globaly app's Terms. */
   jurisdiction: "New South Wales, Australia",
   /** Shown under the social icons in the footer and on the legal pages. */

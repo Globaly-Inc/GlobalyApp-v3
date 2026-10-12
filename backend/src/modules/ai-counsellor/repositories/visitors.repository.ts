@@ -19,9 +19,15 @@ const TABLE = "ai_widget_visitors";
 export type VisitorStatus = "visitor" | "lead";
 export type VisitorStatusFilter = VisitorStatus | "all";
 
+export type VisitorChannel = "ai_embed" | "whatsapp" | "instagram" | "facebook";
+
 export interface VisitorListParams extends PaginationInput {
   status: VisitorStatusFilter;
   search?: string;
+  /** One Inbox channel, or every channel when absent (20261008_001). */
+  channel?: VisitorChannel;
+  /** The signed-in user: `starred` is theirs alone. */
+  userId?: number;
 }
 
 /**
@@ -80,10 +86,20 @@ const COLUMNS = [
   "rating_comment",
   "rated_at",
   "summary",
+  // Omnichannel (20261008_001): where the conversation lives, the customer's handle there,
+  // WhatsApp's 24-hour window, and why AI flagged it for the team. channel_connection_id is the
+  // tenant's own row id (the template picker needs it); zernio_conversation_id stays server-side.
+  "channel",
+  "channel_connection_id",
+  "channel_handle",
+  "last_inbound_at",
+  "attention_reason",
+  "ai_draft",
 ] as const;
 
 /** Status filter + search, shared by the page query and the tab counts so they cannot drift. */
-function applyFilters(q: Knex.QueryBuilder, params: Pick<VisitorListParams, "status" | "search">) {
+function applyFilters(q: Knex.QueryBuilder, params: Pick<VisitorListParams, "status" | "search" | "channel">) {
+  if (params.channel) q.where({ channel: params.channel });
   // The same column the row hands back as its status, so a tab can never list a row whose badge
   // contradicts the tab it was found under. Before 20260923_001 this was an `email IS NULL`
   // test and the badge was a CASE expression — two places to keep in step, now one.
@@ -96,7 +112,8 @@ function applyFilters(q: Knex.QueryBuilder, params: Pick<VisitorListParams, "sta
     // it here, so a column left out of this clause can't be found from any page that isn't
     // loaded yet. An anonymous row can match on it alone — the course they asked about is
     // exactly how an owner remembers a visitor who never gave a name.
-    q.where((b) => b.whereILike("name", like).orWhereILike("email", like).orWhereILike("study_preference", like));
+    // channel_handle too: a WhatsApp number or an Instagram @handle is how a channel customer is found.
+    q.where((b) => b.whereILike("name", like).orWhereILike("email", like).orWhereILike("study_preference", like).orWhereILike("channel_handle", like));
   }
   return q;
 }
@@ -108,7 +125,12 @@ function applyFilters(q: Knex.QueryBuilder, params: Pick<VisitorListParams, "sta
 export function listQuery(db: Knex, params: VisitorListParams): Knex.QueryBuilder {
   const { limit, offset } = paginationToOffset(params);
   return applyFilters(db(TABLE), params)
-    .select(...COLUMNS)
+    .select(...COLUMNS.map((c) => `${TABLE}.${c}`))
+    // This user's own star. CAST: the bound id must be typed for Postgres (an untyped bind fails).
+    .select(db.raw(
+      `EXISTS (SELECT 1 FROM ai_widget_visitor_stars s WHERE s.visitor_id = ${TABLE}.id AND s.user_id = CAST(? AS int)) AS starred`,
+      [params.userId ?? 0],
+    ))
     .orderBy("last_activity_at", "desc")
     .limit(limit)
     .offset(offset);
@@ -124,8 +146,8 @@ export function listQuery(db: Knex, params: VisitorListParams): Knex.QueryBuilde
  * CAST(... AS int) and not `::int`: knex parses `:name` as a binding placeholder, so a colon
  * cast is a silent-rewrite hazard in any raw string (see the 20260923_001 migration).
  */
-export function countsQuery(db: Knex, params: Pick<VisitorListParams, "search">): Knex.QueryBuilder {
-  return applyFilters(db(TABLE), { status: "all", search: params.search }).select(
+export function countsQuery(db: Knex, params: Pick<VisitorListParams, "search" | "channel">): Knex.QueryBuilder {
+  return applyFilters(db(TABLE), { status: "all", search: params.search, channel: params.channel }).select(
     db.raw("CAST(count(*) AS int) AS total_count"),
     db.raw("CAST(count(*) FILTER (WHERE status = 'lead') AS int) AS lead_count"),
   );
@@ -135,7 +157,7 @@ export type VisitorCounts = Record<VisitorStatusFilter, number>;
 
 export async function visitorCounts(
   db: Knex,
-  params: Pick<VisitorListParams, "search">,
+  params: Pick<VisitorListParams, "search" | "channel">,
 ): Promise<VisitorCounts> {
   const [row] = (await countsQuery(db, params)) as { total_count: number; lead_count: number }[];
   const all = row?.total_count ?? 0;

@@ -119,9 +119,14 @@ export function EmbedChatView({ embedKey, initialConfig = null }: EmbedChatViewP
     }
   };
   // Returns false when a reply is still streaming, so a tapped chip stays tappable.
+  // The ref, not the state, is what decides: `sending` only flips on the next render, so two taps
+  // in the same tick both read false and fired two turns — the chip that "needed three clicks"
+  // sometimes sent three.
+  const inFlight = useRef(false);
   const send = (content: string) => {
-    if (sending) return false;
-    void run(content, false);
+    if (inFlight.current || sending) return false;
+    inFlight.current = true;
+    void run(content, false).finally(() => { inFlight.current = false; });
     return true;
   };
   // Called by the thread reads above; the reply streams like any other, minus a visitor bubble.
@@ -260,7 +265,7 @@ export function EmbedChatView({ embedKey, initialConfig = null }: EmbedChatViewP
               panel the max-width is inert; in the expanded tab it stops the thread from
               running the full screen width. */}
           <div className="mx-auto flex max-w-3xl flex-col gap-8 px-4 py-6 sm:px-6">
-            <ThreadMessages messages={messages} onChipClick={send} onSend={send} joinedAgent={agentName} />
+            <ThreadMessages messages={messages} onChipClick={send} onSend={send} joinedAgent={agentName} busy={sending} />
             {sending && !streamText && <ThinkingIndicator steps={traceSteps} />}
             {sending && streamText && (
               <StreamingMessage

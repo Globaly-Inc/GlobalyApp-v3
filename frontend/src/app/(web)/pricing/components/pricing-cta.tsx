@@ -20,7 +20,7 @@ export function PricingCta() {
             size="lg"
             variant="outline"
             className="rounded-full border-white/40 bg-transparent px-8 text-white hover:bg-white/10 hover:text-white"
-            render={<a href="mailto:sales@globalyapp.com" />}
+            render={<a href="mailto:sales@globalyai.com" />}
           >
             Talk to the team
           </Button>
