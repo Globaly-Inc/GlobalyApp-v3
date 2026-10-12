@@ -1,7 +1,7 @@
 import type { FastifyReply } from "fastify";
 import { config } from "../../../config.js";
 
-const ALLOWED_ORIGINS = new Set(config.CORS_ORIGINS.split(",").map((o) => o.trim()));
+const ALLOWED_ORIGINS = new Set(config.CORS_ORIGIN_LIST);
 
 /** Set SSE headers and status 200. Call once before any writeEvent. */
 export function initSSE(reply: FastifyReply): void {

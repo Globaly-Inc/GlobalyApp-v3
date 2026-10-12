@@ -158,6 +158,26 @@ services:
     networks:
       - globalyapp
 
+  # Inbox channels: Zernio webhook events (WhatsApp, Instagram, Facebook) and AI replies.
+  channel-events-worker:
+    container_name: globalyapp-channel-events-worker
+    image: globalyapp-backend:local
+    command: npm run job:channel-events
+    env_file:
+      - ./backend/.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dragonfly:
+        condition: service_started
+      lavinmq:
+        condition: service_started
+    volumes:
+      - ./backend:/globalyapp/backend
+      - /globalyapp/backend/node_modules
+    networks:
+      - globalyapp
+
   enquiry-email-worker:
     container_name: globalyapp-enquiry-email-worker
     image: globalyapp-backend:local

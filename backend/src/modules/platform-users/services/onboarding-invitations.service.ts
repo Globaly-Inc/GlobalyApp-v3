@@ -263,7 +263,7 @@ export async function acceptInvitation(token: string, type: InviteType, otp: str
   return { email: invite.email, type: invite.type };
 }
 
-const SUPPORT_EMAIL = "support@globalyapp.com";
+const SUPPORT_EMAIL = "support@globalyai.com";
 
 /** Why a link that matches a real invite can't be used: the invite was revoked, or this link (or the
  *  whole invite) is past its expiry. Null for an unknown link, or one already accepted. */

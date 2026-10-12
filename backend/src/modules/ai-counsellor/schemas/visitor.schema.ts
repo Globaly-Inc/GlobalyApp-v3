@@ -150,3 +150,11 @@ export const VisitorNoteSchema = z
 
 export const VisitorHandoffSchema = z.object({ mode: z.enum(["human", "ai"]) }).strict();
 export const VisitorResolveSchema = z.object({ resolved: z.boolean() }).strict();
+/** A WhatsApp template send. `preview` is the filled-in text, stored as the transcript line. */
+export const VisitorTemplateSchema = z.object({
+  name: z.string().min(1).max(512),
+  language: z.string().min(2).max(15),
+  preview: z.string().trim().min(1).max(4000),
+  /** The body's variables in order — {{1}}, {{2}}… — sent to Meta, not just shown in the preview. */
+  params: z.array(z.string().trim().min(1).max(1024)).max(20).default([]),
+}).strict();

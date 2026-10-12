@@ -28,12 +28,15 @@ export function ThreadMessages({
   onChipClick,
   onSend,
   joinedAgent,
+  busy,
 }: Readonly<{
   messages: WidgetMessage[];
   onChipClick: (chip: string) => boolean | void;
   /** Sends the text composed inside a quick_replies block. */
   onSend?: (value: string) => boolean | void;
   joinedAgent?: string | null;
+  /** A reply is streaming: every chip and option in the thread would refuse, so they grey out. */
+  busy?: boolean;
 }>) {
   // The visitor's own turns don't change who is answering, so look back past them.
   // A plain loop, not .map: the React compiler rejects a variable mutated inside a callback.
@@ -52,7 +55,7 @@ export function ThreadMessages({
     rows.push(
       <Fragment key={m.id}>
         {line && <Divider>{line}</Divider>}
-        {m.role === "agent" ? <AgentMessage message={m} /> : <ChatMessage message={m} onChipClick={onChipClick} onSend={onSend} />}
+        {m.role === "agent" ? <AgentMessage message={m} /> : <ChatMessage message={m} onChipClick={onChipClick} onSend={onSend} busy={busy} />}
       </Fragment>,
     );
   }

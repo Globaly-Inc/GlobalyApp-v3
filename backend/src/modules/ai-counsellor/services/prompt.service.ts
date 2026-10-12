@@ -1,4 +1,4 @@
-import type { ProfileContext } from "../repositories/knowledge.repository.js";
+import { levelPatterns, type CatalogueShapeRow, type ProfileContext } from "../repositories/knowledge.repository.js";
 import type { CounsellingContext } from "../repositories/sessions.repository.js";
 import { sanitizeCustomInstructions } from "./embed.service.js";
 import type { MoneyTopic } from "./rag.service.js";
@@ -19,6 +19,38 @@ function missingProfileFields(ctx: ProfileContext): string[] {
   if (p.budget_min == null && p.budget_max == null) missing.push("budget range");
   if (!p.expected_start_date) missing.push("expected start date");
   return missing;
+}
+
+/** Levels this catalogue actually teaches, commonest first: "Master's (42 courses), Doctoral (PhD) (8)". */
+function levelsLine(rows: readonly CatalogueShapeRow[]): string | null {
+  const byLevel = new Map<string, number>();
+  for (const r of rows) {
+    if (!r.degree_level) continue;
+    byLevel.set(r.degree_level, (byLevel.get(r.degree_level) ?? 0) + r.count);
+  }
+  const parts = [...byLevel].sort((a, b) => b[1] - a[1]).map(([level, n]) => `${level} (${n})`);
+  return parts.length ? parts.join(", ") : null;
+}
+
+/** Our own broad bucket from the level question, which no single catalogue value spells. It has to
+ *  be expanded here rather than in LEVEL_SYNONYMS: that table also drives course search, where
+ *  widening "short course" to every certificate and diploma would answer the wrong level. */
+const SHORT_COURSE_PATTERNS = ["short", "training", "certificate", "diploma"];
+
+/** Subject areas at one level, commonest first. `level` is the visitor's own words ("master's"),
+ *  matched through the same synonym table course search uses, so "masters" finds "Master's". */
+function streamsLine(rows: readonly CatalogueShapeRow[], level: string): string | null {
+  const patterns = (level === "Short course" ? SHORT_COURSE_PATTERNS : levelPatterns(level))
+    .map((p) => p.toLowerCase());
+  const byArea = new Map<string, number>();
+  for (const r of rows) {
+    const haystack = (r.degree_level ?? "").toLowerCase();
+    if (!patterns.some((p) => haystack.includes(p))) continue;
+    if (!r.subject_area) continue;
+    byArea.set(r.subject_area, (byArea.get(r.subject_area) ?? 0) + r.count);
+  }
+  const parts = [...byArea].sort((a, b) => b[1] - a[1]).map(([area, n]) => `${area} (${n})`);
+  return parts.length ? parts.join(", ") : null;
 }
 
 /** How to name each withheld topic to the model — plain words, not the internal key. */
@@ -58,8 +90,14 @@ export function buildSystemPrompt(opts: {
   toolMode?: boolean;
   /** Phase 8: what earlier turns of this session established about the student. */
   counsellingContext?: CounsellingContext | null;
-  /** First platform turn: course retrieval was skipped — counsel, don't recommend. */
+  /** First turn of a session — platform or widget: course retrieval was skipped, counsel don't recommend. */
   discoveryTurn?: boolean;
+  /** Widget's second discovery turn: the level is known, the subject is not — name the streams and
+   *  ask which, still with no course data loaded. Carries the level they named. */
+  streamTurn?: string | null;
+  /** What the widget owner's catalogue holds, by level and subject area. The discovery turns have
+   *  no course data, so without this the model invents the levels and streams it offers. */
+  catalogue?: CatalogueShapeRow[];
   /** New session for a student who has chatted before — greet with "welcome back". */
   returning?: boolean;
   /** Knowledge Rack passages retrieved proactively from the student's profile +
@@ -114,7 +152,7 @@ export function buildSystemPrompt(opts: {
     );
     sections.push(
       `Only recommend courses from ${name}. If the user asks about courses from other institutions, ` +
-      `politely explain that you can only help with ${name}'s offerings and suggest they visit globalyhub.com for broader search.`,
+      `politely explain that you can only help with ${name}'s offerings and suggest they visit web.globalyai.com for broader search.`,
     );
     // The visitor is already on the institution's own website. Without this the model wrote
     // like the platform chat does — "a master's program offered by AIT in Thailand" — introducing
@@ -480,9 +518,18 @@ export function buildSystemPrompt(opts: {
   sections.push(
     "After every response, suggest 2-4 follow-up questions in this format:\n" +
     '```chips\n["question1", "question2"]\n```\n' +
-    // The app renders one options row per turn, so a reply carrying both showed the
-    // same choices twice — quick_replies is the one that keeps the question with it.
-    "EXCEPT on turns where you emit a quick_replies block: then send no chips at all.",
+    // Chips used to be dropped entirely on any turn carrying a quick_replies block. A reply with
+    // course cards almost always carries one, so the follow-ups vanished for the rest of the
+    // conversation. Both rows now render; only a chip that restates the block is dropped, and the
+    // app enforces that as well (see chat-message.tsx) rather than trusting this rule alone.
+    "EVERY response that ANSWERS something — turns with course cards included, where chips used to " +
+    "be dropped for carrying a quick_replies block and so vanished for the rest of the " +
+    "conversation. The chips must ask something ELSE than any block you sent: the block asks your " +
+    "question, the chips are what the student might want to ask YOU next (fees, entry " +
+    "requirements, intakes, campus life).\n" +
+    "EXCEPT on a turn that is only a question — your options row and nothing else to show. Send no " +
+    "chips there: the options are what to tap, and a second row of unrelated suggestions under " +
+    "them is clutter. The app drops them anyway.",
   );
 
   // ── Interactive UI blocks ──
@@ -588,7 +635,7 @@ export function buildSystemPrompt(opts: {
   // ── RAG context ──
   if (opts.ragContext) {
     tail.push("CONTEXT:\n" + opts.ragContext);
-  } else if (!opts.toolMode && !opts.discoveryTurn && !opts.retrievalSkipped) {
+  } else if (!opts.toolMode && !opts.discoveryTurn && !opts.streamTurn && !opts.retrievalSkipped) {
     // Nothing retrieved. Until now this said NOTHING — the CONTEXT block was simply absent, and a
     // model holding the institution's name, a counselling brief and no records answered a broad
     // opening question ("tell me about data science") from general knowledge and closed with "we
@@ -627,6 +674,7 @@ export function buildSystemPrompt(opts: {
     );
   }
   if (opts.discoveryTurn) {
+    const levels = opts.catalogue ? levelsLine(opts.catalogue) : null;
     tail.push(
       "THIS IS A DISCOVERY TURN — the first message of the conversation. " +
       (opts.toolMode
@@ -637,6 +685,25 @@ export function buildSystemPrompt(opts: {
       "they shared (if they love a subject, share their excitement — 'a maths lover — excellent taste!'), " +
       "and ask ONE question that helps you counsel them — what draws them to it, what career they " +
       "imagine, OR one practical constraint (destination, budget, start date) — not all of these. " +
+      // A widget visitor arrives anonymous and usually opens with a starter chip ("what courses do you
+      // offer?"), which the catalogue answers generically and uselessly. Level first, subject second:
+      // asked together the model merged them into "which area and study level interest you most?", a
+      // two-part question whose options could only answer one half.
+      (opts.embedConfig
+        ? "This visitor is anonymous, so your one question this turn is the STUDY LEVEL they are headed " +
+          "for next — nothing else. Put the levels in the quick_replies options: bachelor's, master's, " +
+          "PhD/doctorate, short course or professional training — list only the ones we have reason to " +
+          "offer, and say so in the prose first (a postgraduate-only institution offers no bachelor's). " +
+          "Do NOT ask about the subject, field or area this turn, and do not fold it into the same " +
+          "question — the field is the NEXT turn's question, once the level is known. Example shape:\n" +
+          "```block\n{\"type\":\"quick_replies\",\"question\":\"What level are you looking to study at?\",\"options\":[" +
+          "{\"label\":\"🎓 Master's\",\"value\":\"I am looking at master's programs\"}," +
+          "{\"label\":\"🔬 PhD\",\"value\":\"I am looking at doctoral study\"}," +
+          "{\"label\":\"📚 Short course\",\"value\":\"I am looking at short professional training\"}]}\n```\n" +
+          // Course data is off this turn, so "what levels do you offer" has no evidence behind it
+          // unless we hand it over: left to itself the model answered from the institution's blurb.
+          (levels ? `OUR LEVELS (level, course count — offer only these): ${levels}\n` : "")
+        : "") +
       // Spelled out in full here rather than pointing back at INTERACTIVE BLOCKS: the model was
       // emitting the payload as bare unfenced JSON with no "type", which parseBlocks can't match
       // and stripBlocks can't remove — so the raw object rendered in the chat as text.
@@ -647,8 +714,26 @@ export function buildSystemPrompt(opts: {
       '{"label":"🤖 AI and data","value":"I want to work in AI/data"},' +
       '{"label":"🤷 Not sure yet","value":"Not sure yet — show me options"}]}\n```\n' +
       "Every option is an object with `label` and `value`, never a bare string. " +
-      "Send no chips this turn — the quick_replies block is the only options row. " +
+      "Send no chips this turn — the options row is the only thing to tap. " +
       "Course recommendations begin on the next turn.",
+    );
+  } else if (opts.streamTurn) {
+    // Turn 2 of the widget's intake: they answered the level question, so the catalogue is still
+    // withheld one more turn and the subject is the question. Showing courses here was the
+    // complaint — three degrees "spanning business, environmental science and engineering" is a
+    // sampler nobody asked for, chosen before anyone knew which of the three they wanted.
+    const streams = opts.catalogue ? streamsLine(opts.catalogue, opts.streamTurn) : null;
+    tail.push(
+      "THIS IS THE SECOND DISCOVERY TURN — they have given you the LEVEL " +
+      `(${opts.streamTurn}) and not the subject. Course data was deliberately not loaded again: ` +
+      "do NOT name or recommend any specific course, and do NOT emit course-card blocks.\n" +
+      "Acknowledge the level in one short line, say which streams we teach at it, then ask which " +
+      "one — through a quick_replies block whose options ARE those streams, each value worded as " +
+      "the student ('I am interested in Engineering'). Send no chips this turn either — the streams " +
+      "are what to tap. Courses begin next turn, once you know the stream.\n" +
+      (streams
+        ? `OUR STREAMS AT THIS LEVEL (subject area, course count — use these words, offer no other): ${streams}`
+        : "You have no stream list this turn: ask what subject they have in mind, openly, and do not guess at what we teach."),
     );
   } else if (opts.isFirstMessage) {
     tail.push(

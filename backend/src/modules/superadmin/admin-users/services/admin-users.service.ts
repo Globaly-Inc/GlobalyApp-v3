@@ -152,7 +152,7 @@ export async function inviteAdmin(
     expired_at: expiredAt,
   });
 
-  const acceptUrl = `${config.CORS_ORIGINS}/auth/accept-invite?token=${token}`;
+  const acceptUrl = `${config.WEB_APP_URL}/auth/accept-invite?token=${token}`;
   await queueInvitationEmail({
     to: input.email,
     name: input.first_name,
@@ -177,7 +177,7 @@ export async function resendInvitation(id: string, inviterRole: string) {
   const expiredAt = new Date(Date.now() + 72 * 60 * 60 * 1000); // 72 hours
   await repo.resendInvitationToken(id, token, expiredAt);
 
-  const acceptUrl = `${config.CORS_ORIGINS}/auth/accept-invite?token=${token}`;
+  const acceptUrl = `${config.WEB_APP_URL}/auth/accept-invite?token=${token}`;
   await queueInvitationEmail({
     to: invitation.email,
     name: invitation.first_name,
