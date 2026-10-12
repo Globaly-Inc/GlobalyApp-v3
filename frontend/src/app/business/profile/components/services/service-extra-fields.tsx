@@ -23,6 +23,9 @@ export function ServiceExtraFields({
   const save = async () => {
     if (!serviceId) return;
     try {
+      // The server checks field ids against the SAVED category — a category picked but not yet
+      // saved would make it silently drop the new category's fields. Saving it first is idempotent.
+      if (category) await api.updateService(serviceId, { service_category_id: category.id });
       await api.updateServiceFieldValues(serviceId, Object.entries(values).map(([id, value]) => ({ schema_field_id: Number(id), value })));
       toast.success("Details updated");
     } catch (e) {
