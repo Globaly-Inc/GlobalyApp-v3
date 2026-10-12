@@ -15,6 +15,7 @@ import { BranchCard, type LinkedCourse } from "./branches-tab-card";
 import { BranchesTabEmptyState } from "./branches-tab-empty-state";
 import { useFieldSaver } from "./editable-field";
 import { LinkCoursesToBranchesDialog } from "./link-courses-to-branches-dialog";
+import { PortalBranchesSection } from "./portal-branches-section";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
 import type { CampusFull, CourseLinks, ExtractionJob } from "../apis/types";
@@ -273,6 +274,8 @@ export function BranchesTab({
             />
         ))}
       </div>
+
+      <PortalBranchesSection jobId={jobId} />
 
       {total > 0 && (
         <Pagination

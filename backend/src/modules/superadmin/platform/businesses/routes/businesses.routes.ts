@@ -449,4 +449,13 @@ export async function adminBusinessRoutes(app: FastifyInstance) {
     const { rows, total } = await service.listActivity(id, limit, offset);
     return reply.send(buildPaginatedResponse(rows, total, pagination));
   });
+
+  // GET /institutions/:id/activity — same audit log, keyed by details.institution_id.
+  app.get("/institutions/:id/activity", async (req, reply) => {
+    const { id } = IdParamSchema.parse(req.params);
+    const pagination = ActivityListQuerySchema.parse(req.query);
+    const { limit, offset } = paginationToOffset(pagination);
+    const { rows, total } = await service.listInstitutionActivity(id, limit, offset);
+    return reply.send(buildPaginatedResponse(rows, total, pagination));
+  });
 }

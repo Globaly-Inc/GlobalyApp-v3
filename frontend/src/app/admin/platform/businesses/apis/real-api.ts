@@ -382,8 +382,9 @@ export const businessesRealApi = {
     httpPatch(`${BASE}/${id}/relations/${relationId}`, patch),
   deleteRelation: (id: number, relationId: string): Promise<void> => httpDelete(`${BASE}/${id}/relations/${relationId}`),
 
-  getActivity: async (id: number, params: ActivityListParams = {}): Promise<ActivityListResult> => {
-    const { data, meta } = await httpGet<{ data: ActivityLogEntry[]; meta: { total: number } }>(`${BASE}/${id}/activity${toPageLimitQuery(params)}`);
+  getActivity: async (id: number, params: ActivityListParams = {}, kind: "business" | "institution" = "business"): Promise<ActivityListResult> => {
+    const base = kind === "institution" ? "/admin/platform/institutions" : BASE;
+    const { data, meta } = await httpGet<{ data: ActivityLogEntry[]; meta: { total: number } }>(`${base}/${id}/activity${toPageLimitQuery(params)}`);
     return { data, total: meta.total };
   },
 };

@@ -194,7 +194,8 @@ export const deleteRelation = createAsyncThunk(
 // ─── Activity ────────────────────────────────────────────────────────────────
 export const fetchActivity = createAsyncThunk(
   "platformBusinesses/fetchActivity",
-  ({ id, params }: { id: number; params?: ActivityListParams }) => businessesApi.getActivity(id, params),
+  ({ id, params, kind }: { id: number; params?: ActivityListParams; kind?: "business" | "institution" }) =>
+    businessesApi.getActivity(id, params, kind),
 );
 
 type RelationsState<T> = { items: T[]; status: "idle" | "loading" | "failed"; error: string | null };

@@ -1130,7 +1130,7 @@ export const businessesMockApi = {
     mockRelations[id] = (mockRelations[id] ?? []).filter((r) => r.id !== relationId);
   },
 
-  getActivity: async (id: number, params: ActivityListParams = {}): Promise<ActivityListResult> => {
+  getActivity: async (id: number, params: ActivityListParams = {}, _kind: "business" | "institution" = "business"): Promise<ActivityListResult> => {
     await delay(150);
     const items = mockActivity[id] ?? [];
     const limit = params.limit ?? 20;

@@ -127,7 +127,7 @@ async function courseToService(c: {
   id: string; name: string; description: string | null; subject_area: string | null;
   domestic_fee_total: string | null; international_fee_total: string | null; created_at: string;
   service_category_id?: number | null; public_visibility?: Record<string, boolean> | null;
-  is_published?: boolean;
+  is_published?: boolean; created_by_platform_user_id?: number | null;
 }, feePrice?: string) {
   return {
     id: c.id,
@@ -140,21 +140,23 @@ async function courseToService(c: {
     public_visibility: c.public_visibility ?? {},
     created_at: c.created_at,
     category_name: c.subject_area,
+    // Same rule as the courses list's origin filter: a person created it, or extraction did.
+    origin: c.created_by_platform_user_id != null ? ("manual" as const) : ("extracted" as const),
   };
 }
 
-// Admin's Services tab for an institution: approved courses only, the same set its public pages
-// show — unapproved ones are reviewed (and approved) from the extraction's Courses tab.
+// Admin's Services tab for an institution: every course on its catalog, same as the portal's own
+// Services tab — owner-added ones still awaiting approval included (approve from the Courses tab).
 export async function listServices(_institutionId: number, jobId: string) {
-  const rows = await coursesRepo.listCoursesByJob(jobId, 10000, 0, { approvedOnly: true }, "newest");
+  const rows = await coursesRepo.listCoursesByJob(jobId, 10000, 0, {}, "newest");
   const prices = await getFeePricesForCourses(jobId, rows.map((r) => r.id));
   return Promise.all(rows.map((r) => courseToService(r, prices.get(r.id))));
 }
 
 export async function searchServices(_institutionId: number, jobId: string, limit: number, offset: number, search?: string) {
   const [rows, total] = await Promise.all([
-    coursesRepo.listCoursesByJob(jobId, limit, offset, { search, approvedOnly: true }, "recently_updated"),
-    coursesRepo.countCoursesByJob(jobId, { search, approvedOnly: true }),
+    coursesRepo.listCoursesByJob(jobId, limit, offset, { search }, "recently_updated"),
+    coursesRepo.countCoursesByJob(jobId, { search }),
   ]);
   const prices = await getFeePricesForCourses(jobId, rows.map((r) => r.id));
   return { rows: await Promise.all(rows.map((r) => courseToService(r, prices.get(r.id)))), total };

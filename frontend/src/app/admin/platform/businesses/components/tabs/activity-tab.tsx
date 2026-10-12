@@ -9,22 +9,22 @@ import { fetchActivity } from "../../store/businesses-slice";
 const PAGE_SIZE = 10;
 
 function formatAction(action: string): string {
-  return action.replaceAll("BUSINESS_", "").replaceAll("_", " ").toLowerCase();
+  return action.replace(/^(BUSINESS|INSTITUTION)_/, "").replaceAll("_", " ").toLowerCase();
 }
 
-export function ActivityTab({ businessId }: Readonly<{ businessId: number }>) {
+export function ActivityTab({ businessId, kind = "business" }: Readonly<{ businessId: number; kind?: "business" | "institution" }>) {
   const dispatch = useAppDispatch();
   const { items: activity, status, total } = useAppSelector((state) => state.platformBusinesses.activity);
   const [page, setPage] = useState(1);
 
   useEffect(() => {
     setPage(1);
-    dispatch(fetchActivity({ id: businessId, params: { page: 1, limit: PAGE_SIZE } }));
-  }, [dispatch, businessId]);
+    dispatch(fetchActivity({ id: businessId, params: { page: 1, limit: PAGE_SIZE }, kind }));
+  }, [dispatch, businessId, kind]);
 
   const handlePageChange = (p: number) => {
     setPage(p);
-    dispatch(fetchActivity({ id: businessId, params: { page: p, limit: PAGE_SIZE } }));
+    dispatch(fetchActivity({ id: businessId, params: { page: p, limit: PAGE_SIZE }, kind }));
   };
 
   let body: React.ReactNode;
@@ -45,7 +45,9 @@ export function ActivityTab({ businessId }: Readonly<{ businessId: number }>) {
     body = (
       <div className="space-y-2">
         {activity.map((a) => {
-          const admin = `${a.admin_first_name ?? ""} ${a.admin_last_name ?? ""}`.trim() || "Admin";
+          const fallback = a.source === "portal" ? "Portal user" : "Admin";
+          const name = `${a.admin_first_name ?? ""} ${a.admin_last_name ?? ""}`.trim() || fallback;
+          const admin = `${name} · ${a.source === "portal" ? "Portal" : "Superadmin"}`;
           return (
             <div key={a.id} className="flex items-center justify-between rounded-lg border p-3">
               <p className="text-sm capitalize">{formatAction(a.action)}</p>

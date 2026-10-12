@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { Eye, EyeOff, Loader2, Package, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { OriginChip } from "@/app/business/profile/components/origin-chip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
@@ -103,6 +104,7 @@ export function InstitutionServicesTab({
                   <Badge variant={s.is_published ? "default" : "secondary"} className="text-xs">
                     {s.is_published ? "Published" : "Draft"}
                   </Badge>
+                  {s.origin && <OriginChip origin={s.origin} />}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {s.category_name ?? "Uncategorised"}

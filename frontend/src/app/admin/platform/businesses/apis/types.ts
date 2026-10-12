@@ -357,6 +357,8 @@ export type BusinessService = {
   price: string | null;
   is_published: boolean;
   created_at: string;
+  /** Institution courses only: found by extraction, or added by hand (admin or portal). */
+  origin?: "extracted" | "manual";
 };
 
 export type ServiceInput = {
@@ -649,8 +651,10 @@ export type ActivityLogEntry = {
   action: string;
   details: Record<string, unknown>;
   created_at: string;
+  /** The person who did it — a superadmin, or (source "portal") the org's own member. */
   admin_first_name: string | null;
   admin_last_name: string | null;
+  source?: "admin" | "portal";
 };
 
 export type ActivityListParams = { page?: number; limit?: number };

@@ -2,11 +2,9 @@
 
 import type { ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Clock } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { SectionTabs } from "@/components/section-tabs";
 import { useAppSelector } from "@/lib/hooks";
-import { EmptyState } from "@/components/ui/empty-state";
 import { ActivityTab } from "./tabs/activity-tab";
 import { BranchesTab } from "./tabs/branches-tab";
 import { ContactsTab } from "./tabs/contacts-tab";
@@ -35,7 +33,6 @@ function parseTab(raw: string | null): Tab {
   return (VALID_TABS as string[]).includes(raw ?? "") ? (raw as Tab) : "branches";
 }
 
-const NOT_AVAILABLE = "Not available for institutions yet.";
 
 export function DetailTabs({
   kind,
@@ -97,11 +94,7 @@ export function DetailTabs({
             ) : (
               <InstitutionServicesTab institutionId={id} readOnly={readOnly} />
             ))}
-            {tab === "activity" && (kind === "business" ? (
-              <ActivityTab businessId={id} />
-            ) : (
-              <EmptyState compact icon={Clock} title="No activity yet" description={NOT_AVAILABLE} />
-            ))}
+            {tab === "activity" && <ActivityTab businessId={id} kind={kind} />}
           </CardContent>
         </Card>
         <div className="flex flex-col gap-6">{sidebar}</div>

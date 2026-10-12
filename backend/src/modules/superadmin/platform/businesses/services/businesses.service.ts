@@ -27,6 +27,8 @@ import { courseSlug } from "../../../../search/utils/slug.js";
 import * as institutionMembersService from "../../../../platform-users/services/institution-members.service.js";
 import type { InstitutionInviteInput } from "../../../../platform-users/services/institution-members.service.js";
 import * as representationsService from "../../business-representations/services/business-representations.service.js";
+import * as branchService from "../../business-branches/services/business-branches.service.js";
+import { resolveSharedCourses } from "../../business-branches/repositories/business-branches.repository.js";
 import type { PaginationInput } from "../../../../../shared/pagination.js";
 import type {
   BusinessCreateInput, BusinessPatchInput, BusinessStatus, EnquirySettingsPatchInput, InstitutionPartnerInput, InstitutionPartnerPatch,
@@ -349,7 +351,7 @@ export async function listBusinesses(
       repo.listInstitutions(limit, offset, search, status, sort, origin, ownership),
       repo.countInstitutions(search, status, origin, ownership),
     ]);
-    return { rows: await Promise.all(rawRows.map(withImagePreviews)), total };
+    return { rows: await Promise.all(rawRows.map(async (r) => withImagePreviews(await withInstitutionBranchCount(r)))), total };
   }
 
   if (scope === "businesses") {
@@ -371,7 +373,7 @@ export async function listBusinesses(
   const merged = [...bizRows, ...instRows].sort(sortComparator(sort)).slice(offset, offset + limit);
 
   return {
-    rows: await Promise.all(merged.map(withImagePreviews)),
+    rows: await Promise.all(merged.map(async (r) => withImagePreviews(await withInstitutionBranchCount(r)))),
     total: bizTotal + instTotal,
   };
 }
@@ -579,7 +581,7 @@ export async function getInstitutionDetail(id: number) {
   const inst = await repo.findInstitutionDetail(id);
   if (!inst) throw new NotFoundError("Institution not found");
   const slug = courseSlug(inst.business_name, String(inst.id).padStart(6, "0"));
-  return withImagePreviews({ ...inst, kind: "institution" as const, slug });
+  return withImagePreviews(await withInstitutionBranchCount({ ...inst, kind: "institution" as const, slug }));
 }
 
 export async function updateInstitutionDetail(id: number, patch: InstitutionPatchInput) {
@@ -611,8 +613,9 @@ export async function listInstitutionMembers(id: number, opts: { search?: string
 export async function listInstitutionCourses(id: number, opts: { search?: string; limit: number; offset: number }) {
   const inst = await requireInstitution(id);
   if (!inst.source_job_id) return { rows: [], total: 0 };
-  // Approved only — this is the Services list on the business pages, not the review screen.
-  const filters = { search: opts.search, approvedOnly: true };
+  // Same list as the institution's own portal Services tab: every course on its catalog (owner-added
+  // ones still awaiting approval included) plus what its parent shares with it.
+  const filters = { search: opts.search, shared: await resolveSharedCourses(id) };
   const [rows, total] = await Promise.all([
     coursesRepo.listCoursesByJob(inst.source_job_id, opts.limit, opts.offset, filters),
     coursesRepo.countCoursesByJob(inst.source_job_id, filters),
@@ -654,15 +657,25 @@ export async function listPartnerInstitutionCourses(
   return listInstitutionCourses(institutionId, opts);
 }
 
+// Same list as the institution's own portal Branches tab: its real branches, then any scraped
+// campuses not yet converted into one — campuses alone missed every branch added by hand.
 export async function listInstitutionBranches(id: number, opts: { search?: string; limit: number; offset: number }) {
-  const inst = await requireInstitution(id);
-  if (!inst.source_job_id) return { rows: [], total: 0 };
-  const filters = { search: opts.search };
-  const [rows, total] = await Promise.all([
-    reviewRepo.listCampusesByJobPaged(inst.source_job_id, opts.limit, opts.offset, filters),
-    reviewRepo.countCampusesByJob(inst.source_job_id, filters),
-  ]);
-  return { rows, total };
+  return branchService.listInstitutionBranches(id, opts.limit, opts.offset, "all", opts.search);
+}
+
+/** branch_count / service_count to match the Branches and Services tabs (the repo's job-only counts
+ *  miss hand-added branches, converted campuses and courses shared by a parent). */
+async function withInstitutionBranchCount<T extends { id: number; kind: string; branch_count?: number; service_count?: number }>(row: T): Promise<T> {
+  if (row.kind !== "institution") return row;
+  try {
+    const [branches, services] = await Promise.all([
+      listInstitutionBranches(row.id, { limit: 1, offset: 0 }),
+      listInstitutionCourses(row.id, { limit: 1, offset: 0 }),
+    ]);
+    return { ...row, branch_count: branches.total, service_count: services.total };
+  } catch {
+    return row;
+  }
 }
 
 // Merges manually-linked consultancies (business_representations, real CRUD) with the
@@ -833,8 +846,15 @@ export async function deleteInstitutionContact(id: number, contactId: number) {
 }
 
 export async function listActivity(id: number, limit: number, offset: number) {
-  await requireBusiness(id);
-  return repo.listBusinessActivity(id, limit, offset);
+  const biz = await requireBusiness(id);
+  // An unprovisioned business has no tenant schema, so no portal activity of its own.
+  const tenantDb = biz.schema_provisioned_at ? await getKnex(biz.id, biz.schema_name).catch(() => undefined) : undefined;
+  return repo.listBusinessActivity(id, limit, offset, "business_id", tenantDb);
+}
+
+export async function listInstitutionActivity(id: number, limit: number, offset: number) {
+  await requireInstitution(id);
+  return repo.listBusinessActivity(id, limit, offset, "institution_id");
 }
 
 // ── Institution role management ──

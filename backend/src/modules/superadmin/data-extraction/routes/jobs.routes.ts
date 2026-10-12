@@ -70,6 +70,12 @@ export async function jobsRoutes(app: FastifyInstance) {
     return reply.send(await service.getTabCounts(id));
   });
 
+  // GET /jobs/:id/portal-branches — branches the owning org added by hand in its portal (read-only here).
+  app.get("/jobs/:id/portal-branches", async (req, reply) => {
+    const { id } = UuidParamSchema.parse(req.params);
+    return reply.send({ branches: await service.listPortalBranches(id) });
+  });
+
   // RJ3: GET /jobs/:id/events
   app.get("/jobs/:id/events", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);

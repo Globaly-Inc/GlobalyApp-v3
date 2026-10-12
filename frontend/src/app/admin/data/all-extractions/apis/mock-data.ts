@@ -4,6 +4,7 @@ import type {
   AgentFull,
   AgentRun,
   CampusFull,
+  PortalBranch,
   CreateAgentParams,
   CourseFee,
   CourseFeeParams,
@@ -368,6 +369,8 @@ export const allExtractionsMockApi = {
       { id: "campus-2", name: "Downtown Campus", address: "456 College St", city: "Edmonton", state: "AB", country: "Canada", phone: null, email: null, map_link: null, source_url: null, postcode: null, created_at: now, updated_at: now },
     ];
   },
+
+  getPortalBranches: async (_jobId: string): Promise<PortalBranch[]> => [],
 
   // Paginated + searchable, unlike getCampuses' full dump.
   getCampusesFiltered: async (
