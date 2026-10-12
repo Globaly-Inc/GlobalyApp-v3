@@ -1,6 +1,6 @@
 "use client";
 
-import { User } from "lucide-react";
+import { Check, CheckCheck, CircleAlert, Smartphone, Trash2, User } from "lucide-react";
 import { AlyOrbIcon } from "@/components/aly-orb-icon";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { AttachmentList } from "@/components/chat/attachment-list";
@@ -17,6 +17,34 @@ const GROUP_WINDOW_MS = 5 * 60_000;
 export function isGroupedWith(message: VisitorMessage, previous: VisitorMessage | undefined): boolean {
   if (!previous || previous.role !== message.role || previous.sender_name !== message.sender_name) return false;
   return new Date(message.created_at).getTime() - new Date(previous.created_at).getTime() < GROUP_WINDOW_MS;
+}
+
+/**
+ * How a WhatsApp / Instagram / Facebook message travelled. "Not delivered" always shows, with the
+ * reason; otherwise only the latest outgoing message carries a status, as in a phone chat.
+ */
+function DeliveryStatus({ message, show }: Readonly<{ message: VisitorMessage; show: boolean }>) {
+  const status = message.delivery_status;
+  if (!status) return null;
+  if (status === "failed") {
+    return (
+      <p className="mr-8 mt-1 flex items-center gap-1 text-[11px] text-destructive">
+        <CircleAlert className="size-3" aria-hidden />
+        Not delivered{message.delivery_error ? ` · ${message.delivery_error}` : ""}
+      </p>
+    );
+  }
+  if (!show) return null;
+  const [Icon, label, tone] = status === "read" ? [CheckCheck, "Read", "text-sky-600"]
+    : status === "delivered" ? [CheckCheck, "Delivered", "text-muted-foreground"]
+    : status === "sent" ? [Check, "Sent", "text-muted-foreground"]
+    : [Check, "Sending…", "text-muted-foreground"];
+  return (
+    <p className="mr-8 mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
+      <Icon className={cn("size-3", tone)} aria-hidden />
+      {label}
+    </p>
+  );
 }
 
 /** A centred outlined pill between days — no rule behind it. */
@@ -41,9 +69,12 @@ export function TranscriptBubble({
   grouped,
   visitorName,
   visitorInitials,
+  showStatus = false,
 }: Readonly<{
   message: VisitorMessage;
   grouped: boolean;
+  /** The latest outgoing message: show its Sent / Delivered / Read. */
+  showStatus?: boolean;
   visitorName: string;
   /** Null for an anonymous visitor — a person glyph instead. */
   visitorInitials: string | null;
@@ -52,6 +83,7 @@ export function TranscriptBubble({
   const isBot = message.role === "assistant";
   const isAgent = message.role === "agent";
   const ourSide = isBot || isAgent;
+  const fromPhone = message.sent_from === "phone_app";
   const agentName = message.sender_name ?? "Team member";
 
   return (
@@ -63,9 +95,15 @@ export function TranscriptBubble({
               {time} · <span className="font-medium text-primary">AI Assistant</span>
             </>
           ) : isAgent ? (
-            <>
-              {time} · <span className="font-medium text-foreground">{agentName}</span> · Team
-            </>
+            fromPhone ? (
+              <>
+                {time} · <span className="font-medium text-foreground">Your team</span> · via WhatsApp Business app
+              </>
+            ) : (
+              <>
+                {time} · <span className="font-medium text-foreground">{agentName}</span> · Team
+              </>
+            )
           ) : (
             <>
               <span className="font-medium text-foreground">{visitorName}</span> · {time}
@@ -77,7 +115,11 @@ export function TranscriptBubble({
       <div className={cn("flex max-w-[80%] items-end gap-2", ourSide && "flex-row-reverse")}>
         <span className="size-6 shrink-0">
           {!grouped &&
-            (isAgent ? (
+            (isAgent && fromPhone ? (
+              <span className="flex size-6 items-center justify-center rounded-full bg-sky-100 text-sky-800">
+                <Smartphone className="size-3" aria-hidden />
+              </span>
+            ) : isAgent ? (
               <Avatar className="size-6">
                 <AvatarFallback className="bg-sky-100 text-[10px] font-medium text-sky-800">{initials(agentName)}</AvatarFallback>
               </Avatar>
@@ -95,7 +137,12 @@ export function TranscriptBubble({
             ))}
         </span>
 
-        {isAgent ? (
+        {message.deleted ? (
+          <div className="flex min-w-0 items-center gap-1.5 rounded-2xl border border-dashed border-border px-3.5 py-2 text-sm italic text-muted-foreground">
+            <Trash2 className="size-3.5" aria-hidden />
+            Message deleted
+          </div>
+        ) : isAgent ? (
           <div className="min-w-0 rounded-2xl border border-sky-200 bg-sky-50 px-3.5 py-2 text-sm leading-relaxed text-foreground">
             {message.content && <RichTextMessage body={message.content} />}
             {!!message.attachments?.length && (
@@ -114,6 +161,7 @@ export function TranscriptBubble({
           </div>
         )}
       </div>
+      {ourSide && <DeliveryStatus message={message} show={showStatus} />}
     </div>
   );
 }

@@ -66,17 +66,18 @@ export const aiWidgetVisitorsMock = {
     await delay(300);
     const term = params.search?.trim().toLowerCase();
     const searched = term
-      ? visitors.filter((v) => `${v.name ?? ""} ${v.email ?? ""} ${v.study_preference ?? ""}`.toLowerCase().includes(term))
+      ? visitors.filter((v) => `${v.name ?? ""} ${v.email ?? ""} ${v.study_preference ?? ""} ${v.channel_handle ?? ""}`.toLowerCase().includes(term))
       : visitors;
+    const inChannel = params.channel ? searched.filter((v) => (v.channel ?? "ai_embed") === params.channel) : searched;
     // Counts are taken BEFORE the status filter and after the search — same as the backend,
     // so the tab tallies don't collapse to the active tab's own size.
     const counts: VisitorCounts = {
-      all: searched.length,
-      lead: searched.filter((v) => v.status === "lead").length,
-      visitor: searched.filter((v) => v.status === "visitor").length,
+      all: inChannel.length,
+      lead: inChannel.filter((v) => v.status === "lead").length,
+      visitor: inChannel.filter((v) => v.status === "visitor").length,
     };
     const status = params.status ?? "all";
-    const filtered = status === "all" ? searched : searched.filter((v) => v.status === status);
+    const filtered = status === "all" ? inChannel : inChannel.filter((v) => v.status === status);
     const page = params.page ?? 1;
     const limit = params.limit ?? 10;
     // Copies: Redux freezes what it stores, and the takeover mock mutates these rows later.

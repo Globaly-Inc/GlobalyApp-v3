@@ -1,5 +1,6 @@
 "use client";
 
+import { DEFAULT_WIDGET_NAME } from "@/app/embed/[key]/const";
 import { useState } from "react";
 import Link from "next/link";
 import { Check, Copy, ExternalLink, KeyRound } from "lucide-react";
@@ -58,7 +59,7 @@ export function WidgetCard({
           </span>
           <div className="min-w-0">
             <h2 className="flex items-center gap-2 text-lg font-semibold">
-              <span className="truncate">{config.display_name ?? "Untitled widget"}</span>
+              <span className="truncate">{config.display_name?.trim() || DEFAULT_WIDGET_NAME}</span>
               <span
                 className={cn(
                   "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 font-sans text-xs font-medium",

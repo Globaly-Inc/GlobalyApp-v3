@@ -28,7 +28,9 @@ function handoverLines(messages: VisitorMessage[]): Map<number, string> {
     if (m.role === "user") continue;
     const next = m.role === "agent" ? `agent:${m.sender_name ?? ""}` : "ai";
     if (voice !== null && next !== voice) {
-      lines.set(m.id, m.role === "agent" ? `${m.sender_name ?? "A team member"} joined the conversation` : "The AI assistant took over again");
+      lines.set(m.id, m.sent_from === "phone_app"
+        ? "Someone replied from the WhatsApp Business app · AI paused"
+        : m.role === "agent" ? `${m.sender_name ?? "A team member"} joined the conversation` : "The AI assistant took over again");
     }
     voice = next;
   }
@@ -76,6 +78,11 @@ export function EmbedTranscript({
   const pinned = useRef(true);
   const lines = useMemo(() => handoverLines(messages ?? []), [messages]);
   const items = useMemo(() => timeline(messages ?? [], notes ?? []), [messages, notes]);
+  // The latest message we sent carries its Sent / Delivered / Read, like a phone chat.
+  const lastOutboundId = useMemo(
+    () => [...(messages ?? [])].reverse().find((m) => m.role !== "user" && m.delivery_status && m.delivery_status !== "failed")?.id,
+    [messages],
+  );
   const name = visitorDisplayName(visitor);
   const initials = visitor.name ? visitorInitials(visitor) : null;
 
@@ -144,6 +151,7 @@ export function EmbedTranscript({
                   grouped={!showDate && !handover && !chat && isGroupedWith(m, prev?.message)}
                   visitorName={name}
                   visitorInitials={initials}
+                  showStatus={m.id === lastOutboundId}
                 />
               </div>
             );

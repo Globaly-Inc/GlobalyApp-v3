@@ -2,13 +2,13 @@
 
 /** Mockup `.subtabs`: soft track, white pill sliding under the active option, mono count after each label. */
 export function TeamSubTabs<T extends string>({
-  options, value, onChange,
-}: Readonly<{ options: readonly { value: T; label: string; count: number | null }[]; value: T; onChange: (v: T) => void }>) {
+  options, value, onChange, label = "Team view",
+}: Readonly<{ options: readonly { value: T; label: string; count: number | null }[]; value: T; onChange: (v: T) => void; label?: string }>) {
   const index = Math.max(0, options.findIndex((o) => o.value === value));
   return (
     <div
       role="group"
-      aria-label="Team view"
+      aria-label={label}
       className="relative grid w-fit rounded-[10px] bg-muted/60 p-0.75"
       style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
     >
