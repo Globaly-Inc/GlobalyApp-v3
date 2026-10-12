@@ -92,9 +92,8 @@ export function WidgetPreview({ form, ownerKind }: Readonly<{ form: WidgetFormVa
       >
         {/* Same surface as the real header: the brand fill with its measured readable ink. */}
         <div className="flex items-center gap-2 bg-primary px-3 py-2.5 text-primary-foreground">
-          <span className="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white">
-            <AlyOrbIcon className="size-9" color={form.brand_color} />
-          </span>
+          {/* No disc — mirrors the real header. */}
+          <AlyOrbIcon className="size-8" color={form.brand_color} />
           <div className="min-w-0 flex-1">
             <p className="truncate text-xs font-semibold">{form.display_name.trim() || DEFAULT_WIDGET_NAME}</p>
             <p className="truncate text-[10px] opacity-80">{form.subtitle || "AI counsellor"}</p>

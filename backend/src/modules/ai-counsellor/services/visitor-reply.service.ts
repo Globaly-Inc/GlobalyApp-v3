@@ -12,6 +12,7 @@ import type { Knex } from "knex";
 import type { EmbedContext } from "./embed.service.js";
 import * as visitorService from "./visitor.service.js";
 import type { MessageRow } from "../repositories/messages.repository.js";
+import type { CatalogueShapeRow } from "../repositories/knowledge.repository.js";
 import { streamChat, type StreamChatOpts } from "../lib/gemini-stream.js";
 import { buildSystemPrompt } from "./prompt.service.js";
 import * as rag from "./rag.service.js";
@@ -79,6 +80,16 @@ export interface VisitorReplyInput {
   asked: string;
   /** Widget only: Cloudflare location → nearest branch. */
   headers?: IncomingHttpHeaders | null;
+  /** Widget only: the intake turns that withhold courses — turn 1 asks the level, turn 2 the
+   *  stream. Decided by the caller, not here, because the question is asked through a
+   *  quick_replies block and the messaging channels strip blocks before sending: on WhatsApp the
+   *  visitor would get the reply with its question missing. Absent means the ordinary path. */
+  discoveryTurn?: boolean;
+  /** The level the visitor named, when this is the stream turn. */
+  streamTurn?: string | null;
+  /** Levels and subject areas this catalogue actually holds — the discovery turns have no course
+   *  data, so without it the model invents the options it offers. */
+  catalogue?: CatalogueShapeRow[];
   /** Appended to the system prompt, e.g. "you are replying on WhatsApp: plain text". */
   surfaceNote?: string;
   onChunk?: (text: string) => void;
@@ -107,6 +118,8 @@ export async function generateVisitorReply(input: VisitorReplyInput) {
       userId: 0, // ponytail: visitors have no userId, profile context will be empty
       jobIds: embed?.jobIds,
       rackInstitutionId: embed?.rackInstitutionId,
+      // Both intake turns run blind on purpose: a model holding matching courses recommends them.
+      skipCourses: !!input.discoveryTurn || !!input.streamTurn,
       pinnedCourseIds: rag.pinnedCourseIdsFrom(prevMessages),
       priorQuestion,
       onTrace: trace,
@@ -137,6 +150,9 @@ export async function generateVisitorReply(input: VisitorReplyInput) {
     counsellingContext: visitorContext,
     ragContext: ragOutput.contextText,
     isFirstMessage: history.length === 0,
+    discoveryTurn: input.discoveryTurn,
+    streamTurn: input.streamTurn,
+    catalogue: input.catalogue,
     embedConfig: embed?.config,
     rackProfile,
     institutionGuidance: memory?.text,
