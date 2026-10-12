@@ -15,6 +15,7 @@ import type { EmbedContext } from "./embed.service.js";
 import { profileBlockFor, retrieveMemories } from "../../institution-memory/index.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import * as storage from "../../../shared/storage/storageService.js";
+import { courseSlug } from "../../search/utils/slug.js";
 
 const logger = createChildLogger("chat-service");
 
@@ -22,9 +23,18 @@ const HISTORY_LIMIT = 20;
 
 /** Attach the institution's logo/city to each card from the DB, keyed on the course
  * id the model cited. Decorative, so a lookup failure leaves the cards untouched
- * rather than costing the student their answer. */
+ * rather than costing the student their answer.
+ *
+ * The `slug` is NOT decorative: it is the card's link to the public /course/[slug] page, and
+ * until now it was whatever the model copied out of CARD_FIELDS. A dropped or mistyped slug
+ * silently demoted the card to its `source_url` (the institution's own site) or to no link at
+ * all, so "the card doesn't open anything" depended on how well the model transcribed a
+ * 40-character string. It is derived here instead, from the id and name parseCards already
+ * requires — the public page parses only the trailing id fragment, so this always resolves to
+ * the right course even when the model's name differs cosmetically. */
 export async function withInstitutionMedia(cards: ParsedCard[]): Promise<ParsedCard[]> {
   if (!cards.length) return cards;
+  cards = cards.map((c) => ({ ...c, slug: courseSlug(c.name, c.id) }));
   try {
     const media = await knowledgeRepo.institutionMediaByCourseIds(cards.map((c) => c.id));
     if (!media.length) return cards;
@@ -101,17 +111,20 @@ export async function handleMessage(opts: {
     // 5. Profile context
     const profileContext = await knowledgeRepo.getProfileContext(opts.userId);
 
-    // Discovery turn: first message of a platform session gets NO course data, so
-    // the model counsels (asks about goals) instead of dumping recommendations —
+    // Discovery turn: the first message of a session gets NO course data, so the
+    // model counsels (asks about goals) instead of dumping recommendations —
     // instructions alone don't stop it when CONTEXT is full of matching courses.
-    // Embed visitors are exempt: they come with a specific question about one
-    // institution and expect a direct answer. Also exempt: a student whose profile
-    // already carries the essentials (destination + level) — for them discovery is
-    // already done, and withholding courses on turn 1 reads as an interrogation.
+    // Exempt: a student whose profile already carries the essentials (destination +
+    // level) — for them discovery is done, and withholding courses on turn 1 reads
+    // as an interrogation. Embed used to be exempt wholesale, on the theory that a
+    // widget visitor arrives with a specific question; in practice they open with a
+    // starter chip and got a generic slice of the catalogue as the first thing the
+    // counsellor ever said. Same rule both ways now — the guest path (anonymous
+    // visitors, guest.routes.ts) runs its own copy against the stored preference.
     const isFirstMessage = isNew && session.message_count === 0;
     const p = profileContext?.profile;
     const profileReady = !!(p?.degree_level && p?.preferred_destinations);
-    const discoveryTurn = isFirstMessage && !opts.embed && !profileReady;
+    const discoveryTurn = isFirstMessage && !profileReady;
 
     // Returning student: this fresh session is not their first ever (the count
     // includes the one just created). Platform only — embed visitors are anonymous.

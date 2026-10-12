@@ -10,7 +10,7 @@ import { MessageMarkdown } from "./message-markdown";
 import { ScrollRow } from "@/components/scroll-row";
 import { AlyOrbIcon } from "@/components/aly-orb-icon";
 import { setReplyTo } from "../store/ai-chat-slice";
-import { splitQuote } from "../utils";
+import { followUpChips, splitQuote } from "../utils";
 import { useAppDispatch } from "@/lib/hooks";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
@@ -19,6 +19,8 @@ type ChatMessageProps = {
   message: Message;
   onChipClick?: (chip: string) => boolean | void;
   onSend?: (value: string) => boolean | void;
+  /** A reply is streaming, so every tappable row in the thread refuses: grey them instead. */
+  busy?: boolean;
 };
 
 /** Cards size themselves to the container, not the viewport — the same carousel has to
@@ -108,12 +110,18 @@ function Attachments({ paths }: { paths: string[] }) {
 }
 
 /** Follow-up suggestions. One tap sends — picking several and pressing a second Send button was
- *  two clicks for what reads as one choice, and nobody expects a suggestion chip to need confirming. */
-function Chips({ chips, onChipClick }: { chips: string[]; onChipClick?: (chip: string) => boolean | void }) {
+ *  two clicks for what reads as one choice, and nobody expects a suggestion chip to need confirming.
+ *
+ *  A tap marks the chip, it does NOT retire the row: `if (sent) return` used to kill every chip in
+ *  the turn for the rest of the session, so the second suggestion the student wanted was simply
+ *  dead, and scrolling back to an earlier turn's chips got nothing. Suggestions are re-askable by
+ *  nature. The only thing that refuses a tap is a reply already streaming, and `busy` greys the row
+ *  while that is true — the refusal used to be silent, which is what made chips feel like they
+ *  needed two or three clicks. */
+function Chips({ chips, onChipClick, busy }: { chips: string[]; onChipClick?: (chip: string) => boolean | void; busy?: boolean }) {
   const [sent, setSent] = useState<string | null>(null);
 
   const send = (chip: string) => {
-    if (sent) return; // a second tap would fire a second turn
     if (onChipClick?.(chip) === false) return; // refused mid-stream: leave every chip tappable
     setSent(chip);
   };
@@ -121,24 +129,34 @@ function Chips({ chips, onChipClick }: { chips: string[]; onChipClick?: (chip: s
   return (
     <div className="flex flex-col gap-2.5 pt-1">
       <div className="flex flex-wrap gap-1.5">
-        {chips.map((chip) => {
+        {chips.map((chip, i) => {
           const active = sent === chip;
           return (
-            <button
+            // Same arriving treatment as the option rows: the wrapper fades each suggestion in,
+            // staggered, and the chip itself breathes while the reply streams. Greying them out
+            // read as "blocked" when the truth is "not yet" — see QuickRepliesBlock.
+            <span
               key={chip}
-              type="button"
-              disabled={sent !== null && !active}
-              onClick={() => send(chip)}
-              className={cn(
-                "rounded-full border px-3 py-1.5 text-xs font-medium transition-colors duration-150",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-                active
-                  ? "border-primary bg-primary text-primary-foreground"
-                  : "bg-card text-foreground hover:border-primary/50 hover:bg-accent disabled:opacity-50",
-              )}
+              className={cn("inline-flex", busy && "animate-in fade-in slide-in-from-bottom-1 duration-300")}
+              style={busy ? { animationDelay: `${i * 90}ms`, animationFillMode: "backwards" } : undefined}
             >
-              {chip}
-            </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => send(chip)}
+                className={cn(
+                  "rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-150",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                  "active:scale-[0.96]",
+                  active
+                    ? "border-primary bg-primary text-primary-foreground shadow-sm shadow-primary/30 scale-[1.02]"
+                    : "border-border/70 bg-muted/50 text-muted-foreground hover:border-primary/50 hover:bg-primary/8 hover:text-foreground hover:shadow-sm",
+                  busy && "cursor-progress motion-safe:animate-pulse",
+                )}
+              >
+                {chip}
+              </button>
+            </span>
           );
         })}
       </div>
@@ -158,6 +176,7 @@ function AssistantTurn({
   blocks,
   onChipClick,
   onSend,
+  busy,
   footer,
 }: {
   content: string;
@@ -166,19 +185,20 @@ function AssistantTurn({
   blocks: ResponseBlock[];
   onChipClick?: (chip: string) => boolean | void;
   onSend?: (value: string) => boolean | void;
+  /** A reply is streaming: every tappable row refuses, so grey them rather than swallow the tap. */
+  busy?: boolean;
   footer?: React.ReactNode;
 }) {
-  // The model routinely answers its own question twice — once as a quick_replies
-  // block, once as chips — so two near-identical option rows stack up. One set of
-  // tappable options per turn; the block wins because it carries the question.
-  const hasQuickReplies = blocks.some((b) => b.type === "quick_replies");
+  // A question-only turn (the widget's level and stream steps) shows its options and nothing else;
+  // a turn with cards keeps its follow-ups. See followUpChips.
+  const visibleChips = followUpChips(chips, blocks, cards.length > 0);
 
   return (
     <div className="flex w-full gap-3">
       <AssistantMark />
       <div className="flex min-w-0 flex-1 flex-col gap-4">
         {content && <MessageMarkdown text={content} />}
-        {blocks.length > 0 && <MessageBlocks blocks={blocks} onAction={onChipClick} onSend={onSend} />}
+        {blocks.length > 0 && <MessageBlocks blocks={blocks} onAction={onChipClick} onSend={onSend} busy={busy} />}
         {cards.length > 0 && (
           // The container is the chat column, not the screen: slide width follows the column.
           <div className="@container/cards w-full">
@@ -198,14 +218,14 @@ function AssistantTurn({
             )}
           </div>
         )}
-        {chips.length > 0 && !hasQuickReplies && <Chips chips={chips} onChipClick={onChipClick} />}
+        {visibleChips.length > 0 && <Chips chips={visibleChips} onChipClick={onChipClick} busy={busy} />}
         {footer}
       </div>
     </div>
   );
 }
 
-export function ChatMessage({ message, onChipClick, onSend }: ChatMessageProps) {
+export function ChatMessage({ message, onChipClick, onSend, busy }: ChatMessageProps) {
   if (message.role === "user") {
     const { quote, body } = splitQuote(message.content);
     return (
@@ -234,6 +254,7 @@ export function ChatMessage({ message, onChipClick, onSend }: ChatMessageProps) 
       blocks={message.blocks}
       onChipClick={onChipClick}
       onSend={onSend}
+      busy={busy}
       footer={
         // Optimistic rows have no server id yet, so there's nothing to rate.
         message.id > 0 ? (
@@ -266,7 +287,8 @@ export function StreamingMessage({
   onChipClick?: (chip: string) => boolean | void;
   onSend?: (value: string) => boolean | void;
 }) {
+  // Always busy: this IS the reply still streaming, so its own rows cannot be answered yet.
   return (
-    <AssistantTurn content={content} cards={cards} chips={chips} blocks={blocks} onChipClick={onChipClick} onSend={onSend} />
+    <AssistantTurn content={content} cards={cards} chips={chips} blocks={blocks} onChipClick={onChipClick} onSend={onSend} busy />
   );
 }

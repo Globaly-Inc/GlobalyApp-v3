@@ -12,6 +12,7 @@ import { enquiriesReducer as personalEnquiriesReducer } from "@/app/personal/enq
 import { messagesReducer } from "@/app/personal/messages/store/messages-slice"
 import { businessMessagesReducer } from "@/app/business/messages/store/business-messages-slice"
 import { embedChatsReducer } from "@/app/business/messages/store/embed-chats-slice"
+import { channelsReducer } from "@/app/business/messages/channels/store/channels-slice"
 import { businessEnquiriesReducer } from "@/app/business/enquiries/store/business-enquiries-slice"
 import { adminReducer } from "@/app/admin/store/admin-slice"
 import { overviewReducer } from "@/app/admin/overview/store/overview-slice"
@@ -67,6 +68,7 @@ const appReducer = combineReducers({
     messages: messagesReducer,
     businessMessages: businessMessagesReducer,
     embedChats: embedChatsReducer,
+    inboxChannels: channelsReducer,
     businessEnquiries: businessEnquiriesReducer,
     admin: adminReducer,
     overview: overviewReducer,

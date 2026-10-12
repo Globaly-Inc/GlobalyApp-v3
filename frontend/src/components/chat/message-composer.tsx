@@ -40,6 +40,7 @@ export function MessageComposer({
   placeholder = "Type a message...",
   persistDraft = true,
   compact = false,
+  initialValue,
   onSend,
 }: Readonly<{
   distributionId: string;
@@ -63,12 +64,14 @@ export function MessageComposer({
    * replies either (its ThreadView has its own composer, outside the draft store).
    */
   persistDraft?: boolean;
+  /** Text to start with when no saved draft applies — e.g. a reply AI drafted for review. */
+  initialValue?: string;
   /** Resolves false on failure, which is what keeps the typed text in place. */
   onSend: (body: string, attachments: string[]) => Promise<boolean>;
 }>) {
   // Lazy initial state, not an effect: the caller keys this component by distribution
   // id, so switching conversations remounts it and the draft is read once on mount.
-  const [value, setValue] = useState(() => (persistDraft ? getDraft(distributionId) : ""));
+  const [value, setValue] = useState(() => (persistDraft ? getDraft(distributionId) : initialValue ?? ""));
   const [sending, setSending] = useState(false);
   const [pending, setPending] = useState<PendingAttachment[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
