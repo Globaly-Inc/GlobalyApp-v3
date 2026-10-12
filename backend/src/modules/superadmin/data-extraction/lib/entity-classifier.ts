@@ -19,7 +19,7 @@ export interface EntityItem {
   /** Model label: course | short_course | module | specialization | other | null. */
   entity_type?: string | null;
   parent_program?: string | null;
-  /** Model evidence list: own_detail_page | award_in_name | fees_stated | duration_stated | unit_code | credit_points | listed_under_program_heading. */
+  /** Model evidence list: own_detail_page | award_in_name | fees_stated | duration_stated | unit_code | credit_points | listed_under_program_heading | mentioned_only_in_prose. */
   evidence?: string[] | null;
   /** Headings above the item on its page, outermost first, when known. */
   heading_path?: string[] | null;
@@ -55,6 +55,16 @@ const UNIT_VOCAB_RE = /\b(practicum|internship|seminar|capstone|thesis|dissertat
 const PROGRAMME_EVIDENCE = new Set(["own_detail_page", "award_in_name", "fees_stated", "duration_stated"]);
 const UNIT_EVIDENCE = new Set(["unit_code", "credit_points", "listed_under_program_heading"]);
 
+// What outweighs "the page only names it in passing". award_in_name is deliberately absent: an FAQ
+// answer naming "BSc (Hons) Computing" states an award too, so it can never be what rescues a mention.
+const OFFERING_EVIDENCE = new Set(["own_detail_page", "fees_stated", "duration_stated"]);
+const MENTION_ONLY = "mentioned_only_in_prose";
+
+/** The page names this programme and does nothing else with it. */
+function mentionedNotOffered(evidence: ReadonlySet<string>): boolean {
+  return evidence.has(MENTION_ONLY) && ![...evidence].some((e) => OFFERING_EVIDENCE.has(e));
+}
+
 // A URL literally structured as a subject/department hub ("/area-of-study/<slug>",
 // "/areas-of-study/<slug>") describes the DISCIPLINE, not one credentialed offering. "own_detail_page"
 // ("this page is about this item alone") is true of every such hub page by construction — the page
@@ -78,6 +88,15 @@ export function classifyEntity(item: EntityItem, ctx: EntityContext): EntityClas
   const codeIsUnit = !!code && /^[A-Z]{2,4}\d{3,4}[A-Z]?$/.test(code);
 
   if (label === "other") return { verdict: "drop", reason: "model:other", parentProgram: null, unitCode: null };
+
+  // Named, not offered (heraldcollege.edu.np: an FAQ's degree list staged as courses). Checked
+  // BEFORE the award branch below, which is otherwise final. Anything unit-shaped falls through
+  // instead: dropping a "modules covered include…" prose unit loses curriculum data the module
+  // branches below know how to store.
+  const unitSignal = label === "module" || codeIsUnit || [...evidence].some((e) => UNIT_EVIDENCE.has(e));
+  if (!unitSignal && mentionedNotOffered(evidence)) {
+    return { verdict: "drop", reason: "mentioned_not_offered", parentProgram: null, unitCode: null };
+  }
 
   const knownUnit = (!!code && ctx.jobUnitCodes.has(code)) || ctx.jobUnitNames.has(normUnit(item.name));
   const underCurriculumHeading = (item.heading_path ?? []).some((h) => CURRICULUM_HEADING_RE.test(h))

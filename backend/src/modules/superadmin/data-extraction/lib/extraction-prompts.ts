@@ -187,7 +187,7 @@ Extract this JSON:
       "short_name": "abbreviated name or null",
       "entity_type": "course|short_course|module|specialization|other — what this item IS. 'course' is a programme the institution enrols students in on its own (a degree, diploma, certificate); 'short_course' a standalone non-award offering; 'module' a unit/subject/paper/curriculum component that exists only inside a programme; 'specialization' a major, concentration, track or pathway offered under one programme; 'other' anything that is none of these (a department, a scholarship, a page heading)",
       "parent_program": "when entity_type is module or specialization: the programme it belongs to, exactly as the page names it (from the nearest heading, breadcrumb or title) — else null",
-      "evidence": ["zero or more of: own_detail_page (this page is about this item alone), award_in_name (its name states a qualification), fees_stated, duration_stated, unit_code (it carries a subject code like COMP101), credit_points (it lists credits/units/ECTS), listed_under_program_heading (it sits under a heading such as Program Courses, Course Structure, Modules, Core, Electives, Year 1)"],
+      "evidence": ["zero or more of: own_detail_page (this page is about this item alone), award_in_name (its name states a qualification), fees_stated, duration_stated, unit_code (it carries a subject code like COMP101), credit_points (it lists credits/units/ECTS), listed_under_program_heading (it sits under a heading such as Program Courses, Course Structure, Modules, Core, Electives, Year 1), mentioned_only_in_prose (the page NAMES it in passing — in an FAQ or Q&A answer, a comparison, a 'popular/related programmes' aside, a news or marketing paragraph — rather than presenting it as something this institution enrols students in)"],
       "degree_level": "${levelEnum} — ONLY one of these exact values, taken from the qualification in the course's own name or heading (BSc/BA/MBBS → Bachelor; MSc/MA/MBA → Master; MRes/MPhil → a research master; PhD/EdD/JD/MD → the doctoral level; Grad Cert/PGCert → the graduate level; a minor, exchange, summer school, short course or foundation year → the non-award level). null if the page names no qualification — never invent a level, and never answer with a value that is not in the list above",
       "course_category": "academic|short_course — 'academic' is a formal qualification requiring sustained enrolment (any degree_level above); 'short_course' is a standalone, non-award offering — a workshop, single-topic training, professional development, or language course with no degree_level qualification",
       "subject_area": "the shared subject/program name this qualification belongs to, WITHOUT the qualification suffix — e.g. 'Aerospace Engineering', 'Computer Science', 'Medicine', 'Business'",
@@ -196,7 +196,7 @@ Extract this JSON:
       "duration_text": "the duration exactly as written on the page, e.g. '3 years full-time' or '18 months' — null if not stated",
       "study_mode": "on-campus|online|hybrid|null",
       "description": "course description or null",
-      "awarding_institution": null,
+      "awarding_institution": "the institution that AWARDS the qualification when it differs from the one teaching it (a partner college delivering a UK university's degree) — from 'awarded by', 'degree from', 'in partnership with', or the university named in a course-specification link. null when the page names none",
       "source_url": "${url}",
       "career_paths": [],
       "fees": [
@@ -262,6 +262,13 @@ Extract this JSON:
       "scholarships": [
 ${SCHOLARSHIP_ITEM_SCHEMA}      ],
       "campus_names": ["campus names where this course is offered"],
+      "accreditations": [
+        {
+          "name": "the accrediting or recognising body — always the FULL name with the abbreviation in parentheses when you know it, never the bare abbreviation: 'Chartered Institute of Marketing (CIM)', not 'CIM'; 'Tribhuvan University (TU) equivalency'",
+          "issuing_organization": "the organisation behind the accreditation when it differs from name, else null",
+          "website": "the body's own site when the page links to it, else null"
+        }
+      ],
       "study_units": [
         {
           "unit_code": "code or null",
@@ -298,7 +305,9 @@ Rules:
 - Do NOT extract a page as a course if it is a SCHOLARSHIP, bursary, funding or financial-support page. Such a page commonly lists the degrees the award can be held with ("eligible courses: Bachelor of Commerce, Bachelor of Engineering…") — that list is the scholarship's scope, not a set of courses this page describes, and staging one course per listed degree fabricates courses whose only "entry requirement" is the scholarship's criteria. Return an empty courses array for a page like this.
 - Do NOT extract a page as a course if it describes the ADMISSIONS PROCESS in general — e.g. "How to Apply as a First-Year Student", "Transfer Pathways", "Application Requirements", "Dates and Deadlines" — rather than one specific named qualification. These pages talk about applying, deadlines, or eligibility across many/all programs at once, and never name one degree with its own curriculum. Never invent a degree_level (e.g. "Bachelor") for a page like this just because it mentions undergraduate/first-year admission — if the page does not name one specific qualification, return an empty courses array.
 - Do NOT extract a course from a NEWS ARTICLE, PRESS RELEASE, or RANKINGS ANNOUNCEMENT that merely mentions subject areas or program names in passing (e.g. "our graduate programs in nursing, law, and engineering all ranked in the top 10") — this is not a course listing page, and inventing one "course" per subject area mentioned is fabrication, not extraction. Only extract from a page whose actual purpose is to describe/detail specific qualifications.
+- A QUALIFICATION THIS PAGE ONLY TALKS ABOUT IS NOT A COURSE THIS INSTITUTION OFFERS. An FAQ or Q&A answer ("Which course is better in Nepal: BIT or BSc CSIT?", "Popular IT programs in Nepal include BIT, BSc CSIT, BCA, BIM and BSc (Hons) Computing"), a comparison, a "related/popular programmes" aside, or a marketing paragraph names degrees that are general advice about the sector — frequently degrees this institution does not run at all, and sometimes degrees no institution on this page runs. A qualification stated in its name ("BSc (Hons) Computing") is NOT evidence that it is offered here: an FAQ answer states one too. Extract an item only from what the page PRESENTS as an offering — its own subject when it is a detail page, or the entries of its course list. If you do return such a passing mention, you MUST give it evidence "mentioned_only_in_prose"; preferably leave it out of the courses array entirely.
 - Never invent fees or dates — only extract what's explicitly stated
+- ACCREDITED BY / RECOGNISED BY sections are frequently LOGO-ONLY: a heading such as "accredited by", "recognised by" or "TU equivalency" followed by nothing but an image that links out (e.g. a CIM logo linking to cim.co.uk/qualifications/cim-accredited-degree). Read the body's name from the LINK TARGET or the image filename and return it in accreditations, with that link as its website — a logo-only section is a real accreditation, never an empty array. A recognition/equivalency body (e.g. a Tribhuvan University equivalency section) counts as an accreditation. The AWARDING body ("awarded by", "degree from University of Wolverhampton") goes in awarding_institution, never in accreditations — and an accreditor is never the awarding_institution.
 - EVERY intake needs a YEAR. intake_year is what makes an intake findable at all — an intake with no year is invisible to the site's intake filters and its "next intake" display. US and Canadian catalogues label intakes by bare season ("Fall", "Spring Semester"); the year is almost always stated nearby, in a heading, an academic-year label ("Academic Year 2026-27" -> Fall 2026 and Spring 2027), a deadline, or a term table. Read it from that context and put it in both intake_year and the intake_name ("Fall" -> "Fall 2027"). Also set intake_month from the season using the institution's own hemisphere — for a Northern-hemisphere institution Fall/Autumn is 9, Spring is 1, Summer is 5, Winter is 1; for a Southern-hemisphere one (Australia, NZ) Autumn is 3, Spring is 9, Summer is 12, Winter is 6.
 - If the page truly states no year for an intake anywhere, still return it with its name, and leave intake_year null rather than guessing a year — a wrong year is worse than a missing one.
 - NEVER INVENT A DAY. Every intake date takes either YYYY-MM-DD or YYYY-MM, and which one you use is decided by the page, not by convenience. A page that says "applications close in January 2027" states a MONTH: return "2027-01", never "2027-01-01". A page that says "Winter Quarter begins January 5, 2027" states a DAY: return "2027-01-05". Guessing the first of the month produces a deadline the institution never published, which a student can then miss by weeks. The same rule applies to every entry in custom_dates.
@@ -896,8 +905,9 @@ ${ELIGIBILITY_SCOPE_RULE}
 - A cohort statistic is not a requirement: a percentile ("95th percentile"), a class average, a median, "top 10%", an acceptance rate or an employment rate describes who got in, not the bar for getting in. Keep min_score/min_score_percent null; a test's average/median goes in that test's "typical_score", never its "score".
 - Set is_optional true when the page calls a test optional, recommended, or waivable.`,
     accreditations: `{
-  "accreditations": [{ "name": "accreditation body name", "issuing_organization": "org or null" }]
-}`,
+  "accreditations": [{ "name": "accreditation body name", "issuing_organization": "org or null", "website": "the body's own site when the page links to it, else null" }]
+}
+Accredited-by/recognised-by sections are frequently LOGO-ONLY (a heading, then an image linking out) — read the body's name from the link target or image filename; an equivalency/recognition body counts. The AWARDING body ("awarded by", "degree from X") is not an accreditation.`,
     course: `{
   "name": "full course name", "short_name": null, "description": "2-4 sentences", "degree_level": "Bachelor|Master|Diploma|Certificate|etc",
   "course_category": "academic|short_course", "subject_area": null, "duration_weeks": null, "duration_text": "duration exactly as written on the page or null", "study_mode": null, "career_paths": [], "awarding_institution": null

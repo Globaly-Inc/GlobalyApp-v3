@@ -19,7 +19,9 @@ export const SITE_URL_CATEGORY_DESCRIPTIONS: Record<SiteUrlCategory, string> = {
   overview: "the homepage or an institution-wide overview / \"why us\" page",
   about_us: "history, mission, governance, leadership, who we are",
   contact_us: "contact details, enquiry forms, how to reach the institution",
-  course: "a specific course/programme/degree/service, or a listing of them",
+  // The NOT clause is load-bearing — without it the lite model files a marketing post about degrees
+  // as a course page every time (verified live; see CLAUDE.md 2026-10-12).
+  course: "a page whose purpose is to present a specific course/programme/degree/service the institution itself offers, or a listing of them (NOT a blog/news/marketing article ABOUT degrees or study topics — a dated article is other, whatever it discusses)",
   branches: "campuses, locations, offices, centres",
   agents: "education agents, representatives, partner directories, the team",
   fees: "tuition, fees, costs, payment",
