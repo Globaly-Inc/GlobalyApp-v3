@@ -115,7 +115,7 @@ export function ProfileSidebar({
               <label className="text-xs text-muted-foreground">Your public link</label>
               {editingSlug ? (
                 <div className="flex h-9 items-center gap-1 rounded-md border border-destructive bg-background px-2 text-xs">
-                  <span className="shrink-0 whitespace-nowrap text-muted-foreground">globalyapp.com/personal/</span>
+                  <span className="shrink-0 whitespace-nowrap text-muted-foreground">app.globalyai.com/personal/</span>
                   <Input
                     autoFocus
                     value={slugDraft}
@@ -141,7 +141,7 @@ export function ProfileSidebar({
                 </div>
               ) : (
                 <div className="flex h-9 items-center gap-1 rounded-md border border-input bg-muted/50 px-2 text-xs">
-                  <span className="shrink-0 whitespace-nowrap text-muted-foreground">globalyapp.com/personal/</span>
+                  <span className="shrink-0 whitespace-nowrap text-muted-foreground">app.globalyai.com/personal/</span>
                   <span className="truncate font-medium text-foreground">{slug}</span>
                   <Button variant="ghost" size="icon-xs" className="ml-auto shrink-0" onClick={startEditingSlug} aria-label="Edit link">
                     <Pencil className="h-3 w-3" />
@@ -151,7 +151,7 @@ export function ProfileSidebar({
                     size="icon-xs"
                     className="shrink-0"
                     onClick={() => {
-                      navigator.clipboard.writeText(`globalyapp.com/personal/${slug}`);
+                      navigator.clipboard.writeText(`app.globalyai.com/personal/${slug}`);
                       toast.success("Link copied");
                     }}
                     aria-label="Copy link"
