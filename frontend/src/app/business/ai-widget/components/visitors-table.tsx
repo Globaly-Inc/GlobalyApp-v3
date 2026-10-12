@@ -5,7 +5,7 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ACTIONS, rowDelay, STICKY_TD, STICKY_TH, TABLE, TABLE_WRAP, TD, TH, TR } from "@/app/business/profile/components/portal-ui/portal-ui";
 import { relativeTime } from "@/components/feed/utils";
 import { cn } from "@/lib/utils";
 import { VISITOR_STATUS_BADGE } from "../const";
@@ -15,9 +15,9 @@ import { ChannelGlyph } from "@/app/business/messages/components/channel-glyph";
 import { INBOX_CHANNELS } from "@/app/business/messages/const";
 
 /**
- * The list itself — a real table, because Status and Last activity were asked for as columns
- * and a column that only lines up on one screen width is not a column. The card chrome around
- * it (header, tabs, pagination) is the Team tab's, so the two pages still read as one app.
+ * The list itself — a real table, because Status and Last activity were asked for as columns.
+ * Styled with the Team tab's portal table classes (sticky header, sticky Actions column), so the
+ * two pages read as one app.
  */
 
 /**
@@ -59,114 +59,91 @@ export function VisitorsTable({
     onSelectedIdsChange(next);
   };
 
-  // table-fixed + truncating cells keeps the table inside the card at any width: the two
-  // free-text columns (name/email and study preference) absorb whatever width is left, and
-  // the per-visitor demographics drop out below lg rather than pushing a horizontal scroll.
+  // The Team table's frame: its own scroll box, so the header and the Actions column stay put
+  // while a narrow screen scrolls the columns sideways instead of dropping them.
   return (
-    <div className="overflow-hidden border-t">
-      <Table className="table-fixed">
-        <TableHeader className="bg-muted/40">
-          <TableRow className="hover:bg-transparent">
-            <TableHead className="w-10 pl-3">
+    <div className={TABLE_WRAP}>
+      <table className={cn(TABLE, "min-w-[1080px] table-fixed")}>
+        <thead>
+          <tr>
+            <th className={cn(TH, "w-11")}>
               <Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label="Select all on this page" />
-            </TableHead>
-            <TableHead className="text-xs text-muted-foreground">Visitor</TableHead>
-            <TableHead className="w-28 text-xs text-muted-foreground">Channel</TableHead>
-            <TableHead className="hidden w-14 text-xs text-muted-foreground lg:table-cell">Age</TableHead>
-            <TableHead className="hidden w-20 text-xs text-muted-foreground lg:table-cell">Gender</TableHead>
-            <TableHead className="hidden w-28 text-xs text-muted-foreground lg:table-cell">Nationality</TableHead>
-            <TableHead className="hidden text-xs text-muted-foreground lg:table-cell">Study preference</TableHead>
-            <TableHead className="w-24 text-xs text-muted-foreground">Status</TableHead>
-            <TableHead className="w-16 text-xs text-muted-foreground">Chats</TableHead>
-            <TableHead className="hidden w-28 text-xs text-muted-foreground md:table-cell">Last activity</TableHead>
-            <TableHead className="w-20 pr-3 text-right text-xs text-muted-foreground">
-              <span className="sr-only">Actions</span>
-            </TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {visitors.map((v) => {
+            </th>
+            <th className={cn(TH, "w-[24%]")}>Visitor</th>
+            <th className={cn(TH, "w-28")}>Channel</th>
+            <th className={cn(TH, "w-14")}>Age</th>
+            <th className={cn(TH, "w-20")}>Gender</th>
+            <th className={cn(TH, "w-28")}>Nationality</th>
+            <th className={TH}>Study preference</th>
+            <th className={cn(TH, "w-24")}>Status</th>
+            <th className={cn(TH, "w-16")}>Chats</th>
+            <th className={cn(TH, "w-28")}>Last activity</th>
+            <th className={cn(TH, STICKY_TH, "w-20")}>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          {visitors.map((v, i) => {
             const badge = VISITOR_STATUS_BADGE[v.status];
             const anonymous = !v.name;
             const selected = selectedIds.has(v.id);
             return (
-              <TableRow key={v.id} data-state={selected ? "selected" : undefined}>
-                <TableCell className="pl-3">
-                  <Checkbox
-                    checked={selected}
-                    onCheckedChange={() => toggleOne(v.id)}
-                    aria-label={`Select ${visitorDisplayName(v)}`}
-                  />
-                </TableCell>
-                {/* Name with the email beneath it — one column instead of two is most of the width
-                    that used to overflow. No email is the normal state, so it is simply omitted. */}
-                <TableCell>
+              <tr key={v.id} className={TR} style={rowDelay(i)} data-state={selected ? "selected" : undefined}>
+                <td className={TD}>
+                  <Checkbox checked={selected} onCheckedChange={() => toggleOne(v.id)} aria-label={`Select ${visitorDisplayName(v)}`} />
+                </td>
+                {/* Name with the email (or channel handle) beneath it. */}
+                <td className={TD}>
                   <div className="flex min-w-0 items-center gap-3">
-                    <Avatar className="size-9">
-                      <AvatarFallback
-                        className={cn(
-                          "text-xs font-semibold",
-                          anonymous ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary",
-                        )}
-                      >
+                    <Avatar className="size-9 shrink-0">
+                      <AvatarFallback className={cn("text-xs font-semibold", anonymous ? "bg-muted text-muted-foreground" : "bg-primary/10 text-primary")}>
                         {anonymous ? <User className="h-4 w-4" /> : visitorInitials(v)}
                       </AvatarFallback>
                     </Avatar>
                     <div className="min-w-0">
-                      <p className={cn("truncate font-medium", anonymous && "text-muted-foreground italic")}>
-                        {visitorDisplayName(v)}
-                      </p>
-                      {!v.email && v.channel_handle && <p className="truncate text-xs text-muted-foreground">{v.channel_handle}</p>}
-                      {v.email && (
-                        <a
-                          href={`mailto:${v.email}`}
-                          className="block truncate text-xs text-muted-foreground hover:text-primary hover:underline"
-                          title={v.email}
-                        >
+                      <b className={cn("block truncate text-sm", anonymous && "font-medium italic text-muted-foreground")}>{visitorDisplayName(v)}</b>
+                      {v.email ? (
+                        <a href={`mailto:${v.email}`} className="block truncate text-[12.5px] text-muted-foreground hover:text-primary hover:underline" title={v.email}>
                           {v.email}
                         </a>
+                      ) : (
+                        v.channel_handle && <small className="block truncate text-[12.5px] text-muted-foreground">{v.channel_handle}</small>
                       )}
                     </div>
                   </div>
-                </TableCell>
-                {/* Verbatim, never a bucket — "early 30s" is a real stored value. */}
-                <TableCell>
+                </td>
+                <td className={TD}>
                   <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground" title={v.channel_handle ?? undefined}>
                     <ChannelGlyph channel={v.channel ?? "ai_embed"} size="sm" />
                     <span className="truncate">{INBOX_CHANNELS[v.channel ?? "ai_embed"].label}</span>
                   </span>
-                </TableCell>
-                <TableCell className="hidden truncate lg:table-cell" title={v.age ?? undefined}>{orDash(v.age)}</TableCell>
-                <TableCell className="hidden truncate capitalize lg:table-cell">{orDash(v.gender)}</TableCell>
-                {/* The resolved country when there is one, otherwise the visitor's own wording.
-                    The title carries the original whenever it differed, so a wrong resolution is
-                    visible without opening the drawer. */}
-                <TableCell className="hidden truncate lg:table-cell" title={v.nationality_raw ?? undefined}>
-                  {orDash(v.nationality ?? v.nationality_raw)}
-                </TableCell>
-                <TableCell className="hidden truncate lg:table-cell" title={v.study_preference ?? undefined}>
-                  {orDash(v.study_preference)}
-                </TableCell>
-                <TableCell>
+                </td>
+                {/* Verbatim, never a bucket — "early 30s" is a real stored value. */}
+                <td className={cn(TD, "truncate")} title={v.age ?? undefined}>{orDash(v.age)}</td>
+                <td className={cn(TD, "truncate capitalize")}>{orDash(v.gender)}</td>
+                {/* The resolved country when there is one, otherwise the visitor's own wording; the
+                    title carries the original, so a wrong resolution is visible from the list. */}
+                <td className={cn(TD, "truncate")} title={v.nationality_raw ?? undefined}>{orDash(v.nationality ?? v.nationality_raw)}</td>
+                <td className={cn(TD, "truncate")} title={v.study_preference ?? undefined}>{orDash(v.study_preference)}</td>
+                <td className={TD}>
                   <Badge className={badge.className}>{badge.label}</Badge>
-                </TableCell>
-                <TableCell className="text-muted-foreground">
+                </td>
+                <td className={cn(TD, "text-muted-foreground")}>
                   <span className="flex items-center gap-1.5">
                     <MessageSquare className="h-3.5 w-3.5" />
                     {v.message_count}
                   </span>
-                </TableCell>
-                <TableCell className="hidden truncate text-muted-foreground md:table-cell">
-                  {relativeTime(v.last_activity_at)}
-                </TableCell>
-                <TableCell className="pr-3 text-right">
-                  <Button size="sm" onClick={() => onView(v)}>View</Button>
-                </TableCell>
-              </TableRow>
+                </td>
+                <td className={cn(TD, "truncate font-mono text-[11px] font-medium text-muted-foreground")}>{relativeTime(v.last_activity_at)}</td>
+                <td className={cn(TD, STICKY_TD)}>
+                  <div className={ACTIONS}>
+                    <Button size="sm" onClick={() => onView(v)}>View</Button>
+                  </div>
+                </td>
+              </tr>
             );
           })}
-        </TableBody>
-      </Table>
+        </tbody>
+      </table>
     </div>
   );
 }

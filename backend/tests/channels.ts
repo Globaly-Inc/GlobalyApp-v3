@@ -9,6 +9,7 @@ process.env.NODE_ENV = "production";
 const { verifySignature } = await import("../src/modules/channels/lib/zernio-client.js");
 const { windowOpen } = await import("../src/modules/channels/services/outbound.service.js");
 const { aiConfigOf, DEFAULT_AI_CONFIG, channelVisitorKey, isChannel } = await import("../src/modules/channels/consts.js");
+const { formatForChannel, markdownToChannel } = await import("../src/modules/channels/lib/channel-format.js");
 
 let passed = 0;
 let failed = 0;
@@ -45,6 +46,21 @@ check("garbage reads as defaults", aiConfigOf("nonsense").takeover === true);
 check("channel visitor keys are namespaced so they never collide with widget fingerprints", channelVisitorKey("abc") === "zernio:abc");
 check("isChannel accepts the three Zernio channels", ["whatsapp", "instagram", "facebook"].every(isChannel));
 check("isChannel rejects ai_embed and other platforms", !isChannel("ai_embed") && !isChannel("telegram"));
+
+// --- the widget's answer, formatted for each app
+const md = "Here is how they compare:\n\n- **Master of Science**: research-focused\n- **MEng**: *industry* path\n\n## Next steps\nApply [online](https://x.edu/apply).";
+const wa = markdownToChannel(md, "whatsapp");
+const ig = markdownToChannel(md, "instagram");
+check("WhatsApp keeps bold as *x* and bullets as •", wa.includes("• *Master of Science*: research-focused") && wa.includes("_industry_"));
+check("WhatsApp turns a heading into a bold line", wa.includes("*Next steps*"));
+check("Instagram gets no markup at all, just • bullets", ig.includes("• Master of Science: research-focused") && !/[*_#]/.test(ig.replace("https://x.edu/apply", "")));
+check("links keep their URL as text", ig.includes("online: https://x.edu/apply"));
+const card = { id: "1", name: "MEng in Computer Science", institution: "Cornell", degree_level: "Master", duration: "1 year", city: "Ithaca", source_url: "https://x.edu/meng" };
+const withCards = formatForChannel({ cleanText: "Two options:", cards: [card], blocks: [{ type: "timeline", title: "How to apply", steps: [{ title: "Submit transcripts" }, { title: "Interview" }] }] }, "whatsapp");
+check("course cards become bulleted lines with their details", withCards.includes("• *MEng in Computer Science*") && withCards.includes("Master · 1 year · Ithaca") && withCards.includes("https://x.edu/meng"));
+check("a timeline block becomes a numbered list", withCards.includes("*How to apply*\n1. Submit transcripts\n2. Interview"));
+const long = formatForChannel({ cleanText: ("A paragraph of text. ".repeat(20) + "\n\n").repeat(5), cards: [card], blocks: [] }, "instagram");
+check("Instagram replies stay under its 1000-character limit", long.length <= 1000);
 
 console.log(`\nchannels: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

@@ -20,6 +20,7 @@ import { judgeWantsHuman } from "../../ai-counsellor/lib/handover-detect.js";
 import { refreshChatSummary } from "../../ai-counsellor/services/chat-summaries.service.js";
 import { captureVisitorDetails, generateVisitorReply, loadVisitorRules } from "../../ai-counsellor/services/visitor-reply.service.js";
 import { judgeEscalation, type EscalationReason } from "../lib/escalation-detect.js";
+import { CHANNEL_TEXT_LIMIT, formatForChannel } from "../lib/channel-format.js";
 import * as zernioRepo from "../repositories/zernio.repository.js";
 import * as connections from "../repositories/connections.repository.js";
 import * as channelVisitors from "../repositories/channel-visitors.repository.js";
@@ -38,9 +39,12 @@ const HOLDING_LINE: Record<EscalationReason, string> = {
   ai_unsure: "That's a question our admissions team should answer for you, so I've passed it on. Someone will reply here as soon as they can.",
 };
 
+// The answer itself is the widget's — lists, bold, course cards — and formatForChannel turns it
+// into the platform's own formatting. This only says where it is going and how long it may be.
 const surfaceNote = (channel: Channel) => [
   `CHANNEL: you are replying to a customer on ${CHANNEL_LABEL[channel]}, in a phone chat — not on a website.`,
-  "Write plain text: short paragraphs, no markdown headings, tables, bold markers or code blocks, and no more than four short paragraphs.",
+  "Answer exactly as you would on the website: lead with what they asked, use short bullet points for options, programmes or steps, and bold the key names. It is converted to the app's formatting.",
+  `No tables or code blocks. Keep the whole reply under ${Math.round(CHANNEL_TEXT_LIMIT[channel] * 0.8)} characters, course details included.`,
   "Never mention buttons, cards, links to click or a website chat window.",
 ].join("\n");
 
@@ -306,14 +310,16 @@ async function answer(
   const embed = await embedService.buildEmbedContext(t.config);
   const rules = await loadVisitorRules(embed);
   const reply = await generateVisitorReply({ embed, rules, tenantDb: t.db, visitor, prevMessages, history, asked, surfaceNote: surfaceNote(t.conn.channel) });
-  if (!reply.cleanText.trim()) return;
+  // What the customer will see — and what is stored, so the Inbox shows the same message.
+  const text = formatForChannel(reply, t.conn.channel);
+  if (!text.trim()) return;
 
   if (t.conn.ai_mode === "suggest") {
     // Suggest-only: a person reviews and sends it from the Inbox.
-    await channelVisitors.setAttention(t.db, visitor.id, "suggest", reply.cleanText);
+    await channelVisitors.setAttention(t.db, visitor.id, "suggest", text);
   } else {
     await sendToCustomer({
-      db: t.db, visitor, sessionId: session.id, role: "assistant", content: reply.cleanText,
+      db: t.db, visitor, sessionId: session.id, role: "assistant", content: text,
       idempotencyKey: `ai:${session.id}:${prevMessages[prevMessages.length - 1]?.id ?? 0}:${asked.length}`,
       extra: {
         sources: reply.ragOutput.sources, memory_ids: reply.memory?.ids,

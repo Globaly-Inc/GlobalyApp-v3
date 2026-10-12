@@ -5,11 +5,16 @@ import { visitorHref } from "@/app/business/ai-widget/const";
 import { useRouter } from "next/navigation";
 import { Download, Loader2, Search, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
-import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { cn } from "@/lib/utils";
+import { PortalPageHeader } from "@/app/business/profile/components/portal-ui/portal-page-header";
+import { PortalStats } from "@/app/business/profile/components/portal-ui/portal-stats";
+import { PortalStatTile } from "@/app/business/profile/components/portal-ui/portal-stat-tile";
+import { SEARCH_INPUT } from "@/app/business/profile/components/portal-ui/portal-ui";
+import { TeamSubTabs } from "@/app/business/profile/components/members/team-sub-tabs";
 import { fetchVisitors } from "../store/ai-widget-visitors-slice";
 import { VISITORS_PAGE_SIZE, VISITOR_TABS } from "../const";
 import { downloadCsv, visitorsToCsv } from "../utils";
@@ -18,7 +23,9 @@ import { ChannelPicker, type ChannelFilter } from "@/app/business/messages/compo
 import type { VisitorStatusFilter } from "../apis/types";
 
 /**
- * Everyone who has talked to this org's AI embed widget.
+ * Everyone who has messaged this org, on the website widget, WhatsApp, Instagram or Facebook —
+ * laid out like the Team tab (header, summary tiles, pill tabs, portal table) so the two pages
+ * read as one app.
  *
  * Tenant scoping is entirely the backend's: `ai_widget_visitors` lives in the tenant schema, so
  * the endpoint has no org id to pass and this component has none to send. Nothing here can widen
@@ -63,36 +70,45 @@ export function VisitorsTab() {
     downloadCsv(`widget-${tab === "all" ? "visitors" : tab}s-${new Date().toISOString().slice(0, 10)}.csv`, visitorsToCsv(rows));
   };
 
+  const filtered = !!search || tab !== "all" || channel !== "all";
+
   return (
     <Card>
-      <CardContent>
-        <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h1 className="text-2xl font-bold">Visitors &amp; Leads</h1>
-            <p className="text-muted-foreground">Everyone who has messaged you, on your website, WhatsApp, Instagram or Facebook.</p>
-          </div>
-          <div className="relative w-full sm:w-64">
-            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+      <CardContent className="stagger-in grid gap-4">
+        <PortalPageHeader title="Visitors & Leads" subtitle="Everyone who has messaged you, on your website, WhatsApp, Instagram or Facebook.">
+          <div className="relative w-full sm:w-72">
+            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
             <Input
-              className="h-10 pl-8"
+              className={SEARCH_INPUT}
               placeholder="Search name, email, phone or handle"
+              aria-label="Search visitors"
               value={search}
               onChange={(e) => changeQuery(() => setSearch(e.target.value))}
             />
           </div>
-        </div>
+        </PortalPageHeader>
 
-        <div className="mb-4 w-full sm:w-60">
-          <ChannelPicker value={channel} onChange={(next) => changeQuery(() => setChannel(next))} />
+        {/* Counts are for the whole list (they ignore search and channel), like the Team tiles. */}
+        <PortalStats>
+          <PortalStatTile value={counts.all} label="People" />
+          <PortalStatTile value={counts.visitor} label="Visitors" />
+          <PortalStatTile value={counts.lead} label="Leads" />
+        </PortalStats>
+
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <TeamSubTabs
+            label="Visitors view"
+            options={VISITOR_TABS.map((t) => ({ ...t, count: counts[t.value] }))}
+            value={tab}
+            onChange={(next) => changeQuery(() => setTab(next))}
+          />
+          <div className="w-full sm:w-60">
+            <ChannelPicker value={channel} onChange={(next) => changeQuery(() => setChannel(next))} />
+          </div>
         </div>
-        <AdminSegmentedTabs
-          options={VISITOR_TABS.map((t) => ({ ...t, count: counts[t.value] }))}
-          value={tab}
-          onChange={(next) => changeQuery(() => setTab(next))}
-        />
 
         {selectedIds.size > 0 && (
-          <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/40 p-2.5">
+          <div className="flex flex-wrap items-center justify-between gap-2 rounded-[14px] border bg-muted/40 p-2.5">
             <span className="text-sm font-medium">{selectedIds.size} selected</span>
             <div className="flex items-center gap-1.5">
               <Button size="sm" variant="outline" onClick={exportSelected}>
@@ -112,44 +128,35 @@ export function VisitorsTab() {
         )}
 
         {status === "failed" && (
-          <div className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">
+          <div className="rounded-[14px] border border-dashed py-12 text-center text-sm text-muted-foreground">
             {error ?? "Couldn't load visitors."}
           </div>
         )}
 
         {status === "idle" && items.length === 0 && (
-          <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-12 text-center">
+          <div className={cn("flex flex-col items-center gap-3 rounded-[14px] border border-dashed py-12 text-center")}>
             <Users className="h-10 w-10 text-muted-foreground/40" />
-            <p className="text-sm font-medium">
-              {search || tab !== "all" ? "Nothing matches these filters" : "No one has used your AI widget yet"}
-            </p>
-            {!search && tab === "all" && (
+            <p className="text-sm font-medium">{filtered ? "Nothing matches these filters" : "No one has messaged you yet"}</p>
+            {!filtered && (
               <p className="max-w-sm text-xs text-muted-foreground">
-                Visitors appear here as soon as someone sends their first message, and become leads
-                when they share their name and email.
+                People appear here as soon as they send their first message, and become leads when
+                they share their name and email.
               </p>
             )}
           </div>
         )}
 
         {status === "idle" && items.length > 0 && (
-          <Card>
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base">
-                {VISITOR_TABS.find((t) => t.value === tab)?.label} ({total})
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="p-0">
-              <VisitorsTable
-                visitors={items}
-                selectedIds={selectedIds}
-                onSelectedIdsChange={setSelectedIds}
-                // The table stays routing-agnostic: it reports which row was picked, this decides
-                // that picking one means opening that visitor's page.
-                onView={(v) => router.push(visitorHref(v.id))}
-              />
-            </CardContent>
-          </Card>
+          <div className="grid min-w-0">
+            <VisitorsTable
+              visitors={items}
+              selectedIds={selectedIds}
+              onSelectedIdsChange={setSelectedIds}
+              // The table stays routing-agnostic: it reports which row was picked, this decides
+              // that picking one means opening that visitor's page.
+              onView={(v) => router.push(visitorHref(v.id))}
+            />
+          </div>
         )}
 
         {total > 0 && (
