@@ -54,9 +54,8 @@ export function WidgetCard({
     <section className="@container overflow-hidden rounded-2xl border bg-card">
       <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4 sm:flex-nowrap">
         <div className="flex min-w-0 flex-1 items-center gap-3">
-          <span className="flex size-12 shrink-0 items-center justify-center overflow-hidden rounded-full bg-white ring-2 ring-primary/20">
-            <AlyOrbIcon className="size-11" color={config.brand_color} />
-          </span>
+          {/* No disc or ring — same as the widget header: the clipped halo made a hard white edge. */}
+          <AlyOrbIcon className="size-11" color={config.brand_color} />
           <div className="min-w-0">
             <h2 className="flex items-center gap-2 text-lg font-semibold">
               <span className="truncate">{config.display_name?.trim() || DEFAULT_WIDGET_NAME}</span>
