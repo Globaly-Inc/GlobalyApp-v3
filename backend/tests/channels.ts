@@ -54,10 +54,13 @@ const ig = markdownToChannel(md, "instagram");
 check("WhatsApp keeps bold as *x* and bullets as •", wa.includes("• *Master of Science*: research-focused") && wa.includes("_industry_"));
 check("WhatsApp turns a heading into a bold line", wa.includes("*Next steps*"));
 check("Instagram gets no markup at all, just • bullets", ig.includes("• Master of Science: research-focused") && !/[*_#]/.test(ig.replace("https://x.edu/apply", "")));
-check("links keep their URL as text", ig.includes("online: https://x.edu/apply"));
+// Whole-line equality, not a substring search, for anything holding a URL (CodeQL's
+// incomplete-URL-sanitization rule flags `.includes("https://…")`, even in a test).
+const hasLine = (text: string, line: string) => text.split("\n").some((l) => l.trim() === line);
+check("links keep their URL as text", hasLine(ig, "Apply online: https://x.edu/apply."));
 const card = { id: "1", name: "MEng in Computer Science", institution: "Cornell", degree_level: "Master", duration: "1 year", city: "Ithaca", source_url: "https://x.edu/meng" };
 const withCards = formatForChannel({ cleanText: "Two options:", cards: [card], blocks: [{ type: "timeline", title: "How to apply", steps: [{ title: "Submit transcripts" }, { title: "Interview" }] }] }, "whatsapp");
-check("course cards become bulleted lines with their details", withCards.includes("• *MEng in Computer Science*") && withCards.includes("Master · 1 year · Ithaca") && withCards.includes("https://x.edu/meng"));
+check("course cards become bulleted lines with their details", withCards.includes("• *MEng in Computer Science*") && hasLine(withCards, "Master · 1 year · Ithaca") && hasLine(withCards, "https://x.edu/meng"));
 check("a timeline block becomes a numbered list", withCards.includes("*How to apply*\n1. Submit transcripts\n2. Interview"));
 const long = formatForChannel({ cleanText: ("A paragraph of text. ".repeat(20) + "\n\n").repeat(5), cards: [card], blocks: [] }, "instagram");
 check("Instagram replies stay under its 1000-character limit", long.length <= 1000);
