@@ -104,14 +104,20 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
   const initial = me.email?.charAt(0).toUpperCase() ?? "A";
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div data-shell="portal" className="min-h-screen flex flex-col bg-background">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-card focus:px-3 focus:py-2 focus:text-sm focus:shadow-md"
+      >
+        Skip to content
+      </a>
       {/* Full-width bar above the rail, matching the personal and business portals: the mark sits over the
           rail (hence the w-20 box), navigation lives in the sidebar, and this keeps identity only. */}
-      <header className="sticky top-0 z-50 h-16 w-full border-b border-border bg-card/95 backdrop-blur-md supports-backdrop-filter:bg-card/60 flex items-center justify-between pr-4 md:pr-6">
+      <header className="sticky top-0 z-40 h-16 w-full border-b border-border bg-card/95 backdrop-blur flex items-center justify-between pr-4 md:pr-6">
         <div className="flex items-center min-w-0">
           <div className="flex h-16 shrink-0 items-center px-4 md:w-20 md:justify-center md:px-0">
             <Link href="/" className="flex items-center shrink-0">
-              <Image src={ICON.src} alt="Globalyapp" width={ICON.width} height={ICON.height} className="size-9 rounded-[10px]" />
+              <Image src={ICON.src} alt="GlobalyAI" width={ICON.width} height={ICON.height} className="size-9 rounded-lg" />
             </Link>
           </div>
           {/* ~60% of the bar's height: it marks the rail's edge without reading as a second border. */}
@@ -201,7 +207,7 @@ export function AdminShell({ children }: Readonly<{ children: React.ReactNode }>
       <div className="flex flex-1">
         <PortalSidebar groups={getVisibleNavGroups(authUser.role)} />
 
-        <main className="min-w-0 flex-1 px-3 sm:px-4 md:px-6 py-4 md:py-6">{children}</main>
+        <main id="main-content" tabIndex={-1} className="min-w-0 flex-1 px-3 md:px-8 py-4 md:py-8 outline-none">{children}</main>
       </div>
     </div>
   );

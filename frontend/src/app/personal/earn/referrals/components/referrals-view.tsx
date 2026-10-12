@@ -58,7 +58,7 @@ export function ReferralsView() {
     }
   };
 
-  const shareText = `Join me on Globaly — the all-in-one platform for international education! Sign up here: ${link}`;
+  const shareText = `Join me on GlobalyAI — the all-in-one platform for international education! Sign up here: ${link}`;
 
   const shareWhatsApp = () => {
     window.open(`https://wa.me/?text=${encodeURIComponent(shareText)}`, "_blank");
@@ -66,7 +66,7 @@ export function ReferralsView() {
 
   const shareNative = async () => {
     try {
-      await navigator.share({ title: "Join me on Globaly", text: shareText, url: link });
+      await navigator.share({ title: "Join me on GlobalyAI", text: shareText, url: link });
     } catch {
       /* the user dismissed the sheet — not an error worth surfacing */
     }
@@ -76,7 +76,7 @@ export function ReferralsView() {
     <div className="mx-auto max-w-[800px] space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Refer &amp; earn</h1>
-        <p className="text-muted-foreground">Invite friends and businesses to Globaly and earn credits.</p>
+        <p className="text-muted-foreground">Invite friends and businesses to GlobalyAI and earn credits.</p>
       </div>
 
       {status === "loading" && !data ? (

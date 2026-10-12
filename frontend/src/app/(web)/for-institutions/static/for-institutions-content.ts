@@ -22,35 +22,35 @@ export const INSTITUTION_TYPING_PHRASES = [
 export const FAQS = [
   {
     q: "How do I connect with Education Counselor?",
-    a: "You can connect with trusted education consultancies directly on Globaly from our 'Partnership' feature. Once your institution is verified, you'll be able to search and partner with education counselors, allowing them to represent you to your mentioned regions.",
+    a: "You can connect with trusted education consultancies directly on GlobalyAI from our 'Partnership' feature. Once your institution is verified, you'll be able to search and partner with education counselors, allowing them to represent you to your mentioned regions.",
   },
   {
     q: "How does the partnership with education counselors work?",
-    a: "Institutions can build and manage partnerships with education counselors through Globaly's secure platform. Once connected, education counselors can represent your courses, handle student enquiries, and support application processes — all within your partner network.",
+    a: "Institutions can build and manage partnerships with education counselors through GlobalyAI's secure platform. Once connected, education counselors can represent your courses, handle student enquiries, and support application processes — all within your partner network.",
   },
   {
     q: "Can we manage and update our courses easily?",
-    a: "Yes, Globaly provides a user-friendly portal that allows you to add, edit, or remove course listings anytime. You can also include entry requirements, fees, study units, and accreditations with ease. All the updates to the course will be notified to all the associate branches and partners — all at once.",
+    a: "Yes, GlobalyAI provides a user-friendly portal that allows you to add, edit, or remove course listings anytime. You can also include entry requirements, fees, study units, and accreditations with ease. All the updates to the course will be notified to all the associate branches and partners — all at once.",
   },
   {
     q: "Can we add branches from other locations?",
     a: "Absolutely. You can create and manage multiple branches under your institution profile. Each branch can have its own set of courses, partnerships, and Profile setup.",
   },
   {
-    q: "How does Globaly ensure the quality of student enquiries?",
+    q: "How does GlobalyAI ensure the quality of student enquiries?",
     a: "Student enquiries come from verified users who complete essential profile information. You will receive enquiries that match your courses from all around the world.",
   },
   {
     q: "Is there a cost to list our institution and courses?",
-    a: "Globaly is absolutely free for institutions to list their business in Globaly. Institutions do not have to worry about any cost while adding and sharing courses with their branches and partners.",
+    a: "GlobalyAI is absolutely free for institutions to list their business in GlobalyAI. Institutions do not have to worry about any cost while adding and sharing courses with their branches and partners.",
   },
   {
     q: "Do I need to be verified to access full features?",
     a: "Yes, verification is required to ensure the authenticity and credibility of your institution. Once verified, you'll be able to set up a full business profile, add team members, list your services, form partnerships with institutions, and unlock all platform capabilities.",
   },
   {
-    q: "Is Globaly compliant with data protection and privacy regulations?",
-    a: "Yes, Globaly follows strict data protection standards and is compliant with international privacy laws. We ensure that both institution and student data are securely stored and only accessible to authorized parties.",
+    q: "Is GlobalyAI compliant with data protection and privacy regulations?",
+    a: "Yes, GlobalyAI follows strict data protection standards and is compliant with international privacy laws. We ensure that both institution and student data are securely stored and only accessible to authorized parties.",
   },
 ];
 
@@ -84,7 +84,7 @@ export const WHY_JOIN = [
   {
     Icon: Code2,
     title: "Embed course search and eligibility check",
-    desc: "Add Globalyapp's powerful course search and eligibility test tool directly to your institution's site to capture and convert student traffic instantly.",
+    desc: "Add GlobalyAI's powerful course search and eligibility test tool directly to your institution's site to capture and convert student traffic instantly.",
   },
   {
     Icon: Megaphone,
@@ -102,7 +102,7 @@ export const WHY_JOIN = [
 export const HOW_IT_WORKS = [
   {
     Icon: UserPlus,
-    title: "Join Globaly",
+    title: "Join GlobalyAI",
     desc: "Create your institutional profile and become part of a global education network.",
   },
   {
@@ -176,7 +176,7 @@ export const OWN_DATA_ITEMS = [
   },
   {
     title: "Embed Powerful Course Search",
-    desc: "Integrate Globalyapp's powerful course search tool and live API into your own website or CRM, keeping your student and education counselor audiences up-to-date everywhere you operate.",
+    desc: "Integrate GlobalyAI's powerful course search tool and live API into your own website or CRM, keeping your student and education counselor audiences up-to-date everywhere you operate.",
     comingSoon: true,
   },
 ];

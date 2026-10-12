@@ -2,27 +2,27 @@ import { FaqAccordion } from "../../components/faq-accordion";
 
 const FAQS = [
   {
-    q: "What is Globaly and how does it benefit education consultancies?",
-    a: "Globaly is a unified platform that connects education consultancies with students and institutions worldwide, helping you streamline student recruitment, access global opportunities, and grow your business.",
+    q: "What is GlobalyAI and how does it benefit education consultancies?",
+    a: "GlobalyAI is a unified platform that connects education consultancies with students and institutions worldwide, helping you streamline student recruitment, access global opportunities, and grow your business.",
   },
   {
-    q: "Is Globaly free to use for education counselors?",
-    a: "Yes, Globaly is free to join and use. We operate as a zero-commission platform, meaning you keep 100% of what you earn. While core features are free, certain advanced tools—like accessing premium enquiries—require credits.",
+    q: "Is GlobalyAI free to use for education counselors?",
+    a: "Yes, GlobalyAI is free to join and use. We operate as a zero-commission platform, meaning you keep 100% of what you earn. While core features are free, certain advanced tools—like accessing premium enquiries—require credits.",
   },
   {
-    q: "How can I start receiving student enquiries on Globaly?",
+    q: "How can I start receiving student enquiries on GlobalyAI?",
     a: "Simply complete your consultancy profile, connect with institutions, and use credits to unlock and respond to quality student enquiries tailored to your offerings.",
   },
   {
     q: "How do I connect with institutions and manage partnerships?",
-    a: "You can explore available institutions on Globaly, request partnerships, and represent their services from your education counselor portal with ease and transparency.",
+    a: "You can explore available institutions on GlobalyAI, request partnerships, and represent their services from your education counselor portal with ease and transparency.",
   },
   {
     q: "How does the credit system work?",
     a: "Credits are what you spend to unlock a student enquiry. You can top up credits and use them as needed to engage with potential verified students.",
   },
   {
-    q: "How does Globaly ensure the quality of institutions and courses?",
+    q: "How does GlobalyAI ensure the quality of institutions and courses?",
     a: "We work only with verified institutions, and each course listing goes through a review process to ensure it meets academic standards and relevance for student needs.",
   },
   {

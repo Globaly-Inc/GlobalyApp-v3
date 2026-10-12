@@ -68,7 +68,7 @@ export function WidgetCard({
               </span>
             </h2>
             <p className="truncate text-sm text-muted-foreground">
-              {config.subtitle || "AI counsellor · powered by Globaly"}
+              {config.subtitle || "AI counsellor · powered by GlobalyAI"}
             </p>
           </div>
         </div>

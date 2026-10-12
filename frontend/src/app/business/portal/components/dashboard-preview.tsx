@@ -58,8 +58,8 @@ export function DashboardPreview() {
     <Card className={untouched ? "border-dashed bg-muted/20 shadow-none" : undefined}>
       <CardHeader className="gap-1">
         <div>
-          <CardTitle className="text-sm">{untouched ? "Visitor numbers appear here" : "Chat widget activity"}</CardTitle>
-          <p className="text-xs text-muted-foreground">
+          <CardTitle>{untouched ? "Visitor numbers appear here" : "Chat widget activity"}</CardTitle>
+          <p className="text-sm text-muted-foreground">
             {untouched
               ? "Once the widget is live we'll chart visitors, conversations and captured contacts."
               : "How students are engaging with your AI assistant"}
@@ -67,7 +67,7 @@ export function DashboardPreview() {
         </div>
         {!untouched && (
           <CardAction>
-            <Badge variant="outline" className="font-normal">Last 6 months</Badge>
+            <Badge variant="secondary" className="font-normal">Last 6 months</Badge>
           </CardAction>
         )}
       </CardHeader>
@@ -85,11 +85,11 @@ export function DashboardPreview() {
           <div className="space-y-5">
             <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
               {statCards(data).map((s) => (
-                <div key={s.key} className="rounded-lg border border-border p-3">
+                <div key={s.key} className="rounded-lg border border-border bg-card px-4 py-3">
                   <p className="text-xs text-muted-foreground">{s.label}</p>
-                  <p className="mt-1 text-xl font-bold tabular-nums">{s.value}</p>
-                  <p className="mt-0.5 text-xs">
-                    <span className="font-medium text-emerald-600">{s.delta}</span>{" "}
+                  <p className="mt-1.5 font-heading text-2xl font-medium tracking-[-0.02em] tabular-nums">{s.value}</p>
+                  <p className="mt-1 text-xs">
+                    <span className="font-semibold text-success">{s.delta}</span>{" "}
                     <span className="text-muted-foreground">{s.note}</span>
                   </p>
                 </div>

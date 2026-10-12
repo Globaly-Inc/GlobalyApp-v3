@@ -8,15 +8,15 @@ import { cn } from "@/lib/utils";
 /**
  * Desktop navigation for every portal (personal, business, admin), shaped like GlobalyOS's `AppSidebar`
  * (`apps/web/src/components/layout/AppSidebar.tsx`): an 80px rail of stacked icon-over-label tiles, plus a
- * 180px submenu column carrying the active group's second-level items.
+ * 200px submenu column carrying the active group's second-level items. Rail tiles show GlobalyOS's 3D
+ * clay glyphs (`public/rail/*.webp`, see RAIL_GLYPHS) and fall back to the group's own icon.
  *
  * It expects the caller's own nav registry — `personal/const`, `business/const`, `admin/nav-config` all
  * already describe groups with optional `items`, so nothing has to be restated here. A group with one item
  * (or none) shows no column; the rail links to `href` if given, else the group's first item.
  *
  * Sits below a full-width header, so it is sticky at `top-16` with a viewport-minus-header height — exactly
- * how GlobalyOS pins its rail under its own 4rem bar. Colours are this app's tokens (`bg-primary/10`);
- * `bg-primary-light` is GlobalyOS-only.
+ * how GlobalyOS pins its rail under its own 4rem bar.
  */
 /** A `lucide` icon, or anything else that renders from a `className` — see `AlyOrbIcon`. */
 export type PortalNavIcon = ComponentType<{ className?: string }>;
@@ -44,7 +44,39 @@ export function isPortalNavActive(pathname: string | null, href: string, current
   return hrefTab === currentTab;
 }
 
-const groupHref = (group: PortalNavGroup) => group.href ?? group.items?.[0]?.href ?? "#";
+/** Rail label → 3D glyph in `public/rail/`. Keyed by label so the three nav registries stay as they are;
+    a label with no entry (e.g. "Ask Aly", which has its own orb) keeps its icon. */
+const RAIL_GLYPHS: Record<string, string> = {
+  Home: "home",
+  Socials: "home",
+  Overview: "chart",
+  Explore: "compass",
+  Earn: "coins",
+  Learning: "cap",
+  LMS: "cap",
+  Enquiries: "inbox",
+  Inbox: "inbox",
+  Contacts: "hr",
+  Messages: "chat",
+  Business: "campus",
+  Platform: "globe",
+  Data: "database",
+  Monitoring: "shield",
+  Marketing: "megaphone",
+  Scribe: "book",
+  Revenue: "wallet",
+  Settings: "settings",
+};
+
+export function RailGlyph({ group, className }: Readonly<{ group: PortalNavGroup; className?: string }>) {
+  const glyph = RAIL_GLYPHS[group.label];
+  if (!glyph) return <group.icon className={cn("h-5 w-5", className)} />;
+  // Decorative: the tile's aria-label/visible label names it.
+  // eslint-disable-next-line @next/next/no-img-element
+  return <img src={`/rail/${glyph}.webp`} alt="" width={24} height={24} className={cn("size-6 object-contain", className)} />;
+}
+
+export const groupHref = (group: PortalNavGroup) => group.href ?? group.items?.[0]?.href ?? "#";
 
 /**
  * Which item (if any) among a group's own `?tab=` links is active — the exact-path+tab match
@@ -78,7 +110,7 @@ function bestActiveItem(pathname: string | null, currentSearch: string | null, i
   }) ?? null;
 }
 
-const isGroupActive = (pathname: string | null, search: string | null, group: PortalNavGroup) =>
+export const isGroupActive = (pathname: string | null, search: string | null, group: PortalNavGroup) =>
   (!!group.href && isPortalNavActive(pathname, group.href, search)) ||
   !!(group.items && bestActiveItem(pathname, search, group.items));
 
@@ -91,7 +123,7 @@ export function PortalSidebar({ groups }: Readonly<{ groups: PortalNavGroup[] }>
   const activeItem = activeGroup?.items ? bestActiveItem(pathname, search, activeGroup.items) : null;
 
   return (
-    <aside className="hidden md:flex sticky top-16 z-30 h-[calc(100vh-4rem)] shrink-0 border-r border-border bg-card/95 backdrop-blur">
+    <aside className="hidden md:flex sticky top-16 z-30 h-[calc(100vh-4rem)] shrink-0 border-r border-border bg-sidebar">
       <div
         className={cn(
           "flex w-20 flex-col items-center overflow-y-auto py-3",
@@ -108,13 +140,13 @@ export function PortalSidebar({ groups }: Readonly<{ groups: PortalNavGroup[] }>
                   href={groupHref(group)}
                   aria-label={group.label}
                   className={cn(
-                    "flex h-14 w-16 flex-col items-center justify-center gap-1 rounded-lg px-1 transition-colors",
+                    "flex h-[3.75rem] w-16 flex-col items-center justify-center gap-1 rounded-lg px-1 transition-colors",
                     activeGroup?.label === group.label
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                      ? "bg-primary-light text-primary"
+                      : "text-sidebar-foreground hover:bg-accent hover:text-foreground",
                   )}
                 >
-                  <group.icon className="h-5 w-5" />
+                  <RailGlyph group={group} />
                   <span className="max-w-full truncate text-center text-[10px] font-medium leading-tight" title={group.label}>
                     {group.label}
                   </span>
@@ -126,8 +158,8 @@ export function PortalSidebar({ groups }: Readonly<{ groups: PortalNavGroup[] }>
       </div>
 
       {submenuItems.length > 0 && activeGroup && (
-        <div className="flex w-[180px] flex-col overflow-y-auto py-3">
-          <div className="px-4 pb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        <div className="flex w-[200px] flex-col overflow-y-auto py-3">
+          <div className="px-4 pb-2 font-heading text-sm font-medium text-foreground">
             {activeGroup.label}
           </div>
           <nav className="flex flex-col gap-0.5 px-2">
@@ -140,8 +172,8 @@ export function PortalSidebar({ groups }: Readonly<{ groups: PortalNavGroup[] }>
                   className={cn(
                     "relative flex items-center gap-2.5 rounded-md px-3 py-2 text-sm transition-colors",
                     active
-                      ? "bg-primary/10 font-medium text-primary"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                      ? "bg-primary-light font-medium text-primary"
+                      : "text-muted-foreground hover:bg-accent hover:text-foreground",
                   )}
                 >
                   {active && (

@@ -81,7 +81,7 @@ function Recipient({ person }: Readonly<{ person: DeveloperContact }>) {
  *
  * These people are agencies, contractors and colleagues — NOT staff. An earlier version invited
  * them into the org as a `developer` agent so they could sign in, which put non-staff in the
- * institution's user list and mailed them an invitation to join GlobalyApp they never asked for.
+ * institution's user list and mailed them an invitation to join GlobalyAI they never asked for.
  * The record is now just an address and when the code last went to it (`ai_embed_developers`).
  */
 export function EmbedDeveloperHandoff({ developers }: Readonly<{ developers: DeveloperContact[] }>) {

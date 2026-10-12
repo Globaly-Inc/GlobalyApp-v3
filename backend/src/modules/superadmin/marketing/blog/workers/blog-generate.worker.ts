@@ -113,7 +113,7 @@ async function processJob(job: GenerationJobRow): Promise<void> {
     category: job.topic ?? null,
     country_focus: job.country ?? null,
     tags: article.tags,
-    author_name: "Globaly AI",
+    author_name: "GlobalyAI",
     author_avatar_url: null,
     cover_image_url: cover.url,
     og_image_url: cover.url,

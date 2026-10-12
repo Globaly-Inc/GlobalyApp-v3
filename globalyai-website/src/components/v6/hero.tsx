@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { cn } from "@/lib/utils";
 import { siteConfig } from "@/lib/site";
 import { AlyOrb } from "@/components/site/aly-orb";
 import { TypewriterWord } from "@/components/site/typewriter-word";
@@ -27,12 +26,13 @@ export function Navbar() {
       <div className="v6-glass mx-auto flex h-16 max-w-[1300px] items-center justify-between gap-3 px-3 min-[390px]:px-4 sm:gap-5 sm:px-5">
         <Link href="/#top" className="flex shrink-0 items-center" aria-label={`${siteConfig.name}, home`}>
           <Image
-            src="/globalyai-logo.png"
+            src={theme === "dark" ? "/globalyai-logo-white.svg" : "/globalyai-logo.svg"}
             alt={siteConfig.name}
-            width={1240}
-            height={313}
+            width={610}
+            height={157}
             priority
-            className={cn("h-[22px] w-auto transition-[filter] duration-300", theme === "dark" && "brightness-0 invert")}
+            unoptimized
+            className="h-[26px] w-auto"
           />
         </Link>
 

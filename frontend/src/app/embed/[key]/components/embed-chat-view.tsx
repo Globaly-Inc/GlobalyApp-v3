@@ -233,7 +233,7 @@ export function EmbedChatView({ embedKey, initialConfig = null }: EmbedChatViewP
 
   return (
     // The brand colour replaces the app's primary for everything inside the panel — buttons,
-    // chips, the heading, focus rings — so the widget reads as the institution's, not Globaly's.
+    // chips, the heading, focus rings — so the widget reads as the institution's, not GlobalyAI's.
     <div className="flex h-dvh flex-col bg-background" data-widget-brand style={theme.vars}>
       <WidgetHeader
         name={name}
@@ -313,7 +313,7 @@ export function EmbedChatView({ embedKey, initialConfig = null }: EmbedChatViewP
       )}
 
       <ChatInput value={input} onChange={setInput} onSend={send} disabled={sending} />
-      <p className="shrink-0 pb-2 text-center text-[11px] text-muted-foreground">Powered by Globaly · AI can make mistakes</p>
+      <p className="shrink-0 pb-2 text-center text-[11px] text-muted-foreground">Powered by GlobalyAI · AI can make mistakes</p>
       {/* Above the composer, so the tray never covers the message box or Send. */}
       <CompareTray positionClass="bottom-28 right-3" />
     </div>

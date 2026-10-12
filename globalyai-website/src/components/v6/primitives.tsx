@@ -106,9 +106,8 @@ export function CtaButton({
       className={cn(
         "v6-magnetic group inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-full font-semibold",
         tone === "primary"
-          ? // White on the gradient's darkest stop is 5.1:1, and the gradient
-            // only gets lighter toward the aqua end where the label is not.
-            "v6-gradient text-white shadow-[0_14px_34px_-14px_rgb(47_107_224_/_0.7)]"
+          ? // Solid navy pill (light blue with navy ink in dark mode).
+            "v6-gradient text-[var(--primary-foreground)] hover:opacity-90"
           : "border border-[var(--border-strong)] bg-[var(--surface)] text-[var(--foreground)] hover:border-[var(--primary-bright)]",
         sizes[size],
         className,
@@ -186,7 +185,7 @@ export function Eyebrow({ children, className }: Readonly<{ children: ReactNode;
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-2 rounded-full border border-[var(--border-strong)] bg-[var(--surface)]/70 px-3.5 py-1.5 text-[13px] font-semibold text-[var(--primary-bright)]",
+        "inline-flex items-center gap-2 rounded-full border border-[var(--border-strong)] bg-[var(--surface)]/70 px-3.5 py-1.5 text-[13px] font-semibold text-[var(--muted-foreground)]",
         className,
       )}
     >

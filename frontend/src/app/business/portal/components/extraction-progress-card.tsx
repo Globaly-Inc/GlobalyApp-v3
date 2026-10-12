@@ -73,7 +73,7 @@ export function ExtractionProgressCard({ sharedFrom = null, website = null }: Re
     barClassName = "bg-destructive";
   } else if (done) {
     title = site ? `We read ${data.counts.courses.toLocaleString()} courses from ${site}` : "Extraction complete";
-    barClassName = "bg-emerald-500";
+    barClassName = "bg-success";
   } else {
     title = site ? `Reading ${site}` : "Reading your website";
     barClassName = "bg-[linear-gradient(90deg,var(--primary),#23DDF6)]";

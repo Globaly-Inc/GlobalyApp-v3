@@ -7,10 +7,10 @@ export function PricingCreditsExplainer() {
     <section className="bg-[hsl(var(--purple-dark))] py-20 text-white">
       <div className="container mx-auto px-4">
         <div className="mb-12 text-center">
-          <p className="mb-3 text-xs tracking-[0.3em] text-white/50 uppercase">Globaly credits</p>
-          <h2 className="mb-3 text-3xl font-bold md:text-4xl">One currency. Every action on Globaly.</h2>
+          <p className="mb-3 text-xs tracking-[0.3em] text-white/50 uppercase">GlobalyAI credits</p>
+          <h2 className="mb-3 text-3xl font-bold md:text-4xl">One currency. Every action on GlobalyAI.</h2>
           <p className="mx-auto max-w-xl text-white/60">
-            Credits are the universal currency for anything that costs on Globaly. Buy them once — they never
+            Credits are the universal currency for anything that costs on GlobalyAI. Buy them once — they never
             expire. Subscription credits top up automatically each month.
           </p>
         </div>

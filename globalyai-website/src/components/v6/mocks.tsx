@@ -236,7 +236,7 @@ export function MultiSiteMock({ step }: MockProps) {
             time, the lower row fainter, so what the visitor is shown is the
             depth rather than the eight. */}
         <div className="relative min-h-0 flex-1 overflow-hidden">
-          <span className="v6-sweep pointer-events-none absolute inset-x-0 top-0 z-10 h-10 bg-[linear-gradient(180deg,transparent,rgb(var(--fig,47_107_224)/0.3),transparent)]" />
+          <span className="v6-sweep pointer-events-none absolute inset-x-0 top-0 z-10 h-10 bg-[linear-gradient(180deg,transparent,rgb(var(--fig,64_69_83)/0.18),transparent)]" />
 
           <ul className="grid grid-cols-4 gap-2">
             {PAGES.map((page, index) => {
@@ -287,7 +287,7 @@ function Bubble({
   if (from === "us") {
     return (
       <div className={cn("flex justify-end", className)}>
-        <p className="max-w-[80%] rounded-[var(--r-chip)] bg-[var(--primary-bright)] px-3.5 py-2.5 text-[13px] font-medium text-white">
+        <p className="max-w-[80%] rounded-[var(--r-chip)] bg-[var(--primary)] px-3.5 py-2.5 text-[13px] font-medium text-[var(--primary-foreground)]">
           {children}
         </p>
       </div>
@@ -411,7 +411,7 @@ export function FormMock({ step }: MockProps) {
 /** Aly's face, on the two cards where the answer is hers. */
 function AlyAvatar() {
   return (
-    <span className="v6-gradient flex h-6 w-6 shrink-0 items-center justify-center rounded-full">
+    <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-[var(--aly)]">
       <Sparkles className="h-3 w-3 text-white" />
     </span>
   );
@@ -425,8 +425,8 @@ export function AnswerMock({ step }: MockProps) {
         icon={Sparkles}
         label="Aly"
         trailing={
-          <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-[#28c840]/15 px-2 py-1 text-[10.5px] font-semibold text-[#28c840]">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#28c840]" />
+          <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-[var(--ok-bg)] px-2 py-1 text-[10.5px] font-semibold text-[var(--ok-text)]">
+            <span className="h-1.5 w-1.5 rounded-full bg-[var(--ok-text)]" />
             Live
           </span>
         }
@@ -434,7 +434,7 @@ export function AnswerMock({ step }: MockProps) {
 
       <Screen className="justify-center gap-3 p-5">
         <div className="flex justify-end">
-          <p className="max-w-[80%] rounded-[var(--r-chip)] bg-[var(--primary-bright)] px-3.5 py-2.5 text-[13px] font-medium text-white">
+          <p className="max-w-[80%] rounded-[var(--r-chip)] bg-[var(--primary)] px-3.5 py-2.5 text-[13px] font-medium text-[var(--primary-foreground)]">
             Do I need work experience for the MBA?
           </p>
         </div>
@@ -449,11 +449,11 @@ export function AnswerMock({ step }: MockProps) {
 
         <span
           className={cn(
-            "ml-8 inline-flex w-fit items-center gap-1.5 rounded-full bg-[#28c840]/10 px-2.5 py-1 text-[11px] text-[var(--muted-foreground)]",
+            "ml-8 inline-flex w-fit items-center gap-1.5 rounded-full bg-[var(--ok-bg)] px-2.5 py-1 text-[11px] text-[var(--muted-foreground)]",
             beat(step >= 2),
           )}
         >
-          <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-[#28c840]" />
+          <BadgeCheck className="h-3.5 w-3.5 shrink-0 text-[var(--ok-text)]" />
           From your admissions requirements page
         </span>
 
@@ -500,7 +500,7 @@ export function GuideMock({ step }: MockProps) {
         </div>
 
         <div className={cn("flex justify-end", beat(step >= 1))}>
-          <p className="rounded-[var(--r-chip)] bg-[var(--primary-bright)] px-3.5 py-2.5 text-[13px] font-medium text-white">
+          <p className="rounded-[var(--r-chip)] bg-[var(--primary)] px-3.5 py-2.5 text-[13px] font-medium text-[var(--primary-foreground)]">
             Working, four years in finance.
           </p>
         </div>
@@ -564,7 +564,7 @@ export function LeadMock({ step }: MockProps) {
         </div>
 
         <div className={cn("flex justify-end", beat(step >= 1))}>
-          <p className="rounded-[var(--r-chip)] bg-[var(--primary-bright)] px-3.5 py-2.5 text-[13px] font-medium text-white">
+          <p className="rounded-[var(--r-chip)] bg-[var(--primary)] px-3.5 py-2.5 text-[13px] font-medium text-[var(--primary-foreground)]">
             Yes please — Priya R.
           </p>
         </div>
@@ -579,7 +579,7 @@ export function LeadMock({ step }: MockProps) {
         >
           <div className="flex items-center justify-between gap-3 border-b border-[var(--border)] pb-2.5">
             <div className="flex min-w-0 items-center gap-2">
-              <span className="v6-gradient flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-white">
+              <span className="v6-gradient flex h-6 w-6 shrink-0 items-center justify-center rounded-full text-[10px] font-bold text-[var(--primary-foreground)]">
                 PR
               </span>
               <p className="truncate text-[12px] font-semibold text-[var(--foreground)]">
@@ -591,7 +591,7 @@ export function LeadMock({ step }: MockProps) {
                 first. */}
             <span
               className={cn(
-                "flex shrink-0 items-center gap-1.5 rounded-full bg-[#28c840]/15 px-2 py-0.5 text-[10.5px] font-semibold text-[#28c840]",
+                "flex shrink-0 items-center gap-1.5 rounded-full bg-[var(--ok-bg)] px-2 py-0.5 text-[10.5px] font-semibold text-[var(--ok-text)]",
                 beat(settled),
               )}
             >

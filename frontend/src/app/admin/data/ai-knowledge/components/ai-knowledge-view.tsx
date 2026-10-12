@@ -110,7 +110,7 @@ export function AiKnowledgeView() {
     <div className="pb-12">
       <div className="mb-4">
         <h1 className="text-2xl font-bold text-foreground">AI Knowledge</h1>
-        <p className="mt-1 text-muted-foreground">Manage the data that powers the Globaly AI counsellor.</p>
+        <p className="mt-1 text-muted-foreground">Manage the data that powers the GlobalyAI counsellor.</p>
       </div>
 
       <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">

@@ -3,7 +3,7 @@
 // That person is an agency, a contractor or a colleague — NOT staff. An earlier version invited
 // them into the org as a `developer` agent so they could sign in, which was wrong twice over: it
 // put non-staff in the institution's user list, and it mailed them an invitation to join
-// GlobalyApp they never asked for. Now the whole record is `ai_embed_developers` (20261005_001):
+// GlobalyAI they never asked for. Now the whole record is `ai_embed_developers` (20261005_001):
 // an address, when the code last went to it, and how many times.
 //
 // That table lives in the TENANT schema — it is the org's own address book, not platform

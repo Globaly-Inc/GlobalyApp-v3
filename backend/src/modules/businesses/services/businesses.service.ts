@@ -117,7 +117,7 @@ export async function registerBusiness(userId: number, input: BusinessRegisterIn
   createSystemPost({
     authorId: userId,
     businessId: Number(business.id),
-    content: `**@all** 🎉 We've just joined **GlobalyApp**! Excited to be part of the community.`,
+    content: `**@all** 🎉 We've just joined **GlobalyAI**! Excited to be part of the community.`,
     // Always the landscape banner, never the business's own logo: a square logo forced into
     // the feed's wide image box gets center-cropped into an unrecognisable zoom.
     media: [

@@ -157,7 +157,7 @@ export function PhoneInput({
   };
 
   return (
-    <div ref={containerRef} className={cn("relative flex h-10 rounded-lg border border-input bg-transparent focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50", ariaInvalid && "border-destructive ring-3 ring-destructive/20", disabled && "pointer-events-none opacity-50", className)}>
+    <div ref={containerRef} className={cn("relative flex h-10 rounded-md border border-input bg-background focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50", ariaInvalid && "border-destructive ring-3 ring-destructive/20", disabled && "pointer-events-none opacity-50", className)}>
       {/* ── Dial-code selector ── */}
       <button
         type="button"

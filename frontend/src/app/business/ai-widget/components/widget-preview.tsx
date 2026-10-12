@@ -139,7 +139,7 @@ export function WidgetPreview({ form, ownerKind }: Readonly<{ form: WidgetFormVa
               <ArrowUp className="size-3.5" aria-hidden />
             </span>
           </div>
-          <p className="py-1.5 text-center text-[9px] text-muted-foreground">Powered by Globaly · AI can make mistakes</p>
+          <p className="py-1.5 text-center text-[9px] text-muted-foreground">Powered by GlobalyAI · AI can make mistakes</p>
         </div>
       </div>
       )}

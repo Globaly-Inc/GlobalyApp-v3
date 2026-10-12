@@ -18,7 +18,7 @@ import { config } from "../../config.js";
  */
 const BRAND = {
   primary: "#012E8A", // --primary
-  gold: "#23DDF6", // --gold             hsl(187 92% 55%)
+  gold: "#A6CBFD", // --gold             hsl(214 96% 82%)
   ink: "#0F1729", // --foreground        hsl(222 47% 11%)
   body: "#3F4B60",
   muted: "#65758B", // --muted-foreground hsl(215 16% 47%)
@@ -135,7 +135,7 @@ export function emailLayout({ heading, body, cta, afterCta, footnote, size = "de
               <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
                 <tr>
                   <td align="center" style="padding-bottom:20px">
-                    <img src="${logoUrl()}" alt="GlobalyApp" width="56" height="56" style="display:block" />
+                    <img src="${logoUrl()}" alt="GlobalyAI" width="56" height="56" style="display:block" />
                   </td>
                 </tr>
                 <tr>
@@ -445,7 +445,7 @@ export function enquiryUnlockedEmail(options: {
              }
              <p style="margin:22px 0 0;color:${BRAND.muted};font-size:14px;line-height:21px">${esc(contactLine)}</p>`,
       cta: { label: "Read & reply", href },
-      footnote: "You're receiving this because you sent this enquiry on Globaly.",
+      footnote: "You're receiving this because you sent this enquiry on GlobalyAI.",
     }),
   };
 }
@@ -658,7 +658,7 @@ export function enquiryClaimEmail(options: {
     "",
     more,
     more ? "" : null,
-    `Your ${noun} profile on Globaly is currently unclaimed. Claim it to:`,
+    `Your ${noun} profile on GlobalyAI is currently unclaimed. Claim it to:`,
     ...benefits.map((b) => `• ${b}`),
     "",
     `${cta.label} → ${cta.href}`,
@@ -686,7 +686,7 @@ export function enquiryClaimEmail(options: {
       cta,
       footnote: who
         ? `Sent to ${esc(who)} because these students enquired about courses it offers.`
-        : `You're receiving this because students enquired about courses your ${noun} offers on Globaly.`,
+        : `You're receiving this because students enquired about courses your ${noun} offers on GlobalyAI.`,
     }),
   };
 }
@@ -702,10 +702,10 @@ export function otpEmail(otp: string): { subject: string; html: string; text: st
     .join("");
 
   return {
-    subject: `Your Globaly sign-in code: ${otp}`,
-    text: `Your Globaly sign-in code is ${otp}. It expires in 10 minutes. If you didn't request it, ignore this email.`,
+    subject: `Your GlobalyAI sign-in code: ${otp}`,
+    text: `Your GlobalyAI sign-in code is ${otp}. It expires in 10 minutes. If you didn't request it, ignore this email.`,
     html: emailLayout({
-      heading: "Sign in to Globaly",
+      heading: "Sign in to GlobalyAI",
       body: `<p style="margin:0 0 18px">Use this 6-digit code to sign in:</p>
              <div style="background-color:#fdf6ec;border:1px solid #f6e2bd;border-radius:14px;padding:18px 10px">${digits}</div>
              <p style="margin:18px 0 0;color:${BRAND.muted};font-size:14px">This code expires in <strong>10 minutes</strong>.</p>`,
@@ -743,9 +743,9 @@ export function waitlistConfirmationEmail(
     : "";
 
   return {
-    subject: "You're on the Globaly waitlist ✨",
+    subject: "You're on the GlobalyAI waitlist ✨",
     text: trimmedName
-      ? `You're on the list, ${trimmedName}. Thanks for registering your interest in Globaly's AI Education Discovery agents. We launch ${LAUNCH_DATE_LABEL} — we'll email you the moment it's ready to explore. Registered as: ${typeLabel}.`
+      ? `You're on the list, ${trimmedName}. Thanks for registering your interest in GlobalyAI's AI Education Discovery agents. We launch ${LAUNCH_DATE_LABEL} — we'll email you the moment it's ready to explore. Registered as: ${typeLabel}.`
       : `Thanks for subscribing to our newsletter. We launch ${LAUNCH_DATE_LABEL} — we'll email you the moment it's ready to explore.`,
     html: emailLayout({
       heading: "You're on the list",
@@ -769,13 +769,13 @@ export function claimBusinessEmail(options: {
   const businessName = esc(options.businessName);
 
   return {
-    subject: `Claim your ${options.businessName} account on GlobalyApp`,
-    text: `Hi ${options.ownerName}, an account for ${options.businessName} has been created for you on GlobalyApp. Claim it here: ${options.claimUrl} (expires in 72 hours).`,
+    subject: `Claim your ${options.businessName} account on GlobalyAI`,
+    text: `Hi ${options.ownerName}, an account for ${options.businessName} has been created for you on GlobalyAI. Claim it here: ${options.claimUrl} (expires in 72 hours).`,
     html: emailLayout({
       heading: "Claim your business account",
       body: `<p style="margin:0 0 12px">Hi ${ownerName},</p>
              <p style="margin:0 0 12px">An account for <strong>${businessName}</strong> has been created for you on
-             <strong>GlobalyApp</strong> — the platform connecting students with verified institutions, agents, and
+             <strong>GlobalyAI</strong> — the platform connecting students with verified institutions, agents, and
              education services worldwide.</p>
              <p style="margin:0">If this is you, claim your account below to manage your listing, respond to student
              enquiries, and get discovered by prospective students.</p>`,
@@ -848,7 +848,7 @@ export function onboardingInviteEmail(options: {
   const fallback = `Button not working? Paste this link into your browser:<br><span style="color:${BRAND.muted};word-break:break-all">${esc(options.acceptUrl)}</span>`;
 
   return {
-    subject: orgName ? `Set up ${orgName} on GlobalyApp` : `You're invited to set up your ${org} on GlobalyApp`,
+    subject: orgName ? `Set up ${orgName} on GlobalyAI` : `You're invited to set up your ${org} on GlobalyAI`,
     text: [
       "Hi there,",
       "",
@@ -963,7 +963,7 @@ export function onboardingLinkRequestEmail(options: {
  * widget ends up on three pages out of forty. Verified against current platform docs 2026-10-02.
  *
  * Addressed generically and says nothing about signing in: the reader is whoever the owner asked
- * us to send the code to, has no GlobalyApp account, and is not being offered one.
+ * us to send the code to, has no GlobalyAI account, and is not being offered one.
  */
 export function embedSnippetEmail(options: {
   orgName: string;
@@ -999,15 +999,15 @@ export function embedSnippetEmail(options: {
   // third-party script onto a live site, and that is a decision they make before they scroll.
   const about = `<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="margin:0 0 18px;border:1px solid #CFE0F7;border-radius:12px;background-color:${BRAND.soft}">
        <tr><td style="padding:14px 16px">
-         <p style="margin:0 0 5px;color:${BRAND.primary};font-size:11px;line-height:15px;font-weight:700;letter-spacing:.08em;text-transform:uppercase">About GlobalyApp</p>
-         <p style="margin:0;color:${BRAND.body};font-size:13.5px;line-height:20px">GlobalyApp is the education platform that connects students with verified institutions,
+         <p style="margin:0 0 5px;color:${BRAND.primary};font-size:11px;line-height:15px;font-weight:700;letter-spacing:.08em;text-transform:uppercase">About GlobalyAI</p>
+         <p style="margin:0;color:${BRAND.body};font-size:13.5px;line-height:20px">GlobalyAI is the education platform that connects students with verified institutions,
            agents and education services worldwide. ${org} keeps its courses, fees and intakes with us — this script puts that same information on their own
            site, as a chat assistant their visitors can ask.</p>
        </td></tr>
      </table>`;
 
   const body = `<p style="margin:0 0 18px;line-height:24px">${greeting}</p>
-     <p style="margin:0 0 18px;line-height:24px"><strong>${org}</strong> asked us to send you the code for their GlobalyApp chat assistant.
+     <p style="margin:0 0 18px;line-height:24px"><strong>${org}</strong> asked us to send you the code for their GlobalyAI chat assistant.
        It is one script tag — nothing to install, no stylesheet to load.</p>
      ${about}
      ${snippetBlock}
@@ -1027,7 +1027,7 @@ export function embedSnippetEmail(options: {
     text: [
       "Hi there,",
       "",
-      `${options.orgName} asked us to send you the code for their GlobalyApp chat assistant.`,
+      `${options.orgName} asked us to send you the code for their GlobalyAI chat assistant.`,
       "It is one script tag — nothing to install, no stylesheet to load.",
       "",
       `ABOUT GLOBALYAPP — the education platform that connects students with verified institutions, agents and education services worldwide. ${options.orgName} keeps its courses, fees and intakes with us; this script puts that same information on their own site, as a chat assistant their visitors can ask.`,
@@ -1243,10 +1243,10 @@ export function extractionCompleteEmail(options: {
   const askWhere = options.website ? `on ${options.website}` : "on your own website";
 
   return {
-    subject: `Your ${options.entityName} profile is ready on GlobalyApp`,
+    subject: `Your ${options.entityName} profile is ready on GlobalyAI`,
     text: [
       options.recipientName ? `Hi ${options.recipientName},` : `Hi ${options.entityName} team,`,
-      `We've finished collecting ${options.entityName}'s details${options.website ? ` from ${options.website}` : ""} on GlobalyApp.`,
+      `We've finished collecting ${options.entityName}'s details${options.website ? ` from ${options.website}` : ""} on GlobalyAI.`,
       `${options.itemCount} ${options.itemLabel} found${coverage.length ? ` — ${coverage.join(", ")}` : ""}.`,
       `Review your profile: ${options.portalUrl}`,
       "ALSO INCLUDED — Add the AI assistant to your website",
@@ -1266,7 +1266,7 @@ export function extractionCompleteEmail(options: {
       heading: "Your profile is ready to review",
       body: `<p style="margin:0 0 12px">${greeting}</p>
              <p style="margin:0 0 20px">We've finished collecting <strong>${entityName}</strong>'s details${site} on
-             <strong>GlobalyApp</strong> — the platform connecting students with verified institutions, agents, and
+             <strong>GlobalyAI</strong> — the platform connecting students with verified institutions, agents, and
              education services worldwide.</p>
              ${coverageBlock(options.itemCount, `${options.itemLabel} found`, found)}
              ${review}
@@ -1397,7 +1397,7 @@ function recapLayout(o: {
         <tr><td style="height:6px;background-color:${BRAND.primary};line-height:6px;font-size:0">&nbsp;</td></tr>
         <tr><td style="padding:40px 44px 36px">
           <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="width:100%;margin:0 0 28px"><tr>
-            <td valign="middle"><img src="${logoUrl()}" alt="Globaly" width="44" height="44" style="display:block;border-radius:10px" /></td>
+            <td valign="middle"><img src="${logoUrl()}" alt="GlobalyAI" width="44" height="44" style="display:block;border-radius:10px" /></td>
             ${o.badge ? `<td valign="middle" align="right">${o.badge}</td>` : ""}
           </tr></table>
           <h1 style="margin:0 0 24px;color:${BRAND.ink};font-family:${FONT};font-size:28px;line-height:36px;font-weight:700">${o.heading}</h1>

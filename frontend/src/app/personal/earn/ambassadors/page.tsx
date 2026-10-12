@@ -8,7 +8,7 @@ export default function AmbassadorsPage() {
     <ComingSoon
       title="Ambassadors"
       icon={Users}
-      description="Represent Globaly on your campus and earn for every student you bring on board."
+      description="Represent GlobalyAI on your campus and earn for every student you bring on board."
       features={[
         "Apply to an ambassador program",
         "Track sign-ups from your campus",

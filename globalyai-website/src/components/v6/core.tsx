@@ -13,9 +13,6 @@ import { cn } from "@/lib/utils";
  * from being a stock icon in a ring is that it is visibly working: two arcs
  * circle it without stopping, and every question that arrives makes it flare,
  * throw a ripple and pulse. See "The core thinking" in globals.css.
- *
- * The coreLight/coreDark clips in MOTION are no longer used here, and stay
- * there in case the footage comes back.
  */
 export function LearningCore({
   className,

@@ -126,7 +126,7 @@ export function OnboardingSetupView({ orgName }: Readonly<{ orgName?: string }>)
     <div className="flex min-h-screen flex-col items-center bg-background">
       <div className="w-full bg-gradient-to-b from-primary/10 to-background px-6 py-9 text-center">
         <Image src={ICON.src} alt="" width={ICON.width} height={ICON.height} className="mx-auto h-16 w-16 rounded-2xl shadow-lg" priority />
-        <h1 className="mt-3.5 font-heading text-2xl font-semibold text-primary">Welcome to GlobalyApp</h1>
+        <h1 className="mt-3.5 font-heading text-2xl font-semibold text-primary">Welcome to GlobalyAI</h1>
         <p className="mt-1.5 text-sm text-muted-foreground">
           You&apos;re on the platform. We&apos;re building{" "}
           {orgName ? <strong className="font-semibold text-foreground">{orgName}</strong> : "your organisation"}&apos;s portal now.

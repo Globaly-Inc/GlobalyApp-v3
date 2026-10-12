@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { ComparePageView } from "@/app/(web)/compare/compare-page-view";
 
-export const metadata: Metadata = { title: "Compare Courses — Globaly" };
+export const metadata: Metadata = { title: "Compare Courses — GlobalyAI" };
 
 /**
  * Same compare view as the public /compare page, mounted here (nested under /personal/explore) so

@@ -152,7 +152,7 @@ export function buildSystemPrompt(opts: {
     if (custom) sections.push(`Additional guidance from ${name}: ${custom}`);
   } else {
     sections.push(
-      "You are Globaly AI — a friendly, knowledgeable education counselor built by Globaly. " +
+      "You are GlobalyAI — a friendly, knowledgeable education counselor built by Globaly. " +
       "Your mission: 'Because Education Matters.' " +
       `You ONLY answer using data provided in ${src} for specific course/institution/fee/visa/deadline claims. ` +
       "NEVER invent these. If no relevant data is found, say honestly: " +
@@ -623,7 +623,7 @@ export function buildSystemPrompt(opts: {
         ? "GREETING: This student has chatted with you before — this is a fresh session. Open with a brief, " +
           "warm 'Welcome back' before addressing their message. One line — don't make the greeting the whole reply."
         : "GREETING: This is the student's first-ever conversation with you. Open by warmly welcoming them " +
-          "to GlobalyApp before addressing their message.",
+          "to GlobalyAI before addressing their message.",
     );
   }
   if (opts.discoveryTurn) {

@@ -120,8 +120,8 @@ export function Bubble({
             ? "max-w-[86%] px-4 py-2.5 text-[13px] leading-[1.5]"
             : "max-w-[85%] px-4 py-2 text-[14px] leading-[1.5]",
           isAi
-            ? "rounded-[18px] rounded-tl-md bg-[var(--card)] text-[var(--foreground)] shadow-soft"
-            : "rounded-[18px] rounded-tr-md bg-[linear-gradient(120deg,var(--primary),var(--primary-bright))] text-white",
+            ? "rounded-[18px] rounded-tl-md bg-[var(--aly-bubble)] text-[var(--aly-bubble-fg)]"
+            : "rounded-[18px] rounded-tr-md bg-[var(--primary)] text-[var(--primary-foreground)]",
         )}
       >
         {children}
@@ -160,7 +160,7 @@ export function Chip({
       className={cn(
         "inline-flex items-center rounded-full px-3 py-1.5 text-[11.5px] font-semibold transition-all duration-300",
         picked
-          ? "bg-[var(--primary)] text-white"
+          ? "bg-[var(--primary)] text-[var(--primary-foreground)]"
           : "bg-[var(--card)] text-[var(--primary)] shadow-soft",
         className,
       )}
@@ -179,8 +179,8 @@ export function Composer({
       <div className="flex-1 truncate rounded-full bg-[var(--surface-soft)] px-4 py-2.5 text-[11.5px] text-[var(--muted-foreground)]">
         {placeholder}
       </div>
-      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[linear-gradient(120deg,var(--primary),var(--primary-bright))]">
-        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-white" fill="none" stroke="currentColor" strokeWidth={2.5}>
+      <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[var(--primary)]">
+        <svg viewBox="0 0 24 24" className="h-3.5 w-3.5 text-[var(--primary-foreground)]" fill="none" stroke="currentColor" strokeWidth={2.5}>
           <path d="M5 12h14M13 6l6 6-6 6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </span>

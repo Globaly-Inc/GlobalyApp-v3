@@ -1,15 +1,13 @@
-import { CircleHelp } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 
 export function NeedAHandCard() {
   return (
     <Card>
-      <CardContent className="flex items-start gap-3 p-4">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 ring-1 ring-emerald-500/15 dark:text-emerald-400">
-          <CircleHelp className="h-4 w-4" />
-        </span>
+      <CardContent className="flex items-start gap-3">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/rail/help.webp" alt="" aria-hidden className="size-10 shrink-0 object-contain" />
         <div className="min-w-0">
-          <p className="text-sm font-medium">Rather be walked through it?</p>
+          <p className="font-heading text-base font-medium">Rather be walked through it?</p>
           <p className="text-xs text-muted-foreground">
             Book 20 minutes with our onboarding team — we&apos;ll set it up with you.
           </p>

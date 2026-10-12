@@ -22,7 +22,7 @@ const HOW_IT_WORKS: Array<{
   {
     step: "01",
     emoji: "📝",
-    title: "Join Globaly",
+    title: "Join GlobalyAI",
     desc: "Connect with institutions and students from around the world.",
     cta: "Get Started",
     ctaLink: "/auth/sign-up",

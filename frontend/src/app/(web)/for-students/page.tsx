@@ -80,7 +80,7 @@ export default function ForStudentsPage() {
             <h1 className="mt-6 text-4xl sm:text-5xl md:text-6xl font-extrabold text-white leading-[1.05] animate-fade-up">
               Your Education Journey
               <br />
-              <span className="text-amber-300 inline-block min-h-[1.2em]">
+              <span className="text-white inline-block min-h-[1.2em]">
                 {displayText}
                 <span
                   className="text-amber-200"
@@ -115,7 +115,7 @@ export default function ForStudentsPage() {
           <Reveal>
             <h2 className="text-3xl md:text-4xl font-bold mb-6 leading-tight">Your Education Journey Begins Today.</h2>
             <p className="text-white/70 text-lg mb-10 max-w-2xl mx-auto">
-              Join thousands of students who have already found their perfect education path with Globalyapp. Start
+              Join thousands of students who have already found their perfect education path with GlobalyAI. Start
               your journey for free.
             </p>
             <div className="flex flex-col sm:flex-row gap-4 justify-center">

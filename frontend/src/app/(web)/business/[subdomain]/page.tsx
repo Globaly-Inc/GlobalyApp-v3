@@ -17,10 +17,10 @@ type BusinessPageProps = Readonly<{ params: Promise<{ subdomain: string }> }>;
 export async function generateMetadata({ params }: BusinessPageProps): Promise<Metadata> {
   const { subdomain } = await params;
   const business = await getBusinessBySubdomain(subdomain);
-  if (!business) return { title: "Business — Globaly" };
+  if (!business) return { title: "Business — GlobalyAI" };
   return {
-    title: `${business.business_name} — Globaly`,
-    description: business.description?.slice(0, 155) ?? `View ${business.business_name} on Globaly.`,
+    title: `${business.business_name} — GlobalyAI`,
+    description: business.description?.slice(0, 155) ?? `View ${business.business_name} on GlobalyAI.`,
   };
 }
 

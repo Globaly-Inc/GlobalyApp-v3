@@ -84,7 +84,7 @@ export async function notifyBuyerAccepted(input: {
       [
         `<strong>${input.providerName}</strong> accepted your request for <strong>${input.listingTitle}</strong>.`,
         `To confirm it, pay ${money(input.amountMinor, input.currency)}. Your booking is not held until then.`,
-        "The payment is held by Globaly rather than passed straight to the provider.",
+        "The payment is held by GlobalyAI rather than passed straight to the provider.",
       ],
       { label: "Pay and confirm", href: `${APP()}/personal/earn/services/orders/${input.orderId}` },
     ),

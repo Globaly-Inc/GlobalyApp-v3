@@ -3,13 +3,23 @@ export const THEME_SETTINGS_EVENT = "theme-settings-change";
 
 export const DEFAULT_PRIMARY = "#012E8A";
 
+/** Defaults a tenant may have saved without choosing: the navy brand and the graphite
+    it briefly had. Either one falls through to the CSS default, so dark mode still works. */
+const UNCHOSEN_PRIMARIES = new Set([DEFAULT_PRIMARY.toLowerCase(), "#404553"]);
+
+/** The tenant's primary colour, or null when it is just a default. globals.css reads
+    it as --tenant-primary, in light mode only, so dark mode keeps its own primary. */
+export function tenantPrimaryOverride(color: string): string | null {
+  return UNCHOSEN_PRIMARIES.has(color.trim().toLowerCase()) ? null : color;
+}
+
 /** The un-themed body font. Exported so the layout can tell an untouched
     install from a tenant that has actually picked a font, which is what decides
-    whether the Fraunces heading default holds. */
+    whether the Space Grotesk heading default holds. */
 export const DEFAULT_FONT = `ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", Segoe UI Symbol, "Noto Color Emoji"`;
 
 /**
- * The heading face for a given body font, or null to leave the Fraunces default
+ * The heading face for a given body font, or null to leave the Space Grotesk default
  * in place.
  *
  * globals.css pins h1-h6 to the heading face, and a font-family on the element
@@ -81,8 +91,11 @@ export function saveThemeSettings(settings: ThemeSettings) {
 
 export function applyThemeSettings(settings: ThemeSettings) {
   const root = document.documentElement;
-  root.style.setProperty("--primary", settings.primaryColor);
-  root.style.fontFamily = settings.font;
+  const primary = tenantPrimaryOverride(settings.primaryColor);
+  if (primary) root.style.setProperty("--tenant-primary", primary);
+  else root.style.removeProperty("--tenant-primary");
+  root.style.removeProperty("--primary");
+  root.style.fontFamily = settings.font === DEFAULT_FONT ? "" : settings.font;
 
   // removeProperty, not just a skipped set: going back to the default font has to
   // drop a previous override, or the headings keep the font the user just left.

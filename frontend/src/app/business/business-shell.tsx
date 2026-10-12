@@ -26,16 +26,23 @@ import { BUSINESS_NAV_GROUPS, INSTITUTION_SCHOLARSHIPS_ITEM, withBusinessId } fr
 import { BusinessSwitcher, type SwitcherOrg } from "./components/business-switcher";
 import { ExtractionInProgress } from "./components/extraction-in-progress";
 import { PortalSidebar } from "@/components/portal-sidebar";
+import { PortalMobileNav } from "@/components/portal-mobile-nav";
 import { cn } from "@/lib/utils";
 import { ICON, APP_ICON_ATTR } from "@/lib/public-assets";
 import { PERSONAL_PORTAL_HOME, SHOW_HEADER_EXTRAS, SHOW_PERSONAL_PORTAL } from "@/app/personal/const";
 import { SIGN_IN_HREF } from "@/app/auth/const";
 
-const SHELL_WIDTH = "mx-auto w-full max-w-7xl px-3 sm:px-4 md:px-6";
+const SHELL_WIDTH = "mx-auto w-full max-w-7xl px-3 md:px-8";
+
+/**
+ * Routes that render edge-to-edge under the header instead of inside SHELL_WIDTH. Chat is
+ * an app surface, not a page in the content column: it owns the whole space below the
+ * header and does its own bottom-nav math. Mirrors PersonalShell's list.
+ */
 const FULL_BLEED_ROUTES = ["/business/messages"] as const;
 
 /** Same padding as SHELL_WIDTH but no max width — for the business profile's wide tables. */
-const SHELL_WIDE = "w-full px-3 sm:px-4 md:px-6";
+const SHELL_WIDE = "w-full px-3 md:px-8";
 // Institution accounts act as businesses throughout this shell — their records are adapted
 // to the SwitcherOrg shape so the switcher can render them uniformly, with kind="institution"
 // to distinguish them visually and drive the nav-group filter.
@@ -205,14 +212,20 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
   const content = lockedOut ? <ExtractionInProgress status={extractionStatus} /> : children;
 
   return (
-    <div className="min-h-screen flex flex-col bg-background">
+    <div data-shell="portal" className="min-h-screen flex flex-col bg-background">
+      <a
+        href="#main-content"
+        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-card focus:px-3 focus:py-2 focus:text-sm focus:shadow-md"
+      >
+        Skip to content
+      </a>
       {/* Full-width bar above the rail, matching the personal portal and GlobalyOS: the mark sits over the
           rail (hence the w-20 box), navigation lives in the sidebar, and this keeps identity only. */}
-      <header className="sticky top-0 z-40 h-16 shrink-0 border-b border-border bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
+      <header className="sticky top-0 z-40 h-16 shrink-0 border-b border-border bg-card/95 backdrop-blur">
         <div className="flex h-16 items-center">
           <div className="flex h-16 shrink-0 items-center px-3 sm:px-4 md:w-20 md:justify-center md:px-0">
             <Link href="/" className="flex shrink-0 items-center" {...{ [APP_ICON_ATTR]: "" }}>
-              <Image src={ICON.src} alt="Globalyapp" width={ICON.width} height={ICON.height} className="size-9 rounded-[10px]" />
+              <Image src={ICON.src} alt="GlobalyAI" width={ICON.width} height={ICON.height} className="size-9 rounded-lg" />
             </Link>
           </div>
           {/* ~60% of the bar's height: it marks the rail's edge without reading as a second border. */}
@@ -235,7 +248,6 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
                   aria-label="Notifications"
                 >
                   <Bell className="h-4.5 w-4.5" />
-                  <span className="absolute right-1.5 top-1.5 h-1.5 w-1.5 rounded-full bg-destructive" aria-hidden />
                 </Link>
                 <Link
                   href="/business/credits"
@@ -311,10 +323,16 @@ export function BusinessShell({ children }: Readonly<{ children: React.ReactNode
       <div className="flex flex-1">
         <PortalSidebar groups={navGroups} />
 
-        <main className={cn("min-w-0 flex-1 overflow-x-clip", isFullBleed ? "" : "py-4 md:py-6")}>
+        <main
+          id="main-content"
+          tabIndex={-1}
+          className={cn("min-w-0 flex-1 overflow-x-clip outline-none", isFullBleed ? "" : "py-4 pb-24 md:py-8")}
+        >
           {isFullBleed && !lockedOut ? content : <div className={isWide ? SHELL_WIDE : SHELL_WIDTH}>{content}</div>}
         </main>
       </div>
+      {/* Chat owns the full height below the header, so it keeps the screen to itself on mobile. */}
+      {!isFullBleed && <PortalMobileNav title="Business Portal" groups={navGroups} onSignOut={handleSignOut} />}
     </div>
   );
 }

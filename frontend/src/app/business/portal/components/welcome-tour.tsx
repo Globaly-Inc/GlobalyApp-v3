@@ -116,14 +116,14 @@ export function WelcomeTour({ orgName, show }: Readonly<{ orgName: string; show:
 
   if (!open) return null;
 
-  const lead = ["Welcome", "to", "GlobalyApp"];
+  const lead = ["Welcome", "to", "GlobalyAI"];
   const org = (orgName || "your business").split(" ");
 
   return (
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Welcome to GlobalyApp"
+      aria-label="Welcome to GlobalyAI"
       style={iris ? css({ "--cx": `${iris.cx}px`, "--cy": `${iris.cy}px`, "--r0": `${iris.r0}px`, "--r1": `${iris.r1}px` }) : undefined}
       className={cn(styles.root, closing && styles.leaving, "fixed inset-0 z-[100] mb-0 flex flex-col overflow-hidden bg-[radial-gradient(120%_90%_at_50%_0%,#1a4fc4_0%,#012E8A_45%,#021a52_100%)] text-white")}
     >

@@ -6,7 +6,7 @@ import { LegalSection } from "../components/legal/legal-section";
 import { LegalContactCard } from "../components/legal/legal-contact-card";
 
 export const metadata: Metadata = {
-  title: "Cookie Policy — Globaly",
+  title: "Cookie Policy — GlobalyAI",
 };
 
 const BROWSER_LINKS = [

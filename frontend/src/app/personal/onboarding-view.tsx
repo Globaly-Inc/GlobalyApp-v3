@@ -192,7 +192,7 @@ function OnboardingForm({ initialProfile }: Readonly<{ initialProfile: StudentPr
     <div className="min-h-screen flex flex-col bg-background">
       <header className="flex items-center justify-between px-6 py-4 border-b border-border">
         <Link href="/">
-          <Image src={LOGO.src} alt="Globalyapp" width={LOGO.width} height={LOGO.height} className="h-8 w-auto" />
+          <Image src={LOGO.src} alt="GlobalyAI" width={LOGO.width} height={LOGO.height} className="h-8 w-auto" />
         </Link>
         <Button variant="ghost" size="sm" onClick={handleSkip} className="text-muted-foreground">
           Skip
@@ -210,7 +210,7 @@ function OnboardingForm({ initialProfile }: Readonly<{ initialProfile: StudentPr
           {step === 1 && (
             <div className="space-y-4">
               <div>
-                <h1 className="text-2xl font-bold text-foreground">What brings you to Globaly?</h1>
+                <h1 className="text-2xl font-bold text-foreground">What brings you to GlobalyAI?</h1>
                 <p className="text-muted-foreground mt-1">This helps us personalise your experience.</p>
               </div>
               <div className="space-y-3">

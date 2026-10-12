@@ -1,33 +1,15 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useTheme } from "next-themes"
 import { Toaster as Sonner, type ToasterProps } from "sonner"
 import { CircleCheckIcon, InfoIcon, TriangleAlertIcon, OctagonXIcon, Loader2Icon } from "lucide-react"
-import { THEME_CHANGE } from "@/components/theme-toggle"
-
-/**
- * The theme comes from the class the root layout put on <html>, not from next-themes' useTheme():
- * nothing mounts a ThemeProvider, so that hook silently returned "system" and the toaster followed
- * the OS while the rest of the app followed the toggle. Starts "light" so the server render and the
- * first client render agree, then corrects on mount.
- */
-function useDocumentTheme(): "light" | "dark" {
-  const [theme, setTheme] = useState<"light" | "dark">("light")
-  useEffect(() => {
-    const read = () => setTheme(document.documentElement.classList.contains("dark") ? "dark" : "light")
-    read()
-    window.addEventListener(THEME_CHANGE, read)
-    return () => window.removeEventListener(THEME_CHANGE, read)
-  }, [])
-  return theme
-}
 
 const Toaster = ({ ...props }: ToasterProps) => {
-  const theme = useDocumentTheme()
+  const { resolvedTheme = "light" } = useTheme()
 
   return (
     <Sonner
-      theme={theme}
+      theme={resolvedTheme as ToasterProps["theme"]}
       richColors
       className="toaster group"
       icons={{

@@ -40,7 +40,7 @@ export function BusinessPortalView() {
   }, [dispatch, profile]);
 
   return (
-    <div className={cn("space-y-4 md:space-y-6", !onboardingProgress && !progressFailed && "invisible")}>
+    <div className={cn("space-y-6", !onboardingProgress && !progressFailed && "invisible")}>
       {/* Only once the onboarding row has loaded: the server decides whether this plays, and rendering
           before it arrives would flash the splash at someone who has already dismissed it. */}
       {onboardingProgress && (
@@ -48,8 +48,8 @@ export function BusinessPortalView() {
       )}
       <PortalHero orgName={profile?.business_name ?? ""} progress={onboardingProgress} stage={stage} />
 
-      <div className="flex flex-col gap-4 md:gap-6 lg:grid lg:grid-cols-3 lg:items-start">
-        <div className="order-1 space-y-4 lg:col-span-2">
+      <div className="flex flex-col gap-6 lg:grid lg:grid-cols-3 lg:items-start">
+        <div className="order-1 space-y-6 lg:col-span-2">
           {profile && <StartExtractionCard profile={profile} />}
           <AiEmbedCard
             stage={stage}
@@ -60,7 +60,7 @@ export function BusinessPortalView() {
               fed by fetchDistributions() and state.businessEnquiries.items. */}
         </div>
 
-        <div className="order-2 space-y-4 lg:col-span-1">
+        <div className="order-2 space-y-6 lg:col-span-1">
           {/* The checklist stays up while the crawl runs: it is where the owner sees that putting
               the widget live is the one step that doesn't wait for it. */}
           {onboardingProgress && <GetSetUpChecklist progress={onboardingProgress} />}

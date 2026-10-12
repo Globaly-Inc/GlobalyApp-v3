@@ -1,10 +1,11 @@
-import { Bot, Inbox, Package, Sparkles, UserSearch, Wand2, type LucideIcon } from "lucide-react";
+import { Bot, UserSearch, Wand2, type LucideIcon } from "lucide-react";
 
-export const QUICK_ACTIONS: { label: string; href: string; icon: LucideIcon; tint: string }[] = [
+/** `object` is a 3D icon in `public/objects/`. */
+export const QUICK_ACTIONS: { label: string; href: string; object: string }[] = [
   // Hidden for the short release (Enquiries is off the sidebar too):
-  // { label: "Enquiry inbox", href: "/business/enquiries", icon: Inbox, tint: "bg-primary/10 text-primary ring-primary/15" },
-  { label: "Manage profile & services", href: "/business/profile", icon: Package, tint: "bg-emerald-500/10 text-emerald-600 ring-emerald-500/15 dark:text-emerald-400" },
-  { label: "AI assistant", href: "/business/messages/widget", icon: Sparkles, tint: "bg-violet-500/10 text-violet-600 ring-violet-500/15 dark:text-violet-400" },
+  // { label: "Enquiry inbox", href: "/business/enquiries", object: "inbox" },
+  { label: "Manage profile & services", href: "/business/profile", object: "campus" },
+  { label: "AI assistant", href: "/business/messages/widget", object: "sparkle" },
 ];
 
 /**
