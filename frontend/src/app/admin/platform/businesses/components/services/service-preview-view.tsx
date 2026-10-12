@@ -46,6 +46,7 @@ export function ServicePreviewView({
   const [accreditationNames, setAccreditationNames] = useState<Record<number, string>>({});
   const [accreditations, setAccreditations] = useState<ServiceAccreditation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     const isBiz = kind === "business";
@@ -67,6 +68,8 @@ export function ServicePreviewView({
         const catalog = await categoriesApi.getAccreditations({ limit: 100 });
         setAccreditationNames(Object.fromEntries(catalog.data.map((a) => [a.id, a.name])));
       }
+    }).catch((e: unknown) => {
+      setLoadError(e instanceof Error ? e.message : "Couldn't load this service.");
     }).finally(() => setLoading(false));
   }, [kind, orgId, serviceId]);
 
@@ -79,7 +82,7 @@ export function ServicePreviewView({
   }
 
   if (!service) {
-    return <p className="py-20 text-center text-sm text-muted-foreground">Service not found.</p>;
+    return <p className="py-20 text-center text-sm text-muted-foreground">{loadError ?? "Service not found."}</p>;
   }
 
   const isCourse = service.category_name === "Academic Courses";

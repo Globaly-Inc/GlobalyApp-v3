@@ -16,7 +16,7 @@ export function WavyTimelineConnector({ steps }: Readonly<{ steps: number }>) {
       preserveAspectRatio="none"
       aria-hidden="true"
     >
-      <path d={d} fill="none" stroke="hsl(var(--primary) / 0.25)" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
+      <path d={d} fill="none" stroke="color-mix(in oklab, var(--primary) 25%, transparent)" strokeWidth={1.5} vectorEffect="non-scaling-stroke" />
     </svg>
   );
 }
