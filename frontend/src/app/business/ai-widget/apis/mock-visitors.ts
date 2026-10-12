@@ -77,4 +77,51 @@ export const mockVisitors: WidgetVisitor[] = [
     handled_by_user_id: 77, handled_by_name: "Manjil Shakya", handled_by_me: false,
     handled_at: new Date(Date.now() - 5 * 60_000).toISOString(), unread_count: 2,
   },
+  // ── WhatsApp, Instagram and Facebook (Zernio) ──────────────────────────────
+  // AI handling on WhatsApp, inside the 24-hour window, starred.
+  {
+    id: 5, embed_config_id: 1, session_id: 830, name: "Sarah Khan", email: "sarah.khan@example.com", phone: "+977 980-123 4567", contact_source: "volunteered", status: "lead",
+    contact_status: "not_shown", contact_submitted_at: null, conversation_state: "active", message_count: 6,
+    first_seen_at: new Date(Date.now() - 9 * 60_000).toISOString(),
+    last_activity_at: new Date(Date.now() - 2 * 60_000).toISOString(),
+    qualifications: null, language_tests: null, academic_tests: null, work_experiences: null,
+    age: "19", gender: "female", nationality: "Nepal", nationality_raw: null, study_preference: "Bachelor of IT",
+    summary_status: null, summary_sent_at: null,
+    channel: "whatsapp", channel_handle: "+977 980-123 4567", last_inbound_at: new Date(Date.now() - 3 * 60_000).toISOString(), starred: true,
+  },
+  // Asked for a person on Instagram — Needs Attention.
+  {
+    id: 6, embed_config_id: 1, session_id: 831, name: "Michael Thapa", email: null, phone: null, contact_source: null, status: "visitor",
+    contact_status: "not_shown", contact_submitted_at: null, conversation_state: "active", message_count: 4,
+    first_seen_at: new Date(Date.now() - 12 * 60_000).toISOString(),
+    last_activity_at: new Date(Date.now() - 8 * 60_000).toISOString(),
+    qualifications: null, language_tests: null, academic_tests: null, work_experiences: null,
+    age: null, gender: null, nationality: "Nepal", nationality_raw: null, study_preference: null,
+    summary_status: null, summary_sent_at: null,
+    channel: "instagram", channel_handle: "@michael.thapa", last_inbound_at: new Date(Date.now() - 8 * 60_000).toISOString(),
+    handoff_requested_at: new Date(Date.now() - 8 * 60_000).toISOString(), unread_count: 1,
+  },
+  // AI flagged a question only staff can answer, on Facebook Messenger.
+  {
+    id: 7, embed_config_id: 1, session_id: 832, name: "Omar Siddiqui", email: "omar.s@example.com", phone: null, contact_source: "volunteered", status: "lead",
+    contact_status: "not_shown", contact_submitted_at: null, conversation_state: "active", message_count: 4,
+    first_seen_at: new Date(Date.now() - 32 * 60_000).toISOString(),
+    last_activity_at: new Date(Date.now() - 30 * 60_000).toISOString(),
+    qualifications: null, language_tests: null, academic_tests: null, work_experiences: null,
+    age: null, gender: null, nationality: "Bangladesh", nationality_raw: null, study_preference: "Master's in Australia",
+    summary_status: null, summary_sent_at: null,
+    channel: "facebook", channel_handle: "Omar Siddiqui · Messenger", last_inbound_at: new Date(Date.now() - 30 * 60_000).toISOString(),
+    attention_reason: "ai_unsure", unread_count: 1,
+  },
+  // WhatsApp, 24-hour window closed — only a template can be sent.
+  {
+    id: 8, embed_config_id: 1, session_id: 833, name: "Priya Gurung", email: null, phone: "+977 981-700 4420", contact_source: null, status: "visitor",
+    contact_status: "not_shown", contact_submitted_at: null, conversation_state: "active", message_count: 4,
+    first_seen_at: new Date(Date.now() - 27 * 3_600_000).toISOString(),
+    last_activity_at: new Date(Date.now() - 26 * 3_600_000).toISOString(),
+    qualifications: null, language_tests: null, academic_tests: null, work_experiences: null,
+    age: null, gender: null, nationality: null, nationality_raw: null, study_preference: "Business in the UK",
+    summary_status: null, summary_sent_at: null,
+    channel: "whatsapp", channel_handle: "+977 981-700 4420", last_inbound_at: new Date(Date.now() - 26 * 3_600_000).toISOString(),
+  },
 ];

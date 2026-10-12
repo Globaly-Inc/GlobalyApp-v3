@@ -195,9 +195,9 @@ export async function embedRoutes(app: FastifyInstance) {
    * three more requests, and `meta.total` is the count for the filter actually applied.
    */
   app.get("/embed/visitors", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
-    const { status, search, ...pagination } = VisitorListQuerySchema.parse(req.query ?? {});
-    const counts = await visitorsRepo.visitorCounts(req.db, { search });
-    const rows = await visitorsRepo.listQuery(req.db, { ...pagination, status, search });
+    const { status, search, channel, ...pagination } = VisitorListQuerySchema.parse(req.query ?? {});
+    const counts = await visitorsRepo.visitorCounts(req.db, { search, channel });
+    const rows = await visitorsRepo.listQuery(req.db, { ...pagination, status, search, channel, userId: Number(req.auth.sub) });
     const data = rows.map((r: Record<string, unknown>) => takeover.withMe(r, Number(req.auth.sub)));
     return reply.send({ ...buildPaginatedResponse(data, counts[status], pagination), counts });
   });

@@ -1,12 +1,16 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import { useSearchParams } from "next/navigation";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { cn } from "@/lib/utils";
 import { ChatCopyProvider } from "@/components/chat/chat-copy";
 import { fetchThreads, toggleThreadFavorite } from "../store/business-messages-slice";
 import { fetchEmbedChats } from "../store/embed-chats-slice";
+import { fetchChannels } from "../channels/store/channels-slice";
+import type { ChannelFilter, ChannelHealth } from "./channel-picker";
+import type { InboxView } from "../const";
+import { InboxNav } from "./inbox-nav";
 import { EmbedConversationView } from "./embed-conversation-view";
 import { InboxChannelBar } from "./inbox-channel-bar";
 import { InboxListSidebar } from "./inbox-list-sidebar";
@@ -59,6 +63,16 @@ export function MessagesView() {
   const dispatch = useAppDispatch();
   const { threads, threadsStatus, byDistribution } = useAppSelector((s) => s.businessMessages);
   const embed = useAppSelector((s) => s.embedChats);
+  const channelConnections = useAppSelector((s) => s.inboxChannels.connections);
+  const widgetConfigs = useAppSelector((s) => s.aiWidget.configs);
+  // The dots in the Channels dropdown: connected, connection lost, or not set up.
+  const channelHealth = useMemo(() => {
+    const health: Partial<Record<NonNullable<WidgetVisitor["channel"]>, ChannelHealth>> = {
+      ai_embed: widgetConfigs.some((c) => c.is_active) ? "connected" : "off",
+    };
+    for (const c of channelConnections) health[c.channel] = c.status === "connected" ? "connected" : c.status === "error" ? "error" : "off";
+    return health;
+  }, [channelConnections, widgetConfigs]);
   /**
    * Which list the rail shows. Pinned to AI Conversations for now — the All / Enquiries /
    * AI Conversations tabs are hidden. Put `useState` and `<InboxKindTabs>` back to restore them.
@@ -77,6 +91,9 @@ export function MessagesView() {
    * would blank the pane mid-read. A fresher copy from the list still wins when present.
    */
   const [embedOpen, setEmbedOpen] = useState<WidgetVisitor | null>(null);
+  // The Inbox sidebar's choice, shared by the sidebar, the list and the overview's cards.
+  const [view, setView] = useState<InboxView>("all");
+  const [channel, setChannel] = useState<ChannelFilter>("all");
 
   const searchParams = useSearchParams();
   // Read once at mount: the URL isn't rewritten as the selection changes, so
@@ -101,6 +118,7 @@ export function MessagesView() {
     dispatch(fetchThreads());
     // At mount, not on first switch: the All tab (the default) and every tab's count need it.
     dispatch(fetchEmbedChats());
+    dispatch(fetchChannels());
     // ?visitor=ID — the visitor page's "Open conversation". Fetched on its own because that
     // visitor may not be on the first page of the list.
     const visitorId = Number(searchParams.get("visitor"));
@@ -178,7 +196,10 @@ export function MessagesView() {
         <InboxChannelBar />
         <WidgetSetupDialog />
         <div className="flex min-h-0 flex-1">
-        <div className={cn("w-full shrink-0 md:w-72 lg:w-80", mainOpen && "hidden md:block")}>
+        {kind === "embed" && (
+          <InboxNav visitors={embed.visitors} view={view} onView={setView} channel={channel} onChannel={setChannel} health={channelHealth} />
+        )}
+        <div className={cn("w-full shrink-0 md:w-80 lg:w-[22rem]", mainOpen && "hidden md:block")}>
           {kind !== "enquiry" ? (
             <InboxListSidebar
               header={tabs}
@@ -189,6 +210,10 @@ export function MessagesView() {
               loadingMore={embed.status === "loading" && embed.visitors.length > 0}
               onSearchVisitors={searchVisitors}
               onLoadMore={loadMoreVisitors}
+              view={view}
+              onView={setView}
+              channel={channel}
+              onChannel={setChannel}
               loading={
                 (embed.status === "loading" && embed.visitors.length === 0) ||
                 (kind === "all" && threadsStatus === "loading" && threads.length === 0)

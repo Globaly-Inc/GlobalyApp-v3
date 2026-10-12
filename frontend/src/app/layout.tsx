@@ -16,6 +16,7 @@ import {
 } from "@/lib/theme-settings";
 import StoreProvider from "./StoreProvider";
 import "./globals.css";
+import { APP_ORIGIN, WEB_ORIGIN } from "@/lib/hosts";
 
 const geist = Geist({
   variable: "--font-geist",
@@ -41,7 +42,7 @@ export async function generateMetadata(): Promise<Metadata> {
   );
   const icon = settings.faviconUrl || settings.logoUrl;
   return {
-    metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? siteConfig.url),
+    metadataBase: new URL(WEB_ORIGIN || APP_ORIGIN || siteConfig.url),
     title: settings.companyName,
     description: siteConfig.description,
     ...(icon ? { icons: icon } : {}),

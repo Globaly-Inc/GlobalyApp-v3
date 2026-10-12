@@ -1,22 +1,44 @@
-import { Camera, MessageCircle } from "lucide-react";
+import type { AiConfig, ChannelKey } from "../apis/types";
 
-/**
- * Channels the Inbox will take messages from. None can be connected yet, so each is shown for
- * what it will do, marked Coming soon, with nothing to click.
- */
-export const UPCOMING_CHANNELS = [
+/** The channels connected through Zernio, in the order the Channels page shows them. */
+export const CHANNEL_CARDS: { key: ChannelKey; description: string; need: string; noun: string }[] = [
   {
     key: "whatsapp",
-    name: "WhatsApp",
-    description: "Reply to WhatsApp Business messages from your Inbox.",
-    icon: MessageCircle,
-    tint: "bg-success/10 text-success",
+    description: "AI answers WhatsApp Business messages. Your team takes over from the Inbox.",
+    need: "Admin access to your WhatsApp Business account in Meta Business Manager.",
+    noun: "WhatsApp Business number",
   },
   {
     key: "instagram",
-    name: "Instagram",
-    description: "Manage Instagram DMs from your connected page.",
-    icon: Camera,
-    tint: "bg-chart-5/10 text-chart-5", // brand pink as a categorical colour, not an error
+    description: "AI answers Instagram DMs from your connected page. Your team takes over from the Inbox.",
+    need: "An Instagram Professional account linked to a Facebook Page you manage.",
+    noun: "Instagram Professional account",
   },
-] as const;
+  {
+    key: "facebook",
+    description: "AI answers Messenger conversations on your Facebook Page. Your team takes over from the Inbox.",
+    need: "Admin access to the Facebook Page your customers message.",
+    noun: "Facebook Page",
+  },
+];
+
+export const DEFAULT_AI_CONFIG: AiConfig = {
+  capabilities: { answer: true, programs: true, collect: true, recommend: true, escalate: true },
+  takeover: true,
+  escalation: { human: true, unsure: true, sensitive: true },
+};
+
+/** AI configuration's checkboxes: label, and an optional line explaining it. */
+export const CAPABILITY_FIELDS: { key: keyof AiConfig["capabilities"]; label: string; hint?: string }[] = [
+  { key: "answer", label: "Answer customer questions" },
+  { key: "programs", label: "Provide program information" },
+  { key: "collect", label: "Collect customer information", hint: "Name, email, destination, course and intake go to the visitor's record" },
+  { key: "recommend", label: "Recommend relevant programs" },
+  { key: "escalate", label: "Escalate to a human when necessary" },
+];
+
+export const ESCALATION_FIELDS: { key: keyof AiConfig["escalation"]; label: string; hint?: string }[] = [
+  { key: "human", label: "Customer asks for a human" },
+  { key: "unsure", label: "AI is unsure", hint: "For example visa chances, guarantees, or the status of their application" },
+  { key: "sensitive", label: "Sensitive question", hint: "Refusals, complaints, legal or personal hardship" },
+];

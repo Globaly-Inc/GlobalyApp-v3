@@ -3,6 +3,7 @@ import { createAsyncThunk, createSlice, type PayloadAction } from "@reduxjs/tool
 import { authApi } from "../apis";
 import type { AuthUser, SendOtpParams, UpdateRoleParams, VerifyOtpParams } from "../apis/types";
 import { clearTokens } from "@/lib/session";
+import { endSession } from "@/lib/api/http";
 import { useAppSelector } from "@/lib/hooks";
 import type { RootState } from "@/lib/store";
 
@@ -79,7 +80,7 @@ const authSlice = createSlice({
       state.initializing = false;
     },
     logout(state) {
-      clearTokens();
+      endSession();
       state.user = null;
       state.selectedCategory = null;
     },

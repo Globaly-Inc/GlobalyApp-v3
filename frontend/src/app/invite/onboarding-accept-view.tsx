@@ -14,7 +14,7 @@ import { inviteApi, type OnboardingInviteType } from "./apis";
 
 const INVITE_TYPES: readonly OnboardingInviteType[] = ["institution", "business"];
 
-const SUPPORT_EMAIL = "support@globalyapp.com";
+const SUPPORT_EMAIL = "support@globalyai.com";
 
 type LapsedReason = "expired" | "revoked";
 
