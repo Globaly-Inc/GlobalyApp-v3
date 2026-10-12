@@ -63,7 +63,12 @@ export interface ZernioEventRow {
   received_at: Date;
   processed_at: Date | null;
   error: string | null;
+  attempts: number;
+  next_attempt_at: Date | null;
 }
+
+/** Tries before a failing event is given up (marked processed, error kept): about 3 hours. */
+export const MAX_EVENT_ATTEMPTS = 8;
 
 /** Stores an event once. Returns its row id, or null when this event id was already stored (a retry). */
 export async function insertEvent(e: { event_id: string; event: string; account_id: string | null; payload: unknown }): Promise<number | null> {
@@ -81,9 +86,20 @@ export async function findEvent(id: number): Promise<ZernioEventRow | undefined>
   return masterKnex("zernio_events").where({ id }).first();
 }
 
-/** A failure: noted, but left unprocessed so the worker's sweep tries it again. */
-export async function markEventFailed(id: number, error: string): Promise<void> {
-  await masterKnex("zernio_events").where({ id }).update({ error });
+/**
+ * A failure: counted, and retried after an exponential backoff (1, 2, 4… minutes, at most an hour).
+ * The last allowed attempt gives up: processed, with the error kept for a person to look at.
+ * Every SET expression reads the row's OLD `attempts`, as Postgres does within one UPDATE.
+ * Returns true when this was the last attempt.
+ */
+export async function markEventFailed(id: number, error: string): Promise<boolean> {
+  const [row] = await masterKnex("zernio_events").where({ id }).update({
+    error,
+    attempts: masterKnex.raw("attempts + 1"),
+    next_attempt_at: masterKnex.raw("now() + make_interval(mins => CAST(LEAST(60, power(2, attempts)) AS integer))"),
+    processed_at: masterKnex.raw("CASE WHEN attempts + 1 >= ? THEN now() ELSE NULL END", [MAX_EVENT_ATTEMPTS]),
+  }).returning(["processed_at"]);
+  return row?.processed_at != null;
 }
 
 export async function markEventProcessed(id: number, error?: string): Promise<void> {

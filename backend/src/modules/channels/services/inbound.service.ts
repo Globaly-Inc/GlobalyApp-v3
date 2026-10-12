@@ -108,8 +108,10 @@ export async function processEvent(eventRowId: number): Promise<void> {
     // Left unprocessed: a database or model blip must not end the job. The sweep retries it, and a
     // message already stored is picked up again below (messageReceived's retry path).
     const message = err instanceof Error ? err.message : String(err);
-    logger.error("Zernio event failed; will retry", { eventId: ev.event_id, event: ev.event, err: message });
-    await zernioRepo.markEventFailed(ev.id, message.slice(0, 500));
+    const gaveUp = await zernioRepo.markEventFailed(ev.id, message.slice(0, 500));
+    logger.error(gaveUp ? "Zernio event failed; giving up after its last attempt" : "Zernio event failed; will retry", {
+      eventId: ev.event_id, event: ev.event, attempt: ev.attempts + 1, err: message,
+    });
   }
 }
 

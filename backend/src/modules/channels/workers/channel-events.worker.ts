@@ -19,8 +19,6 @@ import { processEvent } from "../services/inbound.service.js";
 
 const logger = createChildLogger("channel-events-worker");
 const SWEEP_MS = 60_000;
-/** A failed event is retried by the sweep for this long, then left with its error for a person. */
-const RETRY_FOR_MS = 24 * 60 * 60_000;
 
 let lane: Promise<unknown> = Promise.resolve();
 function run(eventRowId: number): Promise<void> {
@@ -41,11 +39,13 @@ setInterval(async () => {
   try {
     const rows: { id: number }[] = await masterKnex("zernio_events")
       .whereNull("processed_at")
+      // Never attempted (a lost publish, a worker that was down): eligible however old, once the
+      // queue has had a minute to deliver it. Failed: only once its backoff has passed.
       .where("received_at", "<", new Date(Date.now() - SWEEP_MS))
-      // ponytail: age bounds the retries of an event that keeps failing; add an attempts column
-      // if a day of minute-by-minute retries ever proves too many.
-      .where("received_at", ">", new Date(Date.now() - RETRY_FOR_MS))
-      .orderBy("id", "asc")
+      .where((q) => q.whereNull("next_attempt_at").orWhere("next_attempt_at", "<=", new Date()))
+      // Due-time order: an event that keeps failing moves back each time, so it can't hold the
+      // front of the line against newer work (idx_zernio_events_due).
+      .orderByRaw("COALESCE(next_attempt_at, received_at) ASC")
       .limit(50)
       .select("id");
     for (const r of rows) await run(Number(r.id));

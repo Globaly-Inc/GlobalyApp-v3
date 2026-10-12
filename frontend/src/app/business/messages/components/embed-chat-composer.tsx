@@ -151,7 +151,7 @@ export function EmbedChatComposer({ visitor, actions }: Readonly<{ visitor: Widg
           {box("Write a note for your team…")}
         </>
       ) : reply}
-      {channel === "whatsapp" && <TemplatePickerDialog visitor={visitor} open={templates} onOpenChange={setTemplates} />}
+      {channel === "whatsapp" && <TemplatePickerDialog key={visitor.id} visitor={visitor} open={templates} onOpenChange={setTemplates} />}
     </div>
   );
 }
