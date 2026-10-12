@@ -16,6 +16,7 @@ import {
 } from "../schemas/businesses.schema.js";
 import { ContactInputSchema, ContactPatchSchema } from "../../../../agents/schemas/agents.schema.js";
 import { issuePreviewTokenForOrg } from "../../../../auth/auth.service.js";
+import { changedFields } from "../../../../../shared/changed-fields.js";
 
 const logger = createChildLogger("admin-businesses");
 
@@ -76,8 +77,9 @@ export async function adminBusinessRoutes(app: FastifyInstance) {
   app.patch("/businesses/:id", async (req, reply) => {
     const { id } = IdParamSchema.parse(req.params);
     const data = BusinessPatchSchema.parse(req.body);
+    const before = await service.getBusinessDetail(id).catch(() => null);
     const updated = await service.updateBusiness(id, data);
-    await platformRepo.logAdminAction(Number(req.auth.sub), "BUSINESS_UPDATED", "business", undefined, { business_id: id, ...data });
+    await platformRepo.logAdminAction(Number(req.auth.sub), "BUSINESS_UPDATED", "business", undefined, { business_id: id, fields: changedFields(before, data) });
     return reply.send(updated);
   });
 
@@ -160,8 +162,9 @@ export async function adminBusinessRoutes(app: FastifyInstance) {
   app.patch("/institutions/:id", async (req, reply) => {
     const { id } = IdParamSchema.parse(req.params);
     const data = InstitutionPatchSchema.parse(req.body);
+    const before = await service.getInstitutionDetail(id).catch(() => null);
     const updated = await service.updateInstitutionDetail(id, data);
-    await platformRepo.logAdminAction(Number(req.auth.sub), "INSTITUTION_UPDATED", "institution", undefined, { institution_id: id, ...data });
+    await platformRepo.logAdminAction(Number(req.auth.sub), "INSTITUTION_UPDATED", "institution", undefined, { institution_id: id, fields: changedFields(before, data) });
     return reply.send(updated);
   });
 

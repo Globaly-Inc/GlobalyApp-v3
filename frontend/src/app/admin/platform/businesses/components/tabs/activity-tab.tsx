@@ -5,12 +5,10 @@ import { Activity, Loader2 } from "lucide-react";
 import { Pagination } from "@/components/ui/pagination";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchActivity } from "../../store/businesses-slice";
+import { dayLabel } from "../../utils/activity-format";
+import { ActivityRow } from "./activity-row";
 
 const PAGE_SIZE = 10;
-
-function formatAction(action: string): string {
-  return action.replace(/^(BUSINESS|INSTITUTION)_/, "").replaceAll("_", " ").toLowerCase();
-}
 
 export function ActivityTab({ businessId, kind = "business" }: Readonly<{ businessId: number; kind?: "business" | "institution" }>) {
   const dispatch = useAppDispatch();
@@ -42,19 +40,16 @@ export function ActivityTab({ businessId, kind = "business" }: Readonly<{ busine
       </div>
     );
   } else {
+    // Day headers between groups — the list is already newest first.
     body = (
       <div className="space-y-2">
-        {activity.map((a) => {
-          const fallback = a.source === "portal" ? "Portal user" : "Admin";
-          const name = `${a.admin_first_name ?? ""} ${a.admin_last_name ?? ""}`.trim() || fallback;
-          const admin = `${name} · ${a.source === "portal" ? "Portal" : "Superadmin"}`;
+        {activity.map((a, i) => {
+          const day = dayLabel(a.created_at);
+          const header = i === 0 || day !== dayLabel(activity[i - 1]!.created_at);
           return (
-            <div key={a.id} className="flex items-center justify-between rounded-lg border p-3">
-              <p className="text-sm capitalize">{formatAction(a.action)}</p>
-              <div className="text-right">
-                <p className="text-xs text-muted-foreground">{admin}</p>
-                <p className="text-xs text-muted-foreground">{new Date(a.created_at).toLocaleString()}</p>
-              </div>
+            <div key={a.id}>
+              {header && <p className="mb-2 mt-4 text-xs font-medium uppercase tracking-wide text-muted-foreground first:mt-0">{day}</p>}
+              <ActivityRow entry={a} />
             </div>
           );
         })}

@@ -9,7 +9,6 @@ import { PageBody } from "@/components/ui/page-body";
 import { PageHeader } from "@/components/ui/page-header";
 import { StickySaveBar } from "@/components/ui/sticky-save-bar";
 import { SectionTabs } from "@/components/section-tabs";
-import { coursePublicHref } from "../../utils";
 import { ServiceBasicsSection } from "./service-basics-section";
 import { ServiceHeroCard } from "./service-hero-card";
 import { ServiceSocialLinks } from "./service-social-links";
@@ -23,8 +22,7 @@ import { useInstitutionServiceForm, type InstitutionServiceTab } from "./use-ins
 // backend's services.routes.ts) instead of admin's explicit institutionId-in-URL thunks.
 export function InstitutionServiceFormView({ businessId, serviceId }: Readonly<{ businessId: number; serviceId?: string }>) {
   const f = useInstitutionServiceForm(businessId, serviceId);
-  const { isEdit, isCourse, form, profile } = f;
-  const servicesHref = `/business/profile/${businessId}?tab=services`;
+  const { isEdit, isCourse, form, profile, servicesHref, readOnly } = f;
   const socialLinks = [profile?.linkedin_url, profile?.facebook_url, profile?.instagram_url, profile?.twitter_url].filter(Boolean) as string[];
 
   const openPreview = () => {
@@ -34,7 +32,7 @@ export function InstitutionServiceFormView({ businessId, serviceId }: Readonly<{
     // mock of it. Opens synchronously (inside the click gesture) so popup blockers
     // don't catch it, then redirects once the preview token comes back.
     const tab = window.open("", "_blank");
-    coursePublicHref(form.name, serviceId).then((href) => { if (tab) tab.location.href = href; });
+    f.coursePreviewHref(form.name, serviceId).then((href) => { if (tab) tab.location.href = href; });
   };
 
   const createButton = (
@@ -69,11 +67,13 @@ export function InstitutionServiceFormView({ businessId, serviceId }: Readonly<{
             Preview
           </Button>
         )}
-        {!isEdit && createButton}
+        {readOnly && <Badge variant="secondary">View only</Badge>}
+        {!isEdit && !readOnly && createButton}
       </PageHeader>
 
       <ServiceHeroCard coverUrl={profile?.cover_url} logoUrl={profile?.logo_url} orgName={profile?.business_name ?? "Institution"} />
 
+      <fieldset disabled={readOnly} className="contents">
       <ServiceBasicsSection
         categories={f.serviceCategories}
         categoryId={form.service_category_id}
@@ -84,6 +84,7 @@ export function InstitutionServiceFormView({ businessId, serviceId }: Readonly<{
         onNameBlur={f.handleNameBlur}
         nameLabel="Course name"
       />
+      </fieldset>
 
       {isEdit && (
         <SectionTabs
@@ -104,15 +105,17 @@ export function InstitutionServiceFormView({ businessId, serviceId }: Readonly<{
         />
       )}
 
+      <fieldset disabled={readOnly} className="contents">
       <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
         <div key={f.tab} className="stagger-in flex flex-col gap-6 lg:col-span-2">
           <InstitutionServiceTabPanel f={f} serviceId={serviceId} />
         </div>
         <InstitutionServiceSidebar f={f} serviceId={serviceId} />
       </div>
+      </fieldset>
 
       {/* Edit mode has no global save — every card saves itself — so the bar only appears while creating. */}
-      {!isEdit && (
+      {!isEdit && !readOnly && (
         <StickySaveBar>
           <Button variant="outline" render={<Link href={servicesHref} />}>Cancel</Button>
           {createButton}

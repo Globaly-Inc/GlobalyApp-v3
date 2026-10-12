@@ -655,6 +655,8 @@ export type ActivityLogEntry = {
   admin_first_name: string | null;
   admin_last_name: string | null;
   source?: "admin" | "portal";
+  /** Name of the course/service or branch the entry is about, resolved by the server. */
+  target?: string | null;
 };
 
 export type ActivityListParams = { page?: number; limit?: number };

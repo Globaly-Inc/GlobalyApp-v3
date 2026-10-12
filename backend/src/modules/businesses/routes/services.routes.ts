@@ -15,7 +15,8 @@ import { selfServiceJobIds } from "../../superadmin/data-extraction/repositories
 import { isInstitutionCategory } from "../../superadmin/data-extraction/repositories/promote.repository.js";
 import { BadRequestError, ForbiddenError, NotFoundError } from "../../../shared/errors.js";
 import type { CourseListFilters } from "../../superadmin/data-extraction/repositories/courses.repository.js";
-import * as activityService from "../services/activity.service.js";
+import { logPortalActivity } from "../services/portal-activity.js";
+import { changedFields } from "../../../shared/changed-fields.js";
 import { resolveSharedCourses } from "../../superadmin/platform/business-branches/repositories/business-branches.repository.js";
 
 const SubIdSchema = z.object({ subId: z.string().uuid() });
@@ -209,11 +210,12 @@ export async function businessServicesRoutes(app: FastifyInstance) {
     if (req.auth.orgType === "institution") {
       // byOwner: a portal-created course starts unapproved — the owner or an admin approves it.
       const created = await service.createInstitutionService(Number(req.institution!.id), data, Number(req.auth.sub), true);
+      await logPortalActivity(req, "SERVICE_CREATED", { service_id: created?.id, service_name: created?.name });
       return reply.status(201).send(created);
     }
     await refuseIfCatalogIsExtracted(req);
     const created = await service.createService(Number(req.business!.id), data);
-    await activityService.logActivity(req.db, Number(req.auth.sub), "SERVICE_CREATED", "service", created.id, { name: created.name });
+    await logPortalActivity(req, "SERVICE_CREATED", { service_id: created.id, service_name: created.name });
     return reply.status(201).send(created);
   });
 
@@ -237,6 +239,7 @@ export async function businessServicesRoutes(app: FastifyInstance) {
     const jobId = await servicesSourceJobId(req);
     if (!jobId) throw new BadRequestError("This listing's services don't need approval.");
     const approved = await approveServices(jobId, ids, Number(req.auth.sub));
+    await logPortalActivity(req, "SERVICE_APPROVED", { service_id: ids.length === 1 ? ids[0] : undefined, count: ids.length });
     return reply.send({ approved });
   });
 
@@ -244,24 +247,30 @@ export async function businessServicesRoutes(app: FastifyInstance) {
     const { subId } = SubIdSchema.parse(req.params);
     const data = ServicePatchInputSchema.parse(req.body);
     if (req.auth.orgType === "institution") {
+      const before = await service.getInstitutionService(Number(req.institution!.id), subId).catch(() => null);
       const updated = await service.updateInstitutionService(Number(req.institution!.id), subId, data, Number(req.auth.sub));
+      await logPortalActivity(req, "SERVICE_UPDATED", { service_id: subId, fields: changedFields(before as Record<string, unknown> | null, data) });
       return reply.send(updated);
     }
     await refuseIfCatalogIsExtracted(req);
+    const before = await service.getService(Number(req.business!.id), subId).catch(() => null);
     const updated = await service.updateService(Number(req.business!.id), subId, data);
-    await activityService.logActivity(req.db, Number(req.auth.sub), "SERVICE_UPDATED", "service", subId);
+    await logPortalActivity(req, "SERVICE_UPDATED", { service_id: subId, fields: changedFields(before as Record<string, unknown> | null, data) });
     return reply.send(updated);
   });
 
   app.delete("/services/:subId", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
     const { subId } = SubIdSchema.parse(req.params);
     if (req.auth.orgType === "institution") {
+      const gone = await service.getInstitutionService(Number(req.institution!.id), subId).catch(() => null);
       await service.deleteInstitutionService(Number(req.institution!.id), subId);
+      await logPortalActivity(req, "SERVICE_DELETED", { service_id: subId, service_name: gone?.name });
       return reply.status(204).send();
     }
     await refuseIfCatalogIsExtracted(req);
+    const gone = await service.getService(Number(req.business!.id), subId).catch(() => null);
     await service.deleteService(Number(req.business!.id), subId);
-    await activityService.logActivity(req.db, Number(req.auth.sub), "SERVICE_DELETED", "service", subId);
+    await logPortalActivity(req, "SERVICE_DELETED", { service_id: subId, service_name: gone?.name });
     return reply.status(204).send();
   });
 
@@ -278,10 +287,11 @@ export async function businessServicesRoutes(app: FastifyInstance) {
     const { values } = ServiceFieldValuesInputSchema.parse(req.body);
     if (req.auth.orgType === "institution") {
       const updated = await service.upsertInstitutionServiceFieldValues(Number(req.institution!.id), subId, values);
+      await logPortalActivity(req, "SERVICE_FIELDS_UPDATED", { service_id: subId });
       return reply.send(updated);
     }
     const updated = await service.upsertServiceFieldValues(Number(req.business!.id), subId, values);
-    await activityService.logActivity(req.db, Number(req.auth.sub), "SERVICE_FIELDS_UPDATED", "service", subId);
+    await logPortalActivity(req, "SERVICE_FIELDS_UPDATED", { service_id: subId });
     return reply.send(updated);
   });
 }

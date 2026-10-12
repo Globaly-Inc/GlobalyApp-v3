@@ -490,6 +490,13 @@ export async function searchInstitutionServices(institutionId: number, limit: nu
   return { rows: withInstitutionListExtras(rows, extras), total };
 }
 
+/** Admin twin of the portal's POST /services/approve — makes these courses publishable. */
+export async function approveInstitutionServices(institutionId: number, ids: string[], adminId: number) {
+  const inst = await requireInstitution(institutionId);
+  const jobId = await requireInstitutionJobId(inst);
+  return instRepo.approveServices(jobId, ids, adminId);
+}
+
 export async function getInstitutionService(institutionId: number, serviceId: string) {
   const inst = await requireInstitution(institutionId);
   const jobId = await requireInstitutionJobId(inst);

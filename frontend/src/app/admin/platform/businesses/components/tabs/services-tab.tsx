@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Eye, EyeOff, Loader2, Package, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Eye, EyeOff, FileText, Loader2, Package, Pencil, Plus, Search, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -104,6 +104,16 @@ export function ServicesTab({
               </div>
             </div>
             <div className="flex items-center gap-1">
+              {/* Always available — a claimed org's services are read-only here, but still viewable. */}
+              <Button
+                size="icon-sm"
+                variant="ghost"
+                title="View service"
+                aria-label="View service"
+                onClick={() => router.push(`/admin/platform/businesses/${businessId}/services/${s.id}/edit?view=1`)}
+              >
+                <FileText className="h-4 w-4" />
+              </Button>
               <Button
                 size="icon-sm"
                 variant="ghost"

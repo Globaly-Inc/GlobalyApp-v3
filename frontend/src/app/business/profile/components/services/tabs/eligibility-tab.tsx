@@ -6,7 +6,7 @@ import { Pencil, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
-import { businessProfileDetailApi } from "../../../apis";
+import { useServiceEditor } from "../service-editor-context";
 import type { Lookup } from "@/app/admin/platform/categories/apis/types";
 import { ServiceEligibilityForm } from "./service-eligibility-form";
 import { TabSection } from "./tab-section";
@@ -25,6 +25,7 @@ const BLOCK_LABEL = "text-xs font-semibold uppercase tracking-wider text-muted-f
 const KV = "flex items-baseline justify-between gap-2 text-[13px]";
 
 export function EligibilityTab({ serviceId }: Readonly<{ serviceId: string }>) {
+  const { api } = useServiceEditor();
   const [degreeLevels, setDegreeLevels] = useState<Lookup[]>([]);
   const [rows, setRows] = useState<ServiceEligibility[]>([]);
   const [loading, setLoading] = useState(true);
@@ -36,8 +37,8 @@ export function EligibilityTab({ serviceId }: Readonly<{ serviceId: string }>) {
   useEffect(() => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
-    businessProfileDetailApi.getLookups("degree-levels").then((res) => setDegreeLevels(res.data));
-    businessProfileDetailApi.serviceEligibility.list(serviceId).then(setRows).finally(() => setLoading(false));
+    api.getLookups("degree-levels").then((res) => setDegreeLevels(res.data));
+    api.serviceEligibility.list(serviceId).then(setRows).finally(() => setLoading(false));
   }, [serviceId]);
 
   const openAdd = () => { setEditing(null); setFormOpen(true); };
@@ -47,11 +48,11 @@ export function EligibilityTab({ serviceId }: Readonly<{ serviceId: string }>) {
     setSaving(true);
     try {
       if (editing) {
-        const updated = await businessProfileDetailApi.serviceEligibility.update(serviceId, editing.id, input);
+        const updated = await api.serviceEligibility.update(serviceId, editing.id, input);
         setRows((r) => r.map((x) => (x.id === editing.id ? updated : x)));
         toast.success("Eligibility requirement updated");
       } else {
-        const created = await businessProfileDetailApi.serviceEligibility.create(serviceId, input);
+        const created = await api.serviceEligibility.create(serviceId, input);
         setRows((r) => [...r, created]);
         toast.success("Eligibility requirement added");
       }
@@ -65,7 +66,7 @@ export function EligibilityTab({ serviceId }: Readonly<{ serviceId: string }>) {
 
   const handleDelete = async (id: number) => {
     try {
-      await businessProfileDetailApi.serviceEligibility.remove(serviceId, id);
+      await api.serviceEligibility.remove(serviceId, id);
       setRows((r) => r.filter((x) => x.id !== id));
       toast.success("Requirement removed");
     } catch (e) {

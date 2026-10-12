@@ -27,6 +27,7 @@ import { courseSlug } from "../../../../search/utils/slug.js";
 import * as institutionMembersService from "../../../../platform-users/services/institution-members.service.js";
 import type { InstitutionInviteInput } from "../../../../platform-users/services/institution-members.service.js";
 import * as representationsService from "../../business-representations/services/business-representations.service.js";
+import { withActivityTargets } from "./activity-targets.js";
 import * as branchService from "../../business-branches/services/business-branches.service.js";
 import { resolveSharedCourses } from "../../business-branches/repositories/business-branches.repository.js";
 import type { PaginationInput } from "../../../../../shared/pagination.js";
@@ -849,12 +850,15 @@ export async function listActivity(id: number, limit: number, offset: number) {
   const biz = await requireBusiness(id);
   // An unprovisioned business has no tenant schema, so no portal activity of its own.
   const tenantDb = biz.schema_provisioned_at ? await getKnex(biz.id, biz.schema_name).catch(() => undefined) : undefined;
-  return repo.listBusinessActivity(id, limit, offset, "business_id", tenantDb);
+  const { rows, total } = await repo.listBusinessActivity(id, limit, offset, "business_id", tenantDb);
+  return { rows: await withActivityTargets(rows, "business", tenantDb), total };
 }
 
 export async function listInstitutionActivity(id: number, limit: number, offset: number) {
-  await requireInstitution(id);
-  return repo.listBusinessActivity(id, limit, offset, "institution_id");
+  const inst = await requireInstitution(id);
+  const { rows, total } = await repo.listBusinessActivity(id, limit, offset, "institution_id");
+  const tenantDb = inst.schema_name ? await getKnex(inst.id, inst.schema_name).catch(() => undefined) : undefined;
+  return { rows: await withActivityTargets(rows, "institution", tenantDb), total };
 }
 
 // ── Institution role management ──

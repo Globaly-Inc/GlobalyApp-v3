@@ -6,7 +6,7 @@ import { Award, BookOpen, CalendarDays, DollarSign, GraduationCap, Image as Imag
 import { Combobox } from "@/components/combobox";
 import { FormSection } from "@/components/ui/form-section";
 import { FormField } from "@/components/ui/form-field";
-import { businessProfileDetailApi } from "../../../apis";
+import { useServiceEditor } from "../service-editor-context";
 import { SectionSummaryCard } from "../section-summary-card";
 import { ServiceSetupChecklist } from "../service-setup-checklist";
 import { PublicBadge } from "../public-badge";
@@ -46,20 +46,21 @@ export function SummaryTab({
   onWriteWithAi: () => void;
   generatingDescription: boolean;
 }>) {
+  const { api } = useServiceEditor();
   const [counts, setCounts] = useState({ fees: 0, intakes: 0, eligibility: 0, studyUnits: 0, accreditations: 0 });
 
   useEffect(() => {
     if (!serviceId) return;
     Promise.all([
-      businessProfileDetailApi.serviceFees.list(serviceId),
-      businessProfileDetailApi.serviceIntakes.list(serviceId),
-      businessProfileDetailApi.serviceEligibility.list(serviceId),
-      businessProfileDetailApi.serviceStudyUnits.list(serviceId),
-      businessProfileDetailApi.getServiceAccreditations(serviceId),
+      api.serviceFees.list(serviceId),
+      api.serviceIntakes.list(serviceId),
+      api.serviceEligibility.list(serviceId),
+      api.serviceStudyUnits.list(serviceId),
+      api.getServiceAccreditations(serviceId),
     ]).then(([fees, intakes, eligibility, studyUnits, accreditations]) => {
       setCounts({ fees: fees.length, intakes: intakes.length, eligibility: eligibility.length, studyUnits: studyUnits.length, accreditations: accreditations.length });
     });
-  }, [serviceId]);
+  }, [api, serviceId]);
 
   const section = (icon: LucideIcon, title: string, count: number, emptyText: string, tab: DetailTab, addLabel = "Add") => (
     <SectionSummaryCard

@@ -9,7 +9,7 @@ import { Combobox } from "@/components/combobox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
-import { businessProfileDetailApi } from "../../../apis";
+import { useServiceEditor } from "../service-editor-context";
 import { ENABLED_FEE_TYPES, PERIOD_TYPE_OPTIONS, STUDENT_TYPE_OPTIONS } from "@/app/admin/data/all-extractions/const";
 import { emptyFeeInstallment, sumFeeInstallments } from "@/app/admin/data/all-extractions/utils";
 import { FeeInstallmentsEditor } from "@/app/admin/data/all-extractions/components/fee-installments-editor";
@@ -45,6 +45,7 @@ export function ServiceFeeForm({
   /** One entry normally; two — domestic then international — when the split toggle is on. */
   onSave: (values: ServiceFeeInput[]) => void;
 }>) {
+  const { api } = useServiceEditor();
   const feeLabel = isCourse ? "Course Fee" : "Service Fee";
   const [studentType, setStudentType] = useState<ServiceFeeInput["student_type"]>(fee?.student_type ?? "both");
   const [periodType, setPeriodType] = useState(fee?.period_type ?? "Per Year");
@@ -59,7 +60,7 @@ export function ServiceFeeForm({
 
   useEffect(() => {
     const inUse = toFormInstallments(fee).flatMap((i) => i.lines.map((l) => l.fee_type));
-    businessProfileDetailApi.getFeeTypes({ limit: 100 })
+    api.getFeeTypes({ limit: 100 })
       .then((res) => setFeeTypes(
         [...new Set([
           ...res.data.filter((f) => ENABLED_FEE_TYPES.includes(f.name) || inUse.includes(f.name)).map((f) => f.name),

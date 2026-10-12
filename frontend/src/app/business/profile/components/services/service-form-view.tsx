@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Briefcase, Loader2, Save } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { BackButton } from "@/components/ui/back-button";
@@ -34,9 +35,8 @@ export type DetailTab = (typeof DETAIL_TABS)[number]["value"];
 
 export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId: number; serviceId?: string }>) {
   const f = useServiceForm(businessId, serviceId);
-  const { isEdit, form, set } = f;
+  const { isEdit, form, set, servicesHref, readOnly } = f;
   const [detailTab, setDetailTab] = useState<DetailTab>("summary");
-  const servicesHref = `/business/profile/${businessId}?tab=services`;
 
   const summaryProps = {
     description: form.description,
@@ -51,7 +51,7 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
     generatingDescription: f.generatingDescription,
   };
 
-  const saveButton = (
+  const saveButton = readOnly ? <Badge variant="secondary">View only</Badge> : (
     <Button className="gap-2" disabled={!f.canSave || f.saving} onClick={f.handleSubmit}>
       {f.saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
       {f.saving ? (isEdit ? "Saving…" : "Creating…") : isEdit ? "Save changes" : "Create service"}
@@ -70,6 +70,7 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
 
       <ServiceHeroCard coverUrl={f.profile?.cover_url} logoUrl={f.profile?.logo_url} orgName={f.profile?.business_name ?? "Business"} />
 
+      <fieldset disabled={readOnly} className="contents">
       <ServiceBasicsSection
         categories={f.serviceCategories}
         categoryId={form.service_category_id}
@@ -78,10 +79,12 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
         onNameChange={(v) => set("name", v)}
         nameLabel="Service name"
       />
+      </fieldset>
 
       {isEdit && serviceId ? (
         <>
           <SectionTabs className="mb-0" options={DETAIL_TABS} value={detailTab} onChange={setDetailTab} />
+          <fieldset disabled={readOnly} className="contents">
           {detailTab === "summary" ? (
             <div key={detailTab} className="animate-step-forward">
               <SummaryTab serviceId={serviceId} onNavigateTab={setDetailTab} {...summaryProps} />
@@ -98,15 +101,16 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
               </CardContent>
             </Card>
           )}
+          </fieldset>
         </>
       ) : (
         <SummaryTab serviceId={null} onNavigateTab={() => {}} {...summaryProps} />
       )}
 
-      <StickySaveBar status={isEdit ? "Fees, intakes and the other tabs save on their own." : undefined}>
+      {!readOnly && <StickySaveBar status={isEdit ? "Fees, intakes and the other tabs save on their own." : undefined}>
         <Button variant="outline" render={<Link href={servicesHref} />}>Cancel</Button>
         {saveButton}
-      </StickySaveBar>
+      </StickySaveBar>}
     </PageBody>
   );
 }

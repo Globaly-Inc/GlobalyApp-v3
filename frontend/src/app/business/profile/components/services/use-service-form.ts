@@ -3,15 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import type { Accreditation, Category, Lookup } from "@/app/admin/platform/categories/apis/types";
-import { businessProfileDetailApi } from "../../apis";
-import {
-  createService, fetchServiceFieldValues, fetchServices, updateService, updateServiceFieldValues,
-} from "../../store/business-profile-detail-slice";
 import { ApiError } from "@/lib/api/http";
-import type { SchemaFieldValue, ServiceInput } from "../../apis/types";
+import type { ServiceInput } from "../../apis/types";
 import { useCourseFieldSearch } from "./use-course-field-search";
+import { useServiceEditor } from "./service-editor-context";
 
 type FormState = { name: string; service_category_id: number | null; description: string };
 
@@ -20,11 +16,9 @@ const EMPTY_FORM: FormState = { name: "", service_category_id: null, description
 /** State and handlers of the business service form (ServiceFormView). */
 export function useServiceForm(businessId: number, serviceId?: string) {
   const router = useRouter();
-  const dispatch = useAppDispatch();
   const isEdit = !!serviceId;
 
-  const profile = useAppSelector((state) => state.businessOnboarding.profile);
-  const services = useAppSelector((state) => state.businessProfileDetail.services.items);
+  const { api, org: profile, services, servicesHref, readOnly, coursePreviewHref } = useServiceEditor(businessId);
   const [serviceCategories, setServiceCategories] = useState<Category[]>([]);
   const [degreeLevels, setDegreeLevels] = useState<Lookup[]>([]);
   const [areasOfStudy, setAreasOfStudy] = useState<Lookup[]>([]);
@@ -44,31 +38,24 @@ export function useServiceForm(businessId: number, serviceId?: string) {
   const [saving, setSaving] = useState(false);
   const [generatingDescription, setGeneratingDescription] = useState(false);
 
-  const { courseSearchLoading, debouncedSearchCourseField, courseFieldOptions } = useCourseFieldSearch({ degreeLevels, areasOfStudy, accreditations });
+  const { courseSearchLoading, debouncedSearchCourseField, courseFieldOptions } = useCourseFieldSearch({ api, degreeLevels, areasOfStudy, accreditations });
 
   const fetchedRef = useRef(false);
   useEffect(() => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
-    businessProfileDetailApi.getServiceCategories().then((res) => setServiceCategories(res.data));
-    businessProfileDetailApi.getLookups("degree-levels").then((res) => setDegreeLevels(res.data));
-    businessProfileDetailApi.getLookups("areas-of-study").then((res) => setAreasOfStudy(res.data));
-    businessProfileDetailApi.getAccreditations().then((res) => setAccreditations(res.data));
+    api.getServiceCategories().then((res) => setServiceCategories(res.data));
+    api.getLookups("degree-levels").then((res) => setDegreeLevels(res.data));
+    api.getLookups("areas-of-study").then((res) => setAreasOfStudy(res.data));
+    api.getAccreditations().then((res) => setAccreditations(res.data));
     if (isEdit && serviceId) {
       if (!services.some((s) => s.id === serviceId)) {
-        dispatch(fetchServices({ id: businessId, params: { limit: 100 } })).then((res) => {
-          if (fetchServices.fulfilled.match(res)) {
-            const found = res.payload.data.find((s) => s.id === serviceId);
-            if (found) setForm(toForm(found));
-          }
-        });
+        api.getService(serviceId).then((found) => setForm(toForm(found))).catch(() => {});
       }
-      dispatch(fetchServiceFieldValues({ id: businessId, serviceId })).then((res) => {
-        if (fetchServiceFieldValues.fulfilled.match(res)) {
-          const map: Record<number, unknown> = {};
-          for (const v of res.payload as SchemaFieldValue[]) map[v.schema_field_id] = v.value;
-          setFieldValues(map);
-        }
+      api.getServiceFieldValues(serviceId).then((values) => {
+        const map: Record<number, unknown> = {};
+        for (const v of values) map[v.schema_field_id] = v.value;
+        setFieldValues(map);
       });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -96,7 +83,7 @@ export function useServiceForm(businessId: number, serviceId?: string) {
     setGeneratingDescription(true);
     try {
       const categoryName = serviceCategories.find((c) => c.id === form.service_category_id)?.name;
-      const { text } = await businessProfileDetailApi.generateServiceDescription({
+      const { text } = await api.generateServiceDescription({
         name: form.name,
         category_name: categoryName,
         hint: form.description || undefined,
@@ -119,19 +106,19 @@ export function useServiceForm(businessId: number, serviceId?: string) {
         description: form.description || null,
       };
       const result = isEdit && serviceId
-        ? await dispatch(updateService({ id: businessId, serviceId, patch: input })).unwrap()
-        : await dispatch(createService({ id: businessId, input })).unwrap();
+        ? await api.updateService(serviceId, input)
+        : await api.createService(input);
 
       const values = Object.entries(fieldValues).map(([schema_field_id, value]) => ({
         schema_field_id: Number(schema_field_id),
         value,
       }));
       if (values.length > 0) {
-        await dispatch(updateServiceFieldValues({ id: businessId, serviceId: result.id, values })).unwrap();
+        await api.updateServiceFieldValues(result.id, values);
       }
 
       toast.success(isEdit ? "Service updated" : "Service created");
-      router.push(`/business/profile/${businessId}?tab=services`);
+      router.push(servicesHref);
     } catch (e) {
       const err = e as ApiError;
       toast.error(isEdit ? "Couldn't update service" : "Couldn't create service", { description: err.message });
@@ -141,7 +128,7 @@ export function useServiceForm(businessId: number, serviceId?: string) {
   };
 
   return {
-    isEdit, profile, serviceCategories, form, set, fieldValues, setFieldValues, saving, generatingDescription,
+    isEdit, profile, servicesHref, readOnly, coursePreviewHref, serviceCategories, form, set, fieldValues, setFieldValues, saving, generatingDescription,
     canSave, schemaFieldIdByKey, courseSearchLoading, debouncedSearchCourseField, courseFieldOptions,
     handleWriteWithAi, handleSubmit,
   };

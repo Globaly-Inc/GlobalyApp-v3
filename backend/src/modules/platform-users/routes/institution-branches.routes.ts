@@ -10,6 +10,7 @@ import { requireInstitutionContext } from "../../../core/plugins/auth.plugin.js"
 import { BranchInputSchema, BranchListQuerySchema, BranchPatchSchema } from "../../superadmin/platform/business-branches/schemas/business-branches.schema.js";
 import * as service from "../../superadmin/platform/business-branches/services/business-branches.service.js";
 import { logEnquiryAudit } from "../../enquiries/shared/audit.js";
+import { changedFields } from "../../../shared/changed-fields.js";
 
 const SubIdSchema = z.object({ subId: z.string().uuid() });
 
@@ -48,8 +49,9 @@ export async function institutionBranchesRoutes(app: FastifyInstance) {
   app.patch("/branches/:subId", { preHandler: requireInstitutionContext }, async (req, reply) => {
     const { subId } = SubIdSchema.parse(req.params);
     const data = BranchPatchSchema.parse(req.body);
+    const before = await service.getInstitutionBranch(req.institutionId, subId).catch(() => null);
     const branch = await service.updateInstitutionBranch(req.institutionId, subId, data);
-    await logBranch(req, "BRANCH_UPDATED", { branch_id: subId, fields: Object.keys(data) });
+    await logBranch(req, "BRANCH_UPDATED", { branch_id: subId, name: (branch as { name?: string } | null)?.name, fields: changedFields(before as Record<string, unknown> | null, data) });
     return reply.send(branch);
   });
 

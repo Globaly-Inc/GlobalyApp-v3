@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Award, BookOpen, Image as ImageIcon, Pencil, ShieldCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { businessProfileDetailApi } from "../../apis";
+import { useServiceEditor } from "./service-editor-context";
 import type { Lookup } from "@/app/admin/platform/categories/apis/types";
 import { ServiceMediaUploader } from "./service-media-uploader";
 import { EligibilityRequirementCard } from "./eligibility-requirement-card";
@@ -24,6 +24,7 @@ export function ServiceSummaryBodyExtras({
   onNavigateTab: (tab: "study-units" | "accreditations" | "eligibility") => void;
   visibility: SectionVisibility;
 }>) {
+  const { api } = useServiceEditor();
   // This card only exists while tab === "summary" (its parent unmounts it otherwise), so a plain
   // mount-once fetch is enough — it's naturally refreshed every time the caller returns here.
   const { eligibility, studyUnits, accreditations, loading } = useServiceSummaryData(serviceId, "summary");
@@ -34,16 +35,16 @@ export function ServiceSummaryBodyExtras({
   useEffect(() => {
     if (mediaFetchedRef.current) return;
     mediaFetchedRef.current = true;
-    businessProfileDetailApi.getServiceMedia(serviceId).then((res) => setMedia(res.files));
+    api.getServiceMedia(serviceId).then((res) => setMedia(res.files));
   }, [serviceId]);
 
   const handleUpload = async (file: File) => {
-    const created = await businessProfileDetailApi.uploadServiceMedia(serviceId, file);
+    const created = await api.uploadServiceMedia(serviceId, file);
     setMedia((m) => [...m, created]);
   };
 
   const handleDeleteMedia = async (fileId: number) => {
-    await businessProfileDetailApi.deleteServiceMedia(serviceId, fileId);
+    await api.deleteServiceMedia(serviceId, fileId);
     setMedia((m) => m.filter((f) => f.id !== fileId));
   };
 

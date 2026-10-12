@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { BookOpenCheck } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { businessProfileDetailApi } from "../../../apis";
+import { useServiceEditor } from "../service-editor-context";
 import { ServiceStudyOptionForm } from "./service-study-option-form";
 import { TabSection } from "./tab-section";
 import { StudyOptionCard } from "./study-option-card";
@@ -18,6 +18,7 @@ function durationInMonths(row: ServiceStudyOption): number | null {
 }
 
 export function StudyOptionsTab({ serviceId }: Readonly<{ serviceId: string }>) {
+  const { api } = useServiceEditor();
   const [rows, setRows] = useState<ServiceStudyOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
@@ -28,7 +29,7 @@ export function StudyOptionsTab({ serviceId }: Readonly<{ serviceId: string }>) 
   useEffect(() => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
-    businessProfileDetailApi.serviceStudyOptions.list(serviceId).then(setRows).finally(() => setLoading(false));
+    api.serviceStudyOptions.list(serviceId).then(setRows).finally(() => setLoading(false));
   }, [serviceId]);
 
   const openAdd = () => { setEditing(null); setFormOpen(true); };
@@ -38,11 +39,11 @@ export function StudyOptionsTab({ serviceId }: Readonly<{ serviceId: string }>) 
     setSaving(true);
     try {
       if (editing) {
-        const updated = await businessProfileDetailApi.serviceStudyOptions.update(serviceId, editing.id, input);
+        const updated = await api.serviceStudyOptions.update(serviceId, editing.id, input);
         setRows((r) => r.map((x) => (x.id === editing.id ? updated : x)));
         toast.success("Study option updated");
       } else {
-        const created = await businessProfileDetailApi.serviceStudyOptions.create(serviceId, input);
+        const created = await api.serviceStudyOptions.create(serviceId, input);
         setRows((r) => [...r, created]);
         toast.success("Study option added");
       }
@@ -56,7 +57,7 @@ export function StudyOptionsTab({ serviceId }: Readonly<{ serviceId: string }>) 
 
   const handleDelete = async (id: number) => {
     try {
-      await businessProfileDetailApi.serviceStudyOptions.remove(serviceId, id);
+      await api.serviceStudyOptions.remove(serviceId, id);
       setRows((r) => r.filter((x) => x.id !== id));
       toast.success("Study option removed");
     } catch (e) {

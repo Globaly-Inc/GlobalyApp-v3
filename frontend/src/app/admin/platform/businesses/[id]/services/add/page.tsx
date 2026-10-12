@@ -1,6 +1,6 @@
-import { ServiceFormView } from "../../../components/service-form-view";
+import { AdminServiceEditor } from "@/app/admin/platform/businesses/components/services/admin-service-editor";
 
 export default async function AdminAddServicePage({ params }: Readonly<{ params: Promise<{ id: string }> }>) {
   const { id } = await params;
-  return <ServiceFormView businessId={Number(id)} />;
+  return <AdminServiceEditor kind="business" orgId={Number(id)} />;
 }

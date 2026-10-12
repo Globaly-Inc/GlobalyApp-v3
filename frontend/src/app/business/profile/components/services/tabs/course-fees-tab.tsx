@@ -6,13 +6,14 @@ import { Wallet } from "lucide-react";
 import { CountUp } from "@/components/count-up";
 import { cn } from "@/lib/utils";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
-import { businessProfileDetailApi } from "../../../apis";
+import { useServiceEditor } from "../service-editor-context";
 import { ServiceFeeForm } from "./service-fee-form";
 import { FeeCard, feeTotal, formatAmount } from "./fee-card";
 import { TabSection } from "./tab-section";
 import type { ServiceFee, ServiceFeeInput } from "../../../apis/types";
 
 export function CourseFeesTab({ serviceId, isCourse = true }: Readonly<{ serviceId: string; isCourse?: boolean }>) {
+  const { api } = useServiceEditor();
   const [fees, setFees] = useState<ServiceFee[]>([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
@@ -23,7 +24,7 @@ export function CourseFeesTab({ serviceId, isCourse = true }: Readonly<{ service
   useEffect(() => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
-    businessProfileDetailApi.serviceFees.list(serviceId)
+    api.serviceFees.list(serviceId)
       .then(setFees)
       .finally(() => setLoading(false));
   }, [serviceId]);
@@ -35,14 +36,14 @@ export function CourseFeesTab({ serviceId, isCourse = true }: Readonly<{ service
     setSaving(true);
     try {
       if (editing) {
-        const updated = await businessProfileDetailApi.serviceFees.update(serviceId, editing.id, inputs[0]!);
+        const updated = await api.serviceFees.update(serviceId, editing.id, inputs[0]!);
         setFees((f) => f.map((x) => (x.id === editing.id ? updated : x)));
         toast.success("Fee updated");
       } else {
         // allSettled, not all — the split (domestic + international) form fires two independent
         // creates; a failure on one must not discard a fee the other already created on the
         // server, or the user retries and gets a duplicate.
-        const results = await Promise.allSettled(inputs.map((input) => businessProfileDetailApi.serviceFees.create(serviceId, input)));
+        const results = await Promise.allSettled(inputs.map((input) => api.serviceFees.create(serviceId, input)));
         const created = results.filter((r) => r.status === "fulfilled").map((r) => r.value);
         const failed = results.find((r): r is PromiseRejectedResult => r.status === "rejected");
         if (created.length > 0) setFees((f) => [...f, ...created]);
@@ -62,7 +63,7 @@ export function CourseFeesTab({ serviceId, isCourse = true }: Readonly<{ service
 
   const handleDuplicate = async (fee: ServiceFee) => {
     try {
-      const created = await businessProfileDetailApi.serviceFees.create(serviceId, {
+      const created = await api.serviceFees.create(serviceId, {
         name: fee.name, student_type: fee.student_type, period_type: fee.period_type,
         currency: fee.currency, total_amount: Number(fee.total_amount), installments: fee.installments,
       });
@@ -75,7 +76,7 @@ export function CourseFeesTab({ serviceId, isCourse = true }: Readonly<{ service
 
   const handleDelete = async (feeId: number) => {
     try {
-      await businessProfileDetailApi.serviceFees.remove(serviceId, feeId);
+      await api.serviceFees.remove(serviceId, feeId);
       setFees((f) => f.filter((x) => x.id !== feeId));
       toast.success("Fee removed");
     } catch (e) {

@@ -2,7 +2,7 @@
 
 import { toast } from "sonner";
 import { useAuthState } from "@/app/auth/store/auth-slice";
-import { businessProfileDetailApi } from "../../apis";
+import { useServiceEditor } from "./service-editor-context";
 import type { BusinessService } from "../../apis/types";
 
 /** Institution courses need approval before they can be published; services without an
@@ -14,6 +14,7 @@ export const needsApproval = (s: BusinessService) => s.approval_status != null &
  * same rule) — other members can edit courses but not approve them.
  */
 export function useCourseApproval(onApproved: () => void) {
+  const { api } = useServiceEditor();
   const user = useAuthState().user;
   const org = user?.businesses?.find((o) => o.org_id === user.orgId) ?? user?.institutions?.find((o) => o.org_id === user?.orgId);
   const canApprove = !!user?.is_admin || !!org?.is_owner;
@@ -21,7 +22,7 @@ export function useCourseApproval(onApproved: () => void) {
   const approve = async (ids: string[]) => {
     if (ids.length === 0) return;
     try {
-      const { approved } = await businessProfileDetailApi.approveServices(ids);
+      const { approved } = await api.approveServices(ids);
       if (approved === 0) {
         toast.info("Nothing to approve", { description: "Every course is already approved." });
         return;

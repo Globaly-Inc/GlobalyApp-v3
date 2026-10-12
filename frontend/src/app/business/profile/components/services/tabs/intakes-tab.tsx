@@ -6,7 +6,7 @@ import { Calendar, ChevronDown } from "lucide-react";
 import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Reveal } from "@/components/reveal";
 import { cn } from "@/lib/utils";
-import { businessProfileDetailApi } from "../../../apis";
+import { useServiceEditor } from "../service-editor-context";
 import { ServiceIntakeForm } from "./service-intake-form";
 import { TabSection } from "./tab-section";
 import { IntakeRow } from "./intake-row";
@@ -119,6 +119,7 @@ function formatDate(value: string) {
 
 /** `allowMonth` — institution intakes store month-only dates; a business service's are `date` columns. */
 export function IntakesTab({ serviceId, allowMonth = false }: Readonly<{ serviceId: string; allowMonth?: boolean }>) {
+  const { api } = useServiceEditor();
   const [intakes, setIntakes] = useState<ServiceIntake[]>([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
@@ -130,7 +131,7 @@ export function IntakesTab({ serviceId, allowMonth = false }: Readonly<{ service
   useEffect(() => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
-    businessProfileDetailApi.serviceIntakes.list(serviceId).then(setIntakes).finally(() => setLoading(false));
+    api.serviceIntakes.list(serviceId).then(setIntakes).finally(() => setLoading(false));
   }, [serviceId]);
 
   const openAdd = () => { setEditing(null); setFormOpen(true); };
@@ -140,11 +141,11 @@ export function IntakesTab({ serviceId, allowMonth = false }: Readonly<{ service
     setSaving(true);
     try {
       if (editing) {
-        const updated = await businessProfileDetailApi.serviceIntakes.update(serviceId, editing.id, input);
+        const updated = await api.serviceIntakes.update(serviceId, editing.id, input);
         setIntakes((i) => i.map((x) => (x.id === editing.id ? updated : x)));
         toast.success("Intake updated");
       } else {
-        const created = await businessProfileDetailApi.serviceIntakes.create(serviceId, input);
+        const created = await api.serviceIntakes.create(serviceId, input);
         setIntakes((i) => [...i, created]);
         toast.success("Intake added");
       }
@@ -158,7 +159,7 @@ export function IntakesTab({ serviceId, allowMonth = false }: Readonly<{ service
 
   const handleDelete = async (intakeId: number) => {
     try {
-      await businessProfileDetailApi.serviceIntakes.remove(serviceId, intakeId);
+      await api.serviceIntakes.remove(serviceId, intakeId);
       setIntakes((i) => i.filter((x) => x.id !== intakeId));
       toast.success("Intake removed");
     } catch (e) {

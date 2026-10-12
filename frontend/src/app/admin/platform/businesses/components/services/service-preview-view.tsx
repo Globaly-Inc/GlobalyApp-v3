@@ -91,7 +91,7 @@ export function ServicePreviewView({
     <div className={embedded ? "space-y-4" : "mx-auto max-w-3xl space-y-4 pb-20"}>
       {!embedded && (
         <Button variant="ghost" className="h-10 cursor-pointer gap-1 px-1 text-muted-foreground" onClick={() => router.back()}>
-          <ArrowLeft className="h-4 w-4" /> Back to editor
+          <ArrowLeft className="h-4 w-4" /> Back
         </Button>
       )}
 

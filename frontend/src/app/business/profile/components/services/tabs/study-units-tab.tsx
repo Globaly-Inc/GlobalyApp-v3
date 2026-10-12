@@ -9,7 +9,7 @@ import { CountUp } from "@/components/count-up";
 import { SegmentedControl } from "@/components/segmented-control";
 import { TabSection } from "./tab-section";
 import { StudyUnitRow } from "./study-unit-row";
-import { businessProfileDetailApi } from "../../../apis";
+import { useServiceEditor } from "../service-editor-context";
 import { ServiceStudyUnitForm } from "./service-study-unit-form";
 import type { ServiceStudyUnit, ServiceStudyUnitInput } from "../../../apis/types";
 
@@ -21,6 +21,7 @@ const FILTERS = [
 ] as const;
 
 export function StudyUnitsTab({ serviceId }: Readonly<{ serviceId: string }>) {
+  const { api } = useServiceEditor();
   const [rows, setRows] = useState<ServiceStudyUnit[]>([]);
   const [loading, setLoading] = useState(true);
   const [formOpen, setFormOpen] = useState(false);
@@ -33,7 +34,7 @@ export function StudyUnitsTab({ serviceId }: Readonly<{ serviceId: string }>) {
   useEffect(() => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
-    businessProfileDetailApi.serviceStudyUnits.list(serviceId).then(setRows).finally(() => setLoading(false));
+    api.serviceStudyUnits.list(serviceId).then(setRows).finally(() => setLoading(false));
   }, [serviceId]);
 
   const openAdd = () => { setEditing(null); setFormOpen(true); };
@@ -43,11 +44,11 @@ export function StudyUnitsTab({ serviceId }: Readonly<{ serviceId: string }>) {
     setSaving(true);
     try {
       if (editing) {
-        const updated = await businessProfileDetailApi.serviceStudyUnits.update(serviceId, editing.id, input);
+        const updated = await api.serviceStudyUnits.update(serviceId, editing.id, input);
         setRows((r) => r.map((x) => (x.id === editing.id ? updated : x)));
         toast.success("Study unit updated");
       } else {
-        const created = await businessProfileDetailApi.serviceStudyUnits.create(serviceId, input);
+        const created = await api.serviceStudyUnits.create(serviceId, input);
         setRows((r) => [...r, created]);
         toast.success("Study unit added");
       }
@@ -61,7 +62,7 @@ export function StudyUnitsTab({ serviceId }: Readonly<{ serviceId: string }>) {
 
   const handleDelete = async (id: number) => {
     try {
-      await businessProfileDetailApi.serviceStudyUnits.remove(serviceId, id);
+      await api.serviceStudyUnits.remove(serviceId, id);
       setRows((r) => r.filter((x) => x.id !== id));
       toast.success("Study unit removed");
     } catch (e) {

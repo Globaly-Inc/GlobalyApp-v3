@@ -10,6 +10,7 @@ import {
 } from "../../superadmin/platform/business-services/schemas/service-details.schema.js";
 import * as detailsService from "../../superadmin/platform/business-services/services/service-details.service.js";
 import * as instService from "../../superadmin/platform/business-services/services/business-services.service.js";
+import { logPortalActivity } from "../services/portal-activity.js";
 
 // The child row's own id is a serial int for a business (business_services' own tenant tables)
 // but a uuid for an institution (extraction sub-tables) — the same route path serves both, so
@@ -95,9 +96,16 @@ export async function businessServiceDetailsRoutes(app: FastifyInstance) {
   // write. Scoped to this plugin's routes; a 2xx means the route already checked the course is this
   // institution's. Institution courses only — business_services has no updated_by column.
   app.addHook("onResponse", async (req, reply) => {
-    if (req.method === "GET" || reply.statusCode >= 300 || req.auth?.orgType !== "institution") return;
+    if (req.method === "GET" || reply.statusCode >= 300) return;
     const { serviceId } = (req.params ?? {}) as { serviceId?: string };
     if (!serviceId) return;
+    // Activity entry for every tab edit, e.g. POST …/fees → SERVICE_FEE_CREATED. No field list: the
+    // tab forms resend every field, and the old row isn't loaded here to diff against.
+    const parts = req.routeOptions.url?.split("/") ?? [];
+    const area = parts[parts.indexOf(":serviceId") + 1]?.replaceAll("-", "_").toUpperCase().replace(/S$/, "");
+    const verb = ({ POST: "CREATED", PATCH: "UPDATED", DELETE: "DELETED" } as Record<string, string>)[req.method];
+    if (area && verb) await logPortalActivity(req, `SERVICE_${area}_${verb}`, { service_id: serviceId });
+    if (req.auth?.orgType !== "institution") return;
     await masterKnex(`${SUPERADMIN_SCHEMA}.extraction_courses`).where({ id: serviceId })
       .update({ updated_by_platform_user_id: Number(req.auth.sub), updated_at: masterKnex.fn.now() })
       .catch(() => {}); // best-effort attribution — never fails the edit itself
