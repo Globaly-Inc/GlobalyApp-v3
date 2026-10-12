@@ -1,6 +1,7 @@
 /** Wire types for the AI-widget (embed config) API. A widget is owned by a business or an
  *  institution — exactly one of the two ids is set. */
 
+import type { ChannelFields, InboxChannel } from "./channel-types";
 import type { MessageAttachment } from "@/components/chat/types";
 
 export type EmbedConfig = {
@@ -149,7 +150,9 @@ export type WidgetVisitor = {
    */
   /** The CONTACT summary: the whole person, from their profile and every chat's summary. */
   summary?: StaffSummary | null;
-} & ConversationControl;
+} & ConversationControl & ChannelFields;
+
+export type { AttentionReason, InboxChannel } from "./channel-types";
 
 /** A staff-facing summary — a visitor's contact summary, or one chat's own. */
 export type StaffSummary = {
@@ -187,6 +190,8 @@ export type VisitorListParams = {
   limit?: number;
   search?: string;
   status?: VisitorStatusFilter;
+  /** One Inbox channel; absent = every channel. */
+  channel?: InboxChannel;
 };
 
 export type VisitorListResult = { data: WidgetVisitor[]; total: number; counts: VisitorCounts };
@@ -244,6 +249,11 @@ export type VisitorMessage = {
   session_id?: number;
   /** Set on a chat's first message in the transcript, so the Inbox can draw a divider there. */
   chat?: VisitorChat;
+  // WhatsApp, Instagram, Facebook only (null on the widget): delivery, phone-app replies, deletions.
+  delivery_status?: "queued" | "sent" | "delivered" | "read" | "failed" | null;
+  delivery_error?: string | null;
+  sent_from?: "phone_app" | null;
+  deleted?: boolean;
 };
 
 /**

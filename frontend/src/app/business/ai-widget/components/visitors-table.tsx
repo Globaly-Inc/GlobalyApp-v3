@@ -11,6 +11,8 @@ import { cn } from "@/lib/utils";
 import { VISITOR_STATUS_BADGE } from "../const";
 import { visitorDisplayName, visitorInitials } from "../utils";
 import type { WidgetVisitor } from "../apis/types";
+import { ChannelGlyph } from "@/app/business/messages/components/channel-glyph";
+import { INBOX_CHANNELS } from "@/app/business/messages/const";
 
 /**
  * The list itself — a real table, because Status and Last activity were asked for as columns
@@ -57,9 +59,6 @@ export function VisitorsTable({
     onSelectedIdsChange(next);
   };
 
-  // table-fixed + truncating cells keeps the table inside the card at any width: the two
-  // free-text columns (name/email and study preference) absorb whatever width is left, and
-  // the per-visitor demographics drop out below lg rather than pushing a horizontal scroll.
   return (
     <Table className="table-fixed">
       <TableHeader>
@@ -68,6 +67,7 @@ export function VisitorsTable({
             <Checkbox checked={allSelected} onCheckedChange={toggleAll} aria-label="Select all on this page" />
           </TableHead>
           <TableHead>Visitor</TableHead>
+          <TableHead className="hidden w-28 md:table-cell">Channel</TableHead>
           <TableHead className="hidden w-14 lg:table-cell">Age</TableHead>
           <TableHead className="hidden w-20 lg:table-cell">Gender</TableHead>
           <TableHead className="hidden w-28 lg:table-cell">Nationality</TableHead>
@@ -85,6 +85,7 @@ export function VisitorsTable({
           const badge = VISITOR_STATUS_BADGE[v.status];
           const anonymous = !v.name;
           const selected = selectedIds.has(v.id);
+          const channel = v.channel ?? "ai_embed";
           return (
             <TableRow key={v.id} data-state={selected ? "selected" : undefined}>
               <TableCell className="pl-3">
@@ -94,11 +95,10 @@ export function VisitorsTable({
                   aria-label={`Select ${visitorDisplayName(v)}`}
                 />
               </TableCell>
-              {/* Name with the email beneath it — one column instead of two is most of the width
-                  that used to overflow. No email is the normal state, so it is simply omitted. */}
+              {/* Name with the email (or channel handle) beneath it. */}
               <TableCell>
                 <div className="flex min-w-0 items-center gap-3">
-                  <Avatar className="size-9">
+                  <Avatar className="size-9 shrink-0">
                     <AvatarFallback
                       className={cn(
                         "text-xs font-semibold",
@@ -112,7 +112,7 @@ export function VisitorsTable({
                     <p className={cn("truncate font-medium", anonymous && "text-muted-foreground italic")}>
                       {visitorDisplayName(v)}
                     </p>
-                    {v.email && (
+                    {v.email ? (
                       <a
                         href={`mailto:${v.email}`}
                         className="block truncate text-xs text-muted-foreground hover:text-primary hover:underline"
@@ -120,9 +120,19 @@ export function VisitorsTable({
                       >
                         {v.email}
                       </a>
+                    ) : (
+                      v.channel_handle && <p className="truncate text-xs text-muted-foreground">{v.channel_handle}</p>
                     )}
+                    {/* The Channel column is hidden on phones; its label moves under the name. */}
+                    <p className="truncate text-xs text-muted-foreground md:hidden">{INBOX_CHANNELS[channel].label}</p>
                   </div>
                 </div>
+              </TableCell>
+              <TableCell className="hidden md:table-cell">
+                <span className="inline-flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground" title={v.channel_handle ?? undefined}>
+                  <ChannelGlyph channel={channel} size="sm" />
+                  <span className="truncate">{INBOX_CHANNELS[channel].label}</span>
+                </span>
               </TableCell>
               {/* Verbatim, never a bucket — "early 30s" is a real stored value. */}
               <TableCell className="hidden truncate lg:table-cell" title={v.age ?? undefined}>{orDash(v.age)}</TableCell>

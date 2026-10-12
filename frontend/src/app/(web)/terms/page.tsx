@@ -53,8 +53,8 @@ export default function TermsPage() {
         <div className="min-w-0">
           <p className="mb-6 text-muted-foreground">
             Thank you for visiting{" "}
-            <a href="https://globalyapp.com" className="text-primary hover:underline">
-              globalyapp.com
+            <a href="https://web.globalyai.com" className="text-primary hover:underline">
+              web.globalyai.com
             </a>
             . These Terms and Conditions outline the rules and regulations for using our website
             (&quot;GlobalyAI&quot;). By accessing or using the Website, you agree to be bound by these Terms.
@@ -62,8 +62,8 @@ export default function TermsPage() {
 
           <LegalSection id="use-of-website" icon={Globe} title="Use of Website">
             <p>
-              <a href="https://globalyapp.com" className="text-primary hover:underline">
-                globalyapp.com
+              <a href="https://web.globalyai.com" className="text-primary hover:underline">
+                web.globalyai.com
               </a>{" "}
               provides a platform for students to search for courses, universities, educational services, and
               connect with education counselors and providers.

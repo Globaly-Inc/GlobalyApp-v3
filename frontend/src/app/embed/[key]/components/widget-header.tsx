@@ -53,14 +53,9 @@ export function WidgetHeader({
           : "flex shrink-0 items-center gap-2.5 bg-primary px-4 py-3 text-primary-foreground"
       }
     >
-      {/* Aly sits on a white disc so a brand-tinted orb never vanishes into its own colour. */}
-      <span
-        className={`flex shrink-0 items-center justify-center overflow-hidden rounded-full bg-white ${
-          expanded ? "size-12 ring-2 ring-primary/20" : "size-10"
-        }`}
-      >
-        <AlyOrbIcon className={expanded ? "size-11" : "size-9"} color={brandColor} />
-      </span>
+      {/* No disc behind Aly: the orb is round, lit and rimmed darker than its own fill, so it reads on the
+          brand header by itself, and its halo feathers into the header instead of stopping at a white edge. */}
+      <AlyOrbIcon className={expanded ? "size-10" : "size-9"} color={brandColor} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold">{name}</p>
         <p className={`truncate text-xs ${expanded ? "text-muted-foreground" : "opacity-80"}`}>{subtitle}</p>
