@@ -35,7 +35,7 @@ export const FOOTER_LINKS: Record<string, { label: string; href: string }[]> = {
     { label: "Student Services", href: "/services" },
   ],
   Contact: [
-    { label: "support@globalyapp.com", href: "mailto:support@globalyapp.com" },
+    { label: "support@globalyai.com", href: "mailto:support@globalyai.com" },
     // Addresses, not destinations: href "" makes the footer render them as plain text rather than
     // a link that goes nowhere.
     { label: "🇦🇺 Sydney, Australia", href: "" },

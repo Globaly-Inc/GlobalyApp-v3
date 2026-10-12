@@ -29,10 +29,9 @@ export const authRealApi = {
   verifyOtp: async ({ email, otp }: VerifyOtpParams): Promise<AuthUser> => {
     const data = await httpPost<{
       access_token: string;
-      refresh_token: string;
       user: { id: number; email: string; type: AuthUser["type"]; role: string | null };
     }>("/auth/verify-otp", { email: email.trim().toLowerCase(), otp: otp.trim() });
-    saveTokens({ accessToken: data.access_token, refreshToken: data.refresh_token });
+    saveTokens({ accessToken: data.access_token }); // refresh token arrives as the API's httpOnly cookie
     // Accurate at login time — the token was just minted, so it can't yet be business-scoped
     // (only a later /auth/switch-account can turn `type` into "platform_user" for an admin).
     return {

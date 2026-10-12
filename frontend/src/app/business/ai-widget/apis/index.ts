@@ -9,4 +9,5 @@ export type {
   SendSnippetInput, SendSnippetResult, UpdateEmbedConfigInput,
   VisitorCounts, VisitorListParams, VisitorListResult, VisitorProfileEntry,
   VisitorChat, VisitorMessage, VisitorNote, StaffSummary, VisitorStatus, VisitorStatusFilter, WidgetVisitor,
+  InboxChannel, AttentionReason,
 } from "./types";

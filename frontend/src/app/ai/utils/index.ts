@@ -1,3 +1,5 @@
+import type { ResponseBlock } from "../apis/types";
+
 /**
  * Strip ```course-card / ```chips blocks from AI text — they arrive as separate
  * SSE events and render as cards/buttons, not prose. Mirrors the backend's
@@ -90,4 +92,35 @@ export function thinkingPhase(step: string | undefined): string {
     if (match) return label(match);
   }
   return "Working on it";
+}
+
+/** Chip text as the comparison sees it: case, punctuation and spacing are not a difference —
+ *  "Which subject area interests you most?" and "which subject area interests you most" are the
+ *  same row twice. */
+const normalise = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, " ").trim();
+
+/**
+ * The follow-up chips a turn should actually render.
+ *
+ * Two shapes of turn, two answers. A turn that is ONLY a question — the widget's level and stream
+ * steps, a quick_replies block with nothing else to show — gets no chips at all: the options are
+ * the thing to tap, and a second row of unrelated suggestions under them reads as clutter. A turn
+ * that showed course cards keeps its chips, because that is where "what are the entry
+ * requirements?" belongs; dropping them there (the old rule fired on any block) meant the
+ * follow-ups vanished for the rest of the conversation. Either way a chip that merely restates
+ * the block's own question or options never renders — that is the same row twice.
+ */
+export function followUpChips(
+  chips: readonly string[],
+  blocks: readonly ResponseBlock[],
+  /** Did this turn show course cards? Then it is an answer, not just a question. */
+  hasCards = false,
+): string[] {
+  if (!hasCards && blocks.some((b) => b.type === "quick_replies")) return [];
+  const taken = new Set(
+    blocks
+      .flatMap((b) => (b.type === "quick_replies" ? [b.question ?? "", ...b.options.flatMap((o) => [o.label, o.value])] : []))
+      .map(normalise),
+  );
+  return chips.filter((c) => !taken.has(normalise(c)));
 }
