@@ -639,6 +639,20 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       extractedForMemory = extracted;
       if (!(await stillOwned())) { logger.info("Fenced out — a newer attempt owns this item, dropping AI result", { jobId, queueItemId, url }); return; }
 
+      // The listing fact goes on the queue row BEFORE any of this page's course rows exist: a
+      // detail page merged concurrently decides its source_url upgrade by reading THIS row's
+      // courses_found (staging-writer.pageWasAListing), and writing it only at completion left the
+      // whole write-loop window blind — the merged course kept the listing link with nothing to
+      // revisit it. The completion write below replaces it with the final written count, as before.
+      if (!(await writeIfOwned({
+        extracted_data: masterKnex.raw("coalesce(extracted_data, '{}'::jsonb) || ?::jsonb",
+          [JSON.stringify({ courses_found: extracted.courses?.length ?? 0 })]),
+        updated_at: masterKnex.fn.now(),
+      }))) {
+        logger.info("Fenced out — a newer attempt owns this item, dropping AI result", { jobId, queueItemId, url });
+        return;
+      }
+
       // ── Write campuses first (courses reference them) ──
       const campusIdMap = new Map<string, string>();
 

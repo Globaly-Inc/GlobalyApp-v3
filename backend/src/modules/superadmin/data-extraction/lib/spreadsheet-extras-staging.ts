@@ -130,14 +130,18 @@ export async function stageSpreadsheetExtras(jobId: string, extras: SpreadsheetE
   for (const a of extras.accreditations) {
     const ids = coursesFor(a.courses);
     if (!a.name || !ids.length) continue;
-    const existing = await masterKnex(`${S}.extraction_accreditations`)
-      .whereRaw("lower(trim(name)) = ?", [key(a.name)]).first("id");
-    const id = existing?.id
+    // key() collapses inner whitespace, lower(trim()) does not — compare and INSERT the collapsed
+    // form, and collapse the stored side too, or a re-import of "Chartered  Institute" misses the
+    // lookup, hits the unique index, and the final `.id` read throws on an undefined reselect.
+    const name = a.name.trim().replace(/\s+/g, " ");
+    const byName = () => masterKnex(`${S}.extraction_accreditations`)
+      .whereRaw("lower(regexp_replace(trim(name), '\\s+', ' ', 'g')) = ?", [key(name)]).first("id");
+    const id = (await byName())?.id
       ?? (await masterKnex(`${S}.extraction_accreditations`)
-        .insert({ name: a.name, issuing_organization: a.issuing_organization, website: a.website, description: a.description })
+        .insert({ name, issuing_organization: a.issuing_organization, website: a.website, description: a.description })
         .onConflict(masterKnex.raw("((LOWER(TRIM(name))))")).ignore()
         .returning("id"))[0]?.id
-      ?? (await masterKnex(`${S}.extraction_accreditations`).whereRaw("lower(trim(name)) = ?", [key(a.name)]).first("id"))!.id;
+      ?? (await byName())!.id;
     await assign("extraction_course_accreditation_assignments", "extraction_accreditation_id", jobId, ids, id);
     n.accreditations++;
   }
