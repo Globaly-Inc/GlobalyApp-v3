@@ -29,11 +29,4 @@ export const CHART_METRIC_OPTIONS = [
   { value: "by_region", label: "By Region" },
 ] as const;
 
-export const CHART_COLORS = [
-  "#6366f1", // indigo
-  "#f59e0b", // amber
-  "#10b981", // emerald
-  "#f43f5e", // rose
-  "#8b5cf6", // violet
-  "#06b6d4", // cyan
-];
+export const CHART_COLORS = ["var(--chart-1)", "var(--chart-2)", "var(--chart-3)", "var(--chart-4)", "var(--chart-5)", "var(--chart-6)"];

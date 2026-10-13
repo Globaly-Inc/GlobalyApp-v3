@@ -5,10 +5,10 @@
 // once that module's V3 endpoints exist, following the pattern in admin/apis + admin/store.
 
 import type { LucideIcon } from "lucide-react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
+import { PageBody } from "@/components/ui/page-body";
+import { PageHeader } from "@/components/ui/page-header";
+import { Table, TableBody, TableCard, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 export interface AdminListColumn {
   key: string;
@@ -29,70 +29,42 @@ export interface AdminPlaceholderViewProps {
   actionIcon?: LucideIcon;
 }
 
-const STATUS_VARIANT: Record<string, "default" | "secondary" | "outline" | "destructive"> = {
-  active: "default",
-  published: "default",
-  approved: "default",
-  live: "default",
-  completed: "default",
-  pending: "outline",
-  draft: "outline",
-  review: "outline",
-  scheduled: "outline",
-  flagged: "destructive",
-  suspended: "destructive",
-  rejected: "destructive",
-  declined: "destructive",
-};
-
-export function StatusBadge({ status }: Readonly<{ status: string }>) {
-  const variant = STATUS_VARIANT[status.toLowerCase()] ?? "secondary";
-  return <Badge variant={variant}>{status}</Badge>;
-}
-
-/** Just the records Card — for pages that render their own header (e.g. tabbed pages). */
+/** Just the records table — for pages that render their own header (e.g. tabbed pages). */
 export function AdminRecordsCard({ columns, rows }: Readonly<Pick<AdminPlaceholderViewProps, "columns" | "rows">>) {
+  const [first, ...rest] = columns;
+  if (!first) return null;
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">
-          {rows.length} {rows.length === 1 ? "record" : "records"}
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="p-0">
-        <div
-          className="grid gap-3 border-b border-border px-4 pb-2 text-xs font-semibold uppercase tracking-wide text-muted-foreground"
-          style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` }}
-        >
-          {columns.map((col, i) => (
-            <span key={col.key} className={cn(i === 0 ? "" : "hidden sm:block")}>
-              {col.label}
-            </span>
-          ))}
-        </div>
-        <div className="divide-y divide-border">
+    <TableCard>
+      <div className="border-b border-border px-4 py-3 text-sm font-medium text-foreground">
+        {rows.length} {rows.length === 1 ? "record" : "records"}
+      </div>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>{first.label}</TableHead>
+            {rest.map((col) => (
+              <TableHead key={col.key} className="hidden sm:table-cell">{col.label}</TableHead>
+            ))}
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {rows.map((row) => (
-            <div
-              key={row.id}
-              className="grid items-center gap-3 px-4 py-3 text-sm"
-              style={{ gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))` }}
-            >
-              {columns.map((col, i) => (
-                <span
-                  key={col.key}
-                  className={cn(
-                    "truncate",
-                    i === 0 ? "font-medium text-foreground" : "hidden sm:block text-muted-foreground",
-                  )}
-                >
-                  {row[col.key]}
+            <TableRow key={row.id}>
+              <TableCell primary>
+                {row[first.key]}
+                {/* Phones: the hidden columns as one muted line, so every value still shows. */}
+                <span className="block truncate text-xs font-normal text-muted-foreground sm:hidden">
+                  {rest.map((col) => row[col.key]).filter((v) => typeof v === "string" || typeof v === "number").join(" · ")}
                 </span>
+              </TableCell>
+              {rest.map((col) => (
+                <TableCell key={col.key} className="hidden text-muted-foreground sm:table-cell">{row[col.key]}</TableCell>
               ))}
-            </div>
+            </TableRow>
           ))}
-        </div>
-      </CardContent>
-    </Card>
+        </TableBody>
+      </Table>
+    </TableCard>
   );
 }
 
@@ -105,21 +77,16 @@ export function AdminPlaceholderView({
   actionIcon: ActionIcon,
 }: Readonly<AdminPlaceholderViewProps>) {
   return (
-    <div>
-      <div className="flex items-center justify-between gap-3 mb-4">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">{title}</h1>
-          <p className="text-muted-foreground mt-1">{description}</p>
-        </div>
+    <PageBody>
+      <PageHeader title={title} subtitle={description}>
         {actionLabel && (
-          <Button className="gap-1.5 flex-shrink-0">
-            {ActionIcon && <ActionIcon className="h-4 w-4" />}
+          <Button>
+            {ActionIcon && <ActionIcon />}
             {actionLabel}
           </Button>
         )}
-      </div>
-
+      </PageHeader>
       <AdminRecordsCard columns={columns} rows={rows} />
-    </div>
+    </PageBody>
   );
 }

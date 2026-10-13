@@ -1,13 +1,12 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { ArrowLeft, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
+import { PageBody } from "@/components/ui/page-body";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { useAuthState } from "@/app/auth/store/auth-slice";
-import { SHOW_PERSONAL_PORTAL } from "../const";
 import { geoApi, type Country } from "../../geo/apis";
 import { personalApi } from "../apis";
 import {
@@ -51,7 +50,6 @@ import { AcademicTestDialog } from "./academic-test-dialog";
 import { SectionError } from "@/components/feed/components/section-error";
 
 export function ProfileView() {
-  const router = useRouter();
   const searchParams = useSearchParams();
   const preview = searchParams.get("preview") === "1";
   const dispatch = useAppDispatch();
@@ -80,7 +78,10 @@ export function ProfileView() {
     item: null,
   });
   const [imageUploading, setImageUploading] = useState<"profile" | "cover" | null>(null);
+  const fetchedRef = useRef(false);
   useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
     if (status === "idle" && !profile) dispatch(fetchFullProfile());
     geoApi.getCountries().then(setCountries).catch(() => setCountries([]));
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -187,25 +188,7 @@ export function ProfileView() {
     `${profile.first_name?.[0] ?? ""}${profile.last_name?.[0] ?? ""}`.toUpperCase() || "U";
 
   return (
-    <div className="space-y-6">
-      {preview && (
-        <Link href="/personal/profile" className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground hover:underline">
-          <ArrowLeft className="h-4 w-4" />
-          Back to Profile Editing
-        </Link>
-      )}
-      {/* With the Personal Portal's own nav hidden (short release), this is the only way back to
-          wherever the profile was opened from — the business portal, admin, or the site. */}
-      {!preview && !SHOW_PERSONAL_PORTAL && (
-        <button
-          type="button"
-          onClick={() => (window.history.length > 1 ? router.back() : router.push("/"))}
-          className="inline-flex items-center gap-1.5 text-sm font-medium text-foreground hover:underline cursor-pointer"
-        >
-          <ArrowLeft className="h-4 w-4" />
-          Back
-        </button>
-      )}
+    <PageBody>
       <ProfileHeroCard
         profile={profile}
         initial={initial}
@@ -215,8 +198,8 @@ export function ProfileView() {
         readOnly={preview}
       />
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-        <div className="space-y-6 lg:col-span-2">
+      <div className="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-3">
+        <div className="min-w-0 space-y-4 md:space-y-6 lg:col-span-2">
           <ProfileDetailsCards
             profile={profile}
             countryName={countryName}
@@ -311,6 +294,6 @@ export function ProfileView() {
         onSave={handleSaveWorkExperience}
         saving={saving}
       />
-    </div>
+    </PageBody>
   );
 }

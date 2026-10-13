@@ -154,7 +154,7 @@ export function PreferencesDialog({
         <DialogHeader>
           <DialogTitle>Edit Study Preferences</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4">
+        <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label>Study Destination</Label>
             <Combobox
@@ -217,9 +217,9 @@ export function PreferencesDialog({
               </div>
             </div>
           </div>
-          <div className="space-y-3 rounded-lg border border-border p-4">
+          <div className="flex flex-col gap-3 rounded-lg border border-border p-4">
             <p className="text-sm font-medium text-foreground">Budget</p>
-            <div className="grid grid-cols-3 gap-3">
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
               <div className="flex flex-col gap-2">
                 <Label>Currency</Label>
                 <Combobox
@@ -229,7 +229,7 @@ export function PreferencesDialog({
                   options={currencyOptions}
                 />
               </div>
-              <div className="space-y-2">
+              <div className="flex flex-col gap-2">
                 <Label>Min Annual Budget</Label>
                 <Input
                   type="number"
@@ -241,7 +241,7 @@ export function PreferencesDialog({
                 />
                 <FieldError message={errors.budgetMin} />
               </div>
-              <div className="space-y-2">
+              <div className="flex flex-col gap-2">
                 <Label>Max Annual Budget</Label>
                 <Input
                   type="number"

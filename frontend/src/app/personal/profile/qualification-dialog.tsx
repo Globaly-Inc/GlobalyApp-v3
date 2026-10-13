@@ -152,7 +152,7 @@ export function QualificationDialog({
         <DialogHeader>
           <DialogTitle>{item ? "Edit Education" : "Add Education"}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4">
+        <div className="flex flex-col gap-4">
           <div className="flex flex-col gap-2">
             <Label>Degree Level *</Label>
             <Combobox
@@ -166,7 +166,7 @@ export function QualificationDialog({
             />
             <FieldError message={errors.qualification_type} />
           </div>
-          <div className="space-y-2">
+          <div className="flex flex-col gap-2">
             <Label>Degree Title *</Label>
             <Input
               value={form.degree_title ?? ""}
@@ -211,7 +211,7 @@ export function QualificationDialog({
                 options={GRADING_SYSTEMS}
               />
             </div>
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label>Grade</Label>
               <Input value={form.grade_value ?? ""} onChange={(e) => setForm((f) => ({ ...f, grade_value: e.target.value }))} />
             </div>

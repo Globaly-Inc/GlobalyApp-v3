@@ -129,12 +129,12 @@ export function ContactDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-h-[85vh] overflow-y-auto" style={{ maxWidth: "48rem" }}>
+      <DialogContent className="sm:max-w-3xl">
         <DialogHeader>
           <DialogTitle>Edit contact details</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-2">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
             <Label>Phone *</Label>
             <div className="grid grid-cols-3 gap-3">
               <Combobox
@@ -157,7 +157,7 @@ export function ContactDialog({
           </div>
 
           <p className="text-sm font-medium text-foreground">Personal Address</p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             <div className="flex flex-col gap-2">
               <Label>Country *</Label>
               <Combobox
@@ -180,16 +180,16 @@ export function ContactDialog({
               />
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-3">
-            <div className="space-y-2">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+            <div className="flex flex-col gap-2">
               <Label>City</Label>
               <Input className="h-10" value={form.city} onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))} />
             </div>
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label>State/Province</Label>
               <Input className="h-10" value={form.state} onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))} />
             </div>
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label>Postcode</Label>
               <Input className="h-10" value={form.postcode} onChange={(e) => setForm((f) => ({ ...f, postcode: e.target.value }))} />
             </div>

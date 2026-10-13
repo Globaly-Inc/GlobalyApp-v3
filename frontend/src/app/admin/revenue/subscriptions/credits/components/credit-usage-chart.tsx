@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import {
   AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
 } from "recharts";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { Combobox } from "@/components/combobox";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchChart } from "../store/credits-ledger-slice";
@@ -59,32 +61,19 @@ export function CreditUsageChart() {
   const data = pivotSeries(chartSeries, days);
 
   return (
-    <div className="rounded-xl border bg-card p-5">
-      <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 className="text-base font-semibold text-foreground">Credit Usage</h2>
-          <p className="text-xs text-muted-foreground mt-0.5">Platform-wide credit consumption over time</p>
-        </div>
-        <div className="flex items-center gap-2">
-          {/* Days toggle */}
-          <div className="flex rounded-lg border overflow-hidden text-xs">
+    <Card>
+      <CardHeader>
+        <CardTitle>Credit Usage</CardTitle>
+        <CardDescription>Platform-wide credit consumption over time</CardDescription>
+        <CardAction className="col-start-1 row-start-3 flex flex-wrap items-center gap-2 justify-self-start sm:col-start-2 sm:row-span-2 sm:row-start-1 sm:justify-self-end">
+          <ToggleGroup aria-label="Period" value={[String(days)]} onValueChange={(next) => next[0] && setDays(Number(next[0]) as 7 | 30 | 90)}>
             {DAYS_OPTIONS.map((opt) => (
-              <button
-                key={opt.days}
-                type="button"
-                onClick={() => setDays(opt.days)}
-                className={`px-3 py-1.5 font-medium transition-colors cursor-pointer ${
-                  days === opt.days
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-muted"
-                }`}
-              >
+              <ToggleGroupItem key={opt.days} value={String(opt.days)} size="sm">
                 {opt.label}
-              </button>
+              </ToggleGroupItem>
             ))}
-          </div>
-          {/* Metric selector */}
-          <div className="flex flex-col gap-0 w-44">
+          </ToggleGroup>
+          <div className="flex w-44 flex-col">
             <Combobox
               options={CHART_METRIC_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
               value={metric}
@@ -92,9 +81,9 @@ export function CreditUsageChart() {
               placeholder="Select metric"
             />
           </div>
-        </div>
-      </div>
-
+        </CardAction>
+      </CardHeader>
+      <CardContent>
       {loading ? (
         <Skeleton className="h-64 w-full rounded-lg" />
       ) : chartSeries.length === 0 ? (
@@ -117,8 +106,8 @@ export function CreditUsageChart() {
             <YAxis tick={{ fontSize: 11 }} className="text-muted-foreground" />
             <Tooltip
               contentStyle={{
-                background: "hsl(var(--card))",
-                border: "1px solid hsl(var(--border))",
+                background: "var(--card)",
+                border: "1px solid var(--border)",
                 borderRadius: "8px",
                 fontSize: "12px",
               }}
@@ -141,6 +130,7 @@ export function CreditUsageChart() {
           </AreaChart>
         </ResponsiveContainer>
       )}
-    </div>
+    </CardContent>
+    </Card>
   );
 }

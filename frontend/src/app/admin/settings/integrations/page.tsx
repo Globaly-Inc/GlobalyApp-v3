@@ -1,11 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { FormField } from "@/components/ui/form-field";
+import { FormSection } from "@/components/ui/form-section";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
+import { PageBody } from "@/components/ui/page-body";
+import { PageHeader } from "@/components/ui/page-header";
+import { StickySaveBar } from "@/components/ui/sticky-save-bar";
 import { Textarea } from "@/components/ui/textarea";
 import { httpGet, httpPut } from "@/lib/api/http";
 
@@ -31,7 +35,10 @@ export default function IntegrationsSettingsPage() {
       .then(setStatus)
       .catch(() => toast.error("Could not load integration settings"));
 
+  const fetchedRef = useRef(false);
   useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
     void load();
   }, []);
 
@@ -62,34 +69,31 @@ export default function IntegrationsSettingsPage() {
 
   const savedBadge = (s?: SettingStatus) =>
     s?.set ? (
-      <span className="text-xs text-muted-foreground">
-        Saved{s.preview ? ` — ${s.preview}` : ""}
-      </span>
+      <Badge variant="success" className="max-w-48">
+        <span className="truncate">Saved{s.preview ? ` — ${s.preview}` : ""}</span>
+      </Badge>
     ) : (
-      <span className="text-xs text-muted-foreground">Not set</span>
+      <Badge variant="outline" className="text-muted-foreground">Not set</Badge>
     );
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6 p-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Integrations</h1>
-        <p className="text-sm text-muted-foreground">
-          Third-party API credentials. Values are encrypted at rest and never shown again after
-          saving — re-enter a value to replace it. Environment variables act as a fallback when a
-          field is not set here.
-        </p>
-      </div>
+    <PageBody>
+      <PageHeader
+        title="Integrations"
+        subtitle="Third-party API credentials. Values are encrypted at rest and never shown again after saving — re-enter a value to replace it. Environment variables act as a fallback when a field is not set here."
+      />
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Higgsfield</CardTitle>
-          <CardDescription>
-            Text-to-image API used to generate AI blog cover photos. Format:{" "}
-            <code>key:secret</code>. {savedBadge(status?.higgsfield_api_key)}
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-2">
-          <Label htmlFor="hf-key">API key</Label>
+      <FormSection
+        title="Higgsfield"
+        columns={1}
+        description={
+          <>
+            Text-to-image API used to generate AI blog cover photos. Format: <code className="font-mono text-xs md:text-xs">key:secret</code>.
+          </>
+        }
+        action={savedBadge(status?.higgsfield_api_key)}
+      >
+        <FormField label="API key" htmlFor="hf-key">
           <Input
             id="hf-key"
             type="password"
@@ -98,45 +102,46 @@ export default function IntegrationsSettingsPage() {
             onChange={(e) => setHiggsfield(e.target.value)}
             autoComplete="off"
           />
-        </CardContent>
-      </Card>
+        </FormField>
+      </FormSection>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Google Search Console</CardTitle>
-          <CardDescription>
-            Powers the SEO/AEO dashboard rankings. Paste the full service-account JSON key (the
-            account must be added as a user on the GSC property).
-          </CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="gsc-json">Service-account JSON {savedBadge(status?.gsc_service_account_json)}</Label>
-            <Textarea
-              id="gsc-json"
-              placeholder='{"type":"service_account","client_email":"...","private_key":"..."}'
-              value={gscJson}
-              onChange={(e) => setGscJson(e.target.value)}
-              rows={5}
-              className="font-mono text-xs"
-            />
-          </div>
-          <div className="space-y-2">
-            <Label htmlFor="gsc-site">Site URL {savedBadge(status?.gsc_site_url)}</Label>
-            <Input
-              id="gsc-site"
-              placeholder="sc-domain:globalyhub.com"
-              value={gscSiteUrl}
-              onChange={(e) => setGscSiteUrl(e.target.value)}
-              autoComplete="off"
-            />
-          </div>
-        </CardContent>
-      </Card>
+      <FormSection
+        title="Google Search Console"
+        columns={1}
+        description="Powers the SEO/AEO dashboard rankings. Paste the full service-account JSON key (the account must be added as a user on the GSC property)."
+      >
+        <FormField
+          label={<span className="flex flex-wrap items-center gap-2">Service-account JSON {savedBadge(status?.gsc_service_account_json)}</span>}
+          htmlFor="gsc-json"
+        >
+          <Textarea
+            id="gsc-json"
+            placeholder='{"type":"service_account","client_email":"...","private_key":"..."}'
+            value={gscJson}
+            onChange={(e) => setGscJson(e.target.value)}
+            rows={5}
+            className="font-mono text-xs md:text-xs"
+          />
+        </FormField>
+        <FormField
+          label={<span className="flex flex-wrap items-center gap-2">Site URL {savedBadge(status?.gsc_site_url)}</span>}
+          htmlFor="gsc-site"
+        >
+          <Input
+            id="gsc-site"
+            placeholder="sc-domain:globalyhub.com"
+            value={gscSiteUrl}
+            onChange={(e) => setGscSiteUrl(e.target.value)}
+            autoComplete="off"
+          />
+        </FormField>
+      </FormSection>
 
-      <Button onClick={save} disabled={saving}>
-        {saving ? "Saving..." : "Save changes"}
-      </Button>
-    </div>
+      <StickySaveBar>
+        <Button onClick={save} disabled={saving}>
+          {saving ? "Saving..." : "Save changes"}
+        </Button>
+      </StickySaveBar>
+    </PageBody>
   );
 }

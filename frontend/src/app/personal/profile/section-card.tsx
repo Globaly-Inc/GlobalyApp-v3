@@ -19,9 +19,9 @@ export function SectionCard({
 }>) {
   return (
     <Card className="group/card">
-      <CardHeader className="border-b">
-        <CardTitle className="flex items-center gap-2">
-          <Icon className="h-4 w-4 text-primary" />
+      <CardHeader>
+        <CardTitle className="flex flex-wrap items-center gap-2">
+          <Icon className="size-4 shrink-0 text-muted-foreground" />
           {title}
           {badge}
         </CardTitle>
@@ -34,7 +34,7 @@ export function SectionCard({
               aria-label={`Edit ${title}`}
               className="opacity-100 transition-opacity group-focus-within/card:opacity-100 [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/card:opacity-100"
             >
-              <Pencil className="h-4 w-4" />
+              <Pencil />
             </Button>
           </CardAction>
         )}
@@ -63,9 +63,9 @@ export function OneToManySection({
 }>) {
   return (
     <Card className="group/card">
-      <CardHeader className="border-b">
-        <CardTitle className="flex items-center gap-2">
-          <Icon className="h-4 w-4 text-primary" />
+      <CardHeader>
+        <CardTitle className="flex flex-wrap items-center gap-2">
+          <Icon className="size-4 shrink-0 text-muted-foreground" />
           {title}
           {count > 0 && <Badge variant="secondary">{count}</Badge>}
           {badge}
@@ -77,9 +77,8 @@ export function OneToManySection({
               size="sm"
               onClick={onAdd}
               aria-label={`Add ${title}`}
-              className="gap-1.5"
             >
-              <Plus className="h-3.5 w-3.5" />
+              <Plus />
               Add
             </Button>
           </CardAction>
@@ -87,7 +86,7 @@ export function OneToManySection({
       </CardHeader>
       <CardContent className="space-y-3">
         {count === 0 ? (
-          <p className="py-6 text-center text-sm text-muted-foreground">{emptyText}</p>
+          <p className="rounded-lg border border-dashed border-border py-6 text-center text-sm text-muted-foreground">{emptyText}</p>
         ) : (
           children
         )}
@@ -99,8 +98,8 @@ export function OneToManySection({
 export function Field({ label, value }: Readonly<{ label: string; value: React.ReactNode }>) {
   return (
     <div>
-      <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="mt-0.5 text-sm font-semibold text-foreground">{value || "—"}</p>
+      <p className="text-sm text-muted-foreground">{label}</p>
+      <p className="mt-0.5 break-words text-sm font-medium text-foreground">{value || "—"}</p>
     </div>
   );
 }

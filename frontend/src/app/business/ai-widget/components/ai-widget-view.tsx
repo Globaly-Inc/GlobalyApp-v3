@@ -2,6 +2,8 @@
 
 import { useEffect, useRef } from "react";
 import { Bot } from "lucide-react";
+import { PageBody } from "@/components/ui/page-body";
+import { PageHeader } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import {
@@ -27,43 +29,28 @@ export function AiWidgetView() {
     dispatch(fetchEmbedConfigs());
   }, [dispatch]);
 
-  const heading = (
-    <div className="flex items-center gap-3">
-      <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-        <Bot className="size-5" aria-hidden />
-      </span>
-      <div>
-        <h1 className="text-2xl font-semibold">AI Widget</h1>
-        <p className="text-sm text-muted-foreground">
-          Embed a branded AI counsellor on your website, scoped to your courses.
-        </p>
-      </div>
-    </div>
-  );
-
-  // The editor draws the heading itself, so the Create/Save buttons can sit on the same row.
+  // The header stays put through loading, create and edit; the editor below it owns the save row.
   return (
-    <div className="flex min-h-0 w-full flex-1 flex-col gap-4">
+    <PageBody className="w-full">
+      <PageHeader
+        title={<><Bot className="text-primary" aria-hidden /> AI Widget</>}
+        subtitle="Embed a branded AI counsellor on your website, scoped to your courses."
+      />
+
       {error && <p className="text-sm text-destructive">{error}</p>}
 
       {status === "loading" && !config ? (
-        <>
-          {heading}
-          <Skeleton className="h-96 w-full" />
-        </>
+        <Skeleton className="h-96 w-full" />
       ) : config ? (
         // Keyed so a saved change re-seeds the form from what the server now holds.
         <WidgetEditor
           key={`${config.id}-${config.updated_at}`}
           initial={config}
-          heading={heading}
           card={<WidgetCard config={config} onRotateKey={(id) => dispatch(rotateEmbedKey(id))} />}
         />
       ) : status !== "failed" ? (
-        <WidgetEditor heading={heading} />
-      ) : (
-        heading
-      )}
-    </div>
+        <WidgetEditor />
+      ) : null}
+    </PageBody>
   );
 }

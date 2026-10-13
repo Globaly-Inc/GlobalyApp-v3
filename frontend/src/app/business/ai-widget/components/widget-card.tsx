@@ -6,7 +6,9 @@ import Link from "next/link";
 import { Check, Copy, ExternalLink, KeyRound } from "lucide-react";
 import { WidgetSwitch } from "@/app/business/messages/components/widget-switch";
 import { AlyOrbIcon } from "@/components/aly-orb-icon";
+import { Badge } from "@/components/ui/badge";
 import { Button, buttonVariants } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { EmbedConfig } from "../apis/types";
 import { WEB_ORIGIN } from "@/lib/hosts";
@@ -23,7 +25,7 @@ export function embedSnippet(embedKey: string): string {
 /** Yes/No inline confirm, used for the action that breaks a live embed. */
 function Confirm({ label, onYes, onNo }: Readonly<{ label: string; onYes: () => void; onNo: () => void }>) {
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       <span className="text-xs text-muted-foreground">{label}</span>
       <Button size="sm" variant="destructive" onClick={onYes}>Yes</Button>
       <Button size="sm" variant="outline" onClick={onNo}>No</Button>
@@ -51,27 +53,22 @@ export function WidgetCard({
   };
 
   return (
-    <section className="@container overflow-hidden rounded-2xl border bg-card">
-      <div className="flex flex-wrap items-center justify-between gap-3 border-b px-5 py-4 sm:flex-nowrap">
+    <Card className="@container">
+      <CardHeader className="flex flex-wrap items-center justify-between gap-3 border-b sm:flex-nowrap">
         <div className="flex min-w-0 flex-1 items-center gap-3">
           {/* No disc or ring — same as the widget header: the clipped halo made a hard white edge. */}
           <AlyOrbIcon className="size-11" color={config.brand_color} />
           <div className="min-w-0">
-            <h2 className="flex items-center gap-2 text-lg font-semibold">
+            <CardTitle role="heading" aria-level={2} className="flex items-center gap-2">
               <span className="truncate">{config.display_name?.trim() || DEFAULT_WIDGET_NAME}</span>
-              <span
-                className={cn(
-                  "inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 font-sans text-xs font-medium",
-                  config.is_active ? "bg-emerald-50 text-emerald-700" : "bg-muted text-muted-foreground",
-                )}
-              >
-                <span className={cn("size-1.5 rounded-full", config.is_active ? "bg-emerald-500" : "bg-muted-foreground")} />
+              <Badge variant={config.is_active ? "success" : "secondary"} className="font-sans">
+                <span className={cn("size-1.5 rounded-full", config.is_active ? "bg-success" : "bg-muted-foreground")} />
                 {config.is_active ? "Live" : "Paused"}
-              </span>
-            </h2>
-            <p className="truncate text-sm text-muted-foreground">
+              </Badge>
+            </CardTitle>
+            <CardDescription className="truncate">
               {config.subtitle || "AI counsellor · powered by GlobalyAI"}
-            </p>
+            </CardDescription>
           </div>
         </div>
 
@@ -104,9 +101,9 @@ export function WidgetCard({
             <WidgetSwitch />
           </div>
         )}
-      </div>
+      </CardHeader>
 
-      <div className="flex flex-col gap-2 px-5 py-4">
+      <CardContent className="flex flex-col gap-2">
         <p className="text-sm font-medium">
           Add it to your website
           <span className="font-normal text-xs text-muted-foreground">
@@ -114,21 +111,16 @@ export function WidgetCard({
             where the counsellor should appear.
           </span>
         </p>
-        <div className="flex items-center gap-2 rounded-xl bg-neutral-950 py-2 pr-2 pl-4">
-          <code title={embedSnippet(config.embed_key)} className="min-w-0 flex-1 truncate font-mono text-xs text-neutral-100">
+        <div className="flex items-center gap-2 rounded-lg border bg-muted/60 py-2 pr-2 pl-4">
+          <code title={embedSnippet(config.embed_key)} className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">
             {embedSnippet(config.embed_key)}
           </code>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={copy}
-            className="shrink-0 gap-1.5 bg-white/10 text-white hover:bg-white/20 hover:text-white"
-          >
+          <Button size="sm" variant="outline" onClick={copy} className="shrink-0 gap-1.5 bg-card">
             {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
             {copied ? "Copied" : "Copy"}
           </Button>
         </div>
-      </div>
-    </section>
+      </CardContent>
+    </Card>
   );
 }
