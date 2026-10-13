@@ -72,7 +72,7 @@ function CountButton({ label, count, of, onClick, title, className }: Readonly<{
       title={title}
     >
       {label}
-      {count > 0 && count < of && <span className="font-mono text-[10px] font-semibold tabular-nums opacity-75">{count}</span>}
+      {count > 0 && count < of && <span className="font-mono text-xs font-semibold tabular-nums opacity-75">{count}</span>}
     </Button>
   );
 }

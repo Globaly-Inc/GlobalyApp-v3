@@ -74,7 +74,7 @@ function InviteTableRow({
         {/* Indented under the "Email failed" label, past its icon, so the bounce reason reads as
             that line's detail rather than as another status. */}
         {open && invite.email_status === "failed" && invite.email_error && (
-          <p className="mt-0.5 pl-[18px] text-[11px] leading-4 break-words text-muted-foreground">{invite.email_error}</p>
+          <p className="mt-0.5 pl-[18px] text-xs leading-4 break-words text-muted-foreground">{invite.email_error}</p>
         )}
         {invite.link_requested_at && invite.status !== "accepted" && (
           <p className="mt-1 flex flex-wrap items-center gap-x-1 text-xs font-medium text-warning">

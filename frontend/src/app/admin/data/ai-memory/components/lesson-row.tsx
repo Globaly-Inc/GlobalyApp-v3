@@ -26,7 +26,7 @@ export function LessonRow({
         <p className="text-foreground">
           {lesson.rule}
           {!lesson.is_active && (
-            <Badge variant="destructive" className="ml-2 align-middle text-[10px]">Inactive</Badge>
+            <Badge variant="destructive" className="ml-2 align-middle text-xs">Inactive</Badge>
           )}
         </p>
         {(lesson.example_bad || lesson.example_good) && (

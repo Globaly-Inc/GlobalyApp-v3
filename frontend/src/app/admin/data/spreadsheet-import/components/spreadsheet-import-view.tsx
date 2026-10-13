@@ -103,7 +103,7 @@ export function SpreadsheetImportView() {
           <div className="flex flex-wrap gap-2">
             {TEMPLATE_TABS.map((t) => (
               <span key={t} className="flex items-center gap-1.5 rounded-full border px-3 py-1 text-xs">
-                <CheckCircle2 className="h-3.5 w-3.5 text-emerald-600" /> {t}
+                <CheckCircle2 className="h-3.5 w-3.5 text-success" /> {t}
               </span>
             ))}
           </div>

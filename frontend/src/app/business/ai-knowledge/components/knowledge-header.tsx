@@ -30,7 +30,7 @@ export function KnowledgeHeader({
   const headline = headlineFor(summary, unreviewedReplies);
 
   return (
-    <section className="relative overflow-hidden rounded-xl bg-sidebar text-sidebar-foreground">
+    <section className="dark relative overflow-hidden rounded-xl bg-sidebar text-sidebar-foreground">
       {/* Two soft lights rather than a gradient fill: a gradient across a panel this wide bands
           visibly on 8-bit displays, and blurred radials don't. Pointer-events off so they never
           eat a click meant for the figures. */}
@@ -49,7 +49,7 @@ export function KnowledgeHeader({
             <Brain className="size-5 text-white" />
             {/* The live dot. Ringed in the panel's own colour so it reads as sitting on the
                 badge rather than floating over it. */}
-            <span className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full bg-emerald-400 ring-2 ring-sidebar" />
+            <span className="absolute -bottom-0.5 -right-0.5 size-3 rounded-full bg-success ring-2 ring-sidebar" />
           </span>
 
           <div className="min-w-0 flex-1">
@@ -140,7 +140,7 @@ function Figure({
       onClick={onClick}
       className="group cursor-pointer px-4 py-3.5 text-left transition-colors hover:bg-white/[0.06] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-white/40"
     >
-      <p className="flex items-center gap-1.5 text-[11px] font-medium uppercase tracking-wide text-white/45">
+      <p className="flex items-center gap-1.5 text-xs font-medium uppercase tracking-wide text-white/45">
         {label}
       </p>
       <p

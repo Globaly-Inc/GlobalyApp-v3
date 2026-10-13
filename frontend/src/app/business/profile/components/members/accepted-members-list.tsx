@@ -19,7 +19,7 @@ import { TeamEmpty } from "./team-empty";
 
 const PAGE_SIZE = 10;
 /** Mockup `.fresh`: small mono muted date. */
-const FRESH = "whitespace-nowrap font-mono text-[11px] font-medium text-muted-foreground";
+const FRESH = "whitespace-nowrap font-mono text-xs font-medium text-muted-foreground";
 const fmtDate = (iso: string) => new Date(iso).toLocaleDateString("en-AU", { day: "2-digit", month: "short", year: "numeric" });
 
 export function AcceptedMembersList({

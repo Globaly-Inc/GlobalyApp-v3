@@ -42,21 +42,21 @@ function Stepper({
         const prevDone = jobFinished || (i > 0 && stages[i - 1]?.stage?.status === "done");
         return (
           <Fragment key={key}>
-            {i > 0 && <div className={cn("mt-3.5 h-px w-16 shrink-0", prevDone ? "bg-emerald-400" : "bg-border")} />}
+            {i > 0 && <div className={cn("mt-3.5 h-px w-16 shrink-0", prevDone ? "bg-success/70" : "bg-border")} />}
             <div className="flex shrink-0 flex-col items-center gap-1 text-center">
               <div
                 className={cn(
                   "flex h-7 w-7 shrink-0 items-center justify-center rounded-full",
-                  isDone && "bg-emerald-100 text-emerald-600",
-                  isRunning && "bg-purple-100 text-purple-600",
-                  isFailed && "bg-red-100 text-red-600",
+                  isDone && "bg-success/15 text-success",
+                  isRunning && "bg-chart-4/15 text-chart-4",
+                  isFailed && "bg-destructive/15 text-destructive",
                   !isDone && !isRunning && !isFailed && "bg-muted text-muted-foreground",
                 )}
               >
                 {isDone ? <CheckCircle2 className="h-3.5 w-3.5" /> : isRunning ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : isFailed ? <XCircle className="h-3.5 w-3.5" /> : <Icon className="h-3.5 w-3.5" />}
               </div>
-              <span className={cn("w-20 text-xs font-medium", isRunning && "text-purple-700", isFailed && "text-red-700")}>{label}</span>
-              <span className={cn("text-[10px]", isFailed ? "text-red-600" : "text-muted-foreground")}>
+              <span className={cn("w-20 text-xs font-medium", isRunning && "text-chart-4", isFailed && "text-destructive")}>{label}</span>
+              <span className={cn("text-xs", isFailed ? "text-destructive" : "text-muted-foreground")}>
                 {isDone ? "Completed" : isRunning ? "In progress" : isFailed ? "Failed" : "Pending"}
               </span>
             </div>
@@ -70,19 +70,19 @@ function Stepper({
 function StatusPanel({ job }: Readonly<{ job: ExtractionJob }>) {
   if (job.status === "failed") {
     return (
-      <div className="flex w-full flex-col gap-2 border border-red-200 bg-red-50 p-2.5 rounded-md dark:border-red-900 dark:bg-red-950">
+      <div className="flex w-full flex-col gap-2 border border-destructive/30 bg-destructive/10 p-2.5 rounded-md">
         <div className="flex items-start gap-2">
-          <AlertCircle className="h-4 w-4 shrink-0 text-red-600 mt-0.5 dark:text-red-400" />
+          <AlertCircle className="h-4 w-4 shrink-0 text-destructive mt-0.5" />
           <div>
-            <p className="text-sm font-medium text-red-800 dark:text-red-200">Job failed</p>
-            <p className="text-xs text-red-700 dark:text-red-300">
+            <p className="text-sm font-medium text-destructive">Job failed</p>
+            <p className="text-xs text-foreground">
               {job.error_message ? summarizeError(job.error_message) : `The job failed on ${formatDateTime(job.updated_at)}.`} Please re-run the job or check the logs for more details.
             </p>
           </div>
         </div>
         <Link
           href={`/admin/data/all-extractions/${job.id}?tab=overview`}
-          className="flex w-fit items-center gap-1.5 self-end rounded-md border border-red-200 bg-white px-3 py-1.5 text-xs font-medium text-red-700 hover:bg-red-100 dark:border-red-900 dark:bg-transparent dark:text-red-300 dark:hover:bg-red-900"
+          className="flex w-fit items-center gap-1.5 self-end rounded-md border border-destructive/30 bg-background px-3 py-1.5 text-xs font-medium text-destructive hover:bg-destructive/15"
         >
           <FileText className="h-3.5 w-3.5" />
           View Logs
@@ -93,11 +93,11 @@ function StatusPanel({ job }: Readonly<{ job: ExtractionJob }>) {
 
   if (job.status === "processing" || job.status === "extracting" || job.status === "scraping") {
     return (
-      <div className="flex w-full items-start gap-2 border border-purple-200 rounded-md bg-purple-50 p-2.5">
-        <Info className="h-4 w-4 shrink-0 text-purple-600 mt-0.5" />
+      <div className="flex w-full items-start gap-2 border border-chart-4/30 rounded-md bg-chart-4/10 p-2.5">
+        <Info className="h-4 w-4 shrink-0 text-chart-4 mt-0.5" />
         <div>
-          <p className="text-sm font-medium text-purple-800">Job is currently running</p>
-          <p className="text-xs text-purple-700">
+          <p className="text-sm font-medium text-chart-4">Job is currently running</p>
+          <p className="text-xs text-foreground">
             This job was started on {formatDateTime(job.processing_heartbeat_at || job.created_at)}. You can re-run the job if needed.
           </p>
         </div>

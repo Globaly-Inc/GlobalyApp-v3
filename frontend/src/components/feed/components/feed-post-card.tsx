@@ -115,12 +115,12 @@ export function FeedPostCard({ post, currentUserIsAuthor }: FeedPostCardProps) {
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-sm font-semibold">{authorName || "Someone"}</span>
-              <span className={cn("rounded-full px-2 py-0.5 text-[11px] font-medium", style.badge)}>
+              <span className={cn("rounded-full px-2 py-0.5 text-xs font-medium", style.badge)}>
                 {style.label}
               </span>
               {post.is_pinned && <Pin className="h-3 w-3 text-primary" />}
             </div>
-            <div className="mt-0.5 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <div className="mt-0.5 flex items-center gap-1.5 text-xs text-muted-foreground">
               <span>{relativeTime(post.created_at)}</span>
               <span aria-hidden>·</span>
               <VisibilityIcon className="h-3 w-3" />
@@ -228,7 +228,7 @@ export function FeedPostCard({ post, currentUserIsAuthor }: FeedPostCardProps) {
                     </Avatar>
                   ))}
                   {group.count > group.reactors.length && (
-                    <span className="ml-0.5 text-[10px] font-medium text-muted-foreground">
+                    <span className="ml-0.5 text-xs font-medium text-muted-foreground">
                       +{group.count - group.reactors.length}
                     </span>
                   )}

@@ -126,7 +126,7 @@ export function ServiceEligibilityTab({
                 <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
                   {row.language_tests.map((t, i) => (
                     <div key={`${t.test_type_name}-${i}`} className="rounded-lg border p-2.5">
-                      <p className="text-[10px] uppercase text-muted-foreground">{t.test_type_name}</p>
+                      <p className="text-xs uppercase text-muted-foreground">{t.test_type_name}</p>
                       <p className="text-base font-bold">{t.overall_score}</p>
                     </div>
                   ))}

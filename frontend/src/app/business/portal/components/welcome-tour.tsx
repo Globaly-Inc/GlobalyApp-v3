@@ -125,11 +125,11 @@ export function WelcomeTour({ orgName, show }: Readonly<{ orgName: string; show:
       aria-modal="true"
       aria-label="Welcome to GlobalyAI"
       style={iris ? css({ "--cx": `${iris.cx}px`, "--cy": `${iris.cy}px`, "--r0": `${iris.r0}px`, "--r1": `${iris.r1}px` }) : undefined}
-      className={cn(styles.root, closing && styles.leaving, "fixed inset-0 z-[100] mb-0 flex flex-col overflow-hidden bg-[radial-gradient(120%_90%_at_50%_0%,#1a4fc4_0%,#012E8A_45%,#021a52_100%)] text-white")}
+      className={cn(styles.root, closing && styles.leaving, "dark fixed inset-0 z-[100] mb-0 flex flex-col overflow-hidden bg-[radial-gradient(120%_90%_at_50%_0%,#1a4fc4_0%,#012E8A_45%,#021a52_100%)] text-white")}
     >
       <div aria-hidden className="pointer-events-none absolute inset-0">
-        <div className={cn(styles.aurora1, "absolute -left-32 -top-32 h-[30rem] w-[30rem] rounded-full bg-[#23DDF6]/20 blur-3xl")} />
-        <div className={cn(styles.aurora2, "absolute -bottom-40 -right-32 h-[34rem] w-[34rem] rounded-full bg-[#7FA6FF]/25 blur-3xl")} />
+        <div className={cn(styles.aurora1, "absolute -left-32 -top-32 h-[30rem] w-[30rem] rounded-full bg-[hsl(var(--gold)/0.2)] blur-3xl")} />
+        <div className={cn(styles.aurora2, "absolute -bottom-40 -right-32 h-[34rem] w-[34rem] rounded-full bg-[hsl(var(--primary-bright)/0.25)] blur-3xl")} />
         {STARS.map((s, i) => (
           <span key={i} className={cn(styles.star, "absolute rounded-full bg-white")} style={css({ left: s.left, top: s.top, width: s.size, height: s.size, "--d": s.duration, "--s": s.delay })} />
         ))}
@@ -185,7 +185,7 @@ export function WelcomeTour({ orgName, show }: Readonly<{ orgName: string; show:
             <Button
               ref={ctaRef}
               onClick={dismiss}
-              className={cn(styles.cta, styles.rise, "h-12 cursor-pointer gap-2 rounded-full bg-white px-8 text-base font-semibold text-[#012E8A] shadow-[0_10px_40px_rgba(35,221,246,0.35)] hover:bg-white/90")}
+              className={cn(styles.cta, styles.rise, "h-12 cursor-pointer gap-2 rounded-full bg-white px-8 text-base font-semibold text-[#012E8A] shadow-[0_10px_40px_rgba(166,203,253,0.35)] hover:bg-white/90")}
               style={css({ "--delay": "2.9s" })}
             >
               Take me to my dashboard

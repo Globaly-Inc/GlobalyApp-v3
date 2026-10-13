@@ -26,7 +26,7 @@ export function TeamSubTabs<T extends string>({
           className="relative z-10 inline-flex items-center justify-center gap-1.5 whitespace-nowrap rounded-lg px-3.5 py-2 text-[12.5px] font-semibold text-muted-foreground transition-colors hover:text-foreground focus-visible:outline-2 focus-visible:outline-primary aria-pressed:text-foreground"
         >
           {o.label}
-          {o.count !== null && <span className="font-mono text-[10.5px] font-semibold tabular-nums text-muted-foreground">{o.count}</span>}
+          {o.count !== null && <span className="font-mono text-xs font-semibold tabular-nums text-muted-foreground">{o.count}</span>}
         </button>
       ))}
     </div>

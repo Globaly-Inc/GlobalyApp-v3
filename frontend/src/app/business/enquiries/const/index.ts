@@ -42,11 +42,11 @@ export const ENQUIRY_STATUS_LABEL: Record<string, string> = {
  * Green is reserved for the two statuses that mean something good actually happened.
  */
 export const ENQUIRY_STATUS_STYLES: Record<string, string> = {
-  pending: "bg-amber-100 text-amber-800 dark:bg-amber-500/15 dark:text-amber-300",
-  distributed: "bg-blue-100 text-blue-800 dark:bg-blue-500/15 dark:text-blue-300",
-  unlocked: "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300",
-  in_conversation: "bg-indigo-100 text-indigo-800 dark:bg-indigo-500/15 dark:text-indigo-300",
-  converted: "bg-emerald-100 text-emerald-800 dark:bg-emerald-500/15 dark:text-emerald-300",
+  pending: "bg-warning/15 text-warning",
+  distributed: "bg-info/15 text-info",
+  unlocked: "bg-success/15 text-success",
+  in_conversation: "bg-chart-4/15 text-chart-4",
+  converted: "bg-success/15 text-success",
   closed: "bg-muted text-muted-foreground",
   no_match: "bg-muted text-muted-foreground/80",
   expired: "bg-muted text-muted-foreground/80",
@@ -54,11 +54,11 @@ export const ENQUIRY_STATUS_STYLES: Record<string, string> = {
 
 /** The badge's leading dot — same hue as its text, at full strength so it reads at 6px. */
 export const ENQUIRY_STATUS_DOT: Record<string, string> = {
-  pending: "bg-amber-500",
-  distributed: "bg-blue-500",
-  unlocked: "bg-emerald-500",
-  in_conversation: "bg-indigo-500",
-  converted: "bg-emerald-500",
+  pending: "bg-warning",
+  distributed: "bg-info",
+  unlocked: "bg-success",
+  in_conversation: "bg-chart-4",
+  converted: "bg-success",
   closed: "bg-muted-foreground/50",
   no_match: "bg-muted-foreground/40",
   expired: "bg-muted-foreground/40",

@@ -41,13 +41,13 @@ export function EnglishTestBlock({ test }: Readonly<{ test: Record<string, unkno
 
   return (
     <div className="grid content-start gap-2 rounded-xl border p-3">
-      <p className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">English test</p>
+      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">English test</p>
       <div className="flex items-baseline justify-between gap-2">
         <span className="truncate text-sm font-semibold">{name}</span>
         {t.overall_score != null && t.overall_score !== "" && (
           <span className="shrink-0 text-lg font-bold tabular-nums">
             {t.overall_score}
-            <span className="ml-1 font-mono text-[11px] font-medium text-muted-foreground">overall</span>
+            <span className="ml-1 font-mono text-xs font-medium text-muted-foreground">overall</span>
           </span>
         )}
       </div>
@@ -56,7 +56,7 @@ export function EnglishTestBlock({ test }: Readonly<{ test: Record<string, unkno
           {subs.map((s, j) => {
             const pct = max ? Math.min(100, (Number(s.value) / max) * 100) : null;
             return (
-              <div key={s.label} className="grid gap-1 font-mono text-[10.5px] font-medium text-muted-foreground">
+              <div key={s.label} className="grid gap-1 font-mono text-xs font-medium text-muted-foreground">
                 <span>{s.label} {s.value}</span>
                 {pct != null && !Number.isNaN(pct) && (
                   <span className="h-1.5 overflow-hidden rounded-full bg-border">

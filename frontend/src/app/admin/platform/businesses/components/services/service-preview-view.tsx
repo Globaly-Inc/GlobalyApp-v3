@@ -134,7 +134,7 @@ export function ServicePreviewView({
                 <div key={u.id} className="flex items-center gap-2 rounded-lg border p-3 text-sm">
                   {u.unit_code && <span className="font-mono text-xs font-semibold text-primary">{u.unit_code}</span>}
                   <span>{u.unit_name}</span>
-                  <Badge variant={u.unit_type === "elective" ? "secondary" : "default"} className="text-[10px]">{u.unit_type}</Badge>
+                  <Badge variant={u.unit_type === "elective" ? "secondary" : "default"} className="text-xs">{u.unit_type}</Badge>
                 </div>
               ))}
             </CardContent>

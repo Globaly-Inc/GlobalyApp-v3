@@ -21,12 +21,12 @@ export const SCHOLARSHIP_COLUMNS = [
 ] as const;
 
 const BASIS_TONE: Record<string, string> = {
-  merit: "bg-blue-500/10 text-blue-700 dark:text-blue-300 border-blue-500/20",
-  need: "bg-purple-500/10 text-purple-700 dark:text-purple-300 border-purple-500/20",
-  sports: "bg-orange-500/10 text-orange-700 dark:text-orange-300 border-orange-500/20",
-  diversity: "bg-pink-500/10 text-pink-700 dark:text-pink-300 border-pink-500/20",
-  government: "bg-teal-500/10 text-teal-700 dark:text-teal-300 border-teal-500/20",
-  research: "bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 border-indigo-500/20",
+  merit: "bg-info/10 text-info border-info/20",
+  need: "bg-chart-4/10 text-chart-4 border-chart-4/20",
+  sports: "bg-warning/10 text-warning border-warning/20",
+  diversity: "bg-chart-5/10 text-chart-5 border-chart-5/20",
+  government: "bg-success/10 text-success border-success/20",
+  research: "bg-primary/10 text-primary border-primary/20",
 };
 
 function formatCoverage(s: Scholarship) {

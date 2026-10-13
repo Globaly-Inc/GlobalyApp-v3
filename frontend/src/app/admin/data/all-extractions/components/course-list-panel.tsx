@@ -25,12 +25,12 @@ const APPROVED = ["confirmed", "manual"];
 function ApprovalBadge({ status }: Readonly<{ status: string | null }>) {
   const s = status ?? "unverified";
   if (APPROVED.includes(s)) {
-    return <span className="rounded bg-emerald-50 px-1.5 py-0.5 text-[11px] font-medium text-emerald-700">Approved</span>;
+    return <span className="rounded bg-success/10 px-1.5 py-0.5 text-xs font-medium text-success">Approved</span>;
   }
   if (s === "flagged") {
-    return <span className="rounded bg-red-50 px-1.5 py-0.5 text-[11px] font-medium text-red-700">Flagged</span>;
+    return <span className="rounded bg-destructive/10 px-1.5 py-0.5 text-xs font-medium text-destructive">Flagged</span>;
   }
-  return <span className="rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700">Awaiting approval</span>;
+  return <span className="rounded bg-warning/10 px-1.5 py-0.5 text-xs font-medium text-warning">Awaiting approval</span>;
 }
 
 export function CourseListPanel({
@@ -166,7 +166,7 @@ export function CourseListPanel({
             onClick={() => onApproveAll(awaitingApproval)}
             title="Approve every course in this extraction, on all pages"
           >
-            <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+            <CheckCircle2 className="h-3 w-3 text-success" />
             {compact ? `All ${awaitingApproval}` : `Approve all ${awaitingApproval}`}
           </Button>
         )}
@@ -192,7 +192,7 @@ export function CourseListPanel({
               onClick={() => onBulkVerify(true)}
               title={`Approve ${selectedIds.length}`}
             >
-              <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+              <CheckCircle2 className="h-3 w-3 text-success" />
               {!compact && `Approve ${selectedIds.length}`}
             </Button>
             <Button

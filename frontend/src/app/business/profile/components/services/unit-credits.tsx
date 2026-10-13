@@ -4,7 +4,7 @@ export function UnitCredits({ value }: Readonly<{ value: number | null }>) {
   return (
     <span className="shrink-0 text-right text-[15px] font-bold leading-none tabular-nums">
       {value}
-      <small className="block font-mono text-[10px] font-medium text-muted-foreground">credits</small>
+      <small className="block font-mono text-xs font-medium text-muted-foreground">credits</small>
     </span>
   );
 }

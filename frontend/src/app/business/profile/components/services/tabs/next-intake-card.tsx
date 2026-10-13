@@ -40,14 +40,14 @@ export function NextIntakeCard({
           {countdown ? (
             <span
               className={cn(
-                "rounded-full px-2 py-0.5 text-[11px] font-semibold",
-                open ? "bg-emerald-500/12 text-emerald-700 dark:text-emerald-400" : "bg-muted text-muted-foreground",
+                "rounded-full px-2 py-0.5 text-xs font-semibold",
+                open ? "bg-success/12 text-success" : "bg-muted text-muted-foreground",
               )}
             >
               {open ? "Applications open" : "Applications closed"}
             </span>
           ) : (
-            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-semibold text-primary">Next intake</span>
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 text-xs font-semibold text-primary">Next intake</span>
           )}
           <div className="flex items-center gap-1 opacity-55 transition-opacity group-focus-within/next:opacity-100 group-hover/next:opacity-100">
             <Button size="icon-sm" variant="ghost" onClick={onEdit} aria-label="Edit intake">
@@ -62,7 +62,7 @@ export function NextIntakeCard({
 
       {countdown && (
         <div className="col-span-full text-left sm:col-span-1 sm:text-right">
-          <p className="font-mono text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <p className="font-mono text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             {open ? "Apply by" : "Closed"} {countdown.deadlineLabel}
           </p>
           {open && (
@@ -84,10 +84,10 @@ export function NextIntakeCard({
               style={{ width: `${countdown.windowPct}%`, "--fill-delay": "300ms" } as React.CSSProperties}
             />
             <span className="absolute -top-[5px] h-[18px] w-0.5 rounded-sm bg-foreground" style={{ left: `${countdown.windowPct}%` }}>
-              <span className="absolute -top-4 left-1/2 -translate-x-1/2 font-mono text-[10px] font-semibold">Today</span>
+              <span className="absolute -top-4 left-1/2 -translate-x-1/2 font-mono text-xs font-semibold">Today</span>
             </span>
           </div>
-          <div className="flex justify-between font-mono text-[11px] text-muted-foreground">
+          <div className="flex justify-between font-mono text-xs text-muted-foreground">
             <span>{countdown.windowStartLabel}</span>
             <span>Deadline {countdown.deadlineLabel}</span>
           </div>

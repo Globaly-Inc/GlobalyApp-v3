@@ -86,7 +86,7 @@ export function RolesList({ businessId, onEdit }: Readonly<{ businessId: number;
             </div>
             {role.description && <p className="text-[12.5px] leading-normal text-muted-foreground">{role.description}</p>}
             <div>
-              <div className="mb-1.25 flex justify-between text-[11.5px] text-muted-foreground">
+              <div className="mb-1.25 flex justify-between text-xs text-muted-foreground">
                 <span>Permissions</span>
                 <span className="tabular-nums">{pct === null ? granted : `${pct}%`}</span>
               </div>
@@ -103,7 +103,7 @@ export function RolesList({ businessId, onEdit }: Readonly<{ businessId: number;
               <div className="flex">
                 {role.members_count === 0
                   ? <span>No members</span>
-                  : who.map((m) => <MemberAvatar key={m.id} member={m} className="-ml-1.5 size-7 ring-2 ring-card first:ml-0 [&_[data-slot=avatar-fallback]]:text-[10px]" />)}
+                  : who.map((m) => <MemberAvatar key={m.id} member={m} className="-ml-1.5 size-7 ring-2 ring-card first:ml-0 [&_[data-slot=avatar-fallback]]:text-xs" />)}
               </div>
               <span>{role.members_count} member{role.members_count === 1 ? "" : "s"}</span>
             </div>

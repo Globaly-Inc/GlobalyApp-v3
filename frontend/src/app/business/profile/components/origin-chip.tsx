@@ -7,12 +7,12 @@ export type Origin = "extracted" | "manual";
  * Services, Scholarships and Branches tabs so the three read the same. */
 export function OriginChip({ origin }: Readonly<{ origin: Origin }>) {
   return origin === "extracted" ? (
-    <Badge variant="outline" className="shrink-0 border-sky-200 bg-sky-50 text-[10px] text-sky-700 dark:border-sky-900 dark:bg-sky-950/40 dark:text-sky-300" title="Found by the website extraction">
+    <Badge variant="outline" className="shrink-0 border-info/30 bg-info/10 text-xs text-info" title="Found by the website extraction">
       <Sparkles className="animate-twinkle size-2.5" />
       Extracted
     </Badge>
   ) : (
-    <Badge variant="outline" className="shrink-0 border-violet-200 bg-violet-50 text-[10px] text-violet-700 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-300" title="Added by hand">
+    <Badge variant="outline" className="shrink-0 border-chart-4/30 bg-chart-4/10 text-xs text-chart-4" title="Added by hand">
       Manual
     </Badge>
   );

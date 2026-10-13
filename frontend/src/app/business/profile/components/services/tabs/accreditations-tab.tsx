@@ -14,10 +14,10 @@ import { ServiceAccreditationForm } from "./service-accreditation-form";
 import { TabSection } from "./tab-section";
 import type { ServiceAccreditationLink } from "../../../apis/types";
 
-const CHIP = "rounded-full px-2 py-0.5 text-[11px] font-semibold";
+const CHIP = "rounded-full px-2 py-0.5 text-xs font-semibold";
 const STATUS = {
-  approved: { label: "Verified", chip: "bg-emerald-500/10 text-emerald-700 dark:bg-emerald-400/10 dark:text-emerald-300", seal: "" },
-  pending: { label: "Pending review", chip: "bg-amber-500/15 text-amber-700 dark:bg-amber-400/10 dark:text-amber-300", seal: "bg-amber-500/15 text-amber-700 dark:text-amber-300" },
+  approved: { label: "Verified", chip: "bg-success/10 text-success", seal: "" },
+  pending: { label: "Pending review", chip: "bg-warning/15 text-warning", seal: "bg-warning/15 text-warning" },
   rejected: { label: "Rejected", chip: "bg-destructive/10 text-destructive", seal: "bg-destructive/10 text-destructive" },
   unknown: { label: null, chip: "", seal: "" },
 };
@@ -117,7 +117,7 @@ export function AccreditationsTab({ serviceId }: Readonly<{ serviceId: string }>
         emptyTitle="No accreditations linked yet"
         emptyHint="Link the bodies that accredit this course so students can trust it."
         summary={
-          <p className="text-[10.5px] font-semibold uppercase tracking-wider text-muted-foreground">
+          <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
             {countOf("approved")} verified · {countOf("pending")} in review
           </p>
         }

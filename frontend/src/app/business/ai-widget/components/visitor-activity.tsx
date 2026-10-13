@@ -58,8 +58,8 @@ function ChatEntry({ chat }: Readonly<{ chat: VisitorChat }>) {
         <p className="flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
           <span
             className={cn(
-              "rounded-full px-2 py-0.5 text-[10.5px] font-semibold",
-              chat.ended_at ? "bg-muted text-muted-foreground" : "bg-emerald-500/10 text-emerald-700",
+              "rounded-full px-2 py-0.5 text-xs font-semibold",
+              chat.ended_at ? "bg-muted text-muted-foreground" : "bg-success/10 text-success",
             )}
           >
             {chat.ended_at ? "Ended" : "In progress"}

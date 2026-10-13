@@ -19,7 +19,7 @@ import type { Memory } from "../apis/types";
 const SPINE: Record<"attention" | "pending" | "live" | "retired", string> = {
   attention: "bg-destructive",
   pending: "bg-[hsl(var(--gold))]",
-  live: "bg-emerald-500",
+  live: "bg-success",
   retired: "bg-border",
 };
 
@@ -75,22 +75,22 @@ export function MemoryCard({
           <span className="font-medium text-muted-foreground">{type?.label ?? memory.type}</span>
 
           {isAlwaysOn(memory) && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+            <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-medium text-primary">
               <Pin className="size-2.5" /> Every reply
             </span>
           )}
           {memory.flagged_at && (
-            <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[11px] font-medium text-destructive">
+            <span className="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-xs font-medium text-destructive">
               <Flag className="size-2.5" /> Flagged
             </span>
           )}
           {memory.status === "candidate" && (
-            <span className="rounded-full bg-[hsl(var(--gold)/0.15)] px-2 py-0.5 text-[11px] font-medium text-[hsl(187_92%_28%)] dark:text-[hsl(var(--gold))]">
+            <span className="rounded-full bg-[hsl(var(--gold)/0.15)] px-2 py-0.5 text-xs font-medium text-[hsl(187_92%_28%)] dark:text-[hsl(var(--gold))]">
               Awaiting review
             </span>
           )}
           {memory.status === "deprecated" && (
-            <span className="rounded-full bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+            <span className="rounded-full bg-muted px-2 py-0.5 text-xs font-medium text-muted-foreground">
               Retired
             </span>
           )}

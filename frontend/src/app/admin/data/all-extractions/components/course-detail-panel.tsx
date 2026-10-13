@@ -347,7 +347,7 @@ export function CourseDetailPanel({
           </div>
           <div className="flex shrink-0 items-center gap-1.5">
             {course.verification_status && course.verification_status !== "unverified" && (
-              <Badge variant="outline" className="text-[10px] capitalize">{humanize(course.verification_status)}</Badge>
+              <Badge variant="outline" className="text-xs capitalize">{humanize(course.verification_status)}</Badge>
             )}
             <Button
               variant="outline"
@@ -356,7 +356,7 @@ export function CourseDetailPanel({
               disabled={busy || course.verification_status === "confirmed"}
               onClick={() => run(() => allExtractionsApi.approveCourse(course.id), "Course approved")}
             >
-              <CheckCircle2 className="h-3 w-3 text-emerald-600" />
+              <CheckCircle2 className="h-3 w-3 text-success" />
               Approve
             </Button>
             <Button
@@ -478,7 +478,7 @@ export function CourseDetailPanel({
                       <span className="block text-xs capitalize text-muted-foreground">{humanize(fee.student_type) || "Fee"}</span>
                       {fee.name && <span className="block truncate text-sm font-medium">{fee.name}</span>}
                       <span className="mt-0.5 inline-flex items-baseline gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 text-primary">
-                        {fee.currency && <span className="text-[10px] font-semibold uppercase tracking-wide">{fee.currency}</span>}
+                        {fee.currency && <span className="text-xs font-semibold uppercase tracking-wide">{fee.currency}</span>}
                         <span className="text-sm font-semibold tabular-nums">{fee.total_amount ?? feeAmount(fee)}</span>
                       </span>
                       {fee.description && (
@@ -612,13 +612,13 @@ export function CourseDetailPanel({
                 return (
                   <div key={unit.id} className="flex items-center justify-between gap-2 rounded-md bg-muted/40 px-2 py-1.5">
                     <span className="flex min-w-0 items-center gap-2">
-                      {unit.unit_code && <Badge variant="outline" className="shrink-0 text-[10px]">{unit.unit_code}</Badge>}
+                      {unit.unit_code && <Badge variant="outline" className="shrink-0 text-xs">{unit.unit_code}</Badge>}
                       <span className="truncate text-sm">{unit.unit_name}</span>
                     </span>
                     <span className="flex shrink-0 items-center gap-2">
                       <SharedCoursesBadge names={otherNames} />
                       {unit.credit_points != null && (
-                        <Badge className="bg-primary/10 text-[10px] text-primary">{unit.credit_points} CP</Badge>
+                        <Badge className="bg-primary/10 text-xs text-primary">{unit.credit_points} CP</Badge>
                       )}
                       {rowActions(() => setEditingUnitId(unit.id), () => unlinkRow(unit.id))}
                     </span>
@@ -816,13 +816,13 @@ export function CourseDetailPanel({
                   <div className="min-w-0">
                     <div className="flex flex-wrap items-center gap-1.5">
                       {option.study_mode && (
-                        <Badge className="text-[10px] capitalize">{humanize(option.study_mode)}</Badge>
+                        <Badge className="text-xs capitalize">{humanize(option.study_mode)}</Badge>
                       )}
                       {option.study_load && (
                         <span className="text-xs capitalize text-foreground">{humanize(option.study_load)}</span>
                       )}
                       {option.applicable_to && (
-                        <Badge variant="outline" className="text-[10px] capitalize">{humanize(option.applicable_to)}</Badge>
+                        <Badge variant="outline" className="text-xs capitalize">{humanize(option.applicable_to)}</Badge>
                       )}
                     </div>
                     {option.duration_value != null && (

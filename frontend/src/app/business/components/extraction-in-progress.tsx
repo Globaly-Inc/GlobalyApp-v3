@@ -14,8 +14,8 @@ function ExtractionIllustration() {
       <rect x="36" y="22" width="168" height="128" rx="12" className="fill-card stroke-border" strokeWidth="2" />
       <path d="M36 34a12 12 0 0 1 12-12h144a12 12 0 0 1 12 12v8H36z" className="fill-muted" />
       <circle cx="50" cy="32" r="3" className="fill-destructive/60" />
-      <circle cx="60" cy="32" r="3" className="fill-amber-400" />
-      <circle cx="70" cy="32" r="3" className="fill-emerald-400" />
+      <circle cx="60" cy="32" r="3" className="fill-warning" />
+      <circle cx="70" cy="32" r="3" className="fill-success" />
       <rect x="52" y="56" width="56" height="40" rx="6" fill="currentColor" opacity="0.15" />
       <path d="m58 88 12-14 9 9 7-6 14 11z" fill="currentColor" opacity="0.45" />
       {[56, 66, 76, 86].map((y, i) => (

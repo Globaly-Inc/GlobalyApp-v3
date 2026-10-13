@@ -64,7 +64,7 @@ export function SectionSummaryCard({
           </span>
           {title}
           {count != null && count > 0 && (
-            <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[11px] tabular-nums text-primary">{count}</span>
+            <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-xs tabular-nums text-primary">{count}</span>
           )}
         </h2>
         <div className="flex items-center gap-2">

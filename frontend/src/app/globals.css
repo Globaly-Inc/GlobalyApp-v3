@@ -44,6 +44,7 @@
   --color-warning-foreground: var(--warning-foreground);
   --color-info: var(--info);
   --color-info-foreground: var(--info-foreground);
+  --color-rating: var(--rating);
   --color-ai: var(--ai);
   --color-ai-foreground: var(--ai-foreground);
   --color-priority-high: var(--priority-high);
@@ -122,6 +123,7 @@
   --chart-6: hsl(189 94% 27%);
   --chart-7: hsl(25 95% 35%);
   --chart-8: hsl(215 16% 44%);
+  --rating: hsl(43 96% 56%);
   --priority-high: hsl(0 84% 95%);
   --priority-high-foreground: hsl(0 72% 38%);
   --priority-medium: hsl(38 92% 92%);
@@ -198,6 +200,7 @@
   --chart-6: hsl(187 92% 69%);
   --chart-7: hsl(27 96% 61%);
   --chart-8: hsl(215 20% 65%);
+  --rating: hsl(43 96% 56%);
   --priority-high: hsl(0 60% 18%);
   --priority-high-foreground: hsl(0 80% 80%);
   --priority-medium: hsl(32 60% 18%);

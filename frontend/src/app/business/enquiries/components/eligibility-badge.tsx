@@ -14,15 +14,15 @@ import type { DistributionListItem } from "../apis/types";
  * absent, so a badge on every second card would say nothing and mean less.
  */
 const LABELS = {
-  eligible: { text: "Meets requirements", tone: "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400" },
-  not_eligible: { text: "Below requirements", tone: "border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-400" },
+  eligible: { text: "Meets requirements", tone: "border-success/30 bg-success/10 text-success" },
+  not_eligible: { text: "Below requirements", tone: "border-warning/30 bg-warning/10 text-warning" },
 } as const;
 
 export function EligibilityBadge({ status }: Readonly<{ status: DistributionListItem["eligibility_status"] }>) {
   const label = status === "eligible" || status === "not_eligible" ? LABELS[status] : null;
   if (!label) return null;
   return (
-    <Badge variant="outline" className={cn("text-[11px] font-medium", label.tone)}>
+    <Badge variant="outline" className={cn("text-xs font-medium", label.tone)}>
       {label.text}
     </Badge>
   );

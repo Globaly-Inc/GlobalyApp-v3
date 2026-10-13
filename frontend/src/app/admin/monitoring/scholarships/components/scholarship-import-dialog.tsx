@@ -184,7 +184,7 @@ export function ScholarshipImportDialog({
               {results.map((r) => (
                 <div key={r.key} className="flex items-center justify-between border-b border-border px-3 py-2 text-xs last:border-b-0">
                   <span className="truncate">{r.title}</span>
-                  <span className={r.status === "ok" ? "text-green-600" : r.status === "skipped" ? "text-muted-foreground" : "text-destructive"}>
+                  <span className={r.status === "ok" ? "text-success" : r.status === "skipped" ? "text-muted-foreground" : "text-destructive"}>
                     {r.status === "ok" ? "Created" : r.status === "skipped" ? r.detail : `Error: ${r.detail}`}
                   </span>
                 </div>

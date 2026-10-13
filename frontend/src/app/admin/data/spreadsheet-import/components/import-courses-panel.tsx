@@ -41,7 +41,7 @@ export function ImportCoursesPanel({ jobId }: Readonly<{ jobId: string }>) {
   return (
     <div className="grid gap-4 md:grid-cols-3">
       <div className="flex flex-col gap-2">
-        <p className="text-xs font-semibold text-emerald-700">Imported ({courses?.meta.total ?? "…"})</p>
+        <p className="text-xs font-semibold text-success">Imported ({courses?.meta.total ?? "…"})</p>
         {!courses ? <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" /> : (
           <>
             <ul className="max-h-72 space-y-1 overflow-y-auto text-sm">
@@ -58,7 +58,7 @@ export function ImportCoursesPanel({ jobId }: Readonly<{ jobId: string }>) {
           </>
         )}
       </div>
-      <RowList title="Duplicates" tone="text-amber-700" rows={duplicates} empty="No duplicate rows." />
+      <RowList title="Duplicates" tone="text-warning" rows={duplicates} empty="No duplicate rows." />
       <RowList title="Not imported" tone="text-destructive" rows={notImported} empty="Every course row was imported." />
     </div>
   );

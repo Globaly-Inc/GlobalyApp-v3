@@ -98,11 +98,11 @@ export function ExtractionJobActions({
           <DropdownMenuItem onClick={() => router.push(detailHref)}>
             <Eye className="h-3.5 w-3.5" /> View Details
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={rerun} disabled={rerunning} className="text-purple-600">
+          <DropdownMenuItem onClick={rerun} disabled={rerunning} className="text-chart-4">
             <RotateCw className="h-3.5 w-3.5" /> Re-run Job
           </DropdownMenuItem>
           {isPausable && (
-            <DropdownMenuItem onClick={onPause} className="text-orange-600">
+            <DropdownMenuItem onClick={onPause} className="text-warning">
               <Pause className="h-3.5 w-3.5" /> Pause
             </DropdownMenuItem>
           )}

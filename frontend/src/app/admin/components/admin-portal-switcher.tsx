@@ -81,7 +81,7 @@ export function AdminPortalSwitcher({
           <>
             <DropdownMenuSeparator />
             <DropdownMenuItem
-              className="cursor-pointer gap-2 text-amber-600 focus:text-amber-600"
+              className="cursor-pointer gap-2 text-warning focus:text-warning"
               onClick={() => router.push("/admin/overview")}
             >
               <ShieldCheck className="h-4 w-4" /> Super Admin

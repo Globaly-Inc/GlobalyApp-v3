@@ -100,7 +100,7 @@ export function InstitutionServicesTab({
               <div>
                 <div className="flex items-center gap-2">
                   <span className="text-sm font-medium">{s.name}</span>
-                  <Badge variant={s.is_published ? "default" : "secondary"} className="text-[10px]">
+                  <Badge variant={s.is_published ? "default" : "secondary"} className="text-xs">
                     {s.is_published ? "Published" : "Draft"}
                   </Badge>
                 </div>

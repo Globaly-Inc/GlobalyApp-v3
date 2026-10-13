@@ -18,21 +18,22 @@ import { cn } from "@/lib/utils";
 
 /** Explicit per-category washes. Seven categories is few enough to pick pleasant pairs by hand. */
 const WASHES: Record<string, string> = {
-  airport_pickup: "from-sky-100 to-indigo-200 dark:from-sky-950 dark:to-indigo-900",
-  city_orientation: "from-amber-100 to-rose-200 dark:from-amber-950 dark:to-rose-900",
-  rental_support: "from-emerald-100 to-teal-200 dark:from-emerald-950 dark:to-teal-900",
-  employment_support: "from-slate-100 to-blue-200 dark:from-slate-900 dark:to-blue-900",
-  assignment_help: "from-violet-100 to-fuchsia-200 dark:from-violet-950 dark:to-fuchsia-900",
-  private_tutoring: "from-orange-100 to-amber-200 dark:from-orange-950 dark:to-amber-900",
-  other: "from-stone-100 to-neutral-200 dark:from-stone-900 dark:to-neutral-800",
+  airport_pickup: "from-info/15 to-chart-1/25",
+  city_orientation: "from-warning/15 to-chart-5/25",
+  rental_support: "from-success/15 to-chart-2/25",
+  employment_support: "from-muted to-accent",
+  assignment_help: "from-chart-4/15 to-chart-6/25",
+  private_tutoring: "from-chart-3/15 to-chart-7/25",
+  // Mirror of employment_support so the two neutral washes still differ.
+  other: "from-accent to-muted",
 };
 
 /** Anything an admin adds later still gets a stable wash rather than falling back to grey. */
 const FALLBACKS = [
-  "from-cyan-100 to-blue-200 dark:from-cyan-950 dark:to-blue-900",
-  "from-lime-100 to-emerald-200 dark:from-lime-950 dark:to-emerald-900",
-  "from-pink-100 to-purple-200 dark:from-pink-950 dark:to-purple-900",
-  "from-yellow-100 to-orange-200 dark:from-yellow-950 dark:to-orange-900",
+  "from-chart-1/15 to-chart-4/25",
+  "from-chart-2/15 to-info/25",
+  "from-chart-5/15 to-chart-3/25",
+  "from-chart-6/15 to-success/25",
 ];
 
 function wash(slug: string): string {

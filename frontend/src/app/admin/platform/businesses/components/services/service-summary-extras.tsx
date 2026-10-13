@@ -18,7 +18,7 @@ type Kind = "business" | "institution";
 
 export function PublicBadge() {
   return (
-    <Badge variant="secondary" className="gap-1 text-[11px]">
+    <Badge variant="secondary" className="gap-1 text-xs">
       <Globe2 className="h-3 w-3" />
       Public
     </Badge>
@@ -145,10 +145,10 @@ export function ServiceSummaryBodyExtras({
                   </div>
                   <div className="min-w-0 flex-1">
                     <div className="flex items-center gap-1.5">
-                      {u.unit_code && <span className="font-mono text-[11px] font-semibold text-primary">{u.unit_code}</span>}
+                      {u.unit_code && <span className="font-mono text-xs font-semibold text-primary">{u.unit_code}</span>}
                       <p className="truncate text-xs font-semibold">{u.unit_name}</p>
                     </div>
-                    <Badge variant={u.unit_type === "elective" ? "secondary" : "default"} className="mt-0.5 h-4 px-1.5 py-0 text-[9px]">
+                    <Badge variant={u.unit_type === "elective" ? "secondary" : "default"} className="mt-0.5 h-5 px-1.5 py-0 text-xs">
                       {u.unit_type === "elective" ? "Elective" : "Compulsory"}
                     </Badge>
                   </div>
@@ -175,7 +175,7 @@ export function ServiceSummaryBodyExtras({
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-xs font-semibold">{a.name}</p>
-                    {a.issuing_organization_name && <p className="truncate text-[11px] text-muted-foreground">{a.issuing_organization_name}</p>}
+                    {a.issuing_organization_name && <p className="truncate text-xs text-muted-foreground">{a.issuing_organization_name}</p>}
                   </div>
                 </div>
               ))}
@@ -198,7 +198,7 @@ export function ServiceSummaryBodyExtras({
                   <Badge variant="secondary" className="text-xs capitalize">{row.applicable_to}</Badge>
                   {(row.degree_level_id || (row.score_type && row.min_score)) && (
                     <div className="space-y-1.5">
-                      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Academic</p>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Academic</p>
                       {row.degree_level_id && (
                         <p className="text-xs">Min. degree: <span className="font-medium">{degreeLevels.find((d) => d.id === row.degree_level_id)?.name ?? "—"}</span></p>
                       )}
@@ -206,7 +206,7 @@ export function ServiceSummaryBodyExtras({
                   )}
                   {row.language_tests.length > 0 && (
                     <div className="space-y-1.5">
-                      <p className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Language tests</p>
+                      <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Language tests</p>
                       <div className="flex flex-wrap gap-1.5">
                         {row.language_tests.map((t, i) => (
                           <Badge key={`${t.test_type_name}-${i}`} variant="outline">{t.test_type_name} ≥ {t.overall_score}</Badge>
@@ -283,7 +283,7 @@ export function ServiceSummarySidebarExtras({
                 return (
                   <div key={fee.id} className="space-y-1.5 rounded-lg border bg-muted/30 p-3">
                     <Badge variant="secondary" className="text-xs capitalize">{fee.student_type}</Badge>
-                    <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">
+                    <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">
                       Total{fee.installments.length > 0 ? ` (${fee.installments.length} instalment${fee.installments.length !== 1 ? "s" : ""})` : ""}
                     </p>
                     <p className="text-lg font-bold">{fee.currency} {Number(fee.total_amount).toLocaleString()}</p>
@@ -313,9 +313,9 @@ export function ServiceSummarySidebarExtras({
                     <div className="flex min-w-[60px] flex-col items-center justify-center border-r bg-primary/10 px-3 py-3 text-primary">
                       {startDate ? (
                         <>
-                          <span className="text-[10px] font-bold uppercase tracking-wider">{startDate.toLocaleDateString("en-US", { month: "short" }).toUpperCase()}</span>
+                          <span className="text-xs font-bold uppercase tracking-wider">{startDate.toLocaleDateString("en-US", { month: "short" }).toUpperCase()}</span>
                           <span className="mt-0.5 text-xl font-black leading-none">{startDate.getDate()}</span>
-                          <span className="mt-0.5 text-[10px] font-medium">{startDate.getFullYear()}</span>
+                          <span className="mt-0.5 text-xs font-medium">{startDate.getFullYear()}</span>
                         </>
                       ) : (
                         <CalendarDays className="h-5 w-5" />

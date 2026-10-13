@@ -12,10 +12,10 @@ type BusinessStatsSidebarProps = {
 };
 
 const STAT_TINTS = {
-  blue: "text-blue-600 bg-blue-500/10 ring-blue-500/15 dark:text-blue-400",
-  emerald: "text-emerald-600 bg-emerald-500/10 ring-emerald-500/15 dark:text-emerald-400",
-  amber: "text-amber-600 bg-amber-500/10 ring-amber-500/15 dark:text-amber-400",
-  violet: "text-violet-600 bg-violet-500/10 ring-violet-500/15 dark:text-violet-400",
+  blue: "text-info bg-info/10 ring-info/15",
+  emerald: "text-success bg-success/10 ring-success/15",
+  amber: "text-warning bg-warning/10 ring-warning/15",
+  violet: "text-chart-4 bg-chart-4/10 ring-chart-4/15",
 };
 
 export function BusinessStatsSidebar({ enquiriesCount, servicesCount, creditBalance }: BusinessStatsSidebarProps) {
@@ -28,9 +28,9 @@ export function BusinessStatsSidebar({ enquiriesCount, servicesCount, creditBala
 
   return (
     <div className="space-y-3">
-      <Card className="overflow-hidden border-amber-200/60 bg-gradient-to-br from-amber-50 to-transparent dark:border-amber-500/20 dark:from-amber-500/10">
+      <Card className="overflow-hidden border-warning/25 bg-gradient-to-br from-warning/10 to-transparent">
         <CardContent className="flex items-center gap-4 p-5">
-          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-amber-500/15 text-amber-600 ring-1 ring-amber-500/20 dark:text-amber-400">
+          <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-warning/15 text-warning ring-1 ring-warning/20">
             <CreditCard className="h-6 w-6" />
           </div>
           <div className="min-w-0 flex-1">
@@ -40,7 +40,7 @@ export function BusinessStatsSidebar({ enquiriesCount, servicesCount, creditBala
           {creditBalance < 20 && (
             <Badge
               variant="outline"
-              className="shrink-0 border-amber-300 bg-amber-100 text-[10px] text-amber-700 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-400"
+              className="shrink-0 border-warning/30 bg-warning/15 text-xs text-warning"
             >
               Low
             </Badge>

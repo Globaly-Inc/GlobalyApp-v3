@@ -137,7 +137,7 @@ export function FaqsTab({
                 {(faq.tags?.length ?? 0) > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {faq.tags!.map((tag) => (
-                      <Badge key={tag} variant="outline" className="text-[10px]">{tag}</Badge>
+                      <Badge key={tag} variant="outline" className="text-xs">{tag}</Badge>
                     ))}
                   </div>
                 )}

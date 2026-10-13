@@ -30,15 +30,15 @@ const SIX_MONTHS_MS = 182 * 24 * 60 * 60 * 1000;
  */
 function freshness(source: RackSource): { label: string; tone: string } | null {
   if (source.effective_until && new Date(source.effective_until) < new Date()) {
-    return { label: `Expired ${source.effective_until}`, tone: "bg-red-100 text-red-800" };
+    return { label: `Expired ${source.effective_until}`, tone: "bg-destructive/15 text-destructive" };
   }
   if (!source.last_verified_at) {
-    return { label: "Never verified", tone: "bg-amber-100 text-amber-900" };
+    return { label: "Never verified", tone: "bg-warning/15 text-warning" };
   }
   if (Date.now() - new Date(source.last_verified_at).getTime() > SIX_MONTHS_MS) {
     return {
       label: `Verified ${new Date(source.last_verified_at).toLocaleDateString()}`,
-      tone: "bg-amber-100 text-amber-900",
+      tone: "bg-warning/15 text-warning",
     };
   }
   return null;
@@ -147,7 +147,7 @@ export function RackTab({
                 <p className={cn("truncate text-sm", selectedCategoryId === category.id && "font-medium text-primary")}>
                   {category.label}
                 </p>
-                <p className="truncate text-[10px] text-muted-foreground">
+                <p className="truncate text-xs text-muted-foreground">
                   {category.kind.replaceAll("_", " ")}{category.country_code ? ` · ${category.country_code}` : ""}
                 </p>
               </button>
@@ -245,30 +245,30 @@ export function RackTab({
                       <div className="min-w-0">
                         <div className="flex flex-wrap items-center gap-2">
                           <p className="truncate font-medium text-foreground">{source.title || source.domain}</p>
-                          <Badge className={`text-[10px] ${TRUST_TIER_TONE[source.trust_tier]}`}>
+                          <Badge className={`text-xs ${TRUST_TIER_TONE[source.trust_tier]}`}>
                             {TRUST_TIER_OPTIONS.find((t) => t.value === source.trust_tier)?.label}
                           </Badge>
                           {source.last_status && (
-                            <Badge className={`text-[10px] ${CRAWL_STATUS_TONE[source.last_status]?.className ?? "bg-muted text-muted-foreground"}`}>
+                            <Badge className={`text-xs ${CRAWL_STATUS_TONE[source.last_status]?.className ?? "bg-muted text-muted-foreground"}`}>
                               {CRAWL_STATUS_TONE[source.last_status]?.label ?? source.last_status}
                             </Badge>
                           )}
                           {(() => {
                             const stale = freshness(source);
                             return stale ? (
-                              <Badge className={`gap-1 text-[10px] ${stale.tone}`}>
+                              <Badge className={`gap-1 text-xs ${stale.tone}`}>
                                 <CalendarClock className="h-3 w-3" />
                                 {stale.label}
                               </Badge>
                             ) : null;
                           })()}
                           {source.source_type === "file" && (
-                            <Badge variant="outline" className="gap-1 text-[10px]">
+                            <Badge variant="outline" className="gap-1 text-xs">
                               <Upload className="h-3 w-3" />
                               Upload
                             </Badge>
                           )}
-                          {!source.active && <Badge className="bg-muted text-[10px] text-muted-foreground">Inactive</Badge>}
+                          {!source.active && <Badge className="bg-muted text-xs text-muted-foreground">Inactive</Badge>}
                         </div>
                         <p className="mt-1 truncate text-xs text-muted-foreground">
                           {source.source_type === "file" ? source.file_name : source.url}
@@ -292,7 +292,7 @@ export function RackTab({
                           <p className="mt-1 text-xs text-destructive">{source.last_error}</p>
                         )}
                         {source.crawl_summary && (
-                          <p className="mt-1 text-[11px] text-muted-foreground">
+                          <p className="mt-1 text-xs text-muted-foreground">
                             Last run: {source.crawl_summary.added} added · {source.crawl_summary.updated} updated ·{" "}
                             {source.crawl_summary.unchanged} unchanged · {source.crawl_summary.failed} failed ·{" "}
                             {source.crawl_summary.chunks ?? 0} chunks, {source.crawl_summary.embedded} embedded (via{" "}
@@ -376,12 +376,12 @@ export function RackTab({
                               onClick={() => setOpenDocumentId(doc.id)}
                             >
                               <p className="truncate text-sm">{doc.title || doc.url}</p>
-                              <p className="truncate text-[10px] text-muted-foreground">{doc.word_count} words · {doc.url}</p>
+                              <p className="truncate text-xs text-muted-foreground">{doc.word_count} words · {doc.url}</p>
                             </button>
                             <Badge
                               className={cn(
-                                "shrink-0 gap-1 text-[10px]",
-                                doc.is_embedded ? "bg-emerald-100 text-emerald-800" : "bg-muted text-muted-foreground",
+                                "shrink-0 gap-1 text-xs",
+                                doc.is_embedded ? "bg-success/15 text-success" : "bg-muted text-muted-foreground",
                               )}
                             >
                               <Brain className="h-3 w-3" />

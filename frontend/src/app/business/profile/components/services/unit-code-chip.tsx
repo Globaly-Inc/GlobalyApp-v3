@@ -5,8 +5,8 @@ export function UnitCodeChip({ elective, className, children }: Readonly<{ elect
   return (
     <span
       className={cn(
-        "shrink-0 rounded-md px-2 py-1 text-center font-mono text-[11.5px] font-semibold",
-        elective ? "bg-violet-500/10 text-violet-600 dark:text-violet-400" : "bg-primary/10 text-primary",
+        "shrink-0 rounded-md px-2 py-1 text-center font-mono text-xs font-semibold",
+        elective ? "bg-chart-4/10 text-chart-4" : "bg-primary/10 text-primary",
         className,
       )}
     >

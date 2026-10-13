@@ -25,7 +25,7 @@ function WidgetIllustration() {
       <div className="absolute left-6 top-8 w-[72%] overflow-hidden rounded-xl border border-border bg-card shadow-lg shadow-primary/10 sm:left-10">
         <div className="flex h-7 items-center gap-1.5 border-b border-border bg-muted px-3">
           {[0, 1, 2].map((i) => <span key={i} className="size-2 rounded-full bg-border" />)}
-          <span className="ml-2 flex h-3.5 flex-1 items-center rounded-full border border-border bg-card px-2 text-[9px] text-muted-foreground">
+          <span className="ml-2 flex h-4 flex-1 items-center rounded-full border border-border bg-card px-2 text-xs text-muted-foreground">
             your-website.com
           </span>
         </div>

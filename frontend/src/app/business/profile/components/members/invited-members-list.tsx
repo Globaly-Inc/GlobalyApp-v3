@@ -97,7 +97,7 @@ export function InvitedMembersList({ businessId }: Readonly<{ businessId: number
                 </td>
                 <td className={TD}>{i.role ? <RoleChip role={i.role} label={i.role.replaceAll("_", " ")} /> : "—"}</td>
                 <td className={TD}>
-                  <span className="whitespace-nowrap font-mono text-[11px] font-medium text-muted-foreground" title={new Date(i.invited_at).toLocaleString()}>
+                  <span className="whitespace-nowrap font-mono text-xs font-medium text-muted-foreground" title={new Date(i.invited_at).toLocaleString()}>
                     {relativeTime(i.invited_at)}
                   </span>
                 </td>
@@ -137,7 +137,7 @@ function ExpiryChip({ expiresAt }: Readonly<{ expiresAt: string }>) {
       className={cn(
         CHIP,
         "border-transparent font-mono",
-        days <= 1 ? "bg-red-50 text-red-700 dark:bg-red-950/60 dark:text-red-300" : "bg-amber-100 text-amber-800 dark:bg-amber-950/60 dark:text-amber-300",
+        days <= 1 ? "bg-destructive/10 text-destructive" : "bg-warning/15 text-warning",
       )}
     >
       {text}

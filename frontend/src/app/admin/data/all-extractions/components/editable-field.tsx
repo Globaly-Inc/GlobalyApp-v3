@@ -146,7 +146,7 @@ export function EditableField({
                 disabled={saving}
                 onClick={() => switchPrecision(p)}
                 className={cn(
-                  "cursor-pointer px-2 py-0.5 text-[11px] transition-colors",
+                  "cursor-pointer px-2 py-0.5 text-xs transition-colors",
                   precision === p ? "bg-primary text-primary-foreground" : "hover:bg-muted",
                 )}
               >

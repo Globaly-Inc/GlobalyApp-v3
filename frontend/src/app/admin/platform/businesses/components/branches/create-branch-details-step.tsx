@@ -116,7 +116,7 @@ export function CreateBranchDetailsStep({
             <Check
               aria-hidden
               className={cn(
-                "absolute right-3 top-1/2 size-4 -translate-y-1/2 text-emerald-600 transition-[opacity,transform] duration-300 ease-[cubic-bezier(.34,1.56,.64,1)] dark:text-emerald-400",
+                "absolute right-3 top-1/2 size-4 -translate-y-1/2 text-success transition-[opacity,transform] duration-300 ease-[cubic-bezier(.34,1.56,.64,1)]",
                 nameValid ? "scale-100 opacity-100" : "scale-50 opacity-0",
               )}
             />

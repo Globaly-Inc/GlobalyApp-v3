@@ -57,7 +57,7 @@ export function InstitutionScholarshipsTable({
                       {(r.origin === "extracted" || !editable) && (
                         <small className="mt-0.75 flex items-center gap-1.5 whitespace-nowrap">
                           {r.origin === "extracted" && <OriginChip origin="extracted" />}
-                          {!editable && <span className={cn(CHIP, CHIP_OUTLINE, "text-[10px]")}>From head office</span>}
+                          {!editable && <span className={cn(CHIP, CHIP_OUTLINE, "text-xs")}>From head office</span>}
                         </small>
                       )}
                     </div>

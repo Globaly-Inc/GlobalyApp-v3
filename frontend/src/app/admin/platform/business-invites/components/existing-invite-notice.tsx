@@ -57,10 +57,10 @@ export function ExistingInviteNotice({ invite }: Readonly<{ invite: OnboardingIn
   return (
     <div
       role="status"
-      className="flex items-start gap-2.5 rounded-xl border border-amber-300 bg-amber-50 p-3 dark:border-amber-500/40 dark:bg-amber-500/10"
+      className="flex items-start gap-2.5 rounded-xl border border-warning/30 bg-warning/10 p-3"
     >
-      <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
-      <p className="text-xs leading-5 text-amber-900 dark:text-amber-200">
+      <CircleAlert className="mt-0.5 h-4 w-4 shrink-0 text-warning" aria-hidden />
+      <p className="text-xs leading-5 text-foreground">
         <strong className="font-semibold">An invitation to this address already exists</strong> — sent{" "}
         {formatDate(invite.created_at)} {when}. A second one is refused while it stands, so use{" "}
         <strong className="font-semibold">Resend</strong> on its row in the Invites tab to send them a fresh link.

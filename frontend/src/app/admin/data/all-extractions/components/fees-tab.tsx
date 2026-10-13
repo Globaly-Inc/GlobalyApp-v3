@@ -113,7 +113,7 @@ function FeeCard({
         {fee.installments && fee.installments.length > 0 && (
           <div className="flex flex-wrap gap-2">
             {fee.installments.map((installment) => (
-              <Badge key={installment.label} variant="secondary" className="text-[10px]">
+              <Badge key={installment.label} variant="secondary" className="text-xs">
                 {installment.label}: {fee.currency} {installment.amount}
               </Badge>
             ))}

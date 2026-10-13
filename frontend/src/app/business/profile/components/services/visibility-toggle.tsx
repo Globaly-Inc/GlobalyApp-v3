@@ -21,7 +21,7 @@ export function VisibilityToggle({ section, visibility }: Readonly<{ section: st
       aria-pressed={visible}
       title={visible ? "Shown on the public course page — click to hide" : "Hidden from the public course page — click to show"}
       className={cn(
-        "inline-flex cursor-pointer items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60",
+        "inline-flex cursor-pointer items-center gap-1 rounded-full border px-2.5 py-0.5 text-xs font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60",
         visible
           ? "border-success/20 bg-success/10 text-success hover:bg-success/15"
           : "bg-muted text-muted-foreground hover:text-foreground",

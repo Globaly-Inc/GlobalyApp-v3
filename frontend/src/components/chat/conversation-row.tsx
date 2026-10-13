@@ -102,7 +102,7 @@ export function ConversationRow({
         )}
       >
         <Star
-          className={cn("size-3.5", thread.is_favorite ? "fill-warning text-warning" : "text-muted-foreground")}
+          className={cn("size-3.5", thread.is_favorite ? "fill-rating text-rating" : "text-muted-foreground")}
         />
       </button>
     </div>
