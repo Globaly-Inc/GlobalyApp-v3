@@ -78,6 +78,23 @@ function normUnit(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+const NO_UNITS: ReadonlySet<string> = new Set();
+
+/**
+ * How many of these extracted items will plausibly be STORED as course rows — classifyEntity with
+ * an empty unit index, so it is computable before any DB write. This is the decision-grade count
+ * the page worker records on its queue row ahead of the write loop, never the raw model count: a
+ * detail page returning one real course plus a dropped FAQ mention must not spend its processing
+ * window looking like a listing, or a concurrently merged course trades its detail link away
+ * (staging-writer.pageWasAListing). The empty unit index can only over-count (fewer module
+ * reclassifications than the writer will make) — the residue is unit-shaped items on
+ * curriculum-like pages, which are multi-item pages anyway.
+ */
+export function preliminaryCourseCount(items: EntityItem[], sourceUrl: string | null): number {
+  const ctx: EntityContext = { coursesOnPage: items.length, jobUnitCodes: NO_UNITS, jobUnitNames: NO_UNITS, sourceUrl };
+  return items.filter((i) => i.name && !["drop", "module"].includes(classifyEntity(i, ctx).verdict)).length;
+}
+
 export function classifyEntity(item: EntityItem, ctx: EntityContext): EntityClassification {
   const parsed = parseCourseName(item.name);
   const statesAward = parsed.qualifier != null;

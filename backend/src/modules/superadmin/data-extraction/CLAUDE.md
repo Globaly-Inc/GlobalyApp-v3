@@ -1518,7 +1518,11 @@ empty Accreditations tab (heraldcollege.edu.np: zero rows despite literal "accre
   The page worker also records `courses_found` on the queue row BEFORE writing the page's course
   rows (not only at completion), because pageWasAListing reads it while a concurrently-processed
   detail page decides its source_url upgrade — completion-only left that window blind and the
-  merged course stuck on the listing link.
+  merged course stuck on the listing link. That early count is DECISION-GRADE
+  (`entity-classifier.preliminaryCourseCount`: classifyEntity with an empty unit index), never the
+  raw model count — raw, a detail page returning one course plus a dropped mention read as a
+  listing for its whole window, and a concurrent merge could trade the detail link away with the
+  final count never restoring it.
 - `is_awarded_by` on the junction stays the self-service/curated flow's column
   (institution-courses.repository) — the scraper never writes it.
 

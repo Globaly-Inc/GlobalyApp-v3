@@ -36,6 +36,7 @@ import { loadLookupLists, resolveCountryCode } from "../lib/lookup-catalog.js";
 import { checkAllPagesDone } from "../lib/queue-completion.js";
 import { recallMemory, rememberMemory, buildSystemAddendum } from "../lib/memory-client.js";
 import { classifyFailure, isScraperInfraFailure, type FailureClass } from "../lib/classify-failure.js";
+import { preliminaryCourseCount } from "../lib/entity-classifier.js";
 
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
@@ -643,10 +644,13 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       // detail page merged concurrently decides its source_url upgrade by reading THIS row's
       // courses_found (staging-writer.pageWasAListing), and writing it only at completion left the
       // whole write-loop window blind — the merged course kept the listing link with nothing to
-      // revisit it. The completion write below replaces it with the final written count, as before.
+      // revisit it. The count is DECISION-GRADE (preliminaryCourseCount), never the raw model
+      // output: raw, a detail page returning one course plus a dropped mention read as a listing
+      // for its whole window, and a concurrent merge traded the detail link away — with the final
+      // count never restoring it. The completion write below still records the written count.
       if (!(await writeIfOwned({
         extracted_data: masterKnex.raw("coalesce(extracted_data, '{}'::jsonb) || ?::jsonb",
-          [JSON.stringify({ courses_found: extracted.courses?.length ?? 0 })]),
+          [JSON.stringify({ courses_found: preliminaryCourseCount(extracted.courses ?? [], url) })]),
         updated_at: masterKnex.fn.now(),
       }))) {
         logger.info("Fenced out — a newer attempt owns this item, dropping AI result", { jobId, queueItemId, url });
