@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { SectionTabs } from "@/components/section-tabs";
 import { formatDate, formatMoney } from "@/app/personal/earn/services/utils";
-import { STATUS_LABELS, STATUS_STYLES } from "@/app/personal/earn/services/const";
+import { STATUS_LABELS, STATUS_VARIANT } from "@/app/personal/earn/services/const";
 import type { OrderStatus } from "@/app/personal/earn/services/apis";
 import { fetchServiceListings, fetchServiceOrders, fetchServicesStats } from "../store/admin-other-services-slice";
 
@@ -157,7 +157,7 @@ export function AdminOtherServicesView() {
               <TableCell className="hidden lg:table-cell">{o.provider_name}</TableCell>
               <TableCell numeric>{formatMoney(o.amount_minor, o.currency)}</TableCell>
               <TableCell>
-                <Badge variant="secondary" className={cn(STATUS_STYLES[o.status as OrderStatus])}>
+                <Badge variant={STATUS_VARIANT[o.status as OrderStatus]}>
                   {STATUS_LABELS[o.status as OrderStatus] ?? o.status}
                 </Badge>
               </TableCell>

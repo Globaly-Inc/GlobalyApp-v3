@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
 import { Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
+import { PageBody } from "@/components/ui/page-body";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { geoApi, type Country } from "@/app/geo/apis";
 import { fetchMe, useAuthState, switchAccount } from "@/app/auth/store/auth-slice";
@@ -177,7 +178,7 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
 
   return (
     // Keyed on the tab so each switch replays the entrance stagger.
-    <div key={tab} className="stagger-in space-y-4 md:space-y-6">
+    <PageBody key={tab} className="stagger-in">
       {/* V1's profile body is a column of bordered cards, not one card wrapping everything — so
           only the other tabs, which are tables and lists, keep the outer <Card>. */}
       {tab === "profile" ? (
@@ -222,8 +223,8 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
       ) : tab === "site_mapping" ? (
         <SiteUrlsCard sharedFrom={profile?.extraction_parent_name ?? null} />
       ) : (
-        <Card className="rounded-[18px]">
-          <CardContent className="stagger-in-deep px-[22px]">
+        <Card>
+          <CardContent className="stagger-in-deep">
             {tab === "branches" && <BranchesTab businessId={businessId} isInstitution={isViewingInstitution} countries={countries} />}
             {tab === "partners" && (
               <PartnersTab businessId={businessId} businessName={profile.business_name} isInstitution={isViewingInstitution} />
@@ -248,6 +249,6 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
         saving={savingSocials}
         isInstitution={isViewingInstitution}
       />
-    </div>
+    </PageBody>
   );
 }

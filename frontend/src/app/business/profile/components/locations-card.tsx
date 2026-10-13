@@ -45,7 +45,7 @@ export function LocationsCard({
 
   const chipClass = (active: boolean) =>
     cn(
-      "rounded-full border px-3 py-1 text-xs font-semibold transition-colors",
+      "rounded-full border px-3 py-1 text-xs font-medium transition-colors",
       active ? "border-primary bg-primary text-primary-foreground" : "border-border bg-card text-muted-foreground hover:text-foreground",
     );
 
@@ -80,7 +80,7 @@ export function LocationsCard({
         </div>
 
         {displayed.length > COLLAPSED_COUNT && (
-          <button type="button" onClick={() => setExpanded((v) => !v)} className="w-fit text-[12.5px] font-semibold text-primary hover:underline">
+          <button type="button" onClick={() => setExpanded((v) => !v)} className="w-fit text-xs font-medium text-primary hover:underline">
             {expanded ? "Show fewer" : `Show all ${displayed.length} locations`}
           </button>
         )}

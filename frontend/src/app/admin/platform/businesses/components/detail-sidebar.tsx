@@ -13,7 +13,8 @@ import { useState } from "react";
 import { ExternalLink, Link2, Mail, MessageCircle, Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DescriptionItem, DescriptionList } from "@/components/ui/description-list";
 import { Switch } from "@/components/ui/switch";
 import { EditableNumberField } from "./shared/editable-number-field";
 import type { SocialMediaValues } from "./social-media-dialog";
@@ -38,7 +39,7 @@ export function DetailSidebar({
   description,
   onEditOverview,
   statusLabel,
-  statusColor,
+  statusVariant,
   sourceLabel,
   social,
   onEditSocial,
@@ -48,7 +49,7 @@ export function DetailSidebar({
   description: string | null;
   onEditOverview: () => void;
   statusLabel: string;
-  statusColor: string;
+  statusVariant: React.ComponentProps<typeof Badge>["variant"];
   sourceLabel: string;
   social: SocialMediaValues;
   onEditSocial: () => void;
@@ -59,30 +60,37 @@ export function DetailSidebar({
 }>) {
   const [descExpanded, setDescExpanded] = useState(false);
 
-  return (
-    <div className="space-y-4 lg:col-span-1">
-      <Card>
-        <CardContent>
-          <h2 className="mb-3 text-sm font-semibold">Overview</h2>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <p className="text-xs text-muted-foreground">Status</p>
-              <Badge className={statusColor}>{statusLabel}</Badge>
-            </div>
-            <div>
-              <p className="text-xs text-muted-foreground">Source</p>
-              <p className="text-sm font-medium">{sourceLabel}</p>
-            </div>
-          </div>
+  const editButton = (label: string, onClick: () => void) =>
+    !readOnly && (
+      <CardAction>
+        <Button variant="ghost" size="icon-sm" onClick={onClick} aria-label={label}>
+          <Pencil />
+        </Button>
+      </CardAction>
+    );
 
-          <div className="mt-4 flex items-start justify-between gap-2">
-            <p className="text-xs text-muted-foreground">Description</p>
-            {!readOnly && (
-              <Button variant="ghost" size="icon-sm" onClick={onEditOverview} aria-label="Edit description">
-                <Pencil className="h-3.5 w-3.5" />
-              </Button>
-            )}
-          </div>
+  return (
+    <>
+      <Card>
+        <CardHeader>
+          <CardTitle>Overview</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <DescriptionList>
+            <DescriptionItem label="Status">
+              <Badge variant={statusVariant}>{statusLabel}</Badge>
+            </DescriptionItem>
+            <DescriptionItem label="Source">{sourceLabel}</DescriptionItem>
+          </DescriptionList>
+        </CardContent>
+      </Card>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Description</CardTitle>
+          {editButton("Edit description", onEditOverview)}
+        </CardHeader>
+        <CardContent>
           {description ? (
             <>
               <div
@@ -93,9 +101,9 @@ export function DetailSidebar({
                 }
                 dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(description) }}
               />
-              <button type="button" className="mt-1 text-xs font-medium text-primary" onClick={() => setDescExpanded((v) => !v)}>
+              <Button variant="link" size="sm" className="mt-1 h-auto px-0" onClick={() => setDescExpanded((v) => !v)}>
                 {descExpanded ? "Show less" : "Show more"}
-              </button>
+              </Button>
             </>
           ) : (
             <p className="text-sm text-muted-foreground">No description yet.</p>
@@ -104,30 +112,26 @@ export function DetailSidebar({
       </Card>
 
       <Card>
+        <CardHeader>
+          <CardTitle>Social media</CardTitle>
+          {editButton("Edit social media", onEditSocial)}
+        </CardHeader>
         <CardContent>
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-sm font-semibold">Social Media</h2>
-            {!readOnly && (
-              <Button variant="ghost" size="icon-sm" onClick={onEditSocial} aria-label="Edit social media">
-                <Pencil className="h-3.5 w-3.5" />
-              </Button>
-            )}
-          </div>
           {SOCIAL_LINKS.some(({ key }) => social[key]) ? (
-            <div className="space-y-1.5">
+            <div className="flex flex-col gap-1">
               {SOCIAL_LINKS.filter(({ key }) => social[key]).map(({ key, label, badgeClass }) => (
                 <a
                   key={key}
                   href={social[key]!}
                   target="_blank"
                   rel="noreferrer"
-                  className="group flex items-center gap-2.5 rounded-md px-1.5 py-1 -mx-1.5 transition-colors hover:bg-muted/60"
+                  className="group -mx-2 flex items-center gap-2.5 rounded-md px-2 py-1.5 transition-colors hover:bg-muted/60"
                 >
-                  <span className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full ${badgeClass}`}>
-                    {key === "whatsapp_url" ? <MessageCircle className="h-3.5 w-3.5" /> : <Link2 className="h-3.5 w-3.5" />}
+                  <span className={`flex size-7 shrink-0 items-center justify-center rounded-full ${badgeClass}`}>
+                    {key === "whatsapp_url" ? <MessageCircle className="size-3.5" /> : <Link2 className="size-3.5" />}
                   </span>
                   <span className="flex-1 truncate text-sm font-medium text-foreground">{label}</span>
-                  <ExternalLink className="h-3.5 w-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100" />
+                  <ExternalLink className="size-3.5 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100" />
                 </a>
               ))}
             </div>
@@ -139,15 +143,17 @@ export function DetailSidebar({
 
       {enquiry && (
         <Card>
-          <CardContent>
-            <h2 className="mb-3 text-sm font-semibold">Enquiry Settings</h2>
-            <div className="flex items-center justify-between">
-              <span className="flex items-center gap-1.5 text-sm">
-                <Mail className="h-3.5 w-3.5 text-muted-foreground" /> Enabled
-              </span>
-              <Switch checked={enquiry.enabled} onCheckedChange={(checked) => enquiry.onPatch({ enquiry_enabled: checked })} />
+          <CardHeader>
+            <CardTitle>Enquiry settings</CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-5">
+            <div className="flex items-center justify-between gap-3">
+              <label htmlFor="enquiry-enabled" className="flex items-center gap-1.5 text-sm font-medium">
+                <Mail className="size-4 text-muted-foreground" /> Enabled
+              </label>
+              <Switch id="enquiry-enabled" checked={enquiry.enabled} onCheckedChange={(checked) => enquiry.onPatch({ enquiry_enabled: checked })} />
             </div>
-            <div className="mt-4 grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-2 gap-4">
               <EditableNumberField
                 label="Coin Cost per Unlock"
                 value={enquiry.coinCost}
@@ -162,6 +168,6 @@ export function DetailSidebar({
           </CardContent>
         </Card>
       )}
-    </div>
+    </>
   );
 }

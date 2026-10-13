@@ -20,9 +20,9 @@ import type { UnlockedBusiness } from "../apis/types";
  */
 export function UnlockedBusinessesList({ businesses }: Readonly<{ businesses: UnlockedBusiness[] }>) {
   return (
-    <Card className="[--card-spacing:--spacing(5)]">
+    <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-sm font-semibold">
+        <CardTitle className="flex items-center gap-2">
           Unlocked by
           {businesses.length > 0 && (
             <Badge variant="secondary" className="font-normal tabular-nums">
@@ -49,7 +49,7 @@ export function UnlockedBusinessesList({ businesses }: Readonly<{ businesses: Un
                 className="flex items-center gap-3 rounded-lg border border-border px-3 py-2.5 transition-colors hover:bg-muted/40"
               >
                 <Avatar className="size-9 rounded-lg">
-                  {b.logo_url && <AvatarImage src={b.logo_url} alt="" className="bg-white object-contain p-0.5" />}
+                  {b.logo_url && <AvatarImage src={b.logo_url} alt="" className="bg-card object-contain p-0.5" />}
                   <AvatarFallback className="rounded-lg bg-muted text-xs text-muted-foreground">
                     {initials(b.business_name)}
                   </AvatarFallback>

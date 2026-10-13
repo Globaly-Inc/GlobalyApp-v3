@@ -24,7 +24,7 @@ import { cn } from "@/lib/utils";
  * the one thing they control indistinguishable from the two they don't.
  */
 /**
- * Hues borrowed from STATUS_STYLES rather than picked fresh, so a colour means the same thing here
+ * Hues borrowed from the status badges (STATUS_VARIANT) rather than picked fresh, so a colour means the same thing here
  * as it does on the status pills two inches away:
  *   blue    — `distributed`: out with matched institutions and agents already
  *   amber   — `pending`: conditional, waiting on something (here, on someone paying)

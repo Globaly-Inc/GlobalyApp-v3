@@ -1,12 +1,13 @@
 import type { BranchType, BusinessCreateInput, BusinessStatus } from "../apis/types";
 
-export const STATUS_COLORS: Record<BusinessStatus, string> = {
-  unverified: "bg-muted text-muted-foreground",
-  claim_pending: "bg-amber-100 text-amber-700",
-  claimed: "bg-sky-100 text-sky-700",
-  verified: "bg-emerald-100 text-emerald-700",
-  suspended: "bg-muted text-muted-foreground",
-  rejected: "bg-red-100 text-red-700",
+/** Badge variant per listing status (`ui/badge`). */
+export const STATUS_VARIANT: Record<BusinessStatus, "secondary" | "warning" | "info" | "success" | "destructive"> = {
+  unverified: "secondary",
+  claim_pending: "warning",
+  claimed: "info",
+  verified: "success",
+  suspended: "secondary",
+  rejected: "destructive",
 };
 
 export const STATUS_LABELS: Record<BusinessStatus, string> = {

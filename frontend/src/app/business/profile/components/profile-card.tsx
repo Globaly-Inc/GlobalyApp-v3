@@ -1,11 +1,14 @@
 import type { LucideIcon } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 
 /**
  * The business portal's section card — same props as the public site's ProfileSection (so a card
- * can swap one for the other), but with the portal's redesigned header: tinted icon tile, count
- * pill, and a soft lift on hover. ProfileSection stays as is because ~20 public pages use it.
+ * can swap one for the other), drawn on the standard `Card` (mockup C3): inline icon + title, count
+ * pill and the Public/Hidden badge, the edit action in `CardAction`. ProfileSection stays as is
+ * because ~20 public pages use it.
  *
- * `group/card` is kept for callers that fade header actions in on hover.
+ * `Card` carries `group/card` for callers that key header actions off it.
  */
 export function ProfileCard({
   icon: Icon, title, count, badge, action, children, id,
@@ -22,20 +25,19 @@ export function ProfileCard({
   id?: string;
 }>) {
   return (
-    <section
-      id={id}
-      className="group/card scroll-mt-24 overflow-hidden rounded-2xl border bg-card text-card-foreground transition-[box-shadow,border-color] duration-300 hover:border-primary/20 hover:shadow-[0_12px_32px_-16px_color-mix(in_oklab,var(--color-primary)_35%,transparent)]"
-    >
-      <div className="flex flex-wrap items-center gap-2.5 border-b px-4 py-3.5 sm:px-5">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
-          <Icon className="size-4" />
-        </span>
-        <h2 className="font-sans text-sm font-bold tracking-normal text-foreground">{title}</h2>
-        {count != null && <span className="rounded-full bg-primary/10 px-2 py-0.5 font-mono text-[11px] tabular-nums text-primary">{count}</span>}
-        {badge}
-        {action && <div className="ml-auto flex shrink-0 items-center gap-1.5">{action}</div>}
-      </div>
-      <div className="p-4 sm:p-5">{children}</div>
-    </section>
+    <Card id={id} className="scroll-mt-24">
+      <CardHeader>
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <CardTitle role="heading" aria-level={2} className="flex items-center gap-2">
+            <Icon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+            {title}
+          </CardTitle>
+          {count != null && <Badge variant="secondary" className="tabular-nums">{count}</Badge>}
+          {badge}
+        </div>
+        {action && <CardAction className="flex items-center gap-1.5">{action}</CardAction>}
+      </CardHeader>
+      <CardContent>{children}</CardContent>
+    </Card>
   );
 }

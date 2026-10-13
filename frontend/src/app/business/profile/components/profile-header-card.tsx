@@ -78,15 +78,15 @@ export function ProfileHeaderCard({
     <img src={profile.logo_url} alt={profile.business_name} className="h-full w-full object-contain p-2" />
   ) : (
     <div className="flex h-full w-full items-center justify-center bg-gradient-to-br from-primary to-primary/70">
-      <span className="text-3xl font-bold text-primary-foreground">{initials || "?"}</span>
+      <span className="font-heading text-3xl font-medium text-primary-foreground">{initials || "?"}</span>
     </div>
   );
 
   const logoBox =
-    "animate-pop-in relative block size-24 shrink-0 overflow-hidden rounded-2xl border-4 border-background bg-muted shadow-lg";
+    "animate-pop-in relative block size-24 shrink-0 overflow-hidden rounded-xl border-4 border-background bg-muted shadow-lg";
 
   return (
-    <div id="profile-hero" className="group/hero scroll-mt-24 overflow-hidden rounded-2xl border border-border bg-card">
+    <div id="profile-hero" className="group/hero scroll-mt-24 overflow-hidden rounded-lg border bg-card text-card-foreground shadow-sm">
       <div className="relative">
         {previewMode ? (
           <div className="relative h-44 select-none sm:h-48">
@@ -126,7 +126,7 @@ export function ProfileHeaderCard({
             <button type="button" className={`group cursor-pointer ${logoBox}`} onClick={() => logoPickerRef.current?.pick()} aria-label="Change logo">
               {logoImage}
               <span
-                className={`absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/55 text-xs font-semibold text-white transition-opacity ${logoUploading ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100"}`}
+                className={`absolute inset-0 flex flex-col items-center justify-center gap-1 bg-black/55 text-xs font-medium text-white transition-opacity ${logoUploading ? "opacity-100" : "opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100"}`}
               >
                 {logoUploading ? <Loader2 className="size-5 animate-spin" /> : <><Camera className="size-4" />Change</>}
               </span>
@@ -143,22 +143,23 @@ export function ProfileHeaderCard({
                 {categoryLabel}
               </Badge>
             )}
-            <h1 className="font-heading text-2xl leading-tight font-bold text-foreground">{profile.business_name}</h1>
+            <h1 className="font-heading text-2xl font-medium leading-tight tracking-[-0.01em] text-foreground">{profile.business_name}</h1>
             {locationLabel && (
-              <span className="flex items-center gap-1.5 text-sm text-muted-foreground">
+              <span className="flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">
                 <MapPin className="h-3.5 w-3.5 shrink-0" />{locationLabel}
               </span>
             )}
           </div>
 
           {/* V1 faded the edit pencil in only when the social row is hovered, so the icons
-              read as links first and an editable field second. */}
+              read as links first and an editable field second. Keyboard focus anywhere in the
+              row and touch screens (no hover) show it too. */}
           <div className="group/social flex shrink-0 flex-wrap items-center gap-1.5">
             {!previewMode && (
               <Button
                 variant="ghost"
                 size="icon-sm"
-                className="opacity-0 transition-opacity group-hover/social:opacity-100 focus-visible:opacity-100"
+                className="opacity-0 transition-opacity group-hover/social:opacity-100 group-focus-within/social:opacity-100 focus-visible:opacity-100 pointer-coarse:opacity-100"
                 onClick={onEditSocials}
                 aria-label="Edit social links"
               >

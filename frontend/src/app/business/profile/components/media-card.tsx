@@ -61,7 +61,7 @@ export function MediaCard({ profile, readOnly }: Readonly<{ profile: BusinessPro
   return (
     <ProfileCard id="profile-media" icon={ImageIcon} title="Media" count={items.length || undefined} badge={<PrivacyBadge isPublic />}>
       {items.length === 0 && readOnly ? (
-        <p className="text-sm italic text-muted-foreground">No media added yet.</p>
+        <p className="text-sm text-muted-foreground">No media added yet.</p>
       ) : (
         // Fixed-height rows, the cover spans 2×2, and dense flow back-fills any gap it leaves.
         <div className="grid grid-flow-dense auto-rows-[110px] grid-cols-2 gap-2 sm:auto-rows-[130px] sm:grid-cols-4">
@@ -81,7 +81,7 @@ export function MediaCard({ profile, readOnly }: Readonly<{ profile: BusinessPro
               type="button"
               disabled={uploading}
               onClick={() => inputRef.current?.click()}
-              className="flex animate-row-rise cursor-pointer flex-col items-center justify-center gap-1 rounded-xl border-[1.5px] border-dashed border-border text-xs font-semibold text-muted-foreground transition-colors hover:border-primary hover:text-primary disabled:cursor-wait"
+              className="flex animate-row-rise cursor-pointer flex-col items-center justify-center gap-1 rounded-lg border-2 border-dashed border-border text-xs font-medium text-muted-foreground transition-colors hover:border-primary hover:text-primary disabled:cursor-wait"
               style={{ animationDelay: `${items.length * 50}ms` }}
             >
               {uploading ? <Loader2 className="size-5 animate-spin" /> : <ImagePlus className="size-5" />}

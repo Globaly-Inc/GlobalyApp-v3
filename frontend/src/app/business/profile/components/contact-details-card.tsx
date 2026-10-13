@@ -4,13 +4,13 @@ import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Globe, Mail, MapPin, Pencil, Phone } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { DescriptionList } from "@/components/ui/description-list";
 import { joinParts } from "@/app/(web)/components/profile/profile-data";
 import { useValidatedForm } from "@/lib/use-validated-form";
 import { useAppDispatch } from "@/lib/hooks";
 import { updateMyProfile } from "@/app/business/store/business-onboarding-slice";
 import type { BusinessProfile } from "@/app/business/apis/types";
 import type { Country } from "@/app/geo/apis";
-import { HEADER_PENCIL } from "../const";
 import { PrivacyBadge } from "@/components/privacy-badge";
 import { useSectionVisibility } from "./use-section-visibility";
 import { ProfileCard } from "./profile-card";
@@ -93,7 +93,6 @@ export function ContactDetailsCard({
           <Button
             size="icon-sm"
             variant="ghost"
-            className={HEADER_PENCIL}
             aria-label={editing ? "Stop editing contact details" : "Edit contact details"}
             onClick={() => (editing ? setEditing(false) : startEditing())}
           >
@@ -105,7 +104,7 @@ export function ContactDetailsCard({
       {editing ? (
         <ContactDetailsForm form={form} setForm={setForm} errors={errors} countries={countries} saving={saving} onSave={save} />
       ) : (
-        <div>
+        <DescriptionList columns={1}>
           <ContactInfoRow icon={Mail} label="Email" value={profile.email} onAdd={onAdd} />
           <ContactInfoRow icon={Phone} label="Phone" value={profile.phone} onAdd={onAdd} />
           <ContactInfoRow
@@ -116,7 +115,7 @@ export function ContactDetailsCard({
             onAdd={onAdd}
           />
           <ContactInfoRow icon={MapPin} label="Address" value={addressLabel} onAdd={onAdd} />
-        </div>
+        </DescriptionList>
       )}
     </ProfileCard>
   );

@@ -5,13 +5,13 @@ import { toast } from "sonner";
 import { DollarSign, Loader2, Pencil, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/combobox";
+import { DescriptionItem, DescriptionList } from "@/components/ui/description-list";
 import { Label } from "@/components/ui/label";
 import { flagEmoji } from "@/components/ui/phone-input";
 import { useAppDispatch } from "@/lib/hooks";
 import { updateMyProfile } from "@/app/business/store/business-onboarding-slice";
 import type { BusinessProfile } from "@/app/business/apis/types";
 import type { Country } from "@/app/geo/apis";
-import { HEADER_PENCIL } from "../const";
 import { ProfileCard } from "./profile-card";
 
 // Matches only what a Combobox needs — not exhaustive, the API accepts any ISO code. Full names
@@ -87,7 +87,6 @@ export function DefaultCurrencyCard({
           <Button
             size="icon-sm"
             variant="ghost"
-            className={HEADER_PENCIL}
             aria-label="Edit default currency"
             onClick={() => {
               setDraft(profile.currency ?? "");
@@ -131,20 +130,24 @@ export function DefaultCurrencyCard({
         ) : (
           <>
             {profile.currency ? (
-              <div className="flex items-center gap-3">
-                <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-[hsl(var(--primary-bright))] font-heading text-xl font-bold text-primary-foreground">
-                  {currencySymbol(profile.currency)}
-                </span>
-                <div className="min-w-0">
-                  <p className="text-[15px] font-semibold">{currencyName(profile.currency) ?? profile.currency}</p>
-                  <p className="text-[12.5px] text-muted-foreground">
-                    {profile.currency} · used for fees and prices
-                    {country && <> · {flagEmoji(country.iso2)} {country.name}</>}
-                  </p>
-                </div>
-              </div>
+              <DescriptionList columns={1}>
+                <DescriptionItem label="Currency">
+                  <span className="flex items-center gap-3">
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary font-heading text-lg font-medium text-primary-foreground">
+                      {currencySymbol(profile.currency)}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block">{currencyName(profile.currency) ?? profile.currency}</span>
+                      <span className="block text-xs font-normal text-muted-foreground">
+                        {profile.currency} · used for fees and prices
+                        {country && <> · {flagEmoji(country.iso2)} {country.name}</>}
+                      </span>
+                    </span>
+                  </span>
+                </DescriptionItem>
+              </DescriptionList>
             ) : (
-              <p className="text-sm italic text-muted-foreground">No default currency set.</p>
+              <p className="text-sm text-muted-foreground">No default currency set.</p>
             )}
             <p className="text-xs text-muted-foreground">Applied to new services and fee structures. Not shown on your public profile.</p>
           </>

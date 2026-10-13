@@ -1,11 +1,12 @@
 "use client";
 
+import type { ReactNode } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Clock } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { SectionTabs } from "@/components/section-tabs";
 import { useAppSelector } from "@/lib/hooks";
-import { EmptyTabPlaceholder } from "./shared/empty-tab-placeholder";
+import { EmptyState } from "@/components/ui/empty-state";
 import { ActivityTab } from "./tabs/activity-tab";
 import { BranchesTab } from "./tabs/branches-tab";
 import { ContactsTab } from "./tabs/contacts-tab";
@@ -43,6 +44,7 @@ export function DetailTabs({
   businessType,
   readOnly = false,
   isPreSeeded = false,
+  sidebar,
 }: Readonly<{
   kind: "business" | "institution";
   id: number;
@@ -50,6 +52,8 @@ export function DetailTabs({
   businessType?: string | null;
   readOnly?: boolean;
   isPreSeeded?: boolean;
+  /** The side column beside the tab panel (mockup C3: 2/3 main + 1/3 side). */
+  sidebar: ReactNode;
 }>) {
   const router = useRouter();
   const pathname = usePathname();
@@ -64,41 +68,44 @@ export function DetailTabs({
   };
 
   return (
-    <div className="lg:col-span-2">
-      <SectionTabs options={TABS} value={tab} onChange={setTab} />
-      <Card>
-        <CardContent>
-          {tab === "branches" && (kind === "business" ? (
-            <BranchesTab businessId={id} readOnly={readOnly || isPreSeeded} />
-          ) : (
-            <InstitutionBranchesTab institutionId={id} />
-          ))}
-          {tab === "partners" && (kind === "business" ? (
-            <PartnersTab businessId={id} businessName={businessName} businessType={businessType} readOnly={readOnly} />
-          ) : (
-            <InstitutionPartnersTab institutionId={id} />
-          ))}
-          {tab === "members" && (kind === "business" ? (
-            <MembersTab businessId={id} readOnly={readOnly} />
-          ) : (
-            <InstitutionMembersTab institutionId={id} readOnly={readOnly} />
-          ))}
-          {/* Contacts are a superadmin-only concept (business_contacts/members CRM fields have no
-              owner-facing self-service editor) — never gated by claim status like the other
-              tabs, since there is no "owner's own edit" for this to defer to. */}
-          {tab === "contacts" && <ContactsTab kind={kind} id={id} countries={countries} />}
-          {tab === "services" && (kind === "business" ? (
-            <ServicesTab businessId={id} readOnly={readOnly || isPreSeeded} />
-          ) : (
-            <InstitutionServicesTab institutionId={id} readOnly={readOnly} />
-          ))}
-          {tab === "activity" && (kind === "business" ? (
-            <ActivityTab businessId={id} />
-          ) : (
-            <EmptyTabPlaceholder icon={Clock} title="No activity yet" subtitle={NOT_AVAILABLE} />
-          ))}
-        </CardContent>
-      </Card>
-    </div>
+    <>
+      <SectionTabs options={TABS} value={tab} onChange={setTab} className="mb-0" />
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
+        <Card className="lg:col-span-2">
+          <CardContent>
+            {tab === "branches" && (kind === "business" ? (
+              <BranchesTab businessId={id} readOnly={readOnly || isPreSeeded} />
+            ) : (
+              <InstitutionBranchesTab institutionId={id} />
+            ))}
+            {tab === "partners" && (kind === "business" ? (
+              <PartnersTab businessId={id} businessName={businessName} businessType={businessType} readOnly={readOnly} />
+            ) : (
+              <InstitutionPartnersTab institutionId={id} />
+            ))}
+            {tab === "members" && (kind === "business" ? (
+              <MembersTab businessId={id} readOnly={readOnly} />
+            ) : (
+              <InstitutionMembersTab institutionId={id} readOnly={readOnly} />
+            ))}
+            {/* Contacts are a superadmin-only concept (business_contacts/members CRM fields have no
+                owner-facing self-service editor) — never gated by claim status like the other
+                tabs, since there is no "owner's own edit" for this to defer to. */}
+            {tab === "contacts" && <ContactsTab kind={kind} id={id} countries={countries} />}
+            {tab === "services" && (kind === "business" ? (
+              <ServicesTab businessId={id} readOnly={readOnly || isPreSeeded} />
+            ) : (
+              <InstitutionServicesTab institutionId={id} readOnly={readOnly} />
+            ))}
+            {tab === "activity" && (kind === "business" ? (
+              <ActivityTab businessId={id} />
+            ) : (
+              <EmptyState compact icon={Clock} title="No activity yet" description={NOT_AVAILABLE} />
+            ))}
+          </CardContent>
+        </Card>
+        <div className="flex flex-col gap-6">{sidebar}</div>
+      </div>
+    </>
   );
 }

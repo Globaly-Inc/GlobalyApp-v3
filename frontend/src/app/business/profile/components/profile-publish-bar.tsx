@@ -30,10 +30,10 @@ export function ProfilePublishBar({
   return (
     <div className="flex flex-wrap items-center justify-end gap-2">
       <Button variant="outline" size="sm" onClick={onPreview}>
-        <Eye className="mr-1.5 h-3.5 w-3.5" /> Preview
+        <Eye /> Preview
       </Button>
       <Button variant={live ? "outline" : "default"} size="sm" onClick={toggle} disabled={toggling}>
-        {toggling && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
+        {toggling && <Loader2 className="animate-spin" />}
         {live ? "Unpublish" : "Publish profile"}
       </Button>
     </div>
