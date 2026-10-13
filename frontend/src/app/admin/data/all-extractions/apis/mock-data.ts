@@ -1,6 +1,7 @@
 import { uuid } from "@/lib/utils";
 import type {
   Accreditation,
+  CourseFilters,
   AgentFull,
   AgentRun,
   CampusFull,
@@ -266,7 +267,7 @@ export const allExtractionsMockApi = {
 
   getCourses: async (
     jobId: string,
-    params: { page?: number; limit?: number; search?: string; status?: string; sort?: SortOrder } = {},
+    params: { page?: number; limit?: number; search?: string; status?: string; sort?: SortOrder } & CourseFilters = {},
   ): Promise<Paginated<CourseFull>> => {
     console.log("[mock] GET courses for job", jobId, params);
     await delay(300);

@@ -14,7 +14,7 @@ import { CourseListPanel } from "./course-list-panel";
 import { StepActionBar } from "./step-action-bar";
 import { useConfirmDelete } from "./use-confirm-delete";
 import type { SortOrder } from "../const";
-import type { CampusFull, CourseFull, CourseLinks, CreateCourseParams, ExtractionJob } from "../apis/types";
+import type { CampusFull, CourseFilters, CourseFull, CourseLinks, CreateCourseParams, ExtractionJob } from "../apis/types";
 
 export function CoursesTab({
   jobId,
@@ -35,6 +35,7 @@ export function CoursesTab({
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [filters, setFilters] = useState<CourseFilters>({});
   const [sort, setSort] = useState<SortOrder>("name_asc");
   const [page, setPage] = useState(1);
   const [limit, setLimit] = useState(DEFAULT_PAGE_SIZE);
@@ -53,6 +54,7 @@ export function CoursesTab({
           search: (overrides?.search ?? search).trim() || undefined,
           status: (overrides?.status ?? statusFilter) === "all" ? undefined : (overrides?.status ?? statusFilter),
           sort: overrides?.sort ?? sort,
+          ...filters,
         }),
         allExtractionsApi.getCourseLinks(jobId),
         allExtractionsApi.getCampuses(jobId),
@@ -71,7 +73,7 @@ export function CoursesTab({
     } finally {
       setLoading(false);
     }
-  }, [jobId, page, limit, search, statusFilter, sort]);
+  }, [jobId, page, limit, search, statusFilter, sort, filters]);
 
   useEffect(() => {
     if (!fetchedRef.current) {
@@ -177,6 +179,8 @@ export function CoursesTab({
             onSearchChange={setSearch}
             statusFilter={statusFilter}
             onStatusFilterChange={setStatusFilter}
+            filters={filters}
+            onFiltersChange={(next) => { setFilters(next); setPage(1); }}
             sort={sort}
             onSortChange={setSort}
             onPageChange={setPage}

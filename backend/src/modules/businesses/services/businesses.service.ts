@@ -135,7 +135,7 @@ export async function registerBusiness(userId: number, input: BusinessRegisterIn
 
   logger.info("Business registered", { orgId: business.id, subdomain: business.subdomain, userId });
 
-  const access_token = issueScopedAccessToken({ id: userId, email: user.email }, business.schema_name, "owner");
+  const access_token = await issueScopedAccessToken({ id: userId, email: user.email }, business.schema_name, "owner");
 
   return {
     org: { id: business.id, org_id: business.schema_name, subdomain: business.subdomain, business_name: business.business_name },

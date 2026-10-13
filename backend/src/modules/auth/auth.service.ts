@@ -107,14 +107,17 @@ function signAccessToken(user: {
  * Mints an org-scoped access token outside the login flow — e.g. right after a logged-in user
  * registers their own business or institution, so they don't have to sign in again to get
  * org context.
+ * Keeps the caller's admin role: login and /refresh mint admin + org together, so a switch that
+ * dropped it would 403 every /admin route until the next silent refresh put it back.
  */
-export function issueScopedAccessToken(
+export async function issueScopedAccessToken(
   user: { id: number; email: string },
   orgId: string,
   orgRole: string,
   orgType: OrgType = "business",
 ) {
-  return signAccessToken({ id: user.id, email: user.email, orgId, orgRole, orgType });
+  const adminRecord = await adminRepo.findAdminByPlatformUserId(user.id);
+  return signAccessToken({ id: user.id, email: user.email, adminRole: adminRecord?.role, orgId, orgRole, orgType });
 }
 
 /**
@@ -638,7 +641,7 @@ export async function switchAccount(userId: number, orgId: string, refreshToken?
 
     logger.info("Account switched", { userId, orgId, orgType: "business", role: agent.role });
     return {
-      access_token: issueScopedAccessToken({ id: user.id, email: user.email }, orgId, agent.role, "business"),
+      access_token: await issueScopedAccessToken({ id: user.id, email: user.email }, orgId, agent.role, "business"),
       org_type: "business" as const,
     };
   }
@@ -661,7 +664,7 @@ export async function switchAccount(userId: number, orgId: string, refreshToken?
 
   logger.info("Account switched", { userId, orgId, orgType: "institution", role: member.role });
   return {
-    access_token: issueScopedAccessToken({ id: user.id, email: user.email }, orgId, member.role, "institution"),
+    access_token: await issueScopedAccessToken({ id: user.id, email: user.email }, orgId, member.role, "institution"),
     org_type: "institution" as const,
   };
 }

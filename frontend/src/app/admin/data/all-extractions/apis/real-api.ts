@@ -3,6 +3,7 @@ import { MODE_STATUS_FILTER, OWNED_JOB_SOURCE_TYPES, STATUS_CONFIG,statusesForFi
 import type { SortOrder } from "../const";
 import type {
   Accreditation,
+  CourseFilters,
   AgentFull,
   AgentRow,
   AgentRun,
@@ -170,7 +171,7 @@ export const allExtractionsRealApi = {
 
   getCourses: (
     jobId: string,
-    params: { page?: number; limit?: number; search?: string; status?: string; sort?: SortOrder } = {},
+    params: { page?: number; limit?: number; search?: string; status?: string; sort?: SortOrder } & CourseFilters = {},
   ): Promise<Paginated<CourseFull>> => {
     const query = new URLSearchParams();
     if (params.page) query.set("page", String(params.page));
@@ -178,6 +179,9 @@ export const allExtractionsRealApi = {
     if (params.search) query.set("search", params.search);
     if (params.status) query.set("status", params.status);
     if (params.sort) query.set("sort", params.sort);
+    if (params.degree_level) query.set("degree_level", params.degree_level);
+    if (params.published) query.set("published", params.published);
+    if (params.origin) query.set("origin", params.origin);
     return httpGet<Paginated<CourseFull>>(`/admin/data-extraction/jobs/${jobId}/courses?${query}`);
   },
 

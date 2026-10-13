@@ -9,7 +9,7 @@ import { createChildLogger } from "../../../../shared/logger.js";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { verifyFieldCoverage } from "../lib/field-coverage.js";
-import { sendCompletionEmail } from "../lib/completion-email.js";
+import { sendAdminReviewEmail, sendCompletionEmail } from "../lib/completion-email.js";
 import { autoPublishOwnerRun } from "../services/promote.service.js";
 import { convertCampusesToBranches } from "../../platform/business-branches/services/business-branches.service.js";
 import { _linkerDeps } from "../lib/jev-linker.js";
@@ -292,6 +292,7 @@ await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
       .then(() => true, (err) => { logger.warn("link_entities dispatch failed; sending the completion email now", { jobId, error: String(err) }); return false; });
     if (!linking) {
       await sendCompletionEmail(jobId);
+      await sendAdminReviewEmail(jobId);
       await convertCampusesToBranches(jobId); // else the link step converts them when it finishes
       await autoPublishOwnerRun(jobId); // after the email: it needs the job still in review
     }

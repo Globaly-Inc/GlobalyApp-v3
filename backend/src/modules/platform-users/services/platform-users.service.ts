@@ -244,7 +244,7 @@ export async function onboardInstitution(userId: number, data: OnboardingInstitu
 
   // Scoped token, as registerBusiness does — otherwise the user has just created an
   // institution and still has to log out and back in to enter it.
-  const access_token = issueScopedAccessToken({ id: userId, email: user.email }, institution.schema_name, "owner", "institution");
+  const access_token = await issueScopedAccessToken({ id: userId, email: user.email }, institution.schema_name, "owner", "institution");
 
   return {
     institution: { id: institution.id, org_id: institution.schema_name, subdomain: institution.subdomain, institution_name: institution.institution_name },
