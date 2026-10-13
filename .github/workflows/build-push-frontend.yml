@@ -105,6 +105,8 @@ jobs:
           docker build \
             --build-arg NEXT_PUBLIC_API_URL="${{ vars.NEXT_PUBLIC_API_URL }}" \
             --build-arg NEXT_PUBLIC_MOCK_DATA="${{ vars.NEXT_PUBLIC_MOCK_DATA }}" \
+            --build-arg NEXT_PUBLIC_APP_URL="${{ vars.NEXT_PUBLIC_APP_URL }}" \
+            --build-arg NEXT_PUBLIC_WEB_URL="${{ vars.NEXT_PUBLIC_WEB_URL }}" \
             -f Dockerfile -t "${{ env.IMAGE }}:${{ env.IMAGE_TAG }}" .
 
           echo "${{ env.YELLOW_COLOR_MESSAGE }} Tagging docker image as latest ${{ env.RESET_COLOR_MESSAGE }}"
