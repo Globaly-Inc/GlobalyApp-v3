@@ -173,12 +173,12 @@ export function ConversationView({
         />
 
         {thread.is_closed ? (
-          <p className="shrink-0 border-t border-border p-4 text-xs text-muted-foreground">
+          <p className="shrink-0 border-t border-border bg-card px-4 py-3 text-xs text-muted-foreground">
             This enquiry is closed. The conversation with {thread.counterpart_name} stays readable, but no new
             messages can be sent.
           </p>
         ) : (
-          <div className="shrink-0 border-t border-border">
+          <div className="shrink-0 border-t border-border bg-card">
             <MessageComposer
               key={id}
               distributionId={id}
@@ -193,7 +193,7 @@ export function ConversationView({
       {/* Hidden below lg: at md, the sidebar plus a 20rem panel leaves the messages
           themselves too narrow to read. V2 hides it on the same reasoning.
           An open thread takes this slot from the info panel, as it does in V2. */}
-      <div className="hidden w-80 shrink-0 border-l border-border lg:block">
+      <div className="hidden w-80 shrink-0 border-l border-border bg-card lg:block">
         {threadParent ? (
           <ThreadPanel
             parent={threadParent}

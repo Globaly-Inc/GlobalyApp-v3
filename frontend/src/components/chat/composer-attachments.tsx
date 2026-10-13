@@ -53,7 +53,7 @@ export function AttachmentMenu({
           <Button
             variant="ghost"
             size="icon-lg"
-            className="text-muted-foreground hover:text-foreground"
+            className="size-10 text-muted-foreground hover:text-foreground md:size-8"
             disabled={disabled}
             aria-label="Add an attachment"
             title="Add an attachment"
@@ -94,17 +94,17 @@ export function AttachmentPreviews({
             <img
               src={item.preview}
               alt={item.file.name}
-              className={cn("size-14 rounded-md border border-border object-cover", item.failed && "opacity-40")}
+              className={cn("size-14 rounded-lg border border-border object-cover", item.failed && "opacity-40")}
             />
           ) : (
             <div
               className={cn(
-                "flex size-14 flex-col items-center justify-center rounded-md border border-border bg-muted p-1",
+                "flex size-14 flex-col items-center justify-center rounded-lg border border-border bg-muted p-1",
                 item.failed && "opacity-40",
               )}
             >
               <FileText className="size-5 text-muted-foreground" aria-hidden />
-              <span className="mt-0.5 w-full truncate text-center text-[9px] text-muted-foreground">
+              <span className="mt-0.5 w-full truncate text-center text-xs text-muted-foreground">
                 {fileExtension(item.file.name)}
               </span>
             </div>
@@ -112,12 +112,12 @@ export function AttachmentPreviews({
 
           {/* Still uploading: the send button is disabled anyway, but the spinner says why. */}
           {item.storagePath === null && !item.failed && (
-            <span className="absolute inset-0 flex items-center justify-center rounded-md bg-background/60">
+            <span className="absolute inset-0 flex items-center justify-center rounded-lg bg-background/60">
               <Loader2 className="size-4 animate-spin text-primary" aria-hidden />
             </span>
           )}
           {item.failed && (
-            <span className="absolute inset-0 flex items-center justify-center rounded-md bg-destructive/10 text-[9px] font-medium text-destructive">
+            <span className="absolute inset-0 flex items-center justify-center rounded-lg bg-destructive/10 text-xs font-medium text-destructive">
               Failed
             </span>
           )}

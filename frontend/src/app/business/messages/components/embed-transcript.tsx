@@ -48,7 +48,7 @@ function timeline(messages: VisitorMessage[], notes: VisitorNote[]): TimelineIte
 
 function HandoverLine({ label }: Readonly<{ label: string }>) {
   return (
-    <div className="my-4 flex items-center gap-3 text-[11px] text-muted-foreground">
+    <div className="my-4 flex items-center gap-3 text-xs text-muted-foreground">
       <span className="h-px flex-1 bg-border" />
       {label}
       <span className="h-px flex-1 bg-border" />
@@ -60,7 +60,7 @@ function HandoverLine({ label }: Readonly<{ label: string }>) {
 function ChatDivider({ title, at, ended }: Readonly<{ title: string; at: string; ended: boolean }>) {
   const when = new Date(at).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
   return (
-    <div className="my-5 flex items-center gap-3 text-[11px] font-semibold text-primary">
+    <div className="my-5 flex items-center gap-3 text-xs font-semibold text-primary">
       <span className="h-px flex-1 bg-primary/25" />
       {title} · {when}{ended ? " · ended" : ""}
       <span className="h-px flex-1 bg-primary/25" />

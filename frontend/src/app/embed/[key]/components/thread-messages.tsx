@@ -8,7 +8,7 @@ import { AgentMessage } from "./agent-message";
 /** A centred system line between turns. */
 function Divider({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <p className="flex items-center gap-3 text-[11px] text-muted-foreground before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">
+    <p className="flex items-center gap-3 text-xs text-muted-foreground before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">
       {children}
     </p>
   );

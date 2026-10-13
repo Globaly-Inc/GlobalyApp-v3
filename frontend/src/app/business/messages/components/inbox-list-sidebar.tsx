@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowDownUp, Bot, Loader2, MessageSquare, Search, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import { MIN_SEARCH_LENGTH, SIDEBAR_LABEL } from "@/components/chat/const";
 import { ConversationRow } from "@/components/chat/conversation-row";
@@ -152,7 +153,7 @@ export function InboxListSidebar({
             onChange={(e) => setQuery(e.target.value)}
             placeholder="Search people, messages, handle"
             aria-label="Search conversations"
-            className="h-9 w-full border-border bg-muted/50 pl-9 focus-visible:bg-background"
+            className="h-9 w-full pl-9"
           />
         </div>
         {header}
@@ -165,9 +166,10 @@ export function InboxListSidebar({
                 aria-pressed={view === v.value}
                 onClick={() => onView(v.value)}
                 className={cn(
-                  "shrink-0 rounded-full border px-2.5 py-0.5 text-xs",
-                  view === v.value ? "border-primary bg-primary text-primary-foreground" : "border-border text-muted-foreground",
-                )}
+                  "shrink-0 rounded-full border px-2.5 py-0.5 text-xs transition-colors",
+                  view === v.value
+                    ? "border-transparent bg-primary/10 font-medium text-primary"
+                    : "border-border text-muted-foreground hover:bg-muted",                )}
               >
                 {v.label}
               </button>
@@ -192,23 +194,19 @@ export function InboxListSidebar({
             ))}
           </div>
         ) : items.length === 0 ? (
-          <div className="flex flex-col items-center px-2 py-6 text-center">
-            {embedOnly ? (
-              <Bot className="mb-2 size-8 text-muted-foreground/40" aria-hidden />
-            ) : (
-              <MessageSquare className="mb-2 size-8 text-muted-foreground/40" aria-hidden />
-            )}
-            <p className="text-sm text-muted-foreground">
-              {query ? "No matching conversations" : view !== "all" || channel !== "all" ? "Nothing here right now" : "No conversations yet"}
-            </p>
-            {!query && view === "all" && channel === "all" && (
-              <p className="mt-1 text-xs text-muted-foreground/80">
-                {embedOnly
+          <EmptyState
+            icon={embedOnly ? Bot : MessageSquare}
+            title={query ? "No matching conversations" : view !== "all" || channel !== "all" ? "Nothing here right now" : "No conversations yet"}
+            description={
+              !query && view === "all" && channel === "all"
+                ? embedOnly
                   ? "Conversations visitors have with the AI assistant on your website appear here."
-                  : "Unlocked enquiries and AI assistant chats from your website appear here."}
-              </p>
-            )}
-          </div>
+                  : "Unlocked enquiries and AI assistant chats from your website appear here."
+                : undefined
+            }
+            compact
+            className="px-2"
+          />
         ) : (
           <div className="space-y-0.5">
             {items.map((item) =>

@@ -76,19 +76,19 @@ export function EmbedChatComposer({ visitor, actions }: Readonly<{ visitor: Widg
   let reply: React.ReactNode;
   if (state === "resolved") {
     reply = (
-      <Locked icon={CheckCircle2} tone="border-emerald-300 bg-emerald-500/10 text-emerald-800" title="This conversation is resolved." body={`Reopen it to reply, or let AI pick it up when ${name} writes again.`}>
+      <Locked icon={CheckCircle2} tone="border-success/40 bg-success/10 text-success" title="This conversation is resolved." body={`Reopen it to reply, or let AI pick it up when ${name} writes again.`}>
         <Button size="sm" variant="outline" disabled={busy} onClick={actions.reopen}><RotateCcw className="size-3.5" aria-hidden />Reopen</Button>
       </Locked>
     );
   } else if (state === "human" && isPhoneApp(visitor)) {
     reply = (
-      <Locked icon={Smartphone} tone="border-cyan-300 bg-cyan-500/10 text-cyan-900" title="Replies are coming from the WhatsApp Business app." body="Take over here to reply from the Inbox instead.">
+      <Locked icon={Smartphone} tone="border-info/40 bg-info/10 text-info" title="Replies are coming from the WhatsApp Business app." body="Take over here to reply from the Inbox instead.">
         {actions.canTakeOver && <Button size="sm" disabled={busy} onClick={actions.takeOver}><Hand className="size-3.5" aria-hidden />Take over here</Button>}
       </Locked>
     );
   } else if (state === "human" && !visitor.handled_by_me) {
     reply = (
-      <Locked icon={UserRound} tone="border-cyan-300 bg-cyan-500/10 text-cyan-900" title={`${handlerLabel(visitor)} is handling this conversation.`} body={`Take over from ${handlerLabel(visitor)} to reply, or leave an internal note.`}>
+      <Locked icon={UserRound} tone="border-info/40 bg-info/10 text-info" title={`${handlerLabel(visitor)} is handling this conversation.`} body={`Take over from ${handlerLabel(visitor)} to reply, or leave an internal note.`}>
         {actions.canTakeOver && <Button size="sm" disabled={busy} onClick={actions.takeOver}><Hand className="size-3.5" aria-hidden />Take over</Button>}
       </Locked>
     );
@@ -106,14 +106,14 @@ export function EmbedChatComposer({ visitor, actions }: Readonly<{ visitor: Widg
     );
   } else if (!whatsappWindowOpen(visitor)) {
     reply = (
-      <Locked icon={Clock} tone="border-amber-300 bg-amber-50 text-amber-900" title="WhatsApp's 24-hour window has closed." body="Send an approved template to restart the conversation.">
+      <Locked icon={Clock} tone="border-warning/40 bg-warning/10 text-warning" title="WhatsApp's 24-hour window has closed." body="Send an approved template to restart the conversation.">
         <Button size="sm" onClick={() => setTemplates(true)}><FileText className="size-3.5" aria-hidden />Choose template</Button>
       </Locked>
     );
   } else {
     reply = (
       <>
-        <p className="mx-3 mt-2 flex items-center gap-2 rounded-md bg-cyan-500/10 px-3 py-1.5 text-xs text-cyan-900">
+        <p className="mx-3 mt-2 flex items-center gap-2 rounded-md bg-info/10 px-3 py-1.5 text-xs text-info">
           <UserRound className="size-3.5 shrink-0" aria-hidden />
           {`Replying as you${channel === "ai_embed" ? "" : ` on ${INBOX_CHANNELS[channel].label}`} · AI is paused`}
         </p>
@@ -124,7 +124,7 @@ export function EmbedChatComposer({ visitor, actions }: Readonly<{ visitor: Widg
   }
 
   return (
-    <div className={cn("shrink-0 border-t border-border", mode === "note" && "bg-amber-50/60")}>
+    <div className={cn("shrink-0 border-t border-border", mode === "note" ? "bg-warning/5" : "bg-card")}>
       <div className="mx-3 mt-2 flex gap-1" role="tablist" aria-label="Compose">
         {(["reply", "note"] as const).map((m) => (
           <button
@@ -135,8 +135,9 @@ export function EmbedChatComposer({ visitor, actions }: Readonly<{ visitor: Widg
             onClick={() => setMode(m)}
             className={cn(
               "rounded-md px-2.5 py-1 text-xs font-medium",
-              mode === m ? (m === "note" ? "bg-amber-100 text-amber-900" : "bg-primary/10 text-primary") : "text-muted-foreground hover:bg-muted",
-            )}
+              mode === m
+                ? m === "note" ? "bg-warning/15 text-warning" : "bg-primary/10 text-primary"
+                : "text-muted-foreground hover:bg-muted",            )}
           >
             {m === "reply" ? "Reply" : "Note"}
           </button>
@@ -144,7 +145,7 @@ export function EmbedChatComposer({ visitor, actions }: Readonly<{ visitor: Widg
       </div>
       {mode === "note" ? (
         <>
-          <p className="mx-3 mt-2 flex items-center gap-2 rounded-md bg-amber-500/15 px-3 py-1.5 text-xs text-amber-900">
+          <p className="mx-3 mt-2 flex items-center gap-2 rounded-md bg-warning/15 px-3 py-1.5 text-xs text-warning">
             <StickyNote className="size-3.5 shrink-0" aria-hidden />
             Internal note. Only your team sees it — the customer and AI never do.
           </p>

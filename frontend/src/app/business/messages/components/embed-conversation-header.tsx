@@ -28,7 +28,7 @@ export function EmbedConversationHeader({
   const pill = embedChatPill(visitor);
 
   return (
-    <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-card px-3 py-2.5 md:px-4">
+    <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-card px-3 py-2.5 shadow-sm md:px-4">
       <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-3">
         <Button variant="ghost" size="icon-sm" className="md:hidden" onClick={onBack} aria-label="Back to conversations">
           <ArrowLeft />
@@ -47,7 +47,7 @@ export function EmbedConversationHeader({
             <h2 className={cn("truncate text-base font-semibold text-foreground", !visitor.name && "italic")}>
               {visitorDisplayName(visitor)}
             </h2>
-            <span className={cn("inline-flex shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium", badge.className)}>
+            <span className={cn("inline-flex shrink-0 rounded px-1.5 py-0.5 text-xs font-medium", badge.className)}>
               {badge.label}
             </span>
           </div>

@@ -58,7 +58,7 @@ export function InboxChannelBar() {
         </p>
       ))}
       {widgetOff && (
-        <p className="border-t border-border bg-amber-500/10 px-4 py-1.5 text-xs text-amber-900">
+        <p className="border-t border-border bg-warning/10 px-4 py-1.5 text-xs text-warning">
           The chat widget is off. It&apos;s hidden on your website and visitors can&apos;t send messages. Past conversations stay here.
         </p>
       )}

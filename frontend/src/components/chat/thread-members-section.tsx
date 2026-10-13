@@ -101,11 +101,12 @@ export function ThreadMembersSection({
         <button
           type="button"
           onClick={() => setOpen(!open)}
-          className="flex flex-1 items-center gap-2 text-left text-sm font-semibold"
+          aria-expanded={open}
+          className="flex min-w-0 flex-1 cursor-pointer items-center gap-2 text-left text-sm font-semibold"
         >
           <Users className="size-4 text-muted-foreground" aria-hidden />
           Members
-          {members.length > 0 && <span className="text-muted-foreground">({members.length})</span>}
+          {members.length > 0 && <span className="text-xs font-normal text-muted-foreground">({members.length})</span>}
           {open ? (
             <ChevronUp className="ml-auto size-4 text-muted-foreground" aria-hidden />
           ) : (

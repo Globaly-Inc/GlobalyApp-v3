@@ -76,18 +76,21 @@ export function MessageRow({
   return (
     <div
       id={`message-${message.id}`}
+      // Focusable (but not a tab stop) so a tap on a touch screen focuses the row, and
+      // focus-within reveals the hover toolbar there just as hovering does on desktop.
+      tabIndex={-1}
       className={cn(
-        "group relative flex gap-1.5 px-1.5 py-0.5 transition-colors duration-150 hover:bg-muted/40 md:gap-3 md:px-4",
-        !isGrouped && "md:py-1",
-        // V2 tints a pinned row amber so it is findable while scrolling, not only in the panel.
-        message.is_pinned && "bg-amber-500/5 hover:bg-amber-500/10",
+        "group relative flex gap-2 px-2 py-0.5 outline-none transition-colors duration-150 hover:bg-muted/40 focus-within:bg-muted/40 md:gap-3 md:px-4",
+        !isGrouped && "pt-1.5 md:pt-2",
+        // V2 tints a pinned row so it is findable while scrolling, not only in the panel.
+        message.is_pinned && "bg-warning/5 hover:bg-warning/10 focus-within:bg-warning/10",
       )}
     >
-      <div className="w-7 shrink-0 md:w-9">
+      <div className="w-8 shrink-0 md:w-9">
         {!isGrouped && (
-          <Avatar className="size-7 md:size-9">
+          <Avatar className="size-8 md:size-9">
             {message.sender_avatar && <AvatarImage src={message.sender_avatar} alt={message.sender_name} />}
-            <AvatarFallback className="bg-primary/10 text-[10px] font-medium text-primary md:text-xs">
+            <AvatarFallback className="bg-primary/10 text-xs font-medium text-primary">
               {initials(message.sender_name)}
             </AvatarFallback>
           </Avatar>
@@ -96,11 +99,13 @@ export function MessageRow({
 
       <div className="min-w-0 flex-1">
         {!isGrouped && (
-          <div className="mb-0.5 flex items-center gap-2">
+          <div className="mb-0.5 flex min-w-0 flex-wrap items-baseline gap-x-2">
             <span className={cn("text-sm font-semibold", message.is_mine ? "text-primary" : "text-foreground")}>
               {message.sender_name}
             </span>
-            <span className="text-xs text-muted-foreground">{messageTime(message.created_at)}</span>
+            <time dateTime={message.created_at} className="text-xs tabular-nums text-muted-foreground">
+              {messageTime(message.created_at)}
+            </time>
           </div>
         )}
 
@@ -114,7 +119,7 @@ export function MessageRow({
           />
         ) : (
           message.body && (
-            <div className="text-sm leading-relaxed text-foreground">
+            <div className="break-words text-sm leading-relaxed text-foreground">
               <RichTextMessage body={message.body} />
               {message.edited_at && <span className="ml-1 text-xs text-muted-foreground">(edited)</span>}
             </div>
@@ -140,14 +145,14 @@ export function MessageRow({
         {(message.is_pinned || message.is_starred) && (
           <div className="mt-1.5 flex items-center gap-2">
             {message.is_pinned && (
-              <span className="flex items-center gap-0.5 text-xs font-medium text-amber-600 dark:text-amber-400">
+              <span className="flex items-center gap-0.5 text-xs font-medium text-warning">
                 <Pin className="size-3" aria-hidden />
                 Pinned
               </span>
             )}
             {message.is_starred && (
-              <span className="flex items-center gap-0.5 text-xs text-blue-500">
-                <Bookmark className="size-3 fill-blue-500" aria-hidden />
+              <span className="flex items-center gap-0.5 text-xs text-info">
+                <Bookmark className="size-3 fill-current" aria-hidden />
                 Starred
               </span>
             )}

@@ -39,7 +39,7 @@ export function DraftsView({
               key={draft.distributionId}
               type="button"
               onClick={() => onOpen(draft.distributionId)}
-              className="group w-full cursor-pointer rounded-lg border border-border bg-background p-3 text-left transition-colors hover:bg-muted"
+              className="group w-full cursor-pointer rounded-xl border border-border bg-card p-3 text-left transition-colors hover:bg-muted/50"
             >
               <div className="flex items-start gap-3">
                 <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-muted">
@@ -65,7 +65,7 @@ export function DraftsView({
                         e.stopPropagation();
                         deleteDraft(draft.distributionId);
                       }}
-                      className="ml-auto flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
+                      className="ml-auto flex size-6 shrink-0 cursor-pointer items-center justify-center rounded-md opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100 group-focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
                     >
                       <Trash2 className="size-3.5 text-destructive" />
                     </span>

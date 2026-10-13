@@ -3,6 +3,7 @@
 import { useSyncExternalStore } from "react";
 import Image from "next/image";
 import { MessageSquare } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 import { useAppSelector } from "@/lib/hooks";
 import { ICON } from "@/lib/public-assets";
 
@@ -45,25 +46,25 @@ export function ChatEmptyState({ threadCount }: Readonly<{ threadCount: number }
 
   return (
     <div className="flex h-full flex-col items-center justify-center px-4 py-8">
-      <div className="relative mb-6">
-        <div className="flex size-20 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 via-primary/10 to-primary/5 shadow-lg">
-          <Image src={ICON.src} alt="GlobalyAI" width={ICON.width} height={ICON.height} className="size-12 rounded-lg" />
+      <div className="relative mb-5">
+        <div className="flex size-16 items-center justify-center rounded-2xl bg-primary-light">
+          <Image src={ICON.src} alt="GlobalyAI" width={ICON.width} height={ICON.height} className="size-10 rounded-lg" />
         </div>
-        <div className="absolute -bottom-2 -right-2 flex size-8 items-center justify-center rounded-full bg-primary/20">
+        <div className="absolute -bottom-1.5 -right-1.5 flex size-7 items-center justify-center rounded-full bg-card ring-1 ring-border">
           <MessageSquare className="size-4 text-primary" aria-hidden />
         </div>
       </div>
 
-      <h1 className="mb-2 text-center text-2xl font-bold">
+      <h1 className="mb-1.5 text-center font-heading text-xl font-medium tracking-[-0.01em] text-foreground">
         Hi{firstName ? ` ${firstName}` : ""}! Welcome to Messages
       </h1>
-      <p className="text-center text-muted-foreground">Your conversations with agents and institutions</p>
+      <p className="text-center text-sm text-muted-foreground">Your conversations with agents and institutions</p>
 
-      <div className="mt-8 flex flex-wrap justify-center gap-2">
+      <div className="mt-6 flex flex-wrap justify-center gap-1.5">
         {CAPABILITIES.map((capability) => (
-          <span key={capability} className="rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
+          <Badge key={capability} variant="outline" className="text-muted-foreground">
             {capability}
-          </span>
+          </Badge>
         ))}
       </div>
 

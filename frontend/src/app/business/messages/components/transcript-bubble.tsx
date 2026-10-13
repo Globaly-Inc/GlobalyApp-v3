@@ -121,7 +121,7 @@ export function TranscriptBubble({
               </span>
             ) : isAgent ? (
               <Avatar className="size-6">
-                <AvatarFallback className="bg-sky-100 text-[10px] font-medium text-sky-800">{initials(agentName)}</AvatarFallback>
+                <AvatarFallback className="bg-info/15 text-xs font-medium text-info">{initials(agentName)}</AvatarFallback>
               </Avatar>
             ) : isBot ? (
               // The orb draws past its box (scale-175), so it gets a smaller one than the slot.
@@ -130,7 +130,7 @@ export function TranscriptBubble({
               </span>
             ) : (
               <Avatar className="size-6">
-                <AvatarFallback className="bg-primary/10 text-[10px] font-medium text-primary">
+                <AvatarFallback className="bg-primary/10 text-xs font-medium text-primary">
                   {visitorInitials ?? <User className="size-3" aria-hidden />}
                 </AvatarFallback>
               </Avatar>
@@ -143,7 +143,7 @@ export function TranscriptBubble({
             Message deleted
           </div>
         ) : isAgent ? (
-          <div className="min-w-0 rounded-2xl border border-sky-200 bg-sky-50 px-3.5 py-2 text-sm leading-relaxed text-foreground">
+          <div className="min-w-0 rounded-2xl border border-info/25 bg-info/5 px-3.5 py-2 text-sm leading-relaxed text-foreground">
             {message.content && <RichTextMessage body={message.content} />}
             {!!message.attachments?.length && (
               <div className={cn(message.content && "mt-2")}>

@@ -43,7 +43,7 @@ export function ShortcutsNav({
               {count > 0 && (
                 <Badge
                   variant={type === "unread" ? "destructive" : "secondary"}
-                  className="ml-auto h-5 min-w-5 px-1.5 text-[10px]"
+                  className="ml-auto h-5 min-w-5 px-1.5 text-xs"
                 >
                   {count > 99 ? "99+" : count}
                 </Badge>

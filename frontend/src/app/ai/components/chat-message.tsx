@@ -1,13 +1,14 @@
 "use client";
 
 import { useState } from "react";
-import { Check, ChevronDown, ChevronUp, Copy, CornerUpLeft, Paperclip, Sparkles } from "lucide-react";
+import { Check, Copy, CornerUpLeft, Paperclip } from "lucide-react";
 import type { CourseCard as CourseCardType, Message, ResponseBlock } from "../apis/types";
 import { CourseCard } from "./course-card";
 import { FeedbackButtons } from "./feedback-buttons";
 import { MessageBlocks } from "./message-blocks";
 import { MessageMarkdown } from "./message-markdown";
 import { ScrollRow } from "@/components/scroll-row";
+import { AlyOrbIcon } from "@/components/aly-orb-icon";
 import { setReplyTo } from "../store/ai-chat-slice";
 import { followUpChips, splitQuote } from "../utils";
 import { useAppDispatch } from "@/lib/hooks";
@@ -86,8 +87,8 @@ function QuotedText({ text }: { text: string }) {
  * Hidden on the narrowest containers, where the column can't spare 40px. */
 function AssistantMark() {
   return (
-    <span className="mt-0.5 hidden size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary sm:flex">
-      <Sparkles className="size-3.5" />
+    <span className="mt-0.5 hidden size-7 shrink-0 items-center justify-center sm:flex">
+      <AlyOrbIcon className="size-7" />
     </span>
   );
 }
@@ -163,35 +164,6 @@ function Chips({ chips, onChipClick, busy }: { chips: string[]; onChipClick?: (c
   );
 }
 
-const CARD_PAGE = 5;
-
-function CourseCardList({ cards }: { cards: CourseCardType[] }) {
-  const [expanded, setExpanded] = useState(false);
-  const visible = expanded ? cards : cards.slice(0, CARD_PAGE);
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="@container/cards w-full">
-        <ScrollRow rowClassName={CARD_RAIL}>
-          {visible.map((card, i) => (
-            <div key={card.id ?? i} className={CARD_SLIDE}>
-              <CourseCard card={card} />
-            </div>
-          ))}
-        </ScrollRow>
-      </div>
-      {cards.length > CARD_PAGE && (
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="flex items-center gap-1.5 self-start rounded-full border px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
-        >
-          {expanded ? <><ChevronUp className="size-3.5" /> Show less</> : <><ChevronDown className="size-3.5" /> View {cards.length - CARD_PAGE} more</>}
-        </button>
-      )}
-    </div>
-  );
-}
-
 /**
  * Assistant turns are bubbleless full-width prose (claude.ai-style) so long
  * answers, tables and cards get the whole column; only the user's own turns are
@@ -258,7 +230,7 @@ export function ChatMessage({ message, onChipClick, onSend, busy }: ChatMessageP
     const { quote, body } = splitQuote(message.content);
     return (
       <div className="flex flex-col items-end gap-1.5">
-        <div className="max-w-[85%] rounded-2xl rounded-br-md bg-muted px-4 py-2.5">
+        <div className="max-w-[85%] rounded-xl rounded-br-sm bg-primary/10 px-4 py-2.5">
           {quote && <QuotedText text={quote} />}
           {/* select-text so the prompt can be selected and copied by hand, not just via the button */}
           <p className="text-[0.9375rem] leading-relaxed whitespace-pre-wrap select-text text-foreground">

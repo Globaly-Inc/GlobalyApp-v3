@@ -56,7 +56,7 @@ export function GenerationProgress() {
         {jobs.map((job) => (
           <div key={job.id} className="flex items-center justify-between gap-3 rounded-md border border-border px-3 py-2 text-sm">
             <div className="flex items-center gap-2">
-              {job.status === "done" && <CheckCircle2 className="h-4 w-4 text-emerald-500" />}
+              {job.status === "done" && <CheckCircle2 className="h-4 w-4 text-success" />}
               {job.status === "failed" && <XCircle className="h-4 w-4 text-destructive" />}
               {(job.status === "pending" || job.status === "running") && (
                 <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
