@@ -4,10 +4,10 @@ import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { WIDGET_SETTINGS_HREF } from "@/app/business/ai-widget/const";
-import { ArrowLeft, Globe, Loader2, Plus, TriangleAlert } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { ArrowLeft, Globe, Loader2, ShieldCheck, TriangleAlert } from "lucide-react";
 import { PageHeader } from "@/components/ui/page-header";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { ZernioIcon } from "../../components/brand-icons";
 import { WidgetSwitch } from "../../components/widget-switch";
 import { CHANNELS_HREF } from "../../const";
 import type { ChannelConnection, ChannelKey } from "../apis/types";
@@ -21,12 +21,6 @@ import { DisconnectDialog } from "./disconnect-dialog";
 function SectionLabel({ children }: Readonly<{ children: React.ReactNode }>) {
   return <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{children}</h2>;
 }
-
-const ADD_ANOTHER: Record<ChannelKey, string> = {
-  whatsapp: "Add another WhatsApp number",
-  instagram: "Add another Instagram account",
-  facebook: "Add another Facebook Page",
-};
 
 const isChannel = (v: string | null): v is ChannelKey => v === "whatsapp" || v === "instagram" || v === "facebook";
 
@@ -78,8 +72,8 @@ export function ChannelsView() {
     });
   }, [returned, router, dispatch]);
 
-  // Every live account, not the first: one organisation can connect several WhatsApp numbers or
-  // Facebook Pages, and each needs its own configure / reconnect / disconnect.
+  // ponytail: one account per channel for now — Zernio bills per connected account, so there's no
+  // "Add another". Any extra account that already exists still gets its own card to manage.
   const live = (key: ChannelKey) => (loaded ? connections.filter((c) => c.channel === key && c.status !== "disconnected") : []);
 
   return (
@@ -140,17 +134,19 @@ export function ChannelsView() {
               : [<ChannelCard key={card.key} {...props} connection={undefined} />];
           })}
         </div>
-        {CHANNEL_CARDS.some((card) => live(card.key).length > 0) && (
-          <div className="flex flex-wrap gap-2">
-            {CHANNEL_CARDS.filter((card) => live(card.key).length > 0).map((card) => (
-              <Button key={card.key} size="sm" variant="outline" className="gap-1.5" disabled={!configured} onClick={() => setStep({ kind: "intro", channel: card.key })}>
-                <Plus className="size-3.5" aria-hidden />
-                {ADD_ANOTHER[card.key]}
-              </Button>
-            ))}
+        <div className="flex max-w-3xl items-center gap-3 rounded-xl border border-border bg-muted/40 px-4 py-3">
+          <ZernioIcon className="size-8 shrink-0 rounded-md" aria-hidden />
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium text-foreground">Powered by Zernio</p>
+            <p className="text-xs text-muted-foreground">
+              Our messaging partner connects WhatsApp, Instagram and Facebook. You log in on Meta&apos;s own page, and we never see your password.
+            </p>
           </div>
-        )}
-        <p className="text-xs text-muted-foreground">WhatsApp, Instagram and Facebook connect through our messaging partner Zernio. You can disconnect any time.</p>
+          <span className="hidden shrink-0 items-center gap-1 text-xs text-muted-foreground sm:flex">
+            <ShieldCheck className="size-3.5" aria-hidden />
+            Disconnect any time
+          </span>
+        </div>
       </section>
 
       <ConnectDialog

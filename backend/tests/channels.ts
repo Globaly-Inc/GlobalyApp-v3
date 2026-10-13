@@ -11,6 +11,7 @@ const { windowOpen } = await import("../src/modules/channels/services/outbound.s
 const { aiConfigOf, DEFAULT_AI_CONFIG, channelVisitorKey, isChannel } = await import("../src/modules/channels/consts.js");
 const { formatForChannel, markdownToChannel } = await import("../src/modules/channels/lib/channel-format.js");
 const { isEventDue } = await import("../src/modules/channels/repositories/zernio.repository.js");
+const { unansweredTail } = await import("../src/modules/ai-counsellor/services/takeover.service.js");
 
 let passed = 0;
 let failed = 0;
@@ -72,6 +73,18 @@ check("a never-attempted event is due", isEventDue({ processed_at: null, next_at
 check("a failed event is not due before its backoff ends", !isEventDue({ processed_at: null, next_attempt_at: new Date(at + 60_000) }, at));
 check("and is due once it has", isEventDue({ processed_at: null, next_attempt_at: new Date(at - 1) }, at));
 check("a processed event is never due", !isEventDue({ processed_at: new Date(at - 1), next_attempt_at: null }, at));
+
+// --- a burst of messages is answered as ONE question, in the order it was sent
+const burst = [
+  { id: 1, role: "user", content: "What courses do you offer?" },
+  { id: 2, role: "assistant", content: "We offer…" },
+  { id: 3, role: "user", content: "Hello" },
+  { id: 4, role: "user", content: "List me some course" },
+];
+const tail = unansweredTail(burst, null);
+check("every message since the last answer joins the question, in order", tail.questions.join(" | ") === "Hello | List me some course");
+check("and the history the model reads stops before them", tail.cut === 2);
+check("nothing is owed once the last word is ours", unansweredTail(burst.slice(0, 2), null).questions.length === 0);
 
 console.log(`\nchannels: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

@@ -56,6 +56,8 @@ export function EmbedConversationView({ visitor, onBack }: Readonly<{ visitor: W
   const readFor = useRef<string | null>(null);
   useEffect(() => {
     const key = `${visitor.id}:${unread}`;
+    // Back to 0 = read; forget the key, or the next single new message ("id:1" again) is skipped.
+    if (unread === 0) readFor.current = null;
     if (unread === 0 || readFor.current === key) return;
     readFor.current = key;
     dispatch(markEmbedChatRead(visitor.id));

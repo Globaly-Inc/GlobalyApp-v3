@@ -20,6 +20,7 @@ import type { WidgetVisitor } from "@/app/business/ai-widget/apis/types";
 import { aiWidgetApi } from "@/app/business/ai-widget/apis";
 import { getDraftCount, getServerDraftCount, subscribeDrafts } from "@/components/chat/draft-store";
 import { ChatEmptyState } from "./chat-empty-state";
+import { InboxWelcome } from "./inbox-welcome";
 import { ChatSidebar } from "@/components/chat/chat-sidebar";
 import { ConversationView } from "./conversation-view";
 import { DraftsView } from "@/components/chat/drafts-view";
@@ -251,7 +252,7 @@ export function MessagesView() {
             embedSelected ? (
               <EmbedConversationView visitor={embedSelected} onBack={() => setEmbedOpen(null)} />
             ) : (
-              <ChatEmptyState threadCount={embed.visitors.length} embed />
+              <InboxWelcome visitors={embed.visitors} health={channelHealth} onView={setView} onChannel={setChannel} />
             )
           ) : selected ? (
             <ConversationView thread={selected} highlightMessageId={highlightId} onBack={backToList} />
