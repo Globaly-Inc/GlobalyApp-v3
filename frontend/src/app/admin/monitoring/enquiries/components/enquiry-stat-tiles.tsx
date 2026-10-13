@@ -26,7 +26,7 @@ export function EnquiryStatTiles({ stats }: Readonly<{ stats: AdminEnquiryStats 
   const closed = countOf(stats, CLOSED);
 
   return (
-    <div className="mb-4 grid gap-3 sm:grid-cols-3">
+    <div className="grid gap-3 sm:grid-cols-3">
       <Tile label="Enquiries" value={String(total)} hint={`${countOf(stats, IN_PROGRESS)} in progress`} />
       <Tile
         label="Unlocked"

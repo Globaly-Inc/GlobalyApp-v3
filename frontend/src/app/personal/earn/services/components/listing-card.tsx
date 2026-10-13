@@ -4,7 +4,6 @@ import Link from "next/link";
 import { ExternalLink, Pause, Pencil, Play, Star, Trash2 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import type { Listing } from "../apis";
 import { CategoryCover } from "./category-cover";
 import { formatMoney } from "../utils";
@@ -40,15 +39,7 @@ export function ListingCard({
       <div className="flex flex-1 flex-col gap-2 p-4">
         <div className="flex items-start justify-between gap-2">
           <h3 className="line-clamp-2 font-semibold text-foreground">{listing.title}</h3>
-          <Badge
-            variant="secondary"
-            className={cn(
-              "shrink-0",
-              listing.is_active
-                ? "bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-300"
-                : "bg-muted text-muted-foreground",
-            )}
-          >
+          <Badge variant={listing.is_active ? "success" : "secondary"} className="shrink-0">
             {listing.is_active ? "Active" : "Paused"}
           </Badge>
         </div>
@@ -67,7 +58,7 @@ export function ListingCard({
 
         <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
           <span className="inline-flex items-center gap-1">
-            <Star className="h-3.5 w-3.5 fill-yellow-400 text-yellow-400" />
+            <Star className="h-3.5 w-3.5 fill-warning text-warning" />
             {listing.avg_rating.toFixed(1)}
           </span>
           <span>
@@ -80,7 +71,7 @@ export function ListingCard({
 
         {openOrders > 0 && (
           // The same number the delete guard reads, so a refusal is never a surprise.
-          <Badge variant="secondary" className="w-fit bg-blue-100 text-blue-800 dark:bg-blue-500/15 dark:text-blue-300">
+          <Badge variant="info" className="w-fit">
             {openOrders} {openOrders === 1 ? "order" : "orders"} in progress
           </Badge>
         )}

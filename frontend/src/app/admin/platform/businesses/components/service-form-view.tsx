@@ -13,7 +13,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Combobox } from "@/components/combobox";
 import { DynamicIcon } from "@/components/dynamic-icon";
-import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs";
+import { SectionTabs } from "@/components/section-tabs";
 import { CourseDetailsCard } from "./services/course-details-card";
 import { CategoryExtraFields } from "./services/category-extra-fields";
 import { ServiceFeesTab } from "./services/service-fees-tab";
@@ -382,7 +382,7 @@ export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId
       </Card>
 
       {isEdit && (
-        <AdminSegmentedTabs
+        <SectionTabs
           options={[
             { value: "summary", label: "Summary" },
             { value: "fees", label: isCourse ? "Course Fees" : "Fees" },

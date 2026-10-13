@@ -3,18 +3,19 @@
 import { useEffect, useState } from "react";
 import { visitorHref } from "@/app/business/ai-widget/const";
 import { useRouter } from "next/navigation";
-import { Download, Loader2, Search, Users, X } from "lucide-react";
+import { Download, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { EmptyState } from "@/components/ui/empty-state";
+import { FilterBar, SearchInput } from "@/components/ui/filter-bar";
+import { ListSkeleton } from "@/components/ui/list-skeleton";
+import { PageBody } from "@/components/ui/page-body";
+import { PageHeader } from "@/components/ui/page-header";
 import { Pagination } from "@/components/ui/pagination";
+import { TableCard } from "@/components/ui/table";
+import { SectionTabs } from "@/components/section-tabs";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { cn } from "@/lib/utils";
-import { PortalPageHeader } from "@/app/business/profile/components/portal-ui/portal-page-header";
 import { PortalStats } from "@/app/business/profile/components/portal-ui/portal-stats";
 import { PortalStatTile } from "@/app/business/profile/components/portal-ui/portal-stat-tile";
-import { SEARCH_INPUT } from "@/app/business/profile/components/portal-ui/portal-ui";
-import { TeamSubTabs } from "@/app/business/profile/components/members/team-sub-tabs";
 import { fetchVisitors } from "../store/ai-widget-visitors-slice";
 import { VISITORS_PAGE_SIZE, VISITOR_TABS } from "../const";
 import { downloadCsv, visitorsToCsv } from "../utils";
@@ -72,102 +73,95 @@ export function VisitorsTab() {
 
   const filtered = !!search || tab !== "all" || channel !== "all";
 
+  // Rendered at /business/contacts/visitors, which BusinessShell gives PortalShell `width="wide"`.
   return (
-    <Card>
-      <CardContent className="stagger-in grid gap-4">
-        <PortalPageHeader title="Visitors & Leads" subtitle="Everyone who has messaged you, on your website, WhatsApp, Instagram or Facebook.">
-          <div className="relative w-full sm:w-72">
-            <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" aria-hidden />
-            <Input
-              className={SEARCH_INPUT}
-              placeholder="Search name, email, phone or handle"
-              aria-label="Search visitors"
-              value={search}
-              onChange={(e) => changeQuery(() => setSearch(e.target.value))}
-            />
-          </div>
-        </PortalPageHeader>
+    <PageBody>
+      <PageHeader title={<><Users /> Visitors &amp; Leads</>} subtitle="Everyone who has messaged you, on your website, WhatsApp, Instagram or Facebook." />
 
-        {/* Counts are for the whole list (they ignore search and channel), like the Team tiles. */}
-        <PortalStats>
-          <PortalStatTile value={counts.all} label="People" />
-          <PortalStatTile value={counts.visitor} label="Visitors" />
-          <PortalStatTile value={counts.lead} label="Leads" />
-        </PortalStats>
+      {/* Counts are for the whole list (they ignore search and channel), like the Team tiles. */}
+      <PortalStats>
+        <PortalStatTile value={counts.all} label="People" />
+        <PortalStatTile value={counts.visitor} label="Visitors" />
+        <PortalStatTile value={counts.lead} label="Leads" />
+      </PortalStats>
 
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <TeamSubTabs
-            label="Visitors view"
-            options={VISITOR_TABS.map((t) => ({ ...t, count: counts[t.value] }))}
-            value={tab}
-            onChange={(next) => changeQuery(() => setTab(next))}
-          />
-          <div className="w-full sm:w-60">
-            <ChannelPicker value={channel} onChange={(next) => changeQuery(() => setChannel(next))} />
+      <SectionTabs
+        options={VISITOR_TABS.map((t) => ({ ...t, count: counts[t.value] }))}
+        value={tab}
+        onChange={(next) => changeQuery(() => setTab(next))}
+        className="mb-0"
+      />
+
+      <FilterBar>
+        <SearchInput
+          placeholder="Search name, email, phone or handle"
+          aria-label="Search visitors"
+          value={search}
+          onChange={(e) => changeQuery(() => setSearch(e.target.value))}
+        />
+        <div className="w-full sm:w-60">
+          <ChannelPicker value={channel} onChange={(next) => changeQuery(() => setChannel(next))} />
+        </div>
+        <span className="shrink-0 px-2 text-sm text-muted-foreground">
+          {total} {VISITOR_TABS.find((t) => t.value === tab)?.label.toLowerCase()}
+        </span>
+      </FilterBar>
+
+      {selectedIds.size > 0 && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/40 p-2.5">
+          <span className="text-sm font-medium">{selectedIds.size} selected</span>
+          <div className="flex items-center gap-1.5">
+            <Button size="sm" variant="outline" onClick={exportSelected}>
+              <Download className="mr-1.5 h-3.5 w-3.5" /> Export CSV
+            </Button>
+            <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
+              <X className="mr-1.5 h-3.5 w-3.5" /> Clear
+            </Button>
           </div>
         </div>
+      )}
 
-        {selectedIds.size > 0 && (
-          <div className="flex flex-wrap items-center justify-between gap-2 rounded-[14px] border bg-muted/40 p-2.5">
-            <span className="text-sm font-medium">{selectedIds.size} selected</span>
-            <div className="flex items-center gap-1.5">
-              <Button size="sm" variant="outline" onClick={exportSelected}>
-                <Download className="mr-1.5 h-3.5 w-3.5" /> Export CSV
-              </Button>
-              <Button size="sm" variant="ghost" onClick={() => setSelectedIds(new Set())}>
-                <X className="mr-1.5 h-3.5 w-3.5" /> Clear
-              </Button>
-            </div>
-          </div>
-        )}
+      {status === "loading" && <ListSkeleton count={6} itemClassName="h-14" />}
 
-        {status === "loading" && (
-          <div className="flex justify-center py-8">
-            <Loader2 className="h-5 w-5 animate-spin text-primary" />
-          </div>
-        )}
+      {status === "failed" && (
+        <div className="rounded-lg border border-dashed border-border py-12 text-center text-sm text-muted-foreground">
+          {error ?? "Couldn't load visitors."}
+        </div>
+      )}
 
-        {status === "failed" && (
-          <div className="rounded-[14px] border border-dashed py-12 text-center text-sm text-muted-foreground">
-            {error ?? "Couldn't load visitors."}
-          </div>
-        )}
+      {status === "idle" && items.length === 0 && (
+        <EmptyState
+          icon={Users}
+          title={filtered ? "Nothing matches these filters" : "No one has messaged you yet"}
+          description={
+            filtered
+              ? undefined
+              : "People appear here as soon as they send their first message, and become leads when they share their name and email."
+          }
+        />
+      )}
 
-        {status === "idle" && items.length === 0 && (
-          <div className={cn("flex flex-col items-center gap-3 rounded-[14px] border border-dashed py-12 text-center")}>
-            <Users className="h-10 w-10 text-muted-foreground/40" />
-            <p className="text-sm font-medium">{filtered ? "Nothing matches these filters" : "No one has messaged you yet"}</p>
-            {!filtered && (
-              <p className="max-w-sm text-xs text-muted-foreground">
-                People appear here as soon as they send their first message, and become leads when
-                they share their name and email.
-              </p>
-            )}
-          </div>
-        )}
-
-        {status === "idle" && items.length > 0 && (
-          <div className="grid min-w-0">
-            <VisitorsTable
-              visitors={items}
-              selectedIds={selectedIds}
-              onSelectedIdsChange={setSelectedIds}
-              // The table stays routing-agnostic: it reports which row was picked, this decides
-              // that picking one means opening that visitor's page.
-              onView={(v) => router.push(visitorHref(v.id))}
-            />
-          </div>
-        )}
-
-        {total > 0 && (
-          <Pagination
-            page={page}
-            total={total}
-            limit={VISITORS_PAGE_SIZE}
-            onPageChange={(p) => { setSelectedIds(new Set()); setPage(p); }}
+      {status === "idle" && items.length > 0 && (
+        <TableCard>
+          <VisitorsTable
+            visitors={items}
+            selectedIds={selectedIds}
+            onSelectedIdsChange={setSelectedIds}
+            // The table stays routing-agnostic: it reports which row was picked, this decides
+            // that picking one means opening that visitor's page.
+            onView={(v) => router.push(visitorHref(v.id))}
           />
-        )}
-      </CardContent>
-    </Card>
+        </TableCard>
+      )}
+
+      {total > 0 && (
+        <Pagination
+          page={page}
+          total={total}
+          limit={VISITORS_PAGE_SIZE}
+          onPageChange={(p) => { setSelectedIds(new Set()); setPage(p); }}
+        />
+      )}
+    </PageBody>
   );
 }

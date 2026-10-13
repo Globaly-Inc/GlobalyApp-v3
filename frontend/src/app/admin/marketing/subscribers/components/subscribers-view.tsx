@@ -1,11 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Loader2, Search, Download } from "lucide-react";
+import { Download, Mail } from "lucide-react";
 import { toast } from "sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { EmptyState } from "@/components/ui/empty-state";
+import { FilterBar, SearchInput } from "@/components/ui/filter-bar";
+import { ListSkeleton } from "@/components/ui/list-skeleton";
+import { PageBody } from "@/components/ui/page-body";
+import { PageHeader } from "@/components/ui/page-header";
+import { Pagination } from "@/components/ui/pagination";
+import { Table, TableBody, TableCard, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import {
   Select,
   SelectContent,
@@ -31,6 +37,14 @@ const sourceBadgeVariant: Record<string, "default" | "secondary" | "outline"> = 
   early_interest: "secondary",
   guide_lead: "outline",
 };
+
+const SUBSCRIBER_COLUMNS = [
+  { label: "Source" },
+  { label: "Name", className: "hidden md:table-cell" },
+  { label: "Email" },
+  { label: "Detail", className: "hidden lg:table-cell" },
+  { label: "Subscribed", className: "hidden md:table-cell" },
+] as const;
 
 export function SubscribersView() {
   const dispatch = useAppDispatch();
@@ -63,28 +77,28 @@ export function SubscribersView() {
   };
 
   const totalPages = Math.ceil(total / limit);
+  const loadingFirstPage = status === "loading" && subscribers.length === 0;
+  const filterParams = { type: type !== "all" ? type : undefined, search: search || undefined };
 
   return (
-    <div>
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold text-foreground">Subscribers</h1>
-        <p className="mt-1 text-muted-foreground">{total} total subscribers</p>
-      </div>
+    <PageBody>
+      <PageHeader title={<><Mail /> Subscribers</>} subtitle={`${total} total subscribers`}>
+        <Button onClick={handleExport} variant="outline" className="gap-1.5">
+          <Download className="h-4 w-4" />
+          Export CSV
+        </Button>
+      </PageHeader>
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="relative flex-1 max-w-xs">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search by email or name..."
-            className="h-9 pl-9"
-            value={search}
-            onChange={handleSearch}
-            onKeyDown={(e) => e.key === "Enter" && handleSearchSubmit()}
-          />
-        </div>
+      <FilterBar>
+        <SearchInput
+          placeholder="Search by email or name..."
+          value={search}
+          onChange={handleSearch}
+          onKeyDown={(e) => e.key === "Enter" && handleSearchSubmit()}
+        />
 
         <Select value={type} onValueChange={(v) => setType(v ?? "all")}>
-          <SelectTrigger className="w-40 h-9">
+          <SelectTrigger className="h-10 w-40 bg-background">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -95,80 +109,57 @@ export function SubscribersView() {
           </SelectContent>
         </Select>
 
-        <Button onClick={handleFilterChange} variant="outline" size="sm">
+        <Button onClick={handleFilterChange} variant="outline" className="h-10">
           Apply
         </Button>
+      </FilterBar>
 
-        <Button onClick={handleExport} variant="outline" size="sm" className="gap-1.5">
-          <Download className="h-4 w-4" />
-          Export CSV
-        </Button>
-      </div>
-
-      {status === "loading" ? (
-        <div className="flex justify-center py-12">
-          <Loader2 className="size-6 animate-spin text-primary" />
-        </div>
-      ) : (
-        <div className="rounded-lg border border-border">
-          {subscribers.length === 0 ? (
-            <p className="py-10 text-center text-sm text-muted-foreground">No subscribers found.</p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead className="border-b border-border bg-muted/50">
-                  <tr>
-                    <th className="px-4 py-3 text-left font-medium">Source</th>
-                    <th className="px-4 py-3 text-left font-medium">Name</th>
-                    <th className="px-4 py-3 text-left font-medium">Email</th>
-                    <th className="px-4 py-3 text-left font-medium">Detail</th>
-                    <th className="px-4 py-3 text-left font-medium">Subscribed</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {subscribers.map((subscriber, idx) => (
-                    <tr key={`${subscriber.email}-${idx}`} className="border-b border-border last:border-b-0">
-                      <td className="px-4 py-3">
-                        <Badge variant={sourceBadgeVariant[subscriber.source]}>
-                          {sourceLabels[subscriber.source]}
-                        </Badge>
-                      </td>
-                      <td className="px-4 py-3">{subscriber.name || "—"}</td>
-                      <td className="px-4 py-3">{subscriber.email}</td>
-                      <td className="px-4 py-3">{subscriber.detail || "—"}</td>
-                      <td className="px-4 py-3">{formatDate(subscriber.created_at)}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </div>
+      {loadingFirstPage && <ListSkeleton count={6} itemClassName="h-12" />}
+      {!loadingFirstPage && subscribers.length === 0 && <EmptyState icon={Mail} title="No subscribers found" />}
+      {!loadingFirstPage && subscribers.length > 0 && (
+        <TableCard>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {SUBSCRIBER_COLUMNS.map((col) => (
+                  <TableHead key={col.label} className={"className" in col ? col.className : undefined}>
+                    {col.label}
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {subscribers.map((subscriber, idx) => (
+                <TableRow key={`${subscriber.email}-${idx}`}>
+                  <TableCell>
+                    <Badge variant={sourceBadgeVariant[subscriber.source]}>{sourceLabels[subscriber.source]}</Badge>
+                  </TableCell>
+                  <TableCell className="hidden md:table-cell">{subscriber.name || "—"}</TableCell>
+                  <TableCell primary>
+                    <p className="truncate font-medium text-foreground">{subscriber.email}</p>
+                    {/* Fallbacks for the columns hidden on narrow screens. */}
+                    <p className="truncate text-xs text-muted-foreground md:hidden">
+                      {subscriber.name || "—"} · {formatDate(subscriber.created_at)}
+                    </p>
+                    <p className="truncate text-xs text-muted-foreground lg:hidden">{subscriber.detail || "—"}</p>
+                  </TableCell>
+                  <TableCell className="hidden max-w-xs truncate text-muted-foreground lg:table-cell">{subscriber.detail || "—"}</TableCell>
+                  <TableCell className="hidden text-muted-foreground md:table-cell">{formatDate(subscriber.created_at)}</TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableCard>
       )}
 
       {subscribers.length > 0 && totalPages > 1 && (
-        <div className="mt-4 flex justify-center gap-2">
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page === 1}
-            onClick={() => dispatch(fetchSubscribers({ page: page - 1, limit, type: type !== "all" ? type : undefined, search: search || undefined }))}
-          >
-            Previous
-          </Button>
-          <span className="flex items-center gap-2 text-sm text-muted-foreground">
-            Page {page} of {totalPages}
-          </span>
-          <Button
-            variant="outline"
-            size="sm"
-            disabled={page >= totalPages}
-            onClick={() => dispatch(fetchSubscribers({ page: page + 1, limit, type: type !== "all" ? type : undefined, search: search || undefined }))}
-          >
-            Next
-          </Button>
-        </div>
+        <Pagination
+          page={page}
+          limit={limit}
+          total={total}
+          onPageChange={(next) => dispatch(fetchSubscribers({ page: next, limit, ...filterParams }))}
+        />
       )}
-    </div>
+    </PageBody>
   );
 }

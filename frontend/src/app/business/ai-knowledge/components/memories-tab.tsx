@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Brain, Loader2, Plus, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs";
+import { SectionTabs } from "@/components/section-tabs";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import {
   approveMemory, createMemory, deleteMemory, deprecateMemory, fetchMemories, fetchMemorySummary,
@@ -113,7 +113,7 @@ export function MemoriesTab() {
         </Button>
       </div>
 
-      <AdminSegmentedTabs options={MEMORY_FILTERS} value={filter} onChange={setFilter} />
+      <SectionTabs options={MEMORY_FILTERS} value={filter} onChange={setFilter} />
 
       {error && <p className="mb-3 text-sm text-destructive">{error}</p>}
 

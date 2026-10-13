@@ -2,12 +2,15 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Loader2, Plus } from "lucide-react";
+import { Plus, Tags } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { ListSkeleton } from "@/components/ui/list-skeleton";
+import { PageBody } from "@/components/ui/page-body";
+import { PageHeader } from "@/components/ui/page-header";
 import { Pagination } from "@/components/ui/pagination";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { AdminSegmentedTabs } from "../../../components/admin-segmented-tabs";
+import { SectionTabs } from "@/components/section-tabs";
 import { categoriesApi } from "../apis";
 import { ADD_LABEL, CATEGORY_TABS, LOOKUP_KIND, LOOKUP_TITLE, ROUTE_SEGMENT, TAB_DESCRIPTION } from "../const";
 import {
@@ -191,11 +194,7 @@ export function CategoriesView() {
 
   let tabContent: React.ReactNode;
   if (catalog.status === "loading") {
-    tabContent = (
-      <div className="flex justify-center py-12">
-        <Loader2 className="size-6 animate-spin text-primary" />
-      </div>
-    );
+    tabContent = <ListSkeleton count={6} itemClassName="h-14" />;
   } else if (catalog.status === "failed") {
     tabContent = <p className="py-12 text-center text-sm text-destructive">{catalog.error}</p>;
   } else {
@@ -267,27 +266,22 @@ export function CategoriesView() {
   }
 
   return (
-    <div>
-      <div className="mb-4 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Categories</h1>
-          <p className="mt-1 text-muted-foreground">
-            Manage business types, service categories, and academic lookups.
-          </p>
-        </div>
+    <PageBody>
+      <PageHeader
+        title={<><Tags /> Categories</>}
+        subtitle="Manage business types, service categories, and academic lookups."
+      >
         {addLabel && (
           <Button className="h-10 cursor-pointer" onClick={handleAdd}>
             <Plus data-icon="inline-start" />
             {addLabel}
           </Button>
         )}
-      </div>
+      </PageHeader>
 
-      <AdminSegmentedTabs options={CATEGORY_TABS} value={tab} onChange={handleTabChange} />
+      <SectionTabs options={CATEGORY_TABS} value={tab} onChange={handleTabChange} />
 
-      {TAB_DESCRIPTION[tab] && (
-        <p className="mt-3 mb-4 max-w-3xl text-sm text-muted-foreground">{TAB_DESCRIPTION[tab]}</p>
-      )}
+      {TAB_DESCRIPTION[tab] && <p className="max-w-3xl text-sm text-muted-foreground">{TAB_DESCRIPTION[tab]}</p>}
 
       {tabContent}
 
@@ -373,6 +367,6 @@ export function CategoriesView() {
         onConfirm={handleConfirmDelete}
         deleting={saving}
       />
-    </div>
+    </PageBody>
   );
 }

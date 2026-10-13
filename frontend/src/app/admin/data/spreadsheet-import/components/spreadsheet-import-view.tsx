@@ -5,6 +5,8 @@ import { CheckCircle2, Download, FileSpreadsheet, ListChecks, PencilLine, Shield
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Dialog, DialogContent, DialogDescription, DialogTitle } from "@/components/ui/dialog";
+import { PageBody } from "@/components/ui/page-body";
+import { PageHeader } from "@/components/ui/page-header";
 // ponytail: borrowed from all-extractions (22 importers there) rather than moved to @/components.
 import { useConfirmDelete } from "@/app/admin/data/all-extractions/components/use-confirm-delete";
 import { SpreadsheetIllustration } from "./spreadsheet-illustration";
@@ -45,14 +47,19 @@ export function SpreadsheetImportView() {
   };
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-6">
+    <PageBody>
+      <PageHeader
+        title={<><FileSpreadsheet /> Spreadsheet Import</>}
+        subtitle="Import a complete institution from one spreadsheet, then review it before anything goes public."
+      />
+
       <Card className="overflow-hidden">
         <CardContent className="grid items-center gap-8 p-6 md:grid-cols-[1.1fr_1fr] md:p-10">
           <div className="flex flex-col gap-4">
             <span className="flex w-fit items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary">
               <FileSpreadsheet className="h-3.5 w-3.5" /> Bulk import
             </span>
-            <h1 className="text-2xl font-semibold tracking-tight md:text-3xl">Import an institution from a spreadsheet</h1>
+            <h2 className="text-2xl font-semibold tracking-tight md:text-3xl">Import an institution from a spreadsheet</h2>
             <p className="text-sm text-muted-foreground md:text-base">
               Bring in a complete institution in one go — its profile, branches, agents, courses, fees, intakes,
               eligibility, scholarships, study units, study options and accreditations. Nothing goes public until you
@@ -128,6 +135,6 @@ export function SpreadsheetImportView() {
         </DialogContent>
       </Dialog>
       {confirmDialog}
-    </div>
+    </PageBody>
   );
 }

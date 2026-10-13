@@ -2,20 +2,25 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Globe, Loader2, Plus, Search, Sparkles } from "lucide-react";
+import { Globe, Plus, Sparkles } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Input } from "@/components/ui/input";
+import { EmptyState } from "@/components/ui/empty-state";
+import { FilterBar, SearchInput } from "@/components/ui/filter-bar";
+import { ListSkeleton } from "@/components/ui/list-skeleton";
+import { PageBody } from "@/components/ui/page-body";
+import { PageHeader } from "@/components/ui/page-header";
 import { Pagination } from "@/components/ui/pagination";
+import { Table, TableBody, TableCard, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { AdminSegmentedTabs } from "../../../components/admin-segmented-tabs";
+import { SectionTabs } from "@/components/section-tabs";
 import { ConfirmDeleteDialog } from "../../../components/confirm-delete-dialog";
 import { countriesApi } from "../apis";
 import { COUNTRY_FILTER_TABS, type CountryFilter } from "../const";
 import { fetchCountries, removeCountry } from "../store/countries-slice";
 import type { CountrySummary } from "../apis/types";
-import { CountryRow } from "./country-row";
+import { COUNTRY_COLUMNS, CountryRow } from "./country-row";
 
 const PAGE_SIZE = 20;
 
@@ -91,71 +96,69 @@ export function CountriesView() {
   };
 
   return (
-    <div>
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground">
-            <Globe className="h-6 w-6" /> Countries &amp; Cities
-          </h1>
-          <p className="mt-1 text-muted-foreground">Manage destination countries and their cities. Data powers public country/city pages.</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button
-            variant="outline"
-            className="gap-1.5"
-            onClick={() => toast.info("AI seeding isn't available yet", { description: "Add countries and cities manually for now." })}
-          >
-            <Sparkles className="h-4 w-4" /> Seed with AI
-          </Button>
-          <Button className="gap-1.5" onClick={() => router.push("/admin/platform/countries/new")}>
-            <Plus className="h-4 w-4" /> Add Country
-          </Button>
-        </div>
-      </div>
+    <PageBody>
+      <PageHeader
+        title={<><Globe /> Countries &amp; Cities</>}
+        subtitle="Manage destination countries and their cities. Data powers public country/city pages."
+      >
+        <Button
+          variant="outline"
+          className="gap-1.5"
+          onClick={() => toast.info("AI seeding isn't available yet", { description: "Add countries and cities manually for now." })}
+        >
+          <Sparkles className="h-4 w-4" /> Seed with AI
+        </Button>
+        <Button className="gap-1.5" onClick={() => router.push("/admin/platform/countries/new")}>
+          <Plus className="h-4 w-4" /> Add Country
+        </Button>
+      </PageHeader>
 
-      <div className="mb-4 grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-3 gap-4">
         <StatCard label="Total Countries" value={stats.total} />
         <StatCard label="Active" value={stats.active} />
         <StatCard label="Featured" value={stats.featured} />
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center gap-3">
-        <div className="relative w-full max-w-xs">
-          <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input placeholder="Search countries..." className="h-10 pl-9" value={search} onChange={(e) => handleSearchChange(e.target.value)} />
-        </div>
-        <AdminSegmentedTabs options={COUNTRY_FILTER_TABS} value={filter} onChange={handleFilterChange} className="mb-0" />
-      </div>
+      <SectionTabs options={COUNTRY_FILTER_TABS} value={filter} onChange={handleFilterChange} />
 
-      {status === "loading" && countries.length === 0 ? (
-        <div className="flex justify-center py-12">
-          <Loader2 className="size-6 animate-spin text-primary" />
-        </div>
-      ) : (
-        <div className="rounded-lg border border-border">
-          <div className="grid grid-cols-[2fr_0.8fr_1.3fr_1.2fr_0.7fr_0.7fr_0.9fr] gap-3 border-b border-border px-4 pb-2 pt-3 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-            <span>Country</span>
-            <span>Code</span>
-            <span>Cities</span>
-            <span>Media</span>
-            <span>Active</span>
-            <span>Featured</span>
-            <span className="text-right">Actions</span>
-          </div>
-          {countries.length === 0 ? (
-            <p className="py-10 text-center text-sm text-muted-foreground">No countries found.</p>
-          ) : (
-            countries.map((country) => (
-              <CountryRow
-                key={country.id}
-                country={country}
-                onToggle={(field, value) => handleToggle(country, field, value)}
-                onEdit={() => router.push(`/admin/platform/countries/${country.id}/edit`)}
-                onDelete={() => setDeleting(country)}
-              />
-            ))
-          )}
-        </div>
+      <FilterBar>
+        <SearchInput placeholder="Search countries..." value={search} onChange={(e) => handleSearchChange(e.target.value)} />
+        <span className="shrink-0 px-2 text-sm text-muted-foreground">
+          {meta.total} countr{meta.total === 1 ? "y" : "ies"}
+        </span>
+      </FilterBar>
+
+      {status === "loading" && countries.length === 0 && <ListSkeleton count={6} itemClassName="h-14" />}
+      {status !== "loading" && countries.length === 0 && (
+        <EmptyState icon={Globe} title="No countries found." description={debouncedSearch ? "Try a different search." : undefined} />
+      )}
+      {countries.length > 0 && (
+        // ponytail: overflow visible so the cities popover isn't clipped by the table's scroll box;
+        // narrow screens drop columns instead of scrolling sideways.
+        <TableCard className="overflow-visible [&>[data-slot=table-container]]:overflow-visible [&_th:first-child]:rounded-tl-lg [&_th:last-child]:rounded-tr-lg">
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {COUNTRY_COLUMNS.map((col) => (
+                  <TableHead key={col.label} className={"className" in col ? col.className : undefined}>
+                    {"srOnly" in col ? <span className="sr-only">{col.label}</span> : col.label}
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {countries.map((country) => (
+                <CountryRow
+                  key={country.id}
+                  country={country}
+                  onToggle={(field, value) => handleToggle(country, field, value)}
+                  onEdit={() => router.push(`/admin/platform/countries/${country.id}/edit`)}
+                  onDelete={() => setDeleting(country)}
+                />
+              ))}
+            </TableBody>
+          </Table>
+        </TableCard>
       )}
 
       {meta.total > 0 && <Pagination page={meta.page} total={meta.total} limit={meta.limit} onPageChange={setPage} />}
@@ -167,6 +170,6 @@ export function CountriesView() {
         onConfirm={handleConfirmDelete}
         deleting={busy}
       />
-    </div>
+    </PageBody>
   );
 }

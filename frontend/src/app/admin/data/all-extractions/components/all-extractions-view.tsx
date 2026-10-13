@@ -1,10 +1,14 @@
 "use client";
 
+import { useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { ListOrdered, ShieldCheck, Stamp, type LucideIcon } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { ScrollRow } from "@/components/scroll-row";
+import { Plus, ScanSearch } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { PageBody } from "@/components/ui/page-body";
+import { PageHeader } from "@/components/ui/page-header";
+import { SectionTabs } from "@/components/section-tabs";
 import { JobsList } from "./jobs-list";
+import { NewExtractionDialog } from "./new-extraction-dialog";
 import { MaraAgentsView } from "../../mara-agents/components/mara-agents-view";
 import { VisasView } from "../../visas/components/visas-view";
 
@@ -12,10 +16,10 @@ type ListTab = "all" | "mara" | "visas";
 
 // MARA Agents and Visas moved here from their own top-level nav items — same page,
 // own Redux slice/API each, rendered inline so the tab bar stays put across sub-tabs.
-const TABS: { value: ListTab; label: string; icon: LucideIcon }[] = [
-  { value: "all", label: "All", icon: ListOrdered },
-  { value: "mara", label: "MARA Agents", icon: ShieldCheck },
-  { value: "visas", label: "Visas", icon: Stamp },
+const TABS: { value: ListTab; label: string }[] = [
+  { value: "all", label: "All" },
+  { value: "mara", label: "MARA Agents" },
+  { value: "visas", label: "Visas" },
 ];
 
 function parseTab(raw: string | null): ListTab {
@@ -26,6 +30,7 @@ export function AllExtractionsView() {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
+  const [showNewForm, setShowNewForm] = useState(false);
 
   const active = parseTab(searchParams.get("tab"));
 
@@ -36,41 +41,25 @@ export function AllExtractionsView() {
   };
 
   return (
-    <div>
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold text-foreground">All Extractions</h1>
-        <p className="text-muted-foreground mt-1">
-          Every extraction job — ongoing, completed, failed, declined. Nothing is hidden.
-        </p>
-      </div>
+    <PageBody>
+      <PageHeader
+        title={<><ScanSearch /> All Extractions</>}
+        subtitle="Every extraction job — ongoing, completed, failed, declined. Nothing is hidden."
+      >
+        {active === "all" && (
+          <Button className="gap-2" onClick={() => setShowNewForm(true)}>
+            <Plus className="h-4 w-4" />
+            New Extraction
+          </Button>
+        )}
+      </PageHeader>
 
-      <ScrollRow className="mb-4 w-full border-b border-border">
-        <div className="inline-flex w-max gap-1 pb-px">
-          {TABS.map((tab) => {
-            const isActive = active === tab.value;
-            return (
-              <button
-                key={tab.value}
-                type="button"
-                onClick={() => setTab(tab.value)}
-                className={cn(
-                  "-mb-px flex cursor-pointer items-center gap-2 whitespace-nowrap rounded-t-lg border-b-2 px-3.5 py-2.5 text-sm font-medium transition-colors",
-                  isActive
-                    ? "border-primary bg-primary/5 text-primary font-semibold"
-                    : "border-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-                )}
-              >
-                <tab.icon className={cn("h-4 w-4", isActive ? "text-primary" : "text-muted-foreground")} />
-                {tab.label}
-              </button>
-            );
-          })}
-        </div>
-      </ScrollRow>
+      <SectionTabs options={TABS} value={active} onChange={setTab} />
 
-      {active === "all" && <JobsList mode="all" />}
+      <NewExtractionDialog open={showNewForm} onOpenChange={setShowNewForm} />
+      {active === "all" && <JobsList mode="all" onNewExtraction={() => setShowNewForm(true)} />}
       {active === "mara" && <MaraAgentsView />}
       {active === "visas" && <VisasView />}
-    </div>
+    </PageBody>
   );
 }

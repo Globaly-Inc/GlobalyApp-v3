@@ -1,12 +1,15 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Search, Users } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { Users } from "lucide-react";
+import { EmptyState } from "@/components/ui/empty-state";
+import { FilterBar, SearchInput } from "@/components/ui/filter-bar";
+import { ListSkeleton } from "@/components/ui/list-skeleton";
 import { Pagination } from "@/components/ui/pagination";
+import { Table, TableBody, TableCard, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchPlatformUsers } from "../../platform-users/store/platform-users-slice";
-import { PlatformUserRow } from "../../platform-users/components/platform-user-row";
+import { PLATFORM_USER_COLUMNS, PlatformUserRow } from "../../platform-users/components/platform-user-row";
 import { SuspendPlatformUserDialog } from "../../platform-users/components/suspend-platform-user-dialog";
 import { ConfirmSuperAdminDialog } from "../../platform-users/components/confirm-super-admin-dialog";
 import type { PlatformUser } from "../../platform-users/apis/types";
@@ -37,44 +40,47 @@ export function PlatformUsersTab() {
   }, [dispatch, debouncedSearch]);
 
   const refreshParams = { search: debouncedSearch || undefined, page: platformUsers.page, limit: platformUsers.limit };
+  const loadingFirstPage = platformUsersStatus === "loading" && platformUsers.data.length === 0;
 
   return (
-    <div>
-      <div className="mb-4 flex items-center justify-between gap-3">
-        <div className="relative max-w-sm flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder="Search by name or email..."
-            className="h-10 pl-9"
-            value={search}
-            onChange={(e) => handleSearchChange(e.target.value)}
-          />
-        </div>
-        <span className="shrink-0 text-sm text-muted-foreground">
+    <div className="space-y-4">
+      <FilterBar>
+        <SearchInput placeholder="Search by name or email" value={search} onChange={(e) => handleSearchChange(e.target.value)} />
+        <span className="shrink-0 px-2 text-sm text-muted-foreground">
           {platformUsers.total} user{platformUsers.total === 1 ? "" : "s"}
         </span>
-      </div>
+      </FilterBar>
 
-      <div className="space-y-2">
-        {platformUsersStatus === "loading" && platformUsers.data.length === 0 && (
-          <p className="py-8 text-center text-sm text-muted-foreground">Loading…</p>
-        )}
-        {platformUsersStatus !== "loading" && platformUsers.data.length === 0 && (
-          <div className="flex flex-col items-center gap-2 py-12 text-center text-muted-foreground">
-            <Users className="h-8 w-8 opacity-30" />
-            <p className="text-sm">No users found.</p>
-          </div>
-        )}
-        {platformUsers.data.map((user) => (
-          <PlatformUserRow
-            key={user.id}
-            user={user}
-            refreshParams={refreshParams}
-            onSuspend={() => setSuspendingUser(user)}
-            onSuperAdminAction={(grant) => setSuperAdminAction({ user, grant })}
-          />
-        ))}
-      </div>
+      {loadingFirstPage && <ListSkeleton count={6} itemClassName="h-14" />}
+      {!loadingFirstPage && platformUsers.data.length === 0 && (
+        <EmptyState icon={Users} title="No users found" description={debouncedSearch ? "Try a different name or email." : undefined} />
+      )}
+      {platformUsers.data.length > 0 && (
+        <TableCard>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {PLATFORM_USER_COLUMNS.map((col) => (
+                  <TableHead key={col.label} className={"className" in col ? col.className : undefined}>
+                    {"srOnly" in col ? <span className="sr-only">{col.label}</span> : col.label}
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {platformUsers.data.map((user) => (
+                <PlatformUserRow
+                  key={user.id}
+                  user={user}
+                  refreshParams={refreshParams}
+                  onSuspend={() => setSuspendingUser(user)}
+                  onSuperAdminAction={(grant) => setSuperAdminAction({ user, grant })}
+                />
+              ))}
+            </TableBody>
+          </Table>
+        </TableCard>
+      )}
 
       <Pagination
         page={platformUsers.page}

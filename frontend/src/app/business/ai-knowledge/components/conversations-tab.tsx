@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Flag, Loader2, MessagesSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs";
+import { SectionTabs } from "@/components/section-tabs";
 import { relativeTime } from "@/components/feed/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchConversations, fetchThread } from "../store/ai-knowledge-reviews-slice";
@@ -52,7 +52,7 @@ export function ConversationsTab() {
 
   return (
     <div>
-      <AdminSegmentedTabs options={QUEUE_TABS} value={queue} onChange={setQueue} />
+      <SectionTabs options={QUEUE_TABS} value={queue} onChange={setQueue} />
 
       {status === "loading" && (
         <div className="flex justify-center py-8">

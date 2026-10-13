@@ -3,7 +3,7 @@
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Clock } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs";
+import { SectionTabs } from "@/components/section-tabs";
 import { useAppSelector } from "@/lib/hooks";
 import { EmptyTabPlaceholder } from "./shared/empty-tab-placeholder";
 import { ActivityTab } from "./tabs/activity-tab";
@@ -65,7 +65,7 @@ export function DetailTabs({
 
   return (
     <div className="lg:col-span-2">
-      <AdminSegmentedTabs options={TABS} value={tab} onChange={setTab} />
+      <SectionTabs options={TABS} value={tab} onChange={setTab} />
       <Card>
         <CardContent>
           {tab === "branches" && (kind === "business" ? (

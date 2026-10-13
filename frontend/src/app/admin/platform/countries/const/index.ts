@@ -1,4 +1,4 @@
-import type { SegmentOption } from "../../../components/admin-segmented-tabs";
+import type { SegmentOption } from "@/components/section-tabs";
 
 export type CountryFilter = "all" | "active" | "featured";
 

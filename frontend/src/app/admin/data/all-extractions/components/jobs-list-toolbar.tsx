@@ -1,23 +1,14 @@
 "use client";
 
-import { ListFilter, Plus, Search, X } from "lucide-react";
+import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
+import { FilterBar, SearchInput } from "@/components/ui/filter-bar";
 import { Combobox, type ComboboxOption } from "@/components/combobox";
-import {
-  MODE_HEADINGS,
-  SORT_OPTIONS,
-  SOURCE_FILTER_OPTIONS,
-  STATUS_FILTER_OPTIONS,
-  type DashboardMode,
-  type SortOrder,
-} from "../const";
+import { SORT_OPTIONS, SOURCE_FILTER_OPTIONS, STATUS_FILTER_OPTIONS, type SortOrder } from "../const";
 
 const STATUS_COMBOBOX_OPTIONS = [{ value: "all", label: "All statuses" }, ...STATUS_FILTER_OPTIONS];
 
 type Props = Readonly<{
-  mode: DashboardMode;
   jobCount: number;
   searchQuery: string;
   onSearchChange: (v: string) => void;
@@ -31,21 +22,15 @@ type Props = Readonly<{
   businessCategoryFilter: string;
   onBusinessCategoryFilterChange: (v: string) => void;
   businessCategoryOptions: ComboboxOption[];
-  showSelectAll: boolean;
-  allPageSelected: boolean;
-  onToggleSelectAll: () => void;
   showDeclinedToggle: boolean;
   showDeclined: boolean;
   onToggleShowDeclined: () => void;
   hasActiveFilters: boolean;
   onClearFilters: () => void;
-  showNewExtractionButton: boolean;
-  onNewExtraction: () => void;
 }>;
 
-/** The filter/search/action bar above the job list — split out to keep jobs-list.tsx under the line cap. */
+/** The search/filter strip above the job table — split out to keep jobs-list.tsx under the line cap. */
 export function JobsListToolbar({
-  mode,
   jobCount,
   searchQuery,
   onSearchChange,
@@ -59,108 +44,48 @@ export function JobsListToolbar({
   businessCategoryFilter,
   onBusinessCategoryFilterChange,
   businessCategoryOptions,
-  showSelectAll,
-  allPageSelected,
-  onToggleSelectAll,
   showDeclinedToggle,
   showDeclined,
   onToggleShowDeclined,
   hasActiveFilters,
   onClearFilters,
-  showNewExtractionButton,
-  onNewExtraction,
 }: Props) {
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-      <div className="flex items-center gap-2.5">
-        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md bg-primary/10 text-primary">
-          <ListFilter className="h-4 w-4" />
-        </div>
-        <div>
-          <p className="font-semibold text-foreground">{MODE_HEADINGS[mode].title}</p>
-          <p className="text-sm text-muted-foreground">
-            {jobCount} job{jobCount === 1 ? "" : "s"}
-          </p>
-        </div>
-      </div>
+    <FilterBar>
+      <SearchInput placeholder="Search by name or URL…" value={searchQuery} onChange={(e) => onSearchChange(e.target.value)} />
 
-      <div className="flex flex-wrap items-center gap-2">
-        <div className="relative">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-          <Input
-            placeholder="Search by name or URL…"
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="h-8 w-56 pl-7 text-xs"
-          />
-        </div>
+      <Combobox options={STATUS_COMBOBOX_OPTIONS} value={statusFilter} onChange={onStatusFilterChange} className="w-40 bg-background" />
+      <Combobox
+        options={businessCategoryOptions}
+        value={businessCategoryFilter}
+        onChange={onBusinessCategoryFilterChange}
+        className="w-40 bg-background"
+      />
+      <Combobox
+        options={SORT_OPTIONS}
+        value={sortOrder}
+        onChange={(v) => onSortOrderChange(v as SortOrder)}
+        className="w-40 bg-background"
+      />
+      {showSourceFilter && (
+        <Combobox options={SOURCE_FILTER_OPTIONS} value={sourceFilter} onChange={onSourceFilterChange} className="w-36 bg-background" />
+      )}
 
-        <Combobox
-          options={STATUS_COMBOBOX_OPTIONS}
-          value={statusFilter}
-          onChange={onStatusFilterChange}
-          className="h-8 w-40 text-xs cursor-pointer"
-        />
+      {hasActiveFilters && (
+        <Button variant="ghost" size="sm" className="gap-1.5 text-muted-foreground" onClick={onClearFilters}>
+          <X className="h-3.5 w-3.5" />
+          Clear filters
+        </Button>
+      )}
+      {showDeclinedToggle && (
+        <Button variant="ghost" size="sm" className="text-muted-foreground" onClick={onToggleShowDeclined}>
+          {showDeclined ? "Hide" : "Show"} declined
+        </Button>
+      )}
 
-        <Combobox
-          options={businessCategoryOptions}
-          value={businessCategoryFilter}
-          onChange={onBusinessCategoryFilterChange}
-          className="h-8 w-40 text-xs cursor-pointer"
-        />
-
-        <Combobox
-          options={SORT_OPTIONS}
-          value={sortOrder}
-          onChange={(v) => onSortOrderChange(v as SortOrder)}
-          className="h-8 w-40 text-xs cursor-pointer"
-        />
-
-        {showSelectAll && (
-          <Button variant="ghost" className="h-8 gap-1.5 text-xs cursor-pointer" onClick={onToggleSelectAll}>
-            {/* ponytail: rendered as a span — a real checkbox button inside a button is invalid HTML */}
-            <Checkbox checked={allPageSelected} render={<span />} className="pointer-events-none" />
-            {allPageSelected ? "Deselect page" : "Select page"}
-          </Button>
-        )}
-
-        {showSourceFilter && (
-          <Combobox
-            options={SOURCE_FILTER_OPTIONS}
-            value={sourceFilter}
-            onChange={onSourceFilterChange}
-            className="h-8 w-36 text-xs cursor-pointer"
-          />
-        )}
-
-        {hasActiveFilters && (
-          <Button
-            variant="ghost"
-            className="h-8 gap-1.5 text-xs text-muted-foreground cursor-pointer"
-            onClick={onClearFilters}
-          >
-            <X className="h-3.5 w-3.5" />
-            Clear filters
-          </Button>
-        )}
-
-        {showDeclinedToggle && (
-          <Button
-            variant="ghost"
-            className="h-8 gap-1.5 text-xs text-muted-foreground cursor-pointer"
-            onClick={onToggleShowDeclined}
-          >
-            {showDeclined ? "Hide" : "Show"} declined
-          </Button>
-        )}
-
-        {showNewExtractionButton && (
-          <Button className="gap-2 px-4 cursor-pointer" onClick={onNewExtraction}>
-            <Plus className="h-4 w-4" />
-            New Extraction
-          </Button>
-        )}
-      </div>
-    </div>
+      <span className="shrink-0 px-2 text-sm text-muted-foreground">
+        {jobCount} job{jobCount === 1 ? "" : "s"}
+      </span>
+    </FilterBar>
   );
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs";
+import { SectionTabs } from "@/components/section-tabs";
 import { INBOX_FILTERS, type InboxFilterKey } from "../const";
 import type { AdminEnquiryStats } from "../apis";
 
@@ -29,14 +29,14 @@ export function EnquiryStatusFilter({
   // Rendered through the shared segmented control rather than a local pill: the business inbox
   // shows the same three buckets, and two hand-rolled versions of one filter would drift.
   return (
-    <AdminSegmentedTabs
+    <SectionTabs
       options={[
         { value: "all" as FilterKey, label: "All", count: stats?.total ?? 0 },
         ...INBOX_FILTERS.map((f) => ({ value: f.key as FilterKey, label: f.label, count: countOf(f.statuses) })),
       ]}
       value={active}
       onChange={onChange}
-      className="mb-3"
+      className="mb-0"
     />
   );
 }

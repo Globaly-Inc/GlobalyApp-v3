@@ -11,7 +11,7 @@ export function InviteStatCards({
   counts, value, onChange, loading,
 }: Readonly<{ counts: InviteCounts; value: InviteStatus | "all"; onChange: (value: InviteStatus | "all") => void; loading: boolean }>) {
   return (
-    <div className={cn("mb-5 grid grid-cols-2 gap-3 transition-opacity sm:grid-cols-3 lg:grid-cols-5", loading && "opacity-60")}>
+    <div className={cn("grid grid-cols-2 gap-3 transition-opacity sm:grid-cols-3 lg:grid-cols-5", loading && "opacity-60")}>
       {ORDER.map((status) => {
         const active = value === status;
         const label = status === "all" ? "All" : STATUS_BADGE[status].label;
