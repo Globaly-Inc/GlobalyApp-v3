@@ -28,19 +28,19 @@ function DeliveryStatus({ message, show }: Readonly<{ message: VisitorMessage; s
   if (!status) return null;
   if (status === "failed") {
     return (
-      <p className="mr-8 mt-1 flex items-center gap-1 text-[11px] text-destructive">
+      <p className="mr-8 mt-1 flex items-center gap-1 text-xs text-destructive">
         <CircleAlert className="size-3" aria-hidden />
         Not delivered{message.delivery_error ? ` · ${message.delivery_error}` : ""}
       </p>
     );
   }
   if (!show) return null;
-  const [Icon, label, tone] = status === "read" ? [CheckCheck, "Read", "text-sky-600"]
+  const [Icon, label, tone] = status === "read" ? [CheckCheck, "Read", "text-info"]
     : status === "delivered" ? [CheckCheck, "Delivered", "text-muted-foreground"]
     : status === "sent" ? [Check, "Sent", "text-muted-foreground"]
     : [Check, "Sending…", "text-muted-foreground"];
   return (
-    <p className="mr-8 mt-1 flex items-center gap-1 text-[11px] text-muted-foreground">
+    <p className="mr-8 mt-1 flex items-center gap-1 text-xs text-muted-foreground">
       <Icon className={cn("size-3", tone)} aria-hidden />
       {label}
     </p>
@@ -116,7 +116,7 @@ export function TranscriptBubble({
         <span className="size-6 shrink-0">
           {!grouped &&
             (isAgent && fromPhone ? (
-              <span className="flex size-6 items-center justify-center rounded-full bg-sky-100 text-sky-800">
+              <span className="flex size-6 items-center justify-center rounded-full bg-info/10 text-info">
                 <Smartphone className="size-3" aria-hidden />
               </span>
             ) : isAgent ? (

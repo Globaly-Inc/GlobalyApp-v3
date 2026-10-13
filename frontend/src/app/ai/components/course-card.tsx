@@ -174,7 +174,7 @@ export function CourseCard({ card }: CourseCardProps) {
               a 208-week "duration" for a 2-year master's was doing more harm than good. Put the
               row back here when that number can be trusted. */}
           <div className="flex items-end justify-between gap-2 pt-1 @max-[14rem]/card:pt-0.5">
-            <div className="flex min-w-0 flex-col gap-0.5 text-[11px] text-white/85 @max-[14rem]/card:text-[10px]">
+            <div className="flex min-w-0 flex-col gap-0.5 text-xs text-white/85 @max-[14rem]/card:text-xs">
               <span className="flex items-center gap-1 truncate" title={nextIntake ?? undefined}>
                 <CalendarDays className="size-3 shrink-0" />{nextIntake ?? "Not listed"}
               </span>
@@ -182,10 +182,10 @@ export function CourseCard({ card }: CourseCardProps) {
             {fee ? (
               <span className="shrink-0 text-sm font-bold tabular-nums text-white @max-[14rem]/card:text-xs">
                 {fee}
-                {feeSuffix && <span className="ml-0.5 text-[10px] font-normal text-white/70">{feeSuffix}</span>}
+                {feeSuffix && <span className="ml-0.5 text-xs font-normal text-white/70">{feeSuffix}</span>}
               </span>
             ) : (
-              <span className="shrink-0 text-xs font-medium text-white/75 @max-[14rem]/card:text-[10px]">On enquiry</span>
+              <span className="shrink-0 text-xs font-medium text-white/75 @max-[14rem]/card:text-xs">On enquiry</span>
             )}
           </div>
         </div>

@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Loader2, TrendingUp } from "lucide-react";
+import { AlertCircle, Loader2, TrendingUp } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
 import { PageBody } from "@/components/ui/page-body";
 import { PageHeader } from "@/components/ui/page-header";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
@@ -23,7 +25,7 @@ function Spinner() {
 
 export function SeoView() {
   const dispatch = useAppDispatch();
-  const { connected, statusStatus, dashboardStatus, rankings, stale, suggestions, readiness } =
+  const { connected, error, statusStatus, dashboardStatus, rankings, stale, suggestions, readiness } =
     useAppSelector((state) => state.marketingSeo);
 
   // Guard against React Strict Mode's double-invoked effects double-firing the fetch on mount.
@@ -50,6 +52,13 @@ export function SeoView() {
 
       {statusStatus === "loading" && connected === null ? (
         <Spinner />
+      ) : statusStatus === "failed" ? (
+        <EmptyState
+          icon={AlertCircle}
+          title="Couldn't check the Search Console connection"
+          description={error}
+          action={<Button variant="outline" onClick={() => dispatch(fetchSeoStatus())}>Try again</Button>}
+        />
       ) : !connected ? (
         <SetupInstructions />
       ) : dashboardStatus === "loading" && rankings.length === 0 ? (

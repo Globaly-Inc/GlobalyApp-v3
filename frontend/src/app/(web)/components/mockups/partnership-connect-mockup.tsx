@@ -160,7 +160,7 @@ export function PartnershipConnectMockup({
             y1="1"
             x2="85%"
             y2="1"
-            stroke="hsl(var(--primary))"
+            stroke="var(--primary)"
             strokeWidth="2"
             strokeDasharray="6 6"
             style={{ opacity: connected || reducedMotion ? 0.6 : 0, transition: "opacity 400ms ease-out" }}

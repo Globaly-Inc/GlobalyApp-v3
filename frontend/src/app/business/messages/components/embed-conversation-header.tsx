@@ -69,7 +69,7 @@ export function EmbedConversationHeader({
           aria-label={visitor.starred ? "Unstar" : "Star"}
           onClick={() => actions.toggleStar(!visitor.starred)}
         >
-          <Star className={cn("size-4", visitor.starred ? "fill-amber-400 text-amber-400" : "text-muted-foreground")} />
+          <Star className={cn("size-4", visitor.starred ? "fill-rating text-rating" : "text-muted-foreground")} />
         </Button>
         <Link
           href={visitorHref(visitor.id)}
