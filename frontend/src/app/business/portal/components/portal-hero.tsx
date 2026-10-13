@@ -1,7 +1,9 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { greeting } from "../utils";
+import { ChevronRight } from "lucide-react";
+import { HeroCard, HeroChip } from "@/components/ui/hero-card";
+import { greeting } from "@/components/greeting-hero/utils";
 import type { OnboardingProgress } from "../../apis/types";
 
 function ProgressRing({ value, total }: Readonly<{ value: number; total: number }>) {
@@ -9,10 +11,10 @@ function ProgressRing({ value, total }: Readonly<{ value: number; total: number 
   const radius = 17;
   const circumference = 2 * Math.PI * radius;
   return (
-    <svg width="40" height="40" viewBox="0 0 40 40" className="-rotate-90 shrink-0">
-      <circle cx="20" cy="20" r={radius} fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="4" />
+    <svg width="44" height="44" viewBox="0 0 40 40" className="-rotate-90 shrink-0" aria-hidden>
+      <circle cx="20" cy="20" r={radius} fill="none" stroke="currentColor" strokeOpacity={0.22} strokeWidth="4" />
       <circle
-        cx="20" cy="20" r={radius} fill="none" stroke="white" strokeWidth="4" strokeLinecap="round"
+        cx="20" cy="20" r={radius} fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round"
         strokeDasharray={circumference} strokeDashoffset={circumference * (1 - pct)}
         style={{ transition: "stroke-dashoffset 0.4s ease" }}
       />
@@ -63,52 +65,37 @@ export function PortalHero({
   const nextStep = progress?.steps.find((s) => !s.done);
   const { title, detail } = headline(stage, orgName, mounted ? new Date().getHours() : null);
 
-  return (
-    <section
-      aria-label="Welcome"
-      className="relative overflow-hidden rounded-xl px-5 py-6 text-white shadow-lg md:px-8 md:py-8"
-      style={{ background: "var(--gradient-primary)" }}
-    >
-      {/* Soft light from the top right, as on GlobalyOS-V2's greeting card. */}
-      <div
-        aria-hidden
-        className="pointer-events-none absolute inset-0 bg-[radial-gradient(60%_120%_at_85%_0%,rgb(255_255_255/0.14),transparent_60%),radial-gradient(40%_80%_at_0%_100%,rgb(255_255_255/0.06),transparent_70%)]"
-      />
+  const capsule = progress && progress.completed < progress.total && (
+    <>
+      {/* The 3D objects sit just left of the capsule, so they only appear with it. */}
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src="/objects/sparkle.webp"
         alt=""
         aria-hidden
-        className="pointer-events-none absolute -top-3 right-[22rem] hidden size-28 -rotate-6 object-contain opacity-90 drop-shadow-[0_18px_24px_rgb(0_0_0/0.35)] lg:block"
+        className="pointer-events-none absolute -top-3 right-[22rem] -z-10 hidden size-28 -rotate-6 object-contain opacity-90 drop-shadow-[0_18px_24px_rgb(0_0_0/0.35)] lg:block"
       />
       {/* eslint-disable-next-line @next/next/no-img-element */}
       <img
         src="/objects/campus.webp"
         alt=""
         aria-hidden
-        className="pointer-events-none absolute -bottom-6 right-[17rem] hidden size-24 object-contain opacity-55 blur-[1px] lg:block"
+        className="pointer-events-none absolute -bottom-6 right-[17rem] -z-10 hidden size-24 object-contain opacity-55 blur-[1px] lg:block"
       />
-      <div className="relative flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-        <div className="min-w-0 space-y-1.5">
-          <h1 className="text-2xl text-white md:text-[1.75rem]">{title}</h1>
-          <p className="text-sm text-white/75 md:text-base">{detail}</p>
-        </div>
-
-        {progress && progress.completed < progress.total && (
-          <a
-            href="#get-set-up"
-            className="flex shrink-0 items-center gap-3 rounded-xl bg-white/10 py-3 pl-3 pr-5 ring-1 ring-inset ring-white/15 backdrop-blur-sm transition-colors hover:bg-white/15"
-          >
-            <ProgressRing value={progress.completed} total={progress.total} />
-            <div className="text-left">
-              <p className="text-sm font-semibold text-white">
-                {progress.completed} of {progress.total} steps done
-              </p>
-              {nextStep && <p className="text-xs text-white/70">Next: {nextStep.label}</p>}
-            </div>
-          </a>
-        )}
-      </div>
-    </section>
+      <a href="#get-set-up" className="group block rounded-lg focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white">
+        <HeroChip className="gap-3 py-2.5 pl-2.5 pr-4 transition-colors group-hover:bg-white/15">
+          <ProgressRing value={progress.completed} total={progress.total} />
+          <span className="text-left">
+            <span className="block text-sm font-semibold">
+              {progress.completed} of {progress.total} steps done
+            </span>
+            {nextStep && <span className="mt-0.5 block text-xs text-white/70">Next: {nextStep.label}</span>}
+          </span>
+          <ChevronRight className="ml-1 size-4 shrink-0 opacity-70" aria-hidden />
+        </HeroChip>
+      </a>
+    </>
   );
+
+  return <HeroCard aria-label="Welcome" title={title} subtitle={detail} aside={capsule || undefined} />;
 }

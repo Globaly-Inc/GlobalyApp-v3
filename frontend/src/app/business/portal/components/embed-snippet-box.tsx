@@ -53,7 +53,7 @@ export function EmbedSnippetBox({ snippet }: Readonly<{ snippet: string }>) {
         aria-label={copied ? "Code copied" : "Copy the installation code"}
       >
         {copied
-          ? <Check className="h-4 w-4 text-emerald-600 dark:text-emerald-400" aria-hidden />
+          ? <Check className="size-4 text-success" aria-hidden />
           : <Copy className="h-4 w-4" aria-hidden />}
       </Button>
     </div>

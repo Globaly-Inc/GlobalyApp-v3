@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { ArrowRight, BookOpen, Check } from "lucide-react";
-import { Card } from "@/components/ui/card";
+import { Card, CardAction, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import { useAppSelector } from "@/lib/hooks";
 import type { ExtractionCounts, ExtractionStageState, ExtractionStages } from "../../apis/types";
@@ -35,7 +35,7 @@ const STAGES: { key: keyof ExtractionStages; label: string; detail: string }[] =
 function StageMark({ state }: Readonly<{ state: ExtractionStageState }>) {
   if (state === "done") {
     return (
-      <span aria-hidden className="mt-px flex size-[19px] shrink-0 items-center justify-center rounded-full bg-primary">
+      <span aria-hidden className="mt-px flex size-5 shrink-0 items-center justify-center rounded-full bg-primary">
         <Check className="size-3 text-primary-foreground" strokeWidth={3} />
       </span>
     );
@@ -46,7 +46,7 @@ function StageMark({ state }: Readonly<{ state: ExtractionStageState }>) {
     <span
       aria-hidden
       className={cn(
-        "mt-px size-[19px] shrink-0 rounded-full border-2",
+        "mt-px size-5 shrink-0 rounded-full border-2",
         state === "processing" ? "animate-spin border-primary border-t-transparent" : "border-muted-foreground/30",
       )}
     />
@@ -76,33 +76,36 @@ export function ExtractionProgressCard({ sharedFrom = null, website = null }: Re
     barClassName = "bg-success";
   } else {
     title = site ? `Reading ${site}` : "Reading your website";
-    barClassName = "bg-[linear-gradient(90deg,var(--primary),#23DDF6)]";
+    barClassName = "bg-linear-to-r from-primary to-info";
   }
 
   return (
-    <Card className="gap-0 py-0">
-      <div className="h-[3px] bg-muted">
+    <Card className="pt-0">
+      <div className="h-1 bg-muted">
         <span aria-hidden className={cn("block h-full transition-[width] duration-500", barClassName)} style={{ width: `${data.progress_pct}%` }} />
       </div>
 
-      <div className="flex flex-col gap-[18px] p-5 sm:px-[22px]">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="font-heading text-[19px] leading-tight font-semibold tracking-tight">{title}</h2>
+      <CardHeader>
+        <CardTitle><h2>{title}</h2></CardTitle>
+        {(running && data.started_at) || sharedFrom ? (
+          <CardDescription className="flex flex-col gap-1 text-xs">
             {running && data.started_at && (
-              <p className="mt-1 text-xs text-muted-foreground">Started {startedAgo(data.started_at)} · usually 10–20 minutes in total</p>
+              <span>Started {startedAgo(data.started_at)} · usually 10–20 minutes in total</span>
             )}
             {sharedFrom && (
-              <p className="mt-1 text-xs text-muted-foreground">
+              <span>
                 Same website as your head office — showing <strong>{sharedFrom}</strong>&apos;s extraction, so there&apos;s nothing to run here.
-              </p>
+              </span>
             )}
-          </div>
-          <span className="flex shrink-0 items-baseline gap-1">
-            <span className="text-[32px] leading-none font-bold tabular-nums">{data.progress_pct}</span>
-            <span className="text-[15px] font-semibold text-muted-foreground">%</span>
-          </span>
-        </div>
+          </CardDescription>
+        ) : null}
+        <CardAction className="flex items-baseline gap-1">
+          <span className="font-heading text-3xl leading-none font-medium tracking-[-0.02em] tabular-nums">{data.progress_pct}</span>
+          <span className="text-base font-semibold text-muted-foreground">%</span>
+        </CardAction>
+      </CardHeader>
+
+      <CardContent className="flex flex-col gap-4">
 
         {running && (
           <ol className="flex flex-wrap gap-2.5">
@@ -113,14 +116,14 @@ export function ExtractionProgressCard({ sharedFrom = null, website = null }: Re
                 <li
                   key={key}
                   className={cn(
-                    "flex min-w-0 flex-1 basis-[150px] gap-2.5 rounded-[10px] border px-3 py-2.5",
+                    "flex min-w-0 flex-1 basis-[150px] gap-2.5 rounded-lg border px-3 py-2.5",
                     lit ? "border-primary/25 bg-primary/5" : "border-border bg-muted/40",
                   )}
                 >
                   <StageMark state={state} />
                   <span className="min-w-0">
-                    <span className={cn("block text-[12.5px] font-semibold", lit ? "text-primary" : "text-muted-foreground")}>{label}</span>
-                    <span className="block text-[11.5px] leading-4 text-muted-foreground">
+                    <span className={cn("block text-xs font-semibold", lit ? "text-primary" : "text-muted-foreground")}>{label}</span>
+                    <span className="block text-xs text-muted-foreground">
                       {key === "crawling" && data.pages_found > 0 ? `${data.pages_found.toLocaleString()} pages found so far` : detail}
                     </span>
                   </span>
@@ -131,12 +134,12 @@ export function ExtractionProgressCard({ sharedFrom = null, website = null }: Re
         )}
 
         {running && (
-          <div className="flex flex-wrap items-center gap-3 rounded-[11px] border border-border bg-muted/40 px-4 py-3">
-            <span className="flex size-[38px] shrink-0 items-center justify-center rounded-[10px] bg-primary/10 text-primary">
-              <BookOpen className="size-[19px]" aria-hidden />
+          <div className="flex flex-wrap items-center gap-3 rounded-lg border border-border bg-muted/40 px-4 py-3">
+            <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary">
+              <BookOpen className="size-5" aria-hidden />
             </span>
             <span className="min-w-0">
-              <span className="block text-[26px] leading-none font-bold tabular-nums">{data.counts.courses.toLocaleString()}</span>
+              <span className="block font-heading text-2xl leading-none font-medium tracking-[-0.02em] tabular-nums">{data.counts.courses.toLocaleString()}</span>
               <span className="mt-1 block text-xs text-muted-foreground">courses found so far, and climbing</span>
             </span>
           </div>
@@ -144,22 +147,23 @@ export function ExtractionProgressCard({ sharedFrom = null, website = null }: Re
 
         <div className="grid grid-cols-3 gap-2 sm:grid-cols-5">
           {COUNTS.map(({ key, label }) => (
-            <div key={key} className="rounded-[9px] bg-muted/50 px-1.5 py-2.5 text-center">
-              <div className="text-[15px] font-bold tabular-nums">{data.counts[key].toLocaleString()}</div>
-              <div className="text-[10.5px] leading-[14px] text-muted-foreground">{label}</div>
+            <div key={key} className="rounded-lg border border-border px-1.5 py-2.5 text-center">
+              <div className="font-heading text-base font-medium tabular-nums">{data.counts[key].toLocaleString()}</div>
+              <div className="text-xs text-muted-foreground">{label}</div>
             </div>
           ))}
         </div>
 
-        {done && (
-          <div className="border-t border-border pt-3.5">
-            <Link href="/business/profile?tab=services" className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
-              Browse your courses
-              <ArrowRight className="size-3.5" aria-hidden />
-            </Link>
-          </div>
-        )}
-      </div>
+      </CardContent>
+
+      {done && (
+        <CardFooter className="py-3">
+          <Link href="/business/profile?tab=services" className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline">
+            Browse your courses
+            <ArrowRight className="size-3.5" aria-hidden />
+          </Link>
+        </CardFooter>
+      )}
     </Card>
   );
 }

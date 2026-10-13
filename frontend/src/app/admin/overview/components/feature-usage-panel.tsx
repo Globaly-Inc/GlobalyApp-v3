@@ -7,8 +7,8 @@ import { FeatureCard } from "./feature-card";
 
 export function FeatureUsagePanel({ features }: Readonly<{ features: FeatureUsage[] }>) {
   return (
-    <div className="mt-6">
-      <h2 className="text-xl font-semibold mb-4">Feature usage by module</h2>
+    <section>
+      <h2 className="mb-4 font-heading text-lg font-medium">Feature usage by module</h2>
       <Accordion multiple defaultValue={[...FEATURE_MODULES]}>
         {FEATURE_MODULES.map((module) => {
           const items = features.filter(
@@ -16,9 +16,9 @@ export function FeatureUsagePanel({ features }: Readonly<{ features: FeatureUsag
           );
           if (items.length === 0) return null;
           return (
-            <AccordionItem key={module} value={module} className="border border-border rounded-lg mb-4 px-4 last:border-b">
+            <AccordionItem key={module} value={module} className="mb-4 rounded-lg border border-border bg-card px-5 shadow-sm last:border-b">
               <AccordionTrigger className="hover:no-underline">
-                <span className="text-lg font-semibold">{MODULE_LABELS[module]}</span>
+                <span className="font-heading text-base font-medium">{MODULE_LABELS[module]}</span>
               </AccordionTrigger>
               <AccordionContent>
                 <div className="grid gap-4 grid-cols-2 lg:grid-cols-4">
@@ -31,6 +31,6 @@ export function FeatureUsagePanel({ features }: Readonly<{ features: FeatureUsag
           );
         })}
       </Accordion>
-    </div>
+    </section>
   );
 }

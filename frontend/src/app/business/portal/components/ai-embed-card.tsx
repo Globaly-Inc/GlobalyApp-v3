@@ -3,7 +3,8 @@
 import { useEffect, useRef } from "react";
 import Link from "next/link";
 import { ArrowRight, Check, MessagesSquare } from "lucide-react";
-import { Card, CardAction, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
@@ -15,6 +16,8 @@ import { EmbedSnippetBox } from "./embed-snippet-box";
 import { EmbedWidgetPreview } from "./embed-widget-preview";
 
 const COLUMNS = "lg:grid-cols-[minmax(0,1fr)_minmax(0,16rem)]";
+/** Under the title on a phone, beside it from sm up — a long CTA never squeezes the heading. */
+const ACTION_SLOT = "max-sm:col-start-1 max-sm:row-span-1 max-sm:row-start-auto max-sm:justify-self-start";
 
 /** A numbered section. The two routes onto a site, not a pending to-do list — so the discs read
  *  the same whether or not the widget is already live. */
@@ -24,7 +27,7 @@ function Step({ n, title, children }: Readonly<{ n: number; title: string; child
       <h3 className="flex items-center gap-2 text-xs font-semibold">
         <span
           aria-hidden
-          className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-[11px] font-semibold text-primary-foreground"
+          className="flex size-5 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-semibold text-primary-foreground"
         >
           {n}
         </span>
@@ -76,30 +79,27 @@ export function AiEmbedCard({ installed, stage = "built" }: Readonly<{ installed
         <div className="flex items-start gap-3">
           <span
             aria-hidden
-            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"
+            className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary"
           >
-            <MessagesSquare className="h-4.5 w-4.5" />
+            <MessagesSquare className="size-4.5" />
           </span>
-          <div className="space-y-1">
+          <div className="flex min-w-0 flex-col gap-1">
             <div className="flex flex-wrap items-center gap-2.5">
-              <h2 className="font-heading text-xl leading-tight font-semibold text-balance">
+              <CardTitle className="text-balance"><h2>
                 {stage === "new"
                   ? "Your AI counsellor comes next"
                   : stage === "extracting"
                     ? "Your AI counsellor is being built"
                     : assistantName || "Your AI chat widget"}
-              </h2>
+              </h2></CardTitle>
               {installed && !waiting && (
-                <span
-                  role="status"
-                  className="flex shrink-0 items-center gap-1.5 rounded-full border border-emerald-600/30 bg-emerald-600/10 px-2.5 py-1 text-xs font-medium text-emerald-700 dark:text-emerald-400"
-                >
-                  <Check className="h-3.5 w-3.5" aria-hidden />
+                <Badge role="status" variant="success" className="h-6">
+                  <Check aria-hidden />
                   Live on your site
-                </span>
+                </Badge>
               )}
             </div>
-            <p className="text-pretty text-sm text-muted-foreground">
+            <CardDescription className="text-pretty">
               {stage === "new"
                 ? "It answers students from your own pages, so it needs them first. Run the extraction above and the one line that puts it on your site appears here."
                 : stage === "extracting"
@@ -107,7 +107,7 @@ export function AiEmbedCard({ installed, stage = "built" }: Readonly<{ installed
                   : courses > 0
                     ? `Answers students around the clock, in your own branding. It answers from all ${courses.toLocaleString()} courses.`
                     : "Answers visitors' questions around the clock, in your own branding. Already created — it just needs to go on your site."}
-            </p>
+            </CardDescription>
           </div>
         </div>
 
@@ -116,33 +116,27 @@ export function AiEmbedCard({ installed, stage = "built" }: Readonly<{ installed
         {/* Day one, the only thing to offer is the step this card waits on; mid-crawl, not even
             that — so the right-hand slot states the wait instead. */}
         {stage === "new" && (
-          <CardAction>
-          <a
-            href="#extraction-card"
-            className="inline-flex h-9 shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3.5 text-[13px] font-semibold text-primary-foreground hover:bg-primary/90"
-          >
-            Start with my website
-            <ArrowRight className="h-3.5 w-3.5" aria-hidden />
-          </a>
+          <CardAction className={ACTION_SLOT}>
+            <Button size="sm" render={<a href="#extraction-card" />}>
+              Start with my website
+              <ArrowRight aria-hidden />
+            </Button>
           </CardAction>
         )}
 
         {stage === "extracting" && (
-          <CardAction>
-          <span
-            role="status"
-            className="flex h-[30px] shrink-0 items-center gap-[7px] rounded-full border border-primary/20 bg-primary/5 px-3 text-xs font-semibold text-primary"
-          >
-            <span aria-hidden className="size-[7px] rounded-full bg-[#23DDF6]" />
-            Waiting on the crawl
-          </span>
+          <CardAction className={ACTION_SLOT}>
+            <Badge role="status" variant="outline" className="h-7 gap-1.5 border-primary/20 bg-primary/5 px-3 font-semibold text-primary">
+              <span aria-hidden className="size-1.5 animate-pulse rounded-full bg-info" />
+              Waiting on the crawl
+            </Badge>
           </CardAction>
         )}
 
       </CardHeader>
 
 
-      <CardContent className={cn("space-y-4", waiting && "hidden")} aria-hidden={waiting || undefined}>
+      <CardContent className={cn("flex flex-col gap-4", waiting && "hidden")} aria-hidden={waiting || undefined}>
         {/* Mirrors the loaded grid so nothing jumps when the config lands. */}
         {status === "loading" && !handoff && (
           <div className={`grid gap-5 ${COLUMNS} lg:items-start`}>
@@ -200,12 +194,9 @@ export function AiEmbedCard({ installed, stage = "built" }: Readonly<{ installed
               </figure>
             </div>
 
-            <Link
-              href="/business/ai-widget"
-              className="inline-flex h-9 items-center rounded-lg border px-3.5 text-[13px] font-semibold transition-colors hover:bg-muted"
-            >
+            <Button variant="outline" size="sm" className="self-start" render={<Link href="/business/ai-widget" />}>
               Change its look
-            </Link>
+            </Button>
           </>
         )}
       </CardContent>

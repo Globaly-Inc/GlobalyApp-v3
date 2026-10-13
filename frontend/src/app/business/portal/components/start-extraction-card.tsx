@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ArrowRight, Check, Globe } from "lucide-react";
 import { toast } from "sonner";
-import { Card, CardContent, CardHeader } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -59,26 +59,25 @@ export function StartExtractionCard({
   };
 
   return (
-    // The one thing to do on the page, so it carries a tinted edge rather than the default grey.
-    <Card id="extraction-card" className="overflow-hidden pt-0">
-      <div aria-hidden className="h-[3px] bg-[#23DDF6]" />
-      <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
-        <div className="flex items-start gap-3">
+    // The one thing to do on the page: the mockup's lead card, with its "We'll look for" strip as the footer.
+    <Card id="extraction-card">
+      <CardHeader>
+        <div className="flex items-start gap-4">
           {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/objects/sparkle.webp" alt="" aria-hidden className="size-12 shrink-0 object-contain" />
-          <div className="space-y-1">
-            <p className="text-[11px] font-semibold tracking-wider text-primary uppercase">Your next step</p>
-            <h2 className="text-xl leading-tight">Build your profile from your website</h2>
-            <p className="text-sm text-muted-foreground">
+          <img src="/objects/sparkle.webp" alt="" aria-hidden className="-mt-1 size-13 shrink-0 object-contain" />
+          <div className="flex min-w-0 flex-col gap-1">
+            <p className="text-xs font-semibold tracking-wider text-primary uppercase">Your next step</p>
+            <CardTitle><h2>Build your profile from your website</h2></CardTitle>
+            <CardDescription className="max-w-[37.5rem]">
               We read every public page and turn it into courses, fees, intakes and branches — then flag
               what&apos;s missing. You review everything before it goes live.
-            </p>
+            </CardDescription>
           </div>
         </div>
       </CardHeader>
 
-      <CardContent className="space-y-6">
-        <div className="space-y-1.5">
+      <CardContent className="flex flex-col gap-6">
+        <div className="flex flex-col gap-1.5">
           <label htmlFor="extraction-website" className="text-xs font-medium text-muted-foreground">
             Your institution&apos;s website
           </label>
@@ -95,13 +94,13 @@ export function StartExtractionCard({
               />
               {valid && (
                 <span className="pointer-events-none absolute inset-y-0 right-2 my-auto flex h-6 items-center gap-1 rounded-full bg-success/12 px-2.5 text-xs font-semibold text-success">
-                  <Check className="h-3 w-3" /> Looks right
+                  <Check className="size-3" aria-hidden /> Looks right
                 </span>
               )}
             </div>
-            <Button size="lg" onClick={() => setConfirming(true)} disabled={starting || !valid} className="shrink-0 px-6">
+            <Button size="lg" onClick={() => setConfirming(true)} disabled={starting || !valid} className="shrink-0 px-5">
               Review and start
-              <ArrowRight className="ml-1.5 h-4 w-4" />
+              <ArrowRight aria-hidden />
             </Button>
           </div>
         </div>
@@ -126,13 +125,14 @@ export function StartExtractionCard({
           ))}
         </ol>
 
-        <div className="flex flex-wrap items-center gap-1.5 border-t border-border pt-5">
-          <span className="mr-1 text-xs text-muted-foreground">We look for:</span>
-          {EXTRACTION_CATEGORIES.map((c) => (
-            <Badge key={c} variant="secondary" className="font-normal">{c}</Badge>
-          ))}
-        </div>
       </CardContent>
+
+      <CardFooter className="flex-wrap gap-1.5 py-3">
+        <span className="mr-1 text-xs text-muted-foreground">We look for:</span>
+        {EXTRACTION_CATEGORIES.map((c) => (
+          <Badge key={c} variant="outline" className="bg-card">{c}</Badge>
+        ))}
+      </CardFooter>
 
       <ConfirmCrawlDialog
         open={confirming}
