@@ -39,7 +39,8 @@ const adminMail = adminExtractionReviewEmail({
   reviewUrl: "https://app.globalyhub.com/admin/data/all-extractions/job-1",
 });
 eq(adminMail.subject, "Extraction ready for review: Cleveland <State> University", "admin mail subject names the institution");
-eq(adminMail.html.includes("https://app.globalyhub.com/admin/data/all-extractions/job-1"), true, "admin mail links to the job, not the owner portal");
+const adminHref = new URL(adminMail.html.match(/href="([^"]+)"/)?.[1] ?? "about:blank");
+eq(`${adminHref.origin}${adminHref.pathname}`, "https://app.globalyhub.com/admin/data/all-extractions/job-1", "admin mail's button links to the job, not the owner portal");
 eq(adminMail.html.includes("Cleveland &lt;State&gt; University"), true, "admin mail escapes the name in HTML");
 
 const PORTAL = "https://app.globalyhub.com/business/portal";

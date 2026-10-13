@@ -45,7 +45,7 @@ export function CoursesTab({
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const fetchedRef = useRef(false);
 
-  const load = useCallback(async (overrides?: { page?: number; limit?: number; search?: string; status?: string; sort?: SortOrder }): Promise<boolean> => {
+  const load = useCallback(async (overrides?: { page?: number; limit?: number; search?: string; status?: string; sort?: SortOrder; filters?: CourseFilters }): Promise<boolean> => {
     try {
       const [coursesRes, courseLinks, campusRows, queue] = await Promise.all([
         allExtractionsApi.getCourses(jobId, {
@@ -54,7 +54,7 @@ export function CoursesTab({
           search: (overrides?.search ?? search).trim() || undefined,
           status: (overrides?.status ?? statusFilter) === "all" ? undefined : (overrides?.status ?? statusFilter),
           sort: overrides?.sort ?? sort,
-          ...filters,
+          ...(overrides?.filters ?? filters),
         }),
         allExtractionsApi.getCourseLinks(jobId),
         allExtractionsApi.getCampuses(jobId),
@@ -115,6 +115,7 @@ export function CoursesTab({
   const resetListState = () => {
     setSearch("");
     setStatusFilter("all");
+    setFilters({});
     setSort("name_asc");
     setPage(1);
     setLimit(DEFAULT_PAGE_SIZE);

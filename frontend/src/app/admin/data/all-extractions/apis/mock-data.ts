@@ -280,7 +280,9 @@ export const allExtractionsMockApi = {
       short_name: null,
       source_url: null,
       degree_level: i % 2 === 0 ? "bachelor" : "master",
-      subject_area: "General Studies", subject_area_code: null, degree_level_code: null,
+      subject_area: "General Studies", subject_area_code: null, degree_level_code: i % 2 === 0 ? "bachelor" : "master",
+      is_published: i % 4 !== 0,
+      created_by_platform_user_id: i % 5 === 0 ? 1 : null,
       duration_weeks: 104,
       study_mode: "full-time",
       description: `Mock course ${i + 1} description`,
@@ -296,7 +298,10 @@ export const allExtractionsMockApi = {
     }));
     const filtered = all
       .filter((c) => !params.search || c.name.toLowerCase().includes(params.search.toLowerCase()))
-      .filter((c) => !params.status || c.verification_status === params.status);
+      .filter((c) => !params.status || c.verification_status === params.status)
+      .filter((c) => !params.degree_level || c.degree_level_code === params.degree_level)
+      .filter((c) => !params.published || c.is_published === (params.published === "published"))
+      .filter((c) => !params.origin || (c.created_by_platform_user_id == null) === (params.origin === "extracted"));
     if (params.sort === "name_asc") filtered.sort((a, b) => a.name.localeCompare(b.name));
     else if (params.sort === "name_desc") filtered.sort((a, b) => b.name.localeCompare(a.name));
     else if (params.sort === "newest") filtered.reverse();

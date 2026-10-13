@@ -180,6 +180,13 @@ export function BusinessesView() {
   };
 
   const list = (
+    <>
+    {/* With rows still on screen a failed search/page keeps showing them — say they're stale. */}
+    {status === "failed" && displayed.length > 0 && (
+      <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        Couldn&apos;t load businesses: {error}. Showing the last results.
+      </p>
+    )}
     <BusinessesTable
       loading={status === "loading"}
       empty={displayed.length === 0}
@@ -208,6 +215,7 @@ export function BusinessesView() {
         />
       ))}
     </BusinessesTable>
+    </>
   );
 
   return (
