@@ -7,7 +7,7 @@ import { Button } from "@/components/ui/button";
 export function PortalAddButton({ children, onClick, disabled }: Readonly<{ children: React.ReactNode; onClick?: () => void; disabled?: boolean }>) {
   return (
     <Button
-      className="group/add h-10 gap-1.5 rounded-[10px] transition-[transform,box-shadow] hover:-translate-y-px hover:shadow-[0_6px_18px_-6px_var(--color-primary)] active:translate-y-0 active:scale-[.98]"
+      className="group/add h-10 gap-1.5 rounded-lg transition-[transform,box-shadow] hover:-translate-y-px hover:shadow-[0_6px_18px_-6px_var(--color-primary)] active:translate-y-0 active:scale-[.98]"
       onClick={onClick}
       disabled={disabled}
     >

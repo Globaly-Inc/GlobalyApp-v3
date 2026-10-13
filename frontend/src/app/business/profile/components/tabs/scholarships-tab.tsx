@@ -85,7 +85,7 @@ export function ScholarshipsTab({ businessId }: Readonly<{ businessId: number }>
   return (
     <div className="flex flex-col gap-4">
       <PortalPageHeader title="Scholarships" count={total} subtitle="Offer scholarships to attract prospective students.">
-        <Button variant="outline" className="h-10 gap-1.5 rounded-[10px] font-semibold" onClick={() => setImportOpen(true)}>
+        <Button variant="outline" className="h-10 gap-1.5 rounded-lg font-semibold" onClick={() => setImportOpen(true)}>
           <UploadCloud className="h-4 w-4" /> Bulk import
         </Button>
         <PortalAddButton onClick={() => { setEditing(null); setCreateOpen(true); }}>New scholarship</PortalAddButton>

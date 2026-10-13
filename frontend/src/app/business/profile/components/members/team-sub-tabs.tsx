@@ -9,8 +9,7 @@ export function TeamSubTabs<T extends string>({
     <div
       role="group"
       aria-label={label}
-      className="relative grid w-fit rounded-[10px] bg-muted/60 p-0.75"
-      style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
+      className="relative grid w-fit rounded-lg bg-muted/60 p-0.75"      style={{ gridTemplateColumns: `repeat(${options.length}, minmax(0, 1fr))` }}
     >
       <span
         aria-hidden

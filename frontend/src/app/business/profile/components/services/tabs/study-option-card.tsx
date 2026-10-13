@@ -29,7 +29,7 @@ export function StudyOptionCard({
   const ModeIcon = mode.icon;
   const applicable = APPLICABLE[option.applicable_to];
   return (
-    <article className="group/so flex flex-col gap-3 rounded-[14px] border bg-card p-4 transition-[transform,box-shadow,border-color] duration-200 hover:-translate-y-px hover:border-primary/25 hover:shadow-[0_10px_28px_-16px_color-mix(in_oklab,var(--primary)_45%,transparent)]">
+    <article className="group/so flex flex-col gap-3 rounded-xl border bg-card p-4 transition-[transform,box-shadow,border-color] duration-200 hover:-translate-y-px hover:border-primary/25 hover:shadow-[0_10px_28px_-16px_color-mix(in_oklab,var(--primary)_45%,transparent)]">
       <div className="flex items-center gap-3">
         <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-primary text-primary-foreground transition-transform duration-300 ease-[cubic-bezier(.34,1.56,.64,1)] group-hover/so:-rotate-6 group-hover/so:scale-105">
           <ModeIcon className="size-5" />

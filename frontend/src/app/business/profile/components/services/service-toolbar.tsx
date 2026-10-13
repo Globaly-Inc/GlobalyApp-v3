@@ -52,7 +52,7 @@ export function ServiceToolbar({
   return (
     <div className="flex flex-col gap-4">
       {isInstitution && (
-        <SegmentedControl className="rounded-[10px]" aria-label="Course type" options={COURSE_CATEGORY_TABS} value={courseCategory} onChange={onCourseCategoryChange} />
+        <SegmentedControl className="rounded-lg" aria-label="Course type" options={COURSE_CATEGORY_TABS} value={courseCategory} onChange={onCourseCategoryChange} />
       )}
 
       <div className="flex flex-wrap items-center gap-2">

@@ -58,7 +58,7 @@ export function RolesList({ businessId, onEdit }: Readonly<{ businessId: number;
         return (
           <article
             key={role.id}
-            className="grid gap-2.5 rounded-[14px] border bg-card p-4 transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-[0_1px_2px_rgb(17_26_64/0.05),0_12px_32px_-16px_rgb(17_26_64/0.24)]"
+            className="grid gap-2.5 rounded-xl border bg-card p-4 transition-[transform,box-shadow] duration-200 hover:-translate-y-0.5 hover:shadow-[0_1px_2px_rgb(17_26_64/0.05),0_12px_32px_-16px_rgb(17_26_64/0.24)]"
           >
             <div className="flex items-start justify-between gap-2">
               <h3 className="flex min-w-0 items-center gap-2 text-[15px] font-semibold">

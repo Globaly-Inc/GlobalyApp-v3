@@ -56,7 +56,7 @@ export function PortalAccountMenu({ account, onSignOut }: Readonly<{ account: Po
         <AccountAvatar account={account} className="size-7" />
         <ChevronDown className="h-4 w-4 text-muted-foreground" />
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56 rounded-md p-1.5">
+      <DropdownMenuContent align="end" className="w-56 p-1.5">
         <DropdownMenuItem className={`${ITEM} flex items-center gap-2`} onClick={() => router.push("/personal/profile")}>
           <AccountAvatar account={account} className="size-8 shrink-0" />
           <div className="min-w-0">

@@ -1,22 +1,23 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Bold, Globe, Image as ImageIcon, Italic, List, ListOrdered, Loader2, Sparkles, Underline, Video, X } from "lucide-react";
+import { Globe, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Combobox } from "@/components/combobox";
-import { cn } from "@/lib/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { checkAiAvailable, composeWithAi, createFeedPost, uploadFeedMedia } from "../store/feed-slice";
-import { MAX_MEDIA, MAX_POST_LENGTH, POST_TYPE_STYLES, POST_TYPES, VISIBILITY_OPTIONS } from "../const";
+import { MAX_MEDIA, MAX_POST_LENGTH, VISIBILITY_OPTIONS } from "../const";
 import { useMentionPicker } from "../utils/use-mention-picker";
 import { MentionDropdown } from "./mention-dropdown";
+import { FeedComposerAttachButtons } from "./feed-composer-attach-buttons";
+import { FeedComposerFileInputs } from "./feed-composer-file-inputs";
+import { FeedComposerMediaGrid } from "./feed-composer-media-grid";
+import { FeedComposerPostTypes } from "./feed-composer-post-types";
+import { FeedComposerToolbar } from "./feed-composer-toolbar";
 import type { PostMedia } from "../apis/types";
-
-const IMAGE_ACCEPT = "image/jpeg,image/png,image/webp,image/gif";
-const VIDEO_ACCEPT = "video/mp4,video/webm,video/quicktime";
 
 type FeedComposerProps = {
   /** null posts as the signed-in person; a business id posts on that business's behalf. */
@@ -184,60 +185,10 @@ export function FeedComposer({
     </Avatar>
   );
 
-  const fileInputs = (
-    <>
-      <input
-        ref={imageInput}
-        type="file"
-        accept={IMAGE_ACCEPT}
-        multiple
-        hidden
-        onChange={(event) => {
-          void pickFiles(event.target.files);
-          event.target.value = "";
-        }}
-      />
-      <input
-        ref={videoInput}
-        type="file"
-        accept={VIDEO_ACCEPT}
-        hidden
-        onChange={(event) => {
-          void pickFiles(event.target.files);
-          event.target.value = "";
-        }}
-      />
-    </>
-  );
+  const fileInputs = <FeedComposerFileInputs imageInput={imageInput} videoInput={videoInput} pickFiles={pickFiles} />;
 
   const attachButtons = (
-    <div className="flex items-center gap-1">
-      <Button
-        variant="ghost"
-        size="sm"
-        className="gap-1.5 rounded-full text-muted-foreground"
-        disabled={uploading}
-        onClick={() => {
-          setExpanded(true);
-          imageInput.current?.click();
-        }}
-      >
-        <ImageIcon className="h-4 w-4 text-success" /> Image
-      </Button>
-      <Button
-        variant="ghost"
-        size="sm"
-        className="gap-1.5 rounded-full text-muted-foreground"
-        disabled={uploading}
-        onClick={() => {
-          setExpanded(true);
-          videoInput.current?.click();
-        }}
-      >
-        <Video className="h-4 w-4 text-info" /> Video
-      </Button>
-      {uploading && <Loader2 className="h-3.5 w-3.5 animate-spin text-muted-foreground" />}
-    </div>
+    <FeedComposerAttachButtons uploading={uploading} setExpanded={setExpanded} imageInput={imageInput} videoInput={videoInput} />
   );
 
   // ── Collapsed ──
@@ -270,66 +221,18 @@ export function FeedComposer({
       <CardContent className="space-y-3 pt-5">
         <div className="flex flex-wrap items-center gap-2">
           {avatar}
-          {POST_TYPES.map((type) => {
-            const style = POST_TYPE_STYLES[type.value];
-            const active = postType === type.value;
-            return (
-              <button
-                key={type.value}
-                type="button"
-                onClick={() => setPostType(type.value)}
-                className={cn(
-                  "inline-flex cursor-pointer items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs font-medium transition-colors",
-                  active ? cn("border-transparent", style?.badge) : "border-border text-muted-foreground hover:bg-muted",
-                )}
-              >
-                <type.icon className="h-3.5 w-3.5" />
-                {type.label}
-              </button>
-            );
-          })}
+          <FeedComposerPostTypes postType={postType} setPostType={setPostType} />
         </div>
 
         <div className="relative space-y-1 rounded-lg border border-input bg-muted/20 focus-within:border-ring">
-          <div className="flex items-center justify-between border-b border-border px-2 py-1">
-            <div className="flex items-center gap-0.5">
-              <Button variant="ghost" size="icon-sm" aria-label="Bold" onClick={() => wrapSelection("**")}>
-                <Bold className="h-3.5 w-3.5" />
-              </Button>
-              <Button variant="ghost" size="icon-sm" aria-label="Italic" onClick={() => wrapSelection("_")}>
-                <Italic className="h-3.5 w-3.5" />
-              </Button>
-              <Button variant="ghost" size="icon-sm" aria-label="Underline" onClick={() => wrapSelection("<u>", "</u>")}>
-                <Underline className="h-3.5 w-3.5" />
-              </Button>
-              <span className="mx-0.5 h-4 w-px bg-border" aria-hidden />
-              <Button variant="ghost" size="icon-sm" aria-label="Bullet list" onClick={() => prefixLines(() => "- ")}>
-                <List className="h-3.5 w-3.5" />
-              </Button>
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                aria-label="Numbered list"
-                onClick={() => prefixLines((i) => `${i + 1}. `)}
-              >
-                <ListOrdered className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-            {/* Write with AI — hidden entirely when the backend has no provider key, rather than offering a
-                button that can only fail. */}
-            {aiAvailable && (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="gap-1.5 text-primary"
-                disabled={generating}
-                onClick={writeWithAi}
-              >
-                {generating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
-                {content.trim() ? "Improve with AI" : "Write with AI"}
-              </Button>
-            )}
-          </div>
+          <FeedComposerToolbar
+            wrapSelection={wrapSelection}
+            prefixLines={prefixLines}
+            aiAvailable={aiAvailable}
+            generating={generating}
+            writeWithAi={writeWithAi}
+            content={content}
+          />
           <textarea
             ref={textareaRef}
             autoFocus
@@ -355,28 +258,7 @@ export function FeedComposer({
           />
         </div>
 
-        {media.length > 0 && (
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
-            {media.map((item) => (
-              <div key={item.storage_path} className="group relative overflow-hidden rounded-lg border border-border">
-                {item.type === "image" ? (
-                  // eslint-disable-next-line @next/next/no-img-element -- signed GCS URL, not a static asset
-                  <img src={item.url} alt="" className="h-28 w-full object-cover" />
-                ) : (
-                  <video src={item.url} className="h-28 w-full bg-black object-cover" muted playsInline controls />
-                )}
-                <button
-                  type="button"
-                  aria-label="Remove attachment"
-                  onClick={() => setMedia((current) => current.filter((m) => m.storage_path !== item.storage_path))}
-                  className="absolute right-1 top-1 cursor-pointer rounded-full bg-background/90 p-1 text-muted-foreground hover:text-destructive"
-                >
-                  <X className="h-3.5 w-3.5" />
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
+        {media.length > 0 && <FeedComposerMediaGrid media={media} setMedia={setMedia} />}
 
         <div className="flex items-center gap-2 rounded-full border border-border bg-muted/30 py-1 pl-3 pr-1.5 w-fit">
           <Globe className="h-3.5 w-3.5 text-muted-foreground" />

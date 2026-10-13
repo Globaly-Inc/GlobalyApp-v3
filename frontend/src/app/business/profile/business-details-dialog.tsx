@@ -19,6 +19,7 @@ import type { PlaceDetails } from "@/lib/api/places";
 import type { Country } from "../../geo/apis";
 import { businessApi } from "../apis";
 import type { BusinessCategoryOption, BusinessProfile, BusinessProfilePatch } from "../apis/types";
+import { BusinessLocalityFields } from "./business-locality-fields";
 
 // The API sends the icon as a lucide icon NAME (e.g. "Building2"); render it, don't print it.
 const toCategoryOptions = (cats: BusinessCategoryOption[]): ComboboxOption[] =>
@@ -28,6 +29,8 @@ const toCategoryOptions = (cats: BusinessCategoryOption[]): ComboboxOption[] =>
     description: c.description ?? undefined,
     icon: <DynamicIcon name={c.icon} fallback="Building2" className="h-4 w-4" />,
   }));
+
+export type BusinessDetailsFormState = FormState;
 
 type FormState = {
   categoryId: string;
@@ -266,41 +269,7 @@ export function BusinessDetailsDialog({
               <FieldError message={errors.address} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div className="space-y-2">
-              <Label>State *</Label>
-              <Input
-                className="h-10"
-                value={form.state}
-                onChange={(e) => setForm((f) => ({ ...f, state: e.target.value }))}
-                aria-invalid={!!errors.state}
-                required
-              />
-              <FieldError message={errors.state} />
-            </div>
-            <div className="space-y-2">
-              <Label>City *</Label>
-              <Input
-                className="h-10"
-                value={form.city}
-                onChange={(e) => setForm((f) => ({ ...f, city: e.target.value }))}
-                aria-invalid={!!errors.city}
-                required
-              />
-              <FieldError message={errors.city} />
-            </div>
-          </div>
-          <div className="space-y-2">
-            <Label>Postcode *</Label>
-            <Input
-              className="h-10"
-              value={form.postcode}
-              onChange={(e) => setForm((f) => ({ ...f, postcode: e.target.value }))}
-              aria-invalid={!!errors.postcode}
-              required
-            />
-            <FieldError message={errors.postcode} />
-          </div>
+          <BusinessLocalityFields form={form} setForm={setForm} errors={errors} />
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

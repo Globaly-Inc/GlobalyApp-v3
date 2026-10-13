@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { Sparkles } from "lucide-react";
 import { useAuthState } from "@/app/auth/store/auth-slice";
+import { Button } from "@/components/ui/button";
 import { ICON } from "@/lib/public-assets";
 
 export function AiPublicHeader() {
@@ -18,7 +19,7 @@ export function AiPublicHeader() {
             alt="GlobalyAI"
             width={ICON.width}
             height={ICON.height}
-            className="size-9 rounded-[10px]"
+            className="size-9 rounded-lg"
             priority
           />
         </Link>
@@ -30,26 +31,17 @@ export function AiPublicHeader() {
         {!initializing && (
           <div className="ml-auto flex items-center gap-2">
             {user ? (
-              <Link
-                href="/personal/ai"
-                className="inline-flex h-8 items-center rounded-md border border-border px-3 text-sm font-medium hover:bg-muted"
-              >
+              <Button variant="outline" size="sm" render={<Link href="/personal/ai" />}>
                 My Sessions
-              </Link>
+              </Button>
             ) : (
               <>
-                <Link
-                  href={`/auth/sign-in?redirect=${encodeURIComponent("/personal/ai")}`}
-                  className="inline-flex h-8 items-center rounded-md px-3 text-sm font-medium hover:bg-muted"
-                >
+                <Button variant="ghost" size="sm" render={<Link href={`/auth/sign-in?redirect=${encodeURIComponent("/personal/ai")}`} />}>
                   Sign in
-                </Link>
-                <Link
-                  href={`/auth/sign-up?redirect=${encodeURIComponent("/personal/ai")}`}
-                  className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-                >
+                </Button>
+                <Button size="sm" render={<Link href={`/auth/sign-up?redirect=${encodeURIComponent("/personal/ai")}`} />}>
                   Sign up free
-                </Link>
+                </Button>
               </>
             )}
           </div>

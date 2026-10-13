@@ -82,9 +82,9 @@ export function SnapshotsTab({ jobId }: Readonly<{ jobId: string }>) {
         <span className="text-xs text-muted-foreground">{total} page{total === 1 ? "" : "s"} stored for this site</span>
       </div>
 
-      <div className="overflow-x-auto rounded-md border border-border">
+      <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full text-xs">
-          <thead className="bg-muted/50 text-left text-muted-foreground">
+          <thead className="bg-muted/60 text-left text-muted-foreground">
             <tr>
               <th className="px-2 py-2">URL</th>
               <th className="w-52 px-2 py-2">Category</th>
