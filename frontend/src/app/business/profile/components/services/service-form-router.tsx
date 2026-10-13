@@ -1,7 +1,8 @@
 "use client";
 
 import { useSearchParams } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { CardSkeleton } from "@/components/ui/list-skeleton";
+import { PageBody } from "@/components/ui/page-body";
 import { useAuthState } from "@/app/auth/store/auth-slice";
 import { ServiceFormView } from "./service-form-view";
 import { InstitutionServiceFormView } from "./institution-service-form-view";
@@ -18,9 +19,9 @@ export function ServiceFormRouter({ businessId, serviceId }: Readonly<{ business
 
   if (!ready) {
     return (
-      <div className="flex min-h-[50vh] items-center justify-center">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
+      <PageBody>
+        <CardSkeleton lines={6} />
+      </PageBody>
     );
   }
 

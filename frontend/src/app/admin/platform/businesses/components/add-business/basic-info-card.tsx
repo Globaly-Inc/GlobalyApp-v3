@@ -1,10 +1,9 @@
 "use client";
 
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { FieldError } from "@/components/field-error";
+import { FormField } from "@/components/ui/form-field";
+import { FormSection } from "@/components/ui/form-section";
 
 export function BasicInfoCard({
   businessName,
@@ -20,29 +19,27 @@ export function BasicInfoCard({
   onDescriptionChange: (value: string) => void;
 }>) {
   return (
-    <Card className="space-y-4 p-6">
-      <h3 className="text-sm font-semibold text-foreground">Basic Information</h3>
-      <div className="flex flex-col gap-2">
-        <Label>Business Name *</Label>
+    <FormSection title="Basic Information" columns={1}>
+      <FormField label="Business Name" htmlFor="business-name" required error={nameError}>
         <Input
+          id="business-name"
           className="h-10"
           aria-invalid={!!nameError}
           value={businessName}
           onChange={(e) => onNameChange(e.target.value)}
           placeholder="e.g. Global Education Services"
         />
-        <FieldError message={nameError} />
-      </div>
-      <div className="flex flex-col gap-2">
-        <Label>Description</Label>
+      </FormField>
+      <FormField label="Description" htmlFor="business-description">
         <Textarea
+          id="business-description"
           value={description}
           onChange={(e) => onDescriptionChange(e.target.value)}
           placeholder="Brief description of this business..."
           rows={3}
           className="min-h-20"
         />
-      </div>
-    </Card>
+      </FormField>
+    </FormSection>
   );
 }

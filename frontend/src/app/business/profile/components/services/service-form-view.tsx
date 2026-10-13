@@ -1,24 +1,15 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { ArrowLeft, Save } from "lucide-react";
-import { toast } from "sonner";
+import { useState } from "react";
+import Link from "next/link";
+import { Briefcase, Loader2, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import { Combobox } from "@/components/combobox";
-import { DynamicIcon } from "@/components/dynamic-icon";
+import { BackButton } from "@/components/ui/back-button";
+import { PageBody } from "@/components/ui/page-body";
+import { PageHeader } from "@/components/ui/page-header";
+import { StickySaveBar } from "@/components/ui/sticky-save-bar";
 import { SectionTabs } from "@/components/section-tabs";
-import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import type { Accreditation, Category, Lookup } from "@/app/admin/platform/categories/apis/types";
-import { businessProfileDetailApi } from "../../apis";
-import {
-  createService, fetchServiceFieldValues, fetchServices, updateService, updateServiceFieldValues,
-} from "../../store/business-profile-detail-slice";
-import { ApiError } from "@/lib/api/http";
-import type { SchemaFieldValue, ServiceInput } from "../../apis/types";
 import { SummaryTab } from "./tabs/summary-tab";
 import { CourseFeesTab } from "./tabs/course-fees-tab";
 import { IntakesTab } from "./tabs/intakes-tab";
@@ -26,6 +17,9 @@ import { EligibilityTab } from "./tabs/eligibility-tab";
 import { StudyOptionsTab } from "./tabs/study-options-tab";
 import { StudyUnitsTab } from "./tabs/study-units-tab";
 import { AccreditationsTab } from "./tabs/accreditations-tab";
+import { ServiceBasicsSection } from "./service-basics-section";
+import { ServiceHeroCard } from "./service-hero-card";
+import { useServiceForm } from "./use-service-form";
 
 const DETAIL_TABS = [
   { value: "summary", label: "Summary" },
@@ -38,277 +32,81 @@ const DETAIL_TABS = [
 ] as const;
 export type DetailTab = (typeof DETAIL_TABS)[number]["value"];
 
-type FormState = { name: string; service_category_id: number | null; description: string };
-
-const EMPTY_FORM: FormState = { name: "", service_category_id: null, description: "" };
-
 export function ServiceFormView({ businessId, serviceId }: Readonly<{ businessId: number; serviceId?: string }>) {
-  const router = useRouter();
-  const dispatch = useAppDispatch();
-  const isEdit = !!serviceId;
-
-  const profile = useAppSelector((state) => state.businessOnboarding.profile);
-  const services = useAppSelector((state) => state.businessProfileDetail.services.items);
-  const [serviceCategories, setServiceCategories] = useState<Category[]>([]);
-  const [degreeLevels, setDegreeLevels] = useState<Lookup[]>([]);
-  const [areasOfStudy, setAreasOfStudy] = useState<Lookup[]>([]);
-  const [accreditations, setAccreditations] = useState<Accreditation[]>([]);
-
-  const toForm = (s: { name: string; service_category_id: number | null; description: string | null }): FormState => ({
-    name: s.name,
-    service_category_id: s.service_category_id,
-    description: s.description ?? "",
-  });
-
-  const [form, setForm] = useState<FormState>(() => {
-    const existing = serviceId ? services.find((s) => s.id === serviceId) : undefined;
-    return existing ? toForm(existing) : EMPTY_FORM;
-  });
-  const [fieldValues, setFieldValues] = useState<Record<number, unknown>>({});
-  const [saving, setSaving] = useState(false);
-  const [generatingDescription, setGeneratingDescription] = useState(false);
+  const f = useServiceForm(businessId, serviceId);
+  const { isEdit, form, set } = f;
   const [detailTab, setDetailTab] = useState<DetailTab>("summary");
+  const servicesHref = `/business/profile/${businessId}?tab=services`;
 
-  const [courseSearchResults, setCourseSearchResults] = useState<Record<string, { value: string; label: string }[]>>({});
-  const [courseSearchLoading, setCourseSearchLoading] = useState<Record<string, boolean>>({});
-  const searchTimers = useRef<Record<string, ReturnType<typeof setTimeout>>>({});
-
-  useEffect(() => {
-    const timers = searchTimers.current;
-    return () => {
-      for (const timer of Object.values(timers)) clearTimeout(timer);
-    };
-  }, []);
-
-  const fetchedRef = useRef(false);
-  useEffect(() => {
-    if (fetchedRef.current) return;
-    fetchedRef.current = true;
-    businessProfileDetailApi.getServiceCategories().then((res) => setServiceCategories(res.data));
-    businessProfileDetailApi.getLookups("degree-levels").then((res) => setDegreeLevels(res.data));
-    businessProfileDetailApi.getLookups("areas-of-study").then((res) => setAreasOfStudy(res.data));
-    businessProfileDetailApi.getAccreditations().then((res) => setAccreditations(res.data));
-    if (isEdit && serviceId) {
-      if (!services.some((s) => s.id === serviceId)) {
-        dispatch(fetchServices({ id: businessId, params: { limit: 100 } })).then((res) => {
-          if (fetchServices.fulfilled.match(res)) {
-            const found = res.payload.data.find((s) => s.id === serviceId);
-            if (found) setForm(toForm(found));
-          }
-        });
-      }
-      dispatch(fetchServiceFieldValues({ id: businessId, serviceId })).then((res) => {
-        if (fetchServiceFieldValues.fulfilled.match(res)) {
-          const map: Record<number, unknown> = {};
-          for (const v of res.payload as SchemaFieldValue[]) map[v.schema_field_id] = v.value;
-          setFieldValues(map);
-        }
-      });
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const set = <K extends keyof FormState>(key: K, value: FormState[K]) => setForm((f) => ({ ...f, [key]: value }));
-
-  const canSave = form.name.trim().length >= 2 && !!form.service_category_id;
-
-  const catalogOptionsByKey: Record<string, { value: string; label: string }[]> = {
-    degree_level: degreeLevels.map((l) => ({ value: String(l.id), label: l.name })),
-    area_of_study: areasOfStudy.map((l) => ({ value: String(l.id), label: l.name })),
-    awarded_by: accreditations.map((a) => ({ value: String(a.id), label: a.name })),
+  const summaryProps = {
+    description: form.description,
+    onDescriptionChange: (v: string) => set("description", v),
+    schemaFieldIdByKey: f.schemaFieldIdByKey,
+    fieldValues: f.fieldValues,
+    setFieldValues: f.setFieldValues,
+    courseFieldOptions: f.courseFieldOptions,
+    debouncedSearchCourseField: f.debouncedSearchCourseField,
+    courseSearchLoading: f.courseSearchLoading,
+    onWriteWithAi: f.handleWriteWithAi,
+    generatingDescription: f.generatingDescription,
   };
 
-  // Scoped to the SELECTED category: schema_fields are per-category rows (their own ids), so a
-  // "degree_level" field on Academic Courses has a different id than one on, say, Diplomas —
-  // merging across every category picked whichever category came first, silently mismatching
-  // the id a value was saved under and leaving the combobox blank on edit.
-  const selectedCategory = serviceCategories.find((c) => c.id === form.service_category_id);
-  const schemaFieldIdByKey: Record<string, number> = {};
-  for (const f of selectedCategory?.schema_fields ?? []) {
-    schemaFieldIdByKey[f.key] = f.id;
-  }
-
-  const searchCourseField = async (key: string, query: string) => {
-    setCourseSearchLoading((s) => ({ ...s, [key]: true }));
-    try {
-      if (key === "awarded_by") {
-        const res = await businessProfileDetailApi.getAccreditations({ search: query || undefined });
-        setCourseSearchResults((s) => ({ ...s, [key]: res.data.map((a) => ({ value: String(a.id), label: a.name })) }));
-      } else {
-        const kind = key === "degree_level" ? "degree-levels" : "areas-of-study";
-        const res = await businessProfileDetailApi.getLookups(kind, { search: query || undefined });
-        setCourseSearchResults((s) => ({ ...s, [key]: res.data.map((l) => ({ value: String(l.id), label: l.name })) }));
-      }
-    } finally {
-      setCourseSearchLoading((s) => ({ ...s, [key]: false }));
-    }
-  };
-
-  const debouncedSearchCourseField = (key: string, query: string) => {
-    clearTimeout(searchTimers.current[key]);
-    searchTimers.current[key] = setTimeout(() => searchCourseField(key, query), 300);
-  };
-
-  // Keep the currently selected option visible even if a backend search narrows it out of the results.
-  const courseFieldOptions = (key: string, value: string) => {
-    const base = courseSearchResults[key] ?? catalogOptionsByKey[key] ?? [];
-    if (value && !base.some((o) => o.value === value)) {
-      const selected = catalogOptionsByKey[key]?.find((o) => o.value === value);
-      if (selected) return [selected, ...base];
-    }
-    return base;
-  };
-
-  const handleWriteWithAi = async () => {
-    if (!form.name.trim()) {
-      toast.error("Enter a service name first");
-      return;
-    }
-    setGeneratingDescription(true);
-    try {
-      const categoryName = serviceCategories.find((c) => c.id === form.service_category_id)?.name;
-      const { text } = await businessProfileDetailApi.generateServiceDescription({
-        name: form.name,
-        category_name: categoryName,
-        hint: form.description || undefined,
-      });
-      set("description", text);
-    } catch (e) {
-      toast.error("Couldn't generate a description", { description: (e as ApiError).message });
-    } finally {
-      setGeneratingDescription(false);
-    }
-  };
-
-  const handleSubmit = async () => {
-    if (!canSave || !form.service_category_id) return;
-    setSaving(true);
-    try {
-      const input: ServiceInput = {
-        name: form.name,
-        service_category_id: form.service_category_id,
-        description: form.description || null,
-      };
-      const result = isEdit && serviceId
-        ? await dispatch(updateService({ id: businessId, serviceId, patch: input })).unwrap()
-        : await dispatch(createService({ id: businessId, input })).unwrap();
-
-      const values = Object.entries(fieldValues).map(([schema_field_id, value]) => ({
-        schema_field_id: Number(schema_field_id),
-        value,
-      }));
-      if (values.length > 0) {
-        await dispatch(updateServiceFieldValues({ id: businessId, serviceId: result.id, values })).unwrap();
-      }
-
-      toast.success(isEdit ? "Service updated" : "Service created");
-      router.push(`/business/profile/${businessId}?tab=services`);
-    } catch (e) {
-      const err = e as ApiError;
-      toast.error(isEdit ? "Couldn't update service" : "Couldn't create service", { description: err.message });
-    } finally {
-      setSaving(false);
-    }
-  };
+  const saveButton = (
+    <Button className="gap-2" disabled={!f.canSave || f.saving} onClick={f.handleSubmit}>
+      {f.saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+      {f.saving ? (isEdit ? "Saving…" : "Creating…") : isEdit ? "Save changes" : "Create service"}
+    </Button>
+  );
 
   return (
-    <div className="service-form stagger-in mx-auto max-w-5xl space-y-4 pb-20">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <Button
-          variant="ghost"
-          className="group/back h-10 cursor-pointer gap-1 px-1 text-muted-foreground"
-          onClick={() => router.push(`/business/profile/${businessId}?tab=services`)}
-        >
-          <ArrowLeft className="h-4 w-4 transition-transform group-hover/back:-translate-x-0.5" />
-          Back to services
-        </Button>
-        <Button className="cursor-pointer gap-1.5 transition-[transform,box-shadow] hover:-translate-y-px hover:shadow-[0_6px_18px_-6px_var(--color-primary)] active:translate-y-0 active:scale-[.98]" disabled={!canSave || saving} onClick={handleSubmit}>
-          <Save className="h-3.5 w-3.5" />
-          {saving ? (isEdit ? "Saving…" : "Creating…") : isEdit ? "Save changes" : "Create service"}
-        </Button>
-      </div>
+    <PageBody>
+      <PageHeader
+        leading={<BackButton href={servicesHref} label="Back to services" />}
+        title={<><Briefcase /> {isEdit ? form.name || "Untitled service" : "Add service"}</>}
+        subtitle={`${f.profile?.business_name ?? "Business"} · Services`}
+      >
+        {saveButton}
+      </PageHeader>
 
-      <div className="overflow-hidden rounded-lg border">
-        <div className="relative h-32 overflow-hidden bg-linear-to-br from-primary/15 to-primary/5">{profile?.cover_url && <img src={profile.cover_url} alt="" className="absolute inset-0 size-full object-cover" /> /* eslint-disable-line @next/next/no-img-element -- signed storage URL */}<span aria-hidden className="animate-sheen absolute inset-0 bg-linear-to-r from-transparent via-background/50 to-transparent" /></div>
-        <CardContent>
-          <div className="flex items-start gap-4 -mt-14 ml-8">
-            <Avatar className="animate-pop-in size-28 shrink-0 rounded-xl border-4 border-background shadow-sm [animation-delay:200ms] [animation-fill-mode:both]">
-              {profile?.logo_url && <AvatarImage src={profile.logo_url} alt={profile.business_name} className="rounded-lg object-contain p-1" />}
-              <AvatarFallback className="rounded-lg bg-background text-xl font-bold text-primary">
-                {(profile?.business_name ?? "B").charAt(0).toUpperCase()}
-              </AvatarFallback>
-            </Avatar>
-            <div className="flex flex-1 flex-col gap-1.5 pt-4 sm:pt-14 m-2">
-              <Combobox
-                options={serviceCategories.map((c) => ({
-                  value: String(c.id),
-                  label: c.name,
-                  icon: <DynamicIcon name={c.icon} fallback="GraduationCap" className="h-3.5 w-3.5" />,
-                }))}
-                value={form.service_category_id ? String(form.service_category_id) : ""}
-                onChange={(v) => set("service_category_id", v ? Number(v) : null)}
-                placeholder="Select category"
-                searchPlaceholder="Search categories..."
-                className="h-7 w-fit min-w-0 rounded-full border-primary/30 bg-primary/5 px-3 text-xs font-medium text-primary"
-              />
-              <Input
-                value={form.name}
-                onChange={(e) => set("name", e.target.value)}
-                placeholder="Untitled service"
-                className="h-10 rounded-none border-none bg-[linear-gradient(var(--color-primary),var(--color-primary))] bg-[length:0%_2px] bg-[position:0_100%] bg-no-repeat p-0 text-xl font-bold text-foreground shadow-none transition-[background-size] duration-300 focus-visible:bg-[length:100%_2px] focus-visible:ring-0"
-              />
-              <p className="text-sm text-muted-foreground">{profile?.business_name ?? "Business"}</p>
-            </div>
-          </div>
-        </CardContent>
-      </div>
+      <ServiceHeroCard coverUrl={f.profile?.cover_url} logoUrl={f.profile?.logo_url} orgName={f.profile?.business_name ?? "Business"} />
+
+      <ServiceBasicsSection
+        categories={f.serviceCategories}
+        categoryId={form.service_category_id}
+        onCategoryChange={(v) => set("service_category_id", v)}
+        name={form.name}
+        onNameChange={(v) => set("name", v)}
+        nameLabel="Service name"
+      />
 
       {isEdit && serviceId ? (
         <>
-          <SectionTabs options={DETAIL_TABS} value={detailTab} onChange={setDetailTab} />
-          <Card>
-            <CardContent key={detailTab} className="animate-step-forward">
-              {detailTab === "summary" && (
-                <SummaryTab
-                  serviceId={serviceId}
-                  onNavigateTab={setDetailTab}
-                  description={form.description}
-                  onDescriptionChange={(v) => set("description", v)}
-                  schemaFieldIdByKey={schemaFieldIdByKey}
-                  fieldValues={fieldValues}
-                  setFieldValues={setFieldValues}
-                  courseFieldOptions={courseFieldOptions}
-                  debouncedSearchCourseField={debouncedSearchCourseField}
-                  courseSearchLoading={courseSearchLoading}
-                  onWriteWithAi={handleWriteWithAi}
-                  generatingDescription={generatingDescription}
-                />
-              )}
-              {detailTab === "fees" && <CourseFeesTab serviceId={serviceId} />}
-              {detailTab === "intakes" && <IntakesTab serviceId={serviceId} />}
-              {detailTab === "eligibility" && <EligibilityTab serviceId={serviceId} />}
-              {detailTab === "study-options" && <StudyOptionsTab serviceId={serviceId} />}
-              {detailTab === "study-units" && <StudyUnitsTab serviceId={serviceId} />}
-              {detailTab === "accreditations" && <AccreditationsTab serviceId={serviceId} />}
-            </CardContent>
-          </Card>
+          <SectionTabs className="mb-0" options={DETAIL_TABS} value={detailTab} onChange={setDetailTab} />
+          {detailTab === "summary" ? (
+            <div key={detailTab} className="animate-step-forward">
+              <SummaryTab serviceId={serviceId} onNavigateTab={setDetailTab} {...summaryProps} />
+            </div>
+          ) : (
+            <Card>
+              <CardContent key={detailTab} className="animate-step-forward">
+                {detailTab === "fees" && <CourseFeesTab serviceId={serviceId} />}
+                {detailTab === "intakes" && <IntakesTab serviceId={serviceId} />}
+                {detailTab === "eligibility" && <EligibilityTab serviceId={serviceId} />}
+                {detailTab === "study-options" && <StudyOptionsTab serviceId={serviceId} />}
+                {detailTab === "study-units" && <StudyUnitsTab serviceId={serviceId} />}
+                {detailTab === "accreditations" && <AccreditationsTab serviceId={serviceId} />}
+              </CardContent>
+            </Card>
+          )}
         </>
       ) : (
-        <SummaryTab
-          serviceId={null}
-          onNavigateTab={() => {}}
-          description={form.description}
-          onDescriptionChange={(v) => set("description", v)}
-          schemaFieldIdByKey={schemaFieldIdByKey}
-          fieldValues={fieldValues}
-          setFieldValues={setFieldValues}
-          courseFieldOptions={courseFieldOptions}
-          debouncedSearchCourseField={debouncedSearchCourseField}
-          courseSearchLoading={courseSearchLoading}
-          onWriteWithAi={handleWriteWithAi}
-          generatingDescription={generatingDescription}
-        />
+        <SummaryTab serviceId={null} onNavigateTab={() => {}} {...summaryProps} />
       )}
-    </div>
+
+      <StickySaveBar status={isEdit ? "Fees, intakes and the other tabs save on their own." : undefined}>
+        <Button variant="outline" render={<Link href={servicesHref} />}>Cancel</Button>
+        {saveButton}
+      </StickySaveBar>
+    </PageBody>
   );
 }

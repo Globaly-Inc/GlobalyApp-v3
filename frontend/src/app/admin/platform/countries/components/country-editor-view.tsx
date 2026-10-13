@@ -1,10 +1,17 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, Globe, Loader2, Save } from "lucide-react";
+import { Globe, Loader2, Save, SearchX } from "lucide-react";
 import { toast } from "sonner";
+import { BackButton } from "@/components/ui/back-button";
 import { Button } from "@/components/ui/button";
+import { CardSkeleton } from "@/components/ui/list-skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageBody } from "@/components/ui/page-body";
+import { PageHeader } from "@/components/ui/page-header";
+import { StickySaveBar } from "@/components/ui/sticky-save-bar";
 import { ApiError } from "@/lib/api/http";
 import { countriesApi } from "../apis";
 import type { Country, CountryInput } from "../apis/types";
@@ -104,38 +111,45 @@ export function CountryEditorView({ countryId }: Readonly<{ countryId: number | 
     }
   };
 
+  const back = <BackButton href="/admin/platform/countries" label="Back to countries" />;
+
   if (loading) {
     return (
-      <div className="flex justify-center py-20">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
-      </div>
+      <PageBody>
+        <CardSkeleton lines={6} />
+      </PageBody>
     );
   }
 
   if (notFound) {
-    return <p className="py-20 text-center text-sm text-muted-foreground">Country not found.</p>;
+    return (
+      <PageBody>
+        <PageHeader leading={back} title="Country not found" />
+        <EmptyState icon={SearchX} title="Country not found" description="It may have been deleted." />
+      </PageBody>
+    );
   }
 
   const panelProps = { country, onChange: update, errors };
+  const saveLabel = countryId ? "Save Country" : "Create Country";
+  const saveButton = (
+    <Button className="gap-2" onClick={handleSave} disabled={saving}>
+      {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+      {saveLabel}
+    </Button>
+  );
 
   return (
-    <div className="space-y-4">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => router.push("/admin/platform/countries")}>
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <h1 className="flex items-center gap-2 text-2xl font-bold text-foreground">
-            <Globe className="h-5 w-5" /> {countryId ? `Edit ${country.name}` : "Add New Country"}
-          </h1>
-        </div>
-        <Button className="gap-2" onClick={handleSave} disabled={saving}>
-          {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-          {countryId ? "Save Country" : "Create Country"}
-        </Button>
-      </div>
+    <PageBody>
+      <PageHeader
+        leading={back}
+        title={<><Globe /> {countryId ? `Edit ${country.name}` : "Add New Country"}</>}
+        subtitle={countryId ? country.slug && `/country/${country.slug}` : "Fill in the basics; the other tabs can wait."}
+      >
+        {saveButton}
+      </PageHeader>
 
-      <SectionTabs options={countryId ? COUNTRY_EDITOR_TABS_EDIT : COUNTRY_EDITOR_TABS_NEW} value={tab} onChange={setTab} />
+      <SectionTabs className="mb-0" options={countryId ? COUNTRY_EDITOR_TABS_EDIT : COUNTRY_EDITOR_TABS_NEW} value={tab} onChange={setTab} />
 
       {tab === "basic" && <CountryBasicPanel {...panelProps} />}
       {tab === "images" && <CountryImagesPanel {...panelProps} onPendingFile={registerPendingFile} />}
@@ -145,6 +159,14 @@ export function CountryEditorView({ countryId }: Readonly<{ countryId: number | 
       {tab === "weather" && <CountryWeatherPanel {...panelProps} />}
       {tab === "seo" && <CountrySeoPanel {...panelProps} />}
       {tab === "cities" && countryId !== null && <CountryCitiesTab countryId={countryId} />}
-    </div>
+
+      {/* Cities save themselves row by row; every other tab edits this one record. */}
+      {tab !== "cities" && (
+        <StickySaveBar status="Changes on every tab are saved together.">
+          <Button variant="outline" render={<Link href="/admin/platform/countries" />}>Cancel</Button>
+          {saveButton}
+        </StickySaveBar>
+      )}
+    </PageBody>
   );
 }

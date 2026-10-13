@@ -1,9 +1,8 @@
 "use client";
 
-import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { FieldError } from "@/components/field-error";
+import { FormField } from "@/components/ui/form-field";
+import { FormSection } from "@/components/ui/form-section";
 import { Combobox, type ComboboxOption } from "@/components/combobox";
 import { AddressAutocomplete } from "./address-autocomplete";
 import type { PlaceDetails } from "../../apis/types";
@@ -44,41 +43,32 @@ export function LocationCard({
   websiteError?: string;
 }>) {
   return (
-    <Card className="space-y-4 p-6">
-      <h3 className="text-sm font-semibold text-foreground">Location</h3>
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <div className="flex flex-col gap-2">
-          <Label>Country</Label>
-          <Combobox
-            options={countryOptions}
-            value={countryId ? String(countryId) : ""}
-            onChange={(v) => onCountryChange(v ? Number(v) : null)}
-            placeholder="Select country"
-            contentClassName="w-72"
-          />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label>Address</Label>
-          <AddressAutocomplete value={address} onChange={onAddressChange} onResolved={onPlaceResolved} countryIso2={countryIso2} />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label>City</Label>
-          <Input className="h-10" value={city} onChange={(e) => onCityChange(e.target.value)} placeholder="City" />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label>State/Province</Label>
-          <Input className="h-10" value={state} onChange={(e) => onStateChange(e.target.value)} placeholder="State/Province" />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label>Postcode</Label>
-          <Input className="h-10" value={postcode} onChange={(e) => onPostcodeChange(e.target.value)} placeholder="Postcode" />
-        </div>
-        <div className="flex flex-col gap-2">
-          <Label>Website</Label>
-          <Input className="h-10" aria-invalid={!!websiteError} value={website} onChange={(e) => onWebsiteChange(e.target.value)} placeholder="https://www.business.com" />
-          <FieldError message={websiteError} />
-        </div>
-      </div>
-    </Card>
+    <FormSection title="Location" columns={2}>
+      <FormField label="Country" htmlFor="business-country">
+        <Combobox
+          id="business-country"
+          options={countryOptions}
+          value={countryId ? String(countryId) : ""}
+          onChange={(v) => onCountryChange(v ? Number(v) : null)}
+          placeholder="Select country"
+          contentClassName="w-72"
+        />
+      </FormField>
+      <FormField label="Address">
+        <AddressAutocomplete value={address} onChange={onAddressChange} onResolved={onPlaceResolved} countryIso2={countryIso2} />
+      </FormField>
+      <FormField label="City" htmlFor="business-city">
+        <Input id="business-city" className="h-10" value={city} onChange={(e) => onCityChange(e.target.value)} placeholder="City" />
+      </FormField>
+      <FormField label="State/Province" htmlFor="business-state">
+        <Input id="business-state" className="h-10" value={state} onChange={(e) => onStateChange(e.target.value)} placeholder="State/Province" />
+      </FormField>
+      <FormField label="Postcode" htmlFor="business-postcode">
+        <Input id="business-postcode" className="h-10" value={postcode} onChange={(e) => onPostcodeChange(e.target.value)} placeholder="Postcode" />
+      </FormField>
+      <FormField label="Website" htmlFor="business-website" error={websiteError}>
+        <Input id="business-website" className="h-10" aria-invalid={!!websiteError} value={website} onChange={(e) => onWebsiteChange(e.target.value)} placeholder="https://www.business.com" />
+      </FormField>
+    </FormSection>
   );
 }

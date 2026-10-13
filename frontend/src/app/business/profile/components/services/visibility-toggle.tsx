@@ -23,7 +23,7 @@ export function VisibilityToggle({ section, visibility }: Readonly<{ section: st
       className={cn(
         "inline-flex cursor-pointer items-center gap-1 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold transition-colors focus-visible:outline-2 focus-visible:outline-primary disabled:cursor-not-allowed disabled:opacity-60",
         visible
-          ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700 hover:bg-emerald-500/15 dark:text-emerald-400"
+          ? "border-success/20 bg-success/10 text-success hover:bg-success/15"
           : "bg-muted text-muted-foreground hover:text-foreground",
       )}
     >
