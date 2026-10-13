@@ -123,16 +123,25 @@ export async function stageSpreadsheetExtras(jobId: string, extras: SpreadsheetE
 
   // extraction_accreditations has no job_id — a row belongs to a job only through its course
   // assignments, so one with no linked course would be unreachable and is not written.
+  // The lookup is GLOBAL, never job-scoped: the table is global and unique on lower(trim(name))
+  // (migration 20261012_001), so a job-scoped miss followed by a bare insert would fail the whole
+  // import whenever ANY other job already staged the same body. Reuse the global row and add this
+  // job's assignments — which is what the table's design always meant.
   for (const a of extras.accreditations) {
     const ids = coursesFor(a.courses);
     if (!a.name || !ids.length) continue;
-    const existing = await masterKnex(`${S}.extraction_accreditations as ea`)
-      .join(`${S}.extraction_course_accreditation_assignments as caa`, "caa.extraction_accreditation_id", "ea.id")
-      .where("caa.job_id", jobId).whereRaw("lower(trim(ea.name)) = ?", [key(a.name)])
-      .first("ea.id");
-    const id = existing?.id ?? (await masterKnex(`${S}.extraction_accreditations`)
-      .insert({ name: a.name, issuing_organization: a.issuing_organization, website: a.website, description: a.description })
-      .returning("id"))[0].id;
+    // key() collapses inner whitespace, lower(trim()) does not — compare and INSERT the collapsed
+    // form, and collapse the stored side too, or a re-import of "Chartered  Institute" misses the
+    // lookup, hits the unique index, and the final `.id` read throws on an undefined reselect.
+    const name = a.name.trim().replace(/\s+/g, " ");
+    const byName = () => masterKnex(`${S}.extraction_accreditations`)
+      .whereRaw("lower(regexp_replace(trim(name), '\\s+', ' ', 'g')) = ?", [key(name)]).first("id");
+    const id = (await byName())?.id
+      ?? (await masterKnex(`${S}.extraction_accreditations`)
+        .insert({ name, issuing_organization: a.issuing_organization, website: a.website, description: a.description })
+        .onConflict(masterKnex.raw("((LOWER(TRIM(name))))")).ignore()
+        .returning("id"))[0]?.id
+      ?? (await byName())!.id;
     await assign("extraction_course_accreditation_assignments", "extraction_accreditation_id", jobId, ids, id);
     n.accreditations++;
   }

@@ -76,6 +76,8 @@ import {
   type ExtractedVisaService,
   upsertScholarship,
   type ExtractedScholarship,
+  stageCourseAccreditation,
+  type ExtractedAccreditation,
 } from "../lib/staging-writer.js";
 import { coercePartialDate } from "../lib/partial-date.js";
 import { parseAddress } from "../lib/address-parser.js";
@@ -1735,28 +1737,10 @@ async function handleCourseDataStep(
 
     case "accreditations": {
       await masterKnex(`${S}.extraction_course_accreditation_assignments`).where({ course_id: courseId }).delete();
-      const accs = (extracted.accreditations as Array<Record<string, unknown>>) || [];
-      for (const acc of accs) {
-        if (!acc.name) continue;
-        // Find or create extraction_accreditations row
-        const accName = String(acc.name);
-        const existingAcc = await masterKnex(`${S}.extraction_accreditations`)
-          .whereRaw("LOWER(name) = LOWER(?)", [accName]).first();
-        let accId: string;
-        if (existingAcc) {
-          accId = existingAcc.id;
-        } else {
-          const [row] = await masterKnex(`${S}.extraction_accreditations`)
-            .insert({ name: accName, issuing_organization: acc.issuing_organization ?? null })
-            .returning("id");
-          accId = row.id;
-        }
-        await masterKnex(`${S}.extraction_course_accreditation_assignments`)
-          .insert({
-            job_id: jobId, course_id: courseId,
-            extraction_accreditation_id: accId,
-          });
-        count++;
+      // Same find-or-create + link the automatic pipeline uses (writeCourse) — one helper, so the
+      // manual re-extract and the page worker can never disagree about accreditation identity.
+      for (const acc of (extracted.accreditations as ExtractedAccreditation[]) || []) {
+        if (await stageCourseAccreditation(jobId, courseId, acc)) count++;
       }
       break;
     }
