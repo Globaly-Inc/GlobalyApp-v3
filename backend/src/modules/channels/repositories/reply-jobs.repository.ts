@@ -1,69 +1,83 @@
 // Pending AI replies, one per channel conversation (globalyapp.channel_reply_jobs). See the
-// 20261013_001 migration for why each message reschedules a row instead of answering at once.
+// 20261013_001 migration for why each message reschedules a row instead of answering at once, and
+// 20261013_002 for the lease that keeps a reply alive through a worker crash.
 
 import { masterKnex } from "../../../core/db/master-pool.js";
 import type { Recipient } from "../../enquiries/shared/recipient.js";
 
 const TABLE = "channel_reply_jobs";
 
+/** Claims after this many tries (each claim counts, so a reply that crashes the worker too) are
+ *  left alone until the customer writes again, which resets the count. */
+export const MAX_REPLY_ATTEMPTS = 5;
+
 export interface ReplyJob {
+  id: number;
   owner_kind: Recipient["kind"];
   owner_id: number;
   visitor_id: number;
   first_message_at: Date;
+  /** Including this claim. */
   attempts: number;
+  version: number;
 }
 
 /**
- * Debounce: (re)schedule the conversation's reply `waitMs` from now. A new message pushes it back,
- * but never past `maxWaitMs` after the burst's first message. `waitMs` 0 = answer as soon as the
- * worker looks (Resume AI).
+ * Debounce: (re)schedule the conversation's reply `waitMs` from now, never past `maxWaitMs` after
+ * the burst's first message — on the first message too. `waitMs` 0 = answer as soon as the worker
+ * looks (Resume AI). A message landing while a reply is being written starts a new burst: the job
+ * stays leased (no second reply runs alongside), and the version bump keeps it from being deleted
+ * when that reply finishes.
  */
 export async function scheduleReply(owner: Recipient, visitorId: number, waitMs: number, maxWaitMs: number): Promise<void> {
+  const wait = `${Math.max(0, Math.min(waitMs, maxWaitMs))} milliseconds`;
   // Typed casts on every bind: an untyped parameter inside LEAST() can't be typed by Postgres.
   await masterKnex.raw(
-    `INSERT INTO channel_reply_jobs (owner_kind, owner_id, visitor_id, due_at)
+    `INSERT INTO channel_reply_jobs AS j (owner_kind, owner_id, visitor_id, due_at)
      VALUES (?, ?, ?, now() + CAST(? AS interval))
-     ON CONFLICT (owner_kind, owner_id, visitor_id) DO UPDATE
-     SET due_at = LEAST(EXCLUDED.due_at, channel_reply_jobs.first_message_at + CAST(? AS interval))`,
-    [owner.kind, owner.id, visitorId, `${Math.max(0, waitMs)} milliseconds`, `${Math.max(0, maxWaitMs)} milliseconds`],
+     ON CONFLICT (owner_kind, owner_id, visitor_id) DO UPDATE SET
+       version = j.version + 1,
+       attempts = 0,
+       first_message_at = CASE WHEN j.claimed_until > now() THEN now() ELSE j.first_message_at END,
+       due_at = CASE WHEN j.claimed_until > now() THEN EXCLUDED.due_at
+                     ELSE LEAST(EXCLUDED.due_at, j.first_message_at + CAST(? AS interval)) END`,
+    [owner.kind, owner.id, visitorId, wait, `${Math.max(0, maxWaitMs)} milliseconds`],
   );
 }
 
 /**
- * Takes up to `limit` due replies, oldest first, by deleting them: whoever deletes a row owns that
- * reply, so two sweeps (or two workers) can never answer the same burst. A message arriving after
- * the claim inserts a fresh row and is answered by it.
+ * Leases up to `limit` due replies, oldest first, for `leaseMs`. Two workers can't lease the same
+ * job; a worker that dies leaves the lease to run out, and the reply is answered by a later poll.
  */
-export async function claimDueReplies(limit: number): Promise<ReplyJob[]> {
+export async function claimDueReplies(limit: number, leaseMs: number): Promise<ReplyJob[]> {
   if (limit <= 0) return [];
   const res = await masterKnex.raw(
-    `DELETE FROM channel_reply_jobs
+    `UPDATE channel_reply_jobs SET claimed_until = now() + CAST(? AS interval), attempts = attempts + 1
      WHERE id IN (
-       SELECT id FROM channel_reply_jobs WHERE due_at <= now()
+       SELECT id FROM channel_reply_jobs
+       WHERE due_at <= now() AND (claimed_until IS NULL OR claimed_until <= now()) AND attempts < CAST(? AS integer)
        ORDER BY due_at ASC LIMIT CAST(? AS integer)
        FOR UPDATE SKIP LOCKED
      )
-     RETURNING owner_kind, owner_id, visitor_id, first_message_at, attempts`,
-    [limit],
+     RETURNING id, owner_kind, owner_id, visitor_id, first_message_at, attempts, version`,
+    [`${leaseMs} milliseconds`, MAX_REPLY_ATTEMPTS, limit],
   );
   return res.rows as ReplyJob[];
 }
 
 /**
- * Puts a claimed reply back: after a failure (later, with `attempts` counted) or because this
- * conversation is already being answered (shortly). A newer row for the conversation wins.
+ * Done with a leased reply (sent, not owed, or given up). Deleted only if no message arrived while
+ * it ran; otherwise the lease is dropped and the newer burst's own due time stands.
  */
-export async function requeueReply(job: ReplyJob, delayMs: number, failed: boolean): Promise<void> {
-  await masterKnex(TABLE)
-    .insert({
-      owner_kind: job.owner_kind,
-      owner_id: job.owner_id,
-      visitor_id: job.visitor_id,
-      first_message_at: job.first_message_at,
-      due_at: new Date(Date.now() + delayMs),
-      attempts: job.attempts + (failed ? 1 : 0),
-    })
-    .onConflict(["owner_kind", "owner_id", "visitor_id"])
-    .ignore();
+export async function finishReply(job: ReplyJob): Promise<void> {
+  const deleted = await masterKnex(TABLE).where({ id: job.id, version: job.version }).del();
+  if (!deleted) await masterKnex(TABLE).where({ id: job.id }).update({ claimed_until: null });
+}
+
+/** Put a leased reply back for another try in `delayMs` (a failure, or the conversation is busy). */
+export async function retryReply(job: ReplyJob, delayMs: number): Promise<void> {
+  await masterKnex(TABLE).where({ id: job.id }).update({
+    claimed_until: null,
+    due_at: masterKnex.raw("GREATEST(due_at, now() + CAST(? AS interval))", [`${delayMs} milliseconds`]),
+  });
 }

@@ -252,7 +252,7 @@ export function MessagesView() {
             embedSelected ? (
               <EmbedConversationView visitor={embedSelected} onBack={() => setEmbedOpen(null)} />
             ) : (
-              <InboxWelcome visitors={embed.visitors} health={channelHealth} onView={setView} onChannel={setChannel} />
+              <InboxWelcome visitors={embed.visitors} complete={!embed.search && embed.visitors.length >= embed.matched} health={channelHealth} onView={setView} onChannel={setChannel} />
             )
           ) : selected ? (
             <ConversationView thread={selected} highlightMessageId={highlightId} onBack={backToList} />

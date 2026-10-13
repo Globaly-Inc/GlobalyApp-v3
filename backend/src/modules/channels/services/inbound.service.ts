@@ -242,7 +242,7 @@ async function messageReceived(p: InboxPayload): Promise<string | null> {
   }
 
   // Stored already (a redelivery, or a retry after a failure): not stored twice. The reply is
-  // scheduled again below; answerPending answers only if the customer still has the last word.
+  // scheduled again below; answerPending answers only what no reply (or suggestion) has claimed yet.
   if (!stored) {
     try {
       await messagesRepo.create({ session_id: session.id, role: "user", content, ...(platformId ? { provider_message_id: platformId } : {}) });
@@ -299,20 +299,34 @@ async function answer(
   const cfg = aiConfigOf(t.conn.ai_config);
   const summarise = () => void refreshChatSummary(session.id, t.config.display_name, { db: t.db, visitorId: visitor.id });
   const say = (content: string, key: string) => sendToCustomer({ db: t.db, visitor, sessionId: session.id, role: "assistant", content, idempotencyKey: key });
-  const lastId = prevMessages.at(-1)?.id ?? 0;
 
   // Every message since the last answer, in order, as ONE question — so a burst gets one coherent
   // reply, and "Hi" + "can I talk to a person?" is still recognised as a handover request.
-  const pending = takeover.unansweredTail(prevMessages, session.answered_through_message_id ?? null);
+  const previous = session.answered_through_message_id ?? null;
+  const pending = takeover.owedMessages(prevMessages, previous);
   const asked = pending.questions.join("\n\n");
-  if (!asked) return;
-  const history = prevMessages.slice(0, pending.cut).map((m) => ({
+  const lastId = pending.lastId;
+  if (!asked || lastId == null) return;
+  const history = pending.history.map((m) => ({
     role: m.role === "user" ? ("user" as const) : ("model" as const),
     parts: [{ text: m.content }],
   }));
+  // Every response records the last message it answers — first, in one UPDATE — so a retry or a
+  // second worker finds those questions taken (and a waiting suggestion isn't regenerated), while
+  // anything newer stays owed. Undone if the response never goes out.
+  const respond = async (send: () => Promise<unknown>): Promise<boolean> => {
+    if (!(await sessionsRepo.claimAnsweredThrough(session.id, lastId))) return false;
+    try {
+      await send();
+      return true;
+    } catch (err) {
+      await sessionsRepo.releaseAnsweredThrough(session.id, lastId, previous);
+      throw err;
+    }
+  };
 
   if (cfg.capabilities.escalate && cfg.escalation.human && (await judgeWantsHuman(asked)) && (await takeover.requestHandover(t.db, visitor.id))) {
-    await say(HANDOVER_LINE, `handover:${session.id}:${lastId}`);
+    if (!(await respond(() => say(HANDOVER_LINE, `handover:${session.id}:${lastId}`)))) return;
     takeover.notifyHandoverRequest(t.config, visitor, asked)
       .catch((err) => logger.warn("Handover email not sent", { visitorId: visitor.id, err: err instanceof Error ? err.message : String(err) }));
     summarise();
@@ -322,7 +336,7 @@ async function answer(
   const reason = cfg.capabilities.escalate ? await judgeEscalation(asked, cfg.escalation) : null;
   if (reason) {
     await channelVisitors.setAttention(t.db, visitor.id, reason);
-    await say(HOLDING_LINE[reason], `escalate:${session.id}:${lastId}:${reason}`);
+    await respond(() => say(HOLDING_LINE[reason], `escalate:${session.id}:${lastId}:${reason}`));
     summarise();
     return;
   }
@@ -355,23 +369,24 @@ async function answer(
   // what they've said. Drop it; the reply their new message scheduled answers all of it at once.
   // Not once the burst has waited its maximum, so someone who keeps typing still gets an answer.
   const [newest] = await messagesRepo.findBySession(session.id, { limit: 1 });
-  if (!opts.forced && newest && newest.id !== lastId && newest.role === "user") {
+  if (!opts.forced && newest && newest.id > lastId && newest.role === "user") {
     logger.info("AI reply superseded by a newer customer message", { visitorId: visitor.id });
     return;
   }
 
   if (t.conn.ai_mode === "suggest") {
     // Suggest-only: a person reviews and sends it from the Inbox.
-    await channelVisitors.setAttention(t.db, visitor.id, "suggest", text);
+    if (!(await respond(() => channelVisitors.setAttention(t.db, visitor.id, "suggest", text)))) return;
   } else {
-    await sendToCustomer({
+    const sent = await respond(() => sendToCustomer({
       db: t.db, visitor, sessionId: session.id, role: "assistant", content: text,
       idempotencyKey: `ai:${session.id}:${lastId}`,
       extra: {
         sources: reply.sources, memory_ids: reply.memory?.ids,
         prompt_tokens: reply.result.usage.promptTokens, completion_tokens: reply.result.usage.completionTokens, total_tokens: reply.result.usage.totalTokens,
       },
-    });
+    }));
+    if (!sent) return;
     if (visitor.attention_reason === "ai_unsure") await channelVisitors.clearAttention(t.db, visitor.id);
   }
 
@@ -396,9 +411,9 @@ export async function answerPending(owner: Recipient, visitorId: number, opts: {
   const session = await sessionsRepo.findById(visitor.session_id);
   if (!conn || conn.status !== "connected" || !session) return;
   const prevMessages = await messagesRepo.findBySession(session.id, { limit: HISTORY_LIMIT });
-  // Owed only while the customer has the last word: an earlier reply (or a teammate) may have
-  // answered already, which is also what keeps a duplicate job from replying twice.
-  if (prevMessages[prevMessages.length - 1]?.role !== "user") return;
+  // Owed only while something the customer said is unanswered: an earlier reply (or a teammate)
+  // may have answered already, which is also what keeps a duplicate job from replying twice.
+  if (takeover.owedMessages(prevMessages, session.answered_through_message_id ?? null).lastId == null) return;
   if (visitor.resolved_at || takeover.whoAnswers(visitor).answerer !== "ai" || visitor.attention_reason === "sensitive" || visitor.attention_reason === "other_app") return;
   await answer({ owner, db, config, conn }, visitor, session, prevMessages, opts);
 }

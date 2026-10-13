@@ -33,11 +33,15 @@ const CARD_CLASS =
  */
 export function InboxWelcome({
   visitors,
+  complete,
   health,
   onView,
   onChannel,
 }: Readonly<{
   visitors: WidgetVisitor[];
+  /** The list holds the whole inbox (no search, nothing left to load): only then are counts — and
+   *  "all clear" — true of the inbox rather than of what happens to be loaded. */
+  complete: boolean;
   health: Partial<Record<InboxChannel, ChannelHealth>>;
   onView: (v: InboxView) => void;
   onChannel: (c: ChannelFilter) => void;
@@ -49,9 +53,9 @@ export function InboxWelcome({
   const [attention, unread, ai] = [n("attention"), n("unread"), n("ai")];
 
   const cards: Card[] = [
-    { view: "attention", icon: TriangleAlert, title: "Needs attention", hint: attention ? `${attention} waiting for a person` : "All clear right now", attn: attention > 0 },
-    { view: "unread", icon: Mail, title: "Unread messages", hint: unread ? `${unread} new since you last looked` : "You're all caught up" },
-    { view: "ai", icon: Bot, title: "AI handling", hint: `${ai} conversation${ai === 1 ? "" : "s"}, no action needed` },
+    { view: "attention", icon: TriangleAlert, title: "Needs attention", hint: !complete ? "Conversations waiting for a person" : attention ? `${attention} waiting for a person` : "All clear right now", attn: complete && attention > 0 },
+    { view: "unread", icon: Mail, title: "Unread messages", hint: !complete ? "New since you last looked" : unread ? `${unread} new since you last looked` : "You're all caught up" },
+    { view: "ai", icon: Bot, title: "AI handling", hint: complete ? `${ai} conversation${ai === 1 ? "" : "s"}, no action needed` : "No action needed" },
     { href: CHANNELS_HREF, icon: RadioTower, title: "Connect a channel", hint: "WhatsApp, Instagram or Facebook" },
     { href: VISITORS_HREF, icon: Users, title: "Visitors & leads", hint: "Everyone who has chatted with you" },
     { search: true, icon: Search, title: "Search conversations", hint: "People, messages or handles" },

@@ -74,6 +74,31 @@ export function unansweredTail<T extends { id: number; role: string; content: st
 }
 
 /**
+ * Channels: the customer messages no reply has answered yet. Not just the trailing run: an AI reply
+ * forced out while the customer kept typing is stored AFTER their newer messages, which are still
+ * owed. So each AI reply records the last message it answered (answeredThrough); a staff reply
+ * answers everything before it; before any AI reply recorded one, the latest reply of any kind does.
+ */
+export function owedMessages<T extends { id: number; role: string; content: string }>(
+  messages: T[],
+  answeredThrough: number | null,
+): { history: T[]; questions: string[]; lastId: number | null } {
+  let lastReply = 0;
+  let lastStaff = 0;
+  for (const m of messages) {
+    if (m.role !== "user") lastReply = m.id;
+    if (m.role === "agent") lastStaff = m.id;
+  }
+  const through = Math.max(answeredThrough ?? lastReply, lastStaff);
+  const owed = new Set(messages.filter((m) => m.role === "user" && m.id > through));
+  return {
+    history: messages.filter((m) => !owed.has(m)),
+    questions: [...owed].map((m) => m.content),
+    lastId: [...owed].at(-1)?.id ?? null,
+  };
+}
+
+/**
  * Stale claims off. Called by the guest route before it decides who answers.
  *
  * Each clear re-checks staleness IN the UPDATE, not just from the row the route read: a staff
