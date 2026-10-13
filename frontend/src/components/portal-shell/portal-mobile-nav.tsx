@@ -8,7 +8,7 @@ import { useTheme } from "next-themes";
 import { Sheet, SheetContent, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { Switch } from "@/components/ui/switch";
 import { cn } from "@/lib/utils";
-import { groupHref, isGroupActive, RailGlyph, type PortalNavGroup } from "./portal-sidebar";
+import { groupHref, isGroupActive, RailGlyph, type PortalNavGroup, type PortalNavItem } from "./portal-sidebar";
 
 /** Tabs that fit beside "More" on a 360px phone. */
 const TAB_COUNT = 4;
@@ -20,8 +20,15 @@ const TAB_COUNT = 4;
 export function PortalMobileNav({
   title,
   groups,
+  moreLinks = [],
   onSignOut,
-}: Readonly<{ title: string; groups: PortalNavGroup[]; onSignOut: () => void }>) {
+}: Readonly<{
+  title: string;
+  groups: PortalNavGroup[];
+  /** Extra links listed in the More sheet only, e.g. the header pills that are desktop-only. */
+  moreLinks?: PortalNavItem[];
+  onSignOut: () => void;
+}>) {
   const pathname = usePathname();
   const search = useSearchParams().toString();
   const [open, setOpen] = useState(false);
@@ -86,6 +93,16 @@ export function PortalMobileNav({
               </div>
             ))}
             <div className="my-1 h-px bg-border" />
+            {moreLinks.map((link) => (
+              <Link
+                key={link.href}
+                href={link.href}
+                onClick={() => setOpen(false)}
+                className="flex items-center gap-3 rounded-md px-3 py-2 text-sm hover:bg-accent"
+              >
+                <link.icon className="size-4" /> {link.label}
+              </Link>
+            ))}
             <button
               type="button"
               onClick={() => setTheme(isDark ? "light" : "dark")}

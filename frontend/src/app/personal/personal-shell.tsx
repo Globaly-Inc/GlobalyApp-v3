@@ -1,40 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Image from "next/image";
-import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { cn } from "@/lib/utils";
-import {
-  Coins,
-  Bell,
-  ChevronDown,
-  User as UserIcon,
-  Building2,
-  Loader2,
-} from "lucide-react";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+import { Coins, User as UserIcon } from "lucide-react";
 // import { AiLauncher } from "@/components/ai-widget/ai-launcher";
+import { AlyOrbIcon } from "@/components/aly-orb-icon";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { logout, useAuthState } from "@/app/auth/store/auth-slice";
 import { fetchFullProfile } from "./store/profile-slice";
-import { PortalSidebar } from "@/components/portal-sidebar";
-import { NAV_ITEMS, PERSONAL_PORTAL_HOME, SHOW_HEADER_EXTRAS, SHOW_PERSONAL_PORTAL } from "./const";
-import { ThemeToggle } from "@/components/theme-toggle";
-import { PersonalMobileNav } from "./components/personal-mobile-nav";
-import { ICON } from "@/lib/public-assets";
+import { PortalShell } from "@/components/portal-shell/portal-shell";
+import { PortalHeaderLinks } from "@/components/portal-shell/portal-header";
+import { PortalLoading } from "@/components/portal-shell/portal-status";
+import { NAV_ITEMS, SHOW_HEADER_EXTRAS, SHOW_PERSONAL_PORTAL } from "./const";
 import { SIGN_IN_HREF } from "@/app/auth/const";
 
-const SHELL_WIDTH = "mx-auto w-full max-w-7xl px-3 sm:px-4 md:px-6";
-
-/** Routes that render edge-to-edge under the header instead of inside SHELL_WIDTH. */
+/** Routes that render edge-to-edge under the header (PortalShell `width="full"`). */
 const FULL_BLEED_ROUTES = ["/personal/ai", "/personal/messages"] as const;
 
 export function PersonalShell({ children }: Readonly<{ children: React.ReactNode }>) {
@@ -48,11 +28,6 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
 
   const isBusinessAccount = profile?.user_category === "business" || profile?.user_category === "institution";
   const myProfileHref = isBusinessAccount ? "/business/profile" : "/personal/profile";
-
-  const businessPortalTarget = isBusinessAccount
-    ? { label: "Business Portal", icon: Building2, href: "/business/profile" }
-    : { label: "Switch to Business", icon: Building2, href: "/business/onboarding" };
-  const portalTarget = mounted ? businessPortalTarget : null;
 
   useEffect(() => {
     if (!profile) dispatch(fetchFullProfile());
@@ -79,152 +54,39 @@ export function PersonalShell({ children }: Readonly<{ children: React.ReactNode
     router.push(SIGN_IN_HREF);
   };
 
-  if (mounted && status === "loading" && !profile) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-      </div>
-    );
-  }
-  const initial = mounted ? profile?.first_name?.[0]?.toUpperCase() ?? "U" : "U";
-  const avatarPhotoUrl = mounted ? profile?.photo_url : null;
+  if (mounted && status === "loading" && !profile) return <PortalLoading />;
 
   return (
-    <div data-shell="portal" className="min-h-screen flex flex-col bg-background">
-      <a
-        href="#main-content"
-        className="sr-only focus:not-sr-only focus:fixed focus:left-3 focus:top-3 focus:z-50 focus:rounded-md focus:bg-card focus:px-3 focus:py-2 focus:text-sm focus:shadow-md"
-      >
-        Skip to content
-      </a>
-      <header className="sticky top-0 z-40 h-16 shrink-0 border-b border-border bg-card/95 backdrop-blur">
-        <div className="flex h-16 items-center">
-          <div className="flex h-16 shrink-0 items-center px-3 sm:px-4 md:w-20 md:justify-center md:px-0">
-            <Link href="/" className="flex shrink-0 items-center">
-              <Image
-                src={ICON.src}
-                alt="GlobalyAI"
-                width={ICON.width}
-                height={ICON.height}
-                className="size-9 rounded-lg"
-                priority
-              />
-            </Link>
-          </div>
-          <span className="hidden md:block h-10 w-px shrink-0 bg-border" aria-hidden />
-          <span className="hidden md:inline-flex items-center gap-1.5 pl-4 text-sm font-medium text-foreground">
-            <UserIcon className="h-4 w-4" />
-            Personal
-          </span>
-
-          <div className="flex items-center gap-2 ml-auto pr-3 sm:pr-4 md:pr-6">
-            <ThemeToggle />
-            {SHOW_HEADER_EXTRAS && (
-              <>
-                <Link
-                  href="/personal/notifications"
-                  className="hidden md:inline-flex relative items-center justify-center rounded-full p-2 text-muted-foreground hover:bg-muted hover:text-foreground"
-                  aria-label="Notifications"
-                >
-                  <Bell className="h-4.5 w-4.5" />
-                </Link>
-                <Link
-                  href="/personal/credits"
-                  className="hidden md:inline-flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 h-8 text-xs font-medium text-muted-foreground hover:bg-muted"
-                >
-                  <Coins className="h-3.5 w-3.5" />
-                  Credits
-                </Link>
-              </>
-            )}
-
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <button
-                    className="flex items-center gap-1.5 rounded-md border border-border py-1 pl-1 pr-2 hover:bg-muted cursor-pointer"
-                    type="button"
-                    aria-label="Account menu"
-                  />
-                }
-              >
-                <Avatar className="size-7">
-                  {avatarPhotoUrl && <AvatarImage src={avatarPhotoUrl} alt={profile?.first_name} />}
-                  <AvatarFallback>{initial}</AvatarFallback>
-                </Avatar>
-                <ChevronDown className="h-4 w-4 text-muted-foreground" />
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-56 p-1.5 rounded-md">
-                <DropdownMenuItem
-                  className="cursor-pointer px-1.5 py-1.5 flex items-center gap-2"
-                  onClick={() => router.push("/personal/profile")}
-                >
-                  <Avatar className="size-8 shrink-0">
-                    {avatarPhotoUrl && <AvatarImage src={avatarPhotoUrl} alt={profile?.first_name} />}
-                    <AvatarFallback className="text-primary-foreground!">{initial}</AvatarFallback>
-                  </Avatar>
-                  <div className="min-w-0">
-                    <p className="text-sm font-medium truncate">
-                      {[profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || "User"}
-                    </p>
-                    <p className="text-xs text-muted-foreground truncate">{user?.email}</p>
-                  </div>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                {/* {portalTarget && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push(portalTarget.href)}>
-                      {portalTarget.label}
-                    </DropdownMenuItem>
-                  </>
-                )} */}
-                {SHOW_PERSONAL_PORTAL && (
-                  <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push(PERSONAL_PORTAL_HOME)}>
-                    Personal Portal
-                  </DropdownMenuItem>
-                )}
-                <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/business/portal")}>
-                  Business Portal
-                </DropdownMenuItem>
-                {user?.is_admin && (
-                  <>
-                    <DropdownMenuSeparator />
-                    <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" onClick={() => router.push("/admin/overview")}>
-                      Super Admin
-                    </DropdownMenuItem>
-                  </>
-                )}
-                <DropdownMenuSeparator />
-                <DropdownMenuItem className="cursor-pointer px-1.5 py-1.5" variant="destructive" onClick={handleSignOut}>
-                  Sign Out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </div>
-        </div>
-      </header>
-
-      <div className="flex flex-1">
-        {/* Personal Portal hidden for the short release — only the profile is reachable (from the menu). */}
-        {SHOW_PERSONAL_PORTAL && <PortalSidebar groups={NAV_ITEMS} />}
-        <main
-          id="main-content"
-          tabIndex={-1}
-          className={cn(
-            "min-w-0 flex-1 overflow-x-clip outline-none",
-            isFullBleed ? "" : "py-4 md:py-6 pb-24 md:pb-6",
-          )}
-        >
-          {isFullBleed ? children : <div className={SHELL_WIDTH}>{children}</div>}
-        </main>
-      </div>
-
-      {SHOW_PERSONAL_PORTAL && (
-        <PersonalMobileNav portalTarget={portalTarget} myProfileHref={myProfileHref} onSignOut={handleSignOut} />
-      )}
+    <PortalShell
+      title="Personal Portal"
+      groups={NAV_ITEMS}
+      context={
+        <span className="hidden items-center gap-1.5 text-sm font-medium text-foreground md:inline-flex">
+          <UserIcon className="h-4 w-4" />
+          Personal
+        </span>
+      }
+      headerActions={SHOW_HEADER_EXTRAS && <PortalHeaderLinks notificationsHref="/personal/notifications" creditsHref="/personal/credits" />}
+      account={{
+        name: mounted ? [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") : "",
+        email: user?.email,
+        photoUrl: mounted ? profile?.photo_url : null,
+        isAdmin: !!user?.is_admin,
+      }}
+      onSignOut={handleSignOut}
+      width={isFullBleed ? "full" : "default"}
+      // Personal Portal hidden for the short release — only the profile is reachable (from the menu).
+      showNav={SHOW_PERSONAL_PORTAL}
+      // The header pills are desktop-only, so phones reach them from the More sheet.
+      moreLinks={[
+        { label: "Ask Aly", icon: AlyOrbIcon, href: "/personal/ai" },
+        { label: "Credits", icon: Coins, href: "/personal/credits" },
+        { label: "My Profile", icon: UserIcon, href: myProfileHref },
+      ]}
+    >
+      {children}
       {/* Ask Aly floating orb — parked for now. */}
       {/* <AiLauncher /> */}
-    </div>
+    </PortalShell>
   );
 }
