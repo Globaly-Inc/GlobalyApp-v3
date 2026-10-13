@@ -130,6 +130,27 @@ async function main() {
   );
   assert(proseUnit.verdict === "module", `a prose-mentioned unit is reclassified, not dropped (got ${proseUnit.verdict}/${proseUnit.reason})`);
 
+  // ── 2b. The listing decision is never the raw model count ─────────────────
+  // The page worker records courses_found on its queue row BEFORE writing rows, and
+  // pageWasAListing reads it while concurrent merges decide source_url upgrades. Raw, a detail
+  // page returning one course plus a dropped mention counted 2 — a "listing" for its whole
+  // processing window, letting a concurrent merge trade the course's detail link away.
+  const { preliminaryCourseCount } = await import("../src/modules/superadmin/data-extraction/lib/entity-classifier.js");
+  const detailUrl = "https://heraldcollege.edu.np/bachelors-in-cyber-security";
+  assert(preliminaryCourseCount([
+    { name: "BSc (Hons) Cyber Security", entity_type: "course", evidence: ["own_detail_page", "award_in_name"] },
+    { name: "BSc (Hons) Computing", entity_type: "course", evidence: ["award_in_name", "mentioned_only_in_prose"] },
+  ], detailUrl) === 1, "a detail page plus a dropped mention counts 1, not 2");
+  assert(preliminaryCourseCount([
+    { name: "BSc (Hons) Cyber Security", entity_type: "course", evidence: ["own_detail_page"] },
+    { name: "4CS015 Fundamentals of Computing", entity_type: "module", evidence: ["unit_code"] },
+  ], detailUrl) === 1, "a detail page plus its module counts 1, not 2");
+  assert(preliminaryCourseCount([
+    { name: "BSc (Hons) Computer Science", entity_type: "course", evidence: ["award_in_name"] },
+    { name: "BSc (Hons) Cyber Security", entity_type: "course", evidence: ["award_in_name"] },
+  ], "https://heraldcollege.edu.np/our-courses") === 2, "a real two-course listing still counts 2");
+  assert(preliminaryCourseCount([], detailUrl) === 0, "no courses counts 0");
+
   // ── 3. The prompt asks for the flag and says when to set it ───────────────
   const prompt = courseExtractionPrompt("https://heraldcollege.edu.np/bit-cybersecurity-in-nepal", "FAQs ...");
   assert(prompt.includes("mentioned_only_in_prose"), "prompt offers the mentioned_only_in_prose evidence value");
