@@ -3,9 +3,9 @@
 // Page scripts can't read it, and over HTTPS it is a __Host- cookie: browsers refuse any
 // __Host- cookie that names a Domain, so a sibling subdomain can't plant one for api.* (cookie
 // tossing / session fixation) — a plain name would accept `Domain=.globalyai.com` from any of
-// them. That's what keeps a sign-in shared across web. and app. from being a token every
+// them. That's what keeps a sign-in shared between app. and api. from being a token every
 // subdomain can see or forge.
-// Both hosts are the same site as api.*, so SameSite=Lax still sends it on their fetches.
+// app. is the same site as api.*, so SameSite=Lax still sends it on their fetches.
 //
 // The hint cookie is the opposite: readable, on the parent domain, carrying no secret. It only
 // tells a page "a session may exist, try one refresh", so anonymous visitors never spend the

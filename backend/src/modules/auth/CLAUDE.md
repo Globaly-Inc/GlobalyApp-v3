@@ -196,7 +196,7 @@ carries it — authorisation itself is safe, because `requirePermission` and
   (`__Host-globaly_rt` over HTTPS — siblings can't plant it — `globaly_rt` on plain-http dev; Path `/`, API host only; never in a response body) plus a readable `globaly_session` hint on
   `SESSION_HINT_COOKIE_DOMAIN`. `refresh`, `switch-account` and `logout` prefer the cookie over a body
   `refresh_token` (a legacy body token may already be rotated past); `logout` and any failed `refresh` clear both. See `refresh-cookie.ts`. This is what lets
-  web.globalyai.com and app.globalyai.com share a sign-in without a JS-readable token.
+  app.globalyai.com and app.globalyai.com share a sign-in without a JS-readable token.
 - **Expiry**: sessions expire after 30 days, purged by cron
 
 ## Invitation Acceptance

@@ -18,14 +18,14 @@ export const metadata: Metadata = {
   description:
     "GlobalyAI is the World #1 AI Integrated Education Ecosystem — connecting students with counsellors, education counselors, institutions and service providers worldwide. Search, enroll and settle.",
   authors: [{ name: "Globaly.ai" }],
-  alternates: { canonical: "https://web.globalyai.com/" },
+  alternates: { canonical: "https://app.globalyai.com/" },
   verification: { google: "BZ5srMbEp1MHzey_WGmXmNAbMx7Bh6Bf-WTM6UsKb94" },
   openGraph: {
     type: "website",
     siteName: "GlobalyAI",
     title: TITLE,
     description: OG_DESCRIPTION,
-    url: "https://web.globalyai.com/",
+    url: "https://app.globalyai.com/",
     images: [OG_IMAGE.src],
   },
   twitter: {
@@ -42,7 +42,7 @@ const ORGANIZATION_JSON_LD = {
   "@type": "Organization",
   name: "GlobalyAI",
   alternateName: ["Globaly", "Globalyapp"],
-  url: "https://web.globalyai.com",
+  url: "https://app.globalyai.com",
   logo: `${siteConfig.url}${LOGO_PNG}`,
   description: OG_DESCRIPTION,
   sameAs: [
@@ -57,10 +57,10 @@ const WEBSITE_JSON_LD = {
   "@context": "https://schema.org",
   "@type": "WebSite",
   name: "GlobalyAI",
-  url: "https://web.globalyai.com",
+  url: "https://app.globalyai.com",
   potentialAction: {
     "@type": "SearchAction",
-    target: "https://web.globalyai.com/search?q={search_term_string}",
+    target: "https://app.globalyai.com/search?q={search_term_string}",
     "query-input": "required name=search_term_string",
   },
 };
