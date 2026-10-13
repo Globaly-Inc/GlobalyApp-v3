@@ -6,23 +6,39 @@
 
 import { choice } from "@typesafe-ai/sdk";
 import { createChildLogger } from "../../../../shared/logger.js";
+import { runPool } from "./site-snapshot.js";
 import { _jevDeps, jevThreshold } from "./jev-client.js";
 import { SITE_URL_CATEGORIES, SITE_URL_CATEGORY_DESCRIPTIONS, type CategoryVerdict, type SiteUrlCategory } from "./url-categories.js";
 
 const logger = createChildLogger("jev-url-classify");
 
 const BATCH = 40;
+/** Batches in flight. The loop used to be strictly sequential: bu.edu's 10,040 URLs are 251
+ *  requests, and url_classify took 17 minutes of a 94-minute job doing them one at a time. Nothing
+ *  here is paced by politeness — Jev is a vendor API we pay for, not a site we are a guest on — so
+ *  the only reason to keep this low is the vendor's own rate limit. Drop JEV_URL_CONCURRENCY to 1
+ *  if `url_classify_batches_failed` starts appearing on job timelines. */
+const CONCURRENCY = Math.max(1, Math.floor(Number(process.env.JEV_URL_CONCURRENCY) || 4));
 const CRITERIA = Object.fromEntries(SITE_URL_CATEGORIES.map((c) => [c, SITE_URL_CATEGORY_DESCRIPTIONS[c]])) as Record<SiteUrlCategory, string>;
 
 export const _urlClassifyDeps = { minConf: (): number | null => jevThreshold("JEV_URL_CLASSIFY_MIN") };
 
-/** url → category for every URL Jev answered at or above the threshold. A failed batch is simply absent. */
+/**
+ * url → category for every URL Jev answered at or above the threshold, plus how many batches
+ * failed. A failed batch is simply absent from `verdicts` — its 40 URLs fall back to the free
+ * heuristic — so the count is REPORTED rather than logged alone: silently dropping a slice of the
+ * list is the exact failure this file exists to prevent (Yale, 1,363 → 154), and running batches
+ * concurrently makes a vendor rate-limit the likeliest way to hit it.
+ */
 export async function jevCategorise(
   urls: string[], excerpts: Map<string, string>, minConf: number, onBatch?: () => Promise<void>,
-): Promise<Map<string, SiteUrlCategory>> {
+): Promise<{ verdicts: Map<string, SiteUrlCategory>; failedBatches: number; batches: number }> {
   const out = new Map<string, SiteUrlCategory>();
-  for (let i = 0; i < urls.length; i += BATCH) {
-    const batch = urls.slice(i, i + BATCH);
+  const batches = Math.ceil(urls.length / BATCH);
+  let failedBatches = 0;
+
+  await runPool(batches, CONCURRENCY, async (n) => {
+    const batch = urls.slice(n * BATCH, (n + 1) * BATCH);
     const questions = Object.fromEntries(batch.map((_, k) => [
       `p${k}`,
       choice(`Which category is the page \`pages[${k}]\` on this institution's website?`, CRITERIA),
@@ -37,11 +53,13 @@ export async function jevCategorise(
         if (a && a.confidence >= minConf && (SITE_URL_CATEGORIES as readonly string[]).includes(a.choice)) out.set(url, a.choice as SiteUrlCategory);
       });
     } catch (err) {
-      logger.warn("Jev URL batch failed; those URLs keep the heuristic verdict", { batch: i / BATCH, err: err instanceof Error ? err.message : String(err) });
+      failedBatches++;
+      logger.warn("Jev URL batch failed; those URLs keep the heuristic verdict", { batch: n, err: err instanceof Error ? err.message : String(err) });
     }
     await onBatch?.();
-  }
-  return out;
+    return true; // one bad batch degrades its own 40 URLs; it is not a reason to stop classifying
+  });
+  return { verdicts: out, failedBatches, batches };
 }
 
 /**

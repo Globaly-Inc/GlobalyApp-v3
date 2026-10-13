@@ -19,8 +19,16 @@
 
 /** Starting gap, and the value a 429 snaps back to. */
 export const BASE_GAP_MS = Math.max(1, Math.floor(Number(process.env.HOST_THROTTLE_MS) || 800));
-/** Never go below this however well a host behaves. */
-export const FLOOR_GAP_MS = Math.max(1, Math.floor(Number(process.env.HOST_THROTTLE_MIN_MS) || 200));
+/** Never go below this however well a host behaves.
+ *
+ *  100ms (10 pages/s) since 2026-10-13, operator's call, because this number IS the snapshot's
+ *  wall-clock on a catalogue-concentrated site: bu.edu put 10,148 of 10,463 URLs on one host, and
+ *  its run sat at exactly 300 pages/min — the 200ms floor, to three significant figures — for its
+ *  whole clean stretch. Earned, not guessed: a host only reaches the floor after halving its way
+ *  down on consecutive clean fetches, no target has ever answered 429/403 (1,490 recorded page
+ *  errors, all ours), and one real 429 snaps the gap back to BASE_GAP_MS and doubles from there.
+ *  Set HOST_THROTTLE_MIN_MS to put it back up. */
+export const FLOOR_GAP_MS = Math.max(1, Math.floor(Number(process.env.HOST_THROTTLE_MIN_MS) || 100));
 /** Never back off past this however badly it behaves. Derived from the base, never a bare
  *  constant: with HOST_THROTTLE_MS set above a fixed 8s, the min() below clamped a backoff to
  *  BELOW the current gap, so a 429 SPED UP the very host that had just asked us to slow down. */
@@ -138,6 +146,39 @@ export function circuitOpenError(host: string): string {
 
 export function hostHealth(host: string): Readonly<HostState> | undefined {
   return hosts.get(host);
+}
+
+/** The half of a host's state worth keeping past this process — see the 20261013_001 migration. */
+export interface StoredHostState { gapMs?: number | null; fails?: number | null; openUntil?: number | null }
+
+/**
+ * Seed a host from what a previous run, or another worker process, learned. Pure.
+ *
+ * **Speed is inherited, punishment is not.** The stored gap is clamped into
+ * [FLOOR_GAP_MS, BASE_GAP_MS]: a host that earned its way down starts there, but one that backed
+ * off to the 8s ceiling last week does NOT — it would take 20 clean fetches at 8s (160 seconds,
+ * before anything useful happens) to work the penalty off, and if the host is still throttling it
+ * re-earns the whole backoff from a single 429. A stored circuit is honoured only while it has
+ * not expired; a lapsed one would otherwise skip a host for ten minutes on month-old evidence.
+ *
+ * Ignored once this process has state of its own: what it is watching live beats what it read.
+ */
+export function seedHost(host: string, stored: StoredHostState, now = Date.now()): void {
+  if (hosts.has(host)) return;
+  const gap = Number(stored.gapMs);
+  const openUntil = Number(stored.openUntil);
+  hosts.set(host, {
+    gapMs: Number.isFinite(gap) && gap > 0 ? Math.min(BASE_GAP_MS, Math.max(FLOOR_GAP_MS, Math.floor(gap))) : BASE_GAP_MS,
+    oks: 0,
+    fails: Math.max(0, Math.floor(Number(stored.fails)) || 0),
+    openUntil: Number.isFinite(openUntil) && openUntil > now ? openUntil : 0,
+  });
+}
+
+/** Is `after` worth a write? Only a pace or circuit TRANSITION is — a host at a steady gap writes
+ *  nothing, so learning costs a handful of updates per run rather than one per page. Pure. */
+export function hostStateChanged(beforeGap: number | undefined, beforeOpen: number | undefined, after: Readonly<HostState>): boolean {
+  return beforeGap !== after.gapMs || (beforeOpen ?? 0) !== after.openUntil;
 }
 
 /** Test seam — the map is module-level, so a test asserting a trip must clear it. */

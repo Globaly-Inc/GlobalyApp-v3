@@ -44,7 +44,8 @@ function assertEqual(actual: unknown, expected: unknown, label: string) {
 async function main() {
   const {
     BASE_GAP_MS, FLOOR_GAP_MS, CEILING_GAP_MS, SPEEDUP_AFTER, TRIP_AFTER, TRIP_FOR_MS,
-    circuitOpenError, hostGapMs, hostOf, isHostCircuitOpen, noteHostOutcome, resetHostHealth,
+    circuitOpenError, hostGapMs, hostHealth, hostOf, hostStateChanged, isHostCircuitOpen,
+    noteHostOutcome, resetHostHealth, seedHost,
   } = await import("../src/modules/superadmin/data-extraction/lib/host-health.js");
   const { isScraperInfraFailure } = await import("../src/modules/superadmin/data-extraction/lib/classify-failure.js");
   const { deadReasonOf } = await import("../src/modules/superadmin/data-extraction/lib/site-snapshot.js");
@@ -226,6 +227,56 @@ async function main() {
   const gapBeforeMix = hostGapMs("example.com");
   await scrapeMarkdown("https://example.com/slow");
   assertEqual(hostGapMs("example.com") > gapBeforeMix, true, "a 429 then a confirmed 404 still widens the gap");
+
+  // ── §5 what carries over from the last run ────────────────────────────────
+  // The pace is learned per process and the fleet runs eight of them, so a host re-learned from
+  // scratch everywhere is the normal case, not the edge case. What a previous run stored has to
+  // come back — but only the half that is safe to inherit.
+  resetHostHealth();
+  seedHost("warm.edu", { gapMs: FLOOR_GAP_MS, fails: 0, openUntil: null });
+  assertEqual(hostGapMs("warm.edu"), FLOOR_GAP_MS, "a host that earned its speed starts there next run");
+
+  resetHostHealth();
+  seedHost("punished.edu", { gapMs: CEILING_GAP_MS, fails: 0, openUntil: null });
+  assertEqual(hostGapMs("punished.edu"), BASE_GAP_MS,
+    "a stored BACKOFF is not inherited — it would cost 20 clean fetches at the ceiling to work off, and one 429 re-earns it");
+
+  resetHostHealth();
+  seedHost("fast.edu", { gapMs: 1, fails: 0, openUntil: null });
+  assertEqual(hostGapMs("fast.edu"), FLOOR_GAP_MS, "a stored gap below the floor is clamped, not obeyed");
+
+  resetHostHealth();
+  seedHost("live.edu", { gapMs: null, fails: null, openUntil: null });
+  assertEqual(hostGapMs("live.edu"), BASE_GAP_MS, "a row with nothing learned behaves exactly as no row at all");
+
+  resetHostHealth();
+  const now = Date.now();
+  seedHost("down.edu", { gapMs: BASE_GAP_MS, fails: TRIP_AFTER, openUntil: now + TRIP_FOR_MS }, now);
+  assertEqual(isHostCircuitOpen("down.edu", now), true, "a host another worker proved down is skipped here too");
+  resetHostHealth();
+  seedHost("recovered.edu", { gapMs: BASE_GAP_MS, fails: TRIP_AFTER, openUntil: now - 1 }, now);
+  // Asserted TWICE on purpose. A lapsed openUntil left in place reads as "expired" to the first
+  // caller, which is also the one that PUSHES the window out by TRIP_FOR_MS to let a single probe
+  // through — so keeping it would re-skip the host for another ten minutes on stale evidence,
+  // every time a process loads the row. Dropping it at seed time is what makes the second call
+  // false too.
+  isHostCircuitOpen("recovered.edu", now);
+  assertEqual(isHostCircuitOpen("recovered.edu", now), false, "an EXPIRED stored circuit is dropped, not re-armed by the probe path");
+
+  resetHostHealth();
+  noteHostOutcome("mine.edu", "failed");
+  const live = hostHealth("mine.edu")!.fails;
+  seedHost("mine.edu", { gapMs: FLOOR_GAP_MS, fails: 0, openUntil: null });
+  assertEqual(hostHealth("mine.edu")!.fails, live, "what this process is watching live beats what it read from the table");
+
+  // Writes happen on transitions only, or learning costs an UPDATE per page.
+  resetHostHealth();
+  for (let i = 0; i < SPEEDUP_AFTER - 1; i++) noteHostOutcome("steady.edu", "ok");
+  let before = hostHealth("steady.edu")!;
+  assertEqual(hostStateChanged(before.gapMs, before.openUntil, before), false, "a steady host writes nothing");
+  before = { ...hostHealth("steady.edu")! };
+  noteHostOutcome("steady.edu", "ok"); // the one that halves the gap
+  assertEqual(hostStateChanged(before.gapMs, before.openUntil, hostHealth("steady.edu")!), true, "the fetch that changes the pace is written");
 
   // ── §4 a tripped host must not mark its pages DEAD ────────────────────────
   const err = circuitOpenError("example.com");

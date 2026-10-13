@@ -126,7 +126,7 @@ _jevDeps.systemOne = (async () => { throw new Error("429"); }) as unknown as typ
 {
   const urls = ["https://x.edu/programs/nursing", "https://researchguides.x.edu/nur334", "https://x.edu/about", "https://x.edu/campus-life/scholarships"];
   fake((q) => ({ p0: { choice: "course", confidence: 0.9 }, p1: { choice: "other", confidence: 0.95 }, p2: { choice: "about_us", confidence: 0.4 }, p3: { choice: "scholarships", confidence: 0.9 } } as Record<string, unknown>)[q]);
-  const jev = await jevCategorise(urls, new Map(), 0.6);
+  const jev = (await jevCategorise(urls, new Map(), 0.6)).verdicts;
   eq([...jev], [[urls[0], "course"], [urls[1], "other"], [urls[3], "scholarships"]], "only confident answers are kept");
   const isCourse = (u: string) => /programs|nur\d/.test(u);
   const heuristic = (u: string): SiteUrlCategory | null => (u.endsWith("/about") ? "about_us" : null);
@@ -144,7 +144,10 @@ _jevDeps.systemOne = (async () => { throw new Error("429"); }) as unknown as typ
   eq(v.get("https://x.edu/apply"), { category: "eligibility", source: "guided" }, "guided always wins, even off the list");
 
   _jevDeps.systemOne = (async () => { throw new Error("500"); }) as unknown as typeof _jevDeps.systemOne;
-  eq((await jevCategorise(urls, new Map(), 0.6)).size, 0, "a failed batch returns nothing (heuristics take over)");
+  {
+    const r = await jevCategorise(urls, new Map(), 0.6);
+    eq([r.verdicts.size, r.failedBatches, r.batches], [0, 1, 1], "a failed batch returns nothing (heuristics take over) and is COUNTED, not just logged");
+  }
 }
 
 console.log(`${passed} passed, ${failed} failed`);

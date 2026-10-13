@@ -499,7 +499,17 @@ export async function runUrlClassify(jobId: string, job: JobRow): Promise<{ cour
     await addExcerpts(excerpts, candidates, site);
     const jev = await jevCategorise(candidates, excerpts, jevMin, () =>
       masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({ processing_heartbeat_at: masterKnex.fn.now() }).then(() => undefined));
-    const placed = jevVerdicts(urls, jev, guidedMap, looksLikeCourseUrl, heuristicCategory);
+    // A failed batch silently hands its 40 URLs back to the path heuristic, which cannot see a
+    // course page the slug does not advertise. Visible on the timeline, or a rate-limited run
+    // just looks like a site with fewer courses.
+    if (jev.failedBatches) {
+      await _stepDeps.writeEvent(jobId, "url_classify_batches_failed", {
+        level: "warn", phase: "course_discovery",
+        message: `${jev.failedBatches} of ${jev.batches} URL-classification batches failed — up to ${jev.failedBatches * 40} URLs keep their path-heuristic category; re-run url_classify, and lower JEV_URL_CONCURRENCY if this repeats`,
+        data: { failed: jev.failedBatches, batches: jev.batches },
+      });
+    }
+    const placed = jevVerdicts(urls, jev.verdicts, guidedMap, looksLikeCourseUrl, heuristicCategory);
     // What neither Jev (confidently) nor a heuristic could place still gets the lite-model pass —
     // Jev unsure must mean "no Jev", never "other" (review, 2026-09-30).
     const unplaced = [...placed].filter(([, v]) => v === null).map(([u]) => u).slice(0, CLASSIFY_ALL_CAP);
@@ -533,8 +543,8 @@ export async function runUrlClassify(jobId: string, job: JobRow): Promise<{ cour
     const summary = Object.entries(byCategory).filter(([k]) => k !== "course").map(([k, n]) => `${k} ${n}`).join(", ");
     await _stepDeps.writeEvent(jobId, "urls_filtered", {
       phase: "course_discovery",
-      message: `${course} course pages identified out of ${urls.length} (Jev: ${jev.size} of ${candidates.length} answered confidently; ${modelled.size} placed by the model pass)${summary ? `; also ${summary}` : ""}`,
-      data: { count: course, total: urls.length, jev_answered: jev.size, jev_asked: candidates.length, model_categorised: modelled.size, categories: byCategory },
+      message: `${course} course pages identified out of ${urls.length} (Jev: ${jev.verdicts.size} of ${candidates.length} answered confidently; ${modelled.size} placed by the model pass)${summary ? `; also ${summary}` : ""}`,
+      data: { count: course, total: urls.length, jev_answered: jev.verdicts.size, jev_batches_failed: jev.failedBatches, jev_asked: candidates.length, model_categorised: modelled.size, categories: byCategory },
     });
     return { course, total: urls.length, categories: byCategory };
   }

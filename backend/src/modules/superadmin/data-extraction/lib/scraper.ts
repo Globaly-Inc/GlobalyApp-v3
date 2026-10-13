@@ -10,7 +10,7 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { isRegistrySuffix, isSameSite, siteOf } from "./html-utils.js";
 import { assertPublicUrl, safeFetch, UnsafeUrlError } from "../../../../shared/public-url.js";
-import { circuitOpenError, hostGapMs, hostOf, isHostCircuitOpen, noteHostOutcome } from "./host-health.js";
+import { circuitOpenError, hostGapMs, hostHealth, hostOf, hostStateChanged, isHostCircuitOpen, noteHostOutcome, seedHost } from "./host-health.js";
 
 const logger = createChildLogger("scraper");
 
@@ -242,6 +242,62 @@ async function reserveSharedHostSlot(host: string, gapMs: number): Promise<numbe
   }
 }
 
+/**
+ * Load what a previous run — or any of the other seven worker containers — learned about this
+ * host, once per host per process.
+ *
+ * Without this, every process learns each host from scratch and, worse, books its reservations at
+ * ITS OWN gap: one cold worker writing 800ms gaps into the shared timeline is one every warm
+ * worker then queues behind, so the learned floor is diluted towards the average of however many
+ * processes have met the host. Reading it back is what makes HOST_THROTTLE_MIN_MS mean anything
+ * across a fleet.
+ *
+ * Its own statement, deliberately: the reservation upsert must keep working untouched when the
+ * 20261013_001 columns are not there yet, because that one fails open in the direction of
+ * scraping FASTER and this one must not be able to take it down with it.
+ */
+const primedHosts = new Set<string>();
+async function primeHostState(host: string): Promise<void> {
+  if (primedHosts.has(host)) return;
+  primedHosts.add(host); // claimed before the await, or every concurrent fetcher issues this query
+  try {
+    const row = await masterKnex(`${S}.extraction_host_slots`).where({ host })
+      .select("gap_ms", "fails", "open_until").first();
+    if (!row) return;
+    seedHost(host, {
+      gapMs: row.gap_ms, fails: row.fails,
+      openUntil: row.open_until ? new Date(row.open_until).getTime() : null,
+    });
+    logger.info(`host pace restored for ${host}: ${hostGapMs(host)}ms gap`);
+  } catch (err) {
+    logger.warn("Host pace unavailable, learning from scratch this run", { host, error: String(err) });
+  }
+}
+
+/** Test seam: a second worker process is an empty prime cache, and that is the case worth
+ *  checking — the first page of a NEW run must already be paced by what the last one learned. */
+export const __primeInternals = { clear: () => primedHosts.clear(), size: () => primedHosts.size };
+
+/** Write a host's pace back. Called only on a transition (hostStateChanged), so a steady host
+ *  costs nothing per page. `merge` names its columns, so the reservation's next_slot_at — the one
+ *  value another process may be mid-booking — is never touched by this write. */
+async function persistHostState(host: string): Promise<void> {
+  const state = hostHealth(host);
+  if (!state) return;
+  try {
+    await masterKnex(`${S}.extraction_host_slots`)
+      .insert({
+        host, gap_ms: state.gapMs, fails: state.fails,
+        open_until: state.openUntil ? new Date(state.openUntil) : null,
+        updated_at: masterKnex.fn.now(),
+      })
+      .onConflict("host")
+      .merge(["gap_ms", "fails", "open_until", "updated_at"]);
+  } catch (err) {
+    logger.warn("Could not store host pace — this run still learns, the next one will not", { host, error: String(err) });
+  }
+}
+
 /** Exported for the concurrency test: the bug this guards against is a write-ordering one that a
  *  pure slot calculation cannot express — it only shows up when several callers await at once. */
 export async function throttleForHost(url: string) {
@@ -252,6 +308,7 @@ export async function throttleForHost(url: string) {
     return; // invalid url
   }
 
+  await primeHostState(host);
   const gapMs = hostGapMs(host);
   const shared = await reserveSharedHostSlot(host, gapMs);
   if (shared !== null) {
@@ -709,6 +766,10 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
   // slowly and a container that recovers mid-run still rescues the later ones.
   // Outcomes are still RECORDED from every caller, so the adaptive gap keeps learning everywhere.
   const host = hostOf(url);
+  // Before the circuit check, not after: a host another worker proved down two minutes ago must
+  // be skipped here too, or each process pays TRIP_AFTER full ladders to re-learn it (Caltech:
+  // ~87s per failed page).
+  if (host) await primeHostState(host);
   if (host && opts.breaker && !opts.forceFirecrawl && isHostCircuitOpen(host)) {
     const error = circuitOpenError(host);
     logger.warn(`skipping ${url} — ${error}`);
@@ -734,6 +795,10 @@ interface ScrapeSignals { throttled: boolean }
  */
 function recordHostOutcome(host: string | null, r: ScrapeResult, signals: ScrapeSignals): ScrapeResult {
   if (!host) return r;
+  // Primitives, not the state object: hostHealth returns the live row and noteHostOutcome mutates
+  // it in place, so holding the object would compare it with itself and never see a change.
+  const beforeGap = hostHealth(host)?.gapMs;
+  const beforeOpen = hostHealth(host)?.openUntil;
   if (signals.throttled) noteHostOutcome(host, "throttled");
   // A real 404 is a RESPONSE — it proves the host is up, so it clears the circuit — but it says
   // nothing about pace, so it earns no speed-up credit. Recording nothing at all was wrong in the
@@ -743,6 +808,9 @@ function recordHostOutcome(host: string | null, r: ScrapeResult, signals: Scrape
   // `blocked` with a non-empty body is the Firecrawl path handing back an unusable page (a
   // challenge wall, a soft 404). Length alone read that as a success.
   else noteHostOutcome(host, !r.blocked && r.markdown.length > 0 ? "ok" : "failed");
+  const after = hostHealth(host);
+  // Fire and forget: a slower pace is worth remembering, never worth making a page wait for.
+  if (after && hostStateChanged(beforeGap, beforeOpen, after)) void persistHostState(host);
   return r;
 }
 

@@ -1227,6 +1227,120 @@ each learn a host separately and the effective gap is their average. Move `gapMs
 if the divergence ever shows up in a run. **Workers load code once — restart the step and page
 workers after deploying this.**
 
+## The snapshot is gap-bound, and a chunked pool could not use the gap (2026-10-13)
+
+Measured first (dev DB, `extraction_job_events` + `extraction_pages.scraped_at`), because the
+snapshot is most of a job's wall-clock and it is worth knowing which part:
+
+| job | site URLs | snapshot | whole job | extraction |
+|---|---|---|---|---|
+| bu.edu | 10,463 | **65 min** | 94 min | 9.6 min |
+| berkeley.edu | 563 | **14.5 min** | 17 min | 1.1 min |
+| home.dartmouth.edu | 1,463 | **7.6 min** | 11 min | 2.0 min |
+
+The bu.edu run minute by minute is two flat lines and nothing in between: 64 pages/min for 35
+minutes, then 300 pages/min for 25. 300/min is 5.00/s — **exactly** the `FLOOR_GAP_MS` (200ms)
+reservation in `extraction_host_slots`, and 10,148 of those 10,463 URLs are on one host. The step
+change is the worker picking up the host-health deploy of the same day; before it the gap was a
+fixed 800ms, whose ceiling is 75/min.
+
+So: **snapshot wall-clock = pages ÷ (1 ÷ host gap), per host.** Nothing else is close on a healthy
+site. Concurrency cannot beat it — every fetcher queues on the same slot — and the only three
+levers are the gap, the number of hosts (not ours to choose) and the number of pages.
+
+What changed here: `snapshotSite` ran fixed chunks of `SNAPSHOT_CONCURRENCY` through
+`Promise.all` and then slept `politeDelay(300, 900)`. Both were wrong against a global slot:
+- the chunk is a barrier, so every page waited for the slowest of its group and a 35s browser tier
+  idled three healthy fetchers — with the host slot unclaimed for the whole stall;
+- the sleep paced nothing. `throttleForHost` reserves a slot before EVERY scrape, so the host's
+  request rate was already the gap; the sleep only stopped us claiming slots we were entitled to.
+  The 800ms phase above ran 64/min against the 75/min that gap allowed — that difference is this.
+
+Now a continuous pool (`runPool`, exported and tested: every index once, never more than N in
+flight, nothing started after a stop, and a slow page must not finish last). `SNAPSHOT_CONCURRENCY`
+defaults to 8 and is NOT a politeness knob — the gap is. It decides how much of the gap gets used:
+a fetcher's cycle is gap-wait + scrape (~3s), so the pool needs roughly cycle ÷ gap pages in flight
+to keep the slot busy. **Raise it whenever `HOST_THROTTLE_MIN_MS` is lowered**, or the lower gap
+buys nothing: at 100ms (10 pages/s) one batch of 8 cannot fill the slot on its own.
+
+**The remaining two levers both need a decision, not a patch:**
+- **The gap floor.** 200ms is 5 pages/s is 33 minutes for bu.edu, by construction. The module has
+  never recorded a 429/403 from any target (1,490 page errors, all ours), the floor is
+  precautionary, and a real 429 snaps the gap back to base and doubles it. `HOST_THROTTLE_MIN_MS`
+  is an env var: 100 halves every single-host snapshot, 50 quarters it. It is a ban-risk policy,
+  so it is the operator's number to pick, not a default to quietly shrink.
+- **The page count.** bu.edu: 10,463 URLs snapshotted, 73 queued, 5 courses — 9,684 classified
+  `other`, most of them the alumni magazine (`/bostonia/fall09`) and news. Across all jobs 71% of
+  site URLs are `other` or unclassified. They are fetched for a 300-char classifier excerpt and
+  the .md archive, and they cost ~32 of bu.edu's 65 minutes. Classifying before snapshotting does
+  NOT recover it: the free path heuristic places only 347 of those 10,463 (`heuristicCategory` has
+  no `/articles/`, `/bostonia/` signal), so skipping the fetch means classifying the rest from the
+  slug alone — which is exactly the blindness fixed on 2026-10-12. Cutting here means cutting
+  DISCOVERY (a default blocklist, a lower `page_cap`), and that trades course coverage for time.
+
+**The same loop was in the URL classifier, and it was the job's second-biggest cost.** `jevCategorise`
+asked Jev 40 URLs at a time in a strictly sequential loop: bu.edu's 10,040 candidates are 251
+requests and url_classify took 17 of that job's 94 minutes. Nothing here is paced by politeness —
+Jev is a vendor API, not a site we are a guest on — so batches now run `CONCURRENCY`-wide
+(`JEV_URL_CONCURRENCY`, 4) through the same `runPool`.
+A failed batch hands its 40 URLs back to the path heuristic, which cannot see a course page whose
+slug does not advertise one; that was a `logger.warn` and nothing else, so a rate-limited run just
+looked like a site with fewer courses. `jevCategorise` now returns `{ verdicts, failedBatches,
+batches }` and `runUrlClassify` writes `url_classify_batches_failed` on the timeline. Lower
+`JEV_URL_CONCURRENCY` if that event starts appearing.
+
+**Measured and rejected, so they are not re-tried:**
+- **A dated/article path filter.** 97% of bu.edu's URLs match `/\d{4}/` or `/articles|bostonia/` —
+  but so do 733 of uq.edu.au's 733 matching URLs, every one of them a real `course`. A year in a
+  path is a programme catalogue as often as it is a news archive.
+- **A blanket `page_cap`.** Ranking saves bu.edu (all 73 course URLs land in the top 73 of 10,007,
+  so a 500 cap loses none) and destroys uq.edu.au (course URLs run to rank 7,250; a 3,000 cap drops
+  4,239 of them). A cap is a per-site operator decision, not a default.
+- **A ranged GCS read for classifier excerpts.** `readSnapshot` is 130ms (103ms of it the download,
+  19.6KB average), so bu.edu's 10,040 excerpt reads are ~2.7 of those 17 minutes at
+  `EXCERPT_CONCURRENCY` 8. The Jev calls were the cost, not the bytes.
+
+## A host's pace outlives the process that learned it (2026-10-13)
+
+`host-health.ts` learns a per-host gap and a circuit in a module-level `Map`. docker-compose runs
+EIGHT worker containers, so until now the same host was learned eight times over and re-learned
+after every deploy — and the dilution is worse than slow warm-up, because **a reservation is
+booked at the BOOKING process's gap**: one cold worker writes 800ms gaps into the shared
+`extraction_host_slots` timeline that every warm worker then queues behind. Lowering
+`HOST_THROTTLE_MIN_MS` only helps the processes that have already warmed up on that host.
+
+Migration `20261013_001` adds `gap_ms`, `fails`, `open_until` to the row that already paces the
+host. `primeHostState` (scraper.ts) loads them once per host per process — before the circuit
+check, so a host another worker proved down is skipped here too instead of costing TRIP_AFTER full
+ladders (~87s each) to re-discover. `persistHostState` writes back **only on a transition**
+(`hostStateChanged`), so a steady host costs no write per page: roughly three writes per 10,000
+pages.
+
+**Speed is inherited, punishment is not.** `seedHost` clamps a stored gap into
+[`FLOOR_GAP_MS`, `BASE_GAP_MS`]. A host that backed off to the 8s ceiling last week would
+otherwise need 20 clean fetches AT 8s — 160 seconds before anything useful happens — to work the
+penalty off, and if it is still throttling it re-earns the whole backoff from one 429. A stored
+circuit is honoured only while unexpired: a lapsed `open_until` left in place reads as "expired"
+to the first caller, which is also the one that PUSHES the window out to let a probe through, so
+every process loading that row would re-skip the host for another ten minutes on stale evidence.
+Both pinned in `test:host-health` §5 (verified red with the clamp and the expiry filter removed).
+
+Reads and writes are in their **own** statements, away from the reservation upsert, because that
+one fails open in the direction of scraping FASTER — an unapplied migration must cost the
+learning and never the pacing. Verified end to end against the dev DB, not just by reading: a
+worker scraped example.com down to a 400ms gap, a second worker with an empty map was paced at
+400ms on its FIRST page.
+
+ponytail: last-writer-wins across processes, which is fine for a value they all converge on.
+`fails` between 1 and TRIP_AFTER-1 is not written (no transition), so a host failing in two
+processes trips slightly later than it would with a shared counter.
+
+**Measured and rejected: cross-job learning of a site's CONTENT.** 212 jobs over 204 distinct
+sites — an institution is extracted essentially once, so caching last run's URL categories or
+dead-prefix knowledge has no premise. Hosts recur (724 rows); institutions do not.
+
+**Workers load code once — restart the step worker after deploying this.**
+
 ## Stale queue-item reclaim (2026-09-15)
 
 Root cause of jobs found stuck at `status: "processing"` forever (seen live, both local and
