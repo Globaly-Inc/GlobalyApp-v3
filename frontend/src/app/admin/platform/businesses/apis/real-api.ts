@@ -289,6 +289,11 @@ export const businessesRealApi = {
   // Institution twins — same business_services tenant table, own /admin/platform/institutions prefix
   // (ids collide with businesses, so they can't share the /businesses path — see listingBase above).
   getInstitutionServices: (id: number): Promise<BusinessService[]> => httpGet(`/admin/platform/institutions/${id}/services`),
+  getService: (id: number, serviceId: string): Promise<BusinessService> => httpGet(`${BASE}/${id}/services/${serviceId}`),
+  getInstitutionService: (id: number, serviceId: string): Promise<BusinessService> =>
+    httpGet(`/admin/platform/institutions/${id}/services/${serviceId}`),
+  approveInstitutionServices: (id: number, ids: string[]): Promise<{ approved: number }> =>
+    httpPost(`/admin/platform/institutions/${id}/services/approve`, { ids }),
   searchInstitutionServices: async (id: number, params: ServiceSearchParams = {}): Promise<ServiceSearchResult> => {
     const { data, meta } = await httpGet<{ data: BusinessService[]; meta: { total: number } }>(
       `/admin/platform/institutions/${id}/services/search${toServiceSearchQuery(params)}`,

@@ -858,6 +858,17 @@ export const businessesMockApi = {
     updateContactMock(mockInstitutionContacts, id, contactId, patch),
   deleteInstitutionContact: async (id: number, contactId: string): Promise<void> => deleteContactMock(mockInstitutionContacts, id, contactId),
 
+  getService: async (id: number, serviceId: string): Promise<BusinessService> => {
+    const found = (await businessesMockApi.getServices(id)).find((s) => s.id === serviceId);
+    if (!found) throw new Error("Service not found");
+    return found;
+  },
+  getInstitutionService: async (id: number, serviceId: string): Promise<BusinessService> => {
+    const found = (await businessesMockApi.getInstitutionServices(id)).find((s) => s.id === serviceId);
+    if (!found) throw new Error("Service not found");
+    return found;
+  },
+  approveInstitutionServices: async (_id: number, ids: string[]): Promise<{ approved: number }> => ({ approved: ids.length }),
   getInstitutionServices: async (id: number): Promise<BusinessService[]> => {
     await delay(150);
     return mockInstitutionServices[id] ?? [];

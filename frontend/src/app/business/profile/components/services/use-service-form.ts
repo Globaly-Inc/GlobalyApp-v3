@@ -45,7 +45,8 @@ export function useServiceForm(businessId: number, serviceId?: string) {
   useEffect(() => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
-    api.getServiceCategories().then((res) => setServiceCategories(res.data));
+    // ponytail: 100 is the API max — enough categories for every picker; page it if that ever stops holding.
+    api.getServiceCategories({ limit: 100 }).then((res) => setServiceCategories(res.data));
     api.getLookups("degree-levels").then((res) => setDegreeLevels(res.data));
     api.getLookups("areas-of-study").then((res) => setAreasOfStudy(res.data));
     api.getAccreditations().then((res) => setAccreditations(res.data));

@@ -55,7 +55,7 @@ export function useInstitutionServiceForm(businessId: number, serviceId?: string
     // The default page is only 10 categories — also fetch "Courses" by name so the default-category
     // effect below can always find it, however many categories sit ahead of it.
     Promise.all([
-      api.getServiceCategories(),
+      api.getServiceCategories({ limit: 100 }),
       api.getServiceCategories({ search: "courses" }),
     ]).then(([page, courses]) => {
       const byId = new Map([...page.data, ...courses.data].map((c) => [c.id, c]));

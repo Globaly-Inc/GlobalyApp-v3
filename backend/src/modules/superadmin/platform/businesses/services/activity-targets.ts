@@ -27,8 +27,9 @@ export async function withActivityTargets<T extends Row>(rows: T[], kind: "busin
   const [services, branches] = await Promise.all([
     names(!serviceIds.length ? null : kind === "institution"
       ? masterKnex(`${S}.extraction_courses`).whereIn("id", serviceIds).select("id", "name")
-      : tenantDb ? tenantDb("business_services").whereIn("id", serviceIds).select("id", "name") : null),
-    names(branchIds.length && tenantDb ? tenantDb("business_branches").whereIn("id", branchIds).select("id", "name") : null),
+      // Tenant tables key on a serial `id`; the public (logged) identifier is `uuid`.
+      : tenantDb ? tenantDb("business_services").whereIn("uuid", serviceIds).select("uuid as id", "name") : null),
+    names(branchIds.length && tenantDb ? tenantDb("business_branches").whereIn("uuid", branchIds).select("uuid as id", "name") : null),
   ]);
   return parsed.map((r) => {
     const d = r.details as Record<string, unknown>;
