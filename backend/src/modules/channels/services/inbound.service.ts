@@ -381,8 +381,13 @@ async function answer(
     // Suggest-only: a person reviews and sends it from the Inbox. A draft answers nothing yet, so
     // the questions stay owed (Resume AI, or a newer message, still covers all of them); only the
     // draft marker moves, so a retried event doesn't regenerate the draft staff are reading.
+    // Claimed first: a draft older than the one already saved (a job that outlived its lease
+    // while another worker drafted newer questions) is dropped, never written over it.
+    if (!(await sessionsRepo.claimDraftedThrough(session.id, lastId))) {
+      logger.info("AI draft dropped: a newer draft is already waiting", { visitorId: visitor.id });
+      return;
+    }
     await channelVisitors.setAttention(t.db, visitor.id, "suggest", text);
-    await sessionsRepo.setDraftedThrough(session.id, lastId);
   } else {
     const sent = await respond(() => sendToCustomer({
       db: t.db, visitor, sessionId: session.id, role: "assistant", content: text,

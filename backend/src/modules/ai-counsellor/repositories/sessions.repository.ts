@@ -284,9 +284,17 @@ export async function claimAnsweredThrough(id: number, lastMessageId: number): P
   }
 }
 
-/** Channels, suggest mode: record which customer messages the draft now waiting covers. */
-export async function setDraftedThrough(id: number, lastMessageId: number): Promise<void> {
-  await masterKnex(TABLE).where({ id }).update({ drafted_through_message_id: lastMessageId });
+/**
+ * Channels, suggest mode: claim the right to save a draft covering messages up to `lastMessageId`.
+ * One UPDATE that only moves forward (or re-covers the same messages), so a slow, older draft that
+ * finishes after a newer one gets `false` and must not overwrite it.
+ */
+export async function claimDraftedThrough(id: number, lastMessageId: number): Promise<boolean> {
+  const n = await masterKnex(TABLE)
+    .where({ id })
+    .where((q) => q.whereNull("drafted_through_message_id").orWhere("drafted_through_message_id", "<=", lastMessageId))
+    .update({ drafted_through_message_id: lastMessageId });
+  return n > 0;
 }
 
 /** Undo a claim whose reply never got saved, so the next resume answers those questions. Only
