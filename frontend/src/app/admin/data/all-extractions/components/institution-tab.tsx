@@ -214,7 +214,7 @@ export function InstitutionTab({ overview, jobId, onReload, isVisaServiceJob }: 
       </CardHeader>
       <CardContent className="flex flex-col gap-4">
         <div className="flex flex-col items-start gap-4 sm:flex-row">
-          {overview.logo_url && <LogoPreview src={overview.logo_url} />}
+          {overview.logo_url && <LogoPreview src={overview.logo_preview_url ?? overview.logo_url} />}
           <div className="grid w-full flex-1 grid-cols-1 gap-2.5 md:grid-cols-2">
             <Field icon={Type} label="Name" value={overview.name} onSave={(v) => saveField("name", v)} />
             <Field icon={Globe} label="Website" value={overview.website} onSave={(v) => saveField("website", v)} />

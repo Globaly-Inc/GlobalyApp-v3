@@ -20,8 +20,12 @@ const envSchema = z.object({
   OTP_LOCKOUT_MINUTES: z.coerce.number().default(30),
   SESSION_EXPIRY_DAYS: z.coerce.number().default(30),
   // Parent domain for the readable "a session may exist" hint cookie (production: ".globalyai.com"),
-  // so web. and app. both see it. Unset = the API's own host. See modules/auth/refresh-cookie.ts.
+  // so app. can read what api. sets. Unset = the API's own host. See modules/auth/refresh-cookie.ts.
   SESSION_HINT_COOKIE_DOMAIN: z.string().optional(),
+  // The hint cookie's name. Staging sets its own (globaly_session_staging): staging and production
+  // share .globalyai.com, so one name would let a staging sign-out clear production's hint.
+  // Must match the frontend's NEXT_PUBLIC_SESSION_HINT_COOKIE.
+  SESSION_HINT_COOKIE_NAME: z.string().regex(/^[A-Za-z0-9_-]+$/).default("globaly_session"),
 
   // Server
   NODE_ENV: z.string().default("development"),

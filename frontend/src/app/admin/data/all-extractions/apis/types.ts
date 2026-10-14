@@ -121,6 +121,8 @@ export type InstitutionOverview = ActorFields & {
   city: string | null;
   state: string | null;
   logo_url: string | null;
+  /** Signed, viewable form of logo_url (the API signs private-bucket links). */
+  logo_preview_url?: string | null;
   email: string | null;
   phone: string | null;
   address: string | null;

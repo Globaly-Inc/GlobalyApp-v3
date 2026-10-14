@@ -1,9 +1,11 @@
+// Reference only — the live policy is applied by `npm run gcs:cors -- apply` (backend/scripts/set-gcs-cors.ts),
+// which builds the origin list from CORS_ORIGINS. Re-run it whenever the app's hosts change.
 // [
 //   {
 //     "origin": [
 //       "http://localhost:3001",
-//       "https://globaly.app",
-//       "https://www.globaly.app"
+//       "https://app.globalyai.com",
+//       "https://appstaging.globalyai.com"
 //     ],
 //     "method": ["GET", "HEAD"],
 //     "responseHeader": ["Content-Type", "Content-Length", "Content-Range", "Accept-Ranges"],

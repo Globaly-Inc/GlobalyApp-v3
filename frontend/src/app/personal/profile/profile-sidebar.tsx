@@ -11,6 +11,7 @@ import { Input } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { SectionCard } from "./section-card";
 import type { ProfileCompletion, StudentProfile } from "../apis/types";
+import { APP_ORIGIN } from "@/lib/hosts";
 
 // ponytail: no slug column in v3 yet, so the custom slug lives in localStorage (per-user id) rather
 // than the backend — good enough for this preview-only link, upgrade to a real column if the public
@@ -156,7 +157,7 @@ export function ProfileSidebar({
                     size="icon-xs"
                     className="shrink-0"
                     onClick={() => {
-                      navigator.clipboard.writeText(`app.globalyai.com/personal/${slug}`);
+                      navigator.clipboard.writeText(`${APP_ORIGIN || window.location.origin}/personal/${slug}`);
                       toast.success("Link copied");
                     }}
                     aria-label="Copy link"

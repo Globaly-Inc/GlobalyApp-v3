@@ -2,7 +2,7 @@
  * Globaly AI Counsellor — floating launcher.
  *
  * Host pages drop in ONE script tag:
- *   <script src="https://app.globalyhub.com/embed.js" data-key="EMBED_KEY" async></script>
+ *   <script src="https://app.globalyai.com/embed.js" data-key="EMBED_KEY" async></script>
  *   Optional: data-position="left"
  *
  * It renders the orb bottom-right and opens the chat in an iframe on click — the same
@@ -35,7 +35,10 @@
   if (!key) return; // nothing to open without a key — fail silent, never break the host page
 
   // The panel must reach our origin, not the host's, so derive it from this script's own src.
-  var origin = new URL(script.src, location.href).origin;
+  // Snippets pasted before the move to globalyai.com still load globalyapp.com/embed.js, which
+  // redirects here: script.src keeps the old host, so speak to the new one directly. Otherwise
+  // the panel's messages fail the origin check below and the branding fetch hits a redirect.
+  var origin = new URL(script.src, location.href).origin.replace(/^https:\/\/(www\.)?globalyapp\.com$/, "https://app.globalyai.com");
   // The widget's setting (fetched with the branding below) decides the corner; a data-position
   // attribute on the tag, when present, overrides it. Until the setting arrives: the tag, else right.
   var tagSide = script.getAttribute("data-position");

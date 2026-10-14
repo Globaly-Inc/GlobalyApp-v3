@@ -14,7 +14,7 @@
 import type { FastifyReply, FastifyRequest } from "fastify";
 import { config } from "../../config.js";
 
-export const SESSION_HINT_COOKIE = "globaly_session";
+export const SESSION_HINT_COOKIE = config.SESSION_HINT_COOKIE_NAME;
 
 const MAX_AGE = config.SESSION_EXPIRY_DAYS * 24 * 60 * 60;
 

@@ -61,7 +61,7 @@ export async function rehostLogo(opts: {
     // sourceUrl will come from a scraped page once this is wired up — safeFetch, not fetch.
     const res = await safeFetch(sourceUrl, {
       signal: ctrl.signal,
-      headers: { "User-Agent": "GlobalyBot/1.0 (+https://globaly.app)" },
+      headers: { "User-Agent": "GlobalyBot/1.0 (+https://app.globalyai.com)" },
     }).finally(() => clearTimeout(t));
 
     if (!res.ok) {

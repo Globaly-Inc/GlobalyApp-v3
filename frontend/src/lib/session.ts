@@ -10,7 +10,8 @@
  */
 
 /** The API's readable "a session may exist" cookie (no secret; forging it costs one failed refresh). */
-const SESSION_HINT_COOKIE = "globaly_session";
+// Same name as the API's SESSION_HINT_COOKIE_NAME; staging uses its own so it can't clear production's.
+const SESSION_HINT_COOKIE = process.env.NEXT_PUBLIC_SESSION_HINT_COOKIE || "globaly_session";
 
 export function hasSessionHint(): boolean {
   if (typeof document === "undefined") return false;

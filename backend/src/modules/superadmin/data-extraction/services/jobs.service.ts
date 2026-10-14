@@ -12,6 +12,7 @@ import { withActorNames, withActorNamesOne } from "../shared/actor-names.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { loadLookupLists, categoryForServiceSlug, courseCategoryForLevel } from "../lib/lookup-catalog.js";
 import * as repo from "../repositories/jobs.repository.js";
+import * as storage from "../../../../shared/storage/storageService.js";
 import * as coursesRepo from "../repositories/courses.repository.js";
 import * as reviewRepo from "../repositories/review.repository.js";
 import * as stagedRepo from "../repositories/staged.repository.js";
@@ -81,10 +82,13 @@ export async function getJob(id: string) {
   if (!job) throw new NotFoundError("Extraction job not found");
   // Same title fallback the list uses — the overview row is already loaded here.
   // The overview carries its own editor: the Institution tab is edited field-by-field.
-  const [jobWithActors, overviewWithActors, usageRows] = await Promise.all([
+  const [jobWithActors, overviewWithActors, usageRows, logoPreviewUrl] = await Promise.all([
     withActorNamesOne({ ...job, institution_name: job.institution_name ?? overview?.name ?? null }),
     withActorNamesOne(overview),
     jobUsageByModel(id),
+    // logo_url stays raw for the editable field; the rehosted logo sits in the private bucket,
+    // so the preview needs a signed URL or it 403s.
+    storage.resolvePreviewUrl(overview?.logo_url),
   ]);
   // Tokens are the record; dollars are derived here from LLM_MODEL_PRICES and null when any
   // model in the mix is unpriced — see llm-pricing.ts.
@@ -96,7 +100,10 @@ export async function getJob(id: string) {
     output_tokens: usageRows.reduce((n, r) => n + r.output_tokens, 0),
     cost_usd: totalCostUsd(usageRows),
   };
-  return { job: { ...jobWithActors, usage }, overview: overviewWithActors };
+  return {
+    job: { ...jobWithActors, usage },
+    overview: overviewWithActors && { ...overviewWithActors, logo_preview_url: logoPreviewUrl },
+  };
 }
 
 // Mirrors overallProgressPct in frontend/src/app/admin/data/all-extractions/components/

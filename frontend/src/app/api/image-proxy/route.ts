@@ -4,7 +4,8 @@ import { NextRequest, NextResponse } from "next/server";
 // flow) can read its pixels without depending on the storage host sending CORS headers — a
 // server-to-server fetch has no CORS restriction at all, only browser JS does. Restricted to an
 // allowlist of trusted storage hosts so this can't be used as an open proxy.
-const ALLOWED_HOSTS = ["storage.googleapis.com"];
+// agentcisapp: logos imported from AgentCIS are hosted on its S3 bucket, which sends no CORS headers.
+const ALLOWED_HOSTS = ["storage.googleapis.com", "agentcisapp.s3.ap-southeast-2.amazonaws.com"];
 
 export async function GET(req: NextRequest) {
   const url = req.nextUrl.searchParams.get("url");
