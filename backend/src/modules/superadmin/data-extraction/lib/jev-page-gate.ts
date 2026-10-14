@@ -46,13 +46,20 @@ export async function programmePageProbability(url: string, markdown: string): P
   }
 }
 
+/** Why a page was not judged — recorded on the queue row, because "the gate barely fires" and "the
+ *  gate fires and says yes" are different problems and the stored data could not tell them apart.
+ *  `too_long` is the live answer on a surprising share of pages, and it is the reason the offline
+ *  eval (which calls programmePageProbability directly) reports a far higher skip rate than
+ *  production achieves. */
+export type GateReason = "scored" | "off" | "too_long" | "failed";
+
 /** Skip the model call? Only when the gate is on AND Jev answered AND it is below the threshold. */
-export async function shouldSkipPage(url: string, markdown: string): Promise<{ skip: boolean; p: number | null; threshold: number | null }> {
+export async function shouldSkipPage(url: string, markdown: string): Promise<{ skip: boolean; p: number | null; threshold: number | null; reason: GateReason }> {
   const threshold = _pageGateDeps.threshold();
-  if (threshold == null) return { skip: false, p: null, threshold };
+  if (threshold == null) return { skip: false, p: null, threshold, reason: "off" };
   // A skip is final (the page is marked completed, never extracted), so it is only decided on the
   // WHOLE page: past STATE_CHARS a long nav can push the programme out of what Jev read.
-  if (markdown.length > STATE_CHARS) return { skip: false, p: null, threshold };
+  if (markdown.length > STATE_CHARS) return { skip: false, p: null, threshold, reason: "too_long" };
   const p = await programmePageProbability(url, markdown);
-  return { skip: p != null && p < threshold, p, threshold };
+  return { skip: p != null && p < threshold, p, threshold, reason: p == null ? "failed" : "scored" };
 }

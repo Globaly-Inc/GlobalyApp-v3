@@ -548,8 +548,16 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       return;
     }
 
+    let gateVerdict: { p: number | null; threshold: number | null; reason: string } | null = null;
     if (!isVisaService && !isIntakeSource && !adminRetry) {
       const gate = await shouldSkipPage(url, page.markdown);
+      // Kept whatever the verdict, and written onto the queue row below beside this page's
+      // courses_found. A gate decision is only tunable against its OUTCOME, and until now the
+      // probability survived only when the gate SKIPPED — so the one page class you can never
+      // learn from was the one the gate let through and should not have. Recording it turns
+      // threshold tuning from a paid Jev sample (eval-jev-page-gate re-asks per page) into a SQL
+      // query over every page the pipeline has ever extracted, and it gets better every run.
+      gateVerdict = { p: gate.p, threshold: gate.threshold, reason: gate.reason };
       if (gate.skip) {
         const owned = await writeIfOwned({
           status: "completed",
@@ -650,7 +658,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       // count never restoring it. The completion write below still records the written count.
       if (!(await writeIfOwned({
         extracted_data: masterKnex.raw("coalesce(extracted_data, '{}'::jsonb) || ?::jsonb",
-          [JSON.stringify({ courses_found: preliminaryCourseCount(extracted.courses ?? [], url) })]),
+          [JSON.stringify({ courses_found: preliminaryCourseCount(extracted.courses ?? [], url), ...(gateVerdict ? { jev_gate: gateVerdict } : {}) })]),
         updated_at: masterKnex.fn.now(),
       }))) {
         logger.info("Fenced out — a newer attempt owns this item, dropping AI result", { jobId, queueItemId, url });
@@ -928,7 +936,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
     // against a state a newer attempt already owns.
     const owned = await writeIfOwned({
       status: "completed",
-      extracted_data: JSON.stringify({ courses_found: entitiesWritten, campuses_found: campusCount, scraper: page.scraper, from_snapshot: page.fromCache }),
+      extracted_data: JSON.stringify({ courses_found: entitiesWritten, campuses_found: campusCount, scraper: page.scraper, from_snapshot: page.fromCache, ...(gateVerdict ? { jev_gate: gateVerdict } : {}) }),
       page_id: page.pageId,
       page_content_hash: page.contentHash,
       updated_at: masterKnex.fn.now(),

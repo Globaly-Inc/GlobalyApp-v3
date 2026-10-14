@@ -16,7 +16,7 @@ import { createChildLogger } from "../../../../shared/logger.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { getPage, getDocument, isPdfUrl, fileLinksOf, SNAPSHOT_PREFIX } from "./page-store.js";
 import { upsertSiteUrls, setSiteUrlLiveness, type DeadReason } from "../repositories/site-urls.repository.js";
-import { politeDelay } from "./scraper.js";
+import { throttleForHost } from "./scraper.js";
 import { siteOf } from "./html-utils.js";
 import { writeJobEvent } from "./staging-writer.js";
 import { isScraperInfraFailure } from "./classify-failure.js";
@@ -124,9 +124,56 @@ export function deadReasonOf(page: { notFound?: boolean; blocked?: boolean; mark
   if (page.markdown.length < 50) return "empty";
   return null;
 }
-/** Pages in flight per batch. ponytail: 4 is polite for one edu host and cuts a 500-page site
- *  from ~an hour to ~15 minutes; set SNAPSHOT_CONCURRENCY=2 if a site starts answering 429. */
-const SNAPSHOT_CONCURRENCY = Math.max(1, Number(process.env.SNAPSHOT_CONCURRENCY) || 4);
+/** Pages in flight per batch.
+ *
+ *  NOT a politeness knob — `throttleForHost` reserves a global per-host slot for every scrape, so
+ *  the request RATE is the host-health gap whatever this is set to; extra fetchers only queue. It
+ *  decides how much of that gap we manage to use: a fetcher's cycle is gap-wait + scrape (~3s), so
+ *  the pool must hold roughly cycle ÷ gap pages to keep the slot busy — about 30 at the 100ms
+ *  floor, which 8 here reaches once the usual 4 batches are running concurrently (a LONE batch,
+ *  e.g. the admin re-running one, stays below the gap and that is fine). Raise it if
+ *  HOST_THROTTLE_MIN_MS goes lower, or the lower gap buys nothing; note it also multiplies
+ *  concurrent Scrapling MCP calls, and only the browser tiers are separately capped.
+ *  A real 429 is answered by the gap doubling, not by shrinking this. */
+const SNAPSHOT_CONCURRENCY = Math.max(1, Number(process.env.SNAPSHOT_CONCURRENCY) || 8);
+
+/** Halt-gate and heartbeat cadence, in pages. */
+const HALT_CHECK_EVERY = 25;
+
+/**
+ * Run `task` over 0..count-1 with at most `concurrency` in flight, stopping once a task returns
+ * false. A CONTINUOUS pool, not fixed chunks: a chunk made every page wait for the slowest of its
+ * group, so one 35s browser tier idled three healthy fetchers and left the host slot unclaimed
+ * for the whole stall. Exported because jev-url-classify had the same sequential-loop problem and
+ * one copy is better than two, and because the invariants (every index once, never more than N in
+ * flight, an early stop starts nothing more) are what a hand-rolled pool gets wrong — pinned in
+ * test:site-snapshot-path.
+ */
+export async function runPool(count: number, concurrency: number, task: (i: number) => Promise<boolean>): Promise<void> {
+  let next = 0;
+  let stop = false;
+  let failure: unknown;
+  let failed = false;
+  const worker = async () => {
+    while (!stop) {
+      const i = next++;
+      if (i >= count) return;
+      try {
+        if (!(await task(i))) stop = true;
+      } catch (err) {
+        // A throw stops the pool exactly like a false return, and is re-thrown only once every
+        // worker has settled. Letting it reject straight out of Promise.all left the other
+        // workers looping detached: the step reported failed while its pages went on being
+        // scraped and the classifier went on buying Jev calls, for results nobody would read.
+        stop = true;
+        if (!failed) { failed = true; failure = err; }
+        return;
+      }
+    }
+  };
+  await Promise.all(Array.from({ length: Math.max(1, Math.min(concurrency, count)) }, worker));
+  if (failed) throw failure;
+}
 
 export async function jobHalted(jobId: string): Promise<boolean> {
   const job = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId })
@@ -148,41 +195,46 @@ export async function snapshotSite(jobId: string, urls: string[], batch?: Snapsh
   const scraperDown: string[] = [];
   /** PDFs the pages link to — offered on the Site Context tab as excluded rows the admin can pick up. */
   const linkedPdfs = new Set<string>();
-  /** One page through the store (a scrape + file write on a miss). Returns whether the scraper was hit. */
-  async function snapshotOne(url: string): Promise<boolean> {
+  /** One page through the store (a scrape + file write on a miss). */
+  async function snapshotOne(url: string): Promise<void> {
     try {
       // ponytail: no retry here — Scrapling already walks get → stealthy_fetch → browser fetch
       // internally, and a Firecrawl escalation would bill credits the account may not have.
       // A PDF on the list (admin-added fee schedule, prospectus) is read by Vision, not Scrapling.
+      // The PDF branch is the one fetch here that paces itself nowhere else: getDocument →
+      // safeFetch never books a host slot, so an admin who restores a dozen linked PDFs onto the
+      // site list used to be paced only by the chunk sleep this function no longer has.
+      if (isPdfUrl(url)) await throttleForHost(url);
       const page = isPdfUrl(url)
         ? await getDocument(url, { fresh })
         : await getPage(url, { onlyMainContent: true, withLinks: true, fresh, breaker: true });
       const reason = deadReasonOf(page);
-      if (reason === "scraper_down") { failed.push(url); scraperDown.push(url); return true; }
-      if (reason) { failed.push(url); dead.push({ url, reason }); return !page.fromCache; }
+      if (reason === "scraper_down") { failed.push(url); scraperDown.push(url); return; }
+      if (reason) { failed.push(url); dead.push({ url, reason }); return; }
       uploaded++;
       alive.push(url);
       for (const f of fileLinksOf(page.links)) if (isPdfUrl(f)) linkedPdfs.add(f);
-      return !page.fromCache;
     } catch (err) {
       failed.push(url);
       logger.warn("Snapshot failed", { jobId, url, err: String(err) });
-      return true;
     }
   }
-  // Halt gate and heartbeat every ~25 pages, checked at a chunk boundary so a stop request is
-  // seen within one chunk's worth of work.
-  const gateEvery = Math.ceil(25 / SNAPSHOT_CONCURRENCY) * SNAPSHOT_CONCURRENCY;
-  for (let i = 0; i < urls.length; i += SNAPSHOT_CONCURRENCY) {
-    if (processed % gateEvery === 0) {
-      if (await jobHalted(jobId)) { halted = true; break; }
-      await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({ processing_heartbeat_at: masterKnex.fn.now() });
-    }
-    const chunk = urls.slice(i, i + SNAPSHOT_CONCURRENCY);
-    processed += chunk.length;
-    const fetched = await Promise.all(chunk.map(snapshotOne));
-    if (fetched.some(Boolean)) await politeDelay(300, 900);
-  }
+  // Halt gate and heartbeat every HALT_CHECK_EVERY pages. Exactly one fetcher sees each multiple
+  // (the increment and the test are one synchronous step), so the gate is not re-run per worker.
+  //
+  // There is no sleep between pages: throttleForHost already reserves a global slot per host
+  // before every scrape, and a second fixed delay here paced nothing extra — it just left the
+  // slot unclaimed. Measured on bu.edu (2026-10-09): 64 pages/min against the 75/min the gap
+  // then allowed.
+  if (await jobHalted(jobId)) halted = true;
+  else await runPool(urls.length, SNAPSHOT_CONCURRENCY, async (i) => {
+    await snapshotOne(urls[i]);
+    processed++;
+    if (processed % HALT_CHECK_EVERY !== 0) return true;
+    if (await jobHalted(jobId)) { halted = true; return false; }
+    await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({ processing_heartbeat_at: masterKnex.fn.now() });
+    return true;
+  });
   // Discovery drops asset URLs, so this is the one place linked PDFs surface. Excluded by default:
   // nothing fetches them until the admin restores one and gives it a category.
   if (dead.length || alive.length) await setSiteUrlLiveness(jobId, dead, alive, observedAt);

@@ -6,7 +6,7 @@
  * plus the property that lossiness would otherwise destroy: two different pages never share an
  * object path, because an upload overwrites and one page's snapshot would be silently lost.
  */
-import { deadReasonOf, fileLinksOf, snapshotPathFor, snapshotVerdict, tallySnapshotEvents } from "../src/modules/superadmin/data-extraction/lib/site-snapshot.js";
+import { deadReasonOf, fileLinksOf, runPool, snapshotPathFor, snapshotVerdict, tallySnapshotEvents } from "../src/modules/superadmin/data-extraction/lib/site-snapshot.js";
 import type { SnapshotEventRow } from "../src/modules/superadmin/data-extraction/lib/site-snapshot.js";
 
 let failed = 0;
@@ -129,5 +129,75 @@ for (const [label, page, want] of [
   const got = deadReasonOf(page);
   if (got !== want) fail(`deadReasonOf ${label}: expected ${want}, got ${got}`);
 }
+
+// ── runPool: the snapshot's fetcher pool ──
+// Fixed chunks made every page wait for the slowest of its group; the pool must instead keep
+// `concurrency` pages moving, visit each URL exactly once, and start nothing more after a stop.
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+async function poolChecks() {
+  // Every index exactly once, never more than N at a time — with one page slow enough that a
+  // chunked loop would stall its whole group behind it.
+  let inFlight = 0, peak = 0;
+  const seen: number[] = [];
+  await runPool(20, 4, async (i) => {
+    inFlight++; peak = Math.max(peak, inFlight);
+    await sleep(i === 0 ? 40 : 1);
+    seen.push(i); inFlight--;
+    return true;
+  });
+  if (seen.length !== 20 || new Set(seen).size !== 20) fail(`runPool visited ${seen.length} indexes (${new Set(seen).size} distinct), expected 20 distinct`);
+  if (peak > 4) fail(`runPool ran ${peak} tasks at once, limit was 4`);
+  if (peak < 4) fail(`runPool only reached ${peak} in flight — the pool is not keeping the slot busy`);
+  // The slow page must NOT hold the others: with 20 tasks over 4 workers, a chunked loop would
+  // finish index 0's group last; a pool lets 19 cheap pages pass it.
+  if (seen[seen.length - 1] !== 0) fail(`runPool let a 40ms page block the pool — finish order ended on ${seen[seen.length - 1]}`);
+
+  // A halt (task returns false) starts no further pages. Tasks already in flight still finish.
+  const started: number[] = [];
+  await runPool(50, 4, async (i) => { started.push(i); return i < 5; });
+  if (started.length > 9) fail(`runPool started ${started.length} tasks after a stop at index 5, expected at most 9 (one in flight per worker)`);
+  if (!started.includes(5)) fail("runPool never reached the stopping index");
+
+  // A THROW must stop the pool too. Rejecting straight out of Promise.all reported the step
+  // failed while the other workers kept pulling work — the snapshot's halt check and the
+  // classifier's heartbeat both touch the DB OUTSIDE their task's own try, so one blip left
+  // pages being scraped and paid Jev calls being made for a batch already written off.
+  let after = 0;
+  let thrown: unknown;
+  try {
+    await runPool(50, 4, async (i) => {
+      if (i === 3) throw new Error("db blip");
+      if (i > 3) after++;
+      return true;
+    });
+    fail("runPool swallowed a task's error instead of re-throwing it");
+  } catch (err) { thrown = err; }
+  if ((thrown as Error)?.message !== "db blip") fail(`runPool lost the original error: ${String(thrown)}`);
+  if (after > 4) fail(`runPool started ${after} tasks after a throw — the pool kept running detached`);
+
+  // ...and the workers already in flight must SETTLE before it throws, or the caller tears down
+  // state (writes the event, resolves the batch) while pages are still being fetched behind it.
+  let inFlightAtThrow = 0;
+  try {
+    await runPool(8, 4, async (i) => {
+      if (i === 0) { await sleep(1); throw new Error("first task fails"); }
+      inFlightAtThrow++;
+      await sleep(30);
+      inFlightAtThrow--;
+      return true;
+    });
+  } catch { /* expected */ }
+  if (inFlightAtThrow !== 0) fail(`runPool threw with ${inFlightAtThrow} task(s) still running`);
+
+  // Degenerate inputs must not hang or spin.
+  await runPool(0, 4, async () => true);
+  let once = 0;
+  await runPool(3, 0, async () => { once++; return true; });
+  if (once !== 3) fail(`runPool with concurrency 0 ran ${once} of 3 tasks`);
+}
+
+await poolChecks();
+
 if (failed) process.exit(1);
 console.log("site-snapshot-path: all passed");
