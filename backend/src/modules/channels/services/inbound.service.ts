@@ -440,12 +440,12 @@ export async function answerPending(owner: Recipient, visitorId: number, opts: {
   if (!conn || conn.status !== "connected" || !session) return;
   const answeredThrough = session.answered_through_message_id ?? null;
   let prevMessages = await messagesRepo.findBySession(session.id, { limit: HISTORY_LIMIT });
-  // More unanswered messages than the window holds (the worker was down, say): read further back so
-  // the oldest questions reach the model too, rather than being marked answered unseen.
-  // ponytail: 200 messages, the transcript endpoint's own cap — the guest route reads back the same way.
+  // More unanswered messages than the window holds (the worker was down, say): read the whole chat,
+  // so every unanswered question reaches the model rather than being marked answered unseen. Only
+  // the questions grow — answer() still gives the model the usual window of history.
   const owedNow = takeover.owedMessages(prevMessages, answeredThrough);
   if (prevMessages.length === HISTORY_LIMIT && owedNow.firstId === prevMessages[0]?.id) {
-    prevMessages = await messagesRepo.findBySession(session.id, { limit: 200 });
+    prevMessages = await messagesRepo.findBySession(session.id);
   }
   // Owed only while something the customer said is unanswered: an earlier reply (or a teammate)
   // may have answered already, which is also what keeps a duplicate job from replying twice.
