@@ -383,11 +383,19 @@ async function answer(
     // draft marker moves, so a retried event doesn't regenerate the draft staff are reading.
     // Claimed first: a draft older than the one already saved (a job that outlived its lease
     // while another worker drafted newer questions) is dropped, never written over it.
+    // The marker must describe the draft actually saved: undone if saving fails, or a retry would
+    // take the old draft for the new one and stop.
+    const draftedBefore = session.drafted_through_message_id ?? null;
     if (!(await sessionsRepo.claimDraftedThrough(session.id, lastId))) {
       logger.info("AI draft dropped: a newer draft is already waiting", { visitorId: visitor.id });
       return;
     }
-    await channelVisitors.setAttention(t.db, visitor.id, "suggest", text);
+    try {
+      await channelVisitors.setAttention(t.db, visitor.id, "suggest", text);
+    } catch (err) {
+      await sessionsRepo.releaseDraftedThrough(session.id, lastId, draftedBefore);
+      throw err;
+    }
   } else {
     const sent = await respond(() => sendToCustomer({
       db: t.db, visitor, sessionId: session.id, role: "assistant", content: text,

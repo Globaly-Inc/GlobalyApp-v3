@@ -297,6 +297,12 @@ export async function claimDraftedThrough(id: number, lastMessageId: number): Pr
   return n > 0;
 }
 
+/** Undo a draft claim whose draft never got saved — only while the marker is still this claim, so a
+ *  newer draft's claim is left alone. */
+export async function releaseDraftedThrough(id: number, claimed: number, previous: number | null): Promise<void> {
+  await masterKnex(TABLE).where({ id, drafted_through_message_id: claimed }).update({ drafted_through_message_id: previous });
+}
+
 /** Undo a claim whose reply never got saved, so the next resume answers those questions. Only
  *  while the claim is still this one — a later resume's claim is left alone. */
 export async function releaseAnsweredThrough(id: number, claimed: number, previous: number | null): Promise<void> {
