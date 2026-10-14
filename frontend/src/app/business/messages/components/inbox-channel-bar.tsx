@@ -15,7 +15,8 @@ import { WidgetSwitch } from "./widget-switch";
 const CHIP = "inline-flex items-center gap-1.5 rounded-full border py-0.5 pl-1 pr-2.5 text-xs transition-colors";
 
 /** The channel filter, one chip per channel with its connection dot and count. A channel that
- *  isn't connected (or the widget, when off) goes to where it's set up instead of filtering. */
+ *  isn't connected (or the widget, when off) still filters while it has past conversations; with
+ *  none, it links to where it's set up ("Connect a channel" is always beside it too). */
 export type ChannelChips = {
   channel: ChannelFilter;
   onChannel: (c: ChannelFilter) => void;
@@ -30,6 +31,7 @@ function Chips({ channel, onChannel, count, health }: Readonly<ChannelChips>) {
         const on = channel === c;
         const label = c === "all" ? "All channels" : INBOX_CHANNELS[c].label;
         const state = c === "all" ? null : (health[c] ?? "off");
+        const n = count(c);
         const body = (
           <>
             {c === "all" ? (
@@ -39,10 +41,10 @@ function Chips({ channel, onChannel, count, health }: Readonly<ChannelChips>) {
             )}
             {label}
             {state && <span className={cn("size-1.5 rounded-full", HEALTH_DOT[state].className)} />}
-            {state !== "off" && <span className="tabular-nums text-muted-foreground">{count(c)}</span>}
+            {(state !== "off" || n > 0) && <span className="tabular-nums text-muted-foreground">{n}</span>}
           </>
         );
-        if (state === "off") {
+        if (state === "off" && n === 0) {
           return (
             <Link key={c} href={c === "ai_embed" ? WIDGET_SETTINGS_HREF : CHANNELS_HREF} title={`${label}: not connected`} className={cn(CHIP, "border-dashed text-muted-foreground hover:bg-muted")}>
               {body}
@@ -56,7 +58,7 @@ function Chips({ channel, onChannel, count, health }: Readonly<ChannelChips>) {
             aria-pressed={on}
             title={state ? `${label}: ${HEALTH_DOT[state].title.toLowerCase()}` : label}
             onClick={() => onChannel(c)}
-            className={cn(CHIP, on ? "border-primary/30 bg-primary/10 font-medium text-primary" : "border-border hover:bg-muted")}
+            className={cn(CHIP, on ? "border-primary/30 bg-primary/10 font-medium text-primary" : "border-border hover:bg-muted", state === "off" && !on && "border-dashed text-muted-foreground")}
           >
             {body}
           </button>
