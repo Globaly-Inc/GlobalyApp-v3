@@ -22,22 +22,22 @@ export type StatusConfig = { label: string; icon: LucideIcon; className: string;
 // `accent` colors the row card's left edge so failed/active jobs are scannable in a long list.
 export const STATUS_CONFIG: Record<ExtractionStatus, StatusConfig> = {
   pending: { label: "Pending", icon: Clock, className: "bg-muted text-muted-foreground", accent: "border-l-muted-foreground/30" },
-  mapping: { label: "Mapping", icon: ListOrdered, className: "bg-blue-100 text-blue-700", accent: "border-l-blue-400" },
-  scraping: { label: "Scraping", icon: Loader2, className: "bg-amber-100 text-amber-700", spin: true, accent: "border-l-amber-400" },
-  extracting: { label: "Extracting", icon: Loader2, className: "bg-purple-100 text-purple-700", spin: true, accent: "border-l-purple-400" },
-  processing: { label: "Processing", icon: Loader2, className: "bg-purple-100 text-purple-700", spin: true, accent: "border-l-purple-400" },
-  verifying: { label: "Verifying", icon: Loader2, className: "bg-purple-100 text-purple-700", spin: true, accent: "border-l-purple-400" },
-  review: { label: "Pending Review", icon: AlertCircle, className: "bg-orange-100 text-orange-700", accent: "border-l-orange-400" },
-  verified: { label: "Approved", icon: CheckCircle2, className: "bg-emerald-100 text-emerald-700", accent: "border-l-emerald-400" },
-  approved: { label: "Approved", icon: CheckCircle2, className: "bg-emerald-100 text-emerald-700", accent: "border-l-emerald-400" },
-  done: { label: "Completed", icon: CheckCircle2, className: "bg-emerald-100 text-emerald-700", accent: "border-l-emerald-400" },
-  completed: { label: "Completed", icon: CheckCircle2, className: "bg-emerald-100 text-emerald-700", accent: "border-l-emerald-400" },
-  exported: { label: "Published", icon: ShieldCheck, className: "bg-green-100 text-green-800", accent: "border-l-green-500" },
-  pushed: { label: "Published", icon: ShieldCheck, className: "bg-green-100 text-green-800", accent: "border-l-green-500" },
-  declined: { label: "Declined", icon: XCircle, className: "bg-red-100 text-red-700", accent: "border-l-red-400" },
-  failed: { label: "Failed", icon: AlertCircle, className: "bg-red-100 text-red-700", accent: "border-l-red-500" },
-  stalled: { label: "Stalled", icon: AlertCircle, className: "bg-red-100 text-red-700", accent: "border-l-red-500" },
-  paused: { label: "Paused", icon: Pause, className: "bg-gray-100 text-gray-600", accent: "border-l-gray-300" },
+  mapping: { label: "Mapping", icon: ListOrdered, className: "bg-info/15 text-info", accent: "border-l-info" },
+  scraping: { label: "Scraping", icon: Loader2, className: "bg-warning/15 text-warning", spin: true, accent: "border-l-warning" },
+  extracting: { label: "Extracting", icon: Loader2, className: "bg-chart-4/15 text-chart-4", spin: true, accent: "border-l-chart-4" },
+  processing: { label: "Processing", icon: Loader2, className: "bg-chart-4/15 text-chart-4", spin: true, accent: "border-l-chart-4" },
+  verifying: { label: "Verifying", icon: Loader2, className: "bg-chart-4/15 text-chart-4", spin: true, accent: "border-l-chart-4" },
+  review: { label: "Pending Review", icon: AlertCircle, className: "bg-chart-3/15 text-chart-3", accent: "border-l-chart-3" },
+  verified: { label: "Approved", icon: CheckCircle2, className: "bg-success/15 text-success", accent: "border-l-success" },
+  approved: { label: "Approved", icon: CheckCircle2, className: "bg-success/15 text-success", accent: "border-l-success" },
+  done: { label: "Completed", icon: CheckCircle2, className: "bg-success/15 text-success", accent: "border-l-success" },
+  completed: { label: "Completed", icon: CheckCircle2, className: "bg-success/15 text-success", accent: "border-l-success" },
+  exported: { label: "Published", icon: ShieldCheck, className: "bg-primary/10 text-primary", accent: "border-l-primary" },
+  pushed: { label: "Published", icon: ShieldCheck, className: "bg-primary/10 text-primary", accent: "border-l-primary" },
+  declined: { label: "Declined", icon: XCircle, className: "bg-destructive/15 text-destructive", accent: "border-l-destructive" },
+  failed: { label: "Failed", icon: AlertCircle, className: "bg-destructive/15 text-destructive", accent: "border-l-destructive" },
+  stalled: { label: "Stalled", icon: AlertCircle, className: "bg-destructive/15 text-destructive", accent: "border-l-destructive" },
+  paused: { label: "Paused", icon: Pause, className: "bg-muted text-muted-foreground", accent: "border-l-muted-foreground" },
 };
 
 export const ACTIVE_STATUSES: ExtractionStatus[] = ["mapping", "scraping", "extracting", "processing", "verifying"];
@@ -104,11 +104,11 @@ export const VISA_SERVICE_GUIDED_URL_CATEGORIES = [
 // Per-course verification_status → list dot colour. "verified"/"mismatch" come from the
 // verify worker, "confirmed"/"flagged" from a human, "manual" from a hand-added course.
 export const VERIFICATION_DOT: Record<string, string> = {
-  verified: "bg-emerald-500",
-  confirmed: "bg-emerald-500",
+  verified: "bg-success",
+  confirmed: "bg-success",
   mismatch: "bg-destructive",
   flagged: "bg-destructive",
-  manual: "bg-blue-400",
+  manual: "bg-info/70",
 };
 
 export const SOURCE_TYPE_OPTIONS = [
@@ -171,10 +171,10 @@ export const PIPELINE_STAGES: { key: string; label: string; icon: LucideIcon }[]
 export const QUEUE_STATS: { status: string; label: string; color: string; tint: string; icon: LucideIcon }[] = [
   { status: "pending", label: "Pending", color: "text-muted-foreground", tint: "bg-muted", icon: Clock },
   { status: "processing", label: "Processing", color: "text-primary", tint: "bg-primary/10", icon: Loader2 },
-  { status: "paused", label: "Paused", color: "text-amber-600", tint: "bg-amber-100", icon: PauseCircle },
-  { status: "stopped", label: "Stopped", color: "text-destructive", tint: "bg-red-100", icon: Square },
-  { status: "completed", label: "Done", color: "text-emerald-600", tint: "bg-emerald-100", icon: CheckCircle2 },
-  { status: "failed", label: "Failed", color: "text-destructive", tint: "bg-red-100", icon: XCircle },
+  { status: "paused", label: "Paused", color: "text-warning", tint: "bg-warning/15", icon: PauseCircle },
+  { status: "stopped", label: "Stopped", color: "text-destructive", tint: "bg-destructive/15", icon: Square },
+  { status: "completed", label: "Done", color: "text-success", tint: "bg-success/15", icon: CheckCircle2 },
+  { status: "failed", label: "Failed", color: "text-destructive", tint: "bg-destructive/15", icon: XCircle },
   { status: "ignored", label: "Ignored", color: "text-muted-foreground", tint: "bg-muted", icon: EyeOff },
 ];
 

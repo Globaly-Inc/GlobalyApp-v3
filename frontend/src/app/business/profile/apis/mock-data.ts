@@ -132,6 +132,11 @@ export const businessProfileDetailMockApi = {
     if (!branch) throw new Error("Branch not found");
     return branch;
   },
+  convertCampus: async (campusId: string, _orgBase?: string): Promise<{ branch_id: string }> => {
+    console.log("[mock] POST /branches/campuses/:id/convert", campusId);
+    await delay(300);
+    return { branch_id: campusId };
+  },
   createBranch: async (input: BranchInput, _orgBase?: string): Promise<Branch> => {
     await delay(300);
     const branch: Branch = {
@@ -167,7 +172,10 @@ export const businessProfileDetailMockApi = {
   searchServices: async (params: ServiceSearchParams = {}): Promise<ServiceSearchResult> => {
     console.log("[mock] GET /businesses/services/search", params);
     await delay(300);
-    return { data: mockServices, total: mockServices.length };
+    const data = mockServices.filter((s) =>
+      params.attention === "needs_approval" ? s.approval_status === "pending" || s.approval_status === "needs_changes"
+      : params.attention === "missing_fee" ? !s.price : true);
+    return { data, total: data.length };
   },
   getService: async (serviceId: string): Promise<BusinessService> => {
     await delay(200);

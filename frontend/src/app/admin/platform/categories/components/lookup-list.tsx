@@ -3,8 +3,9 @@
 import { BookOpen, GraduationCap, Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Switch } from "@/components/ui/switch";
+import { Table, TableBody, TableCard, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { Lookup, LookupKind } from "../apis/types";
 
 export function LookupList({
@@ -21,33 +22,51 @@ export function LookupList({
   const Icon = kind === "degree-levels" ? GraduationCap : BookOpen;
 
   if (items.length === 0) {
-    return <p className="py-8 text-center text-sm text-muted-foreground">No items yet.</p>;
+    return <EmptyState icon={Icon} title="No items yet." />;
   }
 
   return (
-    <div className="space-y-2">
-      {items.map((item) => (
-        <Card key={item.id} size="sm">
-          <CardContent>
-            <div className="flex items-center gap-3">
-              <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                <Icon className="size-4 text-primary" />
-              </div>
-              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
-                <p className="text-sm font-medium">{item.name}</p>
+    <TableCard>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Name</TableHead>
+            <TableHead className="hidden md:table-cell">Slug</TableHead>
+            <TableHead className="w-px">Active</TableHead>
+            <TableHead className="w-px"><span className="sr-only">Actions</span></TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {items.map((item) => (
+            <TableRow key={item.id}>
+              <TableCell primary>
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex size-8 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                    <Icon className="size-4 text-primary" />
+                  </div>
+                  <span className="truncate font-medium text-foreground">{item.name}</span>
+                  {!item.is_active && <Badge variant="secondary">Inactive</Badge>}
+                </div>
+              </TableCell>
+              <TableCell className="hidden md:table-cell">
                 <Badge variant="outline">{item.slug}</Badge>
-                {!item.is_active && <Badge variant="secondary">Inactive</Badge>}
-              </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <Switch checked={item.is_active} onCheckedChange={(checked) => onToggle(item.id, checked)} />
+              </TableCell>
+              <TableCell>
+                <Switch
+                  checked={item.is_active}
+                  onCheckedChange={(checked) => onToggle(item.id, checked)}
+                  aria-label={`Toggle active for ${item.name}`}
+                />
+              </TableCell>
+              <TableCell>
                 <Button variant="ghost" size="icon-sm" aria-label={`Edit ${item.name}`} onClick={() => onEdit(item)}>
                   <Pencil />
                 </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </TableCard>
   );
 }

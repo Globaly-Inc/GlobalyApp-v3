@@ -35,9 +35,21 @@ console.log("\n1. buildSystemPrompt places institution guidance after BOUNDARIES
   assert(without.includes("You speak AS Test Uni, in the first person plural"), "embed prompt carries the first-person voice rule");
   const platform = buildSystemPrompt({ profile: null, ragContext: "", isFirstMessage: true });
   assert(!platform.includes("VOICE: You speak AS"), "platform chat has no institution voice rule");
-  const guarded = buildSystemPrompt({ profile: null, ragContext: "", isFirstMessage: false, embedConfig: { display_name: "Test Uni", custom_instructions: null }, noMoneyData: true });
+  const guarded = buildSystemPrompt({ profile: null, ragContext: "", isFirstMessage: false, embedConfig: { display_name: "Test Uni", custom_instructions: null }, withheldMoneyTopics: ["fees"] });
   assert(guarded.includes("NO MONEY DATA THIS TURN"), "money guard section present when retrieval found no money data");
   assert(!without.includes("NO MONEY DATA THIS TURN"), "money guard absent otherwise");
+  // The guard must gag the money clause, not the turn: asked to compare two programs on fees,
+  // duration and intakes, the widget answered "we don't have that specific information" and
+  // dropped duration and intakes with it (observed live 2026-10-05).
+  assert(guarded.includes("fees"), "the guard names which topic is ungrounded, not all of them");
+  assert(!guarded.includes("asked about fees, refunds, scholarships, funding or costs"),
+    "the guard no longer lists every money topic regardless of what was asked");
+  assert(/ANSWER THE REST OF THE QUESTION/i.test(guarded),
+    "the guard orders the non-money part of the question answered in full");
+  const guardedAll = buildSystemPrompt({ profile: null, ragContext: "", isFirstMessage: false, withheldMoneyTopics: ["refund", "scholarship"] });
+  assert(guardedAll.includes("refunds") && guardedAll.includes("scholarships"), "multiple withheld topics are both named");
+  const unguarded = buildSystemPrompt({ profile: null, ragContext: "", isFirstMessage: false, withheldMoneyTopics: [] });
+  assert(!unguarded.includes("NO MONEY DATA THIS TURN"), "an empty topic list is not a guard");
   assert(without.includes("MONEY IS THE EXCEPTION"), "standing money rule always present");
 }
 

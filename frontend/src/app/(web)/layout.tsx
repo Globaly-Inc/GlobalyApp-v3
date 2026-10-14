@@ -4,45 +4,46 @@ import { Navbar } from "./components/navbar";
 import { Footer } from "./components/footer";
 import { CookieConsent } from "./components/cookie-consent";
 import { BackToTop } from "./components/back-to-top";
-import { LOGO } from "@/lib/public-assets";
+import { LOGO_PNG, OG_IMAGE } from "@/lib/public-assets";
+import { siteConfig } from "@/config/site";
 import { CompareTray } from "./search/components/compare-tray";
 import { PreviewLock } from "./components/preview-lock";
 
-const TITLE = "Globaly — World #1 AI Integrated Education Ecosystem";
+const TITLE = "GlobalyAI — World #1 AI Integrated Education Ecosystem";
 const OG_DESCRIPTION =
   "Connecting Students with Domestic and International Education Providers, Education Counselors and Service Providers";
 
 export const metadata: Metadata = {
   title: TITLE,
   description:
-    "Globaly is the World #1 AI Integrated Education Ecosystem — connecting students with counsellors, education counselors, institutions and service providers worldwide. Search, enroll and settle.",
+    "GlobalyAI is the World #1 AI Integrated Education Ecosystem — connecting students with counsellors, education counselors, institutions and service providers worldwide. Search, enroll and settle.",
   authors: [{ name: "Globaly.ai" }],
-  alternates: { canonical: "https://www.globalyapp.com/" },
+  alternates: { canonical: "https://app.globalyai.com/" },
   verification: { google: "BZ5srMbEp1MHzey_WGmXmNAbMx7Bh6Bf-WTM6UsKb94" },
   openGraph: {
     type: "website",
-    siteName: "Globaly",
+    siteName: "GlobalyAI",
     title: TITLE,
     description: OG_DESCRIPTION,
-    url: "https://www.globalyapp.com/",
-    images: [LOGO.src],
+    url: "https://app.globalyai.com/",
+    images: [OG_IMAGE.src],
   },
   twitter: {
     card: "summary_large_image",
     site: "@GlobalyAI",
     title: TITLE,
     description: OG_DESCRIPTION,
-    images: [LOGO.src],
+    images: [OG_IMAGE.src],
   },
 };
 
 const ORGANIZATION_JSON_LD = {
   "@context": "https://schema.org",
   "@type": "Organization",
-  name: "Globaly",
-  alternateName: "Globalyapp",
-  url: "https://www.globalyapp.com",
-  logo: LOGO.src,
+  name: "GlobalyAI",
+  alternateName: ["Globaly", "Globalyapp"],
+  url: "https://app.globalyai.com",
+  logo: `${siteConfig.url}${LOGO_PNG}`,
   description: OG_DESCRIPTION,
   sameAs: [
     "https://www.linkedin.com/company/globaly-app",
@@ -55,11 +56,11 @@ const ORGANIZATION_JSON_LD = {
 const WEBSITE_JSON_LD = {
   "@context": "https://schema.org",
   "@type": "WebSite",
-  name: "Globaly",
-  url: "https://www.globalyapp.com",
+  name: "GlobalyAI",
+  url: "https://app.globalyai.com",
   potentialAction: {
     "@type": "SearchAction",
-    target: "https://www.globalyapp.com/search?q={search_term_string}",
+    target: "https://app.globalyai.com/search?q={search_term_string}",
     "query-input": "required name=search_term_string",
   },
 };

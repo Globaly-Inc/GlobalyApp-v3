@@ -2,9 +2,9 @@
 
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
+import { Switch } from "@/components/ui/switch";
+import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import type { GrowthPoint } from "../apis/types";
 import type { ViewMode } from "../types";
 import { applyCumulative, buildSeries } from "../utils";
@@ -35,37 +35,20 @@ export function GrowthChart({
 
   return (
     <Card>
-      <CardHeader className="flex-row items-center justify-between flex-wrap gap-2 space-y-0">
-        <CardTitle className="text-base">{title}</CardTitle>
-        <div className="flex items-center gap-3">
-          <div className="flex rounded-lg border border-border overflow-hidden">
+      <CardHeader className="flex flex-wrap items-center justify-between gap-3">
+        <CardTitle>{title}</CardTitle>
+        <div className="flex flex-wrap items-center gap-3">
+          <ToggleGroup aria-label="Group by" value={[mode]} onValueChange={(next) => next[0] && setMode(next[0] as ViewMode)}>
             {MODES.map((m) => (
-              <button
-                key={m}
-                type="button"
-                onClick={() => setMode(m)}
-                className={cn(
-                  "px-2 py-1 text-xs font-medium transition-colors",
-                  mode === m
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-background text-muted-foreground hover:bg-muted",
-                )}
-              >
+              <ToggleGroupItem key={m} value={m} size="sm">
                 {m.charAt(0).toUpperCase() + m.slice(1)}
-              </button>
+              </ToggleGroupItem>
             ))}
-          </div>
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs text-muted-foreground">Cumulative</span>
-            <Button
-              variant={cumulative ? "default" : "outline"}
-              size="sm"
-              className="h-7 px-2 text-xs"
-              onClick={() => setCumulative(!cumulative)}
-            >
-              {cumulative ? "On" : "Off"}
-            </Button>
-          </div>
+          </ToggleGroup>
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            Cumulative
+            <Switch checked={cumulative} onCheckedChange={setCumulative} />
+          </label>
         </div>
       </CardHeader>
       <CardContent>

@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Bold, Code, Italic, Link, List, ListOrdered, Loader2, Send, Strikethrough } from "lucide-react";
+import { Loader2, Send } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { MAX_ATTACHMENTS } from "./const";
 import { applyFormat, type MarkFormat } from "./markdown";
+import { ComposerToolbar } from "./composer-toolbar";
 import { deleteDraft, getDraft, saveDraft } from "./draft-store";
 import {
   ACCEPT,
@@ -33,16 +33,6 @@ import { EmojiPicker } from "./emoji-picker";
  * the storage paths. Dropped from V2: @-mentions (two-party thread), `/` content links,
  * Google Meet, video calls, AI Assist.
  */
-const TOOLBAR: ReadonlyArray<{ format: MarkFormat; icon: typeof Bold; label: string; separatorBefore?: boolean }> = [
-  { format: "bold", icon: Bold, label: "Bold" },
-  { format: "italic", icon: Italic, label: "Italic" },
-  { format: "strikethrough", icon: Strikethrough, label: "Strikethrough" },
-  { format: "bullet", icon: List, label: "Bullet list", separatorBefore: true },
-  { format: "numbered", icon: ListOrdered, label: "Numbered list" },
-  { format: "link", icon: Link, label: "Link", separatorBefore: true },
-  { format: "code", icon: Code, label: "Code" },
-];
-
 export function MessageComposer({
   distributionId,
   counterpartName,
@@ -50,6 +40,7 @@ export function MessageComposer({
   placeholder = "Type a message...",
   persistDraft = true,
   compact = false,
+  initialValue,
   onSend,
 }: Readonly<{
   distributionId: string;
@@ -73,12 +64,14 @@ export function MessageComposer({
    * replies either (its ThreadView has its own composer, outside the draft store).
    */
   persistDraft?: boolean;
+  /** Text to start with when no saved draft applies — e.g. a reply AI drafted for review. */
+  initialValue?: string;
   /** Resolves false on failure, which is what keeps the typed text in place. */
   onSend: (body: string, attachments: string[]) => Promise<boolean>;
 }>) {
   // Lazy initial state, not an effect: the caller keys this component by distribution
   // id, so switching conversations remounts it and the draft is read once on mount.
-  const [value, setValue] = useState(() => (persistDraft ? getDraft(distributionId) : ""));
+  const [value, setValue] = useState(() => (persistDraft ? getDraft(distributionId) : initialValue ?? ""));
   const [sending, setSending] = useState(false);
   const [pending, setPending] = useState<PendingAttachment[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -194,34 +187,13 @@ export function MessageComposer({
   const canSend = (value.trim().length > 0 || uploaded.length > 0) && !sending && !uploading;
 
   return (
-    <div className="p-3">
-      <div className="overflow-hidden rounded-xl border border-border bg-background">
+    <div className="px-3 pb-3 pt-2.5 md:px-4 md:pb-4">
+      <div className="overflow-hidden rounded-xl border border-border bg-background shadow-xs transition-colors focus-within:border-ring/60">
         <AttachmentPreviews pending={pending} onRemove={removePending} />
 
         {/* Formatting toolbar — desktop only, as in V2 (mobile keyboards cover it), and
             never in the compact thread variant. */}
-        <div
-          className={cn(
-            "items-center gap-0.5 border-b border-border/50 bg-muted/20 px-2 py-1.5",
-            compact ? "hidden" : "hidden md:flex",
-          )}
-        >
-          {TOOLBAR.map(({ format: mark, icon: Icon, label, separatorBefore }) => (
-            <span key={mark} className="flex items-center">
-              {separatorBefore && <Separator orientation="vertical" className="mx-1 h-4" />}
-              <Button
-                variant="ghost"
-                size="icon-sm"
-                className="text-muted-foreground hover:text-foreground"
-                onClick={() => format(mark)}
-                title={label}
-                aria-label={label}
-              >
-                <Icon className="size-3.5" />
-              </Button>
-            </span>
-          ))}
-        </div>
+        {!compact && <ComposerToolbar onFormat={format} />}
 
         <Textarea
           ref={textareaRef}
@@ -245,7 +217,7 @@ export function MessageComposer({
           // [field-sizing:content] grows the box in CSS as V2 does; max-h caps it at
           // roughly seven lines so a long draft never swallows the thread.
           className={cn(
-            "resize-none rounded-none border-0 [field-sizing:content] focus-visible:ring-0",
+            "resize-none rounded-none border-0 bg-transparent px-3.5 py-2.5 shadow-none [field-sizing:content] focus-visible:ring-0 dark:bg-transparent",
             "overflow-y-auto text-sm",
             // A thread reply is short, so its box starts and stays smaller.
             compact ? "max-h-32 min-h-9" : "max-h-[168px] min-h-[44px]",
@@ -256,8 +228,8 @@ export function MessageComposer({
           autoFocus
         />
 
-        <div className="flex items-center justify-between border-t border-border/50 bg-muted/20 px-2 py-1.5">
-          <div className="flex items-center gap-0">
+        <div className="flex items-center justify-between gap-2 px-2 pb-2 pt-1">
+          <div className="flex items-center gap-0.5">
             <AttachmentMenu disabled={sending} onPick={pickFiles} />
             <EmojiPicker onSelect={insertEmoji} />
             <input
@@ -274,11 +246,11 @@ export function MessageComposer({
             />
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 items-center gap-2">
             {/* The hint costs three wrapped lines in the narrow thread panel, so the
                 compact variant drops it and keeps only the upload state. */}
             {(!compact || uploading) && (
-              <p className="hidden text-[11px] text-muted-foreground sm:block">
+              <p className="hidden truncate text-xs text-muted-foreground sm:block">
                 {uploading ? "Uploading…" : "Enter to send · Shift+Enter for a new line"}
               </p>
             )}
@@ -293,7 +265,7 @@ export function MessageComposer({
                 {sending ? <Loader2 className="size-4 animate-spin" /> : <Send className="size-4" />}
               </Button>
             ) : (
-              <Button size="sm" className="h-8 gap-1.5 px-3" onClick={handleSend} disabled={!canSend}>
+              <Button size="sm" className="h-8 shrink-0 gap-1.5 px-3" onClick={handleSend} disabled={!canSend}>
                 {sending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
                 Send
               </Button>

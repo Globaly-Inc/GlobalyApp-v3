@@ -138,7 +138,7 @@ export function QueuePanel({ jobId }: Readonly<{ jobId: string }>) {
               <>
                 <div className="overflow-x-auto rounded-lg border border-border">
                   <table className="w-full text-sm">
-                    <thead className="border-b border-border bg-primary/5 text-xs uppercase tracking-wide text-muted-foreground">
+                    <thead className="border-b border-border bg-muted/60 text-muted-foreground">
                       <tr>
                         <th className="w-9 px-3 py-2" />
                         <th className="px-3 py-2 text-left font-medium">URL</th>

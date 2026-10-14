@@ -203,7 +203,7 @@ export function VisaTab({
                 {(entry.required_documents?.length ?? 0) > 0 && (
                   <div className="mt-2 flex flex-wrap gap-1.5">
                     {entry.required_documents!.map((doc) => (
-                      <Badge key={doc} variant="outline" className="text-[10px]">{doc}</Badge>
+                      <Badge key={doc} variant="outline" className="text-xs">{doc}</Badge>
                     ))}
                   </div>
                 )}

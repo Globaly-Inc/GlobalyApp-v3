@@ -48,20 +48,27 @@ const guardedLookup: LookupFunction = (hostname, options, callback) => {
   });
 };
 
-/** GET an image with the guards above; the body is cut off past `maxBytes`. Null on any refusal. */
-export function fetchImage(url: URL, maxBytes: number): Promise<{ mime: string; buffer: Buffer } | null> {
+/** Why an image wasn't fetched: `refused` is final (private address, not an image, too big,
+ * redirect, 4xx), `transient` may succeed later (timeout, network error, 5xx, 429). */
+export type FetchOutcome = { mime: string; buffer: Buffer } | "refused" | "transient";
+
+/** GET an image with the guards above; the body is cut off past `maxBytes`. */
+export function fetchImageOutcome(url: URL, maxBytes: number): Promise<FetchOutcome> {
   // An IP-literal host connects without any DNS lookup, so guardedLookup never sees it — check it here.
   const literal = url.hostname.replace(/^\[|\]$/g, "");
-  if (isIP(literal) && isPrivateAddress(literal)) return Promise.resolve(null);
+  if (isIP(literal) && isPrivateAddress(literal)) return Promise.resolve("refused");
   return new Promise((resolve) => {
+    let settled = false;
+    const done = (o: FetchOutcome) => { if (!settled) { settled = true; resolve(o); } };
     const client = url.protocol === "https:" ? https : http;
     const req = client.get(url, { lookup: guardedLookup, timeout: 15_000 }, (res) => {
       const mime = (res.headers["content-type"] ?? "").split(";")[0]!.trim().toLowerCase();
       const declared = Number(res.headers["content-length"] ?? 0);
+      const status = res.statusCode ?? 0;
       // Not following redirects is deliberate (3xx lands here and is refused).
-      if (res.statusCode !== 200 || !EXT[mime] || declared > maxBytes) {
+      if (status !== 200 || !EXT[mime] || declared > maxBytes) {
         req.destroy(); // close it — draining a body we won't keep would have no size cap
-        return resolve(null);
+        return done(status >= 500 || status === 429 ? "transient" : "refused");
       }
       const chunks: Buffer[] = [];
       let size = 0;
@@ -69,46 +76,64 @@ export function fetchImage(url: URL, maxBytes: number): Promise<{ mime: string; 
         size += chunk.length;
         if (size > maxBytes) {
           req.destroy(); // stop reading — never buffer more than the cap
-          return resolve(null);
+          return done("refused");
         }
         chunks.push(chunk);
       });
-      res.on("end", () => resolve(size <= maxBytes ? { mime, buffer: Buffer.concat(chunks) } : null));
-      res.on("error", () => resolve(null));
+      res.on("end", () => done(size <= maxBytes ? { mime, buffer: Buffer.concat(chunks) } : "refused"));
+      res.on("error", () => done("transient"));
     });
     // `timeout` above only fires on an idle socket; this is the deadline for the whole request, so
     // a site trickling small chunks can't hold the backfill or a promote request open forever.
-    const deadline = setTimeout(() => { req.destroy(); resolve(null); }, 30_000);
+    const deadline = setTimeout(() => { req.destroy(); done("transient"); }, 30_000);
     req.on("close", () => clearTimeout(deadline));
     req.on("timeout", () => req.destroy());
-    req.on("error", () => resolve(null));
+    // A host resolving to a private address is a refusal; any other connection error may pass.
+    req.on("error", (err: NodeJS.ErrnoException) => done(err.code === "EBLOCKED" ? "refused" : "transient"));
   });
+}
+
+/** fetchImageOutcome without the reason: the image, or null on any refusal or failure. */
+export async function fetchImage(url: URL, maxBytes: number): Promise<{ mime: string; buffer: Buffer } | null> {
+  const o = await fetchImageOutcome(url, maxBytes);
+  return typeof o === "string" ? null : o;
 }
 
 const EXT: Record<string, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "image/avif": "avif" };
 
-/** The stored copy's path, or null when the image can't (or mustn't) be copied — the caller then
- * keeps the original URL, which still displays. */
-export async function copyExternalImage(rawUrl: string, dir: string): Promise<string | null> {
-  if (!storage.isConfigured()) return null;
+/** The stored copy's path; or why there is none — `refused` is final, `transient` (timeout, 5xx,
+ * storage unconfigured or failing) can be retried. */
+export async function copyExternalImageOutcome(rawUrl: string, dir: string): Promise<{ path: string } | "refused" | "transient"> {
+  if (!storage.isConfigured()) return "transient";
   let url: URL;
   try {
     url = new URL(rawUrl);
   } catch {
-    return null;
+    return "refused";
   }
-  if (url.protocol !== "http:" && url.protocol !== "https:") return null;
-  if (url.port && url.port !== "80" && url.port !== "443") return null;
+  if (url.protocol !== "http:" && url.protocol !== "https:") return "refused";
+  if (url.port && url.port !== "80" && url.port !== "443") return "refused";
+  const image = await fetchImageOutcome(url, storage.MAX_FILE_SIZE);
+  if (typeof image === "string") return image;
+  const { mime, buffer } = image;
   try {
-    const image = await fetchImage(url, storage.MAX_FILE_SIZE);
-    if (!image) return null;
-    const { mime, buffer } = image;
     storage.validateFile(mime, buffer.length); // the shared type allowlist (size already capped)
+  } catch {
+    return "refused";
+  }
+  try {
     // Content-addressed, so re-running the backfill reuses the same object instead of piling up copies.
     const path = `${dir}/${createHash("sha256").update(buffer).digest("hex").slice(0, 32)}.${EXT[mime]}`;
     await storage.uploadFile(path, buffer, mime);
-    return path;
+    return { path };
   } catch {
-    return null;
+    return "transient";
   }
+}
+
+/** The stored copy's path, or null when the image can't (or mustn't) be copied — the caller then
+ * keeps the original URL, which still displays. */
+export async function copyExternalImage(rawUrl: string, dir: string): Promise<string | null> {
+  const o = await copyExternalImageOutcome(rawUrl, dir);
+  return typeof o === "string" ? null : o.path;
 }

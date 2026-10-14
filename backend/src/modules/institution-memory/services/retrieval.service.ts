@@ -138,6 +138,13 @@ export async function retrieveMemories(opts: {
   situation?: string | null;
   /** Reuse a vector the caller already computed for the rack. */
   queryVector?: number[];
+  /**
+   * Skip the similarity search only — "thanks" has nothing to match guidance against, and the
+   * embedding call costs money. The institution's pinned rules (every AVOIDANCE_RULE, its
+   * RESPONSE_PREFERENCE, importance-5 guidelines) are an indexed read, not a search, and are
+   * returned as always: a rule about how to speak to students applies most to a closing reply.
+   */
+  pinnedOnly?: boolean;
   onTrace?: (step: string) => void;
 }): Promise<MemoryRetrieval> {
   const name = opts.institutionName ?? "this institution";
@@ -146,7 +153,8 @@ export async function retrieveMemories(opts: {
 
     let memories: RetrievedMemory[] = [];
     let skipped: string | undefined;
-    if (!isEmbedConfigured()) skipped = "embedding not configured";
+    if (opts.pinnedOnly) skipped = "no question to match";
+    else if (!isEmbedConfigured()) skipped = "embedding not configured";
     else if (!(await hasRetrievable(opts.institutionId))) skipped = "no active memories";
     else {
       const vector = opts.queryVector ?? await embed(opts.situation ? `${opts.query}\nStudent situation: ${opts.situation}` : opts.query);

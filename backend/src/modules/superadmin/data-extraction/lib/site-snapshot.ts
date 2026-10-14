@@ -156,7 +156,7 @@ export async function snapshotSite(jobId: string, urls: string[], batch?: Snapsh
       // A PDF on the list (admin-added fee schedule, prospectus) is read by Vision, not Scrapling.
       const page = isPdfUrl(url)
         ? await getDocument(url, { fresh })
-        : await getPage(url, { onlyMainContent: true, withLinks: true, fresh });
+        : await getPage(url, { onlyMainContent: true, withLinks: true, fresh, breaker: true });
       const reason = deadReasonOf(page);
       if (reason === "scraper_down") { failed.push(url); scraperDown.push(url); return true; }
       if (reason) { failed.push(url); dead.push({ url, reason }); return !page.fromCache; }

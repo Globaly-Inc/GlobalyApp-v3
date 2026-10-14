@@ -6,7 +6,6 @@ const phoneNumberSchema = z.string().trim().min(1, "Phone number is required");
 const countryIdSchema = z.string().trim().min(1, "Country is required");
 const addressSchema = z.string().trim().min(1, "Address is required");
 const businessNameSchema = z.string().trim().min(1, "Business name is required");
-const emailSchema = z.string().trim().email("Enter a valid email");
 
 const BUSINESS_FIELD_SCHEMAS = {
   phoneCountryId: phoneCountryIdSchema,
@@ -14,7 +13,6 @@ const BUSINESS_FIELD_SCHEMAS = {
   countryId: countryIdSchema,
   address: addressSchema,
   businessName: businessNameSchema,
-  email: emailSchema,
 };
 
 export function validateBusinessField(field: keyof typeof BUSINESS_FIELD_SCHEMAS, value: string): string | null {
@@ -30,8 +28,6 @@ export function validateBusinessDetails(values: {
   address: string;
   businessName: string;
   isInstitution: boolean;
-  email: string;
-  requireEmail: boolean;
 }): Record<string, string> | null {
   const fieldErrors: Record<string, string> = {};
   for (const field of ["phoneCountryId", "phoneNumber", "countryId", "address", "businessName"] as const) {
@@ -41,10 +37,6 @@ export function validateBusinessDetails(values: {
   if (values.isInstitution) {
     const businessNameError = validateBusinessField("businessName", values.businessName);
     if (businessNameError) fieldErrors.businessName = businessNameError;
-  }
-  if (values.requireEmail) {
-    const emailError = validateBusinessField("email", values.email);
-    if (emailError) fieldErrors.email = emailError;
   }
   if (!fieldErrors.phoneCountryId && !fieldErrors.phoneNumber && !isValidPhoneForCountry(values.phoneNumber, values.phoneIso2 ?? undefined)) {
     fieldErrors.phoneNumber = "Enter a valid phone number for the selected country";

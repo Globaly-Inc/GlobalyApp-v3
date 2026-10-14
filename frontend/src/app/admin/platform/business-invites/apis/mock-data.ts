@@ -1,5 +1,7 @@
 import { ApiError } from "@/lib/api/http";
-import type { InviteListParams, OnboardingInvite, PaginatedInvites, ResendInviteResult, SendInviteParams, SendInviteResult } from "./types";
+import type {
+  InviteListParams, InvitePreview, InvitePreviewParams, OnboardingInvite, PaginatedInvites, ResendInviteResult, SendInviteParams, SendInviteResult,
+} from "./types";
 
 function delay(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -30,13 +32,26 @@ export const businessInvitesMockApi = {
       meta: { page, limit, total: rows.length, totalPages: Math.max(1, Math.ceil(rows.length / limit)) },
     };
   },
+  // A stand-in shape, not the real mail: only the backend has the template, so in mock mode the
+  // preview says so rather than showing copy that was never sent.
+  previewInvite: async ({ name }: InvitePreviewParams): Promise<InvitePreview> => {
+    console.log("[mock] GET /admin/platform/onboarding-invitations/preview", { name });
+    await delay(300);
+    const org = name?.trim();
+    return {
+      subject: org ? `Set up ${org} on GlobalyApp` : "You're invited to set up your institution on GlobalyApp",
+      html: `<!doctype html><html><body style="margin:0;padding:24px;font-family:system-ui,sans-serif;color:#3F4B60;background:#F2F4F8">
+        <p style="margin:0;font-size:14px">The real email is rendered by the API. Mock data is on, so there is nothing to show here.</p>
+      </body></html>`,
+    };
+  },
   sendInvite: async ({ email, name, business_category_id }: SendInviteParams): Promise<SendInviteResult> => {
     console.log("[mock] POST /admin/platform/onboarding-invitations", { email, name, business_category_id });
     const type = business_category_id === 1 ? "institution" : "business";
     await delay(500);
-    const pending = mockInvites.find((i) => i.email === email && i.status === "pending");
-    if (pending) {
-      throw new ApiError("This email already exists in pending invites", "CONFLICT", { matches: [{ kind: "invite", id: pending.id, name: pending.org_name }] });
+    // Expired rows are still status='pending' in the database, so they block a second send too.
+    if (mockInvites.some((i) => i.email === email && (i.status === "pending" || i.status === "expired"))) {
+      throw new ApiError("Already invited", "CONFLICT");
     }
     mockInvites = [
       { id: String(Date.now()) + email, email, org_name: name, type, status: "pending", expires_at: at(3 * DAY), business_category_id, business_category_name: null, invited_by_name: "Aarav Sharma", accepted_institution_id: null, accepted_business_id: null, accepted_at: null, email_status: "sent", email_sent_at: at(0), email_error: null, link_requested_at: null, created_at: at(0) },

@@ -23,7 +23,7 @@ export function FooterCta() {
             Ready to expand your global reach?
           </h2>
           <p className="text-white/70 text-lg mb-10 max-w-2xl mx-auto">
-            Join Globalyapp today and take full control of your recruitment data and education counselor
+            Join GlobalyAI today and take full control of your recruitment data and education counselor
             network.
           </p>
           <div className="flex flex-col sm:flex-row gap-4 justify-center">

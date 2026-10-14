@@ -2,32 +2,25 @@
 
 import { useCallback, useEffect, useRef, useState, type FormEvent } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import Image from "next/image";
-import Link from "next/link";
 import { toast } from "sonner";
-import { Check, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
-import { cn, splitPhone } from "@/lib/utils";
+import { Loader2 } from "lucide-react";
+import { splitPhone } from "@/lib/utils";
 import { saveAccessToken, saveSelectedOrgId } from "@/lib/session";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { fetchMe, useAuthState } from "@/app/auth/store/auth-slice";
-import { DynamicIcon } from "@/components/dynamic-icon";
 import { geoApi, type Country } from "../geo/apis";
 import { businessApi } from "./apis";
 import { registerBusiness, registerInstitution, updateMyProfile } from "./store/business-onboarding-slice";
 import { validateBusinessDetails, validateBusinessField } from "./validation";
 import { clearFieldErrorIfNowValid } from "./utils";
 import { BusinessDetailsStep } from "./components/business-details-step";
+import { BusinessTypeStep } from "./components/business-type-step";
+import { OnboardingHeader } from "./components/onboarding-header";
 import type { BusinessCategoryOption, BusinessProfile } from "./apis/types";
 import { flagFromIso2 } from "@/app/admin/platform/categories/utils";
 import type { PlaceDetails } from "@/lib/api/places";
-import { LOGO } from "@/lib/public-assets";
 // The one category whose flow differs (name field instead of subdomain) — keyed on the
 // seeded slug, see backend/database/seeders/globalyapp/business_categories_seeder.ts.
 const INSTITUTION_SLUG = "institutions";
-
-const TOTAL_STEPS = 2;
 
 export function OnboardingView() {
   const router = useRouter();
@@ -64,10 +57,6 @@ function OnboardingForm({
   const dispatch = useAppDispatch();
   const { status } = useAppSelector((state) => state.businessOnboarding);
   const saving = status === "saving";
-  const { user: authUser } = useAuthState();
-  const ownsOrg = (u: typeof authUser) => (u?.businesses.length ?? 0) + (u?.institutions.length ?? 0) > 0;
-  const [serverRequiresEmail, setServerRequiresEmail] = useState(false);
-  const requireEmail = isNew && (ownsOrg(authUser) || serverRequiresEmail);
   const submittingRef = useRef(false);
 
   const [countries, setCountries] = useState<Country[]>([]);
@@ -77,7 +66,6 @@ function OnboardingForm({
     initialProfile?.business_category_id ? String(initialProfile.business_category_id) : "",
   );
   const [businessName, setBusinessName] = useState(initialProfile?.business_name ?? "");
-  const [email, setEmail] = useState("");
   const [phoneCountryId, setPhoneCountryId] = useState("");
   const [phoneNumber, setPhoneNumber] = useState(initialProfile?.phone ?? "");
   const [countryId, setCountryId] = useState(initialProfile?.country_id ? String(initialProfile.country_id) : "");
@@ -131,10 +119,6 @@ function OnboardingForm({
     setBusinessName(value);
     clearFieldErrorIfNowValid(setFieldErrors, "businessName", validateBusinessField("businessName", value) === null);
   };
-  const handleEmailChange = (value: string) => {
-    setEmail(value);
-    clearFieldErrorIfNowValid(setFieldErrors, "email", validateBusinessField("email", value) === null);
-  };
   const handlePhoneCountryChange = (value: string) => {
     setPhoneCountryId(value);
     clearFieldErrorIfNowValid(setFieldErrors, "phoneCountryId", validateBusinessField("phoneCountryId", value) === null);
@@ -172,30 +156,13 @@ function OnboardingForm({
     if (submittingRef.current) return;
     submittingRef.current = true;
     try {
-      await submit();
+      await submitOnboarding();
     } finally {
       submittingRef.current = false;
     }
   };
 
-  // Server checks live memberships; if it still demands an email, reveal the field.
-  const failRegister = (title: string, message?: string) => {
-    if (message && /email is required/i.test(message)) {
-      setServerRequiresEmail(true);
-      setFieldErrors({ email: "Enter a contact email for this organisation" });
-    }
-    toast.error(title, { description: message ?? "Please try again." });
-  };
-
-  const submit = async () => {
-    const trimmedEmail = email.trim();
-    // Another tab may have added an org since this one loaded; the server checks live
-    // memberships, so refresh before deciding whether an email is required.
-    let mustHaveEmail = requireEmail;
-    if (isNew && !requireEmail) {
-      const me = await dispatch(fetchMe());
-      if (fetchMe.fulfilled.match(me)) mustHaveEmail = ownsOrg(me.payload);
-    }
+  const submitOnboarding = async () => {
     const errors = validateBusinessDetails({
       isInstitution,
       phoneCountryId,
@@ -204,8 +171,6 @@ function OnboardingForm({
       countryId,
       address,
       businessName,
-      email: trimmedEmail,
-      requireEmail: mustHaveEmail,
     });
     if (errors) {
       setFieldErrors(errors);
@@ -220,7 +185,6 @@ function OnboardingForm({
         const outcome = await dispatch(
           registerInstitution({
             institution_name: businessName,
-            email: trimmedEmail || undefined,
             phone,
             country_id: Number(countryId),
             address,
@@ -230,7 +194,7 @@ function OnboardingForm({
           }),
         );
         if (registerInstitution.rejected.match(outcome)) {
-          failRegister("Couldn't create institution", outcome.error.message);
+          toast.error("Couldn't create institution", { description: outcome.error.message ?? "Please try again." });
           return;
         }
         saveAccessToken(outcome.payload.access_token);
@@ -244,7 +208,6 @@ function OnboardingForm({
         registerBusiness({
           business_name: businessName,
           business_category_id: Number(categoryId),
-          email: trimmedEmail || undefined,
           phone,
           country_id: Number(countryId),
           address,
@@ -254,7 +217,7 @@ function OnboardingForm({
         }),
       );
       if (registerBusiness.rejected.match(outcome)) {
-        failRegister("Couldn't create business", outcome.error.message);
+        toast.error("Couldn't create business", { description: outcome.error.message ?? "Please try again." });
         return;
       }
       // Full reload, matching the switcher's own re-fetch rationale — every slice
@@ -285,47 +248,7 @@ function OnboardingForm({
   let content: React.ReactNode;
   if (step === 1) {
     content = (
-      <div className="space-y-6">
-        <div className="text-center">
-          <h1 className="text-2xl font-bold">What type of business are you?</h1>
-          <p className="text-muted-foreground mt-1">Choose the option that best describes your organisation.</p>
-        </div>
-        {categories.length === 0 ? (
-          <div className="flex justify-center py-8">
-            <Loader2 className="h-6 w-6 animate-spin text-primary" />
-          </div>
-        ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {categories.map((cat) => (
-              <Card
-                key={cat.value}
-                onClick={() => setCategoryId(cat.value)}
-                className={cn(
-                  "cursor-pointer transition-all hover:shadow-md border-2",
-                  categoryId === cat.value ? "border-primary bg-primary/5" : "border-border",
-                )}
-              >
-                <CardContent className="p-5">
-                  <div
-                    className={cn(
-                      "w-10 h-10 rounded-xl flex items-center justify-center mb-3",
-                      categoryId === cat.value ? "bg-primary text-primary-foreground" : "bg-muted",
-                    )}
-                  >
-                    <DynamicIcon name={cat.icon} fallback="Building2" className="h-5 w-5" />
-                  </div>
-                  <p className="font-semibold">{cat.label}</p>
-                  {cat.description && <p className="text-sm text-muted-foreground mt-1">{cat.description}</p>}
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        )}
-        <Button onClick={handleContinueFromType} disabled={!categoryId || saving} className="h-10 w-full cursor-pointer">
-          {saving && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-          Continue
-        </Button>
-      </div>
+      <BusinessTypeStep categories={categories} categoryId={categoryId} setCategoryId={setCategoryId} saving={saving} handleContinueFromType={handleContinueFromType} />
     );
   } else {
     content = (
@@ -333,9 +256,6 @@ function OnboardingForm({
         isInstitution={isInstitution}
         businessName={businessName}
         onBusinessNameChange={handleBusinessNameChange}
-        requireEmail={requireEmail}
-        email={email}
-        onEmailChange={handleEmailChange}
         phoneCountryId={phoneCountryId}
         onPhoneCountryChange={handlePhoneCountryChange}
         phoneNumber={phoneNumber}
@@ -366,26 +286,7 @@ function OnboardingForm({
 
   return (
     <div className="min-h-screen flex flex-col bg-muted/30">
-      <header className="h-16 border-b border-border bg-background flex items-center justify-between px-6">
-        <Link href="/" className="flex items-center">
-          <Image src={LOGO.src} alt="Globalyapp" width={LOGO.width} height={LOGO.height} className="h-7 w-auto" />
-        </Link>
-        <div className="flex items-center gap-1.5">
-          {Array.from({ length: TOTAL_STEPS }, (_, i) => i + 1).map((s, i, arr) => (
-            <div key={s} className="flex items-center gap-1.5">
-              <div
-                className={cn(
-                  "w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold transition-colors",
-                  step >= s ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
-                )}
-              >
-                {step > s ? <Check className="h-3.5 w-3.5" /> : s}
-              </div>
-              {i < arr.length - 1 && <div className={cn("w-8 h-0.5 transition-colors", step > s ? "bg-primary" : "bg-muted")} />}
-            </div>
-          ))}
-        </div>
-      </header>
+      <OnboardingHeader step={step} />
 
       <div className="flex-1 flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-2xl">{content}</div>

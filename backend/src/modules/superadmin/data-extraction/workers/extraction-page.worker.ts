@@ -36,6 +36,7 @@ import { loadLookupLists, resolveCountryCode } from "../lib/lookup-catalog.js";
 import { checkAllPagesDone } from "../lib/queue-completion.js";
 import { recallMemory, rememberMemory, buildSystemAddendum } from "../lib/memory-client.js";
 import { classifyFailure, isScraperInfraFailure, type FailureClass } from "../lib/classify-failure.js";
+import { preliminaryCourseCount } from "../lib/entity-classifier.js";
 
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
@@ -215,6 +216,7 @@ async function extractSecondaryPageInner(opts: {
   }
 }
 
+const PAGES_PREFETCH = 1;
 await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
   let jobId: string, queueItemId: string, url: string, forceFirecrawl: boolean | undefined, mobile: boolean | undefined,
     proxy: "stealth" | "auto" | undefined, expandCollapsed: boolean | undefined, adminRetry: boolean | undefined;
@@ -319,6 +321,9 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       .update(update);
     return n > 0;
   }
+
+  const countScraped = () =>
+    masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).increment("pages_scraped", 1);
 
   // Re-checked right after the AI call, before writing any course/campus/intake/visa-service data
   // below — a reclaim can land at any point (it isn't a lock), and this is the cheapest place to
@@ -533,6 +538,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
         logger.info("Fenced out — a newer attempt owns this item, dropping stale thin-page skip", { jobId, queueItemId, url });
         return;
       }
+      await countScraped();
       await writeJobEvent(jobId, "page_skipped_thin", {
         phase: "data_extraction",
         message: `Skipped model call: ${url} has ${page.markdown.length} chars (under ${MIN_EXTRACTABLE_CHARS})`,
@@ -556,6 +562,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
           logger.info("Fenced out — a newer attempt owns this item, dropping stale Jev skip", { jobId, queueItemId, url });
           return;
         }
+        await countScraped();
         await writeJobEvent(jobId, "page_skipped_jev", {
           phase: "data_extraction",
           message: `Skipped model call: ${url} is not a programme page (Jev p=${gate.p?.toFixed(2)} < ${gate.threshold})`,
@@ -632,6 +639,23 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
       });
       extractedForMemory = extracted;
       if (!(await stillOwned())) { logger.info("Fenced out — a newer attempt owns this item, dropping AI result", { jobId, queueItemId, url }); return; }
+
+      // The listing fact goes on the queue row BEFORE any of this page's course rows exist: a
+      // detail page merged concurrently decides its source_url upgrade by reading THIS row's
+      // courses_found (staging-writer.pageWasAListing), and writing it only at completion left the
+      // whole write-loop window blind — the merged course kept the listing link with nothing to
+      // revisit it. The count is DECISION-GRADE (preliminaryCourseCount), never the raw model
+      // output: raw, a detail page returning one course plus a dropped mention read as a listing
+      // for its whole window, and a concurrent merge traded the detail link away — with the final
+      // count never restoring it. The completion write below still records the written count.
+      if (!(await writeIfOwned({
+        extracted_data: masterKnex.raw("coalesce(extracted_data, '{}'::jsonb) || ?::jsonb",
+          [JSON.stringify({ courses_found: preliminaryCourseCount(extracted.courses ?? [], url) })]),
+        updated_at: masterKnex.fn.now(),
+      }))) {
+        logger.info("Fenced out — a newer attempt owns this item, dropping AI result", { jobId, queueItemId, url });
+        return;
+      }
 
       // ── Write campuses first (courses reference them) ──
       const campusIdMap = new Map<string, string>();
@@ -917,7 +941,7 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
     if (entitiesWritten > 0) {
       await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).increment("courses_extracted", entitiesWritten);
     }
-    await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).increment("pages_scraped", 1);
+    await countScraped();
 
     if (overflowQueued > 0) {
       await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({
@@ -1055,10 +1079,10 @@ await queueService.consume(EXTRACTION_QUEUES.PAGES, async (msg) => {
 
     await checkAllPagesDone(jobId);
   }
-});
+}, { noAck: false }, PAGES_PREFETCH);
 
 await queueService.startScaling(EXTRACTION_QUEUES.PAGES, {
-  prefetch: 1,
+  prefetch: PAGES_PREFETCH,
   queueSize: { scaleUpThreshold: 10, scaleDownThreshold: 2, maxWorkers: 10 },
   processingTime: { threshold: 30_000, windowSize: 10 },
   errorRate: { threshold: 0.2, windowSize: 20 },

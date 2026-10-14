@@ -284,7 +284,7 @@ export function ServiceDetailView({ serviceId }: Readonly<{ serviceId: number }>
                   <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-primary" />
                   <span>
                     The provider confirms your request before you pay anything. Once paid, the money is held by
-                    Globaly rather than passed straight on, and you can report a problem from the order.
+                    GlobalyAI rather than passed straight on, and you can report a problem from the order.
                   </span>
                 </div>
               </CardContent>

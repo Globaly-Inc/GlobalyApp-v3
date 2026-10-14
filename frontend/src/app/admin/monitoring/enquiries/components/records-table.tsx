@@ -1,12 +1,20 @@
 "use client";
 
-import { Loader2 } from "lucide-react";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ListSkeleton } from "@/components/ui/list-skeleton";
+import { Table, TableBody, TableCard, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
+
+/** A column header; `className` is applied to the header and every cell in that column (e.g. responsive hiding). */
+export type RecordsColumn = string | { label: string; className?: string };
+
+const labelOf = (col: RecordsColumn) => (typeof col === "string" ? col : col.label);
+const classOf = (col: RecordsColumn | undefined) => (typeof col === "object" ? col.className : undefined);
 
 /**
  * The feature's one table shell — used for the enquiry list and, inside the detail dialog,
- * for that enquiry's recipients. Same markup and palette as the Other Services screen's
- * table, so the two monitoring pages read as one system.
+ * for that enquiry's recipients. Built on the shared data-list table so the monitoring pages
+ * read as one system.
  */
 export function RecordsTable({
   status,
@@ -17,68 +25,63 @@ export function RecordsTable({
   minWidth = "min-w-[720px]",
 }: Readonly<{
   status?: "idle" | "loading" | "failed";
-  head: readonly string[];
+  head: readonly RecordsColumn[];
   rows: React.ReactNode[][];
   emptyText?: string;
   onRowClick?: (index: number) => void;
   minWidth?: string;
 }>) {
-  if (status === "loading") {
-    return (
-      <div className="flex justify-center rounded-lg border border-border bg-card py-16">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
-      </div>
-    );
-  }
+  if (status === "loading") return <ListSkeleton count={6} itemClassName="h-12" />;
   if (status === "failed") {
     return (
-      <div className="rounded-lg border border-border bg-card py-12 text-center text-sm text-muted-foreground">
-        Couldn&apos;t load this list.
-      </div>
+      <TableCard>
+        <EmptyState compact title="Couldn't load this list." />
+      </TableCard>
     );
   }
   if (rows.length === 0) {
     return (
-      <div className="rounded-lg border border-dashed border-border bg-card py-12 text-center text-sm text-muted-foreground">
-        {emptyText}
-      </div>
+      <TableCard className="border-dashed">
+        <EmptyState compact title={emptyText} />
+      </TableCard>
     );
   }
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-border bg-card">
-      <table className={cn("w-full text-sm", minWidth)}>
-        <thead className="border-b border-border bg-muted/40">
-          <tr>
-            {head.map((h) => (
-              <th
-                key={h}
-                className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground"
-              >
-                {h}
-              </th>
+    <TableCard>
+      <Table className={minWidth}>
+        <TableHeader>
+          <TableRow>
+            {head.map((col) => (
+              <TableHead key={labelOf(col)} className={classOf(col)}>
+                {labelOf(col)}
+              </TableHead>
             ))}
-          </tr>
-        </thead>
-        <tbody>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
           {rows.map((row, i) => (
-            <tr
+            <TableRow
               key={i}
               onClick={onRowClick ? () => onRowClick(i) : undefined}
-              className={cn(
-                "border-b border-border last:border-0",
-                onRowClick && "cursor-pointer transition-colors hover:bg-muted/40",
-              )}
+              onKeyDown={onRowClick ? (e) => e.key === "Enter" && onRowClick(i) : undefined}
+              tabIndex={onRowClick ? 0 : undefined}
+              role={onRowClick ? "button" : undefined}
+              className={cn(onRowClick && "cursor-pointer focus-visible:bg-muted/50 focus-visible:outline-none")}
             >
               {row.map((cell, j) => (
-                <td key={j} className="max-w-[260px] truncate px-4 py-2.5 text-foreground">
+                <TableCell
+                  key={j}
+                  primary={j === 0}
+                  className={cn("truncate text-foreground", j !== 0 && "max-w-[260px]", classOf(head[j]))}
+                >
                   {cell}
-                </td>
+                </TableCell>
               ))}
-            </tr>
+            </TableRow>
           ))}
-        </tbody>
-      </table>
-    </div>
+        </TableBody>
+      </Table>
+    </TableCard>
   );
 }

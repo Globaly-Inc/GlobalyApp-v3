@@ -1,6 +1,6 @@
 "use client";
 
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { FormSection } from "@/components/ui/form-section";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { IconPicker } from "@/components/icon-picker";
@@ -24,11 +24,7 @@ function SeasonForm({
   const update = (updates: Partial<NonNullable<Weather>>) => onChange({ ...(value ?? { label: null, icon: null, description: null, temp_range: null }), ...updates });
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="text-base">{label}</CardTitle>
-      </CardHeader>
-      <CardContent className="grid gap-3 sm:grid-cols-2">
+    <FormSection title={label} contentClassName="gap-3">
         <div className="flex flex-col gap-2">
           <Label>Icon</Label>
           <IconPicker value={value?.icon ?? ""} onChange={(name) => update({ icon: name || null })} />
@@ -41,8 +37,7 @@ function SeasonForm({
           <Label>Description</Label>
           <Input className="h-10" value={value?.description ?? ""} onChange={(e) => update({ description: e.target.value || null })} />
         </div>
-      </CardContent>
-    </Card>
+    </FormSection>
   );
 }
 

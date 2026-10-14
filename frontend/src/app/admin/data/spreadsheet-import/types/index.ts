@@ -4,8 +4,9 @@ import type { TemplateTabKey } from "../const";
 
 /** `section`: set once a tab-per-section tab has been mapped — its rows are then keyed by field. */
 export type Sheet = { name: string; headers: string[]; rows: Record<string, string>[]; section?: TemplateTabKey };
-/** A tab-per-section tab's mapping: which section it is ("" = not imported) and column → field. */
-export type TabMapping = { section: TemplateTabKey | ""; columns: Record<string, string> };
+/** A tab-per-section tab's mapping: which section it is ("" = not imported), column → field, and
+ * field → value applied to every row that has none (a field set here can't also be mapped). */
+export type TabMapping = { section: TemplateTabKey | ""; columns: Record<string, string>; defaults?: Record<string, string> };
 /** header → system field key ("" = do not map). */
 export type Mapping = Record<string, string>;
 /** system field key → value applied to every row that has none. */
@@ -21,6 +22,11 @@ export type InstitutionGroup = {
   include: boolean;
   /** Rows identical in every mapped field to an earlier row of this institution — dropped. */
   skippedDuplicates: number;
+  /** Workbook line of each entry in `rows` (same order — rows are edited in place, never removed). */
+  rowLines?: number[];
+  /** Template workbooks only: Courses-tab rows left out while reading (duplicates, missing name) —
+   * sent with the import so its history can list them. `row` is the sheet line. */
+  droppedCourses?: { row: number; course: string | null; error: string; kind?: "duplicate" }[];
   /** Template workbooks only: the other tabs' rows, sent as-is (backend SpreadsheetExtrasSchema). */
   extras?: Record<string, Record<string, string | null>[]>;
   /** Template workbooks only: warnings found while reading the other tabs (rows skipped, unknown courses). */

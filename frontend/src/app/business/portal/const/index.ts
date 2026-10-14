@@ -1,10 +1,11 @@
-import { Bot, Inbox, Package, Sparkles, UserSearch, Wand2, type LucideIcon } from "lucide-react";
+import { Bot, UserSearch, Wand2, type LucideIcon } from "lucide-react";
 
-export const QUICK_ACTIONS: { label: string; href: string; icon: LucideIcon; tint: string }[] = [
+/** `object` is a 3D icon in `public/objects/`. */
+export const QUICK_ACTIONS: { label: string; href: string; object: string }[] = [
   // Hidden for the short release (Enquiries is off the sidebar too):
-  // { label: "Enquiry inbox", href: "/business/enquiries", icon: Inbox, tint: "bg-primary/10 text-primary ring-primary/15" },
-  { label: "Manage profile & services", href: "/business/profile", icon: Package, tint: "bg-emerald-500/10 text-emerald-600 ring-emerald-500/15 dark:text-emerald-400" },
-  { label: "AI assistant", href: "/business/messages/widget", icon: Sparkles, tint: "bg-violet-500/10 text-violet-600 ring-violet-500/15 dark:text-violet-400" },
+  // { label: "Enquiry inbox", href: "/business/enquiries", object: "inbox" },
+  { label: "Manage profile & services", href: "/business/profile", object: "campus" },
+  { label: "AI assistant", href: "/business/messages/widget", object: "sparkle" },
 ];
 
 /**
@@ -36,11 +37,14 @@ export const WELCOME_FEATURES: { id: "autofill" | "counsellor" | "leads"; icon: 
   },
 ];
 
-export const HERO_WIDGET_KEY = "business-home-widget";
-export const TIMEZONE_KEY = "business-timezone";
-export const WORLD_CLOCKS_KEY = "business-world-clocks";
+/** What a crawl collects. Named in the same order wherever it is listed, so the promise made before
+ *  it runs and the counts reported while it runs read as one list. */
+export const EXTRACTION_CATEGORIES = [
+  "Courses", "Branches", "Fees", "Intakes", "Eligibility",
+  "Scholarships", "Study units", "Study options", "Accreditations", "Agents",
+] as const;
 
 export const EXTRACTION_POLL_INTERVAL_MS = 4000;
 export const EXTRACTION_MAX_POLLS = 150;
-/** Including the business's own zone, which always leads the row. Keeps the hero one line on a laptop. */
-export const MAX_WORLD_CLOCKS = 5;
+/** Job statuses after which the crawl is over — the portal unlocks on any of them. */
+export const EXTRACTION_TERMINAL_STATUSES = new Set(["done", "exported", "approved", "verified", "review", "failed", "declined"]);

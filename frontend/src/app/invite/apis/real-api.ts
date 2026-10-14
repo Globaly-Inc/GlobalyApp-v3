@@ -8,6 +8,8 @@ import type {
   AcceptInstitutionMemberInviteResult,
   AcceptOnboardingInviteParams,
   AcceptOnboardingInviteResult,
+  OnboardingInviteLookup,
+  OnboardingInviteParams,
 } from "./types";
 
 export const inviteRealApi = {
@@ -20,8 +22,13 @@ export const inviteRealApi = {
     httpPost("/institutions/claim/accept", params),
   acceptInstitutionMemberInvite: ({ token, org_id }: AcceptAgentInviteParams): Promise<AcceptInstitutionMemberInviteResult> =>
     httpPost("/institutions/members/invite/accept", { token, org_id }),
+  /** POST, not GET: a link scanner must not be able to read an invite by following a URL. */
+  lookupOnboardingInvite: (params: OnboardingInviteParams): Promise<OnboardingInviteLookup> =>
+    httpPost("/onboarding-invitations/lookup", params),
+  sendOnboardingCode: (params: OnboardingInviteParams): Promise<{ email: string }> =>
+    httpPost("/onboarding-invitations/send-code", params),
   acceptOnboardingInvite: (params: AcceptOnboardingInviteParams): Promise<AcceptOnboardingInviteResult> =>
     httpPost("/onboarding-invitations/accept", params),
-  requestOnboardingLink: (params: AcceptOnboardingInviteParams): Promise<{ requested: true }> =>
+  requestOnboardingLink: (params: OnboardingInviteParams): Promise<{ requested: true }> =>
     httpPost("/onboarding-invitations/request-link", params),
 };

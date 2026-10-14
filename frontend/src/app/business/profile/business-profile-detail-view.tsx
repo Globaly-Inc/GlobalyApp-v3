@@ -3,16 +3,16 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { toast } from "sonner";
-import { Eye, Loader2 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { Loader2 } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
-import { Switch } from "@/components/ui/switch";
+import { PageBody } from "@/components/ui/page-body";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { geoApi, type Country } from "@/app/geo/apis";
 import { fetchMe, useAuthState, switchAccount } from "@/app/auth/store/auth-slice";
+import { saveSelectedOrgId } from "@/lib/session";
 import { fetchMyProfile, updateMyProfile } from "@/app/business/store/business-onboarding-slice";
 import { businessApi } from "@/app/business/apis";
-import type { SocialLinks } from "@/app/business/apis/types";
+import type { SocialLinksPatch } from "@/app/business/apis/types";
 import { authApi } from "@/app/auth/apis";
 import { SocialLinksDialog } from "./components/social-links-dialog";
 import { BranchesTab } from "./components/tabs/branches-tab";
@@ -24,6 +24,7 @@ import { InstitutionScholarshipsTab } from "./components/scholarships/institutio
 import { ActivityTab } from "./components/tabs/activity-tab";
 import { ProfileTab } from "./components/tabs/profile-tab";
 import { ProfileHeaderCard } from "./components/profile-header-card";
+import { ProfilePublishBar } from "./components/profile-publish-bar";
 import { SiteUrlsCard } from "../portal/components/site-urls-card";
 import { isInstitutionOrg } from "./utils";
 // Lives in the ai-widget feature because that is whose data it is — the same reason
@@ -118,6 +119,8 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
     dispatch(switchAccount(target.org_id))
       .unwrap()
       .then(() => {
+        // This org is now the active one — remember it, or the next page goes back to the old pick.
+        saveSelectedOrgId(target.org_id);
         setContextReady(true);
         dispatch(fetchMyProfile());
       })
@@ -159,7 +162,7 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
     toast.success(is_published ? "Profile published" : "Profile unpublished");
   };
 
-  const handleSaveSocials = async (patch: Partial<SocialLinks>) => {
+  const handleSaveSocials = async (patch: SocialLinksPatch) => {
     setSavingSocials(true);
     try {
       await dispatch(updateMyProfile(patch)).unwrap();
@@ -174,42 +177,35 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
   };
 
   return (
-    <div className="space-y-4 md:space-y-6">
+    // Keyed on the tab so each switch replays the entrance stagger.
+    <PageBody key={tab} className="stagger-in">
       {/* V1's profile body is a column of bordered cards, not one card wrapping everything — so
           only the other tabs, which are tables and lists, keep the outer <Card>. */}
       {tab === "profile" ? (
         <>
-          <div className="flex flex-wrap items-center justify-end gap-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => {
-                if (!isViewingInstitution) {
-                  window.open(`/business/${profile.subdomain}`, "_blank");
-                  return;
-                }
-                // Mints a short-lived, single-purpose preview token (never the caller's own
-                // session access token) so an unpublished institution's owner can still preview
-                // it — see issuePreviewToken (backend) and the matching bypass in
-                // findPublicInstitutionBySlug. Opens the tab synchronously (inside the click
-                // gesture) so popup blockers don't catch it, then redirects once the token
-                // comes back.
-                const path = `/institution/${institutionPublicSlug(profile.business_name, profile.id)}`;
-                const tab = window.open("", "_blank");
-                authApi.mintPreviewToken()
-                  .then(({ preview_token }) => {
-                    if (tab) tab.location.href = `${path}?preview_token=${encodeURIComponent(preview_token)}`;
-                  })
-                  .catch(() => { if (tab) tab.location.href = path; });
-              }}
-            >
-              <Eye className="mr-1.5 h-3.5 w-3.5" /> Preview
-            </Button>
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-muted-foreground">{profile.is_published ? "Published" : "Unpublished"}</span>
-              <Switch checked={profile.is_published} onCheckedChange={handleTogglePublished} />
-            </div>
-          </div>
+          <ProfilePublishBar
+            profile={profile}
+            onTogglePublished={handleTogglePublished}
+            onPreview={() => {
+              if (!isViewingInstitution) {
+                window.open(`/business/${profile.subdomain}`, "_blank");
+                return;
+              }
+              // Mints a short-lived, single-purpose preview token (never the caller's own
+              // session access token) so an unpublished institution's owner can still preview
+              // it — see issuePreviewToken (backend) and the matching bypass in
+              // findPublicInstitutionBySlug. Opens the tab synchronously (inside the click
+              // gesture) so popup blockers don't catch it, then redirects once the token
+              // comes back.
+              const path = `/institution/${institutionPublicSlug(profile.business_name, profile.id)}`;
+              const tab = window.open("", "_blank");
+              authApi.mintPreviewToken()
+                .then(({ preview_token }) => {
+                  if (tab) tab.location.href = `${path}?preview_token=${encodeURIComponent(preview_token)}`;
+                })
+                .catch(() => { if (tab) tab.location.href = path; });
+            }}
+          />
 
           <ProfileHeaderCard
             profile={profile}
@@ -228,7 +224,7 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
         <SiteUrlsCard sharedFrom={profile?.extraction_parent_name ?? null} />
       ) : (
         <Card>
-          <CardContent>
+          <CardContent className="stagger-in-deep">
             {tab === "branches" && <BranchesTab businessId={businessId} isInstitution={isViewingInstitution} countries={countries} />}
             {tab === "partners" && (
               <PartnersTab businessId={businessId} businessName={profile.business_name} isInstitution={isViewingInstitution} />
@@ -253,6 +249,6 @@ export function BusinessProfileDetailView({ businessId }: Readonly<{ businessId:
         saving={savingSocials}
         isInstitution={isViewingInstitution}
       />
-    </div>
+    </PageBody>
   );
 }

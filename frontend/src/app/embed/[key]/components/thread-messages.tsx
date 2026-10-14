@@ -8,7 +8,7 @@ import { AgentMessage } from "./agent-message";
 /** A centred system line between turns. */
 function Divider({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <p className="flex items-center gap-3 text-[11px] text-muted-foreground before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">
+    <p className="flex items-center gap-3 text-xs text-muted-foreground before:h-px before:flex-1 before:bg-border after:h-px after:flex-1 after:bg-border">
       {children}
     </p>
   );
@@ -26,8 +26,18 @@ function Divider({ children }: Readonly<{ children: React.ReactNode }>) {
 export function ThreadMessages({
   messages,
   onChipClick,
+  onSend,
   joinedAgent,
-}: Readonly<{ messages: WidgetMessage[]; onChipClick: (chip: string) => void; joinedAgent?: string | null }>) {
+  busy,
+}: Readonly<{
+  messages: WidgetMessage[];
+  onChipClick: (chip: string) => boolean | void;
+  /** Sends the text composed inside a quick_replies block. */
+  onSend?: (value: string) => boolean | void;
+  joinedAgent?: string | null;
+  /** A reply is streaming: every chip and option in the thread would refuse, so they grey out. */
+  busy?: boolean;
+}>) {
   // The visitor's own turns don't change who is answering, so look back past them.
   // A plain loop, not .map: the React compiler rejects a variable mutated inside a callback.
   let lastAnswerer: string | null = null;
@@ -45,7 +55,7 @@ export function ThreadMessages({
     rows.push(
       <Fragment key={m.id}>
         {line && <Divider>{line}</Divider>}
-        {m.role === "agent" ? <AgentMessage message={m} /> : <ChatMessage message={m} onChipClick={onChipClick} />}
+        {m.role === "agent" ? <AgentMessage message={m} /> : <ChatMessage message={m} onChipClick={onChipClick} onSend={onSend} busy={busy} />}
       </Fragment>,
     );
   }

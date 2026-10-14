@@ -5,27 +5,20 @@ import { useRouter } from "next/navigation";
 import Image from "next/image";
 import Link from "next/link";
 import { toast } from "sonner";
-import { ArrowLeft, ArrowRight, Check, Loader2, Sparkles } from "lucide-react";
+import { ArrowLeft, ArrowRight, Loader2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
-import { Combobox } from "@/components/combobox";
-import { DatePicker } from "@/components/ui/date-picker";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { cn } from "@/lib/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { geoApi, type Country } from "../geo/apis";
 import { updateProfile, updateSubCategory } from "./store/profile-slice";
-import { CATEGORIES, GENDER_OPTIONS, DEGREE_LEVELS, FIELDS_OF_STUDY } from "./static/onboarding-content";
 import { validateStep2, validateStep2Field } from "./validation";
 import { clearFieldErrorIfNowValid } from "./utils";
 import type { StudentProfile, StudentProfilePatch } from "./apis/types";
 import { LOGO } from "@/lib/public-assets";
+import { OnboardingCategoryStep } from "./onboarding-category-step";
+import { OnboardingDetailsStep } from "./onboarding-details-step";
 
 const TOTAL_STEPS = 3;
-const SELECT_TRIGGER_CLASS = "w-full data-[size=default]:h-10";
 
 export function OnboardingView() {
   const router = useRouter();
@@ -192,7 +185,7 @@ function OnboardingForm({ initialProfile }: Readonly<{ initialProfile: StudentPr
     <div className="min-h-screen flex flex-col bg-background">
       <header className="flex items-center justify-between px-6 py-4 border-b border-border">
         <Link href="/">
-          <Image src={LOGO.src} alt="Globalyapp" width={LOGO.width} height={LOGO.height} className="h-8 w-auto" />
+          <Image src={LOGO.src} alt="GlobalyAI" width={LOGO.width} height={LOGO.height} className="h-8 w-auto" />
         </Link>
         <Button variant="ghost" size="sm" onClick={handleSkip} className="text-muted-foreground">
           Skip
@@ -208,181 +201,31 @@ function OnboardingForm({ initialProfile }: Readonly<{ initialProfile: StudentPr
           </p>
 
           {step === 1 && (
-            <div className="space-y-4">
-              <div>
-                <h1 className="text-2xl font-bold text-foreground">What brings you to Globaly?</h1>
-                <p className="text-muted-foreground mt-1">This helps us personalise your experience.</p>
-              </div>
-              <div className="space-y-3">
-                {CATEGORIES.map((opt) => (
-                  <button
-                    key={opt.value}
-                    type="button"
-                    onClick={() => setCategory(opt.value)}
-                    className={cn(
-                      "w-full flex items-center gap-4 p-4 rounded-lg border-2 text-left transition-all cursor-pointer",
-                      category === opt.value ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/30",
-                    )}
-                  >
-                    <div
-                      className={cn(
-                        "h-10 w-10 rounded-lg flex items-center justify-center shrink-0",
-                        category === opt.value ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground",
-                      )}
-                    >
-                      <opt.icon className="h-5 w-5" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-medium text-foreground">{opt.title}</p>
-                      <p className="text-sm text-muted-foreground">{opt.description}</p>
-                    </div>
-                    <div
-                      className={cn(
-                        "h-5 w-5 rounded-full border-2 flex items-center justify-center shrink-0",
-                        category === opt.value ? "border-primary bg-primary" : "border-muted-foreground/40",
-                      )}
-                    >
-                      {category === opt.value && <Check className="h-3 w-3 text-primary-foreground" />}
-                    </div>
-                  </button>
-                ))}
-              </div>
-            </div>
+            <OnboardingCategoryStep category={category} setCategory={setCategory} />
           )}
 
           {step === 2 && (
-            <div className="space-y-4">
-              <div>
-                <h1 className="text-2xl font-bold text-foreground">Tell us about yourself</h1>
-                <p className="text-muted-foreground mt-1">We&apos;ll use this to match you with the right opportunities.</p>
-              </div>
-              <div className="space-y-4">
-                <div className="flex flex-col gap-2">
-                  <Label className="text-sm font-medium">
-                    Country of Nationality <span className="text-destructive">*</span>
-                  </Label>
-                  <Combobox
-                    value={nationalityId}
-                    onChange={handleNationalityChange}
-                    placeholder="Select your nationality"
-                    searchPlaceholder="Search countries..."
-                    options={countryOptions}
-                    aria-invalid={!!fieldErrors.nationalityId}
-                  />
-                  {fieldErrors.nationalityId && <p className="text-sm text-destructive">{fieldErrors.nationalityId}</p>}
-                </div>
-
-
-                <div className="flex flex-col gap-2">
-                  <Label className="text-sm font-medium">
-                    Date of Birth <span className="text-destructive">*</span>
-                  </Label>
-                  <DatePicker
-                    value={dob}
-                    onChange={handleDobChange}
-                    placeholder="Select your date of birth"
-                    toYear={new Date().getFullYear()}
-                    disabled={(date) => date > new Date()}
-                    aria-invalid={!!fieldErrors.dob}
-                  />
-                  {fieldErrors.dob && <p className="text-sm text-destructive">{fieldErrors.dob}</p>}
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <Label className="text-sm font-medium">
-                    Gender <span className="text-destructive">*</span>
-                  </Label>
-                  <Select value={gender} onValueChange={(v) => handleGenderChange(String(v))}>
-                    <SelectTrigger className={SELECT_TRIGGER_CLASS} aria-invalid={!!fieldErrors.gender}>
-                      <SelectValue placeholder="Select gender" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {GENDER_OPTIONS.map((g) => (
-                        <SelectItem key={g.value} value={g.value}>{g.label}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  {fieldErrors.gender && <p className="text-sm text-destructive">{fieldErrors.gender}</p>}
-                </div>
-
-                <div className="flex flex-col gap-2">
-                  <Label className="text-sm font-medium">
-                    Current Address <span className="text-destructive">*</span>
-                  </Label>
-                  <Input
-                    className="h-10"
-                    value={address}
-                    onChange={(e) => handleAddressChange(e.target.value)}
-                    placeholder="Street, city, etc."
-                    aria-invalid={!!fieldErrors.address}
-                  />
-                  {fieldErrors.address && <p className="text-sm text-destructive">{fieldErrors.address}</p>}
-                </div>
-
-                {category !== "education_provider" && (
-                  <>
-                    <div>
-                      <Label className="text-sm font-medium">
-                        Preferred Destinations (max 5) <span className="text-destructive">*</span>
-                      </Label>
-                      <Combobox
-                        value=""
-                        onChange={toggleDestination}
-                        placeholder="Add a destination country"
-                        searchPlaceholder="Search countries..."
-                        options={destinationOptions}
-                        className="mt-1"
-                        aria-invalid={!!fieldErrors.destinations}
-                      />
-                      {destinations.length > 0 && (
-                        <div className="flex flex-wrap gap-2 mt-2">
-                          {destinations.map((d) => (
-                            <Badge
-                              key={d}
-                              variant="secondary"
-                              className="cursor-pointer hover:bg-destructive/10"
-                              onClick={() => toggleDestination(d)}
-                            >
-                              {countryNameById.get(d) ?? d} ×
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                      {fieldErrors.destinations && <p className="text-sm text-destructive mt-2">{fieldErrors.destinations}</p>}
-                    </div>
-                    <div>
-                      <Label className="text-sm font-medium">
-                        Fields of Study <span className="text-destructive">*</span>
-                      </Label>
-                      <div className="flex flex-wrap gap-2 mt-1">
-                        {FIELDS_OF_STUDY.map((f) => (
-                          <Badge key={f} variant={fields.includes(f) ? "default" : "outline"} className="cursor-pointer" onClick={() => toggleField(f)}>
-                            {f}
-                          </Badge>
-                        ))}
-                      </div>
-                      {fieldErrors.fields && <p className="text-sm text-destructive mt-2">{fieldErrors.fields}</p>}
-                    </div>
-                    <div className="flex flex-col gap-2">
-                      <Label className="text-sm font-medium">
-                        Degree Level <span className="text-destructive">*</span>
-                      </Label>
-                      <Select value={degreeLevel} onValueChange={(v) => handleDegreeLevelChange(String(v))}>
-                        <SelectTrigger className={SELECT_TRIGGER_CLASS} aria-invalid={!!fieldErrors.degreeLevel}>
-                          <SelectValue placeholder="Select degree level" />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {DEGREE_LEVELS.map((d) => (
-                            <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                      {fieldErrors.degreeLevel && <p className="text-sm text-destructive">{fieldErrors.degreeLevel}</p>}
-                    </div>
-                  </>
-                )}
-              </div>
-            </div>
+            <OnboardingDetailsStep
+              category={category}
+              countryOptions={countryOptions}
+              nationalityId={nationalityId}
+              handleNationalityChange={handleNationalityChange}
+              dob={dob}
+              handleDobChange={handleDobChange}
+              gender={gender}
+              handleGenderChange={handleGenderChange}
+              address={address}
+              handleAddressChange={handleAddressChange}
+              destinations={destinations}
+              destinationOptions={destinationOptions}
+              countryNameById={countryNameById}
+              toggleDestination={toggleDestination}
+              fields={fields}
+              toggleField={toggleField}
+              degreeLevel={degreeLevel}
+              handleDegreeLevelChange={handleDegreeLevelChange}
+              fieldErrors={fieldErrors}
+            />
           )}
 
           {step === 3 && (

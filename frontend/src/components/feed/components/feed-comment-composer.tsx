@@ -76,7 +76,7 @@ export function FeedCommentComposer({
     <div className="flex items-start gap-2">
       <Avatar className="size-7 shrink-0">
         {authorPhotoUrl && <AvatarImage src={authorPhotoUrl} alt="" />}
-        <AvatarFallback className="text-[10px]">{authorInitials}</AvatarFallback>
+        <AvatarFallback className="text-xs">{authorInitials}</AvatarFallback>
       </Avatar>
       <div className="relative min-w-0 flex-1">
         <div className="flex flex-col gap-1.5 rounded-2xl border border-border bg-muted/30 px-3.5 py-2">

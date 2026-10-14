@@ -2,21 +2,24 @@
 
 import Link from "next/link";
 import { visitorHref } from "@/app/business/ai-widget/const";
-import { MessageSquare, User } from "lucide-react";
+import { User } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { fullStamp } from "@/components/chat/utils";
+import { fullStamp, messageTime, previewText } from "@/components/chat/utils";
 import { cn } from "@/lib/utils";
+import { useAppSelector } from "@/lib/hooks";
 import { CONVERSATION_STATE_LABELS, SUMMARY_STATUS_LABELS, VISITOR_STATUS_BADGE } from "@/app/business/ai-widget/const";
 import { visitorDisplayName, visitorInitials, visitorNationality } from "@/app/business/ai-widget/utils";
 import type { WidgetVisitor } from "@/app/business/ai-widget/apis/types";
-import { embedChatPill, embedChatState } from "../utils";
+import { INBOX_CHANNELS } from "../const";
+import { channelOf, embedChatPill, embedChatState } from "../utils";
+import { ChannelGlyph } from "./channel-glyph";
 import { EmbedChatControls } from "./embed-chat-controls";
 import type { EmbedChatActions } from "./use-embed-chat-actions";
 
 function Section({ title, children }: Readonly<{ title: string; children: React.ReactNode }>) {
   return (
     <section className="flex flex-col gap-2 border-t border-border pt-4">
-      <h3 className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{title}</h3>
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</h3>
       {children}
     </section>
   );
@@ -41,14 +44,26 @@ function Rows({ rows }: Readonly<{ rows: [string, React.ReactNode][] }>) {
 const count = (n: number | undefined, one: string, many: string) => (n ? `${n} ${n === 1 ? one : many}` : null);
 
 /**
- * The visitor beside their conversation: who is answering (with the takeover controls), what they
- * told the assistant, and when things happened. Everything comes from the list row already
- * loaded, so opening a chat costs no extra request; the full, editable record is one link away.
+ * The customer beside their conversation, laid out like the omnichannel mock: who is answering
+ * (with the takeover controls), the channel they wrote on, what they told us, what the AI has
+ * picked up, and the team's notes. Everything comes from data already loaded for the open chat.
+ *
+ * ponytail: one conversation = one visitor row. The mock's cross-channel parts ("one profile across
+ * 3 channels", history across channels) need contact linking (plan phase 6).
  */
 export function EmbedVisitorPanel({ visitor, actions }: Readonly<{ visitor: WidgetVisitor; actions: EmbedChatActions }>) {
+  const notes = useAppSelector((s) => s.embedChats.notes[visitor.id]);
   const badge = VISITOR_STATUS_BADGE[visitor.status];
   const pill = embedChatPill(visitor);
   const state = embedChatState(visitor);
+  const channel = channelOf(visitor);
+  const testCount = (visitor.language_tests?.length ?? 0) + (visitor.academic_tests?.length ?? 0);
+  const known = [
+    visitor.study_preference && `Interested in: ${visitor.study_preference}`,
+    count(visitor.qualifications?.length, "qualification", "qualifications"),
+    count(testCount, "test score", "test scores"),
+    count(visitor.work_experiences?.length, "job", "jobs"),
+  ].filter((k): k is string => !!k);
 
   return (
     <div className="flex h-full flex-col gap-4 overflow-y-auto p-4">
@@ -59,45 +74,68 @@ export function EmbedVisitorPanel({ visitor, actions }: Readonly<{ visitor: Widg
           </AvatarFallback>
         </Avatar>
         <p className={cn("font-semibold text-foreground", !visitor.name && "italic")}>{visitorDisplayName(visitor)}</p>
-        <span className={cn("rounded px-1.5 py-0.5 text-[10px] font-medium", badge.className)}>{badge.label}</span>
-        <span className="flex items-center gap-1 text-xs text-muted-foreground">
-          <MessageSquare className="size-3 text-primary" aria-hidden /> Web widget
-        </span>
+        <span className={cn("rounded px-1.5 py-0.5 text-xs font-medium", badge.className)}>{badge.label}</span>
+        <Link href={visitorHref(visitor.id)} className="text-xs font-medium text-primary hover:underline">
+          Open full visitor record →
+        </Link>
       </div>
 
-      <Section title="Handled by">
+      <Section title="Current conversation">
         <span className={cn("w-fit rounded-full px-2.5 py-0.5 text-xs font-medium", pill.className)}>
           {state === "human" && visitor.handled_by_name && !visitor.handled_by_me ? visitor.handled_by_name : pill.label}
         </span>
         <EmbedChatControls visitor={visitor} actions={actions} stacked />
       </Section>
 
-      <Section title="Contact">
+      <Section title="Channel">
+        <div className="flex items-center gap-2 rounded-md bg-muted/60 px-2 py-1.5 text-xs">
+          <ChannelGlyph channel={channel} size="sm" />
+          <span className="font-medium text-foreground">{INBOX_CHANNELS[channel].label}</span>
+          <span className="ml-auto truncate text-muted-foreground">
+            {channel === "ai_embed" ? "Website visitor" : visitor.channel_handle}
+          </span>
+        </div>
+      </Section>
+
+      <Section title="Customer">
         <Rows
           rows={[
             ["Email", visitor.email && <a href={`mailto:${visitor.email}`} className="hover:underline">{visitor.email}</a>],
+            ["Phone", visitor.phone],
             ["Age", visitor.age],
             ["Gender", visitor.gender && <span className="capitalize">{visitor.gender}</span>],
             ["Nationality", visitorNationality(visitor)],
+            ["Interested in", visitor.study_preference],
           ]}
         />
       </Section>
 
-      <Section title="Study preference">
-        <Rows rows={[["Interested in", visitor.study_preference]]} />
+      <Section title="What AI knows">
+        {known.length === 0 ? (
+          <p className="text-xs text-muted-foreground">Nothing picked up yet.</p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {known.map((k) => (
+              <span key={k} className="inline-flex items-center gap-1 rounded-full border border-border bg-card px-2 py-0.5 text-xs text-foreground">
+                <ChannelGlyph channel={channel} size="xs" />
+                {k}
+              </span>
+            ))}
+          </div>
+        )}
       </Section>
 
-      <Section title="Profile">
-        <Rows
-          rows={[
-            ["Education", count(visitor.qualifications?.length, "qualification", "qualifications")],
-            ["Tests", count((visitor.language_tests?.length ?? 0) + (visitor.academic_tests?.length ?? 0), "test", "tests")],
-            ["Work", count(visitor.work_experiences?.length, "role", "roles")],
-          ]}
-        />
-        <Link href={visitorHref(visitor.id)} className="text-xs font-medium text-primary hover:underline">
-          Open full visitor record →
-        </Link>
+      <Section title="Internal notes">
+        {notes?.length ? (
+          [...notes].reverse().map((n) => (
+            <div key={n.id} className="rounded-lg border border-warning/30 bg-warning/10 px-2.5 py-2 text-xs">
+              <p className="text-foreground">{previewText(n.content) || "Attachment"}</p>
+              <p className="mt-1 text-xs text-warning">{n.author_name} · {messageTime(n.created_at)}</p>
+            </div>
+          ))
+        ) : (
+          <p className="text-xs text-muted-foreground">No notes yet. Add one from the Note tab under the chat.</p>
+        )}
       </Section>
 
       <Section title="Timeline">

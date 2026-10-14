@@ -1,48 +1,21 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono, Inter, JetBrains_Mono, Nunito_Sans, Plus_Jakarta_Sans } from "next/font/google";
+import { Geist, Geist_Mono, Space_Grotesk } from "next/font/google";
 import { SOCIAL_LINKS, siteConfig } from "@/lib/site";
 import { FAQS } from "@/lib/faqs";
 import "./globals.css";
 
-// Nunito Sans throughout, matching the reference design language: rounded and
-// friendly, and readable enough to carry body copy as well as headings.
-const nunitoSans = Nunito_Sans({
-  variable: "--font-nunito-sans",
-  subsets: ["latin"],
-  weight: ["400", "600", "700", "800"],
-  display: "swap",
-});
-
-// Variation 2's face. daily.dev sets its own DD Display with Plus Jakarta
-// Sans as the fallback, and Plus Jakarta is already a Globaly brand font —
-// GlobalyApp-v3 loads it for the home hero.
-const plusJakarta = Plus_Jakarta_Sans({
-  variable: "--font-plus-jakarta",
-  subsets: ["latin"],
-  weight: ["500", "600", "700", "800"],
-  display: "swap",
-});
-
-// Variation 3's pair. The agentic genre runs on a precise grotesque with a
-// mono for anything machine-written — step names, timings, statuses.
-const inter = Inter({
-  variable: "--font-inter",
-  subsets: ["latin"],
-  display: "swap",
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  variable: "--font-jetbrains-mono",
-  subsets: ["latin"],
-  weight: ["400", "500", "700"],
-  display: "swap",
-});
-
-// Variation 5's face. Geist is the neo-grotesque the current generation of
-// agent platforms is set in, which is the genre variation 5 is arguing in.
+// GlobalyOS-V2's type system: Geist for body copy, Space Grotesk for headings
+// (500, the hero h1 at 600), Geist Mono for anything machine-written.
 const geist = Geist({
   variable: "--font-geist",
   subsets: ["latin"],
+  display: "swap",
+});
+
+const spaceGrotesk = Space_Grotesk({
+  variable: "--font-space-grotesk",
+  subsets: ["latin"],
+  weight: ["500", "600"],
   display: "swap",
 });
 
@@ -88,7 +61,10 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#012e8a",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#fcfcfc" },
+    { media: "(prefers-color-scheme: dark)", color: "#101217" },
+  ],
 };
 
 // The eleven answers on the page, offered to Google and to the AI search
@@ -128,7 +104,7 @@ const PRODUCT_JSON_LD = {
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" data-scroll-behavior="smooth" className={`${nunitoSans.variable} ${plusJakarta.variable} ${inter.variable} ${jetbrainsMono.variable} ${geist.variable} ${geistMono.variable}`}>
+    <html lang="en" data-scroll-behavior="smooth" className={`${geist.variable} ${spaceGrotesk.variable} ${geistMono.variable}`}>
       <body>
         <a
           href="#main"

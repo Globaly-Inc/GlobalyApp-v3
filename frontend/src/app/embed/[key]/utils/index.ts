@@ -24,7 +24,7 @@ export function toMessage(row: EmbedStoredMessage, cards: CourseCard[]): WidgetM
     content: row.content,
     cards,
     chips: row.chips ?? [],
-    blocks: [],
+    blocks: row.blocks ?? [],
     feedback: null,
     created_at: row.created_at,
   };

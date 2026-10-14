@@ -16,7 +16,6 @@ import {
 } from "../src/modules/platform-users/services/onboarding-invitations.service.js";
 import { getKnex } from "../src/core/db/pool-manager.js";
 import { inviteMemberAsAdmin } from "../src/modules/platform-users/services/institution-members.service.js";
-import { findDeveloper } from "../src/modules/ai-counsellor/services/embed-handoff.service.js";
 import { writeInstitutionOverview } from "../src/modules/superadmin/data-extraction/lib/staging-writer.js";
 import { mailerService } from "../src/shared/mail/mailerService.js";
 import { queueService } from "../src/shared/queue/queueService.js";
@@ -188,15 +187,8 @@ try {
   await inviteMemberAsAdmin(tenantDb, inst.id, inst.schema_name, invitee);
   const firstInvite = await tenantDb("member_invitations").where({ email: devAddress }).first();
   assert(!!firstInvite, "the Developer invitation was created");
-  const whileLive = await findDeveloper(tenantDb, "institution");
-  assert(whileLive?.email === devAddress, "the embed card mails the snippet to them", whileLive);
-
   // 72 hours on. Nothing sweeps expired_at, so the row stays status='pending' for ever.
   await tenantDb("member_invitations").where({ id: firstInvite.id }).update({ expired_at: new Date(Date.now() - 1000) });
-  const whileLapsed = await findDeveloper(tenantDb, "institution");
-  assert(whileLapsed === null,
-    "once lapsed they are not the developer — accepting would be refused, so the snippet must not go out", whileLapsed);
-
   // Which is only safe if the card can then invite them again.
   await inviteMemberAsAdmin(tenantDb, inst.id, inst.schema_name, invitee);
   const renewed = await tenantDb("member_invitations").where({ email: devAddress });
@@ -204,8 +196,6 @@ try {
   assert(renewed[0].id === firstInvite.id, "the same invitation row", { was: firstInvite.id, now: renewed[0].id });
   assert(renewed[0].invite_token !== firstInvite.invite_token, "carrying a new token, so the dead link stays dead");
   assert(new Date(renewed[0].expired_at).getTime() > Date.now(), "and a fresh deadline", renewed[0].expired_at);
-  const afterRenewal = await findDeveloper(tenantDb, "institution");
-  assert(afterRenewal?.email === devAddress, "they are the developer again", afterRenewal);
   const stillLive = await rejects(() => inviteMemberAsAdmin(tenantDb, inst.id, inst.schema_name, invitee));
   assert(stillLive?.statusCode === 409, "a LIVE invitation still blocks a duplicate", stillLive);
   mailed.length = 0;

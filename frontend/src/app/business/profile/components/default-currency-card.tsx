@@ -3,18 +3,16 @@
 import { useState } from "react";
 import { toast } from "sonner";
 import { DollarSign, Loader2, Pencil, Save } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Combobox } from "@/components/combobox";
+import { DescriptionItem, DescriptionList } from "@/components/ui/description-list";
 import { Label } from "@/components/ui/label";
 import { flagEmoji } from "@/components/ui/phone-input";
-import { ProfileSection } from "@/app/(web)/components/profile/profile-section";
 import { useAppDispatch } from "@/lib/hooks";
 import { updateMyProfile } from "@/app/business/store/business-onboarding-slice";
 import type { BusinessProfile } from "@/app/business/apis/types";
 import type { Country } from "@/app/geo/apis";
-import { HEADER_PENCIL } from "../const";
-
+import { ProfileCard } from "./profile-card";
 
 // Matches only what a Combobox needs — not exhaustive, the API accepts any ISO code. Full names
 // (not the countries table's code + symbol list the fee and scholarship forms use) because this
@@ -35,9 +33,23 @@ const CURRENCY_OPTIONS = [
 ];
 
 /** V1 showed the code and its full name together — "NPR - Nepalese Rupee", not a bare code. */
+function currencyName(code: string): string | undefined {
+  return CURRENCY_OPTIONS.find((o) => o.value === code)?.label.replace(/\s*\([A-Z]{3}\)$/, "");
+}
+
 function currencyLabel(code: string): string {
-  const name = CURRENCY_OPTIONS.find((o) => o.value === code)?.label.replace(/\s*\([A-Z]{3}\)$/, "");
+  const name = currencyName(code);
   return name ? `${code} - ${name}` : code;
+}
+
+/** "NPR" → "Rs", "USD" → "$"; an unknown or invalid code falls back to the code itself. */
+function currencySymbol(code: string): string {
+  try {
+    const parts = new Intl.NumberFormat("en", { style: "currency", currency: code, currencyDisplay: "narrowSymbol" }).formatToParts(0);
+    return parts.find((p) => p.type === "currency")?.value ?? code;
+  } catch {
+    return code;
+  }
 }
 
 export function DefaultCurrencyCard({
@@ -66,7 +78,8 @@ export function DefaultCurrencyCard({
   const country = countries.find((c) => c.id === profile.country_id) ?? null;
 
   return (
-    <ProfileSection
+    <ProfileCard
+      id="profile-currency"
       icon={DollarSign}
       title="Default Currency"
       action={
@@ -74,7 +87,6 @@ export function DefaultCurrencyCard({
           <Button
             size="icon-sm"
             variant="ghost"
-            className={HEADER_PENCIL}
             aria-label="Edit default currency"
             onClick={() => {
               setDraft(profile.currency ?? "");
@@ -86,7 +98,7 @@ export function DefaultCurrencyCard({
         )
       }
     >
-      <div className="space-y-2">
+      <div className="flex flex-col gap-3">
         {editing ? (
           <div className="flex flex-col gap-3">
             <div className="flex flex-col gap-2">
@@ -118,19 +130,29 @@ export function DefaultCurrencyCard({
         ) : (
           <>
             {profile.currency ? (
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="secondary" className="text-sm font-medium">{currencyLabel(profile.currency)}</Badge>
-                {country && (
-                  <span className="text-xs text-muted-foreground">{flagEmoji(country.iso2)} {country.name}</span>
-                )}
-              </div>
+              <DescriptionList columns={1}>
+                <DescriptionItem label="Currency">
+                  <span className="flex items-center gap-3">
+                    <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary font-heading text-lg font-medium text-primary-foreground">
+                      {currencySymbol(profile.currency)}
+                    </span>
+                    <span className="min-w-0">
+                      <span className="block">{currencyName(profile.currency) ?? profile.currency}</span>
+                      <span className="block text-xs font-normal text-muted-foreground">
+                        {profile.currency} · used for fees and prices
+                        {country && <> · {flagEmoji(country.iso2)} {country.name}</>}
+                      </span>
+                    </span>
+                  </span>
+                </DescriptionItem>
+              </DescriptionList>
             ) : (
-              <p className="text-sm italic text-muted-foreground">No default currency set.</p>
+              <p className="text-sm text-muted-foreground">No default currency set.</p>
             )}
             <p className="text-xs text-muted-foreground">Applied to new services and fee structures. Not shown on your public profile.</p>
           </>
         )}
       </div>
-    </ProfileSection>
+    </ProfileCard>
   );
 }

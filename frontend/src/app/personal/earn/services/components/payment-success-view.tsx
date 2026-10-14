@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import { useAppDispatch } from "@/lib/hooks";
 import { verifyPayment } from "../store/my-services-slice";
 
@@ -54,21 +55,25 @@ export function PaymentSuccessView() {
   return (
     <div className="mx-auto flex w-full max-w-md items-center justify-center py-10">
       <Card className="w-full">
-        <CardContent className="flex flex-col items-center gap-3 py-8 text-center">
+        <CardContent className="flex flex-col items-center gap-3 py-6 text-center">
           {state.phase === "verifying" && (
             <>
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              <IconDisc className="bg-primary/10 text-primary">
+                <Loader2 className="animate-spin" />
+              </IconDisc>
               <p className="text-sm text-muted-foreground">Verifying your payment…</p>
             </>
           )}
 
           {state.phase === "success" && (
             <>
-              <CheckCircle2 className="h-10 w-10 text-green-600 dark:text-green-400" />
-              <h2 className="text-xl font-bold text-foreground">Payment Successful!</h2>
+              <IconDisc className="bg-success/15 text-success">
+                <CheckCircle2 />
+              </IconDisc>
+              <h2 className="font-heading text-xl font-medium text-foreground">Payment Successful!</h2>
               {/* States plainly what happens next. It does not claim the provider has been paid. */}
               <p className="text-sm text-muted-foreground">
-                Your payment is held by Globaly rather than passed straight to the provider, who has been
+                Your payment is held by GlobalyAI rather than passed straight to the provider, who has been
                 notified. Open the order to message them and agree the details.
               </p>
               <div className="mt-2 flex w-full flex-col gap-2 sm:flex-row">
@@ -89,8 +94,10 @@ export function PaymentSuccessView() {
 
           {state.phase === "error" && (
             <>
-              <AlertCircle className="h-10 w-10 text-destructive" />
-              <h2 className="text-xl font-bold text-foreground">Payment verification failed</h2>
+              <IconDisc className="bg-destructive/10 text-destructive">
+                <AlertCircle />
+              </IconDisc>
+              <h2 className="font-heading text-xl font-medium text-foreground">Payment verification failed</h2>
               {/* The specific reason, not a generic apology — the server names the mismatch it found. */}
               <p className="text-sm text-muted-foreground">{state.message}</p>
               <p className="text-xs text-muted-foreground">
@@ -99,13 +106,22 @@ export function PaymentSuccessView() {
               </p>
               <Button
                 variant="outline"
-                className="mt-2"
+                className="mt-2 w-full sm:w-auto"
                 render={<Link href="/personal/earn/services">Back to Services</Link>}
               />
             </>
           )}
         </CardContent>
       </Card>
+    </div>
+  );
+}
+
+/** The round tinted badge that heads each state of the confirmation card. */
+function IconDisc({ className, children }: Readonly<{ className: string; children: React.ReactNode }>) {
+  return (
+    <div className={cn("mb-1 flex size-14 items-center justify-center rounded-full [&_svg]:size-7", className)}>
+      {children}
     </div>
   );
 }

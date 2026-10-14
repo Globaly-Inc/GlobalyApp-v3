@@ -1,10 +1,12 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Search } from "lucide-react";
-import { Input } from "@/components/ui/input";
+import { BrainCircuit } from "lucide-react";
+import { FilterBar, SearchInput } from "@/components/ui/filter-bar";
+import { PageBody } from "@/components/ui/page-body";
+import { PageHeader } from "@/components/ui/page-header";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
-import { ScrollRow } from "@/components/scroll-row";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import {
   fetchCategories, fetchCounts, fetchDocuments, fetchFaqs, fetchGuides,
@@ -107,13 +109,13 @@ export function AiKnowledgeView() {
   const showSearch = tab === "visa" || tab === "faqs" || tab === "guides";
 
   return (
-    <div className="pb-12">
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold text-foreground">AI Knowledge</h1>
-        <p className="mt-1 text-muted-foreground">Manage the data that powers the Globaly AI counsellor.</p>
-      </div>
+    <PageBody className="pb-12">
+      <PageHeader
+        title={<><BrainCircuit /> AI Knowledge</>}
+        subtitle="Manage the data that powers the GlobalyAI counsellor."
+      />
 
-      <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5">
         {stats.map((stat) => (
           <button
             key={stat.key}
@@ -130,45 +132,27 @@ export function AiKnowledgeView() {
         ))}
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <ScrollRow className="w-full border-b border-border md:w-auto">
-          <div className="inline-flex w-max gap-1 pb-px">
-            {KNOWLEDGE_TABS.map((entry) => (
-              <button
-                key={entry.value}
-                type="button"
-                onClick={() => setTab(entry.value)}
-                className={cn(
-                  "-mb-px flex cursor-pointer items-center gap-1.5 whitespace-nowrap rounded-t-lg border-b-2 px-3 py-2 text-sm font-medium transition-colors",
-                  tab === entry.value
-                    ? "border-primary text-foreground"
-                    : "border-transparent text-muted-foreground hover:text-foreground",
-                )}
-              >
-                <entry.icon className="h-3.5 w-3.5" />
-                {entry.label}
-              </button>
-            ))}
-          </div>
-        </ScrollRow>
+      <Tabs value={tab} onValueChange={(next) => setTab(next as KnowledgeTab)}>
+        <TabsList>
+          {KNOWLEDGE_TABS.map((entry) => (
+            <TabsTrigger key={entry.value} value={entry.value}>
+              <entry.icon />
+              {entry.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+      </Tabs>
 
-        {showSearch && (
-          <div className="relative w-full md:w-72">
-            <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-            <Input
-              placeholder="Search…"
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="h-9 pl-8 text-xs"
-            />
-          </div>
-        )}
-      </div>
+      {showSearch && (
+        <FilterBar>
+          <SearchInput placeholder="Search…" value={search} onChange={(e) => setSearch(e.target.value)} />
+        </FilterBar>
+      )}
 
       {isRackView && (
         <>
           {tab === "rack" && rackCounts && (
-            <p className="mb-3 text-xs text-muted-foreground">
+            <p className="text-xs text-muted-foreground">
               {rackCounts.categories} categories · {rackCounts.sources} sources · {rackCounts.documents} documents ·{" "}
               {rackCounts.embedded_documents} retrievable · {rackCounts.embedded_chunks} chunks in brain
             </p>
@@ -199,6 +183,6 @@ export function AiKnowledgeView() {
           onReload={reload.queue}
         />
       )}
-    </div>
+    </PageBody>
   );
 }

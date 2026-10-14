@@ -91,7 +91,7 @@ export function JoinView() {
       <div className="w-full max-w-md">
         <div className="mb-8 flex justify-center">
           <Link href="/">
-            <Image src={LOGO.src} alt="Globalyapp" width={LOGO.width} height={LOGO.height} className="h-10 w-auto" />
+            <Image src={LOGO.src} alt="GlobalyAI" width={LOGO.width} height={LOGO.height} className="h-10 w-auto" />
           </Link>
         </div>
 
@@ -147,7 +147,7 @@ export function JoinView() {
                   href={PERSONAL_PORTAL_HOME}
                   className={cn(buttonVariants(), "mt-6 w-full cursor-pointer")}
                 >
-                  Continue to Globaly
+                  Continue to GlobalyAI
                 </Link>
               </>
             ) : (
@@ -156,7 +156,7 @@ export function JoinView() {
                   {lookup?.referrer_type === "business" ? "You've been invited by" : "Your friend"}
                 </p>
                 <h1 className="mt-1 text-2xl font-bold text-foreground">{lookup?.display_name}</h1>
-                <p className="mt-1 text-sm text-muted-foreground">has invited you to join Globaly</p>
+                <p className="mt-1 text-sm text-muted-foreground">has invited you to join GlobalyAI</p>
 
                 <Button className="mt-6 w-full cursor-pointer" onClick={goToSignUp}>
                   Create your account

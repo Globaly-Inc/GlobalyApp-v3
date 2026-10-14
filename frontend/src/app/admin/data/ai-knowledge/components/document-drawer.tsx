@@ -47,16 +47,16 @@ function DocumentBody({ documentId }: Readonly<{ documentId: string }>) {
 
       <div className="flex flex-wrap items-center gap-2 px-4 pb-3">
         <Badge
-          className={`gap-1 text-[10px] ${document.is_embedded ? "bg-emerald-100 text-emerald-800" : "bg-muted text-muted-foreground"}`}
+          className={`gap-1 text-xs ${document.is_embedded ? "bg-success/15 text-success" : "bg-muted text-muted-foreground"}`}
         >
           <Brain className="h-3 w-3" />
           {document.is_embedded ? "In brain" : "Not embedded"}
         </Badge>
-        <Badge variant="outline" className="text-[10px]">{document.word_count} words</Badge>
-        <Badge variant="outline" className="text-[10px]">
+        <Badge variant="outline" className="text-xs">{document.word_count} words</Badge>
+        <Badge variant="outline" className="text-xs">
           {document.chunk_count} chunk{document.chunk_count === 1 ? "" : "s"}
         </Badge>
-        <Badge variant="outline" className="text-[10px]">
+        <Badge variant="outline" className="text-xs">
           Crawled {new Date(document.crawled_at).toLocaleString()}
         </Badge>
       </div>

@@ -4,7 +4,7 @@ import { WELCOME_FEATURES } from "../const";
 import styles from "./welcome-tour.module.css";
 
 const ORBIT_RADIUS = 116;
-const CONFETTI_COLORS = ["#23DDF6", "#FFFFFF", "#7FA6FF", "#FFD166", "#FF8FA3"] as const;
+const CONFETTI_COLORS = ["#A6CBFD", "#FFFFFF", "#006CFF", "#FFD166", "#FF8FA3"] as const;
 const GOLDEN_ANGLE = 137.5;
 
 /**
@@ -43,7 +43,7 @@ export function WelcomeStage({ ref }: Readonly<{ ref?: React.Ref<HTMLDivElement>
             return (
               <div key={angle} className="absolute left-1/2 top-1/2 -ml-[26px] -mt-[26px]" style={{ transform: `rotate(${angle}deg) translateY(-${ORBIT_RADIUS}px) rotate(-${angle}deg)` }}>
                 <div className={styles.counter}>
-                  <div className={`${styles.bob} flex h-[52px] w-[52px] items-center justify-center rounded-full border border-white/25 bg-white/10 text-white shadow-[0_8px_30px_rgba(35,221,246,0.25)] backdrop-blur-md`} style={{ "--s": `${i * 0.7}s` } as React.CSSProperties}>
+                  <div className={`${styles.bob} flex h-[52px] w-[52px] items-center justify-center rounded-full border border-white/25 bg-white/10 text-white shadow-[0_8px_30px_rgba(166,203,253,0.25)] backdrop-blur-md`} style={{ "--s": `${i * 0.7}s` } as React.CSSProperties}>
                     <Icon className="h-6 w-6" />
                   </div>
                 </div>

@@ -1,6 +1,7 @@
 /** Wire types for the AI-widget (embed config) API. A widget is owned by a business or an
  *  institution — exactly one of the two ids is set. */
 
+import type { ChannelFields, InboxChannel } from "./channel-types";
 import type { MessageAttachment } from "@/components/chat/types";
 
 export type EmbedConfig = {
@@ -56,21 +57,25 @@ export type EmbedConfigListResponse = { configs: EmbedConfig[] };
 // The portal's AI-embed card: the org's widget (minted on first ask), the tag to paste, and
 // whoever the tag gets mailed to.
 
-/** The team member holding the Developer role. `pending` = invited, hasn't accepted yet. */
-export type DeveloperContact = { email: string; name: string | null; pending: boolean };
+/** Someone the widget code has been mailed to. NOT a teammate: no account, no role, no invitation
+ *  — the whole record is the `ai_embed_developers` row. */
+export type DeveloperContact = { id: number; email: string; last_sent_at: string | null; send_count: number };
 
 export type EnsureEmbedResult = {
   config: EmbedConfig;
   /** Built by the backend so the email and the card always show the same string. */
   snippet: string;
-  developer: DeveloperContact | null;
+  developers: DeveloperContact[];
 };
 
-/** `invitee` is read ONLY when the team has no developer — sending it invites that person into
- *  the org, so the card states that consequence before it lets you send. */
-export type SendSnippetInput = { invitee?: { name: string; email: string } };
+/** Who to mail the code to. Nobody is invited and no account is created, so there is no name. */
+export type SendSnippetInput = { emails: string[] };
 
-export type SendSnippetResult = { sent_to: string; invited: boolean; pending: boolean };
+/** `sent` names only the addresses whose mail was accepted; anything in `failed` was not sent and
+ *  was not recorded, so it can simply be sent again. A send where nothing got out is an error
+ *  response, never a result with an empty `sent`. `recipients` is the whole list as it stood when
+ *  the send read it — merge the `sent` rows out of it, never adopt it wholesale (see the slice). */
+export type SendSnippetResult = { sent: string[]; failed: string[]; recipients: DeveloperContact[] };
 
 // ── Widget visitors and leads ────────────────────────────────────────────────
 // The people who talked to the widget. Rows come from the OWNING tenant's schema
@@ -145,7 +150,9 @@ export type WidgetVisitor = {
    */
   /** The CONTACT summary: the whole person, from their profile and every chat's summary. */
   summary?: StaffSummary | null;
-} & ConversationControl;
+} & ConversationControl & ChannelFields;
+
+export type { AttentionReason, InboxChannel } from "./channel-types";
 
 /** A staff-facing summary — a visitor's contact summary, or one chat's own. */
 export type StaffSummary = {
@@ -183,6 +190,8 @@ export type VisitorListParams = {
   limit?: number;
   search?: string;
   status?: VisitorStatusFilter;
+  /** One Inbox channel; absent = every channel. */
+  channel?: InboxChannel;
 };
 
 export type VisitorListResult = { data: WidgetVisitor[]; total: number; counts: VisitorCounts };
@@ -240,6 +249,11 @@ export type VisitorMessage = {
   session_id?: number;
   /** Set on a chat's first message in the transcript, so the Inbox can draw a divider there. */
   chat?: VisitorChat;
+  // WhatsApp, Instagram, Facebook only (null on the widget): delivery, phone-app replies, deletions.
+  delivery_status?: "queued" | "sent" | "delivered" | "read" | "failed" | null;
+  delivery_error?: string | null;
+  sent_from?: "phone_app" | null;
+  deleted?: boolean;
 };
 
 /**

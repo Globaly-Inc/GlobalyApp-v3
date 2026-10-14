@@ -2,7 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { toast } from "sonner";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { MessageThread, type ComposerState } from "@/components/message-thread";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchMessages, sendMessage } from "../store/my-services-slice";
@@ -55,11 +55,11 @@ export function OrderThread({
     <Card>
       <CardHeader>
         <CardTitle>Messages</CardTitle>
-        <p className="text-sm text-muted-foreground">
+        <CardDescription>
           {notYet
             ? "You can message once the payment has gone through."
             : `Sort out the details with ${counterpartyName} here.`}
-        </p>
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <MessageThread

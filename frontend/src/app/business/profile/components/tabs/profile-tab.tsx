@@ -33,16 +33,16 @@ export function ProfileTab({
   isInstitution?: boolean;
 }>) {
   return (
-    <div className="grid grid-cols-1 gap-4 md:gap-6 lg:grid-cols-3">
+    <div className="card-hover grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
       {/* ── Main column (2/3) ── */}
-      <div className="space-y-4 md:space-y-6 lg:col-span-2">
+      <div className="stagger-in flex min-w-0 flex-col gap-6 lg:col-span-2">
         <GeneralInformationCard profile={profile} readOnly={readOnly} isInstitution={isInstitution} />
-        <ProfileLocationsSection profile={profile} countries={countries} readOnly={readOnly} hasBranches={!isInstitution} />
+        <ProfileLocationsSection profile={profile} countries={countries} readOnly={readOnly} />
         <MediaCard profile={profile} readOnly={readOnly} />
       </div>
 
       {/* ── Sidebar (1/3) ── */}
-      <div className="space-y-4 md:space-y-6">
+      <div className="stagger-in flex min-w-0 flex-col gap-6">
         <ContactDetailsCard profile={profile} countries={countries} readOnly={readOnly} />
         <DefaultCurrencyCard profile={profile} countries={countries} readOnly={readOnly} />
         <RegistrationLicensesCard profile={profile} readOnly={readOnly} />

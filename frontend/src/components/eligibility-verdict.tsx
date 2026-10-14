@@ -15,8 +15,8 @@ import type { EligibilityCriterion, EligibilityVerdict } from "@/app/personal/en
  */
 
 const STATUS = {
-  pass: { Icon: CircleCheck, tone: "text-emerald-600 dark:text-emerald-400" },
-  fail: { Icon: CircleAlert, tone: "text-amber-600 dark:text-amber-400" },
+  pass: { Icon: CircleCheck, tone: "text-success" },
+  fail: { Icon: CircleAlert, tone: "text-warning" },
   unknown: { Icon: CircleHelp, tone: "text-muted-foreground" },
 } as const;
 
@@ -24,14 +24,14 @@ const SUMMARY = {
   eligible: {
     title: "You meet the listed requirements",
     body: "Based on the profile you have on file. The institution makes the final decision.",
-    ring: "bg-emerald-50/70 ring-emerald-500/25 dark:bg-emerald-500/10 dark:ring-emerald-500/20",
-    bar: "bg-emerald-500",
+    ring: "bg-success/10 ring-success/25",
+    bar: "bg-success",
   },
   not_eligible: {
     title: "You meet some of the listed requirements",
     body: "You can enquire either way — these are collected from the institution's website, and many courses have pathway options.",
-    ring: "bg-amber-50/70 ring-amber-500/25 dark:bg-amber-500/10 dark:ring-amber-500/20",
-    bar: "bg-amber-500",
+    ring: "bg-warning/10 ring-warning/25",
+    bar: "bg-warning",
   },
   unknown: {
     title: "Not enough on file to compare",
@@ -86,7 +86,7 @@ function Score({ verdict, barClass }: Readonly<{ verdict: EligibilityVerdict; ba
             style={{ width: `${verdict.percentage}%` }}
           />
         </div>
-        <p className="mt-1 text-[11px] text-muted-foreground">
+        <p className="mt-1 text-xs text-muted-foreground">
           {met} of {comparable.length} requirement{comparable.length === 1 ? "" : "s"} met
         </p>
       </div>
@@ -135,7 +135,7 @@ export function EligibilityVerdictPanel({
       {/* Requirements often differ by audience, and the domestic/international split is derived
           rather than stored — saying which one was used keeps that honest. */}
       {!compact && (
-        <p className="text-[11px] text-muted-foreground">
+        <p className="text-xs text-muted-foreground">
           Checked against the {verdict.student_type} entry requirements.
         </p>
       )}

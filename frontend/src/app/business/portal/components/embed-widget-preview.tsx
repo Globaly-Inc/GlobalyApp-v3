@@ -41,11 +41,11 @@ export function EmbedWidgetPreview({ config }: Readonly<{ config: EmbedConfig }>
           ) : (
             <AlyOrbIcon className="size-[18px]" />
           )}
-          <span className="truncate text-[11px] font-semibold leading-none">{name}</span>
+          <span className="truncate text-xs font-semibold leading-none">{name}</span>
         </div>
 
         <div className="space-y-2 px-2.5 py-3">
-          <p className="rounded-lg rounded-tl-sm bg-muted px-2 py-1.5 text-[10px] leading-snug text-foreground">
+          <p className="rounded-lg rounded-tl-sm bg-muted px-2 py-1.5 text-xs leading-snug text-foreground">
             {greeting}
           </p>
           <div className="flex flex-wrap gap-1">

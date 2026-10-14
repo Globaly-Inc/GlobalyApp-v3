@@ -1,10 +1,11 @@
 "use client";
 
-import { Pencil } from "lucide-react";
+import { Layers, Pencil } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { Card, CardContent } from "@/components/ui/card";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Switch } from "@/components/ui/switch";
+import { Table, TableBody, TableCard, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { DynamicIcon } from "@/components/dynamic-icon";
 import type { Category } from "../apis/types";
 
@@ -20,49 +21,60 @@ export function CategoryList({
   onEdit: (category: Category) => void;
 }>) {
   if (categories.length === 0) {
-    return <p className="py-8 text-center text-sm text-muted-foreground">No categories yet.</p>;
+    return <EmptyState icon={Layers} title="No categories yet." />;
   }
 
   return (
-    <div className="space-y-2">
-      {categories.map((cat) => (
-        <Card key={cat.id} size="sm">
-          <CardContent>
-            <div className="flex items-center gap-3">
-              <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                <DynamicIcon
-                  name={cat.icon}
-                  fallback={kind === "business" ? "Building2" : "Layers"}
-                  className="size-4.5 text-primary"
+    <TableCard>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Category</TableHead>
+            <TableHead className="hidden md:table-cell">Slug</TableHead>
+            <TableHead className="w-px">Active</TableHead>
+            <TableHead className="w-px"><span className="sr-only">Actions</span></TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {categories.map((cat) => (
+            <TableRow key={cat.id}>
+              <TableCell primary>
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                    <DynamicIcon
+                      name={cat.icon}
+                      fallback={kind === "business" ? "Building2" : "Layers"}
+                      className="size-4.5 text-primary"
+                    />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <span className="truncate font-medium text-foreground">{cat.name}</span>
+                      {!cat.is_active && <Badge variant="secondary">Inactive</Badge>}
+                    </div>
+                    {cat.description && <p className="truncate text-xs text-muted-foreground">{cat.description}</p>}
+                  </div>
+                </div>
+              </TableCell>
+              <TableCell className="hidden md:table-cell">
+                <Badge variant="outline">{cat.slug}</Badge>
+              </TableCell>
+              <TableCell>
+                <Switch
+                  checked={cat.is_active}
+                  onCheckedChange={(checked) => onToggle(cat.id, checked)}
+                  aria-label={`Toggle active for ${cat.name}`}
                 />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <p className="text-sm font-semibold">{cat.name}</p>
-                  <Badge variant="outline">{cat.slug}</Badge>
-                  {!cat.is_active && <Badge variant="secondary">Inactive</Badge>}
-                </div>
-                {cat.description && (
-                  <p className="mt-0.5 line-clamp-1 text-xs text-muted-foreground">{cat.description}</p>
-                )}
-              </div>
-              <div className="flex shrink-0 items-center gap-4">
-                <div className="flex items-center gap-1.5">
-                  <span className="text-xs text-muted-foreground">Active</span>
-                  <Switch
-                    checked={cat.is_active}
-                    onCheckedChange={(checked) => onToggle(cat.id, checked)}
-                    aria-label={`Toggle active for ${cat.name}`}
-                  />
-                </div>
+              </TableCell>
+              <TableCell>
                 <Button variant="ghost" size="icon-sm" aria-label={`Edit ${cat.name}`} onClick={() => onEdit(cat)}>
                   <Pencil />
                 </Button>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
+              </TableCell>
+            </TableRow>
+          ))}
+        </TableBody>
+      </Table>
+    </TableCard>
   );
 }

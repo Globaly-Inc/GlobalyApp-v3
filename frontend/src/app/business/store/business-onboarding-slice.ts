@@ -2,8 +2,9 @@ import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
 import { businessApi } from "../apis";
 import type {
   BusinessProfile, BusinessProfilePatch, BusinessRegisterInput, InstitutionRegisterInput, StartExtractionInput,
-  OnboardingProgress,
+  OnboardingProgress, ExtractionStatus,
 } from "../apis/types";
+import { EXTRACTION_TERMINAL_STATUSES } from "../portal/const";
 
 // Result isn't stored in this slice's state — a successful registration hard-navigates
 // to /business (same reload rationale the business switcher already uses), so there's
@@ -35,6 +36,10 @@ export const startExtraction = createAsyncThunk(
   (input: StartExtractionInput) => businessApi.startExtraction(input),
 );
 
+export const fetchExtractionStatus = createAsyncThunk("businessOnboarding/fetchExtractionStatus", () =>
+  businessApi.getExtractionStatus(),
+);
+
 export const fetchOnboardingProgress = createAsyncThunk("businessOnboarding/fetchOnboardingProgress", () =>
   businessApi.getOnboardingProgress(),
 );
@@ -48,11 +53,14 @@ export const markWelcomeSeen = createAsyncThunk("businessOnboarding/markWelcomeS
 type BusinessOnboardingState = {
   profile: BusinessProfile | null;
   onboardingProgress: OnboardingProgress | null;
+  onboardingProgressFailed: boolean;
+  /** undefined = not fetched yet; null = no extraction job. */
+  extractionStatus?: ExtractionStatus;
   status: "idle" | "loading" | "saving" | "failed";
   error: string | null;
 };
 
-const initialState: BusinessOnboardingState = { profile: null, onboardingProgress: null, status: "idle", error: null };
+const initialState: BusinessOnboardingState = { profile: null, onboardingProgress: null, onboardingProgressFailed: false, status: "idle", error: null };
 
 const businessOnboardingSlice = createSlice({
   name: "businessOnboarding",
@@ -70,6 +78,9 @@ const businessOnboardingSlice = createSlice({
       })
       .addCase(fetchMyProfile.fulfilled, (state, action) => {
         state.status = "idle";
+        // Another org's profile (a switch): its extraction status is someone else's — drop it so the
+        // lock re-checks this org instead of showing (or skipping) the previous one's crawl.
+        if (state.profile?.schema_name !== action.payload.schema_name) state.extractionStatus = undefined;
         state.profile = action.payload;
       })
       .addCase(fetchMyProfile.rejected, (state, action) => {
@@ -90,9 +101,24 @@ const businessOnboardingSlice = createSlice({
       })
       .addCase(startExtraction.fulfilled, (state, action) => {
         state.profile = action.payload;
+        state.extractionStatus = undefined;
+      })
+      .addCase(fetchExtractionStatus.fulfilled, (state, action) => {
+        state.extractionStatus = action.payload;
+      })
+      // A failed status call must not lock the portal — treat it as "no extraction".
+      .addCase(fetchExtractionStatus.rejected, (state) => {
+        if (state.extractionStatus === undefined) state.extractionStatus = null;
+      })
+      .addCase(fetchOnboardingProgress.pending, (state) => {
+        state.onboardingProgressFailed = false;
       })
       .addCase(fetchOnboardingProgress.fulfilled, (state, action) => {
         state.onboardingProgress = action.payload;
+        state.onboardingProgressFailed = false;
+      })
+      .addCase(fetchOnboardingProgress.rejected, (state) => {
+        state.onboardingProgressFailed = true;
       })
       // Locally too, not just on the server: the portal fetches progress once per mount, so without
       // this a remount inside the same session would replay the splash from stale state.
@@ -123,6 +149,14 @@ const businessOnboardingSlice = createSlice({
       });
   },
 });
+
+/** The profile's own (or head office's) crawl is still running — the portal stays locked until it ends.
+ *  Not fetched yet counts as running, so the full nav doesn't flash before the first answer. */
+export function isExtractionRunning(profile: BusinessProfile | null, status: ExtractionStatus | undefined): boolean {
+  if (!profile || !(profile.source_job_id || profile.extraction_parent_name)) return false;
+  if (status === undefined) return true;
+  return !!status && !EXTRACTION_TERMINAL_STATUSES.has(status.status);
+}
 
 export const { resetBusinessOnboardingError } = businessOnboardingSlice.actions;
 export const businessOnboardingReducer = businessOnboardingSlice.reducer;

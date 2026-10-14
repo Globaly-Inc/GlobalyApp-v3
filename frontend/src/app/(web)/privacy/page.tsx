@@ -6,7 +6,7 @@ import { LegalSection } from "../components/legal/legal-section";
 import { LegalContactCard } from "../components/legal/legal-contact-card";
 
 export const metadata: Metadata = {
-  title: "Privacy Policy — Globaly",
+  title: "Privacy Policy — GlobalyAI",
 };
 
 const SECTIONS = [
@@ -26,7 +26,7 @@ export default function PrivacyPolicyPage() {
       <LegalHero
         icon={Shield}
         title="Privacy Policy"
-        description="Your trust matters to us. Here's exactly how we collect, use, and protect your information across Globaly."
+        description="Your trust matters to us. Here's exactly how we collect, use, and protect your information across GlobalyAI."
         lastUpdated="20 February 2026"
       />
 

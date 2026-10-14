@@ -1,18 +1,31 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import { Loader2 } from "lucide-react";
+import { AlertCircle, Loader2, TrendingUp } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { EmptyState } from "@/components/ui/empty-state";
+import { PageBody } from "@/components/ui/page-body";
+import { PageHeader } from "@/components/ui/page-header";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchDashboard, fetchSeoStatus } from "../store/seo-slice";
 import { ActionPlan } from "./action-plan";
 import { ReadinessChecklist } from "./readiness-checklist";
 import { RankingsTable } from "./rankings-table";
+import { SeoStats } from "./seo-stats";
 import { SetupInstructions } from "./setup-instructions";
 import { SuggestionsPanel } from "./suggestions-panel";
 
+function Spinner() {
+  return (
+    <div className="flex items-center justify-center py-16 text-muted-foreground">
+      <Loader2 className="h-5 w-5 animate-spin" />
+    </div>
+  );
+}
+
 export function SeoView() {
   const dispatch = useAppDispatch();
-  const { connected, statusStatus, dashboardStatus, rankings, stale, suggestions, readiness } =
+  const { connected, error, statusStatus, dashboardStatus, rankings, stale, suggestions, readiness } =
     useAppSelector((state) => state.marketingSeo);
 
   // Guard against React Strict Mode's double-invoked effects double-firing the fetch on mount.
@@ -31,36 +44,40 @@ export function SeoView() {
   }, [connected, dispatch]);
 
   return (
-    <div>
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold text-foreground">SEO / AEO</h1>
-        <p className="mt-1 text-muted-foreground">
-          Keyword rankings, suggested keywords, and AI-answer readiness for the blog.
-        </p>
-      </div>
+    <PageBody>
+      <PageHeader
+        title={<><TrendingUp /> SEO / AEO</>}
+        subtitle="Keyword rankings, suggested keywords, and AI-answer readiness for the blog."
+      />
 
       {statusStatus === "loading" && connected === null ? (
-        <div className="flex items-center justify-center py-16 text-muted-foreground">
-          <Loader2 className="h-5 w-5 animate-spin" />
-        </div>
+        <Spinner />
+      ) : statusStatus === "failed" ? (
+        <EmptyState
+          icon={AlertCircle}
+          title="Couldn't check the Search Console connection"
+          description={error}
+          action={<Button variant="outline" onClick={() => dispatch(fetchSeoStatus())}>Try again</Button>}
+        />
       ) : !connected ? (
         <SetupInstructions />
       ) : dashboardStatus === "loading" && rankings.length === 0 ? (
-        <div className="flex items-center justify-center py-16 text-muted-foreground">
-          <Loader2 className="h-5 w-5 animate-spin" />
-        </div>
+        <Spinner />
       ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-          <div className="lg:col-span-2">
-            <RankingsTable rows={rankings} stale={stale} />
+        <>
+          <SeoStats rankings={rankings} readiness={readiness} />
+          <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
+            <div className="flex min-w-0 flex-col gap-6 lg:col-span-2">
+              <RankingsTable rows={rankings} stale={stale} />
+              <ActionPlan />
+            </div>
+            <div className="flex min-w-0 flex-col gap-6">
+              <SuggestionsPanel suggestions={suggestions} />
+              <ReadinessChecklist readiness={readiness} />
+            </div>
           </div>
-          <SuggestionsPanel suggestions={suggestions} />
-          <ReadinessChecklist readiness={readiness} />
-          <div className="lg:col-span-2">
-            <ActionPlan />
-          </div>
-        </div>
+        </>
       )}
-    </div>
+    </PageBody>
   );
 }

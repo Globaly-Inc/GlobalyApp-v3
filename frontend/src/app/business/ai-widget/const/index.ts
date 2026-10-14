@@ -18,7 +18,7 @@ export const VISITOR_TABS: readonly { value: VisitorStatusFilter; label: string 
  * coloured badge on the row; a visitor stays muted rather than competing with it.
  */
 export const VISITOR_STATUS_BADGE: Record<VisitorStatus, { label: string; className: string }> = {
-  lead: { label: "Lead", className: "bg-emerald-100 text-emerald-700 border-0" },
+  lead: { label: "Lead", className: "bg-success/15 text-success border-0" },
   visitor: { label: "Visitor", className: "bg-muted text-muted-foreground border-0" },
 };
 

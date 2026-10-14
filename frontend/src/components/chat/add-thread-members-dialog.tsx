@@ -145,7 +145,7 @@ export function AddThreadMembersDialog({
                   />
                   <Avatar className="size-7 shrink-0">
                     {c.photo_url && <AvatarImage src={c.photo_url} alt="" className="object-cover" />}
-                    <AvatarFallback className="bg-primary/10 text-[10px] text-primary">{initials(name)}</AvatarFallback>
+                    <AvatarFallback className="bg-primary/10 text-xs text-primary">{initials(name)}</AvatarFallback>
                   </Avatar>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate text-sm font-medium">{name}</span>

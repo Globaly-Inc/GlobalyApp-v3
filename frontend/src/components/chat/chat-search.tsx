@@ -43,8 +43,9 @@ function Highlight({ text, query }: Readonly<{ text: string; query: string }>) {
   );
 }
 
-const ROW = "flex w-full cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-left hover:bg-muted";
-const HEADING = "px-3 pt-2 pb-1 text-[11px] font-medium text-muted-foreground";
+const ROW =
+  "flex w-full cursor-pointer items-center gap-3 rounded-md px-3 py-2 text-left outline-none hover:bg-muted focus-visible:bg-muted";
+const HEADING = "px-3 pt-2 pb-1 text-xs font-medium text-muted-foreground";
 
 export function ChatSearch({
   threads,
@@ -114,7 +115,7 @@ export function ChatSearch({
           }}
           placeholder={placeholder}
           aria-label="Search chat"
-          className="h-9 w-full border-border bg-muted/50 pl-9 pr-8 focus-visible:bg-background"
+          className="h-9 w-full rounded-lg border-border bg-background pl-9 pr-8"
         />
         {query && (
           <button
@@ -183,7 +184,7 @@ export function ChatSearch({
                       <Highlight text={thread.course_name} query={query.trim()} />
                     </p>
                   </div>
-                  <Users className="size-4 shrink-0 text-green-600 opacity-40" aria-hidden />
+                  <Users className="size-4 shrink-0 text-muted-foreground/60" aria-hidden />
                 </button>
               ))}
             </>
@@ -216,14 +217,14 @@ export function ChatSearch({
                       <span className="shrink-0">· {listStamp(message.created_at)}</span>
                     </div>
                   </div>
-                  <MessageSquare className="size-4 shrink-0 text-blue-600 opacity-40" aria-hidden />
+                  <MessageSquare className="size-4 shrink-0 text-muted-foreground/60" aria-hidden />
                 </button>
               ))}
             </>
           )}
         </div>
 
-        <div className="flex items-center justify-center gap-2 border-t border-border bg-muted/30 px-3 py-1.5 text-[10px] text-muted-foreground">
+        <div className="flex items-center justify-center gap-2 border-t border-border bg-muted/30 px-3 py-1.5 text-xs text-muted-foreground">
           <span className="flex items-center gap-1">
             <kbd className="rounded border bg-background px-1 py-0.5">↵</kbd> open
           </span>

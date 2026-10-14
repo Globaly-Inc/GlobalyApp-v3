@@ -80,7 +80,7 @@ export function UploadStep({ onParsed }: Readonly<{ onParsed: (sheets: Sheet[], 
             <ul className="flex flex-col gap-2 text-muted-foreground">
               {CHECKLIST.map((item) => (
                 <li key={item} className="flex gap-2">
-                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+                  <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0 text-success" />
                   <span>{item}</span>
                 </li>
               ))}

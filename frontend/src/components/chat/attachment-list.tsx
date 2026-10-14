@@ -26,7 +26,8 @@ const gridColumns = (count: number) => (count === 1 ? "grid-cols-1" : count === 
 
 /**
  * The hover-revealed Download pill V2 overlays on every media tile — a labelled button,
- * not a bare icon, because on a photo the word is what makes it findable.
+ * not a bare icon, because on a photo the word is what makes it findable. Touch screens
+ * have no hover, so there it is always shown.
  */
 function DownloadPill({ attachment }: Readonly<{ attachment: MessageAttachment }>) {
   return (
@@ -35,7 +36,7 @@ function DownloadPill({ attachment }: Readonly<{ attachment: MessageAttachment }
       download={attachment.original_name}
       onClick={(e) => e.stopPropagation()}
       aria-label={`Download ${attachment.original_name}`}
-      className="absolute right-1.5 top-1.5 flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs shadow-sm opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100 focus-visible:opacity-100"
+      className="absolute right-1.5 top-1.5 flex items-center gap-1 rounded-md border border-border bg-background px-2 py-1 text-xs shadow-sm opacity-0 transition-opacity hover:bg-muted group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
     >
       <Download className="size-3" aria-hidden />
       Download
@@ -51,7 +52,7 @@ function ExpandButton({ onClick, label }: Readonly<{ onClick: () => void; label:
       onClick={onClick}
       aria-label={label}
       title={label}
-      className="absolute left-1.5 top-1.5 flex size-7 cursor-pointer items-center justify-center rounded-md border border-border bg-background text-foreground opacity-0 shadow-sm transition-opacity hover:bg-muted group-hover:opacity-100 focus-visible:opacity-100"
+      className="absolute left-1.5 top-1.5 flex size-7 cursor-pointer items-center justify-center rounded-md border border-border bg-background text-foreground opacity-0 shadow-sm transition-opacity hover:bg-muted group-hover:opacity-100 group-focus-within:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
     >
       <Maximize2 className="size-3.5" />
     </button>
@@ -95,7 +96,7 @@ export function AttachmentList({ attachments }: Readonly<{ attachments: MessageA
       <div className="mt-2 space-y-2">
         {/* V2's download-all bar — only once there is more than one file to act on. */}
         {attachments.length > 1 && (
-          <div className="flex max-w-[320px] items-center justify-between rounded-md bg-muted/50 px-2 py-1.5">
+          <div className="flex max-w-xs items-center justify-between gap-2 rounded-lg border border-border bg-card px-2.5 py-1.5">
             <span className="text-xs text-muted-foreground">{attachments.length} attachments</span>
             <button
               type="button"
@@ -132,7 +133,7 @@ export function AttachmentList({ attachments }: Readonly<{ attachments: MessageA
                     loading="lazy"
                   />
                 </button>
-                <span className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/70 to-transparent p-1.5 text-[10px] text-white opacity-0 transition-opacity group-hover:opacity-100">
+                <span className="pointer-events-none absolute inset-x-0 bottom-0 truncate bg-gradient-to-t from-black/70 to-transparent p-1.5 text-xs text-white opacity-0 transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
                   {attachment.original_name}
                 </span>
                 <DownloadPill attachment={attachment} />
@@ -142,12 +143,12 @@ export function AttachmentList({ attachments }: Readonly<{ attachments: MessageA
         )}
 
         {videos.map((attachment) => (
-          <div key={attachment.storage_path} className="group relative w-fit">
+          <div key={attachment.storage_path} className="group relative w-fit max-w-full">
             <video
               src={attachment.url}
               controls
               preload="metadata"
-              className="max-h-80 max-w-sm rounded-lg border border-border bg-black"
+              className="max-h-80 max-w-[min(24rem,100%)] rounded-lg border border-border bg-black"
             />
             <ExpandButton onClick={() => setPreviewing(attachment)} label={`Expand ${attachment.original_name}`} />
             <DownloadPill attachment={attachment} />
@@ -163,7 +164,7 @@ export function AttachmentList({ attachments }: Readonly<{ attachments: MessageA
             <div className="flex items-center gap-2 border-b border-border bg-muted/30 px-2.5 py-1.5">
               <FileText className="size-3.5 shrink-0 text-destructive" aria-hidden />
               <span className="min-w-0 flex-1 truncate text-xs font-medium">{attachment.original_name}</span>
-              <span className="shrink-0 text-[10px] text-muted-foreground">
+              <span className="shrink-0 text-xs text-muted-foreground">
                 {formatFileSize(attachment.size_bytes)}
               </span>
               <a
@@ -189,7 +190,7 @@ export function AttachmentList({ attachments }: Readonly<{ attachments: MessageA
         {files.map((attachment) => (
           <div
             key={attachment.storage_path}
-            className="flex max-w-sm items-center gap-2.5 rounded-lg border border-border bg-card p-2"
+            className="flex max-w-sm items-center gap-2.5 rounded-lg border border-border bg-card px-3 py-2.5"
           >
             <div className="flex size-9 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
               <FileText className="size-4" aria-hidden />

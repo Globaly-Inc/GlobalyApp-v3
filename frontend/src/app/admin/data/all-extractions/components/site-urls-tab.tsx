@@ -143,9 +143,9 @@ export function SiteUrlsTab({ jobId }: Readonly<{ jobId: string }>) {
     <div>
       <div className="mb-3 flex flex-wrap gap-1.5">
         {chip("All", counts.total, { category: "all", excluded: "all" })}
-        {chip("Not yet classified", counts.unclassified, { category: "unclassified", excluded: "active" }, "text-amber-700")}
+        {chip("Not yet classified", counts.unclassified, { category: "unclassified", excluded: "active" }, "text-warning")}
         {chip("Excluded / suggested", counts.excluded, { category: "all", excluded: "excluded" })}
-        {SITE_URL_CATEGORIES.map((c) => chip(SITE_URL_CATEGORY_LABELS[c], counts.by_category[c] ?? 0, { category: c, excluded: "active" }, c === "course" ? "text-emerald-700" : ""))}
+        {SITE_URL_CATEGORIES.map((c) => chip(SITE_URL_CATEGORY_LABELS[c], counts.by_category[c] ?? 0, { category: c, excluded: "active" }, c === "course" ? "text-success" : ""))}
       </div>
 
       <div className="mb-3 flex flex-wrap items-center gap-2">
@@ -172,9 +172,9 @@ export function SiteUrlsTab({ jobId }: Readonly<{ jobId: string }>) {
         )}
       </div>
 
-      <div className="overflow-x-auto rounded-md border border-border">
+      <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full text-xs">
-          <thead className="bg-muted/50 text-left text-muted-foreground">
+          <thead className="bg-muted/60 text-left text-muted-foreground">
             <tr>
               <th className="w-8 px-2 py-2"><Checkbox checked={allOnPageSelected} onCheckedChange={toggleAll} aria-label="Select all on page" /></th>
               <th className="px-2 py-2">URL</th>
@@ -196,7 +196,7 @@ export function SiteUrlsTab({ jobId }: Readonly<{ jobId: string }>) {
             {rows.map((r) => (
               <tr key={r.id} className={cn("border-t border-border", r.excluded && "opacity-60")}>
                 <td className="px-2 py-1.5"><Checkbox checked={selected.has(r.id)} onCheckedChange={() => toggleOne(r.id)} aria-label={`Select ${r.url}`} /></td>
-                <td className="max-w-xl truncate px-2 py-1.5 font-mono text-[11px]" title={r.url}>
+                <td className="max-w-xl truncate px-2 py-1.5 font-mono text-xs" title={r.url}>
                   <a href={r.url} target="_blank" rel="noreferrer" className="hover:underline">{r.url}</a>
                 </td>
                 <td className="px-2 py-1.5 text-muted-foreground">{r.source}</td>
@@ -208,12 +208,12 @@ export function SiteUrlsTab({ jobId }: Readonly<{ jobId: string }>) {
                     disabled={busy === r.id}
                     onChange={(v) => patch(r, { category: v === "auto" ? null : (v as SiteUrlCategory) })}
                   />
-                  {r.category_source !== "admin" && r.category && <span className="ml-1.5 text-[10px] text-muted-foreground">({SITE_URL_CATEGORY_LABELS[r.category]})</span>}
+                  {r.category_source !== "admin" && r.category && <span className="ml-1.5 text-xs text-muted-foreground">({SITE_URL_CATEGORY_LABELS[r.category]})</span>}
                 </td>
                 <td className="px-2 py-1.5 text-muted-foreground">{r.category_source ?? "—"}</td>
                 <td className="px-2 py-1.5 text-right">
                   <Button
-                    variant="ghost" size="sm" className="h-7 gap-1 px-2 text-[11px] cursor-pointer" disabled={busy === r.id}
+                    variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs cursor-pointer" disabled={busy === r.id}
                     onClick={() => patch(r, { excluded: !r.excluded })}
                     title={r.excluded ? "Restore this URL" : "Exclude from snapshot, classify and queue"}
                   >

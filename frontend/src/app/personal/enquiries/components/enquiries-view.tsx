@@ -2,19 +2,22 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Plus, RotateCw, TriangleAlert } from "lucide-react";
+import { MessageSquareText, Plus, RotateCw, TriangleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { FilterBar, SearchInput } from "@/components/ui/filter-bar";
+import { ListSkeleton } from "@/components/ui/list-skeleton";
+import { PageBody } from "@/components/ui/page-body";
+import { PageHeader } from "@/components/ui/page-header";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Table, TableBody, TableCard, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchEnquiries } from "../store/enquiries-slice";
 import { REQUIRED_COMPLETION, type StatusFilterKey } from "../const";
 import { filterCounts, statusParam } from "../utils";
 import { EnquiriesEmptyState } from "./enquiries-empty-state";
-import { EnquiryCard, EnquiryCardSkeleton } from "./enquiry-card";
-import { Input } from "@/components/ui/input";
+import { ENQUIRY_COLUMNS, EnquiryRow } from "./enquiry-row";
 import { Pagination } from "@/components/ui/pagination";
-import { Search } from "lucide-react";
 import { ENQUIRIES_PAGE_SIZE } from "../const";
 import { EnquiryFilters } from "./enquiry-filters";
 import { EnquirySubmittedDialog } from "./enquiry-submitted-dialog";
@@ -108,18 +111,14 @@ export function EnquiriesView() {
   const loading = status === "loading" && items.length === 0;
   const failed = status === "failed" && items.length === 0;
 
-  // Width and page padding come from PersonalShell (SHELL_WIDTH + <main>), same as
+  // Width and page padding come from PortalShell (width="default" in PersonalShell), same as
   // every other personal page — don't re-constrain or re-pad here.
   return (
-    <div className="space-y-4 md:space-y-5">
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight">My Enquiries</h1>
-          <p className="mt-1 text-sm text-muted-foreground">
-            Track all your enquiries to institutions and agents.
-          </p>
-        </div>
-
+    <PageBody>
+      <PageHeader
+        title={<><MessageSquareText /> My Enquiries</>}
+        subtitle="Track all your enquiries to institutions and agents."
+      >
         {/* Reserve the button's footprint while the profile decides whether it may
             appear, so the header doesn't jump once the gate resolves. */}
         {!profileLoaded ? (
@@ -132,30 +131,24 @@ export function EnquiriesView() {
             </Button>
           )
         )}
-      </div>
+      </PageHeader>
 
       {profileLoaded && !canEnquire && <ProfileGateCard completion={completion} />}
 
-      {/* Same search idiom as the rest of the app: icon inset in a h-9 input, debounced above. */}
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div className="relative w-full sm:max-w-xs">
-          <Search className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" aria-hidden />
-          <Input
-            placeholder="Search by course or institution..."
-            value={search}
-            onChange={(e) => changeSearch(e.target.value)}
-            className="h-9 pl-8 text-sm"
-          />
-        </div>
-        {counts.all > 0 && <EnquiryFilters counts={counts} active={filter} onChange={changeFilter} />}
-      </div>
+      {counts.all > 0 && <EnquiryFilters counts={counts} active={filter} onChange={changeFilter} />}
 
-      {loading && (
-        <div className="space-y-3">
-          <EnquiryCardSkeleton />
-          <EnquiryCardSkeleton />
-        </div>
-      )}
+      <FilterBar>
+        <SearchInput
+          placeholder="Search by course or institution..."
+          value={search}
+          onChange={(e) => changeSearch(e.target.value)}
+        />
+        <span className="shrink-0 px-2 text-sm text-muted-foreground">
+          {total} enquir{total === 1 ? "y" : "ies"}
+        </span>
+      </FilterBar>
+
+      {loading && <ListSkeleton count={4} itemClassName="h-14" />}
 
       {/* A failed load used to render as an empty list, which reads as "you have no
           enquiries" — the one wrong thing to tell someone whose enquiries exist. */}
@@ -186,11 +179,24 @@ export function EnquiriesView() {
       )}
 
       {visible.length > 0 && (
-        <div className="space-y-3">
-          {visible.map((enquiry) => (
-            <EnquiryCard key={enquiry.id} enquiry={enquiry} />
-          ))}
-        </div>
+        <TableCard>
+          <Table>
+            <TableHeader>
+              <TableRow>
+                {ENQUIRY_COLUMNS.map((col) => (
+                  <TableHead key={col.label} className={"className" in col ? col.className : undefined}>
+                    {"srOnly" in col ? <span className="sr-only">{col.label}</span> : col.label}
+                  </TableHead>
+                ))}
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {visible.map((enquiry) => (
+                <EnquiryRow key={enquiry.id} enquiry={enquiry} />
+              ))}
+            </TableBody>
+          </Table>
+        </TableCard>
       )}
 
       {/* `total > 0`, not `> ENQUIRIES_PAGE_SIZE` — every other paginated list in the app shows this
@@ -217,6 +223,6 @@ export function EnquiriesView() {
         onOpenChange={(next) => !next && setSubmittedConsent(null)}
         sharedContact={submittedConsent === true}
       />
-    </div>
+    </PageBody>
   );
 }

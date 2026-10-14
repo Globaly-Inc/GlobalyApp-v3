@@ -16,6 +16,9 @@ export const ServiceSearchQuerySchema = PaginationSchema.extend({
   published: z.enum(["published", "draft"]).optional(),
   origin: z.enum(["extracted", "manual"]).optional(),
   degree_level: z.string().min(1).optional(),
+  // Services tab summary counts. needs_approval = not approved yet (pending or needs changes) —
+  // institution courses only, a business's own services have no approval step. missing_fee = no fee.
+  attention: z.enum(["needs_approval", "missing_fee"]).optional(),
 });
 
 export const ServiceInputSchema = z.object({

@@ -46,22 +46,22 @@ function FeeCard({
       <CardContent className="flex flex-col gap-4 p-4">
         <div className="grid grid-cols-3 gap-3 text-center">
           <div>
-            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Total fees</p>
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Total fees</p>
             <p className="text-lg font-bold">{fee.currency} {total.toLocaleString()}</p>
           </div>
           <div>
-            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Installments</p>
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Installments</p>
             <p className="text-lg font-bold">{installmentCount}</p>
           </div>
           <div>
-            <p className="text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Avg / installment</p>
+            <p className="text-xs font-medium uppercase tracking-wider text-muted-foreground">Avg / installment</p>
             <p className="text-lg font-bold">~{fee.currency} {Math.round(avg).toLocaleString()}</p>
           </div>
         </div>
 
         {fee.installments.length > 0 && (
           <div>
-            <p className="mb-2 text-[10px] font-medium uppercase tracking-wider text-muted-foreground">Breakdown</p>
+            <p className="mb-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">Breakdown</p>
             <div className="space-y-1.5">
               {fee.installments.map((installment, i) => (
                 <div key={`${installment.label}-${i}`} className="flex items-center justify-between rounded-lg bg-muted/30 px-3 py-2 text-sm">

@@ -1,29 +1,36 @@
 "use client";
 
 import { useState } from "react";
-import { Check, ChevronDown, ChevronUp, Copy, CornerUpLeft, Paperclip, Sparkles } from "lucide-react";
+import { Check, Copy, CornerUpLeft, Paperclip } from "lucide-react";
 import type { CourseCard as CourseCardType, Message, ResponseBlock } from "../apis/types";
 import { CourseCard } from "./course-card";
 import { FeedbackButtons } from "./feedback-buttons";
 import { MessageBlocks } from "./message-blocks";
 import { MessageMarkdown } from "./message-markdown";
+import { ScrollRow } from "@/components/scroll-row";
+import { AlyOrbIcon } from "@/components/aly-orb-icon";
 import { setReplyTo } from "../store/ai-chat-slice";
-import { splitQuote } from "../utils";
+import { followUpChips, splitQuote } from "../utils";
 import { useAppDispatch } from "@/lib/hooks";
 import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 
 type ChatMessageProps = {
   message: Message;
-  onChipClick?: (chip: string) => void;
-  onSend?: (value: string) => void;
+  onChipClick?: (chip: string) => boolean | void;
+  onSend?: (value: string) => boolean | void;
+  /** A reply is streaming, so every tappable row in the thread refuses: grey them instead. */
+  busy?: boolean;
 };
 
-/** Cards size themselves to the container, not the viewport — the same grid has to
+/** Cards size themselves to the container, not the viewport — the same carousel has to
  * work in the 380px widget popover and on the full-width chat page. */
-// Inside a `@container/cards`: two per row while the chat column is narrow (the website widget,
-// the Ask Aly popover); from 30rem up, the original auto-fit grid, so wide views are unchanged.
-const CARD_GRID = "grid w-full grid-cols-2 gap-2.5 @min-[30rem]/cards:grid-cols-[repeat(auto-fit,minmax(240px,1fr))] @min-[30rem]/cards:gap-3";
+// Carousel = <ScrollRow> (chevron gutters, hidden scrollbar, wheel/touch still work) + CSS
+// scroll-snap on the rail. Inside a `@container/cards`: slides are ~3/4 of a narrow column
+// (widget / Ask Aly popover) so the next card peeks and invites the swipe; fixed 260px once the
+// column is wide. py-1 leaves room for the card's hover lift.
+const CARD_RAIL = "flex snap-x snap-mandatory gap-2.5 py-1 @min-[30rem]/cards:gap-3";
+const CARD_SLIDE = "w-[72%] shrink-0 snap-start @min-[30rem]/cards:w-[260px]";
 /** One card: half the row while narrow, so it matches a pair; capped at 300px when wide. */
 const SINGLE_CARD = "grid w-full grid-cols-2 gap-2.5 @min-[30rem]/cards:block @min-[30rem]/cards:max-w-[300px]";
 
@@ -80,8 +87,8 @@ function QuotedText({ text }: { text: string }) {
  * Hidden on the narrowest containers, where the column can't spare 40px. */
 function AssistantMark() {
   return (
-    <span className="mt-0.5 hidden size-7 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary sm:flex">
-      <Sparkles className="size-3.5" />
+    <span className="mt-0.5 hidden size-7 shrink-0 items-center justify-center sm:flex">
+      <AlyOrbIcon className="size-7" />
     </span>
   );
 }
@@ -102,75 +109,57 @@ function Attachments({ paths }: { paths: string[] }) {
   );
 }
 
-function Chips({ chips, onChipClick }: { chips: string[]; onChipClick?: (chip: string) => void }) {
-  const [selected, setSelected] = useState<string[]>([]);
+/** Follow-up suggestions. One tap sends — picking several and pressing a second Send button was
+ *  two clicks for what reads as one choice, and nobody expects a suggestion chip to need confirming.
+ *
+ *  A tap marks the chip, it does NOT retire the row: `if (sent) return` used to kill every chip in
+ *  the turn for the rest of the session, so the second suggestion the student wanted was simply
+ *  dead, and scrolling back to an earlier turn's chips got nothing. Suggestions are re-askable by
+ *  nature. The only thing that refuses a tap is a reply already streaming, and `busy` greys the row
+ *  while that is true — the refusal used to be silent, which is what made chips feel like they
+ *  needed two or three clicks. */
+function Chips({ chips, onChipClick, busy }: { chips: string[]; onChipClick?: (chip: string) => boolean | void; busy?: boolean }) {
+  const [sent, setSent] = useState<string | null>(null);
 
-  const toggle = (chip: string) =>
-    setSelected((prev) => (prev.includes(chip) ? prev.filter((c) => c !== chip) : [...prev, chip]));
-
-  const sendSelected = () => {
-    if (!selected.length) return;
-    // Single chip sends as-is; multiple chips sent as a bullet list so the AI sees distinct questions.
-    onChipClick?.(selected.length === 1 ? selected[0]! : selected.map((c) => `• ${c}`).join("\n"));
-    setSelected([]);
+  const send = (chip: string) => {
+    if (onChipClick?.(chip) === false) return; // refused mid-stream: leave every chip tappable
+    setSent(chip);
   };
 
   return (
     <div className="flex flex-col gap-2.5 pt-1">
       <div className="flex flex-wrap gap-1.5">
-        {chips.map((chip) => {
-          const active = selected.includes(chip);
+        {chips.map((chip, i) => {
+          const active = sent === chip;
           return (
-            <button
+            // Same arriving treatment as the option rows: the wrapper fades each suggestion in,
+            // staggered, and the chip itself breathes while the reply streams. Greying them out
+            // read as "blocked" when the truth is "not yet" — see QuickRepliesBlock.
+            <span
               key={chip}
-              type="button"
-              onClick={() => toggle(chip)}
-              className={cn(
-                "rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-150",
-                "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
-                "active:scale-[0.96]",
-                active
-                  ? "border-primary bg-primary text-primary-foreground shadow-sm shadow-primary/30 scale-[1.02]"
-                  : "border-border/70 bg-muted/50 text-muted-foreground hover:border-primary/50 hover:bg-primary/8 hover:text-foreground hover:shadow-sm",
-              )}
+              className={cn("inline-flex", busy && "animate-in fade-in slide-in-from-bottom-1 duration-300")}
+              style={busy ? { animationDelay: `${i * 90}ms`, animationFillMode: "backwards" } : undefined}
             >
-              {chip}
-            </button>
+              <button
+                type="button"
+                disabled={busy}
+                onClick={() => send(chip)}
+                className={cn(
+                  "rounded-full border px-3 py-1.5 text-xs font-medium transition-all duration-150",
+                  "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1",
+                  "active:scale-[0.96]",
+                  active
+                    ? "border-primary bg-primary text-primary-foreground shadow-sm shadow-primary/30 scale-[1.02]"
+                    : "border-border/70 bg-muted/50 text-muted-foreground hover:border-primary/50 hover:bg-primary/8 hover:text-foreground hover:shadow-sm",
+                  busy && "cursor-progress motion-safe:animate-pulse",
+                )}
+              >
+                {chip}
+              </button>
+            </span>
           );
         })}
       </div>
-      {selected.length > 0 && (
-        <Button size="sm" className="self-start rounded-full px-4 h-7 text-xs gap-1.5" onClick={sendSelected}>
-          Send {selected.length > 1 && `(${selected.length})`}
-        </Button>
-      )}
-    </div>
-  );
-}
-
-const CARD_PAGE = 5;
-
-function CourseCardList({ cards }: { cards: CourseCardType[] }) {
-  const [expanded, setExpanded] = useState(false);
-  const visible = expanded ? cards : cards.slice(0, CARD_PAGE);
-  return (
-    <div className="flex flex-col gap-3">
-      <div className="@container/cards w-full">
-        <div className={CARD_GRID}>
-          {visible.map((card, i) => (
-            <CourseCard key={card.id ?? i} card={card} />
-          ))}
-        </div>
-      </div>
-      {cards.length > CARD_PAGE && (
-        <button
-          type="button"
-          onClick={() => setExpanded((v) => !v)}
-          className="flex items-center gap-1.5 self-start rounded-full border px-4 py-1.5 text-xs font-medium text-muted-foreground transition-colors hover:border-primary/50 hover:text-foreground"
-        >
-          {expanded ? <><ChevronUp className="size-3.5" /> Show less</> : <><ChevronDown className="size-3.5" /> View {cards.length - CARD_PAGE} more</>}
-        </button>
-      )}
     </div>
   );
 }
@@ -187,50 +176,61 @@ function AssistantTurn({
   blocks,
   onChipClick,
   onSend,
+  busy,
   footer,
 }: {
   content: string;
   cards: CourseCardType[];
   chips: string[];
   blocks: ResponseBlock[];
-  onChipClick?: (chip: string) => void;
-  onSend?: (value: string) => void;
+  onChipClick?: (chip: string) => boolean | void;
+  onSend?: (value: string) => boolean | void;
+  /** A reply is streaming: every tappable row refuses, so grey them rather than swallow the tap. */
+  busy?: boolean;
   footer?: React.ReactNode;
 }) {
-  // The model routinely answers its own question twice — once as a quick_replies
-  // block, once as chips — so two near-identical option rows stack up. One set of
-  // tappable options per turn; the block wins because it carries the question.
-  const hasQuickReplies = blocks.some((b) => b.type === "quick_replies");
+  // A question-only turn (the widget's level and stream steps) shows its options and nothing else;
+  // a turn with cards keeps its follow-ups. See followUpChips.
+  const visibleChips = followUpChips(chips, blocks, cards.length > 0);
 
   return (
     <div className="flex w-full gap-3">
       <AssistantMark />
       <div className="flex min-w-0 flex-1 flex-col gap-4">
         {content && <MessageMarkdown text={content} />}
-        {blocks.length > 0 && <MessageBlocks blocks={blocks} onAction={onChipClick} onSend={onSend} />}
+        {blocks.length > 0 && <MessageBlocks blocks={blocks} onAction={onChipClick} onSend={onSend} busy={busy} />}
         {cards.length > 0 && (
-          // The container is the chat column, not the screen: a narrow column gets compact pairs.
+          // The container is the chat column, not the screen: slide width follows the column.
           <div className="@container/cards w-full">
-            <div className={cards.length === 1 ? SINGLE_CARD : CARD_GRID}>
-              {cards.map((card, i) => (
-                <CourseCard key={card.id ?? i} card={card} />
-              ))}
-            </div>
+            {/* One card is not a carousel — no rail, no chevron gutters. */}
+            {cards.length === 1 && cards[0] ? (
+              <div className={SINGLE_CARD}>
+                <CourseCard card={cards[0]} />
+              </div>
+            ) : (
+              <ScrollRow rowClassName={CARD_RAIL}>
+                {cards.map((card, i) => (
+                  <div key={card.id ?? i} className={CARD_SLIDE}>
+                    <CourseCard card={card} />
+                  </div>
+                ))}
+              </ScrollRow>
+            )}
           </div>
         )}
-        {chips.length > 0 && !hasQuickReplies && <Chips chips={chips} onChipClick={onChipClick} />}
+        {visibleChips.length > 0 && <Chips chips={visibleChips} onChipClick={onChipClick} busy={busy} />}
         {footer}
       </div>
     </div>
   );
 }
 
-export function ChatMessage({ message, onChipClick, onSend }: ChatMessageProps) {
+export function ChatMessage({ message, onChipClick, onSend, busy }: ChatMessageProps) {
   if (message.role === "user") {
     const { quote, body } = splitQuote(message.content);
     return (
       <div className="flex flex-col items-end gap-1.5">
-        <div className="max-w-[85%] rounded-2xl rounded-br-md bg-muted px-4 py-2.5">
+        <div className="max-w-[85%] rounded-xl rounded-br-sm bg-primary/10 px-4 py-2.5">
           {quote && <QuotedText text={quote} />}
           {/* select-text so the prompt can be selected and copied by hand, not just via the button */}
           <p className="text-[0.9375rem] leading-relaxed whitespace-pre-wrap select-text text-foreground">
@@ -254,6 +254,7 @@ export function ChatMessage({ message, onChipClick, onSend }: ChatMessageProps) 
       blocks={message.blocks}
       onChipClick={onChipClick}
       onSend={onSend}
+      busy={busy}
       footer={
         // Optimistic rows have no server id yet, so there's nothing to rate.
         message.id > 0 ? (
@@ -283,10 +284,11 @@ export function StreamingMessage({
   cards: CourseCardType[];
   chips: string[];
   blocks?: ResponseBlock[];
-  onChipClick?: (chip: string) => void;
-  onSend?: (value: string) => void;
+  onChipClick?: (chip: string) => boolean | void;
+  onSend?: (value: string) => boolean | void;
 }) {
+  // Always busy: this IS the reply still streaming, so its own rows cannot be answered yet.
   return (
-    <AssistantTurn content={content} cards={cards} chips={chips} blocks={blocks} onChipClick={onChipClick} onSend={onSend} />
+    <AssistantTurn content={content} cards={cards} chips={chips} blocks={blocks} onChipClick={onChipClick} onSend={onSend} busy />
   );
 }

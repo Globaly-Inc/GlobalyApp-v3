@@ -2,10 +2,14 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { Plus } from "lucide-react";
+import { Briefcase, Inbox, Plus, ShoppingBag, Store } from "lucide-react";
 import { toast } from "sonner";
+import { SectionTabs } from "@/components/section-tabs";
 import { Button } from "@/components/ui/button";
-import { Skeleton } from "@/components/ui/skeleton";
+import { EmptyState } from "@/components/ui/empty-state";
+import { ListSkeleton } from "@/components/ui/list-skeleton";
+import { PageBody } from "@/components/ui/page-body";
+import { PageHeader } from "@/components/ui/page-header";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import type { Listing } from "../apis";
 import {
@@ -19,9 +23,8 @@ import {
 import { DeleteListingDialog, useDeleteTarget } from "./delete-listing-dialog";
 import { EarningsStrip } from "./earnings-strip";
 import { ListingCard } from "./listing-card";
-import { OrderRow } from "./order-row";
-import { EmptyState, SectionError } from "./section-error";
-import { ServicesTabs } from "./services-tabs";
+import { OrdersTable } from "./order-row";
+import { SectionError } from "./section-error";
 
 type Tab = "listings" | "purchases" | "received";
 
@@ -95,12 +98,9 @@ export function ServicesView() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-6xl space-y-4 md:space-y-6">
-      <header className="flex flex-wrap items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">My Services</h1>
-          <p className="text-sm text-muted-foreground">Manage your listings and orders</p>
-        </div>
+    // Width and padding come from PortalShell (width="default" in PersonalShell) — no max-w here.
+    <PageBody>
+      <PageHeader title={<><Briefcase /> My Services</>} subtitle="Manage your listings and orders">
         <Button
           render={
             <Link href="/personal/earn/services/new">
@@ -109,7 +109,7 @@ export function ServicesView() {
             </Link>
           }
         />
-      </header>
+      </PageHeader>
 
       <EarningsStrip
         summary={summary}
@@ -118,9 +118,10 @@ export function ServicesView() {
         onRetry={() => dispatch(fetchSummary())}
       />
 
-      <ServicesTabs<Tab>
+      <SectionTabs<Tab>
         value={tab}
         onChange={setTab}
+        className="mb-0"
         options={[
           { value: "listings", label: "My Listings", count: listings.length },
           { value: "purchases", label: "My Purchases", count: purchases.length },
@@ -134,17 +135,14 @@ export function ServicesView() {
           error={listingsError}
           onRetry={() => dispatch(fetchListings())}
           skeleton={
-            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-              {[0, 1, 2].map((i) => (
-                <Skeleton key={i} className="h-[260px] rounded-lg" />
-              ))}
-            </div>
+            <ListSkeleton count={3} className="grid gap-4 md:grid-cols-2 lg:grid-cols-3" itemClassName="h-[260px] rounded-lg" />
           }
           empty={
             listings.length === 0 && (
               <EmptyState
+                icon={Store}
                 title="You haven't created any service listings yet."
-                hint="Offer airport pickups, tutoring or accommodation help — set your price and get paid."
+                description="Offer airport pickups, tutoring or accommodation help — set your price and get paid."
                 action={
                   <Button render={<Link href="/personal/earn/services/new">Create Your First Service</Link>} />
                 }
@@ -171,22 +169,19 @@ export function ServicesView() {
           status={purchasesStatus}
           error={purchasesError}
           onRetry={() => dispatch(fetchPurchases())}
-          skeleton={<RowSkeletons />}
+          skeleton={<ListSkeleton count={3} itemClassName="h-14" />}
           empty={
             purchases.length === 0 && (
               <EmptyState
+                icon={ShoppingBag}
                 title="You haven't bought any services yet."
-                hint="Airport pickups, tutoring, accommodation help — offered by students who have already done it."
+                description="Airport pickups, tutoring, accommodation help — offered by students who have already done it."
                 action={<Button variant="outline" render={<Link href="/services">Browse services</Link>} />}
               />
             )
           }
         >
-          <div className="space-y-2">
-            {purchases.map((order) => (
-              <OrderRow key={order.id} order={order} />
-            ))}
-          </div>
+          <OrdersTable orders={purchases} />
         </Region>
       )}
 
@@ -195,22 +190,19 @@ export function ServicesView() {
           status={receivedStatus}
           error={receivedError}
           onRetry={() => dispatch(fetchReceived())}
-          skeleton={<RowSkeletons />}
+          skeleton={<ListSkeleton count={3} itemClassName="h-14" />}
           empty={
             received.length === 0 && (
               <EmptyState
+                icon={Inbox}
                 title="No orders received yet."
-                hint="Listings with a clear title, a cover image and a fair price get found first. Yours appear on the public marketplace as soon as they're active."
+                description="Listings with a clear title, a cover image and a fair price get found first. Yours appear on the public marketplace as soon as they're active."
                 action={<Button variant="outline" render={<Link href="/services">See the marketplace</Link>} />}
               />
             )
           }
         >
-          <div className="space-y-2">
-            {received.map((order) => (
-              <OrderRow key={order.id} order={order} />
-            ))}
-          </div>
+          <OrdersTable orders={received} />
         </Region>
       )}
 
@@ -222,7 +214,7 @@ export function ServicesView() {
         onConfirm={handleDelete}
         onPause={handlePauseFromDialog}
       />
-    </div>
+    </PageBody>
   );
 }
 
@@ -246,14 +238,4 @@ function Region({
   if (status === "failed") return <SectionError message={error} onRetry={onRetry} />;
   if (empty) return <>{empty}</>;
   return <>{children}</>;
-}
-
-function RowSkeletons() {
-  return (
-    <div className="space-y-2">
-      {[0, 1, 2].map((i) => (
-        <Skeleton key={i} className="h-[68px] rounded-lg" />
-      ))}
-    </div>
-  );
 }

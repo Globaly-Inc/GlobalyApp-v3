@@ -68,6 +68,23 @@ eq(hrefs.has(PORTAL), true, "CTA to the portal");
 eq(mail.html.includes("#012E8A"), true, "brand layout (navy primary) is used");
 eq(mail.text.includes("Hi Dana,") && textUrls.has(PORTAL), true, "plain-text version carries greeting and link");
 
+// "Needs your review" is derived from the FULL coverage, not from what was found. A field no course
+// has at all (intake dates: 0 of 795) is the single biggest gap, and it is exactly the row a
+// count > 0 filter drops — it must still be flagged even though the table above omits it.
+eq(/No intake dates[\s\S]{0,240}>795</.test(mail.html), true, "a field missing from every course is flagged, with the full shortfall");
+eq(/No fees[\s\S]{0,240}>383</.test(mail.html), true, "a partial gap is flagged with the shortfall, not the count found");
+eq(mail.html.includes("Needs your review") && !/No campuses/.test(mail.html), true,
+  "the gap table appears, and a figure that is not a share (campuses) is never a gap");
+eq(mail.html.includes("Some details may need your review before students see them"), false,
+  "with the gap table on the page, the vaguer footnote is dropped");
+// A complete crawl prints no gap table, and then the footnote comes back.
+const complete = extractionCompleteEmail({
+  recipientName: "Dana", entityName: "X", website: null, itemLabel: "courses", itemCount: 10,
+  coverage: [{ label: "courses with fees", count: 10, of: 10 }], portalUrl: PORTAL,
+});
+eq(complete.html.includes("Needs your review"), false, "nothing short → no gap table");
+eq(complete.html.includes("Some details may need your review before students see them"), true, "…and the footnote returns");
+
 const toEntity = extractionCompleteEmail({ recipientName: null, entityName: "Acme Visas", website: null, itemLabel: "services", itemCount: 12, coverage: [], portalUrl: "https://x/business/portal" });
 eq(toEntity.text.startsWith("Hi Acme Visas team,") && toEntity.html.includes("services found"), true, "the entity's own inbox is greeted as the team; visa jobs count services");
 

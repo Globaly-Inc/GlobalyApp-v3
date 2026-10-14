@@ -39,18 +39,18 @@ export function MessageEditInput({
           }
           if (e.key === "Escape") onCancel();
         }}
-        className="min-h-16 resize-none text-sm [field-sizing:content]"
+        className="min-h-16 resize-none rounded-xl text-sm [field-sizing:content]"
         disabled={saving}
         autoFocus
       />
-      <div className="flex items-center gap-2">
+      <div className="flex flex-wrap items-center gap-2">
         <Button variant="ghost" size="sm" onClick={onCancel} disabled={saving}>
           Cancel
         </Button>
         <Button size="sm" onClick={() => canSave && onSave(trimmed)} disabled={!canSave}>
           {saving ? "Saving…" : "Save"}
         </Button>
-        <span className="text-[11px] text-muted-foreground">Enter to save · Esc to cancel</span>
+        <span className="text-xs text-muted-foreground">Enter to save · Esc to cancel</span>
       </div>
     </div>
   );

@@ -3,18 +3,20 @@
 @import "shadcn/tailwind.css";
 @plugin "@tailwindcss/typography";
 
-@custom-variant dark (&:is(.dark *));
+@custom-variant dark (&:where(.dark, .dark *));
 
+/* GlobalyOS-V2 design system (docs/superpowers/plans/2026-10-09-globaly-design-system-overhaul.md).
+   Tokens hold complete colour values rather than bare HSL triplets, so a tenant's hex
+   primaryColor can be dropped straight into --tenant-primary. */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
-  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", Segoe UI Symbol, "Noto Color Emoji";
-  --font-mono: var(--font-geist-mono);
-  /* var(--heading-font), not var(--font-fraunces) directly: @theme inline bakes a
-     token's value into the generated CSS, so naming the face here would compile
-     every heading to `font-family: var(--font-fraunces)` and leave nothing for the
-     theme font to reassign. Same indirection --color-primary uses. */
+  --font-sans: var(--font-geist), ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* var(--heading-font), not the face directly: @theme inline bakes values into the
+     generated CSS, and the tenant font override reassigns --heading-font at runtime. */
   --font-heading: var(--heading-font);
+  --font-display: var(--heading-font);
   --color-sidebar-ring: var(--sidebar-ring);
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
@@ -23,167 +25,242 @@
   --color-sidebar-primary: var(--sidebar-primary);
   --color-sidebar-foreground: var(--sidebar-foreground);
   --color-sidebar: var(--sidebar);
-  --color-chart-5: var(--chart-5);
-  --color-chart-4: var(--chart-4);
-  --color-chart-3: var(--chart-3);
-  --color-chart-2: var(--chart-2);
   --color-chart-1: var(--chart-1);
+  --color-chart-2: var(--chart-2);
+  --color-chart-3: var(--chart-3);
+  --color-chart-4: var(--chart-4);
+  --color-chart-5: var(--chart-5);
+  --color-chart-6: var(--chart-6);
+  --color-chart-7: var(--chart-7);
+  --color-chart-8: var(--chart-8);
   --color-ring: var(--ring);
   --color-input: var(--input);
   --color-border: var(--border);
   --color-destructive: var(--destructive);
   --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-warning: var(--warning);
+  --color-warning-foreground: var(--warning-foreground);
+  --color-info: var(--info);
+  --color-info-foreground: var(--info-foreground);
+  --color-rating: var(--rating);
+  --color-ai: var(--ai);
+  --color-ai-foreground: var(--ai-foreground);
+  --color-priority-high: var(--priority-high);
+  --color-priority-high-foreground: var(--priority-high-foreground);
+  --color-priority-medium: var(--priority-medium);
+  --color-priority-medium-foreground: var(--priority-medium-foreground);
+  --color-priority-low: var(--priority-low);
+  --color-priority-low-foreground: var(--priority-low-foreground);
   --color-accent-foreground: var(--accent-foreground);
   --color-accent: var(--accent);
+  --color-accent-light: var(--accent-light);
   --color-muted-foreground: var(--muted-foreground);
   --color-muted: var(--muted);
   --color-secondary-foreground: var(--secondary-foreground);
   --color-secondary: var(--secondary);
   --color-primary-foreground: var(--primary-foreground);
   --color-primary: var(--primary);
+  --color-primary-light: var(--primary-light);
+  --color-primary-dark: var(--primary-dark);
   --color-popover-foreground: var(--popover-foreground);
   --color-popover: var(--popover);
   --color-card-foreground: var(--card-foreground);
   --color-card: var(--card);
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
   --radius-lg: var(--radius);
   --radius-xl: calc(var(--radius) * 1.4);
   --radius-2xl: calc(var(--radius) * 1.8);
   --radius-3xl: calc(var(--radius) * 2.2);
   --radius-4xl: calc(var(--radius) * 2.6);
+  --shadow-sm: var(--elev-sm);
+  --shadow-md: var(--elev-md);
+  --shadow-lg: var(--elev-lg);
+  --shadow-edge-r: 2px 0 5px -2px rgb(0 0 0 / 0.1);
+  --shadow-edge-t: 0 -2px 10px -3px rgb(0 0 0 / 0.1);
+  --spacing-header: 4rem;
 }
 
 :root {
-  /* Globaly Editorial Design System — ported from GlobalyApp-V2, recolored from the original red/maroon brand to #012E8A */
-  /* Cloud white, matching GlobalyOS's `--background: 210 20% 99%`: a hair off pure white, so white cards,
-     the header and the sidebar read as surfaces on a page instead of merging into it. */
-  --background: hsl(210 20% 99%);
-  --foreground: hsl(222 47% 11%);
+  --background: hsl(0 0% 99%);
+  --foreground: hsl(217 33% 17%);
   --card: hsl(0 0% 100%);
-  --card-foreground: hsl(222 47% 11%);
+  --card-foreground: hsl(217 33% 17%);
   --popover: hsl(0 0% 100%);
-  --popover-foreground: hsl(222 47% 11%);
-  /* The brand colour, literal rather than hsl(220 99% 27%): that triple rounds
-     to #012e89 once compiled, a step off the specified hex. */
-  --primary: #012E8A;
+  --popover-foreground: hsl(217 33% 17%);
+  /* GlobalyAI navy #012E8A (logo, 2026-10-10). A tenant's theme colour (applyThemeSettings / layout.tsx set
+     --tenant-primary on <html>) replaces it in light mode only. */
+  --primary: var(--tenant-primary, hsl(220 98% 27%));
   --primary-foreground: hsl(0 0% 100%);
-  --secondary: hsl(220 30% 96%);
-  --secondary-foreground: #012E8A;
-  --muted: hsl(210 17% 96%);
-  --muted-foreground: hsl(215 16% 47%);
-  --accent: hsl(220 86% 80%);
-  --accent-foreground: hsl(220 99% 22%);
-  --destructive: hsl(0 84% 60%);
+  --primary-light: hsl(230 12% 94%);
+  --primary-dark: hsl(221 98% 20%);
+  --secondary: hsl(216 22% 96%);
+  --secondary-foreground: hsl(217 33% 17%);
+  --muted: hsl(216 22% 96%);
+  --muted-foreground: hsl(219 13% 38%);
+  /* --accent aliases --primary-light: hover fills stay neutral, never saturated. */
+  --accent: hsl(230 12% 94%);
+  --accent-foreground: hsl(227 15% 20%);
+  --accent-light: hsl(216 22% 97%);
+  --destructive: hsl(4 76% 40%);
   --destructive-foreground: hsl(0 0% 100%);
-  --border: hsl(215 16% 90%);
-  --input: hsl(215 16% 90%);
-  --ring: #012E8A;
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
+  --success: hsl(152 77% 27%);
+  --success-foreground: hsl(0 0% 100%);
+  --warning: hsl(32 95% 34%);
+  --warning-foreground: hsl(0 0% 100%);
+  --info: hsl(217 91% 50%);
+  --info-foreground: hsl(0 0% 100%);
+  --border: hsl(216 8% 90%);
+  --input: hsl(216 8% 90%);
+  --ring: var(--primary);
+  --chart-1: hsl(217 91% 48%);
+  --chart-2: hsl(160 84% 26%);
+  --chart-3: hsl(38 92% 30%);
+  --chart-4: hsl(258 90% 61%);
+  --chart-5: hsl(350 89% 43%);
+  --chart-6: hsl(189 94% 27%);
+  --chart-7: hsl(25 95% 35%);
+  --chart-8: hsl(215 16% 44%);
+  --rating: hsl(43 96% 56%);
+  --priority-high: hsl(0 84% 95%);
+  --priority-high-foreground: hsl(0 72% 38%);
+  --priority-medium: hsl(38 92% 92%);
+  --priority-medium-foreground: hsl(32 80% 32%);
+  --priority-low: hsl(152 60% 92%);
+  --priority-low-foreground: hsl(152 60% 28%);
+  --ai: var(--primary);
+  --ai-foreground: hsl(0 0% 100%);
   --radius: 0.625rem;
-  --sidebar: hsl(222 47% 11%);
-  --sidebar-foreground: hsl(240 5% 85%);
-  --sidebar-primary: hsl(220 99% 40%);
+  --elev-sm: 0 1px 2px 0 rgb(15 23 42 / 0.04);
+  --elev-md: 0 4px 12px -2px rgb(15 23 42 / 0.06);
+  --elev-lg: 0 12px 32px -8px rgb(15 23 42 / 0.10);
+  --gradient-primary: linear-gradient(135deg, #012e8a 0%, #011f5e 100%);
+  --gradient-subtle: linear-gradient(180deg, hsl(0 0% 99%) 0%, hsl(216 22% 97%) 100%);
+  --sidebar: hsl(0 0% 99%);
+  --sidebar-foreground: hsl(219 13% 38%);
+  --sidebar-primary: var(--primary);
   --sidebar-primary-foreground: hsl(0 0% 100%);
-  --sidebar-accent: hsl(222 30% 18%);
-  --sidebar-accent-foreground: hsl(0 0% 95%);
-  --sidebar-border: hsl(222 30% 18%);
-  --sidebar-ring: hsl(220 99% 40%);
+  --sidebar-accent: hsl(230 12% 94%);
+  --sidebar-accent-foreground: hsl(227 15% 20%);
+  --sidebar-border: hsl(216 8% 90%);
+  --sidebar-ring: var(--primary);
 
-  /* Extra brand tokens — kept as raw "H S% L%" triples (not pre-wrapped in
-     hsl()) so ported V2 markup using hsl(var(--token)) works unchanged. */
-  /* The bright accent against the navy brand. Still named --gold for the ported
-     V2 markup that reads it; the value is now the aqua that replaced the gold. */
-  --gold: 187 92% 55%;
-  /* Navy, not white: white on a 55%-lightness aqua is ~1.6:1 and unreadable. */
-  --gold-foreground: 220 99% 27%;
+  /* Public-site brand tokens, kept as raw "H S% L%" triples because the (web) pages
+     read them as hsl(var(--token)). Names kept from the old palette; values are the
+     GlobalyAI logo's: light blue #A6CBFD as the accent on navy, #006CFF as the bright. */
+  --gold: 214 96% 82%;
+  --gold-foreground: 220 98% 27%;
   --navy: 222 47% 11%;
   --navy-foreground: 0 0% 95%;
-  /* One step up in lightness from --primary, for accents that have to carry on the brand navy
-     itself: the home hero's typing cursor and the lit blob behind its headline. */
-  --primary-bright: 220 88% 45%;
-  --purple-dark: 220 99% 18%;
-  --purple-deep: 220 99% 12%;
+  --primary-bright: 215 100% 50%;
+  --purple-dark: 220 98% 18%;
+  --purple-deep: 220 98% 12%;
 
-  /* The heading face. A plain custom property rather than a @theme token, so it
-     survives to runtime: layout.tsx and applyThemeSettings reassign this when a
-     tenant has picked a font, and clear it to fall back to Fraunces. */
-  --heading-font: var(--font-fraunces);
+  /* Runtime-reassignable heading face; the tenant font override sets it. */
+  --heading-font: var(--font-space-grotesk);
 }
 
 .dark {
-  --background: hsl(222 47% 8%);
-  --foreground: hsl(240 5% 95%);
-  --card: hsl(222 47% 11%);
-  --card-foreground: hsl(240 5% 95%);
-  --popover: hsl(222 47% 11%);
-  --popover-foreground: hsl(240 5% 95%);
-  --primary: hsl(220 90% 50%);
-  --primary-foreground: hsl(0 0% 100%);
-  --secondary: hsl(222 30% 18%);
-  --secondary-foreground: hsl(240 5% 90%);
-  --muted: hsl(222 30% 18%);
-  --muted-foreground: hsl(240 5% 60%);
-  --accent: hsl(222 30% 22%);
-  --accent-foreground: hsl(240 5% 90%);
-  --destructive: hsl(0 62% 30%);
-  --destructive-foreground: hsl(0 0% 100%);
-  --border: hsl(222 30% 22%);
-  --input: hsl(222 30% 22%);
-  --ring: hsl(220 90% 50%);
-  --chart-1: oklch(0.87 0 0);
-  --chart-2: oklch(0.556 0 0);
-  --chart-3: oklch(0.439 0 0);
-  --chart-4: oklch(0.371 0 0);
-  --chart-5: oklch(0.269 0 0);
-  --sidebar: hsl(222 47% 8%);
-  --sidebar-foreground: hsl(240 5% 85%);
-  --sidebar-primary: hsl(220 90% 50%);
-  --sidebar-primary-foreground: hsl(0 0% 100%);
-  --sidebar-accent: hsl(222 30% 14%);
-  --sidebar-accent-foreground: hsl(0 0% 95%);
-  --sidebar-border: hsl(222 30% 14%);
-  --sidebar-ring: hsl(220 90% 50%);
-
-  /* The bright accent against the navy brand. Still named --gold for the ported
-     V2 markup that reads it; the value is now the aqua that replaced the gold. */
-  --gold: 187 92% 55%;
-  /* Navy, not white: white on a 55%-lightness aqua is ~1.6:1 and unreadable. */
-  --gold-foreground: 220 99% 27%;
-  --navy: 222 47% 8%;
-  --navy-foreground: 0 0% 95%;
-  /* One step up in lightness from --primary, for accents that have to carry on the brand navy
-     itself: the home hero's typing cursor and the lit blob behind its headline. */
-  --primary-bright: 220 88% 45%;
-  --purple-dark: 220 99% 18%;
-  --purple-deep: 220 99% 12%;
+  --background: hsl(225 14% 7%);
+  --foreground: hsl(220 14% 96%);
+  --card: hsl(225 13% 10%);
+  --card-foreground: hsl(220 14% 96%);
+  --popover: hsl(225 13% 10%);
+  --popover-foreground: hsl(220 14% 96%);
+  /* The logo's light blue with navy ink, as on GlobalyAI's dark theme. */
+  --primary: hsl(214 96% 82%);
+  --primary-foreground: hsl(220 98% 27%);
+  --primary-light: hsl(225 12% 18%);
+  --primary-dark: hsl(214 96% 74%);
+  --secondary: hsl(225 12% 15%);
+  --secondary-foreground: hsl(220 14% 96%);
+  --muted: hsl(225 12% 15%);
+  --muted-foreground: hsl(220 9% 65%);
+  --accent: hsl(225 12% 18%);
+  --accent-foreground: hsl(220 14% 96%);
+  --accent-light: hsl(225 12% 17%);
+  --destructive: hsl(0 63% 70%);
+  --destructive-foreground: hsl(222 47% 11%);
+  --success: hsl(152 60% 42%);
+  --success-foreground: hsl(222 47% 11%);
+  --warning: hsl(38 92% 55%);
+  --warning-foreground: hsl(222 47% 11%);
+  --info: hsl(213 94% 68%);
+  --info-foreground: hsl(222 47% 11%);
+  --border: hsl(225 11% 18%);
+  --input: hsl(225 11% 18%);
+  --ring: hsl(214 96% 70%);
+  --chart-1: hsl(213 94% 68%);
+  --chart-2: hsl(158 64% 52%);
+  --chart-3: hsl(43 96% 56%);
+  --chart-4: hsl(255 92% 76%);
+  --chart-5: hsl(351 95% 71%);
+  --chart-6: hsl(187 92% 69%);
+  --chart-7: hsl(27 96% 61%);
+  --chart-8: hsl(215 20% 65%);
+  --rating: hsl(43 96% 56%);
+  --priority-high: hsl(0 60% 18%);
+  --priority-high-foreground: hsl(0 80% 80%);
+  --priority-medium: hsl(32 60% 18%);
+  --priority-medium-foreground: hsl(38 92% 75%);
+  --priority-low: hsl(152 50% 16%);
+  --priority-low-foreground: hsl(152 60% 72%);
+  --ai: hsl(214 96% 82%);
+  --ai-foreground: hsl(220 98% 27%);
+  --elev-sm: 0 1px 2px 0 rgb(0 0 0 / 0.4);
+  --elev-md: 0 4px 12px -2px rgb(0 0 0 / 0.45);
+  --elev-lg: 0 12px 32px -8px rgb(0 0 0 / 0.55);
+  --gradient-subtle: linear-gradient(180deg, hsl(225 14% 7%) 0%, hsl(225 13% 10%) 100%);
+  --sidebar: hsl(225 14% 8%);
+  --sidebar-foreground: hsl(220 9% 70%);
+  --sidebar-primary: hsl(214 96% 82%);
+  --sidebar-primary-foreground: hsl(220 98% 27%);
+  --sidebar-accent: hsl(225 12% 18%);
+  --sidebar-accent-foreground: hsl(220 14% 96%);
+  --sidebar-border: hsl(225 11% 18%);
+  --sidebar-ring: hsl(214 96% 70%);
 }
 
 @layer base {
   * {
     @apply border-border outline-ring/50;
   }
-  body {
-    @apply bg-background text-foreground;
-  }
   html {
     @apply font-sans;
     scroll-behavior: smooth;
   }
-  /* Headings in Fraunces, body copy in Inter — the pairing GlobalyOS uses. Both faces are
-     already loaded in layout.tsx; --font-sans and this rule are what actually apply them.
-
-     A font-family here beats the one headings would inherit from <html>, so this rule
-     also decides whether /theme-setup's font reaches headings. layout.tsx reassigns
-     --font-heading when a tenant has picked a font, which is what lets the override
-     through while leaving the default pairing intact. */
-  h1, h2, h3, h4, h5, h6 {
-    @apply font-heading tracking-[-0.01em];
+  /* Portals run on GlobalyOS-V2's 15px root; public pages keep 16px so nothing reflows. */
+  html:has([data-shell="portal"]) {
+    font-size: 15px;
   }
+  body {
+    @apply bg-background text-foreground;
+    line-height: 1.6;
+    font-feature-settings: "ss01", "cv11", "cv03";
+  }
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading tracking-[-0.02em];
+  }
+  svg.lucide {
+    stroke-width: 1.75;
+  }
+  /* Links styled `text-primary hover:underline` read as links at rest too. */
+  .text-primary.hover\:underline {
+    text-decoration-line: underline;
+    text-decoration-color: color-mix(in srgb, currentColor 30%, transparent);
+    text-underline-offset: 3px;
+  }
+  .text-primary.hover\:underline:hover {
+    text-decoration-color: currentColor;
+  }
+}
+
+/* Space Grotesk headings read at 500 everywhere, including ones carrying a
+   font-semibold/font-bold utility (GlobalyOS-V2 plan 2.0 reskin). */
+:is(h1, h2, h3, h4, .font-heading, .font-display) {
+  font-weight: 500 !important;
 }
 
 .container {
@@ -210,20 +287,16 @@
 /* ── Ported from GlobalyApp-V2 for the (web) landing page ── */
 @layer components {
   .btn-gold {
-    @apply bg-[hsl(var(--gold))] text-[hsl(var(--gold-foreground))] font-semibold hover:bg-[hsl(187,88%,47%)] transition-colors;
+    @apply bg-[hsl(var(--gold))] text-[hsl(var(--gold-foreground))] font-semibold hover:bg-white transition-colors;
   }
+  /* Was a blue-to-aqua gradient; GlobalyOS-V2 sets the accent words in solid ink
+     with a soft marker underneath. */
   .gradient-text {
-    /* --primary already stores a complete hsl(...) value (unlike --gold, a
-       raw triplet) — wrapping it in hsl() again is invalid and silently
-       drops the whole background shorthand, making the gradient text invisible.
-
-       The warm end is a mid cyan rather than --gold itself: this runs on the
-       light landing sections, where the full-bright accent lands at ~2:1 and
-       the tail of the heading washes out. */
-    background: linear-gradient(135deg, var(--primary), hsl(190 95% 38%));
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    background-clip: text;
+    color: var(--primary);
+    text-decoration-line: underline;
+    text-decoration-color: hsl(214 96% 82% / 0.6);
+    text-decoration-thickness: 0.18em;
+    text-underline-offset: 0.12em;
   }
   /* Inside the website widget the gradient stays within the institution's brand colour, which
      the panel root sets as --primary (embed/[key]/utils widgetTheme) — no Globaly cyan. */
@@ -243,22 +316,20 @@
      holds the copy legible over the bright frames the video passes through. */
   .hero-wash {
     background:
-      radial-gradient(ellipse 85% 55% at 50% 4%, hsl(188 95% 72% / 0.3), transparent 62%),
-      radial-gradient(ellipse 65% 55% at 92% 102%, hsl(203 92% 55% / 0.38), transparent 60%),
+      radial-gradient(ellipse 85% 55% at 50% 4%, hsl(214 96% 82% / 0.18), transparent 62%),
       linear-gradient(
         152deg,
-        hsl(226 92% 15% / 0.86) 0%,
-        hsl(219 90% 24% / 0.7) 34%,
-        hsl(206 86% 34% / 0.56) 68%,
-        hsl(192 84% 44% / 0.46) 100%
+        hsl(220 98% 12% / 0.86) 0%,
+        hsl(220 98% 22% / 0.7) 45%,
+        hsl(215 100% 40% / 0.5) 100%
       );
   }
   /* Scoped to h1/p rather than every descendant: UnifiedSearchBar sits inside the
      same copy wrapper and its light-background controls must not inherit this. */
   .hero-radiant :is(h1, h2, p) {
     text-shadow:
-      0 1px 2px hsl(224 92% 6% / 0.45),
-      0 2px 22px hsl(224 92% 6% / 0.55);
+      0 1px 2px hsl(226 26% 6% / 0.45),
+      0 2px 22px hsl(226 26% 6% / 0.55);
   }
   .highlight-text {
     position: relative;
@@ -272,7 +343,7 @@
     bottom: 2px;
     width: 100%;
     height: 8px;
-    background: hsl(var(--gold) / 0.35);
+    background: hsl(214 96% 90%);
     border-radius: 4px;
     z-index: -1;
     transform: scaleX(0);
@@ -339,13 +410,14 @@
     scrollbar-width: thin;
   }
   .scrollbar-thin::-webkit-scrollbar {
-    height: 6px;
+    width: 6px; /* vertical lists */
+    height: 6px; /* horizontal rows */
   }
   .scrollbar-thin::-webkit-scrollbar-track {
     background: transparent;
   }
   .scrollbar-thin::-webkit-scrollbar-thumb {
-    background: hsl(var(--muted-foreground) / 0.3);
+    background: color-mix(in srgb, var(--muted-foreground) 30%, transparent);
     border-radius: 9999px;
   }
 
@@ -361,7 +433,7 @@
   }
   .scroll-on-hover:hover,
   .scroll-on-hover:focus-within {
-    scrollbar-color: hsl(var(--muted-foreground) / 0.35) transparent;
+    scrollbar-color: color-mix(in srgb, var(--muted-foreground) 35%, transparent) transparent;
   }
   .scroll-on-hover::-webkit-scrollbar {
     width: 8px;
@@ -375,7 +447,7 @@
   }
   .scroll-on-hover:hover::-webkit-scrollbar-thumb,
   .scroll-on-hover:focus-within::-webkit-scrollbar-thumb {
-    background: hsl(var(--muted-foreground) / 0.35);
+    background: color-mix(in srgb, var(--muted-foreground) 35%, transparent);
   }
 
   /* Staggered entrance/exit for the public-page "mockup" illustrations — ported from V2's
@@ -438,6 +510,141 @@
       #000 34%,
       transparent 80%
     );
+  }
+
+  /* Branches tab: the connector line under the head office draws down, the head-office card
+     gets one sheen pass, and a removed row slides out before it is deleted. */
+  @keyframes grow-y {
+    from { transform: scaleY(0); }
+  }
+  .animate-grow-y {
+    transform-origin: top;
+    animation: grow-y 0.6s 0.15s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  @keyframes sheen {
+    from { transform: translateX(-100%); }
+    to { transform: translateX(100%); }
+  }
+  .animate-sheen {
+    animation: sheen 1.4s 0.3s ease-out both;
+  }
+  @keyframes row-rise {
+    from { opacity: 0.001; transform: translateY(8px); }
+  }
+  .animate-row-rise {
+    animation: row-rise 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+  }
+  @keyframes row-leave {
+    to { opacity: 0; transform: translateX(24px); }
+  }
+  .animate-row-leave {
+    animation: row-leave 0.3s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  }
+  @keyframes twinkle {
+    0%, 80%, 100% { transform: scale(1); }
+    90% { transform: scale(1.35) rotate(20deg); }
+  }
+  .animate-twinkle {
+    animation: twinkle 2.4s infinite;
+  }
+  /* Branch form: steps slide in from the side they came from, the live preview card pulses when
+     a field it shows changes, and a field that fails validation shakes once. */
+  @keyframes step-from-right {
+    from { opacity: 0.001; transform: translateX(18px); }
+  }
+  @keyframes step-from-left {
+    from { opacity: 0.001; transform: translateX(-18px); }
+  }
+  .animate-step-forward {
+    animation: step-from-right 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  .animate-step-back {
+    animation: step-from-left 0.4s cubic-bezier(0.2, 0.8, 0.2, 1);
+  }
+  @keyframes bump {
+    50% { transform: scale(1.03); }
+  }
+  .animate-bump {
+    animation: bump 0.3s ease-out;
+  }
+  @keyframes pop-in {
+    from { transform: scale(0); }
+  }
+  .animate-pop-in {
+    animation: pop-in 0.35s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+  @keyframes shake {
+    20%, 60% { transform: translateX(-4px); }
+    40%, 80% { transform: translateX(4px); }
+  }
+  .branch-form [aria-invalid="true"] {
+    animation: shake 0.35s;
+    background-color: color-mix(in oklab, var(--destructive) 6%, transparent);
+  }
+  /* Progress ring: --ring-p sweeps from 0 to the element's --ring-pct (registered so the
+     conic-gradient stop can animate). Without the animation it sits at --ring-pct. */
+  .animate-ring-fill {
+    --ring-p: var(--ring-pct, 0%);
+    animation: ring-fill 0.9s cubic-bezier(0.65, 0, 0.35, 1) 0.2s backwards;
+  }
+  @keyframes ring-fill {
+    from { --ring-p: 0%; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .animate-ring-fill { animation: none; }
+  }
+
+  /* A bar/meter that grows in from the left; set --fill-delay to stagger siblings. */
+  @keyframes fill-x {
+    from { transform: scaleX(0); }
+  }
+  .animate-fill-x {
+    transform-origin: left;
+    animation: fill-x 0.7s cubic-bezier(0.65, 0, 0.35, 1) backwards;
+    animation-delay: var(--fill-delay, 250ms);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .animate-fill-x { animation: none; }
+  }
+
+  /* Blocks rise in one after another when a page or tab mounts: .stagger-in staggers its
+     children, .stagger-in-deep its grandchildren (a tab's header, toolbar, list inside its card).
+     Fill is `backwards`, not `both`: a filled transform would keep making the parent the
+     containing block for fixed descendants (the Services bulk bar) after the animation ends. */
+  .stagger-in > *,
+  .stagger-in-deep > * > * {
+    animation: row-rise 0.45s cubic-bezier(0.2, 0.8, 0.2, 1) backwards;
+  }
+  .stagger-in > :nth-child(2), .stagger-in-deep > * > :nth-child(2) { animation-delay: 60ms; }
+  .stagger-in > :nth-child(3), .stagger-in-deep > * > :nth-child(3) { animation-delay: 120ms; }
+  .stagger-in > :nth-child(4), .stagger-in-deep > * > :nth-child(4) { animation-delay: 180ms; }
+  .stagger-in > :nth-child(5), .stagger-in-deep > * > :nth-child(5) { animation-delay: 240ms; }
+  .stagger-in > :nth-child(n + 6), .stagger-in-deep > * > :nth-child(n + 6) { animation-delay: 300ms; }
+  /* Cards lift slightly on hover (service add/edit page, profile tab). */
+  .service-form [data-slot="card"],
+  .card-hover [data-slot="card"] {
+    transition: box-shadow 0.25s, border-color 0.25s;
+  }
+  .service-form [data-slot="card"]:hover,
+  .card-hover [data-slot="card"]:hover {
+    border-color: color-mix(in oklab, var(--primary) 22%, var(--border));
+    box-shadow: 0 10px 28px -16px color-mix(in oklab, var(--primary) 45%, transparent);
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .stagger-in > *, .stagger-in-deep > * > * { animation: none; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-step-forward, .animate-step-back, .animate-bump, .animate-pop-in, .branch-form [aria-invalid="true"] {
+      animation: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .animate-grow-y, .animate-sheen, .animate-row-rise, .animate-row-leave, .animate-twinkle, .animate-ai-pulse {
+      animation: none;
+    }
+    .animate-sheen { display: none; }
   }
 
   @keyframes float {
@@ -515,19 +722,11 @@
     border-radius: inherit;
     background: conic-gradient(
       from var(--ai-ring-angle),
-      hsl(188 92% 58%) 0deg,
-      hsl(200 94% 60%) 40deg,
-      hsl(214 94% 63%) 80deg,
-      hsl(230 90% 65%) 120deg,
-      hsl(250 88% 66%) 160deg,
-      /* the glint: 12deg of pale periwinkle, the brightest point of the sweep */
-      hsl(266 100% 84%) 190deg,
-      hsl(266 100% 84%) 202deg,
-      hsl(284 80% 64%) 232deg,
-      hsl(252 88% 66%) 268deg,
-      hsl(228 92% 65%) 302deg,
-      hsl(204 94% 61%) 332deg,
-      hsl(188 92% 58%) 360deg
+      hsl(220 98% 27%) 0deg,
+      hsl(215 100% 50%) 90deg,
+      hsl(214 96% 82%) 190deg,
+      hsl(215 100% 50%) 280deg,
+      hsl(220 98% 27%) 360deg
     );
     animation: ai-ring-spin 6s linear infinite;
     pointer-events: none;
@@ -570,13 +769,7 @@
      must stay solid — the Sparkles glyph, whose stroke follows currentColor — sets its own
      colour rather than inheriting from here. */
   .ai-gradient-text {
-    background-image: linear-gradient(
-      100deg,
-      hsl(192 88% 34%) 0%,
-      hsl(220 88% 46%) 34%,
-      hsl(254 80% 50%) 70%,
-      hsl(282 78% 45%) 100%
-    );
+    background-image: linear-gradient(100deg, hsl(220 98% 27%) 0%, hsl(215 100% 42%) 100%);
     -webkit-background-clip: text;
     background-clip: text;
     color: transparent;
@@ -611,4 +804,11 @@
   .animate-ai-pulse {
     animation: none !important;
   }
+}
+
+/* Registered so the progress ring's conic-gradient stop can be animated (.animate-ring-fill). */
+@property --ring-p {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 0%;
 }

@@ -11,6 +11,7 @@ function delay(ms: number) {
 }
 
 let mockExtractionProgressPct = 0;
+let mockExtractionStartedAt = new Date().toISOString();
 let mockReviewedCourses = false;
 /** Starts false so the splash plays against mocks — it is the thing being changed. */
 let mockWelcomeSeen = false;
@@ -173,6 +174,7 @@ export const businessMockApi = {
     if (!website) throw new Error("A website is required to start extraction");
     mockProfile = { ...mockProfile, website, source_job_id: "mock-job-id" };
     mockExtractionProgressPct = 0;
+    mockExtractionStartedAt = new Date().toISOString();
     return mockProfile;
   },
 
@@ -199,6 +201,14 @@ export const businessMockApi = {
         accreditations: Math.round(3 * scale),
         visa_services: 0,
       },
+      // Walks the three stages across the same fake progress the counts use.
+      stages: {
+        crawling: mockExtractionProgressPct >= 40 ? "done" : "processing",
+        organising: mockExtractionProgressPct >= 80 ? "done" : mockExtractionProgressPct >= 40 ? "processing" : "waiting",
+        flagging: mockExtractionProgressPct >= 100 ? "done" : mockExtractionProgressPct >= 80 ? "processing" : "waiting",
+      },
+      pages_found: Math.round(412 * scale),
+      started_at: mockExtractionStartedAt,
     };
   },
 

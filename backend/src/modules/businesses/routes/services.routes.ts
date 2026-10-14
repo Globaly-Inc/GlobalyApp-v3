@@ -173,16 +173,18 @@ export async function businessServicesRoutes(app: FastifyInstance) {
   });
 
   app.get("/services/search", { preHandler: requireBusinessOrInstitutionContext }, async (req, reply) => {
-    const { search, course_category, published: publishedParam, origin, degree_level, ...pagination } = ServiceSearchQuerySchema.parse(req.query);
+    const { search, course_category, published: publishedParam, origin, degree_level, attention, ...pagination } = ServiceSearchQuerySchema.parse(req.query);
     const published = publishedParam === undefined ? undefined : publishedParam === "published";
     const { limit, offset } = paginationToOffset(pagination);
     const sourceJobId = await servicesSourceJobId(req);
     const shared = req.auth.orgType === "institution" ? await resolveSharedCourses(req.institutionId) : null;
     const { rows, total } = sourceJobId
       ? await searchInstitutionCourses(sourceJobId, limit, offset, {
-        search, courseCategory: course_category, shared, published, origin, degreeLevel: degree_level,
+        search, courseCategory: course_category, shared, published, origin, degreeLevel: degree_level, attention,
       })
-      : await service.searchServices(Number(req.business!.id), limit, offset, search, published);
+      : attention === "needs_approval"
+        ? { rows: [], total: 0 } // a business's own services have no approval step
+        : await service.searchServices(Number(req.business!.id), limit, offset, search, published, attention === "missing_fee");
     return reply.send(buildPaginatedResponse(rows, total, pagination));
   });
 

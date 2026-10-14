@@ -6,7 +6,14 @@
  */
 export { ENQUIRY_STATUS_LABEL, INBOX_FILTERS, type InboxFilterKey } from "@/app/business/enquiries/const";
 
-export const ENQUIRY_TABLE_HEAD = ["Student", "Course", "Status", "Recipients", "Intake", "Created"];
+export const ENQUIRY_TABLE_HEAD = [
+  "Student",
+  { label: "Course", className: "hidden md:table-cell" },
+  "Status",
+  { label: "Recipients", className: "hidden md:table-cell" },
+  { label: "Intake", className: "hidden lg:table-cell" },
+  { label: "Created", className: "hidden lg:table-cell" },
+];
 
 export const DISTRIBUTION_TABLE_HEAD = ["Business", "Tier", "Status", "Credits", "Unlocked"];
 

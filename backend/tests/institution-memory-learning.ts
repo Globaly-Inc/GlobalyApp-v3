@@ -153,6 +153,14 @@ console.log("\n0c. GENERAL_KNOWLEDGE — the one type that may state a fact, and
 
   assert(!gk(fact, {}).ok, "metadata must carry the topic it is filed under");
 
+  // `topic` is written by the extractor in its own words, like `concern` and `trigger`, but it was
+  // never listed in FREE_TEXT_METADATA_KEYS — so every privacy filter that guards `content` looked
+  // straight past it. A visitor's email parked there is stored and shown in the portal.
+  assert(!gk(fact, { topic: "funding query from user@example.com" }).ok,
+    "an email in metadata.topic is PII too");
+  assert(!gk(fact, { topic: "what John asked about visas" }).ok,
+    "and a known name in metadata.topic is still a name");
+
   // What it pays: no quantity of reinforcement activates it.
   assert(schema.NEVER_AUTO_PROMOTES.has("GENERAL_KNOWLEDGE"),
     "GENERAL_KNOWLEDGE can never auto-promote — three students hearing the same wrong answer is "

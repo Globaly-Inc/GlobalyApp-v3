@@ -2,13 +2,9 @@
  * Rerun-job routing test — service-level against the real dev DB.
  * Run: node --import tsx tests/rerun-agentcis.ts
  *
- * Real bug: "Re-run Extraction" always re-dispatched to the generic web-scrape job
- * worker (EXTRACTION_QUEUES.JOBS), even for a job whose source_type is "agentcis" —
- * imported wholesale from the AgentCIS API, never crawled from the institution's own
- * site. That made a rerun try to scrape the real institution homepage (e.g.
- * concordia.ab.ca) via Firecrawl, hitting rate limits for a site the job never needed
- * to touch. Fix: rerunJob() now branches on source_type and re-dispatches an AgentCIS
- * job to EXTRACTION_QUEUES.AGENTCIS via importAgentCIS() instead.
+ * Re-run restarts THIS job on its own row for every source type. An AgentCIS job used to
+ * re-dispatch the import instead, which lands on a FRESH row and abandons whatever the job
+ * already had — one live case replaced a 43-page, 73-course job with a 6-course import.
  *
  * Style matches tests/courses.ts: real DB, no mocking of masterKnex — only the shared
  * LavinMQ publish() is monkey-patched, so this doesn't need a running broker.
@@ -89,40 +85,28 @@ async function main() {
   }) as typeof queueService.publish;
 
   try {
-    await assert("agentcis job re-dispatches to the AGENTCIS queue, not JOBS", async () => {
+    await assert("an agentcis job re-runs in place via the JOBS queue, like any other job", async () => {
       const jobId = await insertJob({
         source_type: "agentcis",
         aggregator_name: "AgentCIS",
-        pipeline_progress: JSON.stringify({ phase: "done", agentcis_id: "TEST-AGENTCIS-123" }),
+        pipeline_progress: JSON.stringify({ phase: "done", agentcis_id: "TEST-AGENTCIS-456" }),
       });
       jobIds.push(jobId);
       calls = [];
 
-      const result = await rerunJob(jobId, FAKE_ADMIN_ID);
+      testUserId ??= await createTestPlatformUser();
+      const result = await rerunJob(jobId, testUserId);
 
       eq(calls.length, 1, "publish call count");
-      eq(calls[0].queue, "extraction_agentcis", "queue name");
-      eq(JSON.stringify(calls[0].message), JSON.stringify({ institutionId: "TEST-AGENTCIS-123" }), "message");
-      eq((result as { reimport?: boolean }).reimport, true, "result.reimport");
-    });
+      eq(calls[0].queue, "extraction_jobs", "queue name — the crawl pipeline, not the AgentCIS import");
+      eq((calls[0].message as { jobId?: string }).jobId, jobId, "dispatched for the SAME job id");
+      eq((result as { reimport?: boolean }).reimport, undefined, "result.reimport");
+      eq((result as { mode?: string }).mode, "full", "result.mode");
 
-    await assert("agentcis job with no agentcis_id on record throws instead of mis-dispatching", async () => {
-      const jobId = await insertJob({
-        source_type: "agentcis",
-        aggregator_name: "AgentCIS",
-        pipeline_progress: JSON.stringify({ phase: "done" }),
-      });
-      jobIds.push(jobId);
-      calls = [];
-
-      let threw = false;
-      try {
-        await rerunJob(jobId, FAKE_ADMIN_ID);
-      } catch {
-        threw = true;
-      }
-      eq(threw, true, "rerunJob threw");
-      eq(calls.length, 0, "no publish happened");
+      const row = await masterKnex("superadmin.extraction_jobs").where({ id: jobId }).first();
+      eq(row.status, "pending", "the existing row was reset — no new job was created");
+      eq(row.pipeline_progress.site_map, "waiting", "its discovery steps are back to waiting");
+      eq(row.pipeline_progress.agentcis_id, "TEST-AGENTCIS-456", "and it still knows its AgentCIS institution");
     });
 
     await assert("a normal (non-agentcis) job still re-crawls via the JOBS queue", async () => {

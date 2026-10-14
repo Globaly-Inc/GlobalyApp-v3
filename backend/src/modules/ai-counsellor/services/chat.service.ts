@@ -15,6 +15,7 @@ import type { EmbedContext } from "./embed.service.js";
 import { profileBlockFor, retrieveMemories } from "../../institution-memory/index.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import * as storage from "../../../shared/storage/storageService.js";
+import { courseSlug } from "../../search/utils/slug.js";
 
 const logger = createChildLogger("chat-service");
 
@@ -22,9 +23,18 @@ const HISTORY_LIMIT = 20;
 
 /** Attach the institution's logo/city to each card from the DB, keyed on the course
  * id the model cited. Decorative, so a lookup failure leaves the cards untouched
- * rather than costing the student their answer. */
+ * rather than costing the student their answer.
+ *
+ * The `slug` is NOT decorative: it is the card's link to the public /course/[slug] page, and
+ * until now it was whatever the model copied out of CARD_FIELDS. A dropped or mistyped slug
+ * silently demoted the card to its `source_url` (the institution's own site) or to no link at
+ * all, so "the card doesn't open anything" depended on how well the model transcribed a
+ * 40-character string. It is derived here instead, from the id and name parseCards already
+ * requires — the public page parses only the trailing id fragment, so this always resolves to
+ * the right course even when the model's name differs cosmetically. */
 export async function withInstitutionMedia(cards: ParsedCard[]): Promise<ParsedCard[]> {
   if (!cards.length) return cards;
+  cards = cards.map((c) => ({ ...c, slug: courseSlug(c.name, c.id) }));
   try {
     const media = await knowledgeRepo.institutionMediaByCourseIds(cards.map((c) => c.id));
     if (!media.length) return cards;
@@ -101,17 +111,20 @@ export async function handleMessage(opts: {
     // 5. Profile context
     const profileContext = await knowledgeRepo.getProfileContext(opts.userId);
 
-    // Discovery turn: first message of a platform session gets NO course data, so
-    // the model counsels (asks about goals) instead of dumping recommendations —
+    // Discovery turn: the first message of a session gets NO course data, so the
+    // model counsels (asks about goals) instead of dumping recommendations —
     // instructions alone don't stop it when CONTEXT is full of matching courses.
-    // Embed visitors are exempt: they come with a specific question about one
-    // institution and expect a direct answer. Also exempt: a student whose profile
-    // already carries the essentials (destination + level) — for them discovery is
-    // already done, and withholding courses on turn 1 reads as an interrogation.
+    // Exempt: a student whose profile already carries the essentials (destination +
+    // level) — for them discovery is done, and withholding courses on turn 1 reads
+    // as an interrogation. Embed used to be exempt wholesale, on the theory that a
+    // widget visitor arrives with a specific question; in practice they open with a
+    // starter chip and got a generic slice of the catalogue as the first thing the
+    // counsellor ever said. Same rule both ways now — the guest path (anonymous
+    // visitors, guest.routes.ts) runs its own copy against the stored preference.
     const isFirstMessage = isNew && session.message_count === 0;
     const p = profileContext?.profile;
     const profileReady = !!(p?.degree_level && p?.preferred_destinations);
-    const discoveryTurn = isFirstMessage && !opts.embed && !profileReady;
+    const discoveryTurn = isFirstMessage && !profileReady;
 
     // Returning student: this fresh session is not their first ever (the count
     // includes the one just created). Platform only — embed visitors are anonymous.
@@ -237,14 +250,21 @@ export async function handleMessage(opts: {
           rackInstitutionId: institutionId,
           skipCourses: discoveryTurn,
           pinnedCourseIds,
+          priorQuestion: rag.lastAssistantQuestion(prevMessages),
           onTrace: trace,
         }),
+        // Courtesy turns skip the memory EMBEDDING for the same reason searchAll skips its
+        // searches: there is nothing in "thanks" to retrieve guidance for. The pinned rules still
+        // come back — they are institution-wide and must not depend on how the student phrased the
+        // turn, least of all on a closing reply (Greptile).
         institutionId
           ? retrieveMemories({
               institutionId,
               institutionName: opts.embed?.config.display_name,
-              query: opts.content,
+              // Resolved, not raw: this embeds the question too (see rag.resolveQuery).
+              query: rag.resolveQuery(opts.content, rag.lastAssistantQuestion(prevMessages)),
               situation: rag.situationText(profileContext, session.counselling_context),
+              pinnedOnly: rag.isCourtesyTurn(opts.content, rag.lastAssistantQuestion(prevMessages)),
               onTrace: trace,
             })
           : null,
@@ -259,10 +279,14 @@ export async function handleMessage(opts: {
       // not by the model's judgement — a guessed fee or refund window is the costliest mistake.
       // Matched per topic, not one boolean over the whole context: a retrieved course fee is
       // evidence for a fees question and NOT for a refund-policy one (Greptile).
-      const noMoneyData = rag.shouldWithholdMoney(opts.content, ragOutput.moneyTopics);
-      if (noMoneyData) {
-        trace(`Money question, no evidence for ${rag.moneyTopicsOf(opts.content).join("/")}`
-          + `${ragOutput.moneyTopics.length ? ` (context has: ${ragOutput.moneyTopics.join(", ")})` : ""}: answer withheld`);
+      // Only the topics asked AND ungrounded are withheld — the rest of the question is still
+      // answered. `askedMoneyTopics` reads the question strictly, so a finance COURSE or an
+      // accommodation availability question is not treated as a question about an amount.
+      const withheldMoneyTopics = rag.askedMoneyTopics(opts.content)
+        .filter((topic) => !ragOutput.moneyTopics.includes(topic));
+      if (withheldMoneyTopics.length) {
+        trace(`Money question, no evidence for ${withheldMoneyTopics.join("/")}`
+          + `${ragOutput.moneyTopics.length ? ` (context has: ${ragOutput.moneyTopics.join(", ")})` : ""}: that part withheld`);
       }
 
       result = await streamChat({
@@ -278,7 +302,8 @@ export async function handleMessage(opts: {
           embedConfig: opts.embed?.config,
           rackProfile,
           institutionGuidance: memory?.text,
-          noMoneyData,
+          withheldMoneyTopics,
+          retrievalSkipped: !ragOutput.searched,
         }),
         history,
         userMessage: opts.content,
@@ -287,7 +312,8 @@ export async function handleMessage(opts: {
     }
 
     // 7. Parse structured blocks
-    const cards = await withInstitutionMedia(parseCards(result.fullText));
+    // Already-shown courses are dropped, not re-carded — see rag.dropShownCards.
+    const cards = await withInstitutionMedia(rag.dropShownCards(parseCards(result.fullText), pinnedCourseIds));
     const chips = parseChips(result.fullText);
     const blocks = parseBlocks(result.fullText);
     const cleanText = stripBlocks(result.fullText);

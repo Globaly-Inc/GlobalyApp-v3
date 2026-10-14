@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useAppSelector } from "@/lib/hooks";
-import { ArrowUpRight, CheckCircle2, Circle, Eye, Lock, type LucideIcon } from "lucide-react";
+import { ArrowUpRight, Check, Eye, Lock, type LucideIcon } from "lucide-react";
+import { buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
 import { cn } from "@/lib/utils";
@@ -24,7 +25,7 @@ const STEP_LINKS: Record<string, string> = {
  * only the chat widget waits). A prerequisite missing from the list doesn't lock anything.
  */
 // The suggested next step gets the one filled button; every other step gets a one-line StepNote.
-const STEP_BUTTON_PRIMARY = "mt-1.5 inline-flex h-7 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/90";
+const STEP_BUTTON_PRIMARY = buttonVariants({ size: "xs", className: "mt-2 px-3" });
 
 /** "🔒 Unlocks after Customise…" / "↗ Available now Open" — icon, optional muted text, link. */
 function StepNote({ icon: Icon, text, link, fallback }: Readonly<{
@@ -55,6 +56,7 @@ const linkFor = (key: string, businessId: number | null) => {
 
 export function GetSetUpChecklist({ progress }: Readonly<{ progress: OnboardingProgress }>) {
   const businessId = useAppSelector((st) => st.businessOnboarding.profile?.id ?? null);
+  const crawling = useAppSelector((st) => (st.businessOnboarding.extractionStatus?.status === "processing" ? st.businessOnboarding.extractionStatus : null));
   const byKey = new Map(progress.steps.map((s) => [s.key, s]));
   const blockerOf = (key: string) => {
     const req = byKey.get(REQUIRES[key] ?? "");
@@ -66,26 +68,37 @@ export function GetSetUpChecklist({ progress }: Readonly<{ progress: OnboardingP
 
   return (
     <Card id="get-set-up">
-      <CardHeader className="space-y-2 pb-3">
-        <div className="flex items-center justify-between">
-          <CardTitle className="text-sm">Get set up</CardTitle>
+      <CardHeader className="gap-3">
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle>Get set up</CardTitle>
           <span className="text-xs font-medium tabular-nums text-muted-foreground">
             {progress.completed}/{progress.total}
           </span>
         </div>
         <Progress value={percent} className="h-1.5" />
       </CardHeader>
-      <CardContent className="space-y-0.5 pb-4">
+      <CardContent>
+        <ol className="flex flex-col">
         {progress.steps.map((step, i) => {
           const isCurrent = i === firstIncompleteIndex;
           const href = linkFor(step.key, businessId);
           const blocker = step.done ? null : blockerOf(step.key);
           const blockerHref = blocker ? linkFor(blocker.key, businessId) : undefined;
+          const isLast = i === progress.steps.length - 1;
           return (
-            <div key={step.key} className="flex items-start gap-3 py-2">
-              <span className="mt-0.5 shrink-0">
+            <li key={step.key} className="relative flex items-start gap-3 py-2">
+              {/* Timeline spine down to the next marker; green once this step is done. */}
+              {!isLast && (
+                <span
+                  aria-hidden
+                  className={cn("absolute left-[0.6rem] top-8 -bottom-2 w-[1.5px]", step.done ? "bg-success/50" : "bg-border")}
+                />
+              )}
+              <span className="relative z-10 mt-0.5 shrink-0 rounded-full bg-card">
                 {step.done ? (
-                  <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                  <span className="flex h-5 w-5 items-center justify-center rounded-full bg-success text-success-foreground">
+                    <Check className="h-3 w-3" strokeWidth={2.5} />
+                  </span>
                 ) : isCurrent ? (
                   // SVG, not nested boxes: both circles share one centre, so the dot can't drift a
                   // pixel off when the browser rounds the 2px border.
@@ -94,10 +107,10 @@ export function GetSetUpChecklist({ progress }: Readonly<{ progress: OnboardingP
                     <circle cx="10" cy="10" r="4" fill="currentColor" />
                   </svg>
                 ) : (
-                  <Circle className="h-5 w-5 text-muted-foreground/30" />
+                  <span className="block h-5 w-5 rounded-full border-[1.5px] border-border" />
                 )}
               </span>
-              <div className="min-w-0 flex-1">
+              <div className={cn("min-w-0 flex-1", isCurrent && "-mt-1 rounded-lg border border-border bg-accent-light px-3 py-2.5")}>
                 <div className="flex items-center justify-between gap-2">
                   <p className={cn("text-sm font-medium", step.done ? "text-muted-foreground line-through" : "text-foreground")}>
                     {step.label}
@@ -112,8 +125,13 @@ export function GetSetUpChecklist({ progress }: Readonly<{ progress: OnboardingP
                     </Link>
                   )}
                 </div>
-                {step.detail && !step.done && <p className="text-xs text-muted-foreground">{step.detail}</p>}
-                {!step.done && href && (isCurrent ? (
+                {/* While the crawl runs, this is the only place that says how far along it is. */}
+                {crawling && step.key === "extract_website" && !step.done ? (
+                  <p className="text-xs text-muted-foreground">Running on its own — {crawling.progress_pct}% read so far</p>
+                ) : (
+                  step.detail && !step.done && <p className="text-xs text-muted-foreground">{step.detail}</p>
+                )}
+                {!step.done && href && (crawling && step.key === "extract_website" ? null : isCurrent ? (
                   <Link href={href} className={STEP_BUTTON_PRIMARY}>Start now</Link>
                 ) : blocker ? (
                   // Locked, but never a dead end: the unlocking step's name links straight to it.
@@ -122,9 +140,10 @@ export function GetSetUpChecklist({ progress }: Readonly<{ progress: OnboardingP
                   <StepNote icon={ArrowUpRight} text="Available now" link={{ href, label: "Open" }} />
                 ))}
               </div>
-            </div>
+            </li>
           );
         })}
+        </ol>
       </CardContent>
     </Card>
   );

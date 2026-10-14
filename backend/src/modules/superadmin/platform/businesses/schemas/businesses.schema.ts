@@ -91,7 +91,7 @@ export const ListQuerySchema = PaginationSchema.extend({
   sort: z.enum(BusinessSortOptions).default("name_asc"),
   // Applied server-side so pagination totals stay correct — the same reason business_type is,
   // above. "all"/absent means no filter.
-  origin: z.enum(["seeded", "admin", "signup"]).optional(),
+  origin: z.enum(["seeded", "admin", "signup", "spreadsheet", "agentcis"]).optional(),
   ownership: z.enum(["owned", "unclaimed"]).optional(),
 });
 

@@ -13,10 +13,10 @@ type VisaServicePageProps = Readonly<{ params: Promise<{ slug: string }> }>;
 export async function generateMetadata({ params }: VisaServicePageProps): Promise<Metadata> {
   const { slug } = await params;
   const provider = await getVisaServiceProviderBySlug(slug);
-  if (!provider) return { title: "Visa Service — Globaly" };
+  if (!provider) return { title: "Visa Service — GlobalyAI" };
   return {
-    title: `${provider.business_name} — Globaly`,
-    description: provider.description?.slice(0, 155) ?? `View ${provider.business_name} on Globaly.`,
+    title: `${provider.business_name} — GlobalyAI`,
+    description: provider.description?.slice(0, 155) ?? `View ${provider.business_name} on GlobalyAI.`,
   };
 }
 

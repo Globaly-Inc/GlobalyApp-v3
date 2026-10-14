@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { WIDGET_SETTINGS_HREF } from "@/app/business/ai-widget/const";
 import Link from "next/link";
 import { MessageSquare } from "lucide-react";
@@ -21,15 +21,16 @@ import { deactivateEmbedConfig, fetchEmbedConfigs, reactivateEmbedConfig } from 
  */
 export function WidgetSwitch({ showLabel = true }: Readonly<{ showLabel?: boolean }>) {
   const dispatch = useAppDispatch();
-  const { configs, status } = useAppSelector((s) => s.aiWidget);
+  const { configs, status, loaded } = useAppSelector((s) => s.aiWidget);
   const [busy, setBusy] = useState(false);
 
-  const fetchedRef = useRef(false);
+  // Keyed on `loaded`, not a mount ref: switching org resets the slice under a mounted Inbox,
+  // and the new org's configs must be fetched. The thunk's `condition` absorbs Strict Mode's
+  // double run; a failed fetch is not retried in a loop.
   useEffect(() => {
-    if (fetchedRef.current || configs.length > 0) return;
-    fetchedRef.current = true;
+    if (loaded || status === "failed") return;
     dispatch(fetchEmbedConfigs());
-  }, [dispatch, configs.length]);
+  }, [dispatch, loaded, status]);
 
   if (status === "loading" && configs.length === 0) {
     return <span className="text-xs text-muted-foreground">Widget…</span>;

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Inbox, Lock, MailOpen } from "lucide-react";
+import { Lock, MailOpen } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
@@ -18,26 +18,22 @@ export function BusinessRecentEnquiries({ items }: { items: DistributionListItem
     <Card>
       <CardHeader className="pb-3">
         <div className="flex items-center justify-between">
-          <CardTitle className="flex items-center gap-2 text-sm font-semibold">
-            <Inbox className="h-4 w-4 text-primary" /> Recent enquiries
-          </CardTitle>
+          <CardTitle>Recent enquiries</CardTitle>
           <Link href="/business/enquiries" className="text-xs font-medium text-primary hover:underline">
             View all
           </Link>
         </div>
       </CardHeader>
-      <CardContent className="space-y-1">
+      <CardContent className="space-y-0.5">
         {recent.map((item) => (
           <div
             key={item.distribution_id}
-            className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-2.5 transition-colors hover:bg-muted"
+            className="-mx-2 flex items-center gap-3 rounded-lg px-2 py-2.5 transition-colors hover:bg-muted/60"
           >
             <div
               className={cn(
-                "flex h-8 w-8 shrink-0 items-center justify-center rounded-full ring-1",
-                item.is_unlocked
-                  ? "bg-emerald-500/10 text-emerald-600 ring-emerald-500/15 dark:text-emerald-400"
-                  : "bg-amber-500/10 text-amber-600 ring-amber-500/15 dark:text-amber-400",
+                "flex size-9 shrink-0 items-center justify-center rounded-full",
+                item.is_unlocked ? "bg-success/12 text-success" : "bg-warning/12 text-warning",
               )}
             >
               {item.is_unlocked ? <MailOpen className="h-4 w-4" /> : <Lock className="h-3.5 w-3.5" />}
@@ -50,7 +46,7 @@ export function BusinessRecentEnquiries({ items }: { items: DistributionListItem
               </p>
               <p className="text-xs text-muted-foreground">{new Date(item.created_at).toLocaleDateString()}</p>
             </div>
-            <Badge variant={item.is_unlocked ? "default" : "secondary"} className="shrink-0 text-[10px]">
+            <Badge variant={item.is_unlocked ? "default" : "secondary"} className="shrink-0">
               {item.is_unlocked ? "Unlocked" : "Locked"}
             </Badge>
           </div>

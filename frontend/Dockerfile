@@ -18,8 +18,11 @@ RUN apt-get update && apt-get install -y nginx \
 
 ARG NEXT_PUBLIC_MOCK_DATA
 ARG NEXT_PUBLIC_API_URL
+# The public origin (src/lib/hosts.ts): absolute links, referral links, metadata. Unset = relative.
+ARG NEXT_PUBLIC_APP_URL
 ENV NEXT_PUBLIC_MOCK_DATA=$NEXT_PUBLIC_MOCK_DATA
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 
 COPY package.json yarn.lock ./
 RUN yarn install --frozen-lockfile

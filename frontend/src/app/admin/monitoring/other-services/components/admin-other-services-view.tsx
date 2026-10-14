@@ -1,18 +1,43 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Briefcase } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
+import { EmptyState } from "@/components/ui/empty-state";
+import { FilterBar, SearchInput } from "@/components/ui/filter-bar";
+import { ListSkeleton } from "@/components/ui/list-skeleton";
+import { PageBody } from "@/components/ui/page-body";
+import { PageHeader } from "@/components/ui/page-header";
+import { Table, TableBody, TableCard, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { AdminSegmentedTabs } from "../../../components/admin-segmented-tabs";
+import { SectionTabs } from "@/components/section-tabs";
 import { formatDate, formatMoney } from "@/app/personal/earn/services/utils";
-import { STATUS_LABELS, STATUS_STYLES } from "@/app/personal/earn/services/const";
+import { STATUS_LABELS, STATUS_VARIANT } from "@/app/personal/earn/services/const";
 import type { OrderStatus } from "@/app/personal/earn/services/apis";
 import { fetchServiceListings, fetchServiceOrders, fetchServicesStats } from "../store/admin-other-services-slice";
 
 type Tab = "listings" | "orders";
+type Column = { label: string; className?: string; numeric?: boolean };
+
+const LISTING_COLUMNS: Column[] = [
+  { label: "Service" },
+  { label: "Provider", className: "hidden md:table-cell" },
+  { label: "Category", className: "hidden lg:table-cell" },
+  { label: "Price", numeric: true },
+  { label: "State" },
+  { label: "Orders", numeric: true, className: "hidden md:table-cell" },
+  { label: "Created", className: "hidden lg:table-cell" },
+];
+
+const ORDER_COLUMNS: Column[] = [
+  { label: "Service" },
+  { label: "Buyer", className: "hidden md:table-cell" },
+  { label: "Provider", className: "hidden lg:table-cell" },
+  { label: "Amount", numeric: true },
+  { label: "Status" },
+  { label: "Created", className: "hidden md:table-cell" },
+];
 
 /**
  * Read-only oversight of the services marketplace.
@@ -28,22 +53,23 @@ export function AdminOtherServicesView() {
   const [tab, setTab] = useState<Tab>("listings");
   const [search, setSearch] = useState("");
 
+  const fetchedRef = useRef(false);
   useEffect(() => {
+    if (fetchedRef.current) return;
+    fetchedRef.current = true;
     dispatch(fetchServicesStats());
     dispatch(fetchServiceListings({}));
     dispatch(fetchServiceOrders({}));
   }, [dispatch]);
 
   return (
-    <div>
-      <div className="mb-4">
-        <h1 className="text-2xl font-bold text-foreground">Other Services</h1>
-        <p className="mt-1 text-muted-foreground">
-          Peer-to-peer services individuals offer through Earn, and the orders placed against them.
-        </p>
-      </div>
+    <PageBody>
+      <PageHeader
+        title={<><Briefcase /> Other Services</>}
+        subtitle="Peer-to-peer services individuals offer through Earn, and the orders placed against them."
+      />
 
-      <div className="mb-4 grid gap-3 sm:grid-cols-3">
+      <div className="grid gap-3 sm:grid-cols-3">
         <Tile label="Listings" value={String(stats?.listings.total ?? 0)} hint={`${stats?.listings.active ?? 0} active · ${stats?.listings.paused ?? 0} paused`} />
         <Tile
           label="Payment held"
@@ -58,7 +84,7 @@ export function AdminOtherServicesView() {
         />
       </div>
 
-      <AdminSegmentedTabs<Tab>
+      <SectionTabs<Tab>
         value={tab}
         onChange={setTab}
         options={[
@@ -69,62 +95,78 @@ export function AdminOtherServicesView() {
 
       {tab === "listings" && (
         <>
-          <Input
-            className="mb-3 max-w-sm"
-            placeholder="Search by title or provider email"
-            value={search}
-            onChange={(e) => {
-              setSearch(e.target.value);
-              dispatch(fetchServiceListings({ search: e.target.value || undefined }));
-            }}
-          />
-          <Table
-            status={listingsStatus}
-            head={["Service", "Provider", "Category", "Price", "State", "Orders", "Created"]}
-            rows={listings.map((l) => [
-              l.title,
-              <span key="p" className="block truncate" title={l.provider_email}>
-                {l.provider_name || l.provider_email}
-              </span>,
-              l.category_name,
-              formatMoney(l.price_minor, l.currency),
-              <Badge
-                key="s"
-                variant="secondary"
-                className={cn(
-                  l.deleted_at
-                    ? "bg-muted text-muted-foreground/70"
-                    : l.is_active
-                      ? "bg-green-100 text-green-800 dark:bg-green-500/15 dark:text-green-300"
-                      : "bg-muted text-muted-foreground",
-                )}
-              >
-                {l.deleted_at ? "Deleted" : l.is_active ? "Active" : "Paused"}
-              </Badge>,
-              `${l.total_orders} · ★ ${Number(l.avg_rating).toFixed(1)}`,
-              formatDate(l.created_at),
-            ])}
-          />
+          <FilterBar>
+            <SearchInput
+              placeholder="Search by title or provider email"
+              value={search}
+              onChange={(e) => {
+                setSearch(e.target.value);
+                dispatch(fetchServiceListings({ search: e.target.value || undefined }));
+              }}
+            />
+            <span className="shrink-0 px-2 text-sm text-muted-foreground">
+              {listingsTotal} listing{listingsTotal === 1 ? "" : "s"}
+            </span>
+          </FilterBar>
+          <DataTable status={listingsStatus} columns={LISTING_COLUMNS} empty={listings.length === 0}>
+            {listings.map((l) => (
+              <TableRow key={l.id}>
+                <TableCell primary>
+                  <p className="truncate font-medium text-foreground">{l.title}</p>
+                  {/* Fallbacks for the columns hidden on narrow screens. */}
+                  <p className="truncate text-xs text-muted-foreground md:hidden">
+                    {l.provider_name || l.provider_email} · {l.total_orders} · ★ {Number(l.avg_rating).toFixed(1)}
+                  </p>
+                  <p className="truncate text-xs text-muted-foreground lg:hidden">
+                    {l.category_name} · {formatDate(l.created_at)}
+                  </p>
+                </TableCell>
+                <TableCell className="hidden max-w-60 truncate md:table-cell" title={l.provider_email}>
+                  {l.provider_name || l.provider_email}
+                </TableCell>
+                <TableCell className="hidden text-muted-foreground lg:table-cell">{l.category_name}</TableCell>
+                <TableCell numeric>{formatMoney(l.price_minor, l.currency)}</TableCell>
+                <TableCell>
+                  <Badge variant={l.deleted_at ? "outline" : l.is_active ? "success" : "secondary"} className={cn(l.deleted_at && "text-muted-foreground")}>
+                    {l.deleted_at ? "Deleted" : l.is_active ? "Active" : "Paused"}
+                  </Badge>
+                </TableCell>
+                <TableCell numeric className="hidden text-muted-foreground md:table-cell">
+                  {l.total_orders} · ★ {Number(l.avg_rating).toFixed(1)}
+                </TableCell>
+                <TableCell className="hidden text-muted-foreground lg:table-cell">{formatDate(l.created_at)}</TableCell>
+              </TableRow>
+            ))}
+          </DataTable>
         </>
       )}
 
       {tab === "orders" && (
-        <Table
-          status={ordersStatus}
-          head={["Service", "Buyer", "Provider", "Amount", "Status", "Created"]}
-          rows={orders.map((o) => [
-            o.listing_title,
-            o.buyer_name,
-            o.provider_name,
-            formatMoney(o.amount_minor, o.currency),
-            <Badge key="s" variant="secondary" className={cn(STATUS_STYLES[o.status as OrderStatus])}>
-              {STATUS_LABELS[o.status as OrderStatus] ?? o.status}
-            </Badge>,
-            formatDate(o.created_at),
-          ])}
-        />
+        <DataTable status={ordersStatus} columns={ORDER_COLUMNS} empty={orders.length === 0}>
+          {orders.map((o) => (
+            <TableRow key={o.id}>
+              <TableCell primary>
+                <p className="truncate font-medium text-foreground">{o.listing_title}</p>
+                {/* Fallbacks for the columns hidden on narrow screens. */}
+                <p className="truncate text-xs text-muted-foreground md:hidden">
+                  Buyer {o.buyer_name} · {formatDate(o.created_at)}
+                </p>
+                <p className="truncate text-xs text-muted-foreground lg:hidden">Provider {o.provider_name}</p>
+              </TableCell>
+              <TableCell className="hidden md:table-cell">{o.buyer_name}</TableCell>
+              <TableCell className="hidden lg:table-cell">{o.provider_name}</TableCell>
+              <TableCell numeric>{formatMoney(o.amount_minor, o.currency)}</TableCell>
+              <TableCell>
+                <Badge variant={STATUS_VARIANT[o.status as OrderStatus]}>
+                  {STATUS_LABELS[o.status as OrderStatus] ?? o.status}
+                </Badge>
+              </TableCell>
+              <TableCell className="hidden text-muted-foreground md:table-cell">{formatDate(o.created_at)}</TableCell>
+            </TableRow>
+          ))}
+        </DataTable>
       )}
-    </div>
+    </PageBody>
   );
 }
 
@@ -138,57 +180,30 @@ function Tile({ label, value, hint }: Readonly<{ label: string; value: string; h
   );
 }
 
-function Table({
+function DataTable({
   status,
-  head,
-  rows,
-}: Readonly<{ status: "idle" | "loading" | "failed"; head: string[]; rows: React.ReactNode[][] }>) {
-  if (status === "loading") {
-    return (
-      <div className="flex justify-center rounded-lg border border-border bg-card py-16">
-        <Loader2 className="h-6 w-6 animate-spin text-primary" />
-      </div>
-    );
-  }
-  if (status === "failed") {
-    return (
-      <div className="rounded-lg border border-border bg-card py-12 text-center text-sm text-muted-foreground">
-        Couldn&apos;t load this list.
-      </div>
-    );
-  }
-  if (rows.length === 0) {
-    return (
-      <div className="rounded-lg border border-dashed border-border bg-card py-12 text-center text-sm text-muted-foreground">
-        Nothing here yet.
-      </div>
-    );
-  }
+  columns,
+  empty,
+  children,
+}: Readonly<{ status: "idle" | "loading" | "failed"; columns: Column[]; empty: boolean; children: React.ReactNode }>) {
+  if (status === "loading") return <ListSkeleton count={6} itemClassName="h-12" />;
+  if (status === "failed") return <EmptyState icon={Briefcase} title="Couldn't load this list." />;
+  if (empty) return <EmptyState icon={Briefcase} title="Nothing here yet." />;
 
   return (
-    <div className="overflow-x-auto rounded-lg border border-border bg-card">
-      <table className="w-full min-w-[720px] text-sm">
-        <thead className="border-b border-border bg-muted/40">
-          <tr>
-            {head.map((h) => (
-              <th key={h} className="px-4 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-muted-foreground">
-                {h}
-              </th>
+    <TableCard>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            {columns.map((col) => (
+              <TableHead key={col.label} numeric={col.numeric} className={col.className}>
+                {col.label}
+              </TableHead>
             ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, i) => (
-            <tr key={i} className="border-b border-border last:border-0">
-              {row.map((cell, j) => (
-                <td key={j} className="max-w-[240px] truncate px-4 py-2.5 text-foreground">
-                  {cell}
-                </td>
-              ))}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+          </TableRow>
+        </TableHeader>
+        <TableBody>{children}</TableBody>
+      </Table>
+    </TableCard>
   );
 }

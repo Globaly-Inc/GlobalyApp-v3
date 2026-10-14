@@ -9,9 +9,10 @@ import type {
 
 const delay = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-/** Starts empty so the card's "no developer yet" path — the one with real consequences — is the
- *  default thing you see against mocks. `sendSnippet` fills it, as a real invite would. */
-let mockDeveloper: DeveloperContact | null = null;
+/** Starts empty so the card's "nobody has this code yet" path is the default thing you see
+ *  against mocks. `sendSnippet` fills it, exactly as a real send records a row. */
+let mockDevelopers: DeveloperContact[] = [];
+let devSeq = 1;
 
 let seq = 3;
 
@@ -65,17 +66,18 @@ export const aiWidgetVisitorsMock = {
     await delay(300);
     const term = params.search?.trim().toLowerCase();
     const searched = term
-      ? visitors.filter((v) => `${v.name ?? ""} ${v.email ?? ""} ${v.study_preference ?? ""}`.toLowerCase().includes(term))
+      ? visitors.filter((v) => `${v.name ?? ""} ${v.email ?? ""} ${v.study_preference ?? ""} ${v.channel_handle ?? ""}`.toLowerCase().includes(term))
       : visitors;
+    const inChannel = params.channel ? searched.filter((v) => (v.channel ?? "ai_embed") === params.channel) : searched;
     // Counts are taken BEFORE the status filter and after the search — same as the backend,
     // so the tab tallies don't collapse to the active tab's own size.
     const counts: VisitorCounts = {
-      all: searched.length,
-      lead: searched.filter((v) => v.status === "lead").length,
-      visitor: searched.filter((v) => v.status === "visitor").length,
+      all: inChannel.length,
+      lead: inChannel.filter((v) => v.status === "lead").length,
+      visitor: inChannel.filter((v) => v.status === "visitor").length,
     };
     const status = params.status ?? "all";
-    const filtered = status === "all" ? searched : searched.filter((v) => v.status === status);
+    const filtered = status === "all" ? inChannel : inChannel.filter((v) => v.status === status);
     const page = params.page ?? 1;
     const limit = params.limit ?? 10;
     // Copies: Redux freezes what it stores, and the takeover mock mutates these rows later.
@@ -99,19 +101,31 @@ export const aiWidgetMockApi = {
     // updateConfig mutates this same object, so edits show up here without a lookup.
     return {
       config: seedConfig,
-      snippet: `<script src="https://app.globalyapp.com/embed.js" data-key="${seedConfig.embed_key}" async></script>`,
-      developer: mockDeveloper,
+      snippet: `<script src="https://app.globalyai.com/embed.js" data-key="${seedConfig.embed_key}" async></script>`,
+      developers: [...mockDevelopers],
     };
   },
 
   sendSnippet: async (input: SendSnippetInput): Promise<SendSnippetResult> => {
     console.log("[mock] sendSnippet", input);
     await delay(500);
-    if (mockDeveloper) return { sent_to: mockDeveloper.email, invited: false, pending: mockDeveloper.pending };
-    if (!input.invitee) throw new Error("Nobody on your team has the Developer role yet — send a name and email to invite one.");
-    // Mirrors the real thing: the invite lands first, so a second send goes to them, not a new person.
-    mockDeveloper = { email: input.invitee.email, name: input.invitee.name, pending: true };
-    return { sent_to: input.invitee.email, invited: true, pending: false };
+    // Mirrors recordSend's upsert: a repeat address bumps its row rather than adding a second.
+    for (const email of input.emails) {
+      const existing = mockDevelopers.find((d) => d.email === email);
+      if (existing) {
+        existing.send_count += 1;
+        existing.last_sent_at = new Date().toISOString();
+      } else {
+        mockDevelopers.unshift({ id: devSeq++, email, last_sent_at: new Date().toISOString(), send_count: 1 });
+      }
+    }
+    return { sent: input.emails, failed: [], recipients: [...mockDevelopers] };
+  },
+
+  forgetDeveloper: async (id: number): Promise<void> => {
+    console.log("[mock] DELETE /ai-chat/embed/developers/" + id);
+    await delay(300);
+    mockDevelopers = mockDevelopers.filter((d) => d.id !== id);
   },
 
   createConfig: async (input: CreateEmbedConfigInput): Promise<EmbedConfig> => {

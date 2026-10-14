@@ -5,6 +5,7 @@
 // launcher it created are removed on unmount so it never follows the user around the portal.
 
 import { useEffect } from "react";
+import { APP_ORIGIN } from "@/lib/hosts";
 
 const LAUNCHER_ID = "globaly-ai-launcher"; // what embed.js renders
 
@@ -29,7 +30,7 @@ export function WidgetLauncherPreview({ embedKey }: Readonly<{ embedKey: string 
     const dropLauncher = () => document.getElementById(LAUNCHER_ID)?.remove();
 
     const script = document.createElement("script");
-    script.src = `${window.location.origin}/embed.js`;
+    script.src = `${APP_ORIGIN || window.location.origin}/embed.js`;
     script.async = true;
     script.dataset.key = embedKey;
     // Removing an async script tag does not cancel a load already in flight, so a launcher can

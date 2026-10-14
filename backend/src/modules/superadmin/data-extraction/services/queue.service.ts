@@ -194,15 +194,8 @@ export async function resumeExtraction(jobId: string, adminId: number) {
   return { updated: true, retryable, step };
 }
 
-// An AgentCIS-sourced job was never crawled from the institution's own website — it was
-// imported wholesale from the AgentCIS API — so re-crawling its institution_url (the real
-// site, e.g. concordia.ab.ca) is wrong on its face and was hitting Firecrawl rate limits for
-// no reason. Re-run it the same way it was created: re-dispatch the AgentCIS import for the
-// same institution (importAgentCIS creates a fresh job row; resetPipeline never applies here).
-//
-// Every other job always restarts from a clean slate now — no partial "resume" branch here
-// any more (see resumeExtraction above for that; it's a dedicated action, not folded into
-// Re-run).
+// Every job always restarts from a clean slate — no partial "resume" branch here any more (see
+// resumeExtraction above for that; it's a dedicated action, not folded into Re-run).
 export async function rerunJob(jobId: string, adminId: number) {
   const job = await findJobById(jobId);
   if (!job) throw new NotFoundError("Extraction job not found");
@@ -211,17 +204,6 @@ export async function rerunJob(jobId: string, adminId: number) {
   // synthetic placeholder the web crawler must never be pointed at.
   if (job.source_type === "spreadsheet") {
     throw new BadRequestError("This extraction came from a spreadsheet — delete it and import the sheet again to refresh it");
-  }
-
-  if (job.source_type === "agentcis") {
-    const progress = typeof job.pipeline_progress === "string"
-      ? JSON.parse(job.pipeline_progress) : (job.pipeline_progress || {});
-    const agentcisId = progress.agentcis_id;
-    if (!agentcisId) {
-      throw new BadRequestError("This AgentCIS job has no agentcis_id on record — cannot re-import");
-    }
-    await importAgentCIS([agentcisId], adminId);
-    return { updated: true, reimport: true };
   }
 
   // Bring this job's EXISTING courses into line with the current pipeline before wiping the
@@ -261,8 +243,9 @@ export async function rerunJob(jobId: string, adminId: number) {
   return { updated: true, mode: "full" };
 }
 
-// Deep scrape: the default page_cap (500) covers the course catalogue on most sites; this
-// raises the budget by another 500 and re-dispatches the job worker, whose discovery then
+// Deep scrape: re-dispatches the job worker so discovery runs again over the whole site; on a job
+// that still carries a page_cap it also raises that budget by 500. Jobs are uncapped by default
+// (migration 20261006_001), so for most the value is the re-discovery, and its discovery then
 // finds and queues the pages the cap refused (insertQueueItem dedupes the rest, so nothing
 // already extracted is re-billed). Re-running the job worker also refreshes the institution
 // overview (email/phone/logo) from the homepage. Explicit admin action = explicit extra spend.
@@ -276,8 +259,19 @@ export async function deepScrape(jobId: string, adminId: number) {
   // doesn't revive them) — raising the cap would mutate state, report success, and run
   // nothing. The guard is inside raisePageCap's UPDATE (not a check here) so a promotion
   // landing mid-request can't slip an increment onto a freshly exported job.
-  const pageCap = await repo.raisePageCap(jobId, 500, adminId);
-  if (pageCap == null) {
+  // An uncapped job (page_cap NULL, the default) has no budget to raise — incrementing NULL yields
+  // NULL, which would read as the exported case below and report the wrong reason. Re-dispatching
+  // discovery is the other half of what this action does, so that part still runs.
+  let pageCap: number | null | undefined = job.page_cap;
+  if (job.page_cap != null) {
+    pageCap = await repo.raisePageCap(jobId, 500, adminId);
+    if (pageCap == null) {
+      throw new BadRequestError("This job is already exported — use Reset Pipeline to re-crawl it from scratch");
+    }
+  } else if (!(await repo.claimJobUnlessExported(jobId, adminId))) {
+    // Atomic, not `job.status === "exported"` on the row loaded above: a promotion landing between
+    // that read and this point would otherwise record the action and report success while the
+    // worker skips the job. The route stays callable even with its button hidden.
     throw new BadRequestError("This job is already exported — use Reset Pipeline to re-crawl it from scratch");
   }
   await repo.reactivateJob(jobId, adminId);

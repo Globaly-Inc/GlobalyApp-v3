@@ -5,6 +5,7 @@ import { Check, Loader2, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { DescriptionItem, DescriptionList } from "@/components/ui/description-list";
 import {
   Dialog,
   DialogContent,
@@ -89,9 +90,9 @@ export function BookingPanel({
     <>
       <Card>
         <CardHeader>
-          <CardTitle className="text-base">Booking request</CardTitle>
+          <CardTitle>Booking request</CardTitle>
         </CardHeader>
-        <CardContent className="space-y-3">
+        <CardContent className="flex flex-col gap-4">
           {loading ? (
             <div className="flex justify-center py-4">
               <Loader2 className="size-5 animate-spin text-primary" />
@@ -99,19 +100,18 @@ export function BookingPanel({
           ) : (
             <>
               {hasAnswers && (
-                <dl className="grid gap-2 text-sm sm:grid-cols-2">
+                <DescriptionList>
                   {details!.answers.map((a) => (
-                    <div key={a.key}>
-                      <dt className="text-xs text-muted-foreground">{a.label}</dt>
-                      <dd className="font-medium text-foreground">{a.value}</dd>
-                    </div>
+                    <DescriptionItem key={a.key} label={a.label}>
+                      {a.value}
+                    </DescriptionItem>
                   ))}
-                </dl>
+                </DescriptionList>
               )}
 
               {details?.note && (
                 <div className="rounded-md border border-border bg-muted/40 p-3">
-                  <p className="text-xs font-medium text-muted-foreground">From the buyer</p>
+                  <p className="text-sm text-muted-foreground">From the buyer</p>
                   <p className="whitespace-pre-wrap text-sm text-foreground">{details.note}</p>
                 </div>
               )}
@@ -125,13 +125,13 @@ export function BookingPanel({
               {/* The reason leads for a declined booking — it is the only actionable thing on the page. */}
               {order.status === "declined" && details?.decline_reason && (
                 <div className="rounded-md border border-destructive/30 bg-destructive/5 p-3">
-                  <p className="text-xs font-medium text-destructive">Why it was declined</p>
+                  <p className="text-sm font-medium text-destructive">Why it was declined</p>
                   <p className="text-sm text-foreground">{details.decline_reason}</p>
                 </div>
               )}
 
               {isProvider && awaitingDecision && (
-                <div className="flex flex-wrap gap-2 pt-1">
+                <div className="flex flex-wrap gap-2">
                   <Button
                     onClick={() =>
                       run(
@@ -153,7 +153,7 @@ export function BookingPanel({
               )}
 
               {!isProvider && awaitingDecision && (
-                <p className="text-xs text-muted-foreground">
+                <p className="text-sm text-muted-foreground">
                   Waiting for the provider to accept. You&apos;ll be emailed either way, and nothing is charged
                   until you confirm.
                 </p>

@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -61,7 +62,7 @@ function ThreadTitleInput({
           if (e.key === "Escape") onCancel();
         }}
         aria-label="Conversation name"
-        className="h-8 text-base font-semibold"
+        className="h-8 text-base font-semibold md:text-[15px]"
       />
       <Button variant="ghost" size="icon-sm" aria-label="Save name" disabled={saving} onClick={() => void save()}>
         <Check className="size-4" />
@@ -142,8 +143,8 @@ export function ConversationHeader({
   };
 
   return (
-    <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-3 py-2.5 md:px-4">
-      <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-3">
+    <div className="flex shrink-0 items-center justify-between gap-2 border-b border-border bg-card px-3 py-2.5 shadow-xs md:px-4">
+      <div className="flex min-w-0 flex-1 items-center gap-2.5 md:gap-3">
         {/* Back is the only way out of a conversation on mobile, where the sidebar is
             replaced rather than sitting alongside. */}
         <Button variant="ghost" size="icon-sm" className="md:hidden" onClick={onBack} aria-label="Back to conversations">
@@ -206,7 +207,7 @@ export function ConversationHeader({
             />
           ) : (
           <div className="flex items-center gap-1.5">
-            <h2 className="truncate text-base font-semibold text-foreground">{title}</h2>
+            <h2 className="truncate text-[15px] font-semibold leading-tight text-foreground">{title}</h2>
             {onRename && (
               <Button
                 variant="ghost"
@@ -219,9 +220,9 @@ export function ConversationHeader({
               </Button>
             )}
             {thread.is_closed && (
-              <span className="inline-flex shrink-0 items-center rounded bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground">
+              <Badge variant="secondary" className="shrink-0">
                 Closed
-              </span>
+              </Badge>
             )}
           </div>
           )}
@@ -237,7 +238,7 @@ export function ConversationHeader({
           title={thread.is_favorite ? "Remove from favorites" : "Add to favorites"}
           aria-label={thread.is_favorite ? "Remove from favorites" : "Add to favorites"}
         >
-          <Star className={cn("size-4", thread.is_favorite && "fill-orange-500 text-orange-500")} />
+          <Star className={cn("size-4", thread.is_favorite && "fill-rating text-rating")} />
         </Button>
 
         <Popover open={menuOpen} onOpenChange={setMenuOpen}>

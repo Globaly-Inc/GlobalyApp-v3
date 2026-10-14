@@ -1,6 +1,6 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import { STATUS_DOT, STATUS_LABEL, STATUS_STYLES } from "../const";
+import { STATUS_LABEL, STATUS_VARIANT } from "../const";
 
 import type { EnquiryStatus } from "../apis/types";
 
@@ -17,8 +17,9 @@ export function EnquiryStatusBadge({
   className,
 }: Readonly<{ status: EnquiryStatus; className?: string }>) {
   return (
-    <Badge variant="secondary" className={cn("shrink-0 gap-1.5", STATUS_STYLES[status], className)}>
-      <span className={cn("size-1.5 rounded-full", STATUS_DOT[status])} aria-hidden />
+    <Badge variant={STATUS_VARIANT[status]} className={cn("shrink-0 gap-1.5", className)}>
+      {/* Same hue as the label, at full strength so it reads at 6px. */}
+      <span className="size-1.5 rounded-full bg-current" aria-hidden />
       {STATUS_LABEL[status]}
     </Badge>
   );

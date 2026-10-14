@@ -44,7 +44,7 @@ export function FinalizeStep({
           const s = statuses[g.id];
           return (
             <div key={g.id} className="flex items-center gap-3 px-3 py-2 text-sm">
-              {s?.state === "done" ? <CheckCircle2 className="h-4 w-4 text-emerald-600" />
+              {s?.state === "done" ? <CheckCircle2 className="h-4 w-4 text-success" />
                 : s?.state === "failed" ? <XCircle className="h-4 w-4 text-destructive" />
                 : s?.state === "importing" ? <Loader2 className="h-4 w-4 animate-spin text-primary" />
                 : <span className="h-4 w-4" />}

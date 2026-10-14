@@ -4,7 +4,7 @@ import type { Knex } from "knex";
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { geocodeAddress } from "../../../../shared/google-places/placesService.js";
-import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
+import { INGESTED_COURSE_STATUS, SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { parseInstallments, type Installment } from "./installment-parser.js";
 import {
   loadLookupLists, resolveAreaOfStudy, resolveDegreeLevel,
@@ -12,10 +12,12 @@ import {
 } from "./lookup-catalog.js";
 import { coercePartialDate, morePrecise, normaliseStored, partialDatesAgree } from "./partial-date.js";
 import { parseCourseName, canonicalCourseUrl } from "./course-name.js";
+import { domainOf } from "./html-utils.js";
 import { resolveCourse, type CandidateRow } from "./course-resolver.js";
 import { classifyEntity, type EntityClassification } from "./entity-classifier.js";
 import { parseAddress } from "./address-parser.js";
-import { backfillSelfServiceProfile } from "./overview-sync.js";
+import { backfillSelfServiceProfile, pickOverviewMedia } from "./overview-sync.js";
+import type { OverviewMedia } from "./gallery-images.js";
 
 const logger = createChildLogger("staging-writer");
 /** Every course's lookup binding lands here, linked or not; the verify worker totals them per job. */
@@ -53,6 +55,9 @@ export interface ExtractedCourse {
   eligibility?: ExtractedEligibility[];
   english_requirements?: ExtractedEnglishReq[];
   scholarships?: ExtractedScholarship[];
+  /** Bodies the page says accredit/recognise THIS course — never the awarding institution,
+   *  which has its own column above. */
+  accreditations?: ExtractedAccreditation[];
   campus_names?: string[];
   study_units?: ExtractedStudyUnit[];
   /** Model's own label: course | short_course | module | specialization | other. One vote in
@@ -375,6 +380,12 @@ export interface ExtractedScholarship {
   description?: string | null;
 }
 
+export interface ExtractedAccreditation {
+  name?: string | null;
+  issuing_organization?: string | null;
+  website?: string | null;
+}
+
 export interface ExtractedEnglishReq {
   test_type_name?: string | null;
   overall_score?: string | null;
@@ -440,7 +451,9 @@ const OVERVIEW_MERGE_COLUMNS = [
   "facebook_url", "instagram_url", "twitter_url", "linkedin_url", "youtube_url",
 ] as const;
 
-export async function writeInstitutionOverview(jobId: string, data: InstitutionOverview) {
+/** `media`: site analysis's classified cover + photos (gallery-images.ts chooseOverviewMedia); other
+ * writers pass none and pickOverviewMedia falls back to the guarded homepage pick. */
+export async function writeInstitutionOverview(jobId: string, data: InstitutionOverview, media?: OverviewMedia) {
   const mergeSet: Record<string, unknown> = { updated_at: masterKnex.fn.now() };
   for (const col of OVERVIEW_MERGE_COLUMNS) {
     mergeSet[col] = masterKnex.raw(
@@ -457,6 +470,10 @@ export async function writeInstitutionOverview(jobId: string, data: InstitutionO
     .returning("id");
   logger.info("Upserted institution overview", { jobId, id: row.id });
 
+  // Before the profile backfill, which then copies these stored photos onto the org.
+  await pickOverviewMedia(jobId, media).catch((err) =>
+    logger.warn("Overview media pick failed", { jobId, err: err instanceof Error ? err.message : String(err) }),
+  );
   await backfillSelfServiceProfile(jobId).catch((err) =>
     logger.warn("Self-service profile backfill failed", { jobId, err: err instanceof Error ? err.message : String(err) }),
   );
@@ -1594,6 +1611,67 @@ export async function upsertScholarship(jobId: string, s: ExtractedScholarship, 
 }
 
 /**
+ * Find-or-create the accrediting body by name and link it to the course. The body table is GLOBAL
+ * (extraction_accreditations has no job_id — CIM is CIM whichever institution it accredits); the
+ * assignment carries the job. Shared by writeCourse (automatic pipeline) and the step worker's
+ * per-course re-extraction, so the find-or-create semantics can never drift between them.
+ * Returns false for a nameless entry.
+ */
+export async function stageCourseAccreditation(
+  jobId: string, courseId: string, acc: ExtractedAccreditation,
+): Promise<boolean> {
+  // Inner whitespace collapsed, same as the spreadsheet and admin writers — one normalisation
+  // across every producer, or "Chartered  Institute" and "Chartered Institute" become two bodies.
+  const name = acc.name?.trim().replace(/\s+/g, " ");
+  if (!name) return false;
+  const T = `${S}.extraction_accreditations`;
+  // Identity, in order of trust: exact name; the parenthesised abbreviation bridging "CIM" and
+  // "Chartered Institute of Marketing (CIM)" (seen live as two spellings of one body in one run,
+  // and the only key present when neither entry carries a website); the body's website domain.
+  const domain = acc.website ? domainOf(acc.website) : "unknown";
+  const abbr = /^\(?[A-Za-z]{2,12}\)?$/.test(name) ? name.replace(/[()]/g, "") : null; // incoming IS an abbreviation
+  const inParens = name.match(/\(([A-Za-z]{2,12})\)/)?.[1] ?? null; // incoming carries one
+  const likeEsc = (s: string) => s.toLowerCase().replace(/[%_\\]/g, (m) => `\\${m}`);
+  // The unique index (20261012_001) stops concurrent duplicates of the SAME spelling, but two
+  // workers staging "CIM" and "Chartered Institute of Marketing (CIM)" at once both miss the
+  // lookups and insert names that never collide on it. Serialise on the strongest identity the
+  // spellings SHARE — the abbreviation, else the domain, else the name — so the loser's lookups
+  // run after the winner's insert. Spellings that share none of these have no identity to merge
+  // on anyway, concurrent or not.
+  const lockKey = `accred:${(abbr ?? inParens)?.toLowerCase() ?? (domain !== "unknown" ? domain : name.toLowerCase())}`;
+  const accId = await masterKnex.transaction(async (trx) => {
+    await trx.raw("select pg_advisory_xact_lock(hashtext(?))", [lockKey]);
+    const existing = await trx(T).whereRaw("lower(regexp_replace(trim(name), '\\s+', ' ', 'g')) = LOWER(?)", [name]).first("id", "website", "issuing_organization")
+      ?? (abbr ? await trx(T).whereRaw("LOWER(name) LIKE ?", [`%(${likeEsc(abbr)})%`]).first("id", "website", "issuing_organization") : undefined)
+      ?? (inParens ? await trx(T).whereRaw("LOWER(TRIM(name)) = LOWER(?)", [inParens]).first("id", "website", "issuing_organization") : undefined)
+      ?? (domain !== "unknown"
+        ? await trx(T).whereRaw(
+          "website is not null and regexp_replace(lower(split_part(split_part(website, '://', 2), '/', 1)), '^www\\.', '') = ?",
+          [domain],
+        ).first("id", "website", "issuing_organization")
+        : undefined);
+    if (existing) {
+      // Fill blanks so a later domain/name lookup has something to match on.
+      const fill: Record<string, unknown> = {};
+      if (acc.website && !existing.website) fill.website = acc.website;
+      if (acc.issuing_organization && !existing.issuing_organization) fill.issuing_organization = acc.issuing_organization;
+      if (Object.keys(fill).length) await trx(T).where({ id: existing.id }).update(fill);
+      return existing.id as string;
+    }
+    const [row] = await trx(T)
+      .insert({ name, issuing_organization: acc.issuing_organization ?? null, website: acc.website ?? null })
+      .onConflict(masterKnex.raw("((LOWER(TRIM(name))))"))
+      .ignore()
+      .returning("id");
+    return (row?.id ?? (await trx(T).whereRaw("LOWER(TRIM(name)) = LOWER(?)", [name]).first("id"))!.id) as string;
+  });
+  await masterKnex(`${S}.extraction_course_accreditation_assignments`)
+    .insert({ job_id: jobId, course_id: courseId, extraction_accreditation_id: accId })
+    .onConflict(["course_id", "extraction_accreditation_id"]).ignore();
+  return true;
+}
+
+/**
  * Upsert an eligibility requirement for a job — deduplicates by normalised name + audience, with
  * the gating values required not to contradict (see eligibilityRowsAgree), mirroring upsertIntake
  * above and for the same reason (see its comment).
@@ -2096,6 +2174,14 @@ export interface WriteCourseContext {
   coursesOnPage?: number;
 }
 
+/** Did this page yield several courses when it was processed? A stable fact from its queue row —
+ *  unlike the live per-URL row count, which shrinks as siblings move to their own detail pages. */
+async function pageWasAListing(jobId: string, url: string): Promise<boolean> {
+  const row = await masterKnex(`${S}.extraction_queue`).where({ job_id: jobId, url })
+    .first(masterKnex.raw("(extracted_data->>'courses_found')::int as n"));
+  return ((row as { n: number | null } | undefined)?.n ?? 0) > 1;
+}
+
 const jobInstitutionUrlCache = new Map<string, string | null>();
 async function jobInstitutionUrl(jobId: string): Promise<string | null> {
   if (!jobInstitutionUrlCache.has(jobId)) {
@@ -2267,6 +2353,17 @@ export async function writeCourse(
         updates[field] = newVal;
       }
     }
+    // A course's OWN page outranks the listing page it was first seen on. The public course sidebar
+    // and the AI-embed card link straight to source_url, and the loop above only fills a BLANK — so
+    // a row born from a listing kept the listing's URL forever, even after its real detail page was
+    // processed. "Born from a listing" is read from the QUEUE ROW's recorded courses_found, never
+    // from how many rows currently share the URL: the live count shrinks to 1 as siblings upgrade,
+    // which left the LAST course of every listing permanently un-upgradable (review, 2026-10-12).
+    // A URL that yielded a single course is never replaced.
+    if (course.source_url && canonicalUrl && existing.source_url && existing.source_url !== course.source_url
+      && await pageWasAListing(jobId, existing.source_url)) {
+      updates.source_url = course.source_url;
+    }
     // A later page that names the qualification beats an earlier row that couldn't be linked;
     // an existing link is never overwritten.
     if (link.degree_level && existing.degree_level_code == null) {
@@ -2313,7 +2410,9 @@ export async function writeCourse(
       // The public course search joins on upper(countries.iso2) = upper(country_code), so an
       // unresolvable country stays null rather than storing text that can never match.
       country_code: course.country_code ?? null,
-      verification_status: "unverified",
+      // Approved on arrival (INGESTED_COURSE_STATUS) — an extracted course is live without an
+      // admin approving it; Reject is what takes it back out.
+      verification_status: INGESTED_COURSE_STATUS,
       // is_published (migration 20260925_003) defaults to false — that draft state is for
       // self-service institution courses (institution-courses.repository.ts's createService
       // explicitly opts in to it). A scraped course's public visibility has always been driven
@@ -2414,6 +2513,13 @@ export async function writeCourse(
         .insert({ job_id: jobId, course_id: courseId, scholarship_id: scholarshipId })
         .onConflict(["course_id", "scholarship_id"]).ignore();
     }
+  }
+
+  // ── Accreditations + assignments ──
+  // No AgentCIS guard: AgentCIS never supplies accreditations, so "has existing" could only mean an
+  // earlier page staged some — and the find-or-create + onConflict ignore already dedupe reruns.
+  if (course.accreditations?.length) {
+    for (const acc of course.accreditations) await stageCourseAccreditation(jobId, courseId, acc);
   }
 
   // ── English requirements ──
@@ -2864,8 +2970,11 @@ export async function insertQueueItemDetailed(jobId: string, url: string): Promi
     `WITH existing AS (
        SELECT 1 FROM ${S}.extraction_queue WHERE job_id = :jobId AND url = :url
      ), cap AS (
-       SELECT (SELECT count(*) FROM ${S}.extraction_queue WHERE job_id = :jobId)
-            < (SELECT page_cap FROM ${S}.extraction_jobs WHERE id = :jobId) AS has_room
+       -- NULL page_cap means no limit. Without the IS NULL arm this reads \`count < NULL\` = NULL,
+       -- which is not TRUE, so the insert's WHERE would silently queue nothing at all.
+       SELECT j.page_cap IS NULL
+           OR (SELECT count(*) FROM ${S}.extraction_queue WHERE job_id = :jobId) < j.page_cap AS has_room
+       FROM ${S}.extraction_jobs j WHERE j.id = :jobId
      ), ins AS (
        INSERT INTO ${S}.extraction_queue (job_id, url, status)
        SELECT :jobId, :url, 'pending'
@@ -2897,7 +3006,8 @@ export async function insertQueueItem(jobId: string, url: string): Promise<strin
  */
 export async function atPageCap(jobId: string): Promise<boolean> {
   const { rows } = await masterKnex.raw(
-    `SELECT (SELECT count(*) FROM ${S}.extraction_queue WHERE job_id = :jobId) >= page_cap AS capped
+    `SELECT page_cap IS NOT NULL
+        AND (SELECT count(*) FROM ${S}.extraction_queue WHERE job_id = :jobId) >= page_cap AS capped
      FROM ${S}.extraction_jobs WHERE id = :jobId`,
     { jobId },
   );

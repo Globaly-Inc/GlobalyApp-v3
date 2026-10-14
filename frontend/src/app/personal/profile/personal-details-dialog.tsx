@@ -77,13 +77,13 @@ export function PersonalDetailsDialog({
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent style={{ maxWidth: "36rem" }}>
+      <DialogContent className="sm:max-w-xl">
         <DialogHeader>
           <DialogTitle>Edit Personal Details</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4">
+        <div className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-4">
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label>First Name *</Label>
               <Input
                 value={form.firstName}
@@ -92,7 +92,7 @@ export function PersonalDetailsDialog({
               />
               <FieldError message={errors.firstName} />
             </div>
-            <div className="space-y-2">
+            <div className="flex flex-col gap-2">
               <Label>Last Name *</Label>
               <Input
                 value={form.lastName}

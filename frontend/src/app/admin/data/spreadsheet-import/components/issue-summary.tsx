@@ -21,16 +21,16 @@ export function IssueSummary({ issues, onEditMapping }: Readonly<{ issues: Issue
 
   if (issues.length === 0) {
     return (
-      <p className="flex items-center gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-medium text-emerald-700">
+      <p className="flex items-center gap-2 rounded-lg border border-success/30 bg-success/10 px-3 py-2 text-sm font-medium text-success">
         <CheckCircle2 className="h-4 w-4" /> No problems found — ready to import
       </p>
     );
   }
 
   return (
-    <div className={cn("flex flex-col gap-2 rounded-lg border p-3", blocking ? "border-red-200 bg-red-50/50" : "border-amber-200 bg-amber-50/50")}>
+    <div className={cn("flex flex-col gap-2 rounded-lg border p-3", blocking ? "border-destructive/30 bg-destructive/10" : "border-warning/30 bg-warning/10")}>
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <p className={cn("flex items-center gap-2 text-sm font-semibold", blocking ? "text-destructive" : "text-amber-700")}>
+        <p className={cn("flex items-center gap-2 text-sm font-semibold", blocking ? "text-destructive" : "text-warning")}>
           {blocking ? <XCircle className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
           {blocking
             ? `${blocking} error${blocking === 1 ? "" : "s"} — those rows are skipped and the rest imported. Fix them to include them.`
@@ -43,7 +43,7 @@ export function IssueSummary({ issues, onEditMapping }: Readonly<{ issues: Issue
       <ul className="flex flex-col gap-1 text-sm">
         {sorted.map((k) => (
           <li key={`${k.blocking}${k.field}${k.message}`} className="flex items-start gap-2">
-            <span className={cn("mt-0.5 rounded px-1.5 text-[11px] font-semibold", k.blocking ? "bg-red-100 text-red-700" : "bg-amber-100 text-amber-700")}>
+            <span className={cn("mt-0.5 rounded px-1.5 text-xs font-semibold", k.blocking ? "bg-destructive/15 text-destructive" : "bg-warning/15 text-warning")}>
               {k.blocking ? "Error" : "Warning"}
             </span>
             <span>

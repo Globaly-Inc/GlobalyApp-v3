@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -8,7 +8,8 @@ import { FieldError } from "@/components/field-error";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useValidatedForm } from "@/lib/use-validated-form";
-import type { BusinessProfile, SocialLinks } from "@/app/business/apis/types";
+import type { BusinessProfile, OtherSocialLink, SocialLinks, SocialLinksPatch } from "@/app/business/apis/types";
+import { OtherLinksEditor } from "./other-links-editor";
 
 type Platform = { key: keyof SocialLinks; label: string; placeholder: string };
 
@@ -56,12 +57,19 @@ export function SocialLinksDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   profile: BusinessProfile;
-  onSave: (patch: Partial<SocialLinks>) => Promise<boolean>;
+  onSave: (patch: SocialLinksPatch) => Promise<boolean>;
   saving: boolean;
   isInstitution?: boolean;
 }>) {
   const { form, setForm, errors, reset, validate } = useValidatedForm(schema, () => toForm(profile));
   const visiblePlatforms = isInstitution ? PLATFORMS.filter((p) => INSTITUTION_PLATFORM_KEYS.has(p.key)) : PLATFORMS;
+  const [otherLinks, setOtherLinks] = useState<OtherSocialLink[]>(profile.other_social_links ?? []);
+  // Reloaded from the profile each time the dialog opens — during render, not in an effect.
+  const [wasOpen, setWasOpen] = useState(open);
+  if (open !== wasOpen) {
+    setWasOpen(open);
+    if (open) setOtherLinks(profile.other_social_links ?? []);
+  }
 
   useEffect(() => {
     if (open) reset(toForm(profile));
@@ -71,8 +79,10 @@ export function SocialLinksDialog({
   const handleSubmit = async () => {
     const data = validate();
     if (!data) return;
-    const patch: Partial<SocialLinks> = {};
+    const patch: SocialLinksPatch = {};
     for (const p of PLATFORMS) patch[p.key] = data[p.key] || null;
+    // Only institutions have the column — the business endpoint would reject the key.
+    if (isInstitution) patch.other_social_links = otherLinks;
     const ok = await onSave(patch);
     if (ok) onOpenChange(false);
   };
@@ -98,6 +108,7 @@ export function SocialLinksDialog({
               <FieldError message={errors[p.key]} />
             </div>
           ))}
+          {isInstitution && <OtherLinksEditor links={otherLinks} onChange={setOtherLinks} />}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

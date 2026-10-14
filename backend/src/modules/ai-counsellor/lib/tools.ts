@@ -47,7 +47,18 @@ const MAX_COURSES = 6;
 export const MAX_CHUNKS_PER_DOCUMENT = 2;
 
 /**
- * Keep the best MAX_CHUNKS_PER_DOCUMENT chunks per document, order preserved.
+ * Below this cosine similarity a passage is noise. `match_ai_knowledge_chunks` applies no
+ * threshold of its own, so every call got its full `count` back however poor the match —
+ * the top 8 of a thin rack are 8 passages about nothing, and the system prompt then spends
+ * a section telling the model to ignore most of what we paid to send it.
+ *
+ * 0.25, slightly under institution-memory's 0.28: this corpus is the institution's own
+ * crawled site, where the useful passage is often phrased nothing like the question.
+ */
+export const MIN_CHUNK_SIMILARITY = 0.25;
+
+/**
+ * Drop noise, then keep the best MAX_CHUNKS_PER_DOCUMENT chunks per document, order preserved.
  *
  * Skipped entirely when the hits all come from ONE document: the cap exists to stop a
  * long page crowding out other sources, and with a single source there is nothing to
@@ -58,7 +69,8 @@ export const MAX_CHUNKS_PER_DOCUMENT = 2;
  * Lives here rather than in rag.service because rag.service already imports from this
  * module (courseCardFields); the reverse direction would be a cycle.
  */
-export function capPerDocument<T extends { document_id: string }>(chunks: T[]): T[] {
+export function selectChunks<T extends { document_id: string; similarity: number }>(all: T[]): T[] {
+  const chunks = all.filter((c) => c.similarity >= MIN_CHUNK_SIMILARITY);
   const distinctDocuments = new Set(chunks.map((c) => c.document_id)).size;
   if (distinctDocuments <= 1) return chunks;
 
@@ -225,7 +237,7 @@ const DECLARATIONS: FunctionDeclaration[] = [
   {
     name: "search_courses",
     description:
-      "Search verified courses in the Globaly database. Use once you understand what the student " +
+      "Search verified courses in the GlobalyAI database. Use once you understand what the student " +
       "wants to study and at least one constraint (destination, budget, level) — or immediately, with " +
       "whatever you know, when the student explicitly asks to see courses or a list of options; an " +
       "explicit request overrides ask-first. Returns fees, intakes, entry requirements and a `card` " +
@@ -538,7 +550,7 @@ async function dispatch(
           : Promise.resolve([]),
       ]);
 
-      const chunks = capPerDocument(passages);
+      const chunks = selectChunks(passages);
 
       const sources: ToolSource[] = [
         ...visaRules.map((v) => ({

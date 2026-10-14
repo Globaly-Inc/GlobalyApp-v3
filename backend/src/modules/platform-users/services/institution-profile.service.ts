@@ -12,6 +12,7 @@ import * as coursesRepo from "../../superadmin/data-extraction/repositories/cour
 import { resolveSharedCourses } from "../../superadmin/platform/business-branches/repositories/business-branches.repository.js";
 import { getWidgetAnalytics } from "../../ai-counsellor/services/widget-analytics.service.js";
 import { ConflictError, BadRequestError, NotFoundError } from "../../../shared/errors.js";
+import { createChildLogger } from "../../../shared/logger.js";
 import type {
   InstitutionProfilePatchInput, StartExtractionInput, SiteUrlsQueryInput, SiteUrlSnapshotQueryInput,
   SiteUrlSnapshotUpdateInput, SiteUrlRefreshInput,
@@ -19,6 +20,8 @@ import type {
 import type { InstitutionRecord } from "../../../core/types.js";
 import * as branchesRepo from "../../superadmin/platform/business-branches/repositories/business-branches.repository.js";
 import { findCategoryIdBySlug } from "../../superadmin/data-extraction/repositories/promote.repository.js";
+
+const logger = createChildLogger("institution-profile");
 
 async function withImagePreviews<
   T extends { logo_url?: string | null; cover_url?: string | null; gallery_images?: string[] | null; video_urls?: string[] | null },
@@ -116,6 +119,8 @@ export async function startExtraction(institution: InstitutionRecord, platformUs
       // createJob's own conflict means another job already covers this host — not a status this
       // institution can share (source_job_id -> job is a 1:1 link), so surface a distinct message.
       if (err instanceof ConflictError) {
+        // The owner isn't told whose job it is; support needs it to decline or relink that job.
+        logger.warn("Start extraction blocked by an existing job for this website", { institutionId: institution.id, website, existing: err.details });
         throw new ConflictError("An extraction for this website already exists. Contact support.");
       }
       throw err;

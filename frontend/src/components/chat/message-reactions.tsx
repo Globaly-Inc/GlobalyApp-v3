@@ -41,11 +41,11 @@ export function MessageReactions({
           onClick={() => onToggle(reaction.emoji)}
           title={`${reaction.users.join(", ")} reacted with ${reaction.emoji}`}
           className={cn(
-            "flex h-7 items-center gap-1 rounded-full px-2 text-xs transition-all",
+            "flex h-7 items-center gap-1 rounded-full border px-2 text-xs transition-colors",
             canReact ? "cursor-pointer" : "cursor-default",
             reaction.mine
-              ? "bg-primary/10 ring-1 ring-primary/30 hover:bg-primary/20"
-              : "bg-muted/60 hover:bg-muted",
+              ? "border-primary/30 bg-primary/10 text-primary hover:bg-primary/15"
+              : "border-border bg-card hover:bg-muted",
           )}
         >
           <span className="text-sm leading-none">{reaction.emoji}</span>
@@ -68,7 +68,8 @@ export function MessageReactions({
                 "flex size-7 cursor-pointer items-center justify-center rounded-full transition-all hover:bg-muted",
                 // Always visible once there are chips to sit beside; otherwise it only
                 // appears on hover, so an un-reacted message stays clean. V2 does this.
-                reactions.length === 0 && "opacity-0 group-hover:opacity-100 focus-visible:opacity-100",
+                reactions.length === 0 &&
+                  "pointer-events-none opacity-0 group-hover:pointer-events-auto group-hover:opacity-100 group-focus-within:pointer-events-auto group-focus-within:opacity-100 focus-visible:opacity-100",
               )}
             >
               <SmilePlus className="size-3.5 text-muted-foreground" />

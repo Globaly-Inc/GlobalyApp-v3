@@ -11,6 +11,7 @@ import type {
 // to look like a BusinessProfile. Fields businesses have that institutions don't (category,
 // social links, gallery, etc.) come back null/empty, which the profile UI already renders fine.
 type InstitutionMe = {
+  other_social_links?: { label: string; url: string }[] | null;
   id: number;
   schema_name: string;
   institution_name: string;
@@ -123,6 +124,7 @@ function institutionToBusinessProfile(inst: InstitutionMe): BusinessProfile {
     linkedin_url: inst.linkedin_url, facebook_url: inst.facebook_url, instagram_url: inst.instagram_url,
     twitter_url: inst.twitter_url, youtube_url: inst.youtube_url, whatsapp_url: inst.whatsapp_url,
     tiktok_url: null, threads_url: null, messenger_url: null, telegram_url: null, line_url: null, viber_url: null,
+    other_social_links: inst.other_social_links ?? null,
   };
 }
 
@@ -132,7 +134,7 @@ function institutionToBusinessProfile(inst: InstitutionMe): BusinessProfile {
 const INSTITUTION_PATCHABLE_KEYS = [
   "email", "phone", "description", "website", "country_id", "state", "city", "address",
   "postcode", "currency", "registration_licenses", "is_published", "public_visibility", "institution_type",
-  "linkedin_url", "facebook_url", "instagram_url", "twitter_url", "youtube_url", "whatsapp_url",
+  "linkedin_url", "facebook_url", "instagram_url", "twitter_url", "youtube_url", "whatsapp_url", "other_social_links",
 ] as const satisfies readonly (keyof BusinessProfilePatch)[];
 
 function toInstitutionPatch(patch: BusinessProfilePatch): Record<string, unknown> {

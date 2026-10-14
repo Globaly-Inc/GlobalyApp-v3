@@ -28,9 +28,9 @@ export function MentionDropdown({
           onClick={() => onPick(candidate)}
           className="flex w-full cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm hover:bg-muted"
         >
-          <Avatar className="size-5">
+          <Avatar className="size-6">
             {candidate.photo_url && <AvatarImage src={candidate.photo_url} alt="" />}
-            <AvatarFallback className="text-[9px]">
+            <AvatarFallback className="text-xs">
               {`${candidate.first_name?.[0] ?? ""}${candidate.last_name?.[0] ?? ""}`.toUpperCase() || "U"}
             </AvatarFallback>
           </Avatar>

@@ -37,7 +37,7 @@ export function HeroSection() {
           <h1 className="mt-6 text-4xl sm:text-5xl md:text-6xl font-extrabold text-white leading-[1.05] animate-fade-up">
             Expand Your Global
             <br />
-            <span className="text-amber-300 inline-block min-h-[1.2em]">
+            <span className="text-white inline-block min-h-[1.2em]">
               {displayText}
               <span
                 className="text-amber-200"
@@ -48,7 +48,7 @@ export function HeroSection() {
             </span>
           </h1>
           <p className="mt-5 mb-8 mx-auto max-w-2xl text-base sm:text-lg font-medium text-white/85 animate-fade-up">
-            Join Globalyapp&apos;s AI-powered education marketplace built for institutions like
+            Join GlobalyAI&apos;s AI-powered education marketplace built for institutions like
             yours. Manage your course listings, expand your education counselor network, and enroll more
             students — all in one smart, transparent platform.
           </p>

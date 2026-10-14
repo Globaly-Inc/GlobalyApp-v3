@@ -61,32 +61,6 @@ const rotateTo = (tokenHash: string, expiresAt: Date) => ({
   updated_at: masterKnex.fn.now(),
 });
 
-const ABANDONED_JOB_STATUSES = ["declined", "failed"] as const;
-
-/** Why this address can't be invited, or null. An invite is only for someone not on the platform yet. */
-export type EmailMatch = { kind: "user" | "institution" | "business" | "extraction" | "invite"; id: string | number; name: string | null };
-
-/** Every place the address is already in use; an invite is only sent when this is empty. */
-export async function findEmailMatches(email: string): Promise<EmailMatch[]> {
-  const sameEmail = (column: string) => [`lower(${column}) = lower(?)`, [email]] as const;
-  const [users, institutions, businesses, extractions, invites] = await Promise.all([
-    masterKnex("platform_users").whereRaw(...sameEmail("email")).whereNull("deleted_at")
-      .select("id", masterKnex.raw("nullif(trim(concat_ws(' ', first_name, last_name)), '') as name")),
-    masterKnex("institutions").whereRaw(...sameEmail("email")).whereNull("deleted_at").select("id", "institution_name as name"),
-    masterKnex("businesses").whereRaw(...sameEmail("email")).whereNull("deleted_at").select("id", "business_name as name"),
-    masterKnex("superadmin.extraction_institution_overview as o").join("superadmin.extraction_jobs as j", "j.id", "o.job_id")
-      .whereRaw(...sameEmail("o.email")).whereNotIn("j.status", ABANDONED_JOB_STATUSES)
-      .distinct("j.id", "j.institution_name as name"),
-    masterKnex(T).whereRaw(...sameEmail("email")).where({ status: "pending" }).select("id", "org_name as name"),
-  ]);
-  const tag = (kind: EmailMatch["kind"], rows: { id: string | number; name: string | null }[]) =>
-    rows.map((r): EmailMatch => ({ kind, id: r.id, name: r.name || null }));
-  return [
-    ...tag("user", users), ...tag("institution", institutions), ...tag("business", businesses),
-    ...tag("extraction", extractions), ...tag("invite", invites),
-  ];
-}
-
 export async function insertInvitation(data: {
   email: string;
   type: OnboardingInvitationRow["type"];

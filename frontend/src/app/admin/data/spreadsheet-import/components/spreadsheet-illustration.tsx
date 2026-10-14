@@ -40,7 +40,7 @@ export function SpreadsheetIllustration({ className }: Readonly<{ className?: st
         </g>
       ))}
       {/* Approval check */}
-      <circle cx="344" cy="42" r="10" className="fill-emerald-500" />
+      <circle cx="344" cy="42" r="10" className="fill-success" />
       <path d="M339.5 42.2 l3 3 l6 -6.2" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );

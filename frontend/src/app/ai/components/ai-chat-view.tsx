@@ -26,6 +26,7 @@ import { TestingPhaseBanner } from "./testing-phase-banner";
 import { CompareTray } from "@/app/(web)/search/components/compare-tray";
 import { useAuthState } from "@/app/auth/store/auth-slice";
 import { LoginPromptModal } from "./login-prompt-modal";
+import { AlyOrbIcon } from "@/components/aly-orb-icon";
 
 export function AiChatView({ initialQuery, redirectIfAuthenticated = false, fp }: Readonly<{ initialQuery?: string; redirectIfAuthenticated?: boolean; fp?: string }> = {}) {
   const dispatch = useAppDispatch();
@@ -82,12 +83,13 @@ export function AiChatView({ initialQuery, redirectIfAuthenticated = false, fp }
   const handleSend = useCallback(
     (content: string, files?: File[]) => {
       const trimmed = content.trim();
-      if (!trimmed || sendStatus === "loading") return;
+      // Tappable options read the result: a refused tap must not look answered.
+      if (!trimmed || sendStatus === "loading") return false;
       if (!user) {
         guestFingerprint.current ??= crypto.randomUUID();
         dispatch(sendGuestMessage({ content: trimmed, fingerprint: guestFingerprint.current }));
         setDraft("");
-        return;
+        return true;
       }
       if (activeSessionId && activeSessionId !== GUEST_SESSION_ID) {
         dispatch(addOptimisticUserMessage({
@@ -98,6 +100,7 @@ export function AiChatView({ initialQuery, redirectIfAuthenticated = false, fp }
       }
       dispatch(sendMessage({ sessionId: activeSessionId, content: trimmed, files }));
       setDraft("");
+      return true;
     },
     [dispatch, activeSessionId, user, sendStatus],
   );
@@ -143,15 +146,15 @@ export function AiChatView({ initialQuery, redirectIfAuthenticated = false, fp }
   return (
     <div className={cn("flex h-[calc(100dvh-4rem)] overflow-hidden bg-background")}>
       {/* Sidebar — hidden only once we know for certain the visitor is a guest */}
-      {(user || initializing) && <div className="hidden w-64 shrink-0 bg-muted/40 md:block">{sidebar}</div>}
+      {(user || initializing) && <div className="hidden w-64 shrink-0 border-r bg-card md:block">{sidebar}</div>}
 
       {/* Chat area */}
       <div className="flex min-w-0 flex-1 flex-col">
-        {/* Mobile header — hamburger only for authenticated (or still-loading) users */}
-        <div className="flex items-center gap-2 border-b p-2 md:hidden">
+        {/* Chat header — hamburger (phones) only for authenticated (or still-loading) users */}
+        <div className="flex shrink-0 items-center gap-2.5 border-b bg-card px-3 py-2 shadow-xs md:px-4">
           {(user || initializing) && (
             <Sheet open={sidebarOpen} onOpenChange={setSidebarOpen}>
-              <SheetTrigger>
+              <SheetTrigger className="md:hidden">
                 <Button variant="ghost" size="icon-sm" render={<span />}>
                   <Menu />
                 </Button>
@@ -162,7 +165,10 @@ export function AiChatView({ initialQuery, redirectIfAuthenticated = false, fp }
               </SheetContent>
             </Sheet>
           )}
-          <span className="text-sm font-medium">AI Counsellor</span>
+          <span className="flex size-7 items-center justify-center">
+            <AlyOrbIcon className="size-7" />
+          </span>
+          <span className="text-sm font-semibold">AI Counsellor</span>
         </div>
 
         <CreditBanner />
@@ -182,7 +188,7 @@ export function AiChatView({ initialQuery, redirectIfAuthenticated = false, fp }
         {guestBlocked && loginPromptDismissed && (
           <button
             type="button"
-            className="w-full border-t bg-primary/5 px-4 py-2 text-center text-sm text-primary hover:bg-primary/10"
+            className="w-full border-t bg-primary/5 px-4 py-2 text-center text-sm font-medium text-primary transition-colors hover:bg-primary/10"
             onClick={() => setLoginPromptDismissed(false)}
           >
             Sign in or create a free account to continue chatting →

@@ -12,8 +12,8 @@ import type { VisitorNote } from "@/app/business/ai-widget/apis/types";
  */
 export function NoteBubble({ note }: Readonly<{ note: VisitorNote }>) {
   return (
-    <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-2 text-sm leading-relaxed text-foreground">
-      <p className="mb-1 flex items-center gap-1.5 text-xs text-amber-800">
+    <div className="mt-4 rounded-xl border border-warning/25 bg-warning/5 px-3.5 py-2 text-sm leading-relaxed text-foreground">
+      <p className="mb-1 flex items-center gap-1.5 text-xs text-warning">
         <StickyNote className="size-3.5" aria-hidden />
         <span className="font-medium">Internal note</span> · {note.author_name} · {messageTime(note.created_at)}
         <span className="ml-auto">Only your team can see this</span>

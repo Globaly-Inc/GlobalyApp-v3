@@ -153,7 +153,7 @@ export function IntakeCustomDates({
     <div className="flex flex-col gap-2">
       {(dates.length > 0 || draft) && (
         <>
-          <p className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">Custom dates</p>
+          <p className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Custom dates</p>
           <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">
             {dates.map((entry, index) =>
               draft && draft.index === index ? (

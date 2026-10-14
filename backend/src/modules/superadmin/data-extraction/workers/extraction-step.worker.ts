@@ -17,6 +17,7 @@ import { crawlSite } from "../lib/site-crawl.js";
 import { linkJobEntities } from "../lib/jev-linker.js";
 import { verifyFieldCoverage } from "../lib/field-coverage.js";
 import { sendCompletionEmail } from "../lib/completion-email.js";
+import { autoPublishOwnerRun } from "../services/promote.service.js";
 import { convertCampusesToBranches } from "../../platform/business-branches/services/business-branches.service.js";
 import { getPage, getDocument, isPdfUrl, mergeUrlLists } from "../lib/page-store.js";
 import { canonicalCourseUrl } from "../lib/course-name.js";
@@ -75,6 +76,8 @@ import {
   type ExtractedVisaService,
   upsertScholarship,
   type ExtractedScholarship,
+  stageCourseAccreditation,
+  type ExtractedAccreditation,
 } from "../lib/staging-writer.js";
 import { coercePartialDate } from "../lib/partial-date.js";
 import { parseAddress } from "../lib/address-parser.js";
@@ -159,7 +162,7 @@ async function handleSiteMapStep(jobId: string): Promise<"done" | "pending"> {
   if (await gate(jobId, "site_map")) {
     const urls = (await listActiveSiteUrls(jobId)).map((r) => r.url);
     await setProgress(jobId, { site_snapshot: "processing" });
-    await dispatchSnapshotBatches(jobId, urls, Number(job.page_cap) || 500);
+    await dispatchSnapshotBatches(jobId, urls, job.page_cap ?? null);
   }
   return "done";
 }
@@ -181,7 +184,7 @@ async function handleSiteSnapshotStep(
       list = rows.map((r: { url: string }) => r.url);
     }
     if (!list.length) throw new Error("Nothing to snapshot — run site_map first");
-    await dispatchSnapshotBatches(jobId, list, Number(job?.page_cap) || list.length, fresh);
+    await dispatchSnapshotBatches(jobId, list, job?.page_cap ?? null, fresh);
     return "pending";
   }
   await snapshotSite(jobId, urls, batch, fresh);
@@ -1734,28 +1737,10 @@ async function handleCourseDataStep(
 
     case "accreditations": {
       await masterKnex(`${S}.extraction_course_accreditation_assignments`).where({ course_id: courseId }).delete();
-      const accs = (extracted.accreditations as Array<Record<string, unknown>>) || [];
-      for (const acc of accs) {
-        if (!acc.name) continue;
-        // Find or create extraction_accreditations row
-        const accName = String(acc.name);
-        const existingAcc = await masterKnex(`${S}.extraction_accreditations`)
-          .whereRaw("LOWER(name) = LOWER(?)", [accName]).first();
-        let accId: string;
-        if (existingAcc) {
-          accId = existingAcc.id;
-        } else {
-          const [row] = await masterKnex(`${S}.extraction_accreditations`)
-            .insert({ name: accName, issuing_organization: acc.issuing_organization ?? null })
-            .returning("id");
-          accId = row.id;
-        }
-        await masterKnex(`${S}.extraction_course_accreditation_assignments`)
-          .insert({
-            job_id: jobId, course_id: courseId,
-            extraction_accreditation_id: accId,
-          });
-        count++;
+      // Same find-or-create + link the automatic pipeline uses (writeCourse) — one helper, so the
+      // manual re-extract and the page worker can never disagree about accreditation identity.
+      for (const acc of (extracted.accreditations as ExtractedAccreditation[]) || []) {
+        if (await stageCourseAccreditation(jobId, courseId, acc)) count++;
       }
       break;
     }
@@ -1946,6 +1931,7 @@ async function handleLinkEntitiesStep(jobId: string) {
   } finally {
     await sendCompletionEmail(jobId);
     await convertCampusesToBranches(jobId);
+    await autoPublishOwnerRun(jobId); // after the email: it needs the job still in review
   }
 }
 
@@ -1966,6 +1952,7 @@ async function linkEntities(jobId: string) {
 }
 
 // ── Main consumer ───────────────────────────────────────────────────────────
+const STEPS_PREFETCH = 1;
 
 await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
   let jobId: string, step: string, courseId: string | undefined, dataType: string | undefined, visaServiceId: string | undefined,
@@ -2038,6 +2025,14 @@ await queueService.consume(EXTRACTION_QUEUES.STEPS, async (msg) => {
   // this step succeeded or failed, so a failed campus or scholarship pass never strands the job.
   const chain = parseChain(then);
   if (chain.length) await continueChain(jobId, chain).catch((err) => logger.error("Failed to continue post-extraction chain", { jobId, step, chain, error: String(err) }));
-});
+}, { noAck: false }, STEPS_PREFETCH);
+
+await queueService.startScaling(EXTRACTION_QUEUES.STEPS, {
+  prefetch: STEPS_PREFETCH,
+  queueSize: { scaleUpThreshold: 10, scaleDownThreshold: 2, maxWorkers: 8 },
+  processingTime: { threshold: 120_000, windowSize: 10 },
+  errorRate: { threshold: 0.2, windowSize: 20 },
+  systemLoad: { cpuThreshold: 80, memoryThreshold: 85 },
+}, 4);
 
 logger.info(`Extraction step worker started — consuming "${EXTRACTION_QUEUES.STEPS}" queue`);

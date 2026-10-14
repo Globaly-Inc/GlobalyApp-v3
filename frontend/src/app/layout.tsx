@@ -1,24 +1,32 @@
 import type { Metadata, Viewport } from "next";
-import { Geist_Mono, Inter, Fraunces } from "next/font/google";
+import { Geist, Geist_Mono, Space_Grotesk } from "next/font/google";
 import { cookies } from "next/headers";
 import Script from "next/script";
 import { siteConfig } from "@/config/site";
+import { AppThemeProvider } from "@/components/app-theme-provider";
 import { ThemeSettingsSync } from "@/components/theme-settings-sync";
 import { Toaster } from "@/components/ui/sonner";
 import { cn } from "@/lib/utils";
-import { headingFontOverride, parseThemeSettingsCookie, THEME_SETTINGS_KEY } from "@/lib/theme-settings";
+import {
+  DEFAULT_FONT,
+  headingFontOverride,
+  parseThemeSettingsCookie,
+  tenantPrimaryOverride,
+  THEME_SETTINGS_KEY,
+} from "@/lib/theme-settings";
 import StoreProvider from "./StoreProvider";
 import "./globals.css";
+import { APP_ORIGIN } from "@/lib/hosts";
 
-const inter = Inter({
-  variable: "--font-inter",
+const geist = Geist({
+  variable: "--font-geist",
   subsets: ["latin"],
 });
 
-const fraunces = Fraunces({
-  variable: "--font-fraunces",
+const spaceGrotesk = Space_Grotesk({
+  variable: "--font-space-grotesk",
   subsets: ["latin"],
-  weight: ["600", "700", "800"],
+  weight: ["500", "600"],
 });
 
 const geistMono = Geist_Mono({
@@ -34,7 +42,7 @@ export async function generateMetadata(): Promise<Metadata> {
   );
   const icon = settings.faviconUrl || settings.logoUrl;
   return {
-    metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? siteConfig.url),
+    metadataBase: new URL(APP_ORIGIN || siteConfig.url),
     title: settings.companyName,
     description: siteConfig.description,
     ...(icon ? { icons: icon } : {}),
@@ -43,8 +51,8 @@ export async function generateMetadata(): Promise<Metadata> {
 
 export const viewport: Viewport = {
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "hsl(0 0% 100%)" },
-    { media: "(prefers-color-scheme: dark)", color: "hsl(222 47% 8%)" },
+    { media: "(prefers-color-scheme: light)", color: "#fcfcfc" },
+    { media: "(prefers-color-scheme: dark)", color: "#0f1114" },
   ],
 };
 
@@ -58,12 +66,13 @@ export default async function RootLayout({
     cookieStore.get(THEME_SETTINGS_KEY)?.value,
     siteConfig.name
   );
-  const isDark = cookieStore.get("theme")?.value === "dark";
-  // Headings are pinned to --heading-font (Fraunces) in globals.css, and a rule on
+  // Headings are pinned to --heading-font (Space Grotesk) in globals.css, and a rule on
   // the element beats the font inherited from <html>, so the theme font reaches them
   // only if this variable is reassigned. applyThemeSettings does the same thing on
   // the client via the same helper, so a live font change and a fresh render agree.
   const headingFont = headingFontOverride(settings.font);
+  // --tenant-primary, not --primary: an inline --primary would beat the .dark tokens.
+  const tenantPrimary = tenantPrimaryOverride(settings.primaryColor);
   const supportToken = process.env.NEXT_PUBLIC_GLOBALYOS_SUPPORT_TOKEN;
 
   return (
@@ -72,24 +81,25 @@ export default async function RootLayout({
       data-scroll-behavior="smooth"
       suppressHydrationWarning
       className={cn(
-        inter.variable,
-        fraunces.variable,
+        geist.variable,
+        spaceGrotesk.variable,
         geistMono.variable,
-        "h-full antialiased",
-        isDark && "dark"
+        "h-full antialiased"
       )}
       style={
         {
-          "--primary": settings.primaryColor,
+          ...(tenantPrimary ? { "--tenant-primary": tenantPrimary } : {}),
           ...(headingFont ? { "--heading-font": headingFont } : {}),
-          fontFamily: settings.font,
+          ...(settings.font === DEFAULT_FONT ? {} : { fontFamily: settings.font }),
         } as React.CSSProperties
       }
     >
       <body className="min-h-full flex flex-col">
         <ThemeSettingsSync />
-        <StoreProvider>{children}</StoreProvider>
-        <Toaster />
+        <AppThemeProvider>
+          <StoreProvider>{children}</StoreProvider>
+          <Toaster />
+        </AppThemeProvider>
         {/* GlobalyOS support widget. afterInteractive is next/script's `defer` — the widget must
             never block hydration. Unset token means the script is skipped entirely rather than
             loaded with an empty data-token, which the SDK would reject anyway. */}

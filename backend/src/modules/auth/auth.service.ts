@@ -223,7 +223,7 @@ export async function registerUser(
     // the caller isn't them.
     queueEmail({
       to: email,
-      subject: "Registration attempt on your GlobalyApp account",
+      subject: "Registration attempt on your GlobalyAI account",
       html: emailLayout({
         heading: "Someone tried to sign up with your email",
         body: `<p style="margin:0">An account already exists for this address. If that was you, sign in instead — no new account was created.</p>`,
@@ -302,12 +302,12 @@ async function requireLoginNotSuspended(user: {
   }
 }
 
-export async function sendOtp(email: string) {
-  const user = await platformUserRepo.findByEmail(email);
-  if (!user) throw new NotFoundError("Account not found");
-  await requireLoginNotSuspended(user);
-
-  // Check lockout from existing challenge
+/**
+ * Mints a code and emails it, without asking whether an account exists: the caller has already
+ * established that this address may receive one. Sign-in gets there through an account; an
+ * onboarding invitation gets there through the invite row addressed to that same inbox.
+ */
+export async function issueOtpChallenge(email: string): Promise<string> {
   const existing = await authRepo.findOtpChallenge(email);
   if (existing?.locked_until && new Date() < new Date(existing.locked_until)) {
     throw new UnauthorizedError("Too many attempts. Try again later.");
@@ -316,24 +316,16 @@ export async function sendOtp(email: string) {
   const otp = String(randomInt(100_000, 999_999));
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
   await authRepo.createOtpChallenge(email, hashOtp(otp), expiresAt);
-
-  await queueEmail({ to: user.email, ...otpEmail(otp) });
-
-  // The plaintext OTP is a bearer credential — never let it reach production logs.
-  logger.info("OTP sent", {
-    userId: user.id,
-    ...(config.NODE_ENV === "production" ? {} : { otp }),
-  });
-  return { message: "OTP sent" };
+  await queueEmail({ to: email, ...otpEmail(otp) });
+  return otp;
 }
 
-export async function verifyOtp(email: string, otp: string, meta?: { ip?: string; userAgent?: string }) {
-  const user = await platformUserRepo.findByEmail(email);
-  if (!user) throw new NotFoundError("Account not found");
-  // Re-checked here too (not just sendOtp) — a suspension landing between "code sent" and
-  // "code entered" must still block completing the login, not just requesting a fresh code.
-  await requireLoginNotSuspended(user);
-
+/**
+ * Everything that decides whether a code is right — lockout, expiry, the hash, the attempt counter
+ * — and nothing that spends it. `verifyOtp` consumes the challenge afterwards; the invitation
+ * accept calls this first, so a wrong code can never create an account.
+ */
+export async function assertOtpChallenge(email: string, otp: string) {
   const challenge = await authRepo.findOtpChallenge(email);
   if (!challenge) throw new UnauthorizedError("No OTP requested");
 
@@ -356,6 +348,33 @@ export async function verifyOtp(email: string, otp: string, meta?: { ip?: string
     }
     throw new UnauthorizedError("Invalid OTP");
   }
+
+  return challenge;
+}
+
+export async function sendOtp(email: string) {
+  const user = await platformUserRepo.findByEmail(email);
+  if (!user) throw new NotFoundError("Account not found");
+  await requireLoginNotSuspended(user);
+
+  const otp = await issueOtpChallenge(user.email);
+
+  // The plaintext OTP is a bearer credential — never let it reach production logs.
+  logger.info("OTP sent", {
+    userId: user.id,
+    ...(config.NODE_ENV === "production" ? {} : { otp }),
+  });
+  return { message: "OTP sent" };
+}
+
+export async function verifyOtp(email: string, otp: string, meta?: { ip?: string; userAgent?: string }) {
+  const user = await platformUserRepo.findByEmail(email);
+  if (!user) throw new NotFoundError("Account not found");
+  // Re-checked here too (not just sendOtp) — a suspension landing between "code sent" and
+  // "code entered" must still block completing the login, not just requesting a fresh code.
+  await requireLoginNotSuspended(user);
+
+  const challenge = await assertOtpChallenge(email, otp);
 
   // OTP valid — clean up challenge
   await authRepo.deleteOtpChallenge(challenge.id);
@@ -433,51 +452,80 @@ export async function verifyOtp(email: string, otp: string, meta?: { ip?: string
   };
 }
 
-export async function refreshAccessToken(refreshToken: string, meta?: { ip?: string; userAgent?: string }) {
-  const hashed = hashToken(refreshToken);
+/** How long a just-rotated refresh token still counts as its session's — the loser of two
+    concurrent refreshes (tabs, or web. and app.) sending the same cookie. */
+const REFRESH_REUSE_GRACE_MS = 30_000;
 
-  const session = await authRepo.findSessionByRefreshToken(hashed);
-  if (session) {
-    // Check session expiry
-    if (new Date() > new Date(session.expires_at)) {
-      await authRepo.deleteSession(session.id);
-      throw new UnauthorizedError("Session expired");
-    }
+type AuthSessionRow = {
+  id: string;
+  platform_user_id: number;
+  expires_at: string | Date;
+  ip_address: string | null;
+  user_agent: string | null;
+  org_id: string | null;
+};
 
-    const userId = session.platform_user_id;
-    const user = await platformUserRepo.findByIdFull(userId);
-    if (!user) {
-      await authRepo.deleteSession(session.id);
-      throw new UnauthorizedError("User not found");
-    }
+/** Validates a live session and signs its access token. Deletes the session if it can't be used. */
+async function accessTokenForSession(session: AuthSessionRow, meta?: { ip?: string; userAgent?: string }) {
+  if (new Date() > new Date(session.expires_at)) {
+    await authRepo.deleteSession(session.id);
+    throw new UnauthorizedError("Session expired");
+  }
 
-    // Warn on IP/device mismatch (defensive, not blocking)
-    if (meta?.ip && session.ip_address && meta.ip !== session.ip_address) {
-      logger.warn("Refresh token used from different IP", {
-        userId, expected: session.ip_address, actual: meta.ip,
-      });
-    }
+  const userId = session.platform_user_id;
+  const user = await platformUserRepo.findByIdFull(userId);
+  if (!user) {
+    await authRepo.deleteSession(session.id);
+    throw new UnauthorizedError("User not found");
+  }
 
-    // Token valid — rotate
-    const adminRecord = await adminRepo.findAdminByPlatformUserId(userId);
-    // Honor whichever org this session last switched to (switchAccount records it), falling
-    // back to the default if none was recorded or membership no longer holds — e.g. the user
-    // was removed from it since. Without this, every refresh (which happens silently in the
-    // background) would reset a user with multiple orgs back to whichever sorts first,
-    // undoing any switch they'd made.
-    const scope = await resolveOrgScope(userId, session.org_id);
+  // Warn on IP/device mismatch (defensive, not blocking)
+  if (meta?.ip && session.ip_address && meta.ip !== session.ip_address) {
+    logger.warn("Refresh token used from different IP", {
+      userId, expected: session.ip_address, actual: meta.ip,
+    });
+  }
 
-    const accessToken = signAccessToken({
+  const adminRecord = await adminRepo.findAdminByPlatformUserId(userId);
+  // Honor whichever org this session last switched to (switchAccount records it), falling
+  // back to the default if none was recorded or membership no longer holds — e.g. the user
+  // was removed from it since. Without this, every refresh (which happens silently in the
+  // background) would reset a user with multiple orgs back to whichever sorts first,
+  // undoing any switch they'd made.
+  const scope = await resolveOrgScope(userId, session.org_id);
+
+  return {
+    access_token: signAccessToken({
       id: userId,
       email: user.email,
       adminRole: adminRecord?.role,
       orgId: scope.orgId,
       orgRole: scope.orgRole,
       orgType: scope.orgType,
-    });
+    }),
+    type: adminRecord ? ("admin" as const) : ("platform_user" as const),
+  };
+}
 
-    const { raw: newRaw, hashed: newHashed } = encodeRefreshToken(userId);
-    await authRepo.rotateRefreshToken(session.id, newHashed);
+function sameClient(session: AuthSessionRow, meta?: { ip?: string; userAgent?: string }): boolean {
+  return Boolean(meta?.ip && meta.userAgent)
+    && session.ip_address === meta?.ip
+    && session.user_agent === meta?.userAgent;
+}
+
+/**
+ * Rotates and returns `refresh_token`, except inside the reuse grace window, where it returns
+ * `refresh_token: null`: the other request already rotated, its response set the new cookie,
+ * and rotating again would only race it.
+ */
+export async function refreshAccessToken(refreshToken: string, meta?: { ip?: string; userAgent?: string }) {
+  const hashed = hashToken(refreshToken);
+
+  const session = await authRepo.findSessionByRefreshToken(hashed);
+  if (session) {
+    const minted = await accessTokenForSession(session, meta);
+    const { raw: newRaw, hashed: newHashed } = encodeRefreshToken(session.platform_user_id);
+    await authRepo.rotateRefreshToken(session.id, newHashed, hashed);
 
     // Update IP/device on successful refresh
     await authRepo.updateSessionMeta(session.id, {
@@ -485,11 +533,15 @@ export async function refreshAccessToken(refreshToken: string, meta?: { ip?: str
       user_agent: meta?.userAgent ?? session.user_agent,
     });
 
-    return {
-      access_token: accessToken,
-      refresh_token: newRaw,
-      type: adminRecord ? ("admin" as const) : ("platform_user" as const),
-    };
+    return { ...minted, refresh_token: newRaw as string | null };
+  }
+
+  // Grace only for the same browser on the same network as the request that just rotated
+  // (updateSessionMeta stored its IP and user agent): a copied token replayed from elsewhere in
+  // those 30 seconds still counts as reuse below.
+  const justRotated = await authRepo.findSessionRotatedFrom(hashed, REFRESH_REUSE_GRACE_MS);
+  if (justRotated && sameClient(justRotated, meta)) {
+    return { ...(await accessTokenForSession(justRotated, meta)), refresh_token: null };
   }
 
   // Token not found — check for reuse (stolen token replayed after rotation)
@@ -614,19 +666,16 @@ export async function switchAccount(userId: number, orgId: string, refreshToken?
   };
 }
 
-export async function logout(userId: number, refreshToken?: string) {
-  if (refreshToken) {
-    // Logout single device — delete only this session
-    const hashed = hashToken(refreshToken);
-    const session = await authRepo.findSessionByRefreshToken(hashed);
-    if (session) {
-      await authRepo.deleteSession(session.id);
-    }
-  } else {
-    // Logout all devices
-    await authRepo.deleteAllSessions(userId);
-  }
-  logger.info("User logged out", { userId });
+/**
+ * Ends the one session this refresh token belongs to — no access token needed, so sign-out
+ * still works after the access token has expired. Returns whether a session was found.
+ */
+export async function logoutSession(refreshToken: string): Promise<boolean> {
+  const session = await authRepo.findSessionByRefreshToken(hashToken(refreshToken));
+  if (!session) return false;
+  await authRepo.deleteSession(session.id);
+  logger.info("User logged out", { userId: session.platform_user_id });
+  return true;
 }
 
 export async function getMe(auth: AuthClaims) {

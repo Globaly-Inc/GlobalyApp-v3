@@ -36,9 +36,9 @@ function deriveState(hasData: boolean, jobStatus: ExtractionJob["status"], jobAc
 }
 
 const STATE_META: Record<CardState, { icon: LucideIcon; className: string; label: (count: number) => string }> = {
-  completed: { icon: CheckCircle2, className: "text-emerald-600", label: (n) => `${n} record${n === 1 ? "" : "s"} extracted` },
-  processing: { icon: Loader2, className: "text-purple-600", label: () => "Extraction in progress" },
-  failed: { icon: AlertCircle, className: "text-red-600", label: () => "Extraction failed — you can retry" },
+  completed: { icon: CheckCircle2, className: "text-success", label: (n) => `${n} record${n === 1 ? "" : "s"} extracted` },
+  processing: { icon: Loader2, className: "text-chart-4", label: () => "Extraction in progress" },
+  failed: { icon: AlertCircle, className: "text-destructive", label: () => "Extraction failed — you can retry" },
   not_extracted: { icon: Circle, className: "text-muted-foreground", label: () => "Not extracted yet" },
 };
 

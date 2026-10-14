@@ -17,6 +17,9 @@ export const authPlugin = fp(async (app) => {
     "/api/v3/auth/send-otp",
     "/api/v3/auth/verify-otp",
     "/api/v3/auth/refresh",
+    // Authenticated by the refresh cookie/body token, not the Bearer token, so sign-out still
+    // works once the access token has expired (see auth.routes.ts).
+    "/api/v3/auth/logout",
     // Public registration / invitation accept
     "/api/v3/admin/users/invite/accept",
     "/api/v3/auth/register",
@@ -144,8 +147,14 @@ export function requirePermission(...required: string[]) {
       return reply.status(403).send({ error: "Business context required" });
     }
 
+    // The same three conditions switch-account checks before it mints an org-scoped token
+    // (auth.service.ts), re-read on every request. A token outlives the membership it was minted
+    // for, so checking only `deleted_at` here left a SUSPENDED admin acting as the business until
+    // their token expired — and a contact flipped to contact-only likewise (Greptile).
     const agent = await req.db("agents")
       .where("agents.platform_user_id", Number(req.auth.sub))
+      .where("agents.account_status", 1)
+      .where("agents.is_contact_only", false)
       .whereNull("agents.deleted_at")
       .select("agents.role_id")
       .first();

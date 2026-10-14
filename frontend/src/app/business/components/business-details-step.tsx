@@ -16,9 +16,6 @@ export function BusinessDetailsStep({
   isInstitution,
   businessName,
   onBusinessNameChange,
-  requireEmail,
-  email,
-  onEmailChange,
   phoneCountryId,
   onPhoneCountryChange,
   phoneNumber,
@@ -47,9 +44,6 @@ export function BusinessDetailsStep({
   isInstitution: boolean;
   businessName: string;
   onBusinessNameChange: (value: string) => void;
-  requireEmail: boolean;
-  email: string;
-  onEmailChange: (value: string) => void;
   phoneCountryId: string;
   onPhoneCountryChange: (value: string) => void;
   phoneNumber: string;
@@ -94,23 +88,6 @@ export function BusinessDetailsStep({
             />
             {fieldErrors.businessName && <p className="text-sm text-destructive">{fieldErrors.businessName}</p>}
           </div>
-          {requireEmail && (
-            <div className="space-y-2">
-              <Label>{isInstitution ? "Institution Email *" : "Business Email *"}</Label>
-              <Input
-                className="h-10"
-                type="email"
-                value={email}
-                onChange={(e) => onEmailChange(e.target.value)}
-                placeholder="e.g. contact@example.com"
-                aria-invalid={!!fieldErrors.email}
-              />
-              <p className="text-xs text-muted-foreground">
-                You already have an organisation — this one needs its own contact email.
-              </p>
-              {fieldErrors.email && <p className="text-sm text-destructive">{fieldErrors.email}</p>}
-            </div>
-          )}
           <div className="space-y-2">
             <Label>Phone *</Label>
             <div className="grid grid-cols-3 gap-3">

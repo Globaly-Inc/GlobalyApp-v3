@@ -4,7 +4,7 @@
 // agentcis-product-mappers.ts.
 
 import { masterKnex } from "../../../../core/db/master-pool.js";
-import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
+import { INGESTED_COURSE_STATUS, SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { coerceLabel } from "./agentcis-mappers.js";
 import {
   extractIntakes, extractStudyOptions, extractEligibility,
@@ -44,7 +44,10 @@ export async function stageProduct(
   campusMap: Record<string, string>,
   campusIds: string[],
   counters: StagingCounters,
-): Promise<void> {
+  /** false: a shared URL is not an identity. A URL identifies a course only when its page yields ONE
+   * course; a spreadsheet often gives many courses one programmes page, which merged them. */
+  urlIdentity = true,
+): Promise<string | null> {
   const sourceUrl = (p.url as string) || (p.product_url as string) || website;
 
   const taxonomy = extractCourseTaxonomy(p);
@@ -78,7 +81,7 @@ export async function stageProduct(
   // intakes, options and requirements onto it — a repeat often carries what the first one lacked.
   const parsed = parseCourseName(cName);
   const canonicalUrl = canonicalCourseUrl(sourceUrl, website);
-  const resolution = resolveCourse({ jobId, parsed, canonicalUrl }, await jobCourseIndex(jobId, website));
+  const resolution = resolveCourse({ jobId, parsed, canonicalUrl: urlIdentity ? canonicalUrl : null }, await jobCourseIndex(jobId, website));
   const reused = resolution.outcome === "identical" && resolution.match ? resolution.match.id : null;
 
   let courseId: string;
@@ -107,7 +110,7 @@ export async function stageProduct(
         awarding_institution: (p.awarding_institution as string) || institutionName,
         duration_weeks: durationWeeks,
         source_url: sourceUrl,
-        verification_status: "pending",
+        verification_status: INGESTED_COURSE_STATUS,
       })
       .returning("id");
     courseId = course.id as string;
@@ -229,4 +232,6 @@ export async function stageProduct(
   }
 
   if (reused) counters.skipped_products++; else counters.courses_extracted++;
+  // Why this product was folded into an existing course ("name_key", "course_code", …), null when new.
+  return reused ? resolution.reason ?? "identical" : null;
 }

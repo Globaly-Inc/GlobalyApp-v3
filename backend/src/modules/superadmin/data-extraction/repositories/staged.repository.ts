@@ -78,7 +78,27 @@ export const studyUnits = {
 // ── Staged accreditations ──
 
 export const accreditations = {
-  insert: (data: Record<string, unknown>, adminId: number) => insertEntity("extraction_accreditations", data, adminId),
+  /** The body table is GLOBAL and unique on lower(trim(name)) (migration 20261012_001): an admin
+   *  adding a body another job already staged must get THAT row back (blanks filled), never a
+   *  failed insert. Inner whitespace is collapsed on both sides — "Chartered  Institute" and
+   *  "Chartered Institute" are one body. */
+  insert: async (data: Record<string, unknown>, adminId: number) => {
+    const name = typeof data.name === "string" ? data.name.trim().replace(/\s+/g, " ") : "";
+    if (name) {
+      const existing = await masterKnex(`${S}.extraction_accreditations`)
+        .whereRaw("lower(regexp_replace(trim(name), '\\s+', ' ', 'g')) = ?", [name.toLowerCase()])
+        .first("id", "website", "issuing_organization", "description");
+      if (existing) {
+        const fill: Record<string, unknown> = {};
+        for (const k of ["website", "issuing_organization", "description"] as const) {
+          if (data[k] && !existing[k]) fill[k] = data[k];
+        }
+        if (Object.keys(fill).length) await masterKnex(`${S}.extraction_accreditations`).where({ id: existing.id }).update(fill);
+        return existing;
+      }
+    }
+    return insertEntity("extraction_accreditations", { ...data, ...(name ? { name } : {}) }, adminId);
+  },
   delete: (id: string) => deleteEntity("extraction_accreditations", id),
 };
 

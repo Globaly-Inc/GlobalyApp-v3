@@ -1,6 +1,7 @@
 "use client";
 
-import { Card, CardContent } from "@/components/ui/card";
+import { FormSection } from "@/components/ui/form-section";
+import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ImageDropzone } from "@/components/image-dropzone";
@@ -14,8 +15,7 @@ export function CountryImagesPanel({
   const gallery = country.gallery_images ?? [];
 
   return (
-    <Card>
-      <CardContent className="flex flex-col gap-6 pt-6">
+    <FormSection title="Images" description="Hero, thumbnail, gallery and video." columns={1}>
         <div className="flex flex-col gap-2">
           <Label>Hero image</Label>
           <ImageDropzone
@@ -53,8 +53,7 @@ export function CountryImagesPanel({
           </div>
         </div>
 
-        <div className="flex flex-col gap-2">
-          <Label htmlFor="country-youtube">YouTube embed URL</Label>
+        <FormField label="YouTube embed URL" htmlFor="country-youtube">
           <Input
             id="country-youtube"
             className="h-10"
@@ -62,8 +61,7 @@ export function CountryImagesPanel({
             value={country.youtube_embed_url ?? ""}
             onChange={(e) => onChange({ youtube_embed_url: e.target.value || null })}
           />
-        </div>
-      </CardContent>
-    </Card>
+        </FormField>
+    </FormSection>
   );
 }

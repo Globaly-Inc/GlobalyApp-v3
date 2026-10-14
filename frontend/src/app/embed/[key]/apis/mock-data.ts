@@ -69,6 +69,30 @@ export const embedMockApi = {
       ],
     });
     onEvent({ type: "chips", chips: ["What are the entry requirements?", "When is the next intake?"] });
+    // One of each shape the widget now renders — the visible check that the `blocks`
+    // event is still wired end to end. Dropping it is how the channel died the first time.
+    onEvent({
+      type: "blocks",
+      blocks: [
+        {
+          type: "comparison",
+          title: "Side by side",
+          columns: ["Data Science", "Information Technology"],
+          rows: [
+            { label: "Duration", values: ["104 weeks", "78 weeks"] },
+            { label: "Intakes", values: ["Feb, Jul", "Feb"] },
+          ],
+        },
+        {
+          type: "quick_replies",
+          question: "Which matters most to you?",
+          options: [
+            { label: "💰 Fees", value: "Fees matter most to me" },
+            { label: "📅 Start date", value: "The start date matters most to me" },
+          ],
+        },
+      ],
+    });
     // Emitted on every mock turn so the card is reachable without counting to three —
     // the real threshold lives on the embed config and is decided server-side.
     onEvent({
@@ -87,6 +111,7 @@ export const embedMockApi = {
         covered: "we've covered the Master of Data Science, its fees and the February intake",
         body: "I can email you a summary of everything we discussed, or we can keep going.",
         email: "visitor@example.com",
+        branch: { name: "Melbourne Campus", place: "Melbourne, Victoria, Australia" },
       },
     });
     onEvent({ type: "done" });

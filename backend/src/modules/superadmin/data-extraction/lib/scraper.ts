@@ -10,6 +10,7 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { isRegistrySuffix, isSameSite, siteOf } from "./html-utils.js";
 import { assertPublicUrl, safeFetch, UnsafeUrlError } from "../../../../shared/public-url.js";
+import { circuitOpenError, hostGapMs, hostOf, isHostCircuitOpen, noteHostOutcome } from "./host-health.js";
 
 const logger = createChildLogger("scraper");
 
@@ -29,6 +30,7 @@ export interface ScrapeOptions {
   waitFor?: number;
   withLinks?: boolean;
   forceFirecrawl?: boolean;
+  breaker?: boolean;
   /** Firecrawl mobile emulation — some anti-bot walls only serve the mobile site. */
   mobile?: boolean;
   /**
@@ -186,8 +188,8 @@ export function politeDelay(minMs: number, maxMs: number): Promise<void> {
 /** Last RESERVED slot per host — a time already promised to a caller, not a time a request was
  *  observed to happen. See nextHostSlot. */
 const lastHostHit = new Map<string, number>();
-// ponytail: 800ms is polite enough for edu sites; set HOST_THROTTLE_MS=1500 if you get 429s
-const MIN_HOST_GAP_MS = Number(process.env.HOST_THROTTLE_MS) || 800;
+// The gap is no longer one constant for every host — host-health.ts starts it at HOST_THROTTLE_MS
+// (800) and lets a host earn its way down to HOST_THROTTLE_MIN_MS or back itself off on a 429.
 
 /**
  * The next moment a request to this host may go out, given the last slot already handed out. Pure.
@@ -250,7 +252,8 @@ export async function throttleForHost(url: string) {
     return; // invalid url
   }
 
-  const shared = await reserveSharedHostSlot(host, MIN_HOST_GAP_MS);
+  const gapMs = hostGapMs(host);
+  const shared = await reserveSharedHostSlot(host, gapMs);
   if (shared !== null) {
     // The shared table is authoritative; keep the local map roughly in step so a later fallback
     // doesn't immediately hand out a slot the shared reservation already used.
@@ -260,7 +263,7 @@ export async function throttleForHost(url: string) {
   }
 
   const now = Date.now();
-  const slot = nextHostSlot(lastHostHit.get(host), now, MIN_HOST_GAP_MS);
+  const slot = nextHostSlot(lastHostHit.get(host), now, gapMs);
   lastHostHit.set(host, slot); // reserve BEFORE awaiting, or concurrent callers all take it
   const wait = slot - now;
   if (wait > 0) await new Promise((r) => setTimeout(r, wait));
@@ -447,7 +450,7 @@ const SCRAPLING_TIERS: { tool: string; timeoutMs: number; browser?: boolean; arg
 // FIRST browser request queues itself as a waiter that nothing will ever wake. That is a permanent
 // stall of every browser-tier scrape in the process, from one typo in an env var. `|| 2` catches
 // NaN, 0 and "", Math.floor rejects "2.7", and Math.max rejects negatives — same shape as
-// HOST_THROTTLE_MS above, which is why that one was never vulnerable to this.
+// host-health.ts's gap constants, which is why those were never vulnerable to this.
 const MAX_BROWSER_TIER_CONCURRENCY = Math.max(1, Math.floor(Number(process.env.SCRAPLING_BROWSER_CONCURRENCY) || 2));
 let browsersInFlight = 0;
 const browserWaiters: (() => void)[] = [];
@@ -502,7 +505,7 @@ async function scraplingScrape(
   extractionType: ScraplingExtractionType,
   mainContentOnly: boolean,
   hard?: { mobile?: boolean; waitMs?: number },
-): Promise<{ content: string; tierUsed?: string; error?: string; notFound?: boolean }> {
+): Promise<{ content: string; tierUsed?: string; error?: string; notFound?: boolean; throttled?: boolean }> {
   let client: Client;
   try {
     client = await getMcpClient(cfg);
@@ -514,6 +517,7 @@ async function scraplingScrape(
   }
 
   let lastError: string | undefined;
+  let throttled = false;
   for (const tier of hard ? hardRetryTiers(hard) : SCRAPLING_TIERS) {
     if (tier.browser) await acquireBrowserSlot();
     try {
@@ -543,13 +547,20 @@ async function scraplingScrape(
       // provider can change that; escalating only spends minutes per dead URL.
       if (status === 404 || status === 410) {
         logger.info(`scrapling mcp: tool "${tier.tool}" got HTTP ${status} for ${url} — dead URL, not escalating`);
-        return { content: "", tierUsed: tier.tool, notFound: true, error: `${tier.tool}: HTTP ${status} — source page does not exist` };
+        // `throttled` rides along: plain HTTP can answer 429 and a browser tier then confirm 404,
+        // and dropping the flag here recorded the page as a bare dead link — silently discarding
+        // the host's own request to slow down.
+        return { content: "", tierUsed: tier.tool, notFound: true, throttled, error: `${tier.tool}: HTTP ${status} — source page does not exist` };
+      }
+      if (status === 429 || status === 503) {
+        throttled = true;
+        logger.warn(`scrapling mcp: tool "${tier.tool}" got HTTP ${status} for ${url} — backing this host off`);
       }
       const ok2xx = status != null && status >= 200 && status < 300;
       const thinButReal = ok2xx && content.length >= MIN_THIN_2XX_LEN && !isChallengePage(content) && !NO_CONTENT_PATTERNS.some((re) => re.test(content));
       if (isUsableContent(content) || thinButReal) {
         logger.info(`scrapling mcp: tool "${tier.tool}" succeeded for ${url} (${content.length} chars${thinButReal && !isUsableContent(content) ? ", thin 2xx" : ""})`);
-        return { content, tierUsed: tier.tool };
+        return { content, tierUsed: tier.tool, throttled };
       }
       lastError = `${tier.tool}: ${unusableReason(content)}`;
       logger.info(`scrapling mcp: tool "${tier.tool}" insufficient for ${url} (${content.length} chars) — escalating`);
@@ -568,7 +579,7 @@ async function scraplingScrape(
       if (tier.browser) releaseBrowserSlot();
     }
   }
-  return { content: "", error: lastError ?? "all scrapling tiers exhausted" };
+  return { content: "", error: lastError ?? "all scrapling tiers exhausted", throttled };
 }
 
 // ─── Firecrawl ──────────────────────────────────────────────────────────────
@@ -686,6 +697,56 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
     throw err;
   }
 
+  // A host that has failed TRIP_AFTER times in a row is not asked again until the circuit
+  // half-opens. An admin Retry (forceFirecrawl) always goes through: the operator is explicitly
+  // asking us to try this one page, and that is also how a trip gets tested before it expires.
+  //
+  // OPT-IN (`breaker`), and only the snapshot step opts in. The page worker must NOT arm it: its
+  // failures route to `scraper_down`, whose retry republishes with forceFirecrawl:false — which
+  // would hit the open circuit, return instantly, and burn all three attempts in milliseconds.
+  // On a catalogue-concentrated job (Yale: 983 of 1,013 URLs on one host) a single five-failure
+  // blip would then kill the whole remaining queue in seconds, where today those pages fail
+  // slowly and a container that recovers mid-run still rescues the later ones.
+  // Outcomes are still RECORDED from every caller, so the adaptive gap keeps learning everywhere.
+  const host = hostOf(url);
+  if (host && opts.breaker && !opts.forceFirecrawl && isHostCircuitOpen(host)) {
+    const error = circuitOpenError(host);
+    logger.warn(`skipping ${url} — ${error}`);
+    return { markdown: "", links: [], scraper: "none", blocked: true, error };
+  }
+  const signals: ScrapeSignals = { throttled: false };
+  return recordHostOutcome(host, await scrapeMarkdownUncircuited(url, opts, signals), signals);
+}
+
+/** Side-channel for things host-health cares about that are not part of a page's result. */
+interface ScrapeSignals { throttled: boolean }
+
+/**
+ * Feed the result back to host-health so the gap can adapt and the breaker can trip.
+ *
+ * `notFound` records NOTHING. A real 404 returns from the first tier in milliseconds, so counting
+ * it as a failure would trip a healthy host purely for having dead links — which a university
+ * catalogue always does — while counting it as a success let that same wall of dead links earn
+ * speed-up credit it never justified.
+ *
+ * A throttle outranks the rest: it widens the gap even when the page then succeeded on a browser
+ * tier, because being asked to slow down is the signal whether or not we got the page in the end.
+ */
+function recordHostOutcome(host: string | null, r: ScrapeResult, signals: ScrapeSignals): ScrapeResult {
+  if (!host) return r;
+  if (signals.throttled) noteHostOutcome(host, "throttled");
+  // A real 404 is a RESPONSE — it proves the host is up, so it clears the circuit — but it says
+  // nothing about pace, so it earns no speed-up credit. Recording nothing at all was wrong in the
+  // other direction: the single probe that reopens a circuit often lands on a dead link, and
+  // leaving `openUntil` set then re-skipped a host that had just answered, every window.
+  else if (r.notFound) noteHostOutcome(host, "alive");
+  // `blocked` with a non-empty body is the Firecrawl path handing back an unusable page (a
+  // challenge wall, a soft 404). Length alone read that as a success.
+  else noteHostOutcome(host, !r.blocked && r.markdown.length > 0 ? "ok" : "failed");
+  return r;
+}
+
+async function scrapeMarkdownUncircuited(url: string, opts: ScrapeOptions, signals: ScrapeSignals): Promise<ScrapeResult> {
   // Pace PAGE scrapes per host, not just sitemap fetches. This was the one path with no throttle
   // at all: throttleForHost lived only inside politeFetch, while the page worker auto-scales to 10
   // concurrent consumers and a well-discovered university puts nearly every course URL on a single
@@ -710,6 +771,7 @@ export async function scrapeMarkdown(url: string, opts: ScrapeOptions = {}): Pro
     // `onlyMainContent` still keys the store's mode; it no longer changes what Scrapling returns.
     const s = await scraplingScrape(url, scrapling, "markdown", false,
       opts.forceFirecrawl ? { mobile: opts.mobile, waitMs: opts.waitFor } : undefined);
+    if (s.throttled) signals.throttled = true;
     if (s.content) {
       logger.info(`scrapling OK for ${url} (tier: ${s.tierUsed ?? "unknown"}, ${s.content.length} chars)`);
       return {

@@ -1,4 +1,30 @@
-import type { VisitorProfileEntry, WidgetVisitor } from "../apis/types";
+import type { KeyboardEvent } from "react";
+import type { DeveloperContact, VisitorProfileEntry, WidgetVisitor } from "../apis/types";
+
+/**
+ * Fold a send's response into the recipient list the card is already showing.
+ *
+ * `fromServer` is the whole list as it stood when the send READ it, so adopting it wholesale
+ * undoes anything that changed while the send was in flight — a Remove that completed in that
+ * window would put the deleted address straight back on screen.
+ *
+ * So a current row is replaced only by a row the server actually handed back for it. Absent is
+ * never a deletion: the read-back can fail server-side and come through empty, and dropping a
+ * visible row on that would make a successful resend look like it un-sent itself (Greptile).
+ * Rows the send never touched keep whatever state the card has — including gone.
+ *
+ * Replaced rows go first, matching the server's own newest-sent-first ordering.
+ */
+export function mergeSentRecipients(
+  current: DeveloperContact[],
+  sent: string[],
+  fromServer: DeveloperContact[],
+): DeveloperContact[] {
+  const justSent = new Set(sent);
+  const fresh = fromServer.filter((r) => justSent.has(r.email));
+  const replaced = new Set(fresh.map((r) => r.email));
+  return [...fresh, ...current.filter((d) => !replaced.has(d.email))];
+}
 
 /**
  * What to call someone who never told us their name.
@@ -92,4 +118,29 @@ export function downloadCsv(filename: string, csv: string): void {
   a.download = filename;
   a.click();
   URL.revokeObjectURL(url);
+}
+
+const RADIO_STEP: Record<string, number> = { ArrowRight: 1, ArrowDown: 1, ArrowLeft: -1, ArrowUp: -1 };
+
+/**
+ * Keyboard for a hand-built `role="radiogroup"` (WAI-ARIA radio pattern): put it on the group's
+ * onKeyDown and give only the checked radio `tabIndex={0}` (the rest -1), so the group is one Tab
+ * stop and the arrow keys move focus *and* selection, wrapping at the ends. Selecting is a
+ * `click()`, so each radio's own onClick stays the only place that changes state.
+ */
+export function radioGroupKeyDown(e: KeyboardEvent<HTMLElement>): void {
+  const step = RADIO_STEP[e.key];
+  if (!step) return;
+  const radios = Array.from(e.currentTarget.querySelectorAll<HTMLElement>('[role="radio"]'));
+  const i = radios.indexOf(document.activeElement as HTMLElement);
+  if (i < 0) return;
+  e.preventDefault();
+  const next = radios[(i + step + radios.length) % radios.length];
+  next?.focus();
+  next?.click();
+}
+
+/** The roving tabIndex for radio `index`: the checked one, or the first when none is (a custom hex). */
+export function radioTabIndex(checked: boolean, index: number, anyChecked: boolean): 0 | -1 {
+  return checked || (!anyChecked && index === 0) ? 0 : -1;
 }

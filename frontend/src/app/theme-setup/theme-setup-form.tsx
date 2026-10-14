@@ -1,7 +1,14 @@
 "use client";
 
 import { useEffect } from "react";
+import { Combobox } from "@/components/combobox";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { FormField } from "@/components/ui/form-field";
+import { FormSection } from "@/components/ui/form-section";
+import { Input } from "@/components/ui/input";
+import { PageBody } from "@/components/ui/page-body";
+import { PageHeader } from "@/components/ui/page-header";
 import { ThemeToggle } from "@/components/theme-toggle";
 import { siteConfig } from "@/config/site";
 import {
@@ -13,8 +20,8 @@ import {
 import { useThemeSettings } from "@/lib/use-theme-settings";
 
 const FONTS = [
-  { name: "Inter", value: "var(--font-inter)" },
-  { name: "Fraunces", value: "var(--font-fraunces)" },
+  { label: "Geist", value: "var(--font-geist)" },
+  { label: "Space Grotesk", value: "var(--font-space-grotesk)" },
 ];
 
 export function ThemeSetupForm({ initialSettings }: Readonly<{ initialSettings: ThemeSettings }>) {
@@ -44,144 +51,99 @@ export function ThemeSetupForm({ initialSettings }: Readonly<{ initialSettings: 
   }
 
   return (
-    <div className="mx-auto flex max-w-3xl flex-col gap-8 px-8 py-16">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-semibold">Theme setup</h1>
-          <p className="text-sm text-muted-foreground">
-            Saved to localStorage in your browser — wire up a settings API to
-            persist these account-wide.
-          </p>
-        </div>
+    // Standalone page outside the portal shell, so it owns its own gutter and width.
+    <PageBody className="mx-auto w-full max-w-3xl px-4 py-10 sm:px-8 sm:py-16">
+      <PageHeader
+        title="Theme setup"
+        subtitle="Saved to localStorage in your browser — wire up a settings API to persist these account-wide."
+      >
         <ThemeToggle />
-      </div>
+      </PageHeader>
 
-      <section className="flex flex-col gap-2">
-        <label htmlFor="primary-color" className="text-sm font-medium">
-          Brand color
-        </label>
-        <div className="flex items-center gap-3">
-          <input
-            id="primary-color"
-            type="color"
-            value={settings.primaryColor}
-            onChange={(e) => update("primaryColor", e.target.value)}
-            className="h-9 w-14 cursor-pointer rounded-md border border-input bg-transparent"
-          />
-          <span className="text-sm text-muted-foreground">{settings.primaryColor}</span>
-          <Button variant="ghost" size="sm" onClick={resetPrimary}>
-            Reset
-          </Button>
-        </div>
-      </section>
-
-      <section className="flex flex-col gap-2">
-        <label htmlFor="font-family" className="text-sm font-medium">
-          Font family
-        </label>
-        <select
-          id="font-family"
-          value={settings.font}
-          onChange={(e) => update("font", e.target.value)}
-          className="h-9 w-48 rounded-md border border-input bg-background px-2 text-sm"
-        >
-          {FONTS.map((f) => (
-            <option key={f.value} value={f.value}>
-              {f.name}
-            </option>
-          ))}
-        </select>
-      </section>
-
-      <section className="flex flex-col gap-2">
-        <label htmlFor="company-name" className="text-sm font-medium">
-          Company name
-        </label>
-        <input
-          id="company-name"
-          value={settings.companyName}
-          onChange={(e) => update("companyName", e.target.value)}
-          className="h-9 w-72 rounded-md border border-input bg-background px-3 text-sm"
-        />
-      </section>
-
-      <section className="flex flex-col gap-2">
-        <label htmlFor="company-logo" className="text-sm font-medium">
-          Company logo
-        </label>
-        <input
-          id="company-logo"
-          type="file"
-          accept="image/*"
-          onChange={(e) => handleImageUpload(e, "logoUrl")}
-          className="text-sm"
-        />
-      </section>
-
-      <section className="flex flex-col gap-2">
-        <label htmlFor="favicon" className="text-sm font-medium">
-          Favicon
-        </label>
-        <input
-          id="favicon"
-          type="file"
-          accept="image/*"
-          onChange={(e) => handleImageUpload(e, "faviconUrl")}
-          className="text-sm"
-        />
-        <p className="text-xs text-muted-foreground">
-          Optional — the tab icon uses this if set, otherwise falls back to
-          the company logo.
-        </p>
-      </section>
-
-      <section className="flex flex-col gap-2">
-        <label htmlFor="preview" className="text-sm font-medium">
-          Preview
-        </label>
-        <div className="overflow-hidden rounded-lg border border-border">
-          <div className="flex items-center gap-2 border-b border-border bg-muted px-3 py-2">
-            <div className="flex items-center gap-1 rounded-t-md bg-background px-2 py-1 text-xs">
-              {settings.faviconUrl || settings.logoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img
-                  src={settings.faviconUrl || settings.logoUrl || undefined}
-                  alt=""
-                  className="size-3.5 rounded-sm object-cover"
-                />
-              ) : (
-                <span
-                  className="size-3.5 rounded-sm"
-                  style={{ backgroundColor: settings.primaryColor }}
-                />
-              )}
-              {settings.companyName || siteConfig.name}
-            </div>
-          </div>
-          <div className="flex items-center justify-between bg-background px-6 py-3">
-            <div className="flex items-center gap-2">
-              {settings.logoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={settings.logoUrl} alt="" className="size-7 rounded-md object-cover" />
-              ) : (
-                <span
-                  className="size-7 rounded-md"
-                  style={{ backgroundColor: settings.primaryColor }}
-                />
-              )}
-              <span
-                className="font-semibold text-foreground"
-                style={{ fontFamily: settings.font }}
-              >
-                {settings.companyName || siteConfig.name}
-              </span>
-            </div>
-            <Button size="sm" style={{ backgroundColor: settings.primaryColor }}>
-              Get started
+      <FormSection title="Brand">
+        <FormField label="Brand color" htmlFor="primary-color" wide>
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              id="primary-color"
+              type="color"
+              value={settings.primaryColor}
+              onChange={(e) => update("primaryColor", e.target.value)}
+              className="h-10 w-14 cursor-pointer rounded-md border border-input bg-transparent"
+            />
+            <span className="font-mono text-sm text-muted-foreground">{settings.primaryColor}</span>
+            <Button variant="ghost" size="sm" onClick={resetPrimary}>
+              Reset
             </Button>
           </div>
+        </FormField>
+        <FormField label="Font family" htmlFor="font-family">
+          <Combobox id="font-family" options={FONTS} value={FONTS.some((f) => f.value === settings.font) ? settings.font : (FONTS[0]?.value ?? settings.font)} onChange={(value) => update("font", value)} />
+        </FormField>
+        <FormField label="Company name" htmlFor="company-name">
+          <Input id="company-name" value={settings.companyName} onChange={(e) => update("companyName", e.target.value)} />
+        </FormField>
+      </FormSection>
+
+      <FormSection title="Logo & favicon">
+        <FormField label="Company logo" htmlFor="company-logo">
+          <Input id="company-logo" type="file" accept="image/*" onChange={(e) => handleImageUpload(e, "logoUrl")} />
+        </FormField>
+        <FormField
+          label="Favicon"
+          htmlFor="favicon"
+          hint="Optional — the tab icon uses this if set, otherwise falls back to the company logo."
+        >
+          <Input id="favicon" type="file" accept="image/*" onChange={(e) => handleImageUpload(e, "faviconUrl")} />
+        </FormField>
+      </FormSection>
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base">Preview</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <ThemePreview settings={settings} />
+        </CardContent>
+      </Card>
+    </PageBody>
+  );
+}
+
+function ThemePreview({ settings }: Readonly<{ settings: ThemeSettings }>) {
+  const name = settings.companyName || siteConfig.name;
+  return (
+    <div className="overflow-hidden rounded-lg border border-border">
+      <div className="flex items-center gap-2 border-b border-border bg-muted px-3 py-2">
+        <div className="flex min-w-0 items-center gap-1 rounded-t-md bg-background px-2 py-1 text-xs">
+          {settings.faviconUrl || settings.logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img
+              src={settings.faviconUrl || settings.logoUrl || undefined}
+              alt=""
+              className="size-3.5 shrink-0 rounded-sm object-cover"
+            />
+          ) : (
+            <span className="size-3.5 shrink-0 rounded-sm" style={{ backgroundColor: settings.primaryColor }} />
+          )}
+          <span className="truncate">{name}</span>
         </div>
-      </section>
+      </div>
+      <div className="flex items-center justify-between gap-3 bg-background px-4 py-3 sm:px-6">
+        <div className="flex min-w-0 items-center gap-2">
+          {settings.logoUrl ? (
+            // eslint-disable-next-line @next/next/no-img-element
+            <img src={settings.logoUrl} alt="" className="size-7 shrink-0 rounded-md object-cover" />
+          ) : (
+            <span className="size-7 shrink-0 rounded-md" style={{ backgroundColor: settings.primaryColor }} />
+          )}
+          <span className="truncate font-semibold text-foreground" style={{ fontFamily: settings.font }}>
+            {name}
+          </span>
+        </div>
+        <Button size="sm" style={{ backgroundColor: settings.primaryColor }}>
+          Get started
+        </Button>
+      </div>
     </div>
   );
 }

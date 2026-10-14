@@ -46,6 +46,7 @@ export function ServicePreviewView({
   const [accreditationNames, setAccreditationNames] = useState<Record<number, string>>({});
   const [accreditations, setAccreditations] = useState<ServiceAccreditation[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   useEffect(() => {
     const isBiz = kind === "business";
@@ -67,6 +68,8 @@ export function ServicePreviewView({
         const catalog = await categoriesApi.getAccreditations({ limit: 100 });
         setAccreditationNames(Object.fromEntries(catalog.data.map((a) => [a.id, a.name])));
       }
+    }).catch((e: unknown) => {
+      setLoadError(e instanceof Error ? e.message : "Couldn't load this service.");
     }).finally(() => setLoading(false));
   }, [kind, orgId, serviceId]);
 
@@ -79,7 +82,7 @@ export function ServicePreviewView({
   }
 
   if (!service) {
-    return <p className="py-20 text-center text-sm text-muted-foreground">Service not found.</p>;
+    return <p className="py-20 text-center text-sm text-muted-foreground">{loadError ?? "Service not found."}</p>;
   }
 
   const isCourse = service.category_name === "Academic Courses";
@@ -111,7 +114,7 @@ export function ServicePreviewView({
               {service.category_name}
             </Badge>
           )}
-          <h1 className="text-xl font-bold text-foreground">{service.name}</h1>
+          <h1 className="text-2xl font-bold text-foreground">{service.name}</h1>
           <p className="text-sm text-muted-foreground">{org?.business_name ?? "—"}</p>
         </CardContent>
       </Card>
@@ -134,7 +137,7 @@ export function ServicePreviewView({
                 <div key={u.id} className="flex items-center gap-2 rounded-lg border p-3 text-sm">
                   {u.unit_code && <span className="font-mono text-xs font-semibold text-primary">{u.unit_code}</span>}
                   <span>{u.unit_name}</span>
-                  <Badge variant={u.unit_type === "elective" ? "secondary" : "default"} className="text-[10px]">{u.unit_type}</Badge>
+                  <Badge variant={u.unit_type === "elective" ? "secondary" : "default"} className="text-xs">{u.unit_type}</Badge>
                 </div>
               ))}
             </CardContent>

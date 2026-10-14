@@ -67,7 +67,8 @@ export async function startImport(input: SpreadsheetImportInput, adminId: number
         // A sheet only ever holds institutions; without a category promotion refuses the job.
         business_category_id: businessCategoryId,
         created_by_platform_user_id: adminId,
-        pipeline_progress: JSON.stringify({ phase: "queued", current: 0, total: input.rows.length }),
+        // `skipped` survives the worker's later mergeProgress calls (they merge keys, never replace).
+        pipeline_progress: JSON.stringify({ phase: "queued", current: 0, total: input.rows.length, skipped: input.skipped }),
         processing_heartbeat_at: masterKnex.fn.now(),
       })
       .returning("id");
@@ -75,7 +76,8 @@ export async function startImport(input: SpreadsheetImportInput, adminId: number
   });
 
   try {
-    await queueService.publish(EXTRACTION_QUEUES.SPREADSHEET, { jobId, website, input });
+    // The worker doesn't need the skipped rows — they're already on the job.
+    await queueService.publish(EXTRACTION_QUEUES.SPREADSHEET, { jobId, website, input: { ...input, skipped: [] } });
   } catch (err) {
     // Otherwise the job sits "processing" forever with nothing ever consuming it.
     await masterKnex(`${S}.extraction_jobs`).where({ id: jobId })

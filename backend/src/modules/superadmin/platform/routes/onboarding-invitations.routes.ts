@@ -4,7 +4,7 @@ import { buildPaginatedResponse, paginationToOffset } from "../../../../shared/p
 import * as repo from "../platform.repository.js";
 import * as service from "../../../platform-users/services/onboarding-invitations.service.js";
 import {
-  InvitationIdParamSchema, InvitationListQuerySchema, SendInvitationSchema,
+  InvitationIdParamSchema, InvitationListQuerySchema, PreviewInvitationQuerySchema, SendInvitationSchema,
 } from "../../../platform-users/schemas/onboarding-invitations.schema.js";
 
 export function adminOnboardingInvitationRoutes(app: FastifyInstance) {
@@ -21,6 +21,13 @@ export function adminOnboardingInvitationRoutes(app: FastifyInstance) {
     const { limit, offset } = paginationToOffset(pagination);
     const { data, total, counts } = await service.listInvitations(limit, offset, status, search);
     return reply.send({ ...buildPaginatedResponse(data, total, pagination), counts });
+  });
+
+  /** Read-only: composes the mail and hands it back. Nothing is created, so there is nothing to log.
+   *  Declared before /:id/* so "preview" is never read as an invitation id. */
+  app.get("/onboarding-invitations/preview", async (req, reply) => {
+    const { business_category_id, name } = PreviewInvitationQuerySchema.parse(req.query);
+    return reply.send(await service.previewInvitation(business_category_id, name));
   });
 
   app.post("/onboarding-invitations/:id/resend", async (req, reply) => {

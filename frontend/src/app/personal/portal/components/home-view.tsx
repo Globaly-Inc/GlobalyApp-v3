@@ -1,10 +1,11 @@
 "use client";
 
 import { useAppSelector } from "@/lib/hooks";
+import { PageBody } from "@/components/ui/page-body";
 import { FeedComposer } from "@/components/feed/components/feed-composer";
 import { FeedTimeline } from "@/components/feed/components/feed-timeline";
 import { DashboardStats } from "./dashboard-stats";
-import { HomeHero } from "./home-hero";
+import { GreetingHero } from "@/components/greeting-hero/greeting-hero";
 import { ProfileCompletionCard } from "./profile-completion-card";
 import { QuickActions } from "./quick-actions";
 import { RegionBoundary } from "./region-boundary";
@@ -23,31 +24,21 @@ export function HomeView() {
   const profile = useAppSelector((state) => state.profile.profile);
 
   return (
-    <div className="space-y-4 md:space-y-6">
+    <PageBody>
       {/* Each region is boundaried: a render error in one shows that region's retry, not a blank page. */}
       <RegionBoundary label="the header">
-        <HomeHero firstName={profile?.first_name ?? null} />
+        <GreetingHero name={profile?.first_name ?? null} subtitle="Your personal dashboard" storagePrefix="personal" />
       </RegionBoundary>
 
       {/*
-        lg+: feed spans two columns with the rail beside it.
-        below lg: single column — feed first, quick actions after.
-        One spacing scale: 4 (16px) between cards, 6 (24px) between regions and columns.
+        lg+: a 2/3 main stack (stats, composer, feed) with the 1/3 rail beside it.
+        below lg: single column — stats and feed first, the rail after.
       */}
-      <div className="flex flex-col gap-4 md:gap-6 lg:grid lg:grid-cols-3 lg:items-start">
-        <div className="order-2 space-y-4 lg:col-span-1">
-          <RegionBoundary label="profile completion">
-            <ProfileCompletionCard />
-          </RegionBoundary>
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-3">
+        <div className="flex min-w-0 flex-col gap-6 lg:col-span-2">
           <RegionBoundary label="dashboard stats">
             <DashboardStats />
           </RegionBoundary>
-          <RegionBoundary label="quick actions">
-            <QuickActions />
-          </RegionBoundary>
-        </div>
-
-        <div className="order-1 space-y-4 lg:col-span-2">
           <RegionBoundary label="the composer">
             <FeedComposer
               avatarUrl={profile?.photo_url}
@@ -58,7 +49,16 @@ export function HomeView() {
             <FeedTimeline />
           </RegionBoundary>
         </div>
+
+        <div className="flex min-w-0 flex-col gap-6">
+          <RegionBoundary label="profile completion">
+            <ProfileCompletionCard />
+          </RegionBoundary>
+          <RegionBoundary label="quick actions">
+            <QuickActions />
+          </RegionBoundary>
+        </div>
       </div>
-    </div>
+    </PageBody>
   );
 }

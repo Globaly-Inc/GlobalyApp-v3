@@ -4,7 +4,6 @@ import { useRef } from "react";
 import Image from "next/image";
 import { ImagePlus, Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Label } from "@/components/ui/label";
 import { COVER_ACCEPT, MAX_COVER_MB } from "../const";
 
 /**
@@ -18,6 +17,8 @@ import { COVER_ACCEPT, MAX_COVER_MB } from "../const";
  * field still renders — the seller should be able to see that covers exist and are coming — but the picker is
  * **disabled and says why**, because a control that can only fail is worse than an honest one that is off.
  * The cover is optional either way, and a listing without one falls back to its category's cover.
+ *
+ * It has no label of its own: the listing form shows it inside a "Cover image" `FormSection`.
  *
  * The wiring behind it is already complete: `POST /my-services/listings/cover` uploads through the shared
  * storage service, and the returned path attaches to the listing. Setting the bucket flips `available` to
@@ -40,8 +41,6 @@ export function CoverImageField({
 
   return (
     <div className="flex flex-col gap-2">
-      <Label>Cover image</Label>
-
       {previewUrl ? (
         <div className="relative aspect-video w-full overflow-hidden rounded-lg border border-border bg-muted">
           <Image src={previewUrl} alt="Cover preview" fill className="object-cover" sizes="672px" unoptimized />

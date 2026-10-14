@@ -21,7 +21,7 @@ function Stars({ value, size = "sm" }: Readonly<{ value: number; size?: "sm" | "
           key={n}
           className={cn(
             size === "lg" ? "h-6 w-6" : "h-5 w-5",
-            n <= value ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground",
+            n <= value ? "fill-rating text-rating" : "text-muted-foreground",
           )}
         />
       ))}
@@ -93,7 +93,7 @@ export function ReviewForm({ serviceId }: Readonly<{ serviceId: number }>) {
               <Star
                 className={cn(
                   "h-6 w-6 transition-colors",
-                  value <= rating ? "fill-yellow-400 text-yellow-400" : "text-muted-foreground",
+                  value <= rating ? "fill-rating text-rating" : "text-muted-foreground",
                 )}
               />
             </button>

@@ -108,6 +108,8 @@ export type ServiceSearchParams = {
   origin?: "extracted" | "manual";
   /** Institution courses only — a degree_levels slug. */
   degree_level?: string;
+  /** Summary counts: not approved yet (pending / needs changes — institution courses only), or no fee. */
+  attention?: "needs_approval" | "missing_fee";
 };
 
 export type ServiceSearchResult = { data: BusinessService[]; total: number };

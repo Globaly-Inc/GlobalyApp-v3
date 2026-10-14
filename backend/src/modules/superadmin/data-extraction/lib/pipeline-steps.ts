@@ -16,14 +16,15 @@ import { queueService } from "../../../../shared/queue/queueService.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { NEXT_STEP, type PipelineStep } from "../schemas/step.schema.js";
-import { discoverUrlsForCrawl, scrapeFailureText } from "./scraper.js";
+import { discoverUrlsForCrawl, scrapeFailureText, scrapeRenderedHtml } from "./scraper.js";
+import { chooseOverviewMedia, imageCandidates, metaImages } from "./gallery-images.js";
 import { SNAPSHOT_BATCH_SIZE, jobHalted } from "./site-snapshot.js";
 import { CRAWL_BUDGET, crawlSeeds, crawlSite } from "./site-crawl.js";
 import { _urlClassifyDeps, jevCategorise, jevVerdicts } from "./jev-url-classify.js";
 import { getPage, normaliseUrl, readSnapshot } from "./page-store.js";
 import {
-  looksLikeCourseUrl, looksLikeVisaServiceUrl, filterUrls, truncateMarkdown, collectGuidedUrls, compileBlocklist,
-  classifierDistrusted, MIN_CLASSIFIER_KEEP_RATIO,
+  looksLikeCourseUrl, looksLikeVisaServiceUrl, filterUrls, filterUrlsDetailed, truncateMarkdown, collectGuidedUrls, compileBlocklist,
+  classifierDistrusted, MIN_CLASSIFIER_KEEP_RATIO, sharedPrefix, pageExcerpt,
 } from "./html-utils.js";
 import { extractJson } from "./llm-client.js";
 import {
@@ -63,6 +64,8 @@ export const _stepDeps = {
   loadJob: async (jobId: string): Promise<JobRow | undefined> => masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).first(),
   publish: async (queue: string, payload: Record<string, unknown>): Promise<void> => { await queueService.publish(queue, payload); },
   crawl: crawlSite,
+  /** The homepage's HTML, for og:image / twitter:image — the markdown snapshot drops <meta>. */
+  renderedHtml: scrapeRenderedHtml,
   // ONE atomic jsonb merge, never read-modify-write: snapshot batches land concurrently and the
   // successor hand-off writes in the same window, so two readers of the whole blob overwrite each
   // other and a freshly written "site_analysis: processing" vanishes while its message is already
@@ -150,7 +153,24 @@ async function readJsonList(jobId: string, key: string): Promise<string[]> {
 export async function runSiteMap(jobId: string, job: JobRow): Promise<{ total: number; crawlStopped: boolean }> {
   const discovery = await discoverUrlsForCrawl(job.institution_url, { limit: 10000 });
   const origin = new URL(job.institution_url).origin;
-  let found: { url: string; source: string }[] = filterUrls(discovery.urls, origin).map((url) => ({ url, source: discovery.method }));
+  const filtered = filterUrlsDetailed(discovery.urls, origin);
+  let found: { url: string; source: string }[] = filtered.kept.map((url) => ({ url, source: discovery.method }));
+  if (filtered.droppedTotal > 0) {
+    const byReason = Object.entries(filtered.dropped).filter(([, d]) => d.count > 0);
+    await _stepDeps.writeEvent(jobId, "urls_discarded", {
+      level: filtered.droppedTotal > filtered.kept.length ? "warn" : "info",
+      phase: "course_discovery",
+      message: `${filtered.droppedTotal} of ${discovery.urls.length} discovered URLs discarded before the site list `
+        + `(${byReason.map(([r, d]) => `${r}: ${d.count}`).join(", ")})`,
+      data: {
+        discovered: discovery.urls.length,
+        kept: filtered.kept.length,
+        discarded: filtered.droppedTotal,
+        by_reason: Object.fromEntries(byReason.map(([r, d]) => [r, d.count])),
+        samples: Object.fromEntries(byReason.map(([r, d]) => [r, d.sample])),
+      },
+    });
+  }
 
   // Related domains: an admin-curated hint for a multi-campus institution whose country site is a
   // genuinely different registrable domain (monash.edu.my vs monash.edu). Opt-in config, not
@@ -240,8 +260,8 @@ export async function runSiteMap(jobId: string, job: JobRow): Promise<{ total: n
  */
 /** `fresh` re-fetches every page even if a snapshot within the window exists — the admin's
  *  "re-snapshot" after a scraper fix. Default false: a rerun on an unchanged site stays free. */
-export async function dispatchSnapshotBatches(jobId: string, urls: string[], pageCap: number, fresh = false): Promise<number> {
-  const capped = urls.slice(0, pageCap || 500);
+export async function dispatchSnapshotBatches(jobId: string, urls: string[], pageCap: number | null, fresh = false): Promise<number> {
+  const capped = pageCap == null ? urls : urls.slice(0, pageCap);
   const batches = Math.ceil(capped.length / SNAPSHOT_BATCH_SIZE);
   const runId = randomUUID();
   for (let i = 0; i < batches; i++) {
@@ -255,6 +275,17 @@ export async function dispatchSnapshotBatches(jobId: string, urls: string[], pag
 }
 
 // ── Step 3: site_analysis ───────────────────────────────────────────────────
+
+/** og:image / twitter:image of the homepage, [] when its HTML can't be read — a cover candidate
+ * only, never a reason to fail the step. */
+async function homepageMetaImages(url: string): Promise<string[]> {
+  try {
+    const { html } = await _stepDeps.renderedHtml(url);
+    return html ? metaImages(html, url) : [];
+  } catch {
+    return [];
+  }
+}
 
 /**
  * Homepage → Gemini → institution overview + site intelligence. The homepage is read in FULL mode
@@ -273,11 +304,13 @@ export async function runSiteAnalysis(jobId: string, job: JobRow): Promise<strin
   });
 
   const pageText = truncateMarkdown(homepage.markdown);
+  // Institution media: the homepage's own photos, pre-filtered, for the model to classify.
+  const images = isVisaService ? [] : imageCandidates(homepage.markdown, job.institution_url, null);
   const analysis = await extractJson<SiteAnalysisResult>({
     system: SITE_ANALYSIS_SYSTEM,
     prompt: isVisaService
       ? visaServiceSiteAnalysisPrompt(job.institution_url, pageText, job.guidance_notes)
-      : siteAnalysisPrompt(job.institution_url, pageText, job.guidance_notes),
+      : siteAnalysisPrompt(job.institution_url, pageText, job.guidance_notes, images),
   });
 
   // Both keys are the model's to supply, and a model that answers with valid JSON of the WRONG
@@ -304,12 +337,16 @@ export async function runSiteAnalysis(jobId: string, job: JobRow): Promise<strin
   }
 
   // The prompt's response key is `other_social_urls`; the DB column is `other_social_links`.
-  const { other_social_urls, ...institutionRest } = isSection(analysis.institution) ? analysis.institution : {};
+  // cover_url / media_images are the model's picks, not overview columns: they go through
+  // chooseOverviewMedia (candidates only, campus kinds, guard re-checked) to pickOverviewMedia.
+  const { other_social_urls, cover_url, media_images, ...institutionRest } = isSection(analysis.institution) ? analysis.institution : {};
+  const media = isVisaService ? undefined
+    : chooseOverviewMedia(images, { cover_url, media_images }, await homepageMetaImages(job.institution_url), job.institution_url);
   await writeInstitutionOverview(jobId, {
     ...institutionRest,
     ...(Array.isArray(other_social_urls) && other_social_urls.length ? { other_social_links: other_social_urls } : {}),
     source_url: job.institution_url,
-  } as any);
+  } as any, media);
   // SKIPPED, not defaulted, when the model omits it. writeSiteIntelligence upserts with a bare
   // .merge() — a wholesale column replace — unlike writeInstitutionOverview's fill-blanks
   // COALESCE(NULLIF(...)) above, which is why `?? {}` is harmless there and destructive here:
@@ -327,10 +364,7 @@ export async function runSiteAnalysis(jobId: string, job: JobRow): Promise<strin
     data: { patterns },
   });
 
-  // The "institution" step does a better overview than the homepage alone (it also reads the
-  // contact page) and "branches" chains off it. It is a side branch, not part of the chain, but
-  // it obeys the same gate so a manual-mode job does not start work behind the admin's back.
-  if (!job.source_type || job.source_type === "institution") {
+  if (!job.source_type || job.source_type === "institution" || job.source_type === "agentcis") {
     if (job.step_mode === "manual") {
       await _stepDeps.setProgress(jobId, { institution: "waiting" });
     } else {
@@ -344,21 +378,51 @@ export async function runSiteAnalysis(jobId: string, job: JobRow): Promise<strin
 
 /** ponytail: 200 rather than the old 800 — each URL now carries a page excerpt in the prompt. */
 const CLASSIFIER_BATCH = 200;
-const EXCERPT_CHARS = 300;
+export const EXCERPT_CHARS = 300;
 const EXCERPT_CONCURRENCY = 8;
-const CLASSIFY_ALL_CAP = 3200;
+const CLASSIFY_CAP_ENV = Number(process.env.EXTRACTION_CLASSIFY_CAP);
+const CLASSIFY_ALL_CAP = Number.isInteger(CLASSIFY_CAP_ENV) && CLASSIFY_CAP_ENV > 0 ? CLASSIFY_CAP_ENV : 25_000;
 
-/** First EXCERPT_CHARS of each snapshotted page, keyed by normalised URL. Pages not yet snapshotted are absent.
- *  One file read per URL, a few at a time — never a scrape. */
-async function excerptsFor(urls: string[]): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
-  for (let i = 0; i < urls.length; i += EXCERPT_CONCURRENCY) {
-    await Promise.all(urls.slice(i, i + EXCERPT_CONCURRENCY).map(async (url) => {
+/** How many pages the site's boilerplate is learned from before the rest are read through it. The
+ *  header is the same site-wide, so a sample settles it; this list can be CLASSIFY_ALL_CAP long and
+ *  holding every page's opening in memory to compare them all would not be free. */
+const BOILERPLATE_SAMPLE = 50;
+/** Enough of each page to contain any plausible header (heraldcollege.edu.np: 1,023 chars). */
+const EXCERPT_HEAD_CHARS = 8_000;
+
+/** The site's boilerplate (sharedPrefix of the first BOILERPLATE_SAMPLE snapshotted heads), plus
+ *  those heads so sampled pages aren't read twice when their excerpts are requested later. A raw
+ *  first-EXCERPT_CHARS slice handed the classifier the same nav text for every URL on the site,
+ *  leaving it nothing but the slug to judge by. */
+async function learnBoilerplate(urls: string[]): Promise<{ boilerplate: string; heads: Map<string, string> }> {
+  const heads = new Map<string, string>();
+  const sample = urls.slice(0, BOILERPLATE_SAMPLE);
+  for (let i = 0; i < sample.length; i += EXCERPT_CONCURRENCY) {
+    await Promise.all(sample.slice(i, i + EXCERPT_CONCURRENCY).map(async (url) => {
       const page = await readSnapshot(url, "main");
-      if (page) out.set(url, page.markdown.slice(0, EXCERPT_CHARS).replace(/\s+/g, " ").trim());
+      if (page) heads.set(url, page.markdown.slice(0, EXCERPT_HEAD_CHARS));
     }));
   }
-  return out;
+  return { boilerplate: sharedPrefix([...heads.values()]), heads };
+}
+
+/** Add EXCERPT_CHARS of each page's OWN content to `out`, reading only URLs not already present —
+ *  snapshots are fetched ONLY for pages some model/Jev pass will actually see (guided, heuristic-
+ *  placed and beyond-cap URLs never cost a read). A page with no snapshot stays absent and is shown
+ *  to the model as a bare URL, exactly as before. One file read per URL, a few at a time — never a
+ *  scrape. */
+async function addExcerpts(
+  out: Map<string, string>, urls: string[],
+  site: { boilerplate: string; heads: Map<string, string> },
+): Promise<void> {
+  const missing = urls.filter((u) => !out.has(u));
+  for (let i = 0; i < missing.length; i += EXCERPT_CONCURRENCY) {
+    await Promise.all(missing.slice(i, i + EXCERPT_CONCURRENCY).map(async (url) => {
+      const head = site.heads.get(url)
+        ?? (await readSnapshot(url, "main"))?.markdown.slice(0, EXCERPT_HEAD_CHARS);
+      if (head != null) out.set(url, pageExcerpt(head, site.boilerplate, EXCERPT_CHARS));
+    }));
+  }
 }
 
 /** A URL line for the prompt: the URL, then what the page actually says, when we have it. */
@@ -377,9 +441,8 @@ async function latestPatterns(jobId: string): Promise<string[]> {
  * One category per URL for what the heuristics left null: lite tier, batched, page excerpt beside
  * each URL. A URL the model puts under an unknown key or does not return at all stays null (→ other).
  */
-async function categoriseWithModel(jobId: string, candidates: string[]): Promise<Map<string, SiteUrlCategory>> {
+async function categoriseWithModel(jobId: string, candidates: string[], excerpts: Map<string, string>): Promise<Map<string, SiteUrlCategory>> {
   const out = new Map<string, SiteUrlCategory>();
-  const excerpts = await excerptsFor(candidates);
   const known = new Set<string>(SITE_URL_CATEGORIES);
   for (let i = 0; i < candidates.length; i += CLASSIFIER_BATCH) {
     const batch = candidates.slice(i, i + CLASSIFIER_BATCH);
@@ -419,6 +482,13 @@ export async function runUrlClassify(jobId: string, job: JobRow): Promise<{ cour
 
   let picked = new Set(urls.filter(isVisaService ? looksLikeVisaServiceUrl : looksLikeCourseUrl));
   let usedLlm = false;
+  // ONE boilerplate and ONE excerpt map for every model/Jev pass below. Each pass learning its own
+  // re-read snapshots and re-learned the boilerplate from a different sample — the fallback pass
+  // over the leftovers could learn from under 3 pages and regress to nav-laden excerpts for exactly
+  // the URLs that were hardest to place. The map fills per candidate set (addExcerpts), so pages no
+  // pass will see are never read.
+  const site = await learnBoilerplate(urls);
+  const excerpts = new Map<string, string>();
 
   // Jev path (TYPESAFE_API_KEY set, not a visa-service job): one per-URL question replaces both
   // lite-model passes below. See lib/jev-url-classify.ts.
@@ -426,16 +496,18 @@ export async function runUrlClassify(jobId: string, job: JobRow): Promise<{ cour
   if (jevMin != null) {
     const guidedMap = guidedUrlCategories(guidedRaw, normaliseUrl);
     const candidates = urls.filter((u) => !guidedMap.has(u)).slice(0, CLASSIFY_ALL_CAP);
-    const jev = await jevCategorise(candidates, await excerptsFor(candidates), jevMin, () =>
+    await addExcerpts(excerpts, candidates, site);
+    const jev = await jevCategorise(candidates, excerpts, jevMin, () =>
       masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({ processing_heartbeat_at: masterKnex.fn.now() }).then(() => undefined));
     const placed = jevVerdicts(urls, jev, guidedMap, looksLikeCourseUrl, heuristicCategory);
     // What neither Jev (confidently) nor a heuristic could place still gets the lite-model pass —
     // Jev unsure must mean "no Jev", never "other" (review, 2026-09-30).
     const unplaced = [...placed].filter(([, v]) => v === null).map(([u]) => u).slice(0, CLASSIFY_ALL_CAP);
+    await addExcerpts(excerpts, unplaced, site);
     // A failed fallback must not fail the step: every URL already placed keeps its verdict and the
     // unplaced remainder becomes "other" (the same as a URL the model was shown and did not return).
     const modelled = unplaced.length
-      ? await categoriseWithModel(jobId, unplaced).catch(async (err) => {
+      ? await categoriseWithModel(jobId, unplaced, excerpts).catch(async (err) => {
         logger.warn("URL category fallback failed; keeping Jev/heuristic verdicts", { jobId, err: String(err) });
         await _stepDeps.writeEvent(jobId, "url_category_fallback_failed", {
           level: "warn", phase: "course_discovery",
@@ -469,7 +541,7 @@ export async function runUrlClassify(jobId: string, job: JobRow): Promise<{ cour
 
   const classify = async (candidates: string[], narrowing: boolean) => {
     usedLlm = true;
-    const excerpts = await excerptsFor(candidates);
+    await addExcerpts(excerpts, candidates, site);
     const kept = new Set<string>();
     let distrusted = 0;
     const batches = Math.ceil(candidates.length / CLASSIFIER_BATCH);
@@ -511,7 +583,8 @@ export async function runUrlClassify(jobId: string, job: JobRow): Promise<{ cour
   // the course pass — past it the tail is "other", not another round of lite calls.
   const unplaced = [...merged].filter(([, v]) => v === null).map(([u]) => u);
   const attempted = new Set(unplaced.slice(0, CLASSIFY_ALL_CAP));
-  const modelled = attempted.size ? await categoriseWithModel(jobId, [...attempted]) : new Map<string, SiteUrlCategory>();
+  await addExcerpts(excerpts, [...attempted], site);
+  const modelled = attempted.size ? await categoriseWithModel(jobId, [...attempted], excerpts) : new Map<string, SiteUrlCategory>();
   if (modelled.size) usedLlm = true;
 
   // Per-URL provenance: a URL the model was shown but did not return is still the model's "other".
@@ -561,7 +634,7 @@ export async function runQueuePages(jobId: string, job: JobRow): Promise<{ queue
       phase: "course_discovery",
       message: `${courseUrls.length} course URLs: ${parts.join(", ")}.`
         + (cappedOut > 0 ? " Raise page_cap or use Deep Scrape to cover the rest." : ""),
-      data: { queued, duplicates, discarded_at_cap: cappedOut, course_urls: courseUrls.length, at_page_cap: cappedOut > 0, page_cap: Number(job.page_cap) || 500 },
+      data: { queued, duplicates, discarded_at_cap: cappedOut, course_urls: courseUrls.length, at_page_cap: cappedOut > 0, page_cap: job.page_cap ?? null },
     });
   }
 

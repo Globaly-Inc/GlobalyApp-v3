@@ -54,10 +54,6 @@ export async function registerBusiness(userId: number, input: BusinessRegisterIn
   const user = await userRepo.findByIdFull(userId);
   if (!user) throw new NotFoundError("User not found");
 
-  if (!input.email && (await userRepo.ownsAnyOrg(userId))) {
-    throw new BadRequestError("Business email is required when you already have a business or institution");
-  }
-
   // There's no subdomain field left for a user to fix, so a collision (including the
   // check-then-insert race between two signups) is retried with a freshly generated
   // subdomain instead of ever surfacing as an error.
@@ -73,7 +69,6 @@ export async function registerBusiness(userId: number, input: BusinessRegisterIn
         business_type: input.business_type,
         business_category_id: input.business_category_id,
         description: input.description,
-        email: input.email,
         phone: input.phone,
         country_id: input.country_id,
         state: input.state,
@@ -122,7 +117,7 @@ export async function registerBusiness(userId: number, input: BusinessRegisterIn
   createSystemPost({
     authorId: userId,
     businessId: Number(business.id),
-    content: `**@all** 🎉 We've just joined **GlobalyApp**! Excited to be part of the community.`,
+    content: `**@all** 🎉 We've just joined **GlobalyAI**! Excited to be part of the community.`,
     // Always the landscape banner, never the business's own logo: a square logo forced into
     // the feed's wide image box gets center-cropped into an unrecognisable zoom.
     media: [
@@ -279,6 +274,8 @@ export async function startExtraction(orgId: string, platformUserId: number, inp
       );
     } catch (err) {
       if (err instanceof ConflictError) {
+        // The owner isn't told whose job it is; support needs it to decline or relink that job.
+        logger.warn("Start extraction blocked by an existing job for this website", { businessId: locked.id, website, existing: err.details });
         throw new ConflictError("An extraction for this website already exists. Contact support.");
       }
       throw err;

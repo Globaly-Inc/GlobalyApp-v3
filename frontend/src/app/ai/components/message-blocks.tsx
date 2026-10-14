@@ -12,8 +12,10 @@ import { LinkBlock } from "./blocks/link-block";
 type MessageBlocksProps = {
   blocks: ResponseBlock[];
   /** Block actions and quick replies send their value as the user's next message. */
-  onAction?: (value: string) => void;
-  onSend?: (value: string) => void;
+  onAction?: (value: string) => boolean | void;
+  onSend?: (value: string) => boolean | void;
+  /** A reply is streaming: tappable blocks refuse, so grey them rather than swallow the tap. */
+  busy?: boolean;
 };
 
 /**
@@ -21,7 +23,7 @@ type MessageBlocksProps = {
  * skipped so the backend can ship a new block type before the frontend has a
  * component for it.
  */
-export function MessageBlocks({ blocks, onAction, onSend }: MessageBlocksProps) {
+export function MessageBlocks({ blocks, onAction, onSend, busy }: MessageBlocksProps) {
   if (!blocks.length) return null;
 
   return (
@@ -39,7 +41,7 @@ export function MessageBlocks({ blocks, onAction, onSend }: MessageBlocksProps) 
           case "image":
             return <ImageBlock key={i} block={block} />;
           case "quick_replies":
-            return <QuickRepliesBlock key={i} block={block} onAction={onAction} onSend={onSend} />;
+            return <QuickRepliesBlock key={i} block={block} onSend={onSend} busy={busy} />;
           case "link":
             return <LinkBlock key={i} block={block} />;
           default:

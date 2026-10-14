@@ -9,12 +9,14 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Combobox } from "@/components/combobox";
+import { EmptyState } from "@/components/ui/empty-state";
 import { cn } from "@/lib/utils";
 import { geoApi } from "@/app/geo/apis";
 import { allExtractionsApi } from "../apis";
 import { EditableField, type EditableFieldProps } from "./editable-field";
 import { RowActors } from "./row-actors";
 import { LogoPreview } from "./logo-preview";
+import { OverviewMediaSection } from "./overview-media-section";
 import { OtherSocialLinksField } from "./other-social-links-field";
 import { OwnershipTypeField } from "./ownership-type-field";
 import type { InstitutionOverview } from "../apis/types";
@@ -30,13 +32,13 @@ export type InstitutionTabProps = Readonly<{
 
 function Section({ icon: Icon, title, children }: Readonly<{ icon: LucideIcon; title: string; children: React.ReactNode }>) {
   return (
-    <div className="rounded-lg border border-border p-4">
+    <section className="rounded-lg border border-border p-4">
       <div className="mb-3 flex items-center gap-2">
-        <Icon className="h-4 w-4 text-primary" />
-        <h4 className="text-sm font-semibold text-foreground">{title}</h4>
+        <Icon className="h-4 w-4 text-muted-foreground" />
+        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
       </div>
       <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2">{children}</div>
-    </div>
+    </section>
   );
 }
 
@@ -178,15 +180,19 @@ export function InstitutionTab({ overview, jobId, onReload, isVisaServiceJob }: 
 
   if (!overview) {
     return (
-      <Card className="border-dashed">
-        <CardContent className="py-12 text-center text-muted-foreground">
-          <Building2 className="mx-auto mb-3 h-8 w-8 opacity-40" />
-          <p className="text-sm">No {noun} data extracted yet</p>
-          <p className="mt-1 text-xs">Run the extraction below, or wait for the pipeline to populate it</p>
-          <Button variant="outline" className="mt-4 gap-1.5 cursor-pointer" disabled={busy} onClick={rerun}>
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
-            Run {isVisaServiceJob ? "Business" : "Institution"} Extraction
-          </Button>
+      <Card>
+        <CardContent>
+          <EmptyState
+            icon={Building2}
+            title={`No ${noun} data extracted yet`}
+            description="Run the extraction below, or wait for the pipeline to populate it"
+            action={
+              <Button variant="outline" className="gap-1.5 cursor-pointer" disabled={busy} onClick={rerun}>
+                {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+                Run {isVisaServiceJob ? "Business" : "Institution"} Extraction
+              </Button>
+            }
+          />
         </CardContent>
       </Card>
     );
@@ -194,8 +200,8 @@ export function InstitutionTab({ overview, jobId, onReload, isVisaServiceJob }: 
 
   return (
     <Card>
-      <CardHeader className="-mt-4 rounded-t-xl border-b bg-primary/5 px-4 py-4">
-        <CardTitle className="flex items-center gap-2 text-base">
+      <CardHeader className="border-b">
+        <CardTitle className="flex items-center gap-2">
           <Building2 className="h-4 w-4 text-primary" />
           {isVisaServiceJob ? "Business" : "Institution"} Details
         </CardTitle>
@@ -206,10 +212,10 @@ export function InstitutionTab({ overview, jobId, onReload, isVisaServiceJob }: 
           </Button>
         </CardAction>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <div className="flex items-start gap-4">
+      <CardContent className="flex flex-col gap-4">
+        <div className="flex flex-col items-start gap-4 sm:flex-row">
           {overview.logo_url && <LogoPreview src={overview.logo_url} />}
-          <div className="grid flex-1 grid-cols-1 gap-2.5 md:grid-cols-2">
+          <div className="grid w-full flex-1 grid-cols-1 gap-2.5 md:grid-cols-2">
             <Field icon={Type} label="Name" value={overview.name} onSave={(v) => saveField("name", v)} />
             <Field icon={Globe} label="Website" value={overview.website} onSave={(v) => saveField("website", v)} />
             <OwnershipTypeField value={overview.ownership_type} onSave={(v) => saveField("ownership_type", v)} />
@@ -230,6 +236,14 @@ export function InstitutionTab({ overview, jobId, onReload, isVisaServiceJob }: 
           <Field icon={MapPin} label="Address Line" value={overview.address} onSave={(v) => saveField("address", v)} multiline className="md:col-span-2" />
           <Field icon={FileText} label="Description" value={overview.description} onSave={(v) => saveField("description", v)} multiline className="md:col-span-2" />
         </Section>
+
+        <OverviewMediaSection
+          coverUrl={overview.cover_url || null}
+          gallery={overview.gallery_images ?? []}
+          // "" = cleared by an admin, kept distinct from null (never set) so the homepage pick won't refill it.
+          onSaveCover={(v) => saveField("cover_url", v ?? "")}
+          onSaveGallery={(v) => saveField("gallery_images", v)}
+        />
 
         <Section icon={Share2} title="Social Media">
           <Field icon={Link2} label="Facebook" value={overview.facebook_url} onSave={(v) => saveField("facebook_url", v)} />

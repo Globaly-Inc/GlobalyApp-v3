@@ -83,8 +83,8 @@ export function WorkExperienceDialog({
         <DialogHeader>
           <DialogTitle>{item ? "Edit Work Experience" : "Add Work Experience"}</DialogTitle>
         </DialogHeader>
-        <div className="space-y-4">
-          <div className="space-y-2">
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-2">
             <Label>Job Title *</Label>
             <Input
               value={form.job_title}
@@ -93,7 +93,7 @@ export function WorkExperienceDialog({
             />
             <FieldError message={errors.job_title} />
           </div>
-          <div className="space-y-2">
+          <div className="flex flex-col gap-2">
             <Label>Organization</Label>
             <Input
               value={form.organization_name ?? ""}

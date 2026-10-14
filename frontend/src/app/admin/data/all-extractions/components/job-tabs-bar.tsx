@@ -16,8 +16,7 @@ import {
   Link2,
   Award,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { ScrollRow } from "@/components/scroll-row";
+import { Tabs, TabsCount, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { TabCounts } from "../apis/types";
 
 export type JobTab =
@@ -69,40 +68,21 @@ export function JobTabsBar({
   const visibleTabs = (tabs ? TABS.filter((t) => tabs.includes(t.value)) : TABS).map((t) =>
     t.value === "institution" && institutionLabel ? { ...t, label: institutionLabel } : t,
   );
+  // ui/tabs' list scrolls horizontally on its own, so all 13 tabs stay reachable on a phone.
   return (
-    <ScrollRow className="w-full border-b border-border">
-      <div className="inline-flex w-max gap-1 pb-px">
+    <Tabs value={active} onValueChange={(next) => onChange(next as JobTab)}>
+      <TabsList>
         {visibleTabs.map((tab) => {
-          const isActive = active === tab.value;
           const count = tab.countKey && counts ? counts[tab.countKey] : undefined;
           return (
-            <button
-              key={tab.value}
-              type="button"
-              onClick={() => onChange(tab.value)}
-              className={cn(
-                "flex items-center gap-2 whitespace-nowrap rounded-t-lg border-b-2 -mb-px px-3.5 py-2.5 text-sm font-medium transition-colors cursor-pointer",
-                isActive
-                  ? "border-primary bg-primary/5 text-primary font-semibold"
-                  : "border-transparent text-muted-foreground hover:bg-muted/60 hover:text-foreground",
-              )}
-            >
-              <tab.icon className={cn("h-4 w-4", isActive ? "text-primary" : "text-muted-foreground")} />
+            <TabsTrigger key={tab.value} value={tab.value}>
+              <tab.icon />
               {tab.label}
-              {count !== undefined && (
-                <span
-                  className={cn(
-                    "rounded-full px-1.5 py-0.5 text-normal font-semibold leading-none",
-                    isActive ? "bg-primary/15 text-primary" : "bg-muted text-muted-foreground",
-                  )}
-                >
-                  {count}
-                </span>
-              )}
-            </button>
+              {count !== undefined && <TabsCount>{count}</TabsCount>}
+            </TabsTrigger>
           );
         })}
-      </div>
-    </ScrollRow>
+      </TabsList>
+    </Tabs>
   );
 }

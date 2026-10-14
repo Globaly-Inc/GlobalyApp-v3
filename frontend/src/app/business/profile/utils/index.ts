@@ -56,3 +56,20 @@ export function isInstitutionOrg(
   if (inst && biz) return inst.org_id === user?.orgId;
   return !!inst;
 }
+
+export type DegreeTone = "doctoral" | "research" | "postgrad" | "undergrad" | "other";
+
+/** Short badge for a course's degree level ("Master (Research)" → MRes) and the colour family it
+ * belongs to. Free text from extraction, so it matches on keywords; anything unknown keeps its
+ * first three letters. */
+export function degreeBadge(level: string | null): { label: string; tone: DegreeTone } | null {
+  const l = level?.trim();
+  if (!l) return null;
+  if (/ph\.?d|doctor|dphil/i.test(l)) return { label: "PhD", tone: "doctoral" };
+  if (/research|mphil|mres/i.test(l)) return { label: "MRes", tone: "research" };
+  if (/master|postgrad|mba|msc|\bma\b/i.test(l)) return { label: "PG", tone: "postgrad" };
+  if (/bachelor|undergrad|bsc|\bba\b/i.test(l)) return { label: "UG", tone: "undergrad" };
+  if (/diploma/i.test(l)) return { label: "Dip", tone: "other" };
+  if (/cert/i.test(l)) return { label: "Cert", tone: "other" };
+  return { label: l.slice(0, 3), tone: "other" };
+}

@@ -52,7 +52,10 @@ export const SYSTEM_FIELDS: SystemField[] = [
   { key: "fee_currency", label: "Currency", group: "Fees", type: "text", aliases: ["currency", "feecurrency"] },
   // After fee_period on purpose: a sheet's SECOND "INSTALLMENT TYPE" (the application fee's) lands here.
   { key: "application_fee_name", label: "Application fee name", group: "Fees", type: "text", aliases: ["applicationfeetypeproductfee", "applicationfeename", "applicationfeetype"] },
-  { key: "application_fee_amount", label: "Application fee amount", group: "Fees", type: "number", aliases: ["applicationtypeamount", "applicationfeeamount", "applicationfee", "applicationamount"] },
+  { key: "international_application_fee_amount", label: "International application fee", group: "Fees", type: "number", aliases: ["internationalapplicationfee", "internationalapplicationfeeamount"] },
+  { key: "domestic_application_fee_amount", label: "Domestic application fee", group: "Fees", type: "number", aliases: ["domesticapplicationfee", "domesticapplicationfeeamount"] },
+  // One application fee for both — saved as a single "Both" fee, like both_fee_amount.
+  { key: "application_fee_amount", label: "Application fee — domestic & international", group: "Fees", type: "number", aliases: ["applicationtypeamount", "applicationfeeamount", "applicationfee", "applicationamount"] },
   { key: "application_fee_period", label: "Application fee period", group: "Fees", type: "text", aliases: ["installmenttype", "applicationinstallmenttype", "applicationfeeperiod"] },
   { key: "application_fee_installments", label: "Application fee installments", group: "Fees", type: "number", aliases: ["applicationtypeinstallments", "applicationfeeinstallments", "applicationinstallments"] },
   // Intakes
@@ -98,8 +101,8 @@ export const TEMPLATE_TABS: Record<string, { key: TemplateTabKey; rename?: Recor
   // split into separate fees by expandFeeRow. A plain Amount + Student Type row still works.
   fees: {
     key: "fees", rename: { course_names: "courses", fee_name: "name" },
-    required: ["amount|international_amount|domestic_amount|application_fee_amount"], requiredLabel: "an amount",
-    numeric: ["amount", "installments", "international_amount", "domestic_amount", "application_fee_amount", "application_fee_installments"],
+    required: ["amount|international_amount|domestic_amount|application_fee_amount|international_application_fee_amount|domestic_application_fee_amount"], requiredLabel: "an amount",
+    numeric: ["amount", "installments", "international_amount", "domestic_amount", "application_fee_amount", "international_application_fee_amount", "domestic_application_fee_amount", "application_fee_installments"],
   },
   intakes: { key: "intakes", rename: { course_names: "courses" }, required: ["intake_month|start_date"], numeric: ["intake_year"] },
   scholarships: { key: "scholarships", rename: { course_names: "courses", scholarship_name: "name", applies_to: "applicable_to" }, required: ["name"], numeric: ["amount"] },

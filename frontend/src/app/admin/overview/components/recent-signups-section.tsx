@@ -1,3 +1,4 @@
+import { Table, TableBody, TableCard, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import type { RecentSignup } from "../apis/types";
 
 function timeAgo(iso: string): string {
@@ -12,32 +13,33 @@ function timeAgo(iso: string): string {
 export function RecentSignupsSection({ signups }: Readonly<{ signups: RecentSignup[] }>) {
   if (signups.length === 0) return null;
   return (
-    <div className="mt-6">
-      <h2 className="text-xl font-semibold mb-4">Recent sign-ups</h2>
-      <div className="rounded-lg border border-border overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-muted/50">
-            <tr>
-              <th className="px-4 py-2 text-left font-medium text-muted-foreground">Name</th>
-              <th className="px-4 py-2 text-left font-medium text-muted-foreground">Email</th>
-              <th className="px-4 py-2 text-right font-medium text-muted-foreground">Joined</th>
-            </tr>
-          </thead>
-          <tbody className="divide-y divide-border">
+    <section>
+      <h2 className="mb-4 font-heading text-lg font-medium">Recent sign-ups</h2>
+      <TableCard>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Name</TableHead>
+              <TableHead className="hidden sm:table-cell">Email</TableHead>
+              <TableHead numeric>Joined</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {signups.map((u) => (
-              <tr key={u.id} className="hover:bg-muted/30 transition-colors">
-                <td className="px-4 py-2.5 font-medium">
+              <TableRow key={u.id}>
+                <TableCell primary>
                   {u.first_name || u.last_name
                     ? [u.first_name, u.last_name].filter(Boolean).join(" ")
-                    : <span className="text-muted-foreground italic">No name</span>}
-                </td>
-                <td className="px-4 py-2.5 text-muted-foreground">{u.email}</td>
-                <td className="px-4 py-2.5 text-right text-muted-foreground">{timeAgo(u.created_at)}</td>
-              </tr>
+                    : <span className="font-normal text-muted-foreground">No name</span>}
+                  <span className="block text-xs font-normal text-muted-foreground sm:hidden">{u.email}</span>
+                </TableCell>
+                <TableCell className="hidden text-muted-foreground sm:table-cell">{u.email}</TableCell>
+                <TableCell numeric className="text-muted-foreground">{timeAgo(u.created_at)}</TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
-      </div>
-    </div>
+          </TableBody>
+        </Table>
+      </TableCard>
+    </section>
   );
 }

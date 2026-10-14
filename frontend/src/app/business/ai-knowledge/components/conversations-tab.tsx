@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Flag, Loader2, MessagesSquare } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
-import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs";
+import { SectionTabs } from "@/components/section-tabs";
 import { relativeTime } from "@/components/feed/utils";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchConversations, fetchThread } from "../store/ai-knowledge-reviews-slice";
@@ -52,7 +52,7 @@ export function ConversationsTab() {
 
   return (
     <div>
-      <AdminSegmentedTabs options={QUEUE_TABS} value={queue} onChange={setQueue} />
+      <SectionTabs options={QUEUE_TABS} value={queue} onChange={setQueue} />
 
       {status === "loading" && (
         <div className="flex justify-center py-8">
@@ -97,12 +97,12 @@ export function ConversationsTab() {
               </div>
               <div className="flex shrink-0 items-center gap-1.5">
                 {session.flagged > 0 && (
-                  <Badge variant="outline" className="gap-1 border-destructive/20 bg-destructive/10 text-[11px] text-destructive">
+                  <Badge variant="outline" className="gap-1 border-destructive/20 bg-destructive/10 text-xs text-destructive">
                     <Flag className="size-3" /> {session.flagged}
                   </Badge>
                 )}
                 {session.unreviewed > 0 && (
-                  <Badge variant="secondary" className="text-[11px] tabular-nums">{session.unreviewed} to review</Badge>
+                  <Badge variant="secondary" className="text-xs tabular-nums">{session.unreviewed} to review</Badge>
                 )}
               </div>
             </button>

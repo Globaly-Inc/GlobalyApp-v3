@@ -1,21 +1,18 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { CalendarDays } from "lucide-react";
+import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
-import { cn } from "@/lib/utils";
+import { StatCard } from "@/components/ui/stat-card";
 import { businessApi } from "../../apis";
+import { MonthlyChart } from "./monthly-chart";
 import type { WidgetAnalytics } from "../../apis/types";
 
-type SeriesKey = "conversationsClosed" | "conversions" | "visitors";
 
-const SERIES_LABELS: Record<SeriesKey, string> = {
-  conversationsClosed: "Conversations closed",
-  conversions: "Conversions",
-  visitors: "Visitors",
-};
+/** One column on a phone so no label truncates; four across once the main column is wide enough. */
+const STAT_GRID = "grid grid-cols-1 gap-3 sm:grid-cols-2 2xl:grid-cols-4";
 
 const fmt = (n: number) => n.toLocaleString();
 const signed = (n: number) => `${n > 0 ? "+" : ""}${n}`;
@@ -23,13 +20,13 @@ const signed = (n: number) => `${n > 0 ? "+" : ""}${n}`;
 function statCards(data: WidgetAnalytics) {
   const { stats } = data;
   return [
-    { key: "visitors", label: "Website visitors", value: fmt(stats.visitors.value), delta: `${signed(stats.visitors.deltaPct)}%`, note: "vs last month" },
+    { key: "visitors", label: "Website visitors", value: fmt(stats.visitors.value), delta: `${signed(stats.visitors.deltaPct)}%`, down: stats.visitors.deltaPct < 0, note: "vs last month" },
     {
       key: "conversationsClosed", label: "Conversations closed", value: fmt(stats.conversationsClosed.value),
-      delta: `${signed(stats.conversationsClosed.deltaPct)}%`, note: "vs last month",
+      delta: `${signed(stats.conversationsClosed.deltaPct)}%`, down: stats.conversationsClosed.deltaPct < 0, note: "vs last month",
     },
-    { key: "conversions", label: "Contacts captured", value: fmt(stats.conversions.value), delta: signed(stats.conversions.delta), note: "vs last month" },
-    { key: "rate", label: "Conversion rate", value: `${stats.conversionRate.value}%`, delta: `${signed(stats.conversionRate.deltaPts)}pts`, note: "chat → contact" },
+    { key: "conversions", label: "Contacts captured", value: fmt(stats.conversions.value), delta: signed(stats.conversions.delta), down: stats.conversions.delta < 0, note: "vs last month" },
+    { key: "rate", label: "Chat to contact", value: `${stats.conversionRate.value}%`, delta: `${signed(stats.conversionRate.deltaPts)} pts`, down: stats.conversionRate.deltaPts < 0, note: "vs last month" },
   ];
 }
 
@@ -44,7 +41,6 @@ const EMPTY: WidgetAnalytics = {
 };
 
 export function DashboardPreview() {
-  const [series, setSeries] = useState<SeriesKey>("conversationsClosed");
   const [data, setData] = useState<WidgetAnalytics | null>(null);
 
   const fetchedRef = useRef(false);
@@ -54,85 +50,57 @@ export function DashboardPreview() {
     businessApi.getWidgetAnalytics().then(setData).catch(() => setData(EMPTY));
   }, []);
 
+  // Nothing has ever been recorded: a row of zeroes and a flat chart look like a broken dashboard,
+  // when the truth is simply that the widget hasn't met anyone yet.
+  const untouched = data !== null
+    && data.stats.visitors.value === 0
+    && data.stats.conversationsClosed.value === 0
+    && data.stats.conversions.value === 0;
+
   return (
-    <Card>
-      <CardHeader className="flex-row items-center justify-between gap-3 space-y-0">
-        <div>
-          <CardTitle className="text-sm">Chat widget activity</CardTitle>
-          <p className="text-xs text-muted-foreground">How students are engaging with your AI assistant</p>
-        </div>
-        <Badge variant="outline" className="shrink-0 font-normal">Last 6 months</Badge>
+    // Nothing recorded yet is a placeholder, not a report: the board draws it dashed so it
+    // doesn't sit on the page with the same weight as a card full of numbers.
+    <Card className={untouched ? "border-dashed bg-muted/20 shadow-none" : undefined}>
+      <CardHeader>
+        <CardTitle>{untouched ? "Visitor numbers appear here" : "Chat widget activity"}</CardTitle>
+        <CardDescription>
+          {untouched
+            ? "Once the widget is live we'll chart visitors, conversations and captured contacts."
+            : "How students are engaging with your AI assistant"}
+        </CardDescription>
+        {!untouched && (
+          <CardAction>
+            <Badge variant="outline"><CalendarDays aria-hidden />Last 6 months</Badge>
+          </CardAction>
+        )}
       </CardHeader>
       <CardContent>
-        {data === null ? (
-          <div className="space-y-5">
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
-              {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[74px] rounded-lg" />)}
+        {untouched ? (
+          <p className="text-sm text-muted-foreground">Nothing to show yet — that is expected on day one.</p>
+        ) : data === null ? (
+          <div className="flex flex-col gap-5">
+            <div className={STAT_GRID}>
+              {statCards(EMPTY).map((s) => <StatCard key={s.key} label={s.label} value="" loading />)}
             </div>
             <Skeleton className="h-[220px] rounded-lg" />
           </div>
         ) : (
-          <div className="space-y-5">
-            <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          <div className="flex flex-col gap-5">
+            <div className={STAT_GRID}>
               {statCards(data).map((s) => (
-                <div key={s.key} className="rounded-lg border border-border p-3">
-                  <p className="text-xs text-muted-foreground">{s.label}</p>
-                  <p className="mt-1 text-xl font-bold tabular-nums">{s.value}</p>
-                  <p className="mt-0.5 text-xs">
-                    <span className="font-medium text-emerald-600">{s.delta}</span>{" "}
-                    <span className="text-muted-foreground">{s.note}</span>
-                  </p>
-                </div>
+                <StatCard
+                  key={s.key}
+                  label={s.label}
+                  value={s.value}
+                  hint={<><span className={s.down ? "font-semibold text-destructive" : "font-semibold text-success"}>{s.delta}</span> {s.note}</>}
+                />
               ))}
             </div>
 
-            <div>
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <p className="text-xs font-medium text-muted-foreground">Growth over 6 months</p>
-                <div className="flex rounded-lg border border-border p-0.5 text-xs">
-                  {(Object.keys(SERIES_LABELS) as SeriesKey[]).map((key) => (
-                    <button
-                      key={key}
-                      type="button"
-                      onClick={() => setSeries(key)}
-                      className={cn(
-                        "rounded-md px-2.5 py-1 font-medium transition-colors",
-                        series === key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted",
-                      )}
-                    >
-                      {SERIES_LABELS[key]}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <ResponsiveContainer width="100%" height={220}>
-                <AreaChart data={data.monthly} margin={{ top: 4, right: 4, left: -16, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="dashboard-preview-fill" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="var(--primary)" stopOpacity={0.25} />
-                      <stop offset="95%" stopColor="var(--primary)" stopOpacity={0} />
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis dataKey="month" tick={{ fontSize: 11 }} className="text-muted-foreground" />
-                  <YAxis tick={{ fontSize: 11 }} className="text-muted-foreground" width={48} allowDecimals={false} />
-                  <Tooltip
-                    contentStyle={{ background: "var(--card)", border: "1px solid var(--border)", borderRadius: "8px", fontSize: "12px" }}
-                  />
-                  <Area
-                    type="monotone"
-                    dataKey={series}
-                    name={SERIES_LABELS[series]}
-                    stroke="var(--primary)"
-                    fill="url(#dashboard-preview-fill)"
-                    strokeWidth={2}
-                    dot={false}
-                    activeDot={{ r: 4 }}
-                  />
-                </AreaChart>
-              </ResponsiveContainer>
-            </div>
+            {/* Board 11: two named series stacked, each readable as a table — not one chart
+                behind a toggle, where the series nobody picked is invisible. */}
+            <MonthlyChart id="closed" title="Conversations closed, by month" rows={data.monthly} series="conversationsClosed" kind="bar" />
+            <MonthlyChart id="visitors" title="Website visitors, by month" rows={data.monthly} series="visitors" kind="area" />
           </div>
         )}
       </CardContent>

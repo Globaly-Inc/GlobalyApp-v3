@@ -41,7 +41,13 @@ export const BUSINESS_NAV_GROUPS: BusinessNavGroup[] = [
   // { icon: PenLine, label: "Scribe", items: [{ icon: PenLine, label: "Scribe", href: "/business/scribe" }] },
   // { icon: GraduationCap, label: "LMS", items: [{ icon: GraduationCap, label: "LMS", href: "/business/lms" }] },
   // People who reached the org — the widget's visitors and leads for now.
-  { icon: Contact, label: "Contacts", items: [{ icon: UserSearch, label: "Visitors", href: "/business/contacts/visitors" }] },
+  // alwaysShowSubmenu: one item today, but the sub-menu names what the list is (and has room for more).
+  {
+    icon: Contact,
+    label: "Contacts",
+    alwaysShowSubmenu: true,
+    items: [{ icon: UserSearch, label: "Visitors", href: "/business/contacts/visitors" }],
+  },
   // Second to last, Settings last. Widget settings are reached from the Inbox's ⚙ Widget button.
   { icon: Inbox, label: "Inbox", items: [{ icon: Inbox, label: "Inbox", href: "/business/messages" }] },
   {

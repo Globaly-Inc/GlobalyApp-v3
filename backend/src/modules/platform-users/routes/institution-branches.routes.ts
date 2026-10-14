@@ -26,6 +26,12 @@ export async function institutionBranchesRoutes(app: FastifyInstance) {
     return reply.status(201).send(branch);
   });
 
+  // An extracted campus (read-only in the list) the owner wants to edit — becomes a real branch now.
+  app.post("/branches/campuses/:subId/convert", { preHandler: requireInstitutionContext }, async (req, reply) => {
+    const { subId } = SubIdSchema.parse(req.params);
+    return reply.status(201).send(await service.convertCampusOnDemand("institutions", req.institutionId, subId));
+  });
+
   app.get("/branches/:subId", { preHandler: requireInstitutionContext }, async (req, reply) => {
     const { subId } = SubIdSchema.parse(req.params);
     return reply.send(await service.getInstitutionBranch(req.institutionId, subId));

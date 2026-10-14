@@ -172,7 +172,9 @@ export async function listServices(businessId: number) {
   return withListExtras(businessId, biz.schema_name, rows);
 }
 
-export async function searchServices(businessId: number, limit: number, offset: number, search?: string, published?: boolean) {
+export async function searchServices(
+  businessId: number, limit: number, offset: number, search?: string, published?: boolean, missingFee?: boolean,
+) {
   const biz = await requireBusiness(businessId);
 
   // See listServices above for why this is gated on schema_provisioned_at.
@@ -184,7 +186,7 @@ export async function searchServices(businessId: number, limit: number, offset: 
     return { rows: rows.map(courseAsService), total };
   }
 
-  const { rows, total } = await repo.searchServices(businessId, biz.schema_name, limit, offset, search, published);
+  const { rows, total } = await repo.searchServices(businessId, biz.schema_name, limit, offset, search, published, missingFee);
   return { rows: await withListExtras(businessId, biz.schema_name, rows), total };
 }
 

@@ -10,6 +10,7 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { verifyFieldCoverage } from "../lib/field-coverage.js";
 import { sendCompletionEmail } from "../lib/completion-email.js";
+import { autoPublishOwnerRun } from "../services/promote.service.js";
 import { convertCampusesToBranches } from "../../platform/business-branches/services/business-branches.service.js";
 import { _linkerDeps } from "../lib/jev-linker.js";
 import { getPage } from "../lib/page-store.js";
@@ -20,7 +21,7 @@ import { loadLookupLists, lookupListsHealth, categoryForServiceSlug } from "../l
 import { jobExcludedLevels } from "../lib/staging-writer.js";
 import { writeJobEvent } from "../lib/staging-writer.js";
 
-import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
+import { INGESTED_COURSE_STATUS, NOT_REJECTED_SQL, SUPERADMIN_SCHEMA as S } from "../../consts.js";
 
 const logger = createChildLogger("extraction-verify-worker");
 
@@ -245,8 +246,16 @@ await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
         }
 
         // Stamp the course itself — the review UI reads this, not the per-field results table.
-        await masterKnex(`${S}.extraction_courses`).where({ id: course.id }).update({
-          verification_status: result.results.every((r) => r.status === "match") ? "verified" : "mismatch",
+        // `courses` was snapshotted before this loop and each one costs a live fetch + an LLM call,
+        // so an admin can reject a course while we are still working through the list. Re-check the
+        // rejection at write time: without this, a Reject made minutes ago is overwritten with an
+        // approval and the course goes public again with no admin decision behind it.
+        await masterKnex(`${S}.extraction_courses`).where({ id: course.id }).whereRaw(NOT_REJECTED_SQL).update({
+          // All fields still match the live page -> keep it approved (INGESTED_COURSE_STATUS).
+          // Writing the old 'verified' here would silently UN-approve a course that landed approved,
+          // since 'verified' is not in APPROVED_COURSE_STATUSES. A mismatch still un-approves: that is
+          // the point of the check, and Approve puts it back.
+          verification_status: result.results.every((r) => r.status === "match") ? INGESTED_COURSE_STATUS : "mismatch",
           last_verified_at: masterKnex.fn.now(),
         });
 
@@ -284,6 +293,7 @@ await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
     if (!linking) {
       await sendCompletionEmail(jobId);
       await convertCampusesToBranches(jobId); // else the link step converts them when it finishes
+      await autoPublishOwnerRun(jobId); // after the email: it needs the job still in review
     }
 
     await writeJobEvent(jobId, "verification_complete", {

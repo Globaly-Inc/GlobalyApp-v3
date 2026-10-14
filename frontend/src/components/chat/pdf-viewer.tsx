@@ -218,7 +218,7 @@ export function PdfViewer({
             onClick={onExpand}
             aria-label={`Expand ${fileName}`}
             title="Expand"
-            className="absolute right-1.5 top-1.5 flex size-7 cursor-pointer items-center justify-center rounded-md border border-border bg-background shadow-sm opacity-0 transition-opacity group-hover/pdf:opacity-100 focus-visible:opacity-100"
+            className="absolute right-1.5 top-1.5 flex size-7 cursor-pointer items-center justify-center rounded-md border border-border bg-background shadow-sm opacity-0 transition-opacity group-hover/pdf:opacity-100 focus-visible:opacity-100 [@media(hover:none)]:opacity-100"
           >
             <Maximize2 className="size-3.5" />
           </button>

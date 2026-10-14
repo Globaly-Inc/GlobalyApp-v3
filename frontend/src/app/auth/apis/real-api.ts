@@ -1,5 +1,5 @@
 import { httpGet, httpPatch, httpPost, runExclusiveSwitch } from "@/lib/api/http";
-import { getRefreshToken, saveAccessToken, saveTokens } from "@/lib/session";
+import { getRefreshToken, saveAccessToken, saveSelectedOrgId, saveTokens } from "@/lib/session";
 import type {
   AcceptInviteParams, AcceptInviteResult, AuthMeBusiness, AuthMeInstitution, AuthMeUser, AuthUser, SendOtpParams,
   SwitchAccountParams, SwitchAccountResult, UpdateRoleParams, VerifyOtpParams,
@@ -29,10 +29,9 @@ export const authRealApi = {
   verifyOtp: async ({ email, otp }: VerifyOtpParams): Promise<AuthUser> => {
     const data = await httpPost<{
       access_token: string;
-      refresh_token: string;
       user: { id: number; email: string; type: AuthUser["type"]; role: string | null };
     }>("/auth/verify-otp", { email: email.trim().toLowerCase(), otp: otp.trim() });
-    saveTokens({ accessToken: data.access_token, refreshToken: data.refresh_token });
+    saveTokens({ accessToken: data.access_token }); // refresh token arrives as the API's httpOnly cookie
     // Accurate at login time — the token was just minted, so it can't yet be business-scoped
     // (only a later /auth/switch-account can turn `type` into "platform_user" for an admin).
     return {
@@ -94,6 +93,10 @@ export const authRealApi = {
         refresh_token: getRefreshToken() ?? undefined,
       });
       saveAccessToken(data.access_token);
+      // Every org switch records the pick — it is what BusinessShell/ensureBusinessContext read
+      // to decide the active org, so a switch that skips it (e.g. opening another org's profile)
+      // leaves the token on one business and the header on another.
+      saveSelectedOrgId(org_id);
       return { access_token: data.access_token };
     }),
 };

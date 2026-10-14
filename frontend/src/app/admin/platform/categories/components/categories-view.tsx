@@ -1,20 +1,20 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
-import { Loader2, Plus } from "lucide-react";
+import { Plus, Tags } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
+import { PageBody } from "@/components/ui/page-body";
+import { PageHeader } from "@/components/ui/page-header";
 import { Pagination } from "@/components/ui/pagination";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { AdminSegmentedTabs } from "../../../components/admin-segmented-tabs";
+import { SectionTabs } from "@/components/section-tabs";
 import { categoriesApi } from "../apis";
-import { ADD_LABEL, CATEGORY_TABS, LOOKUP_KIND, LOOKUP_TITLE, ROUTE_SEGMENT, TAB_DESCRIPTION } from "../const";
+import { ADD_LABEL, CATEGORY_TABS, LOOKUP_KIND, LOOKUP_TITLE, TAB_DESCRIPTION } from "../const";
 import {
   fetchAccreditations, fetchBusinessCategories, fetchCatalog, fetchFeeTypes, fetchIssuingOrganizations,
-  fetchLookup, fetchOtherServiceCategories, fetchRegistrationTypes, fetchServiceCategories, fetchTests, removeAccreditation, removeFeeType, removeRegistrationType, reviewAccreditation, reviewFeeType, reviewIssuingOrganization,
+  fetchLookup, fetchOtherServiceCategories, fetchRegistrationTypes, fetchServiceCategories, fetchTests, removeAccreditation, removeFeeType, removeRegistrationType, reviewAccreditation, reviewFeeType,
   saveAccreditation, saveCategory, saveFeeType, saveLookup, saveRegistrationType, saveTest,
-  toggleCategory, toggleLookup, toggleRegistrationType, toggleTest,
 } from "../store/categories-slice";
 import type { CategoryKind } from "../store/categories-slice";
 import type {
@@ -23,24 +23,16 @@ import type {
 } from "../apis/types";
 import type { CategoryTab } from "../types";
 import { AccreditationDialog } from "./accreditation-dialog";
-import { AccreditationList } from "./accreditation-list";
 import { CategoryDialog } from "./category-dialog";
-import { CategoryList } from "./category-list";
 import { ConfirmDeleteDialog } from "./confirm-delete-dialog";
 import { FeeTypeDialog } from "./fee-type-dialog";
-import { FeeTypeList } from "./fee-type-list";
 import { LookupDialog } from "./lookup-dialog";
 import { RegistrationTypeDialog } from "./registration-type-dialog";
-import { RegistrationTypeList } from "./registration-type-list";
-import { LookupList } from "./lookup-list";
 import { TestDialog } from "./test-dialog";
-import { TestList } from "./test-list";
-
-type Deleting = { kind: "fee_type" | "accreditation" | "registration_type"; id: number; name: string };
+import { CategoriesTabContent, type Deleting } from "./categories-tab-content";
 
 export function CategoriesView() {
   const dispatch = useAppDispatch();
-  const router = useRouter();
   const catalog = useAppSelector((state) => state.platformCategories);
   const [tab, setTab] = useState<CategoryTab>("business");
   const [saving, setSaving] = useState(false);
@@ -189,105 +181,32 @@ export function CategoriesView() {
 
   const addLabel = ADD_LABEL[tab];
 
-  let tabContent: React.ReactNode;
-  if (catalog.status === "loading") {
-    tabContent = (
-      <div className="flex justify-center py-12">
-        <Loader2 className="size-6 animate-spin text-primary" />
-      </div>
-    );
-  } else if (catalog.status === "failed") {
-    tabContent = <p className="py-12 text-center text-sm text-destructive">{catalog.error}</p>;
-  } else {
-    tabContent = (
-      <>
-        {isCategoryTab && (
-          <CategoryList
-            categories={categories}
-            kind={categoryKind}
-            onToggle={(id, is_active) =>
-              void run(dispatch(toggleCategory({ kind: categoryKind, id, is_active })), "Category updated")
-            }
-            onEdit={(editing) => router.push(`/admin/platform/categories/${ROUTE_SEGMENT[categoryKind]}/${editing.id}`)}
-          />
-        )}
-
-        {lookupTab && (
-          <LookupList
-            items={lookups}
-            kind={LOOKUP_KIND[lookupTab]}
-            onToggle={(id, is_active) =>
-              void run(dispatch(toggleLookup({ kind: LOOKUP_KIND[lookupTab], id, is_active })), "Item updated")
-            }
-            onEdit={(editing) => setLookupDialog({ open: true, editing })}
-          />
-        )}
-
-        {tab === "tests" && (
-          <TestList
-            items={catalog.tests.data}
-            onToggle={(id, is_active) => void run(dispatch(toggleTest({ id, is_active })), "Test updated")}
-            onEdit={(editing) => setTestDialog({ open: true, editing })}
-          />
-        )}
-
-        {tab === "fee_types" && (
-          <FeeTypeList
-            items={catalog.feeTypes.data}
-            onReview={(id, decision) => handleReview("fee_type", id, decision)}
-            onEdit={(editing) => setFeeTypeDialog({ open: true, editing })}
-            onDelete={(item) => setDeleting({ kind: "fee_type", id: item.id, name: item.name })}
-          />
-        )}
-
-        {tab === "registration_types" && (
-          <RegistrationTypeList
-            items={catalog.registrationTypes.data}
-            onToggle={(id, is_active) =>
-              void run(dispatch(toggleRegistrationType({ id, is_active })), "Registration type updated")
-            }
-            onEdit={(editing) => setRegistrationTypeDialog({ open: true, editing })}
-            onDelete={(item) => setDeleting({ kind: "registration_type", id: item.id, name: item.code })}
-          />
-        )}
-
-        {tab === "accreditations" && (
-          <AccreditationList
-            items={catalog.accreditations.data}
-            countries={catalog.countries}
-            onReview={(id, decision) => handleReview("accreditation", id, decision)}
-            onReviewIssuer={(id, decision) =>
-              void run(dispatch(reviewIssuingOrganization({ id, decision })), decision === "approved" ? "Issuer approved" : "Issuer rejected")}
-            onEdit={(editing) => setAccreditationDialog({ open: true, editing })}
-            onDelete={(item) => setDeleting({ kind: "accreditation", id: item.id, name: item.name })}
-          />
-        )}
-      </>
-    );
-  }
+  const tabContent = (
+    <CategoriesTabContent
+      tab={tab} isCategoryTab={isCategoryTab} categoryKind={categoryKind} categories={categories}
+      lookupTab={lookupTab} lookups={lookups} run={run} handleReview={handleReview} setDeleting={setDeleting}
+      setLookupDialog={setLookupDialog} setTestDialog={setTestDialog} setFeeTypeDialog={setFeeTypeDialog}
+      setAccreditationDialog={setAccreditationDialog} setRegistrationTypeDialog={setRegistrationTypeDialog}
+    />
+  );
 
   return (
-    <div>
-      <div className="mb-4 flex items-start justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Categories</h1>
-          <p className="mt-1 text-muted-foreground">
-            Manage business types, service categories, and academic lookups.
-          </p>
-        </div>
+    <PageBody>
+      <PageHeader
+        title={<><Tags /> Categories</>}
+        subtitle="Manage business types, service categories, and academic lookups."
+      >
         {addLabel && (
           <Button className="h-10 cursor-pointer" onClick={handleAdd}>
             <Plus data-icon="inline-start" />
             {addLabel}
           </Button>
         )}
-      </div>
+      </PageHeader>
 
-      <AdminSegmentedTabs options={CATEGORY_TABS} value={tab} onChange={handleTabChange} />
+      <SectionTabs options={CATEGORY_TABS} value={tab} onChange={handleTabChange} />
 
-      {TAB_DESCRIPTION[tab] && (
-        <p className="mt-3 mb-4 max-w-3xl text-sm text-muted-foreground">{TAB_DESCRIPTION[tab]}</p>
-      )}
+      {TAB_DESCRIPTION[tab] && <p className="max-w-3xl text-sm text-muted-foreground">{TAB_DESCRIPTION[tab]}</p>}
 
       {tabContent}
 
@@ -373,6 +292,6 @@ export function CategoriesView() {
         onConfirm={handleConfirmDelete}
         deleting={saving}
       />
-    </div>
+    </PageBody>
   );
 }

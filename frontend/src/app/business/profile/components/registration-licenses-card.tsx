@@ -2,16 +2,17 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { Loader2, Pencil, Save, ShieldCheck } from "lucide-react";
+import { Loader2, Pencil, Plus, Save, ShieldCheck } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { ProfileSection } from "@/app/(web)/components/profile/profile-section";
+import { DescriptionItem, DescriptionList } from "@/components/ui/description-list";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useAppDispatch } from "@/lib/hooks";
 import { updateMyProfile } from "@/app/business/store/business-onboarding-slice";
 import type { BusinessProfile } from "@/app/business/apis/types";
-import { HEADER_PENCIL } from "../const";
 import { PrivacyBadge } from "@/components/privacy-badge";
 import { useSectionVisibility } from "./use-section-visibility";
+import { ProfileCard } from "./profile-card";
 import { RegistrationLicensesFields, cleanRegistrationLicenses, type RegLicenses } from "./registration-licenses-fields";
 
 // No `countries` prop any more: the server resolves the country's registration types (and the
@@ -53,7 +54,8 @@ export function RegistrationLicensesCard({
   const hasSaved = !!registration.business_registration?.number || (registration.licenses?.length ?? 0) > 0;
 
   return (
-    <ProfileSection
+    <ProfileCard
+      id="profile-registration"
       icon={ShieldCheck}
       title="Registration & Licenses"
       badge={<PrivacyBadge isPublic={isPublic("registration")} onToggle={canEditVisibility ? () => toggle("registration") : undefined} />}
@@ -62,7 +64,6 @@ export function RegistrationLicensesCard({
           <Button
             size="icon-sm"
             variant="ghost"
-            className={HEADER_PENCIL}
             aria-label={editing ? "Stop editing registration & licenses" : "Edit registration & licenses"}
             onClick={() => (editing ? setEditing(false) : startEditing())}
           >
@@ -83,23 +84,41 @@ export function RegistrationLicensesCard({
           </Button>
         </div>
       ) : hasSaved ? (
-        <div className="space-y-2">
+        <DescriptionList columns={1}>
           {registration.business_registration?.number && (
-            <div className="flex items-center gap-2">
-              <Badge variant="secondary">{registration.business_registration.type || "Registration"}</Badge>
-              <span className="text-sm font-medium">{registration.business_registration.number}</span>
-            </div>
+            <RegRow label="Business registration" type={registration.business_registration.type || "Registration"} number={registration.business_registration.number} />
           )}
           {registration.licenses?.map((license) => (
-            <div key={`${license.type}-${license.number}`} className="flex items-center gap-2">
-              <Badge variant="outline">{license.type || "License"}</Badge>
-              <span className="text-sm">{license.number}</span>
-            </div>
+            <RegRow key={`${license.type}-${license.number}`} label="Licence" type={license.type || "License"} number={license.number} />
           ))}
-        </div>
+        </DescriptionList>
+      ) : readOnly ? (
+        <p className="text-sm text-muted-foreground">No registration or license added yet.</p>
       ) : (
-        <p className="text-sm italic text-muted-foreground">No registration or license added yet.</p>
+        <EmptyState
+          compact
+          icon={ShieldCheck}
+          title="No registration added"
+          description="Add your registration number so students can trust this listing."
+          action={
+            <Button size="sm" className="gap-1" onClick={startEditing}>
+              <Plus /> Add registration
+            </Button>
+          }
+          className="rounded-lg border border-dashed"
+        />
       )}
-    </ProfileSection>
+    </ProfileCard>
+  );
+}
+
+function RegRow({ label, type, number }: Readonly<{ label: string; type: string; number: string }>) {
+  return (
+    <DescriptionItem label={label} mono>
+      <span className="flex items-center gap-3">
+        <span className="min-w-0 flex-1 break-all">{number}</span>
+        <Badge variant="secondary" className="shrink-0 font-sans">{type}</Badge>
+      </span>
+    </DescriptionItem>
   );
 }

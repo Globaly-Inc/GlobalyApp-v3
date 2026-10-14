@@ -28,7 +28,7 @@ function TestRow({
 }: Readonly<{ icon: typeof Languages; label: string; children: React.ReactNode }>) {
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      <span className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+      <span className="flex items-center gap-1 text-xs font-semibold uppercase tracking-wide text-muted-foreground">
         <Icon className="h-3 w-3" />
         {label}
       </span>

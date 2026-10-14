@@ -144,7 +144,7 @@ export function ContactsTab({
                 <span className="text-sm font-medium">{c.full_name}</span>
                 {c.job_title && <span className="text-xs text-muted-foreground">{c.job_title}</span>}
                 {c.is_primary && (
-                  <Badge variant="outline" className="gap-1 border-amber-200 text-amber-700">
+                  <Badge variant="outline" className="gap-1 border-warning/30 text-warning">
                     <Star className="h-3 w-3 fill-current" /> Primary
                   </Badge>
                 )}
@@ -165,7 +165,7 @@ export function ContactsTab({
               {c.tags.length > 0 && (
                 <div className="mt-1 flex flex-wrap gap-1">
                   {c.tags.map((tag) => (
-                    <Badge key={tag} variant="secondary" className="text-[10px]">
+                    <Badge key={tag} variant="secondary" className="text-xs">
                       {tag}
                     </Badge>
                   ))}
@@ -178,7 +178,7 @@ export function ContactsTab({
                   const platformStatus = contactPlatformStatus(c);
                   if (platformStatus === "member") {
                     return (
-                      <span className="flex h-8 w-8 items-center justify-center text-emerald-600" title="Already has platform login">
+                      <span className="flex h-8 w-8 items-center justify-center text-success" title="Already has platform login">
                         <CheckCircle2 className="h-4 w-4" />
                       </span>
                     );

@@ -9,7 +9,7 @@ import {
   UserPlus,
   Users,
 } from "lucide-react";
-import type { PortalNavGroup } from "@/components/portal-sidebar";
+import type { PortalNavGroup } from "@/components/portal-shell/portal-sidebar";
 import { AlyOrbIcon } from "@/components/aly-orb-icon";
 
 export const PERSONAL_PORTAL_HOME = "/personal/ai";

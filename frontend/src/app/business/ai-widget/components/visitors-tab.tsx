@@ -3,21 +3,30 @@
 import { useEffect, useState } from "react";
 import { visitorHref } from "@/app/business/ai-widget/const";
 import { useRouter } from "next/navigation";
-import { Download, Loader2, Search, Users, X } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Download, Users, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { EmptyState } from "@/components/ui/empty-state";
+import { FilterBar, SearchInput } from "@/components/ui/filter-bar";
+import { ListSkeleton } from "@/components/ui/list-skeleton";
+import { PageBody } from "@/components/ui/page-body";
+import { PageHeader } from "@/components/ui/page-header";
 import { Pagination } from "@/components/ui/pagination";
-import { AdminSegmentedTabs } from "@/app/admin/components/admin-segmented-tabs";
+import { TableCard } from "@/components/ui/table";
+import { SectionTabs } from "@/components/section-tabs";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { PortalStats } from "@/app/business/profile/components/portal-ui/portal-stats";
+import { PortalStatTile } from "@/app/business/profile/components/portal-ui/portal-stat-tile";
 import { fetchVisitors } from "../store/ai-widget-visitors-slice";
 import { VISITORS_PAGE_SIZE, VISITOR_TABS } from "../const";
 import { downloadCsv, visitorsToCsv } from "../utils";
 import { VisitorsTable } from "./visitors-table";
+import { ChannelPicker, type ChannelFilter } from "@/app/business/messages/components/channel-picker";
 import type { VisitorStatusFilter } from "../apis/types";
 
 /**
- * Everyone who has talked to this org's AI embed widget.
+ * Everyone who has messaged this org, on the website widget, WhatsApp, Instagram or Facebook —
+ * laid out like the Team tab (header, summary tiles, pill tabs, portal table) so the two pages
+ * read as one app.
  *
  * Tenant scoping is entirely the backend's: `ai_widget_visitors` lives in the tenant schema, so
  * the endpoint has no org id to pass and this component has none to send. Nothing here can widen
@@ -32,6 +41,7 @@ export function VisitorsTab() {
   const { items, total, counts, status, error } = useAppSelector((s) => s.aiWidgetVisitors);
 
   const [tab, setTab] = useState<VisitorStatusFilter>("all");
+  const [channel, setChannel] = useState<ChannelFilter>("all");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
@@ -42,10 +52,10 @@ export function VisitorsTab() {
   // a mount sends one request, not two.
   useEffect(() => {
     const timer = setTimeout(() => {
-      dispatch(fetchVisitors({ page, limit: VISITORS_PAGE_SIZE, status: tab, search: search.trim() || undefined }));
+      dispatch(fetchVisitors({ page, limit: VISITORS_PAGE_SIZE, status: tab, search: search.trim() || undefined, channel: channel === "all" ? undefined : channel }));
     }, search ? 300 : 0);
     return () => clearTimeout(timer);
-  }, [dispatch, page, tab, search]);
+  }, [dispatch, page, tab, search, channel]);
 
   // Selection is per result set. Keeping it across a filter change would let "3 selected" mean
   // three rows nobody can see any more — and the export below would then quietly disagree with
@@ -61,33 +71,44 @@ export function VisitorsTab() {
     downloadCsv(`widget-${tab === "all" ? "visitors" : tab}s-${new Date().toISOString().slice(0, 10)}.csv`, visitorsToCsv(rows));
   };
 
-  return (
-    <div>
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Users className="h-4 w-4 text-muted-foreground" />
-          <span className="text-sm font-semibold">Visitors &amp; Leads</span>
-          <Badge variant="secondary">{counts.all}</Badge>
-        </div>
-        <div className="relative w-full sm:w-64">
-          <Search className="absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            className="h-10 pl-8"
-            placeholder="Search name, email or programme"
-            value={search}
-            onChange={(e) => changeQuery(() => setSearch(e.target.value))}
-          />
-        </div>
-      </div>
+  const filtered = !!search || tab !== "all" || channel !== "all";
 
-      <AdminSegmentedTabs
+  // Rendered at /business/contacts/visitors, which BusinessShell gives PortalShell `width="wide"`.
+  return (
+    <PageBody>
+      <PageHeader title={<><Users /> Visitors &amp; Leads</>} subtitle="Everyone who has messaged you, on your website, WhatsApp, Instagram or Facebook." />
+
+      {/* Counts are for the whole list (they ignore search and channel), like the Team tiles. */}
+      <PortalStats>
+        <PortalStatTile value={counts.all} label="People" />
+        <PortalStatTile value={counts.visitor} label="Visitors" />
+        <PortalStatTile value={counts.lead} label="Leads" />
+      </PortalStats>
+
+      <SectionTabs
         options={VISITOR_TABS.map((t) => ({ ...t, count: counts[t.value] }))}
         value={tab}
         onChange={(next) => changeQuery(() => setTab(next))}
+        className="mb-0"
       />
 
+      <FilterBar>
+        <SearchInput
+          placeholder="Search name, email, phone or handle"
+          aria-label="Search visitors"
+          value={search}
+          onChange={(e) => changeQuery(() => setSearch(e.target.value))}
+        />
+        <div className="w-full sm:w-60">
+          <ChannelPicker value={channel} onChange={(next) => changeQuery(() => setChannel(next))} />
+        </div>
+        <span className="shrink-0 px-2 text-sm text-muted-foreground">
+          {total} {VISITOR_TABS.find((t) => t.value === tab)?.label.toLowerCase()}
+        </span>
+      </FilterBar>
+
       {selectedIds.size > 0 && (
-        <div className="mb-3 flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-muted/40 p-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-border bg-muted/40 p-2.5">
           <span className="text-sm font-medium">{selectedIds.size} selected</span>
           <div className="flex items-center gap-1.5">
             <Button size="sm" variant="outline" onClick={exportSelected}>
@@ -100,42 +121,37 @@ export function VisitorsTab() {
         </div>
       )}
 
-      {status === "loading" && (
-        <div className="flex justify-center py-8">
-          <Loader2 className="h-5 w-5 animate-spin text-primary" />
-        </div>
-      )}
+      {status === "loading" && <ListSkeleton count={6} itemClassName="h-14" />}
 
       {status === "failed" && (
-        <div className="rounded-lg border border-dashed py-12 text-center text-sm text-muted-foreground">
+        <div className="rounded-lg border border-dashed border-border py-12 text-center text-sm text-muted-foreground">
           {error ?? "Couldn't load visitors."}
         </div>
       )}
 
       {status === "idle" && items.length === 0 && (
-        <div className="flex flex-col items-center gap-3 rounded-lg border border-dashed py-12 text-center">
-          <Users className="h-10 w-10 text-muted-foreground/40" />
-          <p className="text-sm font-medium">
-            {search || tab !== "all" ? "Nothing matches these filters" : "No one has used your AI widget yet"}
-          </p>
-          {!search && tab === "all" && (
-            <p className="max-w-sm text-xs text-muted-foreground">
-              Visitors appear here as soon as someone sends their first message, and become leads
-              when they share their name and email.
-            </p>
-          )}
-        </div>
+        <EmptyState
+          icon={Users}
+          title={filtered ? "Nothing matches these filters" : "No one has messaged you yet"}
+          description={
+            filtered
+              ? undefined
+              : "People appear here as soon as they send their first message, and become leads when they share their name and email."
+          }
+        />
       )}
 
       {status === "idle" && items.length > 0 && (
-        <VisitorsTable
-          visitors={items}
-          selectedIds={selectedIds}
-          onSelectedIdsChange={setSelectedIds}
-          // The table stays routing-agnostic: it reports which row was picked, this decides
-          // that picking one means opening that visitor's page.
-          onView={(v) => router.push(visitorHref(v.id))}
-        />
+        <TableCard>
+          <VisitorsTable
+            visitors={items}
+            selectedIds={selectedIds}
+            onSelectedIdsChange={setSelectedIds}
+            // The table stays routing-agnostic: it reports which row was picked, this decides
+            // that picking one means opening that visitor's page.
+            onView={(v) => router.push(visitorHref(v.id))}
+          />
+        </TableCard>
       )}
 
       {total > 0 && (
@@ -146,7 +162,6 @@ export function VisitorsTab() {
           onPageChange={(p) => { setSelectedIds(new Set()); setPage(p); }}
         />
       )}
-
-    </div>
+    </PageBody>
   );
 }

@@ -23,7 +23,8 @@ POST /register       → creates platform_user (account_status=0) + OTP in auth_
 POST /send-otp       → generates 6-digit OTP (10 min expiry), per-email brute-force protection
 POST /verify-otp     → validates OTP, activates account (status=1), creates session, returns tokens
 POST /refresh        → rotates both tokens per-session, IP/device logged
-POST /logout         → pass refresh_token to logout single device, omit to logout all (204)
+POST /logout         → public; ends the session named by the refresh cookie (or a body refresh_token),
+                        clears the cookies (204). No token = cookies cleared only, never all devices
 POST /switch-account → issues a scoped access_token for a specific business (requires auth) — kept for
                         future multi-business use; today's frontend doesn't call it, see below
 GET  /me             → returns user profile + list of business memberships
@@ -186,8 +187,16 @@ carries it — authorisation itself is safe, because `requirePermission` and
 - Each session has its own refresh token + token family UUID
 - `device_label` derived from user-agent (e.g. "Chrome", "Mobile")
 - **Rotation**: new hash on every refresh, same family
-- **Reuse detection**: replayed token → delete ALL sessions for that user (nuclear option)
-- **Logout**: pass `refresh_token` to logout single device, omit to logout all devices
+- **Reuse detection**: replayed token → delete ALL sessions for that user (nuclear option) — except
+  within 30s of a rotation (`previous_refresh_token_hash` + `rotated_at`), where the old token gets an
+  access token for the same session and `refresh_token: null` — only from the same IP and user agent
+  that just rotated: that's two tabs/hosts refreshing at once
+- **Logout**: single device only, by refresh cookie or body token; works with an expired access token
+- **Browser storage**: `verify-otp` and `refresh` also set the refresh token as an httpOnly cookie
+  (`__Host-globaly_rt` over HTTPS — siblings can't plant it — `globaly_rt` on plain-http dev; Path `/`, API host only; never in a response body) plus a readable `globaly_session` hint on
+  `SESSION_HINT_COOKIE_DOMAIN`. `refresh`, `switch-account` and `logout` prefer the cookie over a body
+  `refresh_token` (a legacy body token may already be rotated past); `logout` and any failed `refresh` clear both. See `refresh-cookie.ts`. This is what lets
+  app.globalyai.com and app.globalyai.com share a sign-in without a JS-readable token.
 - **Expiry**: sessions expire after 30 days, purged by cron
 
 ## Invitation Acceptance
@@ -198,14 +207,26 @@ Invitations use POST (not GET) to prevent side effects from link scanners:
 
 Email links point to frontend pages (`/invite/admin/accept`, `/invite/agent/accept`) which render a confirmation button that POSTs to the API.
 
-**Onboarding invites are the one exception to "invited users verify by OTP".** An admin sends
-`/invite/onboarding?token=…&type=institution` to an email with no account;
-`POST /api/v3/onboarding-invitations/accept` (public module, not `publicPaths`) creates the
-personal account + institution as soon as the link opens, but returns **no session** — the page
-then sends them to sign-in with their email pre-filled, and the OTP to their own inbox is the proof.
-A mail scanner that opens the link first can only use it up, never get in; the recipient then sees
-"already set up" and signs in. An accepted token never works again. See
-`platform-users/services/onboarding-invitations.service.ts`.
+**Onboarding invites verify by OTP like everyone else — the invite row stands in for the account
+that does not exist yet.** The mail points at
+`/auth/sign-in?token=…&type=institution&source=onboard-invitation`, and that page runs on three
+public endpoints (public module, not `publicPaths`):
+
+| Endpoint | Creates | Notes |
+|---|---|---|
+| `POST /onboarding-invitations/lookup` | nothing | the invited address, so sign-in can fill it in |
+| `POST /onboarding-invitations/send-code` | an OTP challenge | authorised by the live invite row, not by an account (`issueOtpChallenge`) |
+| `POST /onboarding-invitations/accept` | the account + the org | requires `otp`; `assertOtpChallenge` runs **before** anything is claimed |
+
+Accept still returns no session: the setup page (`/invite/setup`) calls the ordinary
+`POST /auth/verify-otp` afterwards, against the account it has just created. So a link on its own —
+in a scanner, a forwarded mail, a browser history — creates nothing and spends nothing; only the
+code sent to that inbox does. An accepted token never works again. Links issued before this moved
+still land on `/invite/onboarding`, which now only looks the invite up and forwards it to sign-in.
+See `platform-users/services/onboarding-invitations.service.ts`.
+
+`assertOtpChallenge` is the half of `verifyOtp` that judges a code without spending it, which is why
+the accept can check it and the verify-otp call right after can still consume it.
 
 On agent invitation acceptance:
 - `is_business_account` set to `true` on the platform_user
@@ -253,7 +274,7 @@ OTP challenges are hard-deleted after verification or expiry.
 ## Public Paths (no JWT required)
 
 Defined in `core/plugins/auth.plugin.ts`:
-- `/api/v3/auth/send-otp`, `/verify-otp`, `/refresh`, `/register`
+- `/api/v3/auth/send-otp`, `/verify-otp`, `/refresh`, `/register`, `/logout` (refresh-cookie authenticated)
 - `/api/v3/admin/users/invite/accept`
 - `/api/v3/agents/invite/accept`
 - `/api/v3/businesses/claim/accept`, `/api/v3/businesses/claim/request`

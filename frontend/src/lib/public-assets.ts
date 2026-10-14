@@ -1,9 +1,8 @@
 /**
- * Brand marks and the marketing mockups' stock imagery, served from the public GCS bucket
- * (`globalyapp-public-images`) rather than shipped in `frontend/public`.
+ * The brand marks (shipped in `public/brand/`) and the marketing mockups' stock imagery, served
+ * from the public GCS bucket (`globalyapp-public-images`) rather than shipped in `frontend/public`.
  *
- * The bucket is where these files are maintained — the same one the transactional mail templates
- * already pull the logo from — so a repo copy is a second version of the truth that silently goes
+ * The bucket is where the imagery is maintained, so a repo copy is a second version of the truth that silently goes
  * stale. Referencing them here keeps one URL per asset instead of a path repeated across twenty
  * call sites; `next.config.ts` allows the host for next/image.
  *
@@ -12,37 +11,49 @@
  */
 const BUCKET = "https://storage.googleapis.com/globalyapp-public-images";
 
-/** The brand marks sit under `logos/`; everything else under `photos/`. */
+/**
+ * GlobalyAI brand marks (2026-10-10), cut from the brand board as SVG and shipped in
+ * `public/brand/`: SVG scales cleanly and next/image serves it as-is. The bucket's old
+ * GlobalyAI PNGs are retired; the mail templates still need PNG copies uploaded there.
+ * The dimensions only fix the aspect ratio, since call sites size the mark with `h-* w-auto`.
+ */
 
-/** The full GlobalyApp wordmark, navy glyph and charcoal type — for light backgrounds. */
+/** The GlobalyAI wordmark, navy glyph and charcoal type — for light backgrounds. */
 export const LOGO = {
-  src: `${BUCKET}/logos/GlobalyApp%20Main%20Full%20Logo%20(3).png`,
-  width: 1474,
-  height: 313,
+  src: "/brand/globalyai-logo.svg",
+  width: 610,
+  height: 157,
 } as const;
-/** The same wordmark reversed to white — for navy and photographic backgrounds. */
+/** The same wordmark reversed to white — for navy, dark and photographic backgrounds. */
 export const LOGO_WHITE = {
-  src: `${BUCKET}/logos/GlobalyApp%20Main%20Full%20Logo%20White%20(1).png`,
-  width: 737,
+  src: "/brand/globalyai-logo-white.svg",
+  width: 610,
   height: 157,
 } as const;
 
 /**
- * The square app mark: a navy rounded tile with a white glyph, replacing the red tile the
- * portal headers used. It carries its own background, so it holds up on `bg-card` in either
- * theme without needing a per-theme swap.
- *
- * The browser favicon is this same mark: Next's app-dir icon convention only reads a real
- * file, so it ships as a downloaded copy at `src/app/icon.png` rather than from here.
- * Re-download that file whenever this URL changes.
+ * The square app mark: a navy rounded tile with a white glyph. It carries its own
+ * background, so it holds up on `bg-card` in either theme. The favicon is the same file
+ * at `src/app/icon.svg`; keep the two in step.
  */
 export const ICON = {
-  src: `${BUCKET}/logos/GlobalyOS%20White%20BG%20Icon.png`,
+  src: "/brand/globalyai-icon.svg",
   width: 283,
   height: 283,
 } as const;
 
 export const APP_ICON_ATTR = "data-app-icon";
+
+/**
+ * Raster copies for the places SVG doesn't work: social cards (1200x630) and the
+ * schema.org logo, which crawlers want as PNG.
+ */
+export const OG_IMAGE = {
+  src: "/brand/og-globalyai.png",
+  width: 1200,
+  height: 630,
+} as const;
+export const LOGO_PNG = "/brand/globalyai-logo.png";
 
 const PHOTOS = `${BUCKET}/photos`;
 

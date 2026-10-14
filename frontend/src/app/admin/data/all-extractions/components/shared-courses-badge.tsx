@@ -33,7 +33,7 @@ export function SharedCoursesBadge({ names, prefix = "+", className }: Readonly<
         {label}
       </PopoverTrigger>
       <PopoverContent align="end" className="w-64 gap-1.5 p-2.5">
-        <p className="text-[11px] font-medium text-muted-foreground">Also linked to</p>
+        <p className="text-xs font-medium text-muted-foreground">Also linked to</p>
         <ul className="flex flex-col gap-0.5 text-xs">
           {names.slice(0, shown).map((n, i) => <li key={`${i}-${n}`} className="truncate" title={n}>{n}</li>)}
         </ul>

@@ -1,10 +1,16 @@
 import { createAsyncThunk, createSlice } from "@reduxjs/toolkit";
+import { switchAccount } from "@/app/auth/store/auth-slice";
 import { aiWidgetApi } from "../apis";
+import { mergeSentRecipients } from "../utils";
 import type {
   CreateEmbedConfigInput, EmbedConfig, EnsureEmbedResult, SendSnippetInput, UpdateEmbedConfigInput,
 } from "../apis/types";
 
-export const fetchEmbedConfigs = createAsyncThunk("aiWidget/fetchConfigs", () => aiWidgetApi.listConfigs());
+// `condition` drops a second fetch while one is in flight — Strict Mode's double effect, or the
+// Inbox and the widget page mounting together, would otherwise race two identical requests.
+export const fetchEmbedConfigs = createAsyncThunk("aiWidget/fetchConfigs", () => aiWidgetApi.listConfigs(), {
+  condition: (_, { getState }) => (getState() as { aiWidget: AiWidgetState }).aiWidget.status !== "loading",
+});
 
 export const createEmbedConfig = createAsyncThunk("aiWidget/createConfig", (input: CreateEmbedConfigInput) =>
   aiWidgetApi.createConfig(input),
@@ -37,9 +43,24 @@ export const sendEmbedSnippet = createAsyncThunk(
     try {
       return await aiWidgetApi.sendSnippet(input);
     } catch (e) {
-      // The backend's message names the real reason (no developer, duplicate member, pending
-      // invite); a generic "failed" would hide the one thing the owner can act on.
+      // The backend's message names the real reason (rate limit, bad address); a generic
+      // "failed" would hide the one thing the owner can act on.
       return rejectWithValue(e instanceof Error ? e.message : "Couldn't send the code.");
+    }
+  },
+);
+
+export const forgetEmbedDeveloper = createAsyncThunk(
+  "aiWidget/forgetDeveloper",
+  async (id: number, { rejectWithValue }) => {
+    try {
+      await aiWidgetApi.forgetDeveloper(id);
+      return id;
+    } catch (e) {
+      // Same reason as the send above: the backend names the real cause — "Recipient not found"
+      // for a row somebody else already removed — and the row stays on screen either way, so a
+      // silent failure reads as a button that does nothing.
+      return rejectWithValue(e instanceof Error ? e.message : "Couldn't remove that address.");
     }
   },
 );
@@ -47,6 +68,8 @@ export const sendEmbedSnippet = createAsyncThunk(
 type AiWidgetState = {
   configs: EmbedConfig[];
   status: "idle" | "loading" | "failed";
+  /** A fetch has succeeded for this org — "no configs" is only an answer once this is true. */
+  loaded: boolean;
   createStatus: "idle" | "loading" | "failed";
   error: string | null;
   handoff: EnsureEmbedResult | null;
@@ -57,6 +80,7 @@ type AiWidgetState = {
 const initialState: AiWidgetState = {
   configs: [],
   status: "idle",
+  loaded: false,
   createStatus: "idle",
   error: null,
   handoff: null,
@@ -70,12 +94,15 @@ const aiWidgetSlice = createSlice({
   reducers: {},
   extraReducers: (builder) => {
     builder
+      // Configs belong to the org; another org's widget must not answer "is one set up?".
+      .addCase(switchAccount.pending, () => initialState)
       .addCase(fetchEmbedConfigs.pending, (state) => {
         state.status = "loading";
         state.error = null;
       })
       .addCase(fetchEmbedConfigs.fulfilled, (state, action) => {
         state.status = "idle";
+        state.loaded = true;
         state.configs = action.payload;
       })
       .addCase(fetchEmbedConfigs.rejected, (state, action) => {
@@ -116,6 +143,14 @@ const aiWidgetSlice = createSlice({
       .addCase(ensureEmbedConfig.fulfilled, (state, action) => {
         state.handoffStatus = "idle";
         state.handoff = action.payload;
+        // ensure may have just created the widget: keep the cached list in step, or the Inbox
+        // (which trusts `loaded` and won't refetch) keeps showing setup prompts for a live widget.
+        // But this request can still be in flight while the owner saves or rotates the key on the
+        // settings page, so it only replaces a cached record that is older than it — never a newer one.
+        const incoming = action.payload.config;
+        const i = state.configs.findIndex((c) => c.id === incoming.id);
+        if (i < 0) state.configs.unshift(incoming);
+        else if (Date.parse(incoming.updated_at) > Date.parse(state.configs[i]!.updated_at)) state.configs[i] = incoming;
       })
       .addCase(ensureEmbedConfig.rejected, (state, action) => {
         state.handoffStatus = "failed";
@@ -126,16 +161,18 @@ const aiWidgetSlice = createSlice({
       })
       .addCase(sendEmbedSnippet.fulfilled, (state, action) => {
         state.sendStatus = "idle";
-        // An invite just created the developer, so the card must stop asking for one. Pending
-        // until they accept — same shape findDeveloper would return on the next load. The name
-        // comes off the thunk arg, not the response: the card renders `name || email`, and the
-        // response carries only the address, so someone typed "Sam Taylor" and saw an email.
-        if (state.handoff && action.payload.invited) {
-          state.handoff.developer = {
-            email: action.payload.sent_to,
-            name: action.meta.arg.invitee?.name ?? null,
-            pending: true,
-          };
+        // Merge the rows this send touched; never adopt `recipients` wholesale. It is the list
+        // as it stood when the server read it, so a Remove that completed while the send was in
+        // flight would be undone by it and the deleted address would reappear. Anything the send
+        // did not touch stays exactly as the card has it — including gone.
+        if (!state.handoff) return;
+        state.handoff.developers = mergeSentRecipients(
+          state.handoff.developers, action.payload.sent, action.payload.recipients,
+        );
+      })
+      .addCase(forgetEmbedDeveloper.fulfilled, (state, action) => {
+        if (state.handoff) {
+          state.handoff.developers = state.handoff.developers.filter((d) => d.id !== action.payload);
         }
       })
       .addCase(sendEmbedSnippet.rejected, (state) => {

@@ -6,7 +6,7 @@ export function PricingCostComparison() {
     <section className="bg-background py-20">
       <div className="container mx-auto px-4">
         <div className="mb-12 text-center">
-          <p className="mb-3 text-xs tracking-[0.3em] text-muted-foreground uppercase">Why Globaly</p>
+          <p className="mb-3 text-xs tracking-[0.3em] text-muted-foreground uppercase">Why GlobalyAI</p>
           <h2 className="mb-3 text-3xl font-bold md:text-4xl">
             Competitors charge $30–$150 per lead. We charge $4.
           </h2>
@@ -36,7 +36,7 @@ export function PricingCostComparison() {
 
           <Card className="border-emerald-300 ring-2 ring-emerald-200">
             <CardContent className="p-6">
-              <h3 className="mb-4 text-lg font-bold text-emerald-600">Globaly</h3>
+              <h3 className="mb-4 text-lg font-bold text-emerald-600">GlobalyAI</h3>
               <div className="space-y-3">
                 {globalyCosts.map((c) => (
                   <div key={c.label} className="flex items-center justify-between text-sm">

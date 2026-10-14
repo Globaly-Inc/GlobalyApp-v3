@@ -30,7 +30,7 @@ export function EditableNumberField({
 
   return (
     <div>
-      <p className="text-xs text-muted-foreground">{label}</p>
+      <p className="text-sm text-muted-foreground">{label}</p>
       {editing ? (
         <div className="mt-1 flex items-center gap-1.5">
           <Input
@@ -51,7 +51,7 @@ export function EditableNumberField({
       ) : (
         <div className="group flex items-center gap-1.5">
           <p className="text-sm font-medium text-foreground">{value}</p>
-          <Button size="icon-sm" variant="ghost" className="opacity-0 group-hover:opacity-100" onClick={startEdit} aria-label={`Edit ${label}`}>
+          <Button size="icon-sm" variant="ghost" className="sm:opacity-0 sm:group-hover:opacity-100 focus-visible:opacity-100" onClick={startEdit} aria-label={`Edit ${label}`}>
             <Pencil className="h-3 w-3" />
           </Button>
         </div>

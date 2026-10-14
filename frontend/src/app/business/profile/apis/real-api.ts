@@ -68,6 +68,7 @@ function toServiceSearchQuery(params: ServiceSearchParams): string {
   if (params.published) q.set("published", params.published);
   if (params.origin) q.set("origin", params.origin);
   if (params.degree_level) q.set("degree_level", params.degree_level);
+  if (params.attention) q.set("attention", params.attention);
   const qs = q.toString();
   return qs ? `?${qs}` : "";
 }
@@ -133,6 +134,9 @@ export const businessProfileDetailRealApi = {
     return { data, total: meta.total };
   },
   getBranch: (branchId: string, orgBase = BASE): Promise<Branch> => httpGet(`${orgBase}/branches/${branchId}`),
+  /** An extracted (read-only) campus → a real, editable branch; returns its branch id. */
+  convertCampus: (campusId: string, orgBase = BASE): Promise<{ branch_id: string }> =>
+    httpPost(`${orgBase}/branches/campuses/${campusId}/convert`, {}),
   createBranch: (input: BranchInput, orgBase = BASE): Promise<Branch> => httpPost(`${orgBase}/branches`, input),
   updateBranch: (branchId: string, patch: BranchPatch, orgBase = BASE): Promise<Branch> => httpPatch(`${orgBase}/branches/${branchId}`, patch),
   // No institution twin — linking another registered org as a branch is business-to-business only.

@@ -2,14 +2,16 @@
 
 import Link from "next/link";
 import { visitorHref } from "@/app/business/ai-widget/const";
-import { ArrowLeft, ExternalLink, MessageSquare, User } from "lucide-react";
+import { ArrowLeft, ExternalLink, Star, User } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button, buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import { VISITOR_STATUS_BADGE } from "@/app/business/ai-widget/const";
 import { visitorDisplayName, visitorInitials } from "@/app/business/ai-widget/utils";
 import type { WidgetVisitor } from "@/app/business/ai-widget/apis/types";
-import { embedChatPill } from "../utils";
+import { INBOX_CHANNELS } from "../const";
+import { channelOf, embedChatPill } from "../utils";
+import { ChannelGlyph } from "./channel-glyph";
 import { EmbedChatControls } from "./embed-chat-controls";
 import type { EmbedChatActions } from "./use-embed-chat-actions";
 
@@ -26,7 +28,7 @@ export function EmbedConversationHeader({
   const pill = embedChatPill(visitor);
 
   return (
-    <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-card px-3 py-2.5 md:px-4">
+    <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-border bg-card px-3 py-2.5 shadow-sm md:px-4">
       <div className="flex min-w-0 flex-1 items-center gap-2 md:gap-3">
         <Button variant="ghost" size="icon-sm" className="md:hidden" onClick={onBack} aria-label="Back to conversations">
           <ArrowLeft />
@@ -37,21 +39,22 @@ export function EmbedConversationHeader({
               {visitor.name ? visitorInitials(visitor) : <User className="size-4" aria-hidden />}
             </AvatarFallback>
           </Avatar>
-          {/* The channel badge: this came in through the website widget. */}
-          <span className="absolute -bottom-0.5 -right-0.5 flex size-4 items-center justify-center rounded bg-card">
-            <MessageSquare className="size-3 text-primary" aria-hidden />
-          </span>
+          {/* The channel badge: where this conversation came in. */}
+          <ChannelGlyph channel={channelOf(visitor)} size="xs" className="absolute -bottom-0.5 -right-0.5 ring-2 ring-card" />
         </span>
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
             <h2 className={cn("truncate text-base font-semibold text-foreground", !visitor.name && "italic")}>
               {visitorDisplayName(visitor)}
             </h2>
-            <span className={cn("inline-flex shrink-0 rounded px-1.5 py-0.5 text-[10px] font-medium", badge.className)}>
+            <span className={cn("inline-flex shrink-0 rounded px-1.5 py-0.5 text-xs font-medium", badge.className)}>
               {badge.label}
             </span>
           </div>
-          <p className="truncate text-xs text-muted-foreground">via Web widget{visitor.email ? ` · ${visitor.email}` : ""}</p>
+          <p className="truncate text-xs text-muted-foreground">
+            via {channelOf(visitor) === "ai_embed" ? "Web widget" : INBOX_CHANNELS[channelOf(visitor)].label}
+            {visitor.channel_handle ? ` · ${visitor.channel_handle}` : visitor.email ? ` · ${visitor.email}` : ""}
+          </p>
         </div>
       </div>
       <div className="flex shrink-0 items-center gap-1.5">
@@ -59,6 +62,15 @@ export function EmbedConversationHeader({
         <div className="lg:hidden">
           <EmbedChatControls visitor={visitor} actions={actions} />
         </div>
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-pressed={!!visitor.starred}
+          aria-label={visitor.starred ? "Unstar" : "Star"}
+          onClick={() => actions.toggleStar(!visitor.starred)}
+        >
+          <Star className={cn("size-4", visitor.starred ? "fill-rating text-rating" : "text-muted-foreground")} />
+        </Button>
         <Link
           href={visitorHref(visitor.id)}
           className={cn(buttonVariants({ variant: "ghost", size: "sm" }), "gap-1.5")}

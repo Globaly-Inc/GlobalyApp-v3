@@ -14,8 +14,8 @@ import type { QueueItem } from "../apis/types";
 import { EmptyState, ListSkeleton } from "./shared";
 
 const STATUS_TONE: Record<QueueItem["status"], string> = {
-  pending: "bg-amber-100 text-amber-800",
-  verified: "bg-emerald-100 text-emerald-800",
+  pending: "bg-warning/15 text-warning",
+  verified: "bg-success/15 text-success",
   rejected: "bg-destructive/10 text-destructive",
 };
 
@@ -85,7 +85,7 @@ export function QueueTab({
               {item.status === "pending" && (
                 <div className="flex shrink-0 items-center gap-2">
                   <Button
-                    variant="outline" className="gap-1.5 px-3 text-emerald-600 cursor-pointer"
+                    variant="outline" className="gap-1.5 px-3 text-success cursor-pointer"
                     disabled={busyId === item.id}
                     onClick={() => run(item.id, () => aiKnowledgeApi.approveQueueItem(item.id), "Submission approved")}
                   >

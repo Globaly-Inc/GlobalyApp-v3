@@ -63,7 +63,7 @@ export function ContactSummaryCard({ visitor }: Readonly<{ visitor: WidgetVisito
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-xs text-muted-foreground">Still open:</span>
                 {summary.open.map((t) => (
-                  <span key={t} className="rounded-md bg-amber-100 px-2 py-0.5 text-xs font-medium text-amber-800">{t}</span>
+                  <span key={t} className="rounded-md bg-warning/15 px-2 py-0.5 text-xs font-medium text-warning">{t}</span>
                 ))}
               </div>
             )}

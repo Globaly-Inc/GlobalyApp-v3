@@ -1,6 +1,6 @@
 /** Wire types for the public embed widget API. */
 
-import type { CourseCard } from "@/app/ai/apis/types";
+import type { CourseCard, ResponseBlock } from "@/app/ai/apis/types";
 import type { EmbedOwnerKind } from "../const";
 
 /** Public branding subset of an embed config — all the widget ever sees. */
@@ -56,6 +56,10 @@ export type EmbedEndPrompt = {
   body: string;
   covered: string | null;
   email: string | null;
+  /** An office the visitor could visit, when their approximate location is specific enough for
+   *  one to be meaningful. Absent far more often than present. `place` is a city, never a street
+   *  address, and there is no phone number — a widget hands the visitor no contact route. */
+  branch?: { name: string; place: string } | null;
 };
 
 export type EmbedChatEvent =
@@ -63,6 +67,8 @@ export type EmbedChatEvent =
   | { type: "trace"; step: string }
   | { type: "cards"; cards: CourseCard[] }
   | { type: "chips"; chips: string[] }
+  /** Comparisons, timelines, quick replies — the backend has always sent these. */
+  | { type: "blocks"; blocks: ResponseBlock[] }
   | { type: "contact-prompt"; prompt: EmbedContactPrompt }
   | { type: "end-prompt"; prompt: EmbedEndPrompt }
   /** A staff member is handling the chat; the message was delivered to them, no AI reply. */
@@ -101,6 +107,8 @@ export type EmbedStoredMessage = {
   content: string;
   cards: WireCourseCard[];
   chips: string[];
+  /** Optional: a thread stored before the widget rendered blocks has none. */
+  blocks?: ResponseBlock[] | null;
   sender_name?: string | null;
   attachments?: EmbedFile[] | string[];
   created_at: string;

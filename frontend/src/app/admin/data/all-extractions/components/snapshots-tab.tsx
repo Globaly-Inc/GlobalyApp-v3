@@ -82,9 +82,9 @@ export function SnapshotsTab({ jobId }: Readonly<{ jobId: string }>) {
         <span className="text-xs text-muted-foreground">{total} page{total === 1 ? "" : "s"} stored for this site</span>
       </div>
 
-      <div className="overflow-x-auto rounded-md border border-border">
+      <div className="overflow-x-auto rounded-lg border border-border">
         <table className="w-full text-xs">
-          <thead className="bg-muted/50 text-left text-muted-foreground">
+          <thead className="bg-muted/60 text-left text-muted-foreground">
             <tr>
               <th className="px-2 py-2">URL</th>
               <th className="w-52 px-2 py-2">Category</th>
@@ -104,7 +104,7 @@ export function SnapshotsTab({ jobId }: Readonly<{ jobId: string }>) {
             )}
             {rows.map((r) => (
               <tr key={r.id} className={cn("border-t border-border", r.excluded && "opacity-60")}>
-                <td className="max-w-xl truncate px-2 py-1.5 font-mono text-[11px]" title={`${r.url}\n${r.gcs_path}`}>
+                <td className="max-w-xl truncate px-2 py-1.5 font-mono text-xs" title={`${r.url}\n${r.gcs_path}`}>
                   <a href={r.url} target="_blank" rel="noreferrer" className="hover:underline">{r.url}</a>
                 </td>
                 <td className="px-2 py-1.5">
@@ -119,7 +119,7 @@ export function SnapshotsTab({ jobId }: Readonly<{ jobId: string }>) {
                 <td className="px-2 py-1.5 text-muted-foreground">{r.scraper}</td>
                 <td className="px-2 py-1.5 text-muted-foreground">{fmtTime(r.scraped_at)}</td>
                 <td className="px-2 py-1.5 text-right">
-                  <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-[11px] cursor-pointer" disabled={opening === r.id} onClick={() => view(r)} title="Read the stored markdown">
+                  <Button variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs cursor-pointer" disabled={opening === r.id} onClick={() => view(r)} title="Read the stored markdown">
                     {opening === r.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileText className="h-3 w-3" />}
                     View
                   </Button>
@@ -138,7 +138,7 @@ export function SnapshotsTab({ jobId }: Readonly<{ jobId: string }>) {
             <SheetTitle className="truncate text-sm">{open?.url}</SheetTitle>
             <SheetDescription>Stored snapshot · fetched {fmtTime(open?.scraped_at)} · {open?.markdown.length.toLocaleString()} chars. This is exactly what the model is shown.</SheetDescription>
           </SheetHeader>
-          <pre className="mx-4 mb-4 whitespace-pre-wrap break-words rounded-md border border-border bg-muted/30 p-3 font-mono text-[11px] leading-relaxed">{open?.markdown}</pre>
+          <pre className="mx-4 mb-4 whitespace-pre-wrap break-words rounded-md border border-border bg-muted/30 p-3 font-mono text-xs leading-relaxed">{open?.markdown}</pre>
         </SheetContent>
       </Sheet>
     </div>

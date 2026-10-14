@@ -1,19 +1,22 @@
-import { CircleHelp } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 
 export function NeedAHandCard() {
   return (
-    <Card>
-      <CardContent className="flex items-start gap-3 p-4">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-600 ring-1 ring-emerald-500/15 dark:text-emerald-400">
-          <CircleHelp className="h-4 w-4" />
-        </span>
+    <Card className="bg-accent-light">
+      <CardContent className="flex items-start gap-3">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/rail/help.webp" alt="" aria-hidden className="size-10 shrink-0 object-contain" />
         <div className="min-w-0">
-          <p className="text-sm font-medium">Need a hand?</p>
-          <p className="text-xs text-muted-foreground">Book a free 20-minute onboarding call with our team.</p>
-          <a href="mailto:support@globalyapp.com" className="mt-1 inline-block text-xs font-medium text-primary hover:underline">
-            Book a call →
-          </a>
+          <p className="font-heading text-base font-medium tracking-[-0.02em]">Rather be walked through it?</p>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Book 20 minutes with our onboarding team — we&apos;ll set it up with you.
+          </p>
+          {/* A bordered control, as the boards draw it — the aside's one offer, not a buried link.
+              A mailto, so it asks for a time rather than claiming to be a calendar. */}
+          <Button variant="outline" size="sm" className="mt-2.5 bg-card" render={<a href="mailto:support@globalyai.com" />}>
+            Ask for a time
+          </Button>
         </div>
       </CardContent>
     </Card>

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { CircleAlert } from "lucide-react";
+import { Alert } from "@/components/ui/alert";
 import { useAppSelector } from "@/lib/hooks";
 
 /**
@@ -9,7 +10,7 @@ import { useAppSelector } from "@/lib/hooks";
  * backend-computed percentage off the profile slice — the same figure the enquiry
  * gate uses, so the two screens can't disagree. PersonalShell already fetched it.
  *
- * mx-4 mb-2 because the chat column is full-bleed — same self-layout as CreditBanner.
+ * mx-4 mt-2 because the chat column is full-bleed — same self-layout as CreditBanner.
  */
 export function ProfileCompletionBanner() {
   const completion = useAppSelector((s) => s.profile.profile?.completion?.percentage ?? null);
@@ -27,15 +28,15 @@ export function ProfileCompletionBanner() {
   if (completion >= 100) return null;
 
   return (
-    <div className="mx-4 mb-2 flex items-start gap-3 rounded-lg border border-amber-300 bg-amber-50 px-4 py-3 text-sm dark:border-amber-900/60 dark:bg-amber-950/30">
-      <CircleAlert className="mt-0.5 size-4 shrink-0 text-amber-600 dark:text-amber-400" aria-hidden />
-      <p className="text-amber-900 dark:text-amber-200">
+    <Alert variant="warning" role="status" className="mx-4 mt-2 w-auto">
+      <CircleAlert aria-hidden />
+      <p>
         Your profile is <span className="font-semibold">{completion}%</span> complete. Finish it so
         recommendations match your grades, budget and destination.{" "}
         <Link href="/personal/profile" className="font-semibold underline underline-offset-2">
           Complete now →
         </Link>
       </p>
-    </div>
+    </Alert>
   );
 }

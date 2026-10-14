@@ -29,8 +29,8 @@ export const SHORTCUTS: ReadonlyArray<{
     label: "Starred",
     subtitle: "Your bookmarked messages",
     icon: Bookmark,
-    iconBg: "bg-blue-500/10",
-    iconColor: "text-blue-500",
+    iconBg: "bg-info/10",
+    iconColor: "text-info",
   },
   {
     type: "drafts",
@@ -56,7 +56,8 @@ export const MAX_ATTACHMENTS = 5;
  * conversations) — V2 repeats this exact string in all three places.
  */
 export const SIDEBAR_ROW = "flex items-center gap-2.5 w-full px-2 py-1.5 rounded-md text-sm transition-colors";
-export const SIDEBAR_ROW_ACTIVE = "bg-primary/10 text-primary font-medium border-l-2 border-primary";
+// Inset shadow rather than a border, so the active row does not shift its contents by 2px.
+export const SIDEBAR_ROW_ACTIVE = "bg-primary/10 text-primary font-medium shadow-[inset_2px_0_0_var(--primary)]";
 export const SIDEBAR_ROW_IDLE = "hover:bg-muted/60 text-foreground/80";
 /** V2's section label: `SHORTCUTS`, `FAVORITES`. */
-export const SIDEBAR_LABEL = "text-[11px] font-semibold text-muted-foreground uppercase tracking-wider";
+export const SIDEBAR_LABEL = "text-xs font-semibold text-muted-foreground uppercase tracking-wider";

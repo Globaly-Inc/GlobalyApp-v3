@@ -151,13 +151,16 @@ async function mintSelfServiceJob(institutionName: string, subdomain: string): P
 }
 
 /** Institution onboarding — inserts into institutions table, provisions tenant schema (members, member_invitations). */
+/** institutions.email is unique, and one owner may hold several institutions (a second signup, an
+ * accepted invite, a branch): the given address, else the owner's, while no other institution has it —
+ * otherwise none, rather than failing the insert. */
+const freeInstitutionEmail = async (email: string | null | undefined) =>
+  email && !(await promoteRepo.institutionEmailTaken(email, null)) ? email : null;
+
 export async function onboardInstitution(userId: number, data: OnboardingInstitutionInput) {
   const user = await repo.findByIdFull(userId);
   if (!user) throw new NotFoundError("User not found");
 
-  if (!data.email && (await repo.ownsAnyOrg(userId))) {
-    throw new BadRequestError("Institution email is required when you already have a business or institution");
-  }
 
   // Auto-generate subdomain from institution name, unique across businesses + institutions.
   const subdomain = await generateSubdomain(data.institution_name, async (candidate) => {
@@ -176,7 +179,7 @@ export async function onboardInstitution(userId: number, data: OnboardingInstitu
     source_job_id: sourceJobId,
     first_name: user.first_name,
     last_name: user.last_name,
-    email: data.email ?? user.email,
+    email: await freeInstitutionEmail(data.email ?? user.email),
     phone: data.phone,
     subdomain,
     institution_name: data.institution_name,
@@ -227,7 +230,7 @@ export async function onboardInstitution(userId: number, data: OnboardingInstitu
   createSystemPost({
     authorId: userId,
     institutionId: Number(institution.id),
-    content: `**@all** 🎉 We've just joined **GlobalyApp**! Excited to be part of the community.`,
+    content: `**@all** 🎉 We've just joined **GlobalyAI**! Excited to be part of the community.`,
     // Always the landscape banner, never the institution's own logo: a square logo forced into
     // the feed's wide image box gets center-cropped into an unrecognisable zoom.
     media: [

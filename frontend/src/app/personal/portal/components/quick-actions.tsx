@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { ChevronRight } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { QUICK_ACTIONS } from "../const";
 
@@ -9,20 +8,19 @@ export function QuickActions() {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="text-sm">Quick actions</CardTitle>
+        <CardTitle>Quick actions</CardTitle>
       </CardHeader>
-      <CardContent className="space-y-1 pb-4">
+      <CardContent className="grid grid-cols-2 gap-2">
         {QUICK_ACTIONS.map((action) => (
           <Link
             key={action.label}
             href={action.href}
-            className="flex items-center gap-2.5 rounded-md px-2 py-2 text-sm hover:bg-muted"
+            className="flex min-w-0 flex-col items-start gap-2 rounded-lg border border-border bg-card p-3 text-sm font-medium transition-colors hover:bg-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <span className={`inline-flex rounded-md p-1.5 ${action.tint}`}>
-              <action.icon className="h-3.5 w-3.5" />
+              <action.icon className="size-4" aria-hidden />
             </span>
-            <span className="flex-1">{action.label}</span>
-            <ChevronRight className="h-4 w-4 text-muted-foreground/60" />
+            <span className="leading-snug">{action.label}</span>
           </Link>
         ))}
       </CardContent>

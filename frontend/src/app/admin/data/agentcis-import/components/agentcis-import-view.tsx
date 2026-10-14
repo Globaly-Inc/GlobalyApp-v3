@@ -1,7 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { DatabaseZap } from "lucide-react";
 import { toast } from "sonner";
+import { PageBody } from "@/components/ui/page-body";
+import { PageHeader } from "@/components/ui/page-header";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { MAX_SELECTION } from "../const";
 import {
@@ -102,13 +105,11 @@ export function AgentcisImportView() {
   }, [dispatch]);
 
   return (
-    <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">AgentCIS Import</h1>
-        <p className="text-muted-foreground mt-1">
-          Search AgentCIS and import institutions into the extraction queue.
-        </p>
-      </div>
+    <PageBody>
+      <PageHeader
+        title={<><DatabaseZap /> AgentCIS Import</>}
+        subtitle="Search AgentCIS and import institutions into the extraction queue."
+      />
 
       <AgentcisSearchCard
         query={query}
@@ -143,6 +144,6 @@ export function AgentcisImportView() {
       />
 
       <AgentcisJobErrorDialog job={errorJob} onOpenChange={(open) => !open && setErrorJob(null)} />
-    </div>
+    </PageBody>
   );
 }
