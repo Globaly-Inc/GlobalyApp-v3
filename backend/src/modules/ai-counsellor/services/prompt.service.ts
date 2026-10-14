@@ -152,7 +152,7 @@ export function buildSystemPrompt(opts: {
     );
     sections.push(
       `Only recommend courses from ${name}. If the user asks about courses from other institutions, ` +
-      `politely explain that you can only help with ${name}'s offerings and suggest they visit web.globalyai.com for broader search.`,
+      `politely explain that you can only help with ${name}'s offerings and suggest they visit app.globalyai.com for broader search.`,
     );
     // The visitor is already on the institution's own website. Without this the model wrote
     // like the platform chat does — "a master's program offered by AIT in Thailand" — introducing

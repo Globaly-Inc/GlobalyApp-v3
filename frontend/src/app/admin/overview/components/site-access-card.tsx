@@ -8,7 +8,7 @@ import { Card, CardAction, CardContent, CardHeader, CardTitle } from "@/componen
 import { Switch } from "@/components/ui/switch";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { regenerateAccessCode, toggleSiteLock } from "../store/overview-slice";
-import { WEB_ORIGIN } from "@/lib/hosts";
+import { APP_ORIGIN } from "@/lib/hosts";
 
 function copy(text: string, message: string) {
   navigator.clipboard.writeText(text);
@@ -23,7 +23,7 @@ export function SiteAccessCard() {
 
   const inviteLink =
     typeof window !== "undefined" && settings.access_code
-      ? `${WEB_ORIGIN || window.location.origin}/?access=${settings.access_code}`
+      ? `${APP_ORIGIN || window.location.origin}/?access=${settings.access_code}`
       : "";
 
   return (

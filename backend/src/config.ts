@@ -28,7 +28,7 @@ const envSchema = z.object({
   PORT: z.coerce.number().default(3000),
   API_URL: z.string().optional(),
   APP_URL: z.string().default("http://localhost:3000"),
-  // Comma-separated browser origins, e.g. "https://web.globalyai.com,https://app.globalyai.com".
+  // Comma-separated browser origins, e.g. "https://app.globalyai.com".
   // Use CORS_ORIGIN_LIST below, never this raw string, as a URL or a cors `origin`.
   CORS_ORIGINS: z.string().default("http://localhost:3001"),
   /**

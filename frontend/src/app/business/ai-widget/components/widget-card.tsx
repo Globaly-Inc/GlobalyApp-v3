@@ -11,14 +11,14 @@ import { Button, buttonVariants } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import type { EmbedConfig } from "../apis/types";
-import { WEB_ORIGIN } from "@/lib/hosts";
+import { APP_ORIGIN } from "@/lib/hosts";
 
 // One script tag, not a raw iframe: public/embed.js renders the floating orb and only
 // loads the chat panel once a visitor opens it, so the host page doesn't have to find room
 // for a 420x640 block — or pay for a session nobody asked for.
 export function embedSnippet(embedKey: string): string {
   // The widget is served from the public host; the portal runs on app.
-  const origin = WEB_ORIGIN || (typeof window !== "undefined" ? window.location.origin : "");
+  const origin = APP_ORIGIN || (typeof window !== "undefined" ? window.location.origin : "");
   return `<script src="${origin}/embed.js" data-key="${embedKey}" async></script>`;
 }
 

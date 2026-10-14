@@ -4,7 +4,7 @@
 /**
  * The access token lives here, per host. The refresh token doesn't: the API keeps it in an
  * httpOnly cookie on its own host (backend modules/auth/refresh-cookie.ts), which is what lets
- * web.globalyai.com and app.globalyai.com share one sign-in without any script able to read
+ * the frontend and the API share one sign-in without any script able to read
  * or plant it. A refresh token still in localStorage is a pre-cookie session: it is sent once,
  * the API answers with the cookie, and saveTokens drops the local copy.
  */

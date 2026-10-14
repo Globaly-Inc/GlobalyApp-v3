@@ -13,7 +13,7 @@ const pros = [
 
 export function VerifiedProfessionalsMockup() {
   return (
-    <MockupFrame label="web.globalyai.com / professionals">
+    <MockupFrame label="app.globalyai.com / professionals">
       <div className="space-y-2">
         {pros.map((p, i) => (
           <MockupCard

@@ -57,6 +57,6 @@ export function buildReferralLink(code: string): string {
         "generated here may point at the wrong environment.",
     );
   }
-  const host = (configured ?? "https://web.globalyai.com").replace(/\/+$/, "");
+  const host = (configured ?? "https://app.globalyai.com").replace(/\/+$/, "");
   return `${host}/join?ref=${encodeURIComponent(code)}`;
 }
