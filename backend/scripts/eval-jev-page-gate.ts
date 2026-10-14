@@ -26,35 +26,61 @@ const DAYS = arg("days", 60);
 const STORED = process.argv.includes("--stored");
 
 if (STORED) {
+  // SURVIVORSHIP: a page the live gate SKIPPED was never extracted, so it has no courses_found and
+  // cannot appear here. Every row below therefore scored at or above the live threshold, and a
+  // candidate threshold BELOW it has no evidence at all in this data — reporting "0 productive
+  // lost" there would be an artefact of who got measured, not a finding. Those rows are printed as
+  // unknown, and the skipped pages are counted separately so the gate's current saving is visible.
   const { rows } = await masterKnex.raw(
-    `SELECT (extracted_data->'jev_gate'->>'p')::float AS p,
-            (extracted_data->>'courses_found')::int  AS found,
-            extracted_data->'jev_gate'->>'reason'    AS reason,
+    `SELECT (extracted_data->'jev_gate'->>'p')::float        AS p,
+            (extracted_data->'jev_gate'->>'threshold')::float AS threshold,
+            extracted_data->'jev_gate'->>'reason'             AS reason,
+            (extracted_data->>'courses_found')::int           AS found,
             url
      FROM superadmin.extraction_queue
      WHERE status = 'completed' AND (extracted_data->>'courses_found') IS NOT NULL`);
-  const judged = (rows as { p: number | null; found: number; reason: string; url: string }[]);
+  const { rows: skippedRows } = await masterKnex.raw(
+    `SELECT (extracted_data->>'p')::float AS p, url
+     FROM superadmin.extraction_queue
+     WHERE status = 'completed' AND extracted_data->>'reason' = 'jev_not_programme'`);
+
+  type Judged = { p: number | null; threshold: number | null; reason: string; found: number; url: string };
+  const judged = rows as Judged[];
   const withP = judged.filter((r) => r.p != null);
   const byReason = new Map<string, number>();
   for (const r of judged) byReason.set(r.reason ?? "(not recorded)", (byReason.get(r.reason ?? "(not recorded)") ?? 0) + 1);
-  console.log(`${judged.length} completed pages with a known outcome; ${withP.length} carry a stored gate probability`);
+  console.log(`${judged.length} extracted pages with a known outcome; ${withP.length} carry a stored gate probability`);
   console.log(`why the rest were never judged: ${[...byReason].map(([k, v]) => `${k}=${v}`).join(", ")}`);
+  console.log(`${(skippedRows as { p: number }[]).length} further pages were SKIPPED by the live gate — no outcome exists for them, by construction`);
   if (!withP.length) {
     console.log("\nNothing scored yet — this fills in as jobs run on the recording build. Use the live mode meanwhile.");
     await masterKnex.destroy();
     process.exit(0);
   }
+
   const pos = withP.filter((r) => r.found > 0);
   const neg = withP.filter((r) => r.found === 0);
-  console.log(`\n${pos.length} productive pages, ${neg.length} zero-yield pages — free, from the pipeline's own record`);
-  console.log("threshold | zero-yield skipped | productive lost | courses lost");
+  // The floor this data can speak below: the lowest threshold any judged page was measured against.
+  const liveFloor = Math.min(...withP.map((r) => r.threshold ?? 0));
+  const lowestP = Math.min(...withP.map((r) => r.p!));
+  console.log(`\n${pos.length} productive, ${neg.length} zero-yield — free, from the pipeline's own record`);
+  console.log(`these pages ran with the gate at ${liveFloor}; the lowest probability among them is ${lowestP.toFixed(3)}`);
+  console.log("\nRAISING the threshold — measured, these pages were all extracted and their yield is known:");
+  console.log("threshold | zero-yield also skipped | productive lost | courses lost");
   for (const t of [0.02, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5]) {
+    if (t <= lowestP) {
+      console.log(`${t.toFixed(2).padStart(9)} | ${"UNKNOWN — no extracted page scored this low; nothing here can price it".padStart(18)}`);
+      continue;
+    }
     const saved = neg.filter((r) => r.p! < t).length;
     const lost = pos.filter((r) => r.p! < t);
     const pct = (n: number, d: number) => (d ? `${((100 * n) / d).toFixed(1)}%` : "-");
-    console.log(`${t.toFixed(2).padStart(9)} | ${`${saved} (${pct(saved, neg.length)})`.padStart(18)} | ${`${lost.length} (${pct(lost.length, pos.length)})`.padStart(15)} | ${lost.reduce((a, r) => a + r.found, 0)}`);
+    console.log(`${t.toFixed(2).padStart(9)} | ${`${saved} (${pct(saved, neg.length)})`.padStart(23)} | ${`${lost.length} (${pct(lost.length, pos.length)})`.padStart(15)} | ${lost.reduce((a, r) => a + r.found, 0)}`);
   }
-  console.log("\nLowest-scoring productive pages (what a threshold would cost):");
+  console.log("\nLOWERING it below " + liveFloor + " cannot be judged from this table: those pages were skipped,");
+  console.log("never extracted, so nothing recorded what they would have yielded. Run the live mode");
+  console.log("(no --stored) on an independently extracted sample to price a lower threshold.");
+  console.log("\nLowest-scoring productive pages (what raising the threshold would cost):");
   for (const r of pos.sort((a, b) => a.p! - b.p!).slice(0, 10)) console.log(`  p=${r.p!.toFixed(3)}  courses=${r.found}  ${r.url}`);
   await masterKnex.destroy();
   process.exit(0);

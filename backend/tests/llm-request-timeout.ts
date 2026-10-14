@@ -111,5 +111,24 @@ for (const msg of [
   eq(/retry_after_ms=/.test(plain), false, "no provider delay → no retry_after_ms token invented");
 }
 
+
+// ── The gap must survive CONCURRENCY ──────────────────────────────────────────
+// url_classify now runs four model batches at once. A read-sleep-write throttle paces sequential
+// callers and nothing else: all four read the same lastLlmCall, compute the same wait, sleep
+// together and fire together — which is also how an operator's higher LLM_THROTTLE_MS for a
+// rate-limited key gets silently ignored. Same defect, same fix, as scraper.nextHostSlot.
+{
+  const GAP = Number(process.env.LLM_THROTTLE_MS) || 500;
+  const sent: number[] = [];
+  const started = Date.now();
+  await Promise.all([1, 2, 3, 4].map(() => withRetry(async () => { sent.push(Date.now()); return null; })));
+  sent.sort((a, b) => a - b);
+  const gaps = sent.slice(1).map((t, i) => t - sent[i]);
+  const tooClose = gaps.filter((g) => g < GAP * 0.9);
+  eq(sent.length, 4, "four concurrent calls all ran");
+  eq(tooClose.length, 0, `concurrent calls are spaced by LLM_THROTTLE_MS (gaps: ${gaps.join(", ")}ms, floor ${GAP}ms)`);
+  eq(Date.now() - started >= GAP * 3 * 0.9, true, "four calls take at least three gaps end to end");
+}
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

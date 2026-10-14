@@ -150,10 +150,20 @@ export async function withRetry<T>(fn: () => Promise<T>): Promise<T> {
   const deadline = Date.now() + LLM_TOTAL_BUDGET_MS;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     try {
+      // RESERVE the slot before sleeping, never record it after waking. Read-sleep-write paces
+      // sequential callers and does nothing for concurrent ones: four of them read the same
+      // lastLlmCall, compute the same wait, sleep together and fire together — a thundering herd
+      // wearing a throttle. Exactly the defect already fixed for host pacing (scraper.nextHostSlot,
+      // which has the same two lines and the same comment); it was latent here only while every
+      // caller was sequential, and url_classify's pool made it live. Reserving gives caller N the
+      // slot `last + N*gap`, so concurrency becomes a queue.
       const now = Date.now();
-      const wait = MIN_LLM_GAP_MS - (now - lastLlmCall);
-      if (wait > 0) await new Promise((r) => setTimeout(r, wait));
-      lastLlmCall = Date.now();
+      const slot = Math.max(now, lastLlmCall + MIN_LLM_GAP_MS);
+      lastLlmCall = slot;
+      // ponytail: per PROCESS, like the host gap was before 20261013_001. Gemini's limit is per
+      // KEY, so N workers still collectively exceed MIN_LLM_GAP_MS; move this to a slot table if
+      // a real 429 storm ever shows up rather than guessing at it now.
+      if (slot > now) await new Promise((r) => setTimeout(r, slot - now));
       return await fn();
     } catch (err) {
       if (!isTransient(err)) throw err;

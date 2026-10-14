@@ -1422,6 +1422,23 @@ threshold | zero-yield skipped | productive lost | courses lost
   is extracted once. Hosts recur, institutions do not — which is why learning landed on host pace
   (above) and on recorded decisions here, not on content.
 
+**Two review findings on the above, both real** (2026-10-14):
+- **The Gemini throttle was read-sleep-write.** `withRetry` read `lastLlmCall`, slept, then stamped
+  it — so four concurrent callers read the same value, slept the same amount and fired together,
+  and an operator's raised `LLM_THROTTLE_MS` for a limited key was silently ignored. The identical
+  defect `scraper.nextHostSlot` already carries a comment about; latent here only while every
+  caller was sequential, and `url_classify`'s pool made it live. The slot is RESERVED before the
+  sleep now. Measured red: gaps of **500, 0, 0 ms** across four calls (two bursts, not four
+  spaced requests) — `test:llm-request-timeout`, final section. ponytail: still per PROCESS while
+  Gemini's limit is per KEY.
+- **`--stored` could not price a LOWER threshold, and said so with a zero.** A page the live gate
+  skipped is never extracted and has no `courses_found`, so every stored row scored at or above
+  the live threshold — making "0 productive lost" at 0.02/0.05 an artefact of who got measured.
+  Thresholds at or below the lowest measured probability now print UNKNOWN, the skipped pages are
+  counted separately (they have no outcome by construction), and the table is labelled as the cost
+  of RAISING the threshold on pages that were extracted. Verified by seeding four real dev rows
+  with known probabilities, reading the report, and restoring them.
+
 **Workers load code once — restart the page and step workers after deploying this.**
 
 ## Stale queue-item reclaim (2026-09-15)
