@@ -147,8 +147,29 @@ const norm = (text: string) => text.toLowerCase().replace(/[^a-z0-9]+/g, " ");
  * the signup gate. Discovery there would spend that single reply asking a question they are not
  * allowed to answer, and they would never see a course (Greptile).
  */
-export function isDiscoveryTurn(hasEmbed: boolean, historyLength: number): boolean {
-  return hasEmbed && historyLength === 0;
+export function isDiscoveryTurn(hasEmbed: boolean, historyLength: number, asked = ""): boolean {
+  if (!hasEmbed || historyLength !== 0) return false;
+  // What they OPENED with decides it. Discovery exists to stop a course dump, so a visitor who
+  // asked where the campus is — or who already said what level they want — has nothing left for
+  // the level question to do: it would ignore their question and interrogate them first.
+  return !asksAnswerableTopic(asked) && !statedLevel(asked);
+}
+
+/**
+ * Did they open with something we can simply ANSWER, rather than a course hunt?
+ *
+ * A denylist and not a "is this about courses" allowlist on purpose: a course hunt is shapeless
+ * ("hi", "what do you offer?", "I want to study abroad") and cannot be matched, while the handful
+ * of things a visitor asks a widget INSTEAD of shopping — where you are, what it costs, how to
+ * apply — is a short, nameable list. Anything unmatched still gets discovery, which is the safe
+ * side of the line: the worst case is the question it was already asking.
+ *
+ * ponytail: plain word match, no intent model. A mixed opener ("what courses, and how much?") is
+ * read as the concrete question and skips discovery — they asked something answerable, so answer it.
+ */
+export function asksAnswerableTopic(asked: string): boolean {
+  return /\b(where|located|location|campus|campuses|branch|branches|office|offices|address|contact|phone|email|fee|fees|cost|costs|price|prices|tuition|scholarship|scholarships|funding|apply|application|admission|admissions|enrol|enroll|deadline|deadlines|intake|intakes|visa|accommodation|hostel|housing|ranking|ranked|accredited|accreditation)\b/
+    .test(norm(asked));
 }
 
 /** The study level the visitor just named, in their own words, or null if they named none.
@@ -377,13 +398,18 @@ export async function guestRoutes(app: FastifyInstance) {
       // quick_replies block, and the messaging channels strip blocks before sending — on WhatsApp
       // the visitor would get a reply with the question missing. This is the widget's flow, so the
       // widget's own route decides it, and the shared helper simply honours what it is given.
-      const discoveryTurn = isDiscoveryTurn(!!embed, history.length);
+      const discoveryTurn = isDiscoveryTurn(!!embed, history.length, asked);
       const catalogue = embed?.jobIds?.length && history.length <= 2
         ? await visitorService.attempt("catalogueShape", () => knowledgeRepo.listCatalogueShape(embed.jobIds!)) ?? []
         : [];
       // Their stated level is their own words — the prompt matches it to the catalogue's free-text
       // levels through the same synonym table course search uses.
-      const streamTurn = !discoveryTurn && history.length === 2 && !!embed && !namesSubject(asked, catalogue)
+      // `history.length <= 2` is their first or second message: an opener that already named the
+      // level skipped discovery, so the subject question is the one still worth asking and it can
+      // land a turn early. An answerable question outranks both — "how much is a master's?" wants
+      // the fee, not another question.
+      const streamTurn = !discoveryTurn && history.length <= 2 && !!embed
+        && !asksAnswerableTopic(asked) && !namesSubject(asked, catalogue)
         ? statedLevel(asked)
         : null;
 
@@ -404,6 +430,12 @@ export async function guestRoutes(app: FastifyInstance) {
       if (cards.length) writeEvent(reply, "cards", cards);
       if (chips.length) writeEvent(reply, "chips", chips);
       if (blocks.length) writeEvent(reply, "blocks", blocks);
+
+      // The reply itself is complete HERE. Everything below — the profile extraction and the
+      // conclusion judgement — is two more model calls whose only output is an optional card,
+      // and the widget locks its composer until the stream closes. Without this event the
+      // visitor sits in front of a finished answer and a dead input box for both of them.
+      writeEvent(reply, "reply-done", {});
 
       // Anything the visitor told us about themselves this turn. Awaited rather than fired and
       // forgotten: an orphaned promise would outlive the request and write through a tenant

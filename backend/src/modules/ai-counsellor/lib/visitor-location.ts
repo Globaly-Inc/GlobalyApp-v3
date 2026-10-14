@@ -239,6 +239,26 @@ export interface MapLocation {
 /** Longer than this and the chips wrap into a wall in a 380px panel. */
 const MAX_PINS = 6;
 
+/**
+ * Did the VISITOR ask about a place or how to reach us? The map's first gate.
+ *
+ * Owner decision, 2026-10-14: the reply alone was the trigger, and a counsellor names the campus
+ * city in almost every answer ("our Bangkok campus runs it in January"), so a map ended up under
+ * replies about intakes and fees. Showing it there is noise — the visitor asked about a course.
+ *
+ * The two gates do different jobs and both are needed: this one says a map belongs on this turn
+ * at all, `mapLocationsFor` says WHICH campuses, from what the reply actually named. A location
+ * question whose answer names no pinnable campus still shows no map.
+ *
+ * Contact words are in deliberately. The widget may give no phone, email or address (the privacy
+ * rule in prompt.service), so a map of where we are is the most useful thing "how do I contact
+ * you?" can be answered with.
+ */
+export function asksAboutPlace(asked: string): boolean {
+  return /\b(where|located|location|locations|campus|campuses|branch|branches|office|offices|address|directions|map|visit|visiting|nearest|near me|contact|phone|email|reach you|get in touch)\b/
+    .test(normalizePlace(asked));
+}
+
 /** Words that appear in a campus name without naming a place. "Our main campus" must not pin every
  *  branch called "Main Campus", and "the university" must not pin "University Campus". */
 const GENERIC_PLACE_WORDS = new Set([
@@ -270,6 +290,17 @@ const GENERIC_PLACE_WORDS = new Set([
  */
 export function mapLocationsFor(reply: string, branches: readonly BranchLike[]): MapLocation[] {
   const haystack = ` ${normalizePlace(reply)} `;
+  // The reply's words, plus every adjacent pair and triple joined up. One place is routinely
+  // spelled two ways — the row says "Pathumthani", the counsellor writes "Pathum Thani" — and on
+  // the live AIT widget that dropped the Thai campus off a map that pinned both Vietnamese ones.
+  // Joining adjacent TOKENS rather than squashing the whole string is what keeps word boundaries
+  // intact: "Hanoian" still does not contain the city Hanoi.
+  const replyWords = normalizePlace(reply).split(" ").filter(Boolean);
+  const tokens = new Set(replyWords);
+  for (let i = 0; i + 1 < replyWords.length; i++) {
+    tokens.add(replyWords[i] + replyWords[i + 1]);
+    if (i + 2 < replyWords.length) tokens.add(replyWords[i] + replyWords[i + 1] + replyWords[i + 2]);
+  }
   /** The whole phrase, or any distinctive word of it — the same test namesSubject applies to
    *  subject areas. Whole-phrase-only was too strict to ever fire: a counsellor writes "our Hanoi
    *  campus", while the row is named "Vietnam (Hanoi) Campus", and those never matched. */
@@ -282,7 +313,9 @@ export function mapLocationsFor(reply: string, branches: readonly BranchLike[]):
     const words = text.split(" ").filter((w) => w.length >= 4 && !GENERIC_PLACE_WORDS.has(w));
     if (!words.length) return false;
     if (haystack.includes(` ${text} `)) return true;
-    return words.some((w) => haystack.includes(` ${w} `));
+    // Spacing differs on one side or the other: compare both with the spaces taken out.
+    if (tokens.has(text.replace(/ /g, ""))) return true;
+    return words.some((w) => tokens.has(w));
   };
   const pins: MapLocation[] = [];
   // One pin per PLACE, not per row. An extracted catalogue routinely holds the same address three

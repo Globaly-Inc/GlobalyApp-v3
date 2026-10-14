@@ -19,6 +19,20 @@ assert.equal(isDiscoveryTurn(true, 0), true, "a widget's first turn is discovery
 assert.equal(isDiscoveryTurn(true, 2), false, "a widget's later turns are not");
 assert.equal(isDiscoveryTurn(false, 0), false, "a plain guest's single trial reply keeps its courses");
 
+// ── An opener we can simply ANSWER is not a discovery turn ──
+// The complaint: "where are your campuses?" came back with study-level buttons. Discovery exists
+// to stop a COURSE DUMP, and a campus question was never going to get one — so the level question
+// just ignores what they asked and interrogates them first.
+assert.equal(isDiscoveryTurn(true, 0, "where are your campuses?"), false, "a campus question is answered, not deflected");
+assert.equal(isDiscoveryTurn(true, 0, "how much are the fees?"), false, "so is a fee question");
+assert.equal(isDiscoveryTurn(true, 0, "how do I apply?"), false, "and an admissions question");
+// A level they already named is an answered question too — turn 2's subject question is the one
+// left, and the route hands it straight to the stream turn.
+assert.equal(isDiscoveryTurn(true, 0, "I want to do a master's"), false, "a stated level needs no level question");
+// The openers discovery was built for still get it.
+assert.equal(isDiscoveryTurn(true, 0, "what courses do you offer?"), true, "a course hunt still gets discovery");
+assert.equal(isDiscoveryTurn(true, 0, "hi"), true, "and so does a bare greeting");
+
 // ── statedLevel: their own words, in any of the shapes a quick_replies value arrives as ──
 for (const [said, expected] of [
   ["I am looking at master's programs", "Master's"],

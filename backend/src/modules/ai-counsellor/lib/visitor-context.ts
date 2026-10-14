@@ -126,15 +126,45 @@ export function visitorProfileContext(v: VisitorLike | null | undefined): Profil
  * behaviour those rules exist to prevent — if it was collected, the profile block above carries
  * it for eligibility purposes and that is enough.
  */
+/**
+ * Where this visitor is in their journey, for the prompt's STAGE block.
+ *
+ * That block has existed since phase 8 (exploring → widen the field; narrowing → compare two or
+ * three; applying → deadlines and documents; post_offer → visa and funding) but ONLY a platform
+ * session ever set it: there the model writes it through `update_student_context`. A widget
+ * visitor has no tool loop and no such call, so the one instruction that changes how directive
+ * the counsellor is never rendered for the public surfaces at all.
+ *
+ * Inferred from the turn instead, and from the turn FIRST: what they just asked is the only
+ * signal that moves. Someone with a stored subject who starts asking about deadlines has moved
+ * on, and "narrowing" would keep comparing courses at them.
+ *
+ * ponytail: word match, no classifier. A wrong stage costs one reply's posture, never an answer —
+ * every other rule in the prompt still applies. Upgrade to the extractor if it visibly misreads.
+ */
+function stageFor(v: VisitorLike, asked: string): CounsellingContext["stage"] {
+  const text = ` ${asked.toLowerCase().replace(/[^a-z0-9]+/g, " ")} `;
+  // Checked before `applying`: an offer message usually names the application too ("I applied and
+  // got an offer"), and the later stage is the true one.
+  if (/\b(offer letter|got an offer|have an offer|my offer|accepted me|been accepted|coe|visa application|enrolled)\b/.test(text)) return "post_offer";
+  if (/\b(apply|applying|application|applications|admission|admissions|enrol|enroll|deadline|deadlines|document|documents|transcript|transcripts|sop|statement of purpose|entry requirement|entry requirements)\b/.test(text)) return "applying";
+  // A subject on file is the narrowing signal: they are past "what is out there".
+  return v.study_preference ? "narrowing" : "exploring";
+}
+
 export function visitorCounsellingContext(
   v: VisitorLike | null | undefined,
   /** The institution's custom fields. A subject it has deleted is not read back. */
   custom: readonly CustomField[] = [],
   /** Their answers, from ai_widget_visitor_custom_values — keyed by field_key. */
   values: Readonly<Record<string, string>> = {},
+  /** This turn's message. Absent — a caller that has no turn — means no stage is inferred, which
+   *  keeps a context with nothing else in it null, as before. */
+  asked = "",
 ): CounsellingContext | null {
   if (!v) return null;
   const ctx: CounsellingContext = {};
+  if (asked) ctx.stage = stageFor(v, asked);
   if (v.study_preference) ctx.interests = [v.study_preference];
   const notes: string[] = [];
   if (v.age) notes.push(`age ${v.age}`);

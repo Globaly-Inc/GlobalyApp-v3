@@ -38,10 +38,18 @@ export async function generateText(opts: {
   prompt: string;
   maxTokens?: number;
   temperature?: number;
+  /**
+   * "lite" routes the call to GEMINI_MODEL_LITE — same opt-out as extractJson's tier in the
+   * data-extraction llm-client: set GEMINI_MODEL_LITE to GEMINI_MODEL's value and every lite
+   * caller is back on the full model without a code change.
+   *
+   * For a small fixed classification sitting in front of a visitor's reply, not for prose.
+   */
+  tier?: "lite";
 }): Promise<string> {
   try {
     const model = getClient().getGenerativeModel({
-      model: config.GEMINI_MODEL,
+      model: opts.tier === "lite" && config.GEMINI_MODEL_LITE ? config.GEMINI_MODEL_LITE : config.GEMINI_MODEL,
       systemInstruction: opts.system,
       generationConfig: {
         maxOutputTokens: opts.maxTokens ?? 700,

@@ -19,6 +19,7 @@
     "site-index:backfill": "node --import tsx scripts/site-index-backfill.ts",
     "agents:legacy-ids": "node --import tsx scripts/count-legacy-agent-ids.ts",
     "branches:check": "node --import tsx scripts/check-widget-branches.ts",
+    "handover:check": "node --import tsx scripts/check-handover-judge.ts",
     "fees:normalise": "node --import tsx scripts/normalise-course-fees.ts",
     "institutions:backfill-jobs": "node --import tsx scripts/backfill-institution-jobs.ts",
     "institutions:backfill-category": "node --import tsx scripts/backfill-institution-category.ts",

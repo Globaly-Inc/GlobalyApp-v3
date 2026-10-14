@@ -9,7 +9,7 @@
  * Run: npm run test:widget-campus-map    Pure function, no DB, no network.
  */
 import assert from "node:assert/strict";
-import { mapLocationsFor } from "../src/modules/ai-counsellor/lib/visitor-location.js";
+import { mapLocationsFor, asksAboutPlace } from "../src/modules/ai-counsellor/lib/visitor-location.js";
 
 const BRANCHES = [
   { name: "AIT Main Campus", country: "Thailand", state: "Pathum Thani", city: "Bangkok",
@@ -94,6 +94,30 @@ assert.deepEqual(
   "a pinnable row is still not pinned until the reply names where it is",
 );
 
+// ── Spacing differs between the row and the reply ────────────────────────────
+// Live AIT, 2026-10-14: the row's city is "Pathumthani", the counsellor writes "Pathum Thani",
+// and the Thai campus silently dropped off a map that pinned both Vietnamese ones. One place
+// spelled two ways is still one place.
+const SPACED = [
+  { name: "ACECOMS, AIT", country: "Thailand", state: null, city: "Pathumthani", address: "58 Moo 9" },
+];
+assert.deepEqual(
+  mapLocationsFor("Our main campus is in Pathum Thani, Thailand.", SPACED).map((l) => l.label),
+  ["Pathumthani"],
+  "a row written solid still matches a reply that spaces the name",
+);
+assert.deepEqual(
+  mapLocationsFor("Our main campus is in Pathumthani, Thailand.",
+    [{ name: "Campus", country: "Thailand", state: null, city: "Pathum Thani", address: null }]).map((l) => l.label),
+  ["Pathum Thani"],
+  "and the same the other way round, when the ROW is the spaced one",
+);
+// The join is of adjacent WORDS, never of the whole string, so boundaries survive.
+assert.deepEqual(
+  mapLocationsFor("Our alumni work across Hanoian industry.", BRANCHES), [],
+  "joining words must not resurrect the substring match — 'Hanoian' is still not Hanoi",
+);
+
 // ── One pin per place, however many rows describe it ─────────────────────────
 // Extracted catalogues hold the same campus several times under different names.
 const DUPES = [
@@ -107,4 +131,27 @@ assert.deepEqual(
   "three rows for one address are one pin, not three identical chips",
 );
 
-console.log(`widget-campus-map: ok (${11} assertions)`);
+// ── The VISITOR has to have asked ────────────────────────────────────────────
+// Owner complaint, 2026-10-14: the map rode along on nearly every reply. The reply was the only
+// trigger, and a counsellor names the campus city constantly ("our Bangkok campus runs it in
+// January"), so a map about a course's intake dates was attached to an answer nobody asked a
+// location question in. The question is the gate now; the reply still decides WHICH campuses.
+for (const asked of [
+  "where are your campuses?",
+  "Where are you located?",
+  "how do I contact you?",
+  "what is your address",
+  "which campus is nearest to me?",
+  "can I visit your office?",
+]) assert.ok(asksAboutPlace(asked), `a place/contact question opens the map: ${asked}`);
+
+for (const asked of [
+  "what are the fees for the data science master's?",
+  "when does the January intake start?",
+  "do I need IELTS for this course?",
+  "tell me more about that program",
+  // The near-miss that matters: a COURSE question whose answer will certainly name the campus.
+  "what does the professional master's cover?",
+]) assert.ok(!asksAboutPlace(asked), `an ordinary question carries no map: ${asked}`);
+
+console.log(`widget-campus-map: ok (${25} assertions)`);

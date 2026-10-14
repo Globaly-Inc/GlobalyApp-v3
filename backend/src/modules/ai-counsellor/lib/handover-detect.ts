@@ -33,7 +33,15 @@ const SYSTEM = [
 export async function judgeWantsHuman(latestUserMessage: string): Promise<boolean> {
   if (!MIGHT_WANT_HUMAN.test(latestUserMessage)) return false;
   try {
-    const raw = await generateText({ system: SYSTEM, prompt: latestUserMessage.slice(0, 1000), maxTokens: 400, temperature: 0 });
+    // The one model call that blocks the reply — the visitor waits out this whole round trip
+    // before the counsellor starts writing, on every message the regex above lets through.
+    // `lite` keeps the decision and halves the wait: npm run handover:check scores the verdicts of
+    // both models over this prompt's own true/false cases — they agreed 12/12 while
+    // lite averaged 926ms against 1767ms.
+    //
+    // maxTokens is the thinking budget too (see profile-extract) — a rambling 1000-char message
+    // must not spend it all on thought and return an empty verdict, which reads as "no handover".
+    const raw = await generateText({ system: SYSTEM, prompt: latestUserMessage.slice(0, 1000), maxTokens: 8000, temperature: 0, tier: "lite" });
     const { value } = parseModelJson<{ wants_human?: unknown }>(raw);
     const wants = value?.wants_human === true;
     logger.debug("Handover judged", { wants });
