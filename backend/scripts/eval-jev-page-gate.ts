@@ -61,8 +61,11 @@ if (STORED) {
   const pos = withP.filter((r) => r.found > 0);
   const neg = withP.filter((r) => r.found === 0);
   // The floor this data can speak below: the lowest threshold any judged page was measured against.
-  const liveFloor = Math.min(...withP.map((r) => r.threshold ?? 0));
-  const lowestP = Math.min(...withP.map((r) => r.p!));
+  // reduce, not Math.min(...spread): this reads ALL completed history with no LIMIT and is meant
+  // to keep growing (one bu.edu run adds 10,007 queue rows), and a spread of that many arguments
+  // is a RangeError thrown before the table ever prints.
+  const liveFloor = withP.reduce((min, r) => Math.min(min, r.threshold ?? 0), Infinity);
+  const lowestP = withP.reduce((min, r) => Math.min(min, r.p!), Infinity);
   console.log(`\n${pos.length} productive, ${neg.length} zero-yield — free, from the pipeline's own record`);
   console.log(`these pages ran with the gate at ${liveFloor}; the lowest probability among them is ${lowestP.toFixed(3)}`);
   console.log("\nRAISING the threshold — measured, these pages were all extracted and their yield is known:");
