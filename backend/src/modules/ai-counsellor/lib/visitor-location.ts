@@ -223,3 +223,84 @@ export function renderLocationSection(location: VisitorLocation, countryName: st
       "approximate guess from their connection.",
   ].join("\n");
 }
+
+/** One pin the widget can show: a campus the reply actually mentioned. */
+export interface MapLocation {
+  /** Position in the branch list — the frontend only needs it to mark the selected pin. */
+  id: string;
+  name: string;
+  /** What the map resolves. City, state and country — the same `placeOf` the prompt section uses,
+   *  so the pin can never be more precise than the text already was. See the 2026-10-08 rule. */
+  query: string;
+  /** The campus chip above the map: the city alone, which is how a visitor names a campus. */
+  label: string;
+}
+
+/** Longer than this and the chips wrap into a wall in a 380px panel. */
+const MAX_PINS = 6;
+
+/** Words that appear in a campus name without naming a place. "Our main campus" must not pin every
+ *  branch called "Main Campus", and "the university" must not pin "University Campus". */
+const GENERIC_PLACE_WORDS = new Set([
+  "campus", "campuses", "centre", "center", "office", "branch", "main", "head", "city",
+  "university", "college", "institute", "school", "academy", "ward", "district", "area",
+  "north", "south", "east", "west", "central", "new", "old", "the", "and",
+]);
+
+/**
+ * Which campuses to pin, given the reply the model just wrote.
+ *
+ * Server-side and deterministic, the same way the `link` block is: the model never names a place
+ * and never writes a query, so it cannot pin a campus that is not in the branch table, and it
+ * cannot walk the address back in through a block.
+ *
+ * The trigger is simply whether the finished reply MENTIONS a campus — its name or its city, as
+ * whole words. A reply about fees names no city and gets no map; "our Bangkok and Hanoi campuses"
+ * gets both. No intent regex and no prompt budget: the reply itself is the signal, and the prompt
+ * prefix is already paid for on every turn.
+ *
+ * ponytail: a country word inside a campus name is distinctive enough to match, so "…in Hanoi,
+ * Vietnam" also pins a "Vietnam (Ho Chi Minh) Campus". Both pins are real campuses in the right
+ * places, so this is a breadth the prose does not promise rather than a wrong pin; narrow it by
+ * resolving country words out of names if it ever reads badly.
+ *
+ * A branch with no city or no country is skipped even when named. Google resolves whatever string
+ * it is handed, so a thin row would produce a confident pin in the wrong place — worse than no
+ * map, because it looks authoritative. Absent rather than wrong, the same rule branchInvite follows.
+ */
+export function mapLocationsFor(reply: string, branches: readonly BranchLike[]): MapLocation[] {
+  const haystack = ` ${normalizePlace(reply)} `;
+  /** The whole phrase, or any distinctive word of it — the same test namesSubject applies to
+   *  subject areas. Whole-phrase-only was too strict to ever fire: a counsellor writes "our Hanoi
+   *  campus", while the row is named "Vietnam (Hanoi) Campus", and those never matched. */
+  const mentions = (v: string | null | undefined) => {
+    const text = normalizePlace(v);
+    if (!text) return false;
+    // A phrase made only of generic words names no place, so it can never match — not even in
+    // full. Without this, a branch called "Main Campus" pinned itself on any reply containing the
+    // words "main campus", which is most replies about a campus.
+    const words = text.split(" ").filter((w) => w.length >= 4 && !GENERIC_PLACE_WORDS.has(w));
+    if (!words.length) return false;
+    if (haystack.includes(` ${text} `)) return true;
+    return words.some((w) => haystack.includes(` ${w} `));
+  };
+  const pins: MapLocation[] = [];
+  // One pin per PLACE, not per row. An extracted catalogue routinely holds the same address three
+  // times — "ACECOMS, AIT", "ACECOMS" and the library are all one campus — and three chips reading
+  // "Pathumthani, Pathumthani, Pathumthani" is the map admitting it cannot tell them apart.
+  const seenPlace = new Set<string>();
+  branches.forEach((b, i) => {
+    // A sub-country place is the gate, not a full address: a pin on a country centroid says
+    // nothing a visitor can use — the same reason branchInvite refuses the country tier. `placeOf`
+    // still adds the country to the query when the row has one.
+    const place = clean(b.city) ?? clean(b.state);
+    if (!place) return;
+    if (!mentions(b.name) && !mentions(b.city) && !mentions(b.state)) return;
+    const where = placeOf(b);
+    if (seenPlace.has(normalizePlace(where))) return;
+    seenPlace.add(normalizePlace(where));
+    const name = clean(b.name) ?? place;
+    pins.push({ id: `b${i}`, name, query: `${name}, ${where}`, label: place });
+  });
+  return pins.slice(0, MAX_PINS);
+}

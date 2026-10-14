@@ -13,6 +13,7 @@ import type { EmbedContext } from "./embed.service.js";
 import * as visitorService from "./visitor.service.js";
 import type { MessageRow } from "../repositories/messages.repository.js";
 import type { CatalogueShapeRow } from "../repositories/knowledge.repository.js";
+import { mapLocationsFor } from "../lib/visitor-location.js";
 import { streamChat, type StreamChatOpts } from "../lib/gemini-stream.js";
 import { buildSystemPrompt } from "./prompt.service.js";
 import * as rag from "./rag.service.js";
@@ -135,8 +136,17 @@ export async function generateVisitorReply(input: VisitorReplyInput) {
         })
       : null,
     embed?.rackInstitutionId ? profileBlockFor(embed.rackInstitutionId) : "",
-    embed && input.headers
-      ? visitorService.attempt("branchRecommendation", () => visitorService.branchRecommendationFor(embed.config, input.headers!))
+    // One branch read per turn, two consumers: the VISITOR LOCATION section (only when Cloudflare
+    // said where the visitor is) and the campus map (which depends on the reply, not the visitor).
+    // Sequential inside this slot so the recommendation reuses the rows rather than paging again.
+    embed
+      ? visitorService.attempt("ownerBranches", async () => {
+          const branches = await visitorService.ownerBranches(embed.config);
+          const match = input.headers
+            ? await visitorService.branchRecommendationFor(embed.config, input.headers, branches)
+            : null;
+          return { branches, section: match?.section ?? null, invite: match?.invite ?? null };
+        })
       : null,
   ]);
 
@@ -171,6 +181,14 @@ export async function generateVisitorReply(input: VisitorReplyInput) {
   // reply text carries the comparison in prose.
   const blocks = parseBlocks(result.fullText).filter((b) => b.type !== "comparison");
   const cleanText = stripBlocks(result.fullText);
+
+  // Campus map. Server-appended like chat.service's `link` block, and for the same reason: the
+  // model never names a place and never writes a query, so it cannot pin a campus that is not in
+  // the branch table. The reply text IS the trigger — no prompt rule, no tokens on a prefix that
+  // is already paid for every turn. The messaging channels strip blocks, which is why the prose
+  // has to name the cities on its own; the map only ever enriches an answer that already works.
+  const pins = visitorLocation?.branches ? mapLocationsFor(cleanText, visitorLocation.branches) : [];
+  if (pins.length) blocks.push({ type: "map", locations: pins });
 
   return { result, cleanText, cards, chips, blocks, ragOutput, memory, visitorLocation };
 }

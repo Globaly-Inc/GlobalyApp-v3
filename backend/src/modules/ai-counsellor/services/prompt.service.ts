@@ -556,6 +556,11 @@ export function buildSystemPrompt(opts: {
     // qualification they hold? One misread like that derailed a whole conversation.
     '- Question with tappable answer options (use whenever YOU ask the student a question with discrete likely answers — the tapped value is sent as their reply, so every value must be a SELF-CONTAINED first-person statement that still means the same thing without the question: "I have already completed a diploma", never a bare name like "Diploma of Community Services"):\n' +
     '```block\n{"type":"quick_replies","question":"What matters most to you?","options":[{"label":"💰 Salary","value":"Salary matters most to me"},{"label":"🌍 Migration","value":"Migration opportunities matter most to me"}]}\n```\n' +
+    // A yes/no close is the commonest question of all and was the one shape never shown, so it
+    // kept being asked in prose and the student had to type "yes". Both options still have to
+    // stand alone as their reply — a bare "Yes" read back without the question means nothing.
+    'A yes/no question is the same block with exactly two options:\n' +
+    '```block\n{"type":"quick_replies","question":"Do you already hold any of these scores?","options":[{"label":"✅ Yes","value":"Yes, I already have an English test score"},{"label":"❌ Not yet","value":"No, I have not taken an English test yet"}]}\n```\n' +
     `- Image (ONLY with a URL copied verbatim from ${srcShort} — NEVER invent or guess image URLs):\n` +
     '```block\n{"type":"image","url":"https://...","title":"...","caption":"..."}\n```\n' +
     "Rules: use blocks to make counselling interactive — " +

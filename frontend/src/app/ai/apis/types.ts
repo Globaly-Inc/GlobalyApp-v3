@@ -51,7 +51,10 @@ export type ResponseBlock =
   | { type: "image"; url: string; title?: string; caption?: string }
   | { type: "quick_replies"; question?: string; options: BlockAction[] }
   // Server-appended after a course search: deep link into /search with the same filters.
-  | { type: "link"; label: string; url: string };
+  | { type: "link"; label: string; url: string }
+  // Server-appended when a reply names one of the owner's campuses. `query` is city/state/country
+  // only — never a street address — and is what the map resolves. See MapBlock.
+  | { type: "map"; locations: { id: string; name: string; query: string; label: string }[] };
 
 export type Message = {
   id: number;

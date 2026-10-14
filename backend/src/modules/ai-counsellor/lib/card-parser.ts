@@ -40,6 +40,10 @@ export type ResponseBlock =
   // there is deliberately no validator for it, so a model-emitted "link" block (with
   // an invented URL) is dropped by toBlock's validator lookup.
   | { type: "link"; label: string; url: string }
+  // Same contract as `link` — appended by visitor-reply.service from the owner's branch rows,
+  // never parsed from model text, so it has no validator and a model-emitted "map" is dropped.
+  // `query` is city/state/country only: the pin may not be more precise than the reply was.
+  | { type: "map"; locations: { id: string; name: string; query: string; label: string }[] }
   /**
    * The mirror image of `link`: model → server only, never rendered.
    *

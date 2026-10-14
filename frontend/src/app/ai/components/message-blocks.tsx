@@ -7,6 +7,7 @@ import { TimelineBlock } from "./blocks/timeline-block";
 import { RecommendationBlock } from "./blocks/recommendation-block";
 import { ImageBlock } from "./blocks/image-block";
 import { QuickRepliesBlock } from "./blocks/quick-replies-block";
+import { MapBlock } from "./blocks/map-block";
 import { LinkBlock } from "./blocks/link-block";
 
 type MessageBlocksProps = {
@@ -42,6 +43,8 @@ export function MessageBlocks({ blocks, onAction, onSend, busy }: MessageBlocksP
             return <ImageBlock key={i} block={block} />;
           case "quick_replies":
             return <QuickRepliesBlock key={i} block={block} onSend={onSend} busy={busy} />;
+          case "map":
+            return <MapBlock key={i} block={block} />;
           case "link":
             return <LinkBlock key={i} block={block} />;
           default:

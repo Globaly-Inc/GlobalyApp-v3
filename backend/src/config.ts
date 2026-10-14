@@ -60,7 +60,7 @@ const envSchema = z.object({
   MAIL_USERNAME: z.string().optional(),
   MAIL_PASSWORD: z.string().optional(),
   // The sending domain must be verified with the SMTP provider (SPF/DKIM) before this changes.
-  MAIL_FROM: z.string().email().default("noreply@globalyapp.com"),
+  MAIL_FROM: z.string().email().default("noreply@globalyai.com"),
   POSTMARK_SERVER_TOKEN: z.string().optional(),
   CHARGEBEE_SITE: z.string().optional(),
   CHARGEBEE_API_KEY: z.string().optional(),
