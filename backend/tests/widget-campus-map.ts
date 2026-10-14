@@ -9,7 +9,7 @@
  * Run: npm run test:widget-campus-map    Pure function, no DB, no network.
  */
 import assert from "node:assert/strict";
-import { mapLocationsFor, asksAboutPlace } from "../src/modules/ai-counsellor/lib/visitor-location.js";
+import { mapLocationsFor, asksAboutPlace, needsOwnerBranches, readVisitorLocation } from "../src/modules/ai-counsellor/lib/visitor-location.js";
 
 const BRANCHES = [
   { name: "AIT Main Campus", country: "Thailand", state: "Pathum Thani", city: "Bangkok",
@@ -181,4 +181,23 @@ for (const asked of [
   "what does the professional master's cover?",
 ]) assert.ok(!asksAboutPlace(asked), `an ordinary question carries no map: ${asked}`);
 
-console.log(`widget-campus-map: ok (${28} assertions)`);
+
+// ── The branch table is only read when something on this turn wants it ────────
+// Paging it is a rows+count query per 100 rows and it runs on EVERY widget turn. Two consumers,
+// two gates, and both have to be false before the read is skipped — a turn that skipped it while
+// the prompt's location section still wanted it would silently drop the section instead.
+const HEADER_NAMES = { country: "cf-ipcountry", region: "cf-region", regionCode: "cf-region-code" };
+const noHeaders = readVisitorLocation({}, HEADER_NAMES);
+const inThailand = readVisitorLocation({ "cf-ipcountry": "TH", "cf-region": "Bangkok" }, HEADER_NAMES);
+assert.equal(noHeaders, null, "no Cloudflare country header is no location (local dev)");
+assert.ok(inThailand, "a country header is a location");
+
+assert.ok(!needsOwnerBranches("what are the fees for the data science master's?", noHeaders),
+  "an ordinary question from an unlocatable visitor never touches the branch table");
+assert.ok(needsOwnerBranches("where are your campuses?", noHeaders),
+  "a place question needs the rows even with no location header — that is the map");
+assert.ok(needsOwnerBranches("what are the fees?", inThailand),
+  "a located visitor needs the rows even asking about fees — that is the location section");
+assert.ok(needsOwnerBranches("where are you?", inThailand), "both gates open");
+
+console.log(`widget-campus-map: ok (${34} assertions)`);
