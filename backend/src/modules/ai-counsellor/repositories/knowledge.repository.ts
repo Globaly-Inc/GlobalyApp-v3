@@ -759,7 +759,12 @@ export async function listCountryNames(): Promise<Array<{ name: string; iso2: st
 /** `jobIds`: the embed widget owner's OWN jobs — as in searchCourses, their courses are answerable
  *  before a superadmin exports the job. Without it only exported jobs are, so a self-service
  *  institution's widget found its own course in search and then got NO details for it. */
-export async function getCourseDetails(courseId: string, opts: { jobIds?: string[] } = {}): Promise<CourseDetailResult | undefined> {
+/**
+ * `lean`: skip the study-unit and accreditation joins. Only the tool loop's `read_course_detail`
+ * renders either (lib/tools.ts) — the RAG path hydrates up to 10 courses a turn and throws both
+ * away, which is 20 joins the visitor waits on before the model is even called.
+ */
+export async function getCourseDetails(courseId: string, opts: { jobIds?: string[]; lean?: boolean } = {}): Promise<CourseDetailResult | undefined> {
   const course = await masterKnex(`${SA}.extraction_courses as c`)
     .join(`${SA}.extraction_institution_overview as i`, "c.job_id", "i.job_id")
     .select(
@@ -812,12 +817,12 @@ export async function getCourseDetails(courseId: string, opts: { jobIds?: string
         .where("course_id", courseId)
         .select("id", "campus_name", "campus_id"),
 
-      masterKnex(`${SA}.extraction_course_study_unit_assignments as csua`)
+      opts.lean ? [] : masterKnex(`${SA}.extraction_course_study_unit_assignments as csua`)
         .join(`${SA}.extraction_study_units as su`, "csua.study_unit_id", "su.id")
         .where("csua.course_id", courseId)
         .select("su.id", "su.unit_code", "su.unit_name", "su.credit_points", "su.description", "su.unit_type"),
 
-      masterKnex(`${SA}.extraction_course_accreditation_assignments as caa`)
+      opts.lean ? [] : masterKnex(`${SA}.extraction_course_accreditation_assignments as caa`)
         .join(`${SA}.extraction_accreditations as acc`, "caa.extraction_accreditation_id", "acc.id")
         .where("caa.course_id", courseId)
         .select("acc.id", "acc.name", "acc.issuing_organization", "acc.website", "acc.description"),

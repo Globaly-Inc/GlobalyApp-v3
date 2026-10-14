@@ -74,7 +74,9 @@ const PHASES: Array<[RegExp, (m: RegExpMatchArray) => string]> = [
   [/^Knowledge rack: (\d+) chunks/, (m) => `Reading ${m[1]} passages from our knowledge base`],
   [/^Hydrating (\d+) courses/, (m) => `Pulling fees and study options for ${m[1]} courses`],
   [/^Hydrated:/, () => "Fees and study options ready"],
-  [/^Context: \d+ chars, (\d+) sources/, (m) => `Analysing ${m[1]} ${m[1] === "1" ? "source" : "sources"} and preparing your answer`],
+  // No count, no "sources": this is the label the visitor stares at for the whole model wait,
+  // and a rising source tally read as machinery rather than as someone answering them.
+  [/^Context: \d+ chars, \d+ sources/, () => "Writing your answer"],
   [/^Money question/, () => "Double-checking what we can confirm on costs"],
   [/^Retrying without tools/, () => "Taking another run at it"],
   [/failed/, () => "One lookup didn't answer — using the rest"],

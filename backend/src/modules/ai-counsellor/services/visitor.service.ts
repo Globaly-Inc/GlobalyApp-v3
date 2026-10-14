@@ -715,29 +715,19 @@ export async function recordContact(
 export async function branchRecommendationFor(
   config: Pick<EmbedConfigRow, "institution_id" | "business_id">,
   headers: Record<string, string | string[] | undefined>,
+  /** The branches the caller already loaded this turn, so the map and the section share one read. */
+  preloaded?: BranchLike[],
 ): Promise<{ section: string; invite: BranchInvite | null } | null> {
   const location = readVisitorLocation(headers, {
     country: appConfig.CLOUDFLARE_COUNTRY_HEADER,
     region: appConfig.CLOUDFLARE_REGION_HEADER,
     regionCode: appConfig.CLOUDFLARE_REGION_CODE_HEADER,
   });
+  // Still before any DB call: a turn with no usable country header has nothing to rank, and the
+  // campus map gets its rows from ownerBranches instead, which the caller loads once either way.
   if (!location) return null;
 
-  const { institution_id, business_id } = config;
-  const page = institution_id != null
-    ? (limit: number, offset: number) => branchService.listInstitutionBranches(institution_id, limit, offset, "all")
-    : business_id != null
-      ? (limit: number, offset: number) => branchService.listBranches(business_id, limit, offset, "all")
-      : null;
-  if (!page) return null;
-  // Every branch, not the first page: the match may be on any of them.
-  const rows: BranchLike[] = [];
-  for (let offset = 0; ; offset += 100) {
-    const { rows: batch, total } = await page(100, offset);
-    // Loosely typed (own rows + campus stand-ins); both carry these columns.
-    rows.push(...(batch as unknown as BranchLike[]));
-    if (!batch.length || rows.length >= total) break;
-  }
+  const rows = preloaded ?? await ownerBranches(config);
   if (!rows.length) return null;
 
   // Branch `country` is free text ("Australia", "AU", "australia "); the shared resolver puts
@@ -747,6 +737,37 @@ export async function branchRecommendationFor(
   if (!match) return null;
   const countryName = (await resolveCountryName(location.country)) ?? location.country;
   return { section: renderLocationSection(location, countryName, match), invite: branchInvite(match) };
+}
+
+/**
+ * Every branch the widget's owner has — their own rows, or the extracted campuses an unclaimed
+ * owner has instead. Empty for an owner with neither, and for an embed config that names neither
+ * a business nor an institution.
+ *
+ * Separate from branchRecommendationFor because the two callers want different things: the
+ * location section only matters when Cloudflare told us where the visitor is, while the campus map
+ * is drawn from whichever branches the REPLY mentions and has nothing to do with the visitor's
+ * location. One load per turn, passed to both.
+ */
+export async function ownerBranches(
+  config: Pick<EmbedConfigRow, "institution_id" | "business_id">,
+): Promise<BranchLike[]> {
+  const { institution_id, business_id } = config;
+  const page = institution_id != null
+    ? (limit: number, offset: number) => branchService.listInstitutionBranches(institution_id, limit, offset, "all")
+    : business_id != null
+      ? (limit: number, offset: number) => branchService.listBranches(business_id, limit, offset, "all")
+      : null;
+  if (!page) return [];
+  // Every branch, not the first page: the match may be on any of them.
+  const rows: BranchLike[] = [];
+  for (let offset = 0; ; offset += 100) {
+    const { rows: batch, total } = await page(100, offset);
+    // Loosely typed (own rows + campus stand-ins); both carry these columns.
+    rows.push(...(batch as unknown as BranchLike[]));
+    if (!batch.length || rows.length >= total) break;
+  }
+  return rows;
 }
 
 export async function attempt<T>(label: string, fn: () => Promise<T>): Promise<T | null> {

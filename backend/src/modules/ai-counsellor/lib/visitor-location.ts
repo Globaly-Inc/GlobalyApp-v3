@@ -223,3 +223,128 @@ export function renderLocationSection(location: VisitorLocation, countryName: st
       "approximate guess from their connection.",
   ].join("\n");
 }
+
+/** One pin the widget can show: a campus the reply actually mentioned. */
+export interface MapLocation {
+  /** Position in the branch list — the frontend only needs it to mark the selected pin. */
+  id: string;
+  name: string;
+  /** What the map resolves. City, state and country — the same `placeOf` the prompt section uses,
+   *  so the pin can never be more precise than the text already was. See the 2026-10-08 rule.
+   *
+   *  The campus NAME is deliberately not in here. Google resolves "AIT Main Campus, Bangkok" to
+   *  the campus itself — its marker, its label, its street address in the info card — which is the
+   *  disclosure the whole rule removes, and a wide `zoom` only frames that pin from further away.
+   *  The name still rides along in `name` for the chip and the link text, where it is prose. */
+  query: string;
+  /** The campus chip above the map: the city alone, which is how a visitor names a campus. */
+  label: string;
+}
+
+/** Longer than this and the chips wrap into a wall in a 380px panel. */
+const MAX_PINS = 6;
+
+/**
+ * Did the VISITOR ask about a place or how to reach us? The map's first gate.
+ *
+ * Owner decision, 2026-10-14: the reply alone was the trigger, and a counsellor names the campus
+ * city in almost every answer ("our Bangkok campus runs it in January"), so a map ended up under
+ * replies about intakes and fees. Showing it there is noise — the visitor asked about a course.
+ *
+ * The two gates do different jobs and both are needed: this one says a map belongs on this turn
+ * at all, `mapLocationsFor` says WHICH campuses, from what the reply actually named. A location
+ * question whose answer names no pinnable campus still shows no map.
+ *
+ * Contact words are in deliberately. The widget may give no phone, email or address (the privacy
+ * rule in prompt.service), so a map of where we are is the most useful thing "how do I contact
+ * you?" can be answered with.
+ */
+export function asksAboutPlace(asked: string): boolean {
+  return /\b(where|located|location|locations|campus|campuses|branch|branches|office|offices|address|directions|map|visit|visiting|nearest|near me|contact|phone|email|reach you|get in touch)\b/
+    .test(normalizePlace(asked));
+}
+
+/** Words that appear in a campus name without naming a place. "Our main campus" must not pin every
+ *  branch called "Main Campus", and "the university" must not pin "University Campus". */
+const GENERIC_PLACE_WORDS = new Set([
+  "campus", "campuses", "centre", "center", "office", "branch", "main", "head", "city",
+  "university", "college", "institute", "school", "academy", "ward", "district", "area",
+  "north", "south", "east", "west", "central", "new", "old", "the", "and",
+]);
+
+/**
+ * Which campuses to pin, given the reply the model just wrote.
+ *
+ * Server-side and deterministic, the same way the `link` block is: the model never names a place
+ * and never writes a query, so it cannot pin a campus that is not in the branch table, and it
+ * cannot walk the address back in through a block.
+ *
+ * The trigger is simply whether the finished reply MENTIONS a campus — its name or its city, as
+ * whole words. A reply about fees names no city and gets no map; "our Bangkok and Hanoi campuses"
+ * gets both. No intent regex and no prompt budget: the reply itself is the signal, and the prompt
+ * prefix is already paid for on every turn.
+ *
+ * ponytail: a country word inside a campus name is distinctive enough to match, so "…in Hanoi,
+ * Vietnam" also pins a "Vietnam (Ho Chi Minh) Campus". Both pins are real campuses in the right
+ * places, so this is a breadth the prose does not promise rather than a wrong pin; narrow it by
+ * resolving country words out of names if it ever reads badly.
+ *
+ * A branch with no city or no country is skipped even when named. Google resolves whatever string
+ * it is handed, so a thin row would produce a confident pin in the wrong place — worse than no
+ * map, because it looks authoritative. Absent rather than wrong, the same rule branchInvite follows.
+ */
+export function mapLocationsFor(reply: string, branches: readonly BranchLike[]): MapLocation[] {
+  const haystack = ` ${normalizePlace(reply)} `;
+  // The reply's words, plus every adjacent pair and triple joined up. One place is routinely
+  // spelled two ways — the row says "Pathumthani", the counsellor writes "Pathum Thani" — and on
+  // the live AIT widget that dropped the Thai campus off a map that pinned both Vietnamese ones.
+  // Joining adjacent TOKENS rather than squashing the whole string is what keeps word boundaries
+  // intact: "Hanoian" still does not contain the city Hanoi.
+  const replyWords = normalizePlace(reply).split(" ").filter(Boolean);
+  const tokens = new Set(replyWords);
+  for (let i = 0; i + 1 < replyWords.length; i++) {
+    tokens.add(replyWords[i] + replyWords[i + 1]);
+    if (i + 2 < replyWords.length) tokens.add(replyWords[i] + replyWords[i + 1] + replyWords[i + 2]);
+  }
+  /** The whole phrase, or any distinctive word of it — the same test namesSubject applies to
+   *  subject areas. Whole-phrase-only was too strict to ever fire: a counsellor writes "our Hanoi
+   *  campus", while the row is named "Vietnam (Hanoi) Campus", and those never matched. */
+  const mentions = (v: string | null | undefined) => {
+    const text = normalizePlace(v);
+    if (!text) return false;
+    // A phrase made only of generic words names no place, so it can never match — not even in
+    // full. Without this, a branch called "Main Campus" pinned itself on any reply containing the
+    // words "main campus", which is most replies about a campus.
+    const words = text.split(" ").filter((w) => !GENERIC_PLACE_WORDS.has(w));
+    if (!words.length) return false;
+    if (haystack.includes(` ${text} `)) return true;
+    // Spacing differs on one side or the other: compare both with the spaces taken out.
+    if (tokens.has(text.replace(/ /g, ""))) return true;
+    // Only now the length floor, because it belongs to THIS test alone: one word out of a campus
+    // name standing in for the whole thing is a guess, and a short one ("new", "ait") coincides
+    // with ordinary prose. The two exact tests above need no such protection, which is why a
+    // three-letter city — Goa, Hue, Rio — still pins when the reply names it.
+    return words.filter((w) => w.length >= 4).some((w) => tokens.has(w));
+  };
+  const pins: MapLocation[] = [];
+  // One pin per PLACE, not per row. An extracted catalogue routinely holds the same address three
+  // times — "ACECOMS, AIT", "ACECOMS" and the library are all one campus — and three chips reading
+  // "Pathumthani, Pathumthani, Pathumthani" is the map admitting it cannot tell them apart.
+  const seenPlace = new Set<string>();
+  branches.forEach((b, i) => {
+    // A sub-country place is the gate, not a full address: a pin on a country centroid says
+    // nothing a visitor can use — the same reason branchInvite refuses the country tier. `placeOf`
+    // still adds the country to the query when the row has one.
+    const place = clean(b.city) ?? clean(b.state);
+    if (!place) return;
+    if (!mentions(b.name) && !mentions(b.city) && !mentions(b.state)) return;
+    const where = placeOf(b);
+    if (seenPlace.has(normalizePlace(where))) return;
+    seenPlace.add(normalizePlace(where));
+    const name = clean(b.name) ?? place;
+    // `where`, not `${name}, ${where}` — the query is the place and only the place. See MapLocation.
+    // The pins are one-per-place anyway, so naming the campus never disambiguated anything either.
+    pins.push({ id: `b${i}`, name, query: where, label: place });
+  });
+  return pins.slice(0, MAX_PINS);
+}

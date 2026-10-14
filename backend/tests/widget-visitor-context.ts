@@ -97,6 +97,29 @@ console.log("\n5. visitorCounsellingContext — the loose scalars");
   assert(gendered === null, "gender is NOT repeated back — it is off by default in the collection rules");
 }
 
+console.log("\n5b. journey stage — the STAGE block was dark for every widget visitor");
+{
+  // The prompt has carried exploring/narrowing/applying/post_offer since phase 8, but only a
+  // platform session ever set it (the model writes it through update_student_context). A widget
+  // visitor has no such tool, so the one instruction that changes counselling posture never
+  // rendered. It is inferred from the turn instead.
+  const stage = (said: string, v: Partial<VisitorRow> = {}) =>
+    vc.visitorCounsellingContext(visitor(v), [], {}, said)?.stage;
+
+  assert(stage("what courses do you offer?") === "exploring", "nothing known yet → widen the field");
+  assert(stage("tell me more", { study_preference: "MSc Data Science" }) === "narrowing",
+    "a subject they named → compare concrete options");
+  assert(stage("how do I apply?") === "applying", "an application question → deadlines and documents");
+  assert(stage("what documents do you need?") === "applying", "and so does the paperwork behind it");
+  assert(stage("I got an offer letter, what now?") === "post_offer", "an offer → visa, funding, arrival");
+  // The stage must beat what we hold: someone with a stored subject who starts asking about
+  // deadlines has MOVED, and "narrowing" would keep comparing courses at them.
+  assert(stage("when is the application deadline?", { study_preference: "MBA" }) === "applying",
+    "what they just asked outranks what we stored");
+  // No turn, no stage — the callers that pass nothing keep today's behaviour, including the null above.
+  assert(vc.visitorCounsellingContext(visitor({})) === null, "no turn text → no stage, and still null");
+}
+
 console.log("\n6. the memory query finally carries a situation");
 {
   const p = vc.visitorProfileContext(visitor({ nationality: "Nepal" }));

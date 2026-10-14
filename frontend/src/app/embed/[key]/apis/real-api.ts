@@ -126,6 +126,8 @@ export const embedRealApi = {
         onEvent({ type: "handoff", agentName: (parsed as { agent_name?: string | null }).agent_name ?? null });
       } else if (eventType === "handover") {
         onEvent({ type: "handover" });
+      } else if (eventType === "reply-done") {
+        onEvent({ type: "reply-done" });
       }
       // session / guest-meta / sources / usage — nothing to render in the widget
     };

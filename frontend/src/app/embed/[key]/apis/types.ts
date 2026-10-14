@@ -75,6 +75,8 @@ export type EmbedChatEvent =
   | { type: "handoff"; agentName: string | null }
   /** The visitor asked for a person (or is still waiting for one); the AI is paused. */
   | { type: "handover" }
+  /** The answer is complete; the stream stays open only for the background cards below it. */
+  | { type: "reply-done" }
   | { type: "done" };
 
 export type GuestContactRequest = {

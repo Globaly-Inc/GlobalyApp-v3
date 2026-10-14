@@ -66,6 +66,9 @@ export function EmbedChatView({ embedKey, initialConfig = null }: EmbedChatViewP
 
   const run = async (content: string, resume: boolean) => {
     if (sending) return;
+    // A turn now settles before its stream closes, so the next one can start while the previous
+    // stream is still sending its cards. They belong to the turn that asked for them.
+    const turn = ++runSeq.current;
     if (!resume) setInput("");
     setError(null);
     setSending(true);
@@ -88,36 +91,62 @@ export function EmbedChatView({ embedKey, initialConfig = null }: EmbedChatViewP
     let cards: CourseCard[] = [];
     let chips: string[] = [];
     let blocks: ResponseBlock[] = [];
-    try {
-      await embedApi.sendMessage(
-        { content, fingerprint: getFingerprint(), embed_key: embedKey, ...(resume ? { resume: true } : {}) },
-        (event) => {
-          if (event.type === "delta") { text += event.text; setStreamText(text); }
-          else if (event.type === "cards") { cards = event.cards; setStreamCards(cards); }
-          else if (event.type === "chips") { chips = event.chips; setStreamChips(chips); }
-          else if (event.type === "blocks") { blocks = event.blocks; setStreamBlocks(blocks); }
-          else if (event.type === "trace") { setTraceSteps((prev) => [...prev, event.step]); }
-          else if (event.type === "contact-prompt") { setContactPrompt(event.prompt); }
-          else if (event.type === "end-prompt") { setEndPrompt(event.prompt); }
-          else if (event.type === "handoff") { setAgentName(event.agentName); setWaiting(false); }
-          else if (event.type === "handover") { setWaiting(true); }
-        },
-      );
+
+    // The answer is on screen, so the visitor gets their composer back — the stream stays open
+    // past this point only for the two background classifiers behind the contact and wrap-up
+    // cards (see the reply-done event in guest.routes). Also run from the stream's own end, for
+    // the branches that never send one: a staff takeover, a handover, an error.
+    let settled = false;
+    const settle = () => {
+      if (settled) return;
+      settled = true;
       // A person is handling the chat or being waited for: the message was delivered, and there
       // is no AI reply to draw — an empty bubble here would read as the AI saying nothing.
-      if (!text && !cards.length && !chips.length && !blocks.length) return;
-      setMessages((prev) => [
-        ...prev,
-        { id: -prev.length - 1, session_id: 0, role: "assistant", content: stripStructuredBlocks(text), cards, chips, blocks, feedback: null, created_at: new Date().toISOString() },
-      ]);
-    } catch (e) {
-      setError((e as Error).message);
-    } finally {
+      if (text || cards.length || chips.length || blocks.length) {
+        setMessages((prev) => [
+          ...prev,
+          { id: -prev.length - 1, session_id: 0, role: "assistant", content: stripStructuredBlocks(text), cards, chips, blocks, feedback: null, created_at: new Date().toISOString() },
+        ]);
+      }
       setSending(false);
       setStreamText("");
       setStreamCards([]);
       setStreamChips([]);
       setStreamBlocks([]);
+      inFlight.current = false;
+    };
+
+    try {
+      await embedApi.sendMessage(
+        { content, fingerprint: getFingerprint(), embed_key: embedKey, ...(resume ? { resume: true } : {}) },
+        (event) => {
+          // The turn is already on screen — the route's own error handler writes an apology delta
+          // if a background classifier throws, and that must not reopen a streaming bubble under
+          // a finished answer. The cards below are the exception: they are what the tail is for.
+          if (settled && event.type !== "contact-prompt" && event.type !== "end-prompt") return;
+          if (event.type === "delta") { text += event.text; setStreamText(text); }
+          else if (event.type === "cards") { cards = event.cards; setStreamCards(cards); }
+          else if (event.type === "chips") { chips = event.chips; setStreamChips(chips); }
+          else if (event.type === "blocks") { blocks = event.blocks; setStreamBlocks(blocks); }
+          else if (event.type === "trace") { setTraceSteps((prev) => [...prev, event.step]); }
+          else if (event.type === "contact-prompt") { if (turn === runSeq.current) setContactPrompt(event.prompt); }
+          else if (event.type === "end-prompt") { if (turn === runSeq.current) setEndPrompt(event.prompt); }
+          else if (event.type === "handoff") { setAgentName(event.agentName); setWaiting(false); }
+          else if (event.type === "handover") { setWaiting(true); }
+          else if (event.type === "reply-done") { settle(); }
+        },
+      );
+    } catch (e) {
+      // Only the current turn may raise the banner, the same guard the late prompt events carry:
+      // once a turn settles the visitor can send another, and this connection is still open behind
+      // it. Its failure changes nothing on screen — but an unguarded banner would hang an error
+      // over a reply that arrived perfectly well.
+      if (turn === runSeq.current) setError((e as Error).message);
+      // A stream that died before reply-done leaves a half-sentence; the banner is the whole
+      // message. (A failure AFTER it lands on an already-settled turn and changes nothing.)
+      text = ""; cards = []; chips = []; blocks = [];
+    } finally {
+      settle();
     }
   };
   // Returns false when a reply is still streaming, so a tapped chip stays tappable.
@@ -125,10 +154,14 @@ export function EmbedChatView({ embedKey, initialConfig = null }: EmbedChatViewP
   // in the same tick both read false and fired two turns — the chip that "needed three clicks"
   // sometimes sent three.
   const inFlight = useRef(false);
+  /** Which turn is current — see `turn` in `run`. */
+  const runSeq = useRef(0);
   const send = (content: string) => {
     if (inFlight.current || sending) return false;
     inFlight.current = true;
-    void run(content, false).finally(() => { inFlight.current = false; });
+    // Released by `settle` inside the run, not when the stream closes — the whole point of
+    // reply-done is that the turn is over before the socket is.
+    void run(content, false);
     return true;
   };
   // Called by the thread reads above; the reply streams like any other, minus a visitor bubble.

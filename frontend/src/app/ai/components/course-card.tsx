@@ -139,16 +139,24 @@ export function CourseCard({ card }: CourseCardProps) {
             className="-mt-6 size-12 rounded-lg border-2 border-card bg-card shadow-sm @max-[14rem]/card:-mt-5 @max-[14rem]/card:size-9"
           />
 
-          <p className="line-clamp-2 text-sm font-semibold leading-snug" title={card.course_name}>
+          {/* Three lines, not two: at ~240px in the chat rail a 14px title fits ~22 characters a
+              line, and "Professional Master in Business Analytics and Digital Innovation" ended
+              in an ellipsis every time. */}
+          <p className="line-clamp-3 text-sm font-semibold leading-snug" title={card.course_name}>
             {card.course_name}
           </p>
 
-          {/* Institution + location */}
-          <div className="flex min-w-0 items-center gap-1 text-xs text-muted-foreground">
-            <span className="truncate font-medium text-foreground">{card.institution_name}</span>
+          {/* Institution + location, stacked.
+              Sharing one line, "Asian Institute of Technology" became "Asian Institute of Tech…"
+              and clipped the city after it — a card in the chat rail is ~240px. The name gets its
+              own full-width line (up to two) and the place sits under it, so neither competes for
+              the same pixels at any card width.
+              `w-full` is load-bearing: line-clamp on a flex child that cannot shrink overflows
+              instead of clamping. */}
+          <div className="flex min-w-0 flex-col items-start text-xs text-muted-foreground">
+            <span className="line-clamp-2 w-full font-medium text-foreground">{card.institution_name}</span>
             {place && (
-              <span className="contents @max-[14rem]/card:hidden">
-                <span>·</span>
+              <span className="flex min-w-0 items-center gap-1 @max-[14rem]/card:hidden">
                 <MapPin className="size-3 shrink-0" />
                 <span className="truncate">{place}</span>
               </span>
@@ -164,7 +172,7 @@ export function CourseCard({ card }: CourseCardProps) {
           )}
 
           {/* Divider — the facts below always render, so it always has something to divide. */}
-          <div className="mt-1.5 border-t border-white/20" />
+          <div className="mt-1.5 border-t border-border" />
 
           {/* Intake on the left, fee on the right, icons instead of label words — in a 260px card
               the labels ate the width the values need. Both ALWAYS render ("Not listed" / "On
@@ -173,19 +181,24 @@ export function CourseCard({ card }: CourseCardProps) {
               ponytail: duration pulled out on request — extraction fills it from study options and
               a 208-week "duration" for a 2-year master's was doing more harm than good. Put the
               row back here when that number can be trusted. */}
-          <div className="flex items-end justify-between gap-2 pt-1 @max-[14rem]/card:pt-0.5">
-            <div className="flex min-w-0 flex-col gap-0.5 text-xs text-white/85 @max-[14rem]/card:text-xs">
-              <span className="flex items-center gap-1 truncate" title={nextIntake ?? undefined}>
+          {/* flex-wrap, and the intake no longer truncates: at ~240px "October 2026" plus
+              "USD 11,890 total" is a few pixels over the line, and truncating made the date read
+              "October 202". The fee drops to its own line instead when they will not both fit.
+              Colours are the card's own tokens — the overlay card this replaced wrote white text,
+              which the rebase carried onto a light surface where it was invisible. */}
+          <div className="flex flex-wrap items-end justify-between gap-x-2 gap-y-0.5 pt-1 @max-[14rem]/card:pt-0.5">
+            <div className="flex min-w-0 flex-col gap-0.5 text-xs text-muted-foreground">
+              <span className="flex items-center gap-1" title={nextIntake ?? undefined}>
                 <CalendarDays className="size-3 shrink-0" />{nextIntake ?? "Not listed"}
               </span>
             </div>
             {fee ? (
-              <span className="shrink-0 text-sm font-bold tabular-nums text-white @max-[14rem]/card:text-xs">
+              <span className="shrink-0 text-sm font-bold tabular-nums text-foreground @max-[14rem]/card:text-xs">
                 {fee}
-                {feeSuffix && <span className="ml-0.5 text-xs font-normal text-white/70">{feeSuffix}</span>}
+                {feeSuffix && <span className="ml-0.5 text-xs font-normal text-muted-foreground">{feeSuffix}</span>}
               </span>
             ) : (
-              <span className="shrink-0 text-xs font-medium text-white/75 @max-[14rem]/card:text-xs">On enquiry</span>
+              <span className="shrink-0 text-xs font-medium text-muted-foreground @max-[14rem]/card:text-xs">On enquiry</span>
             )}
           </div>
         </div>

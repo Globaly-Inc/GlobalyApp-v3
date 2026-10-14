@@ -16,7 +16,17 @@ export type MapLocation = {
 export function BusinessLocationMap({
   locations,
   selectedId,
-}: Readonly<{ locations: MapLocation[]; selectedId?: string | null }>) {
+  zoom = 14,
+  className = "h-72 w-full",
+}: Readonly<{
+  locations: MapLocation[];
+  selectedId?: string | null;
+  /** Lower is wider. 14 frames a street, 11 frames a city — the widget's campus map uses 11, which
+   *  is as precise as a reply is allowed to be about where an institution sits. */
+  zoom?: number;
+  /** The widget panel is 380px wide; h-72 is roughly half its height. */
+  className?: string;
+}>) {
   const loc = locations.find((l) => l.id === selectedId) ?? locations[0];
   if (!loc) return null;
   const query =
@@ -26,8 +36,8 @@ export function BusinessLocationMap({
   return (
     <iframe
       title={`Map of ${loc.name}`}
-      src={`https://maps.google.com/maps?q=${encodeURIComponent(query)}&z=14&output=embed`}
-      className="h-72 w-full rounded-lg border border-border"
+      src={`https://maps.google.com/maps?q=${encodeURIComponent(query)}&z=${zoom}&output=embed`}
+      className={`${className} rounded-lg border border-border`}
       loading="lazy"
       referrerPolicy="no-referrer-when-downgrade"
     />
