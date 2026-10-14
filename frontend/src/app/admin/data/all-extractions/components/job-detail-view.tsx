@@ -8,7 +8,6 @@ import { PageBody } from "@/components/ui/page-body";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchJobFull } from "../store/all-extractions-slice";
 import { JobHeader } from "./job-header";
-import { JobStats } from "./job-stats";
 import { JobTabsBar, type JobTab } from "./job-tabs-bar";
 import { OverviewTab } from "./overview-tab";
 import { InstitutionTab } from "./institution-tab";
@@ -118,8 +117,7 @@ export function JobDetailView({ jobId }: Readonly<{ jobId: string }>) {
 
   return (
     <PageBody>
-      <JobHeader job={full.job} onReload={reload} />
-      <JobStats job={full.job} overview={full.overview} coursesTotal={full.tabCounts.courses} />
+      <JobHeader job={full.job} overview={full.overview} coursesTotal={full.tabCounts.courses} onReload={reload} />
       <JobTabsBar
         active={activeTab}
         onChange={setTab}

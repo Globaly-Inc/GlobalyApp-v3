@@ -1,7 +1,7 @@
 /**
  * Extraction-complete email: who receives it and what it says. Pure. Run: npm run test:completion-email
  */
-import { adminReviewerId, isOwnerRun, maskEmail, pickRecipient } from "../src/modules/superadmin/data-extraction/lib/completion-email.js";
+import { adminReviewerId, isOwnerRun, isSamePerson, maskEmail, pickRecipient } from "../src/modules/superadmin/data-extraction/lib/completion-email.js";
 import { adminExtractionReviewEmail, extractionCompleteEmail } from "../src/shared/mail/templates.js";
 
 let passed = 0;
@@ -33,6 +33,9 @@ eq(maskEmail("owner@csuohio.edu"), "ow***@csuohio.edu", "masked for the timeline
 eq(adminReviewerId({ created_by_platform_user_id: 7, updated_by_platform_user_id: null }), 7, "admin review mail: the creator, when no admin re-ran it");
 eq(adminReviewerId({ created_by_platform_user_id: 7, updated_by_platform_user_id: 119 }), 119, "…else whoever last ran it");
 eq(adminReviewerId({ created_by_platform_user_id: null, updated_by_platform_user_id: null }), null, "…and nobody when neither is known");
+eq(isSamePerson(" Owner@CSUohio.edu", "owner@csuohio.edu"), true, "admin who is the listing's owner → no admin review mail");
+eq(isSamePerson("admin@globalyhub.com", "owner@csuohio.edu"), false, "a different admin still gets it");
+eq(isSamePerson("admin@globalyhub.com", null), false, "an ownerless listing never matches");
 const adminMail = adminExtractionReviewEmail({
   recipientName: "Sam", entityName: "Cleveland <State> University", website: "www.csuohio.edu",
   itemLabel: "courses", itemCount: 795, coverage: [{ label: "courses with fees", count: 412, of: 795 }],

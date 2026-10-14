@@ -221,6 +221,10 @@ export async function sendCompletionEmail(jobId: string): Promise<"sent" | "skip
   }
 }
 
+/** Same inbox, ignoring case and stray spaces — an admin account and an owner account are one person here. Pure. */
+export const isSamePerson = (a: string | null | undefined, b: string | null | undefined): boolean =>
+  !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase();
+
 /** The admin who ran this extraction: whoever last started/continued it, else its creator. Pure. */
 export const adminReviewerId = (job: { created_by_platform_user_id: number | null; updated_by_platform_user_id: number | null }) =>
   job.updated_by_platform_user_id ?? job.created_by_platform_user_id ?? null;
@@ -254,9 +258,20 @@ export async function sendAdminReviewEmail(jobId: string): Promise<"sent" | "ski
       return "skipped";
     }
 
+    const entity = await entityFor(jobId, null);
+    // The admin owns this listing too: they are the business owner, not a reviewer of someone else's
+    // listing, so the admin review mail is not theirs to get.
+    if (isSamePerson(admin.email, entity?.ownerEmail)) {
+      if (await mark(jobId, "skipped", [null], KEY)) {
+        await writeJobEvent(jobId, "admin_review_email_skipped", {
+          phase: "verification", message: "No review email: the admin who ran this extraction is the listing's owner",
+        });
+      }
+      return "skipped";
+    }
+
     const isVisa = job.source_type === "visa_service";
     const { itemCount, coverage } = await jobCoverage(jobId, isVisa);
-    const entity = await entityFor(jobId, null);
     const mail = adminExtractionReviewEmail({
       recipientName: admin.first_name?.trim() || admin.display_name?.trim() || null,
       entityName: entity?.entityName || job.institution_name || "this institution",

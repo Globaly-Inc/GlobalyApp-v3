@@ -6,8 +6,7 @@ import { FileSpreadsheet, Landmark } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { TableCell, TableRow } from "@/components/ui/table";
-import { cn } from "@/lib/utils";
-import { ACTIVE_STATUSES, FINISHED_STATUSES, PIPELINE_STAGES, PUBLISHABLE_STATUSES, STATUS_CONFIG } from "../const";
+import { ACTIVE_STATUSES, FINISHED_STATUSES, PIPELINE_STAGES, PUBLISHABLE_STATUSES } from "../const";
 import { ExtractionStatusBadge, NeedsAttentionBadge } from "./status-badge";
 import { RowActors } from "./row-actors";
 import { PipelineProgressPanel } from "./pipeline-progress-panel";
@@ -19,10 +18,7 @@ export const EXTRACTION_JOB_COLUMNS = [
   { label: "Select", className: "w-px", srOnly: true },
   { label: "Institution" },
   { label: "Status" },
-  { label: "Progress", className: "hidden md:table-cell" },
-  { label: "Courses", className: "hidden lg:table-cell", numeric: true },
-  { label: "Agents", className: "hidden lg:table-cell", numeric: true },
-  { label: "Branches", className: "hidden lg:table-cell", numeric: true },
+  { label: "Extracted", className: "hidden md:table-cell" },
   { label: "Created", className: "hidden md:table-cell" },
   { label: "Actions", className: "w-px", srOnly: true },
 ] as const;
@@ -54,25 +50,17 @@ function overallProgressPct(job: ExtractionJob, progress: PipelineProgress | nul
   return 0;
 }
 
-function ProgressCell({ job, pct }: Readonly<{ job: ExtractionJob; pct: number }>) {
-  const isFailed = job.status === "failed";
-  const isActive = ACTIVE_STATUSES.includes(job.status);
+/** Only a running job gets a bar — a finished one's status pill already says it. */
+function ProgressLine({ pct }: Readonly<{ pct: number }>) {
   return (
-    <div className="w-28">
-      <div className={cn("text-sm font-semibold", isFailed ? "text-destructive" : isActive ? "text-chart-4" : "text-foreground")}>
-        {pct}%
+    <div className="mt-1.5 flex w-32 items-center gap-2">
+      <div className="h-1 flex-1 overflow-hidden rounded-full bg-muted">
+        <div className="h-full rounded-full bg-chart-4" style={{ width: `${pct}%` }} />
       </div>
-      <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-muted">
-        <div
-          className={cn("h-full rounded-full", isFailed ? "bg-destructive" : isActive ? "bg-chart-4" : "bg-success")}
-          style={{ width: `${pct}%` }}
-        />
-      </div>
+      <span className="text-xs tabular-nums text-muted-foreground">{pct}%</span>
     </div>
   );
 }
-
-const count = (n: number | undefined | null) => (n ? n : "—");
 
 export function ExtractionJobRow({
   selected,
@@ -85,7 +73,6 @@ export function ExtractionJobRow({
   const isPublishable = PUBLISHABLE_STATUSES.includes(job.status);
   const progress = (job.pipeline_progress ?? null) as PipelineProgress | null;
   const hasPipeline = Boolean(progress && Object.keys(progress).length > 0);
-  const status = STATUS_CONFIG[job.status] ?? STATUS_CONFIG.pending;
   const name = job.institution_name || job.institution_url;
   const pct = overallProgressPct(job, progress);
   const counts = [
@@ -97,7 +84,9 @@ export function ExtractionJobRow({
     .filter(([n]) => n)
     .map(([n, unit]) => `${n} ${unit === "branch" ? (n === 1 ? "branch" : "branches") : `${unit}${n === 1 ? "" : "s"}`}`)
     .join(" · ");
-  const created = new Date(job.created_at).toLocaleDateString(undefined, { day: "numeric", month: "long", year: "numeric" });
+  const created = new Date(job.created_at).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+  const creator = job.created_by_name || job.created_by_email;
+  const running = ACTIVE_STATUSES.includes(job.status);
 
   return (
     <Fragment>
@@ -107,7 +96,7 @@ export function ExtractionJobRow({
         </TableCell>
         <TableCell primary>
           <div className="flex min-w-0 items-center gap-3">
-            <div className={cn("flex size-9 shrink-0 items-center justify-center rounded-full", status.className)}>
+            <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-primary" aria-hidden="true">
               <Landmark className="h-4 w-4" />
             </div>
             <div className="min-w-0">
@@ -128,27 +117,20 @@ export function ExtractionJobRow({
                 <span>{created}</span>
                 <RowActors row={job} />
               </div>
-              {/* Progress and counts columns hide at md / lg — keep them readable here, as the old row did. */}
-              <p className="mt-0.5 text-xs text-muted-foreground md:hidden">
-                {pct}% · {status.label}
-              </p>
-              {countText && <p className="mt-0.5 text-xs text-muted-foreground lg:hidden">{countText}</p>}
+              {/* The Extracted column hides below md — keep its counts readable here. */}
+              {countText && <p className="mt-0.5 text-xs text-muted-foreground md:hidden">{countText}</p>}
             </div>
           </div>
         </TableCell>
         <TableCell>
           <ExtractionStatusBadge status={job.status} />
+          {running && <ProgressLine pct={pct} />}
         </TableCell>
+        <TableCell className="hidden text-muted-foreground md:table-cell">{countText || "—"}</TableCell>
         <TableCell className="hidden md:table-cell">
-          <ProgressCell job={job} pct={pct} />
-        </TableCell>
-        <TableCell numeric className="hidden lg:table-cell">{count(job.courses_extracted)}</TableCell>
-        <TableCell numeric className="hidden lg:table-cell">{count(job.agent_count)}</TableCell>
-        <TableCell numeric className="hidden lg:table-cell">{count(job.campus_count)}</TableCell>
-        <TableCell className="hidden md:table-cell">
-          <div className="text-muted-foreground">{created}</div>
-          {/* Both actors, same wording as the job header and every sub-tab card. */}
-          <RowActors row={job} className="flex-col items-start gap-y-0.5" />
+          <div>{created}</div>
+          {/* One line: the full Added by / Edited by pair lives on the job's own header. */}
+          <div className="text-xs text-muted-foreground">{creator ? `by ${creator}` : "Extracted automatically"}</div>
         </TableCell>
         <TableCell>
           <ExtractionJobActions
