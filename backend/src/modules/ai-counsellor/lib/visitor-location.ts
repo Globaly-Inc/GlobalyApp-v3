@@ -264,6 +264,19 @@ export function asksAboutPlace(asked: string): boolean {
     .test(normalizePlace(asked));
 }
 
+/**
+ * Does this turn need the owner's branch rows loaded at all?
+ *
+ * Both consumers are here because both gates have to be false before the read is skipped: the
+ * campus map wants the rows when the VISITOR asked about a place, the prompt's location section
+ * wants them when Cloudflare said where the visitor is. Paging the branch table is a rows+count
+ * query per 100 rows on every single widget turn, and before the map shared that read it only
+ * ever ran behind the location check — this keeps that true.
+ */
+export function needsOwnerBranches(asked: string, location: VisitorLocation | null): boolean {
+  return asksAboutPlace(asked) || !!location;
+}
+
 /** Words that appear in a campus name without naming a place. "Our main campus" must not pin every
  *  branch called "Main Campus", and "the university" must not pin "University Campus". */
 const GENERIC_PLACE_WORDS = new Set([

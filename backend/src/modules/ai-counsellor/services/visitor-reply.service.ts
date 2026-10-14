@@ -13,7 +13,7 @@ import type { EmbedContext } from "./embed.service.js";
 import * as visitorService from "./visitor.service.js";
 import type { MessageRow } from "../repositories/messages.repository.js";
 import type { CatalogueShapeRow } from "../repositories/knowledge.repository.js";
-import { asksAboutPlace, mapLocationsFor } from "../lib/visitor-location.js";
+import { asksAboutPlace, mapLocationsFor, needsOwnerBranches } from "../lib/visitor-location.js";
 import { streamChat, type StreamChatOpts } from "../lib/gemini-stream.js";
 import { buildSystemPrompt } from "./prompt.service.js";
 import * as rag from "./rag.service.js";
@@ -143,9 +143,16 @@ export async function generateVisitorReply(input: VisitorReplyInput) {
     // Sequential inside this slot so the recommendation reuses the rows rather than paging again.
     embed
       ? visitorService.attempt("ownerBranches", async () => {
+          // Both consumers are gated BEFORE the read, because the read is a rows+count query per
+          // 100 branches and it is paid on every turn. The map wants them only when the visitor
+          // asked about a place (the same gate the pins use below), the section only when
+          // Cloudflare said where they are. Neither, and the branch table is never touched —
+          // which is how it behaved before the map shared this slot.
+          const location = input.headers ? visitorService.visitorLocationFrom(input.headers) : null;
+          if (!needsOwnerBranches(asked, location)) return null;
           const branches = await visitorService.ownerBranches(embed.config);
-          const match = input.headers
-            ? await visitorService.branchRecommendationFor(embed.config, input.headers, branches)
+          const match = location
+            ? await visitorService.branchRecommendationFor(embed.config, input.headers!, branches)
             : null;
           return { branches, section: match?.section ?? null, invite: match?.invite ?? null };
         })

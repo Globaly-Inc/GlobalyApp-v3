@@ -64,8 +64,9 @@ export function EmbedChatView({ embedKey, initialConfig = null }: EmbedChatViewP
     if (framed && hasConversation) window.parent.postMessage({ type: STARTED_MESSAGE }, "*");
   }, [framed, hasConversation]);
 
-  const run = async (content: string, resume: boolean) => {
-    if (sending) return;
+  /** False when the turn was declined outright, so `send` knows `settle` will never run. */
+  const run = async (content: string, resume: boolean): Promise<boolean> => {
+    if (sending) return false;
     // A turn now settles before its stream closes, so the next one can start while the previous
     // stream is still sending its cards. They belong to the turn that asked for them.
     const turn = ++runSeq.current;
@@ -148,6 +149,7 @@ export function EmbedChatView({ embedKey, initialConfig = null }: EmbedChatViewP
     } finally {
       settle();
     }
+    return true;
   };
   // Returns false when a reply is still streaming, so a tapped chip stays tappable.
   // The ref, not the state, is what decides: `sending` only flips on the next render, so two taps
@@ -160,8 +162,10 @@ export function EmbedChatView({ embedKey, initialConfig = null }: EmbedChatViewP
     if (inFlight.current || sending) return false;
     inFlight.current = true;
     // Released by `settle` inside the run, not when the stream closes — the whole point of
-    // reply-done is that the turn is over before the socket is.
-    void run(content, false);
+    // reply-done is that the turn is over before the socket is. The one path `settle` never
+    // covers is a run that declines the turn at its first line; released here instead, because
+    // `send` is what claimed the ref and `resume` shares the same `run` without claiming it.
+    void run(content, false).then((started) => { if (!started) inFlight.current = false; });
     return true;
   };
   // Called by the thread reads above; the reply streams like any other, minus a visitor bubble.
