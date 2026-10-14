@@ -96,6 +96,7 @@ const forcedFirst = [
 check("a forced reply stored after a newer question leaves that question owed", q(forcedFirst, 1).questions.join("|") === "And fees?" && q(forcedFirst, 1).lastId === 2);
 check("…and the forced reply stays in the history the model reads", q(forcedFirst, 1).history.map((m) => m.id).join(",") === "1,3");
 check("once a reply records it answered #2, nothing is owed (no second reply)", q(forcedFirst, 2).lastId === null);
+check("the burst's clock is the OLDEST unanswered message (a mid-reply message can't restart it)", q([...forcedFirst, { id: 4, role: "user", content: "Hello?" }], 1).firstId === 2);
 check("a burst after our last reply is owed as one question, in order", q(burst, 2).questions.join(" | ") === "Hello | List me some course");
 // A suggest-mode draft doesn't move answeredThrough (staff haven't sent it), so the questions stay
 // owed: Resume AI answers them, and a newer message's draft covers them all, not just the new one.

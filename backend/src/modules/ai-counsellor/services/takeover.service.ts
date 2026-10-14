@@ -82,7 +82,7 @@ export function unansweredTail<T extends { id: number; role: string; content: st
 export function owedMessages<T extends { id: number; role: string; content: string }>(
   messages: T[],
   answeredThrough: number | null,
-): { history: T[]; questions: string[]; lastId: number | null } {
+): { history: T[]; questions: string[]; firstId: number | null; lastId: number | null } {
   let lastReply = 0;
   let lastStaff = 0;
   for (const m of messages) {
@@ -94,6 +94,7 @@ export function owedMessages<T extends { id: number; role: string; content: stri
   return {
     history: messages.filter((m) => !owed.has(m)),
     questions: [...owed].map((m) => m.content),
+    firstId: [...owed][0]?.id ?? null,
     lastId: [...owed].at(-1)?.id ?? null,
   };
 }

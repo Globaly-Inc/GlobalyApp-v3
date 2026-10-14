@@ -308,7 +308,8 @@ async function answer(
   const asked = pending.questions.join("\n\n");
   const lastId = pending.lastId;
   if (!asked || lastId == null) return;
-  const history = pending.history.map((m) => ({
+  // The model reads the usual window; a wider read (a backlog, see answerPending) only adds questions.
+  const history = pending.history.slice(-HISTORY_LIMIT).map((m) => ({
     role: m.role === "user" ? ("user" as const) : ("model" as const),
     parts: [{ text: m.content }],
   }));
@@ -437,15 +438,29 @@ export async function answerPending(owner: Recipient, visitorId: number, opts: {
   const conn = await connections.findById(db, visitor.channel_connection_id);
   const session = await sessionsRepo.findById(visitor.session_id);
   if (!conn || conn.status !== "connected" || !session) return;
-  const prevMessages = await messagesRepo.findBySession(session.id, { limit: HISTORY_LIMIT });
+  const answeredThrough = session.answered_through_message_id ?? null;
+  let prevMessages = await messagesRepo.findBySession(session.id, { limit: HISTORY_LIMIT });
+  // More unanswered messages than the window holds (the worker was down, say): read further back so
+  // the oldest questions reach the model too, rather than being marked answered unseen.
+  // ponytail: 200 messages, the transcript endpoint's own cap — the guest route reads back the same way.
+  const owedNow = takeover.owedMessages(prevMessages, answeredThrough);
+  if (prevMessages.length === HISTORY_LIMIT && owedNow.firstId === prevMessages[0]?.id) {
+    prevMessages = await messagesRepo.findBySession(session.id, { limit: 200 });
+  }
   // Owed only while something the customer said is unanswered: an earlier reply (or a teammate)
   // may have answered already, which is also what keeps a duplicate job from replying twice.
-  const owed = takeover.owedMessages(prevMessages, session.answered_through_message_id ?? null).lastId;
+  const pending = takeover.owedMessages(prevMessages, answeredThrough);
+  const owed = pending.lastId;
   if (owed == null) return;
   // Suggest mode, and the draft waiting for staff already covers everything owed: nothing new to draft.
   if (conn.ai_mode === "suggest" && visitor.attention_reason === "suggest" && visitor.ai_draft && (session.drafted_through_message_id ?? 0) >= owed) return;
   if (visitor.resolved_at || takeover.whoAnswers(visitor).answerer !== "ai" || visitor.attention_reason === "sensitive" || visitor.attention_reason === "other_app") return;
-  await answer({ owner, db, config, conn }, visitor, session, prevMessages, opts);
+  // The burst began at the oldest message still unanswered — not at the job's clock, which a message
+  // arriving mid-reply restarts. So a customer who keeps typing through every reply is still answered
+  // once that message has waited the maximum.
+  const oldest = prevMessages.find((m) => m.id === pending.firstId);
+  const forced = opts.forced || (!!oldest && Date.now() - new Date(oldest.created_at).getTime() >= appConfig.CHANNEL_REPLY_MAX_WAIT_MS);
+  await answer({ owner, db, config, conn }, visitor, session, prevMessages, { forced });
 }
 
 /**
