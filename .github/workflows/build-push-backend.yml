@@ -1,6 +1,8 @@
 name: Build & Push backend
 
 on:
+  # Rebuild by hand (Actions tab or `gh workflow run`), e.g. after an .env change in the bucket.
+  workflow_dispatch:
   push:
     branches:
       - 'main'
@@ -10,6 +12,7 @@ on:
 
     paths:
       - "backend/**"
+      - ".github/workflows/build-push-backend.yml"
 
 env:
   RED_COLOR_MESSAGE: "\e[31m"
@@ -32,10 +35,10 @@ jobs:
       - name: Resolve environment
         run: |
           printf "\n\n =======================================================================\n"
-          if [[ "${{ github.event_name }}" == "push" && ("${{ github.ref }}" == "refs/heads/main" || "${{ github.ref }}" == "refs/heads/production") ]]; then
+          if [[ ("${{ github.ref }}" == "refs/heads/main" || "${{ github.ref }}" == "refs/heads/production") ]]; then
             echo "env_name=production" >> $GITHUB_ENV
             echo "Selected environment: ${{ env.GREEN_COLOR_MESSAGE }} production ${{ env.RESET_COLOR_MESSAGE }}"
-          elif [[ "${{ github.event_name }}" == "push" && ("${{ github.ref }}" == "refs/heads/develop" || "${{ github.ref }}" == "refs/heads/staging") ]]; then
+          elif [[ ("${{ github.ref }}" == "refs/heads/develop" || "${{ github.ref }}" == "refs/heads/staging") ]]; then
             echo "env_name=staging" >> $GITHUB_ENV
             echo "Selected environment: ${{ env.GREEN_COLOR_MESSAGE }} staging ${{ env.RESET_COLOR_MESSAGE }}"
           else
