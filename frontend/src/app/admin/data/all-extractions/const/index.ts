@@ -144,8 +144,9 @@ export const MODE_HEADINGS: Record<DashboardMode, { title: string; empty: string
 
 export const SOURCE_FILTER_OPTIONS = [
   { value: "all", label: "All sources" },
-  { value: "ai", label: "AI Extraction" },
-  { value: "agentcis", label: "AgentCIS" },
+  { value: "ai", label: "Website extraction" },
+  { value: "agentcis", label: "AgentCIS import" },
+  { value: "spreadsheet", label: "Spreadsheet import" },
   { value: "manual", label: "Manual institution" },
   { value: "self_service", label: "Self-registered" },
 ];
@@ -156,6 +157,8 @@ export const SOURCE_FILTER_OPTIONS = [
  * them — they would otherwise show up as completed extractions.
  */
 export const OWNED_JOB_SOURCE_TYPES = ["manual", "self_service"];
+/** Jobs filled from an import rather than an AI crawl of a website. */
+export const IMPORT_SOURCE_TYPES = ["agentcis", "spreadsheet"];
 
 /** Stages of the AI pipeline, in run order — keys match pipeline_progress. */
 export const PIPELINE_STAGES: { key: string; label: string; icon: LucideIcon }[] = [

@@ -126,9 +126,10 @@ export const allExtractionsMockApi = {
     let filtered = statuses ? mockJobs.filter((j) => statuses.includes(j.status)) : [...mockJobs];
     if (!params.showDeclined) filtered = filtered.filter((j) => j.status !== "declined");
     if (params.mode === "ai-ongoing") filtered = filtered.filter((j) => j.source_type !== "agentcis");
-    else if (params.mode === "completed" && params.sourceFilter && params.sourceFilter !== "all") {
+    else if (params.sourceFilter && params.sourceFilter !== "all") {
+      const imported = ["agentcis", "spreadsheet", "manual", "self_service"];
       filtered = filtered.filter((j) =>
-        params.sourceFilter === "agentcis" ? j.source_type === "agentcis" : j.source_type !== "agentcis",
+        params.sourceFilter === "ai" ? !imported.includes(j.source_type ?? "") : j.source_type === params.sourceFilter,
       );
     }
     if (params.businessCategoryId) filtered = filtered.filter((j) => j.business_category_id === params.businessCategoryId);

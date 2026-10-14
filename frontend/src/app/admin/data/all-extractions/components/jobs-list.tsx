@@ -190,7 +190,7 @@ export function JobsList({ mode, onNewExtraction }: Readonly<{ mode: DashboardMo
         onSortOrderChange={setSortOrder}
         sourceFilter={sourceFilter}
         onSourceFilterChange={setSourceFilter}
-        showSourceFilter={isCompleted}
+        showSourceFilter={mode !== "ai-ongoing"}
         businessCategoryFilter={businessCategoryFilter}
         onBusinessCategoryFilterChange={setBusinessCategoryFilter}
         businessCategoryOptions={businessCategoryOptions}

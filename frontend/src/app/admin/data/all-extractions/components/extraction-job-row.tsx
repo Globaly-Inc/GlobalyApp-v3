@@ -2,12 +2,12 @@
 
 import { Fragment, useState } from "react";
 import Link from "next/link";
-import { FileSpreadsheet, Landmark } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { Landmark } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { ACTIVE_STATUSES, FINISHED_STATUSES, PIPELINE_STAGES, PUBLISHABLE_STATUSES } from "../const";
 import { ExtractionStatusBadge, NeedsAttentionBadge } from "./status-badge";
+import { SourceBadge } from "./source-badge";
 import { RowActors } from "./row-actors";
 import { PipelineProgressPanel } from "./pipeline-progress-panel";
 import { ExtractionJobActions, type ExtractionJobActionProps } from "./extraction-job-actions";
@@ -107,11 +107,7 @@ export function ExtractionJobRow({
                   {name}
                 </Link>
                 <NeedsAttentionBadge job={job} />
-                {job.source_type === "spreadsheet" && (
-                  <Badge variant="info">
-                    <FileSpreadsheet /> Spreadsheet
-                  </Badge>
-                )}
+                <SourceBadge sourceType={job.source_type} />
               </div>
               <p className="truncate text-xs text-muted-foreground">{job.institution_url}</p>
               {/* Below md the Created column is hidden — keep the date and both actors reachable here. */}
