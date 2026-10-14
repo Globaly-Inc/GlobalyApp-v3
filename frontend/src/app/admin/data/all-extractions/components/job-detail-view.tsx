@@ -116,7 +116,8 @@ export function JobDetailView({ jobId }: Readonly<{ jobId: string }>) {
   };
 
   return (
-    <PageBody>
+    // Same entrance as the business portal: blocks rise in turn, and a tab switch replays it for the new tab.
+    <PageBody className="stagger-in card-hover">
       <JobHeader job={full.job} overview={full.overview} coursesTotal={full.tabCounts.courses} onReload={reload} />
       <JobTabsBar
         active={activeTab}
@@ -125,7 +126,7 @@ export function JobDetailView({ jobId }: Readonly<{ jobId: string }>) {
         institutionLabel={isVisaServiceJob ? "Business" : undefined}
         counts={full.tabCounts}
       />
-      {renderTab()}
+      <div key={activeTab} className="stagger-in">{renderTab()}</div>
     </PageBody>
   );
 }

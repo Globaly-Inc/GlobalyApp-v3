@@ -18,10 +18,10 @@ export const LESSON_COLUMNS = [
 ] as const;
 
 export function LessonRow({
-  lesson, onToggle, onDelete,
-}: Readonly<{ lesson: Lesson; onToggle: () => void; onDelete: () => void }>) {
+  lesson, onToggle, onDelete, index = 0,
+}: Readonly<{ lesson: Lesson; onToggle: () => void; onDelete: () => void; index?: number }>) {
   return (
-    <TableRow>
+    <TableRow className="animate-row-rise" style={{ animationDelay: `${Math.min(index, 10) * 35}ms` }}>
       <TableCell primary className="whitespace-normal break-words">
         <p className="text-foreground">
           {lesson.rule}

@@ -148,7 +148,7 @@ export function JobHeader({
         </div>
 
         <div className="flex min-w-0 items-end gap-4 px-5 pb-5">
-          <Avatar className="-mt-10 size-20 shrink-0 rounded-2xl border-4 border-card bg-white shadow-md">
+          <Avatar className="-mt-10 size-20 shrink-0 animate-pop-in rounded-2xl border-4 border-card bg-white shadow-md">
             {overview?.logo_url && <AvatarImage src={overview.logo_url} alt="" className="rounded-xl object-contain p-1" />}
             <AvatarFallback className="rounded-xl bg-primary text-2xl font-semibold text-primary-foreground">
               {name.charAt(0).toUpperCase()}
@@ -174,7 +174,7 @@ export function JobHeader({
 
         {/* LLM spend (tokens / $) is deliberately not shown here — admins asked for it off the cards.
             job.usage still arrives on the wire for the timeline and cost accounting. */}
-        <dl className="grid grid-cols-2 border-t sm:grid-cols-4">
+        <dl className="stagger-in grid grid-cols-2 border-t sm:grid-cols-4">
           <Stat label="Pages found" value={job.total_pages_found || "—"} />
           <Stat
             label="Pages scraped"

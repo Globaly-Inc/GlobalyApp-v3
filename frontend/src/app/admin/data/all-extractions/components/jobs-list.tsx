@@ -237,9 +237,10 @@ export function JobsList({ mode, onNewExtraction }: Readonly<{ mode: DashboardMo
               </TableRow>
             </TableHeader>
             <TableBody>
-              {jobs.map((job) => (
+              {jobs.map((job, i) => (
                 <ExtractionJobRow
                   key={job.id}
+                  index={i}
                   job={job}
                   selected={selectedIds.has(job.id)}
                   onToggleSelect={() => toggleSelect(job.id)}

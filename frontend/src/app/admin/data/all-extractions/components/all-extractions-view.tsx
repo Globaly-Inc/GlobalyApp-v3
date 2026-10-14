@@ -41,7 +41,7 @@ export function AllExtractionsView() {
   };
 
   return (
-    <PageBody>
+    <PageBody className="stagger-in">
       <PageHeader
         title={<><ScanSearch /> All Extractions</>}
         subtitle="Every extraction job — ongoing, completed, failed, declined. Nothing is hidden."

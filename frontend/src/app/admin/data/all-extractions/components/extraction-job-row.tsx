@@ -65,8 +65,9 @@ function ProgressLine({ pct }: Readonly<{ pct: number }>) {
 export function ExtractionJobRow({
   selected,
   onToggleSelect,
+  index = 0,
   ...actionProps
-}: ExtractionJobActionProps & Readonly<{ selected: boolean; onToggleSelect: () => void }>) {
+}: ExtractionJobActionProps & Readonly<{ selected: boolean; onToggleSelect: () => void; index?: number }>) {
   const { job } = actionProps;
   const [expanded, setExpanded] = useState(false);
 
@@ -90,7 +91,8 @@ export function ExtractionJobRow({
 
   return (
     <Fragment>
-      <TableRow data-state={selected ? "selected" : undefined}>
+      {/* Rows rise in one after another, capped so a long page doesn't keep animating. */}
+      <TableRow data-state={selected ? "selected" : undefined} className="animate-row-rise" style={{ animationDelay: `${Math.min(index, 10) * 35}ms` }}>
         <TableCell>
           {isPublishable && <Checkbox checked={selected} onCheckedChange={onToggleSelect} aria-label={`Select ${name}`} />}
         </TableCell>

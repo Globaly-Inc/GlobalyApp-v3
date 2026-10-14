@@ -54,8 +54,8 @@ export function AgentcisJobsTable({
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {jobs.map((job) => (
-                  <AgentcisJobRow key={job.id} job={job} onRetry={onRetry} onDelete={onDelete} onViewError={onViewError} />
+                {jobs.map((job, i) => (
+                  <AgentcisJobRow key={job.id} index={i} job={job} onRetry={onRetry} onDelete={onDelete} onViewError={onViewError} />
                 ))}
               </TableBody>
             </Table>
