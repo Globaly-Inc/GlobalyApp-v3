@@ -65,7 +65,13 @@ export function EmbedChatView({ embedKey, initialConfig = null }: EmbedChatViewP
   }, [framed, hasConversation]);
 
   const run = async (content: string, resume: boolean) => {
-    if (sending) return;
+    // The ref is claimed HERE, on the one line that also decides the turn happens, so claim and
+    // release (`settle`) are the only two places that touch it. `send` used to claim it before
+    // calling and had no way to hand it back if this line declined the turn. This also closes the
+    // same-tick hole for `resume`, which never claimed it at all: a chip tapped while a resumed
+    // reply streams was held off by `sending` alone — the stale-state read the ref exists for.
+    if (sending || inFlight.current) return;
+    inFlight.current = true;
     // A turn now settles before its stream closes, so the next one can start while the previous
     // stream is still sending its cards. They belong to the turn that asked for them.
     const turn = ++runSeq.current;
@@ -158,9 +164,9 @@ export function EmbedChatView({ embedKey, initialConfig = null }: EmbedChatViewP
   const runSeq = useRef(0);
   const send = (content: string) => {
     if (inFlight.current || sending) return false;
-    inFlight.current = true;
-    // Released by `settle` inside the run, not when the stream closes — the whole point of
-    // reply-done is that the turn is over before the socket is.
+    // `run` claims the ref itself, synchronously, before its first await — so a second tap in this
+    // same tick already reads it as taken. It is released by `settle` inside the run, not when the
+    // stream closes: the whole point of reply-done is that the turn is over before the socket is.
     void run(content, false);
     return true;
   };

@@ -711,6 +711,19 @@ export async function recordContact(
  * country when they ask, but only a state- or area-level match is specific enough to volunteer
  * unprompted. See lib/visitor-location.branchInvite.
  */
+/**
+ * Where Cloudflare says this visitor is, or null when it did not say (local dev, or not behind
+ * Cloudflare at all). Pure header parsing, no DB — which is the point: callers decide whether the
+ * branch table is worth paging BEFORE they page it.
+ */
+export function visitorLocationFrom(headers: Record<string, string | string[] | undefined>) {
+  return readVisitorLocation(headers, {
+    country: appConfig.CLOUDFLARE_COUNTRY_HEADER,
+    region: appConfig.CLOUDFLARE_REGION_HEADER,
+    regionCode: appConfig.CLOUDFLARE_REGION_CODE_HEADER,
+  });
+}
+
 // ponytail: ~4 small queries per 100 branches per widget message; cache per owner for a minute if that ever shows up.
 export async function branchRecommendationFor(
   config: Pick<EmbedConfigRow, "institution_id" | "business_id">,
@@ -718,11 +731,7 @@ export async function branchRecommendationFor(
   /** The branches the caller already loaded this turn, so the map and the section share one read. */
   preloaded?: BranchLike[],
 ): Promise<{ section: string; invite: BranchInvite | null } | null> {
-  const location = readVisitorLocation(headers, {
-    country: appConfig.CLOUDFLARE_COUNTRY_HEADER,
-    region: appConfig.CLOUDFLARE_REGION_HEADER,
-    regionCode: appConfig.CLOUDFLARE_REGION_CODE_HEADER,
-  });
+  const location = visitorLocationFrom(headers);
   // Still before any DB call: a turn with no usable country header has nothing to rank, and the
   // campus map gets its rows from ownerBranches instead, which the caller loads once either way.
   if (!location) return null;
