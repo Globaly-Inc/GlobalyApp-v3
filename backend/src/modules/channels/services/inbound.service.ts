@@ -24,6 +24,8 @@ import { CHANNEL_TEXT_LIMIT, formatForChannel } from "../lib/channel-format.js";
 import * as zernioRepo from "../repositories/zernio.repository.js";
 import * as connections from "../repositories/connections.repository.js";
 import * as channelVisitors from "../repositories/channel-visitors.repository.js";
+import * as replyJobs from "../repositories/reply-jobs.repository.js";
+import { config as appConfig } from "../../../config.js";
 import { channelConfigFor, sendToCustomer, showTyping } from "./outbound.service.js";
 import { aiConfigOf, CHANNEL_LABEL, channelVisitorKey, isChannel, PHONE_APP_HANDLER, type AiConfig, type Channel } from "../consts.js";
 
@@ -239,16 +241,9 @@ async function messageReceived(p: InboxPayload): Promise<string | null> {
     });
   }
 
-  // History BEFORE this message is stored, so the model isn't handed the question it is answering.
-  let prevMessages = await messagesRepo.findBySession(session.id, { limit: HISTORY_LIMIT });
-  let latest = text || content;
-  if (stored) {
-    // Owed only while the customer's message is still the last word (and no draft is waiting).
-    const last = prevMessages[prevMessages.length - 1];
-    if (last?.role !== "user" || visitor.attention_reason === "suggest") return "duplicate";
-    prevMessages = prevMessages.slice(0, -1);
-    latest = last.content;
-  } else {
+  // Stored already (a redelivery, or a retry after a failure): not stored twice. The reply is
+  // scheduled again below; answerPending answers only what no reply (or suggestion) has claimed yet.
+  if (!stored) {
     try {
       await messagesRepo.create({ session_id: session.id, role: "user", content, ...(platformId ? { provider_message_id: platformId } : {}) });
     } catch (err) {
@@ -281,7 +276,10 @@ async function messageReceived(p: InboxPayload): Promise<string | null> {
     return null;
   }
 
-  await answer({ ...t, conn }, visitor, session, prevMessages, latest);
+  // Debounced: customers often send a burst ("Hello" … "List me some courses"). Each message
+  // pushes the reply a few seconds out; when it falls due, ONE reply answers everything the
+  // customer said since the last answer (see the reply loop in the channel-events worker).
+  await replyJobs.scheduleReply(t.owner, visitor.id, appConfig.CHANNEL_REPLY_DEBOUNCE_MS, appConfig.CHANNEL_REPLY_MAX_WAIT_MS);
   return null;
 }
 
@@ -293,25 +291,54 @@ async function answer(
   t: Tenant & { conn: connections.ConnectionRow },
   visitor: channelVisitors.ChannelVisitorRow,
   session: sessionsRepo.SessionRow,
+  /** The whole history, ending with the customer's unanswered messages (the burst being answered). */
   prevMessages: messagesRepo.MessageRow[],
-  latest: string | null,
+  /** Sent anyway when a newer message arrives mid-reply (the burst already waited its maximum). */
+  opts: { forced?: boolean } = {},
 ): Promise<void> {
   const cfg = aiConfigOf(t.conn.ai_config);
+  const started = Date.now();
   const summarise = () => void refreshChatSummary(session.id, t.config.display_name, { db: t.db, visitorId: visitor.id });
   const say = (content: string, key: string) => sendToCustomer({ db: t.db, visitor, sessionId: session.id, role: "assistant", content, idempotencyKey: key });
 
-  if (latest && cfg.capabilities.escalate && cfg.escalation.human && (await judgeWantsHuman(latest)) && (await takeover.requestHandover(t.db, visitor.id))) {
-    await say(HANDOVER_LINE, `handover:${session.id}:${prevMessages.length}:${latest.length}`);
-    takeover.notifyHandoverRequest(t.config, visitor, latest)
+  // Every message since the last answer, in order, as ONE question — so a burst gets one coherent
+  // reply, and "Hi" + "can I talk to a person?" is still recognised as a handover request.
+  const previous = session.answered_through_message_id ?? null;
+  const pending = takeover.owedMessages(prevMessages, previous);
+  const asked = pending.questions.join("\n\n");
+  const lastId = pending.lastId;
+  if (!asked || lastId == null) return;
+  // The model reads the usual window; a wider read (a backlog, see answerPending) only adds questions.
+  const history = pending.history.slice(-HISTORY_LIMIT).map((m) => ({
+    role: m.role === "user" ? ("user" as const) : ("model" as const),
+    parts: [{ text: m.content }],
+  }));
+  // Every response records the last message it answers — first, in one UPDATE — so a retry or a
+  // second worker finds those questions taken (and a waiting suggestion isn't regenerated), while
+  // anything newer stays owed. Undone if the response never goes out.
+  const respond = async (send: () => Promise<unknown>): Promise<boolean> => {
+    if (!(await sessionsRepo.claimAnsweredThrough(session.id, lastId))) return false;
+    try {
+      await send();
+      return true;
+    } catch (err) {
+      await sessionsRepo.releaseAnsweredThrough(session.id, lastId, previous);
+      throw err;
+    }
+  };
+
+  if (cfg.capabilities.escalate && cfg.escalation.human && (await judgeWantsHuman(asked)) && (await takeover.requestHandover(t.db, visitor.id))) {
+    if (!(await respond(() => say(HANDOVER_LINE, `handover:${session.id}:${lastId}`)))) return;
+    takeover.notifyHandoverRequest(t.config, visitor, asked)
       .catch((err) => logger.warn("Handover email not sent", { visitorId: visitor.id, err: err instanceof Error ? err.message : String(err) }));
     summarise();
     return;
   }
 
-  const reason = latest && cfg.capabilities.escalate ? await judgeEscalation(latest, cfg.escalation) : null;
+  const reason = cfg.capabilities.escalate ? await judgeEscalation(asked, cfg.escalation) : null;
   if (reason) {
     await channelVisitors.setAttention(t.db, visitor.id, reason);
-    await say(HOLDING_LINE[reason], `escalate:${session.id}:${prevMessages.length}:${reason}`);
+    await respond(() => say(HOLDING_LINE[reason], `escalate:${session.id}:${lastId}:${reason}`));
     summarise();
     return;
   }
@@ -323,19 +350,12 @@ async function answer(
     return;
   }
 
-  // Questions left unanswered while a person had the conversation join this one, as in the widget.
-  const pending = takeover.unansweredTail(prevMessages, session.answered_through_message_id ?? null);
-  const asked = [...pending.questions, ...(latest ? [latest] : [])].join("\n\n");
-  if (!asked) return;
-  const history = prevMessages.slice(0, pending.cut).map((m) => ({
-    role: m.role === "user" ? ("user" as const) : ("model" as const),
-    parts: [{ text: m.content }],
-  }));
-
   await showTyping(t.db, visitor);
   const embed = await embedService.buildEmbedContext(t.config);
   const rules = await loadVisitorRules(embed);
+  const genStarted = Date.now();
   const reply = await generateVisitorReply({ embed, rules, tenantDb: t.db, visitor, prevMessages, history, asked, surfaceNote: surfaceNote(t.conn.channel, cfg) });
+  const generateMs = Date.now() - genStarted;
   // What the customer will see — and what is stored, so the Inbox shows the same message. Course
   // cards are recommendations of programmes, so they follow both of those switches.
   const showCards = cfg.capabilities.programs && cfg.capabilities.recommend;
@@ -349,18 +369,51 @@ async function answer(
     logger.info("AI reply dropped: a person has the conversation now", { visitorId: visitor.id });
     return;
   }
+  // The customer wrote again while the model was writing: this reply would answer only part of
+  // what they've said. Drop it; the reply their new message scheduled answers all of it at once.
+  // Not once the burst has waited its maximum, so someone who keeps typing still gets an answer.
+  const [newest] = await messagesRepo.findBySession(session.id, { limit: 1 });
+  if (!opts.forced && newest && newest.id > lastId && newest.role === "user") {
+    logger.info("AI reply superseded by a newer customer message", { visitorId: visitor.id });
+    return;
+  }
 
   if (t.conn.ai_mode === "suggest") {
-    // Suggest-only: a person reviews and sends it from the Inbox.
-    await channelVisitors.setAttention(t.db, visitor.id, "suggest", text);
+    // Suggest-only: a person reviews and sends it from the Inbox. A draft answers nothing yet, so
+    // the questions stay owed (Resume AI, or a newer message, still covers all of them); only the
+    // draft marker moves, so a retried event doesn't regenerate the draft staff are reading.
+    // Claimed first: a draft older than the one already saved (a job that outlived its lease
+    // while another worker drafted newer questions) is dropped, never written over it.
+    // The marker must describe the draft actually saved: undone if saving fails, or a retry would
+    // take the old draft for the new one and stop.
+    const draftedBefore = session.drafted_through_message_id ?? null;
+    if (!(await sessionsRepo.claimDraftedThrough(session.id, lastId))) {
+      logger.info("AI draft dropped: a newer draft is already waiting", { visitorId: visitor.id });
+      return;
+    }
+    try {
+      await channelVisitors.setAttention(t.db, visitor.id, "suggest", text);
+    } catch (err) {
+      await sessionsRepo.releaseDraftedThrough(session.id, lastId, draftedBefore);
+      throw err;
+    }
   } else {
-    await sendToCustomer({
+    const sent = await respond(() => sendToCustomer({
       db: t.db, visitor, sessionId: session.id, role: "assistant", content: text,
-      idempotencyKey: `ai:${session.id}:${prevMessages[prevMessages.length - 1]?.id ?? 0}:${asked.length}`,
+      idempotencyKey: `ai:${session.id}:${lastId}`,
       extra: {
         sources: reply.sources, memory_ids: reply.memory?.ids,
         prompt_tokens: reply.result.usage.promptTokens, completion_tokens: reply.result.usage.completionTokens, total_tokens: reply.result.usage.totalTokens,
       },
+    }));
+    if (!sent) return;
+    // Where a slow reply's time went: the debounce + queue (customer's message → here), context,
+    // the model, and Zernio's send.
+    const asked_at = prevMessages.find((m) => m.id === lastId)?.created_at;
+    logger.info("AI reply sent", {
+      visitorId: visitor.id, channel: t.conn.channel,
+      sinceCustomerMs: asked_at ? Date.now() - new Date(asked_at).getTime() : null,
+      prepareMs: genStarted - started, generateMs, sendMs: Date.now() - genStarted - generateMs,
     });
     if (visitor.attention_reason === "ai_unsure") await channelVisitors.clearAttention(t.db, visitor.id);
   }
@@ -371,8 +424,12 @@ async function answer(
   summarise();
 }
 
-/** Resume AI on a channel conversation: answer whatever the customer said while a person had it. */
-export async function answerPending(owner: Recipient, visitorId: number): Promise<void> {
+/**
+ * A due reply (the worker's reply loop): answer everything the customer has said since the last
+ * answer, in one message. Also how Resume AI answers what was said while a person had it. Ownership
+ * is re-checked here, at reply time — a teammate may have taken over during the debounce.
+ */
+export async function answerPending(owner: Recipient, visitorId: number, opts: { forced?: boolean } = {}): Promise<void> {
   const config = await channelConfigFor(owner);
   const db = await visitorService.tenantDbFor(config);
   if (!db) return;
@@ -381,9 +438,29 @@ export async function answerPending(owner: Recipient, visitorId: number): Promis
   const conn = await connections.findById(db, visitor.channel_connection_id);
   const session = await sessionsRepo.findById(visitor.session_id);
   if (!conn || conn.status !== "connected" || !session) return;
-  const prevMessages = await messagesRepo.findBySession(session.id, { limit: HISTORY_LIMIT });
-  if (prevMessages[prevMessages.length - 1]?.role !== "user") return;
-  await answer({ owner, db, config, conn }, visitor, session, prevMessages, null);
+  const answeredThrough = session.answered_through_message_id ?? null;
+  let prevMessages = await messagesRepo.findBySession(session.id, { limit: HISTORY_LIMIT });
+  // More unanswered messages than the window holds (the worker was down, say): read the whole chat,
+  // so every unanswered question reaches the model rather than being marked answered unseen. Only
+  // the questions grow — answer() still gives the model the usual window of history.
+  const owedNow = takeover.owedMessages(prevMessages, answeredThrough);
+  if (prevMessages.length === HISTORY_LIMIT && owedNow.firstId === prevMessages[0]?.id) {
+    prevMessages = await messagesRepo.findBySession(session.id);
+  }
+  // Owed only while something the customer said is unanswered: an earlier reply (or a teammate)
+  // may have answered already, which is also what keeps a duplicate job from replying twice.
+  const pending = takeover.owedMessages(prevMessages, answeredThrough);
+  const owed = pending.lastId;
+  if (owed == null) return;
+  // Suggest mode, and the draft waiting for staff already covers everything owed: nothing new to draft.
+  if (conn.ai_mode === "suggest" && visitor.attention_reason === "suggest" && visitor.ai_draft && (session.drafted_through_message_id ?? 0) >= owed) return;
+  if (visitor.resolved_at || takeover.whoAnswers(visitor).answerer !== "ai" || visitor.attention_reason === "sensitive" || visitor.attention_reason === "other_app") return;
+  // The burst began at the oldest message still unanswered — not at the job's clock, which a message
+  // arriving mid-reply restarts. So a customer who keeps typing through every reply is still answered
+  // once that message has waited the maximum.
+  const oldest = prevMessages.find((m) => m.id === pending.firstId);
+  const forced = opts.forced || (!!oldest && Date.now() - new Date(oldest.created_at).getTime() >= appConfig.CHANNEL_REPLY_MAX_WAIT_MS);
+  await answer({ owner, db, config, conn }, visitor, session, prevMessages, { forced });
 }
 
 /**

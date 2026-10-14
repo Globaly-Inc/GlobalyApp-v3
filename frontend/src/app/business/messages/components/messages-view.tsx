@@ -10,6 +10,7 @@ import { fetchEmbedChats } from "../store/embed-chats-slice";
 import { fetchChannels } from "../channels/store/channels-slice";
 import type { ChannelFilter, ChannelHealth } from "./channel-picker";
 import type { InboxView } from "../const";
+import { inChannel, matchesView } from "../utils";
 import { InboxNav } from "./inbox-nav";
 import { EmbedConversationView } from "./embed-conversation-view";
 import { InboxChannelBar } from "./inbox-channel-bar";
@@ -20,6 +21,7 @@ import type { WidgetVisitor } from "@/app/business/ai-widget/apis/types";
 import { aiWidgetApi } from "@/app/business/ai-widget/apis";
 import { getDraftCount, getServerDraftCount, subscribeDrafts } from "@/components/chat/draft-store";
 import { ChatEmptyState } from "./chat-empty-state";
+import { InboxWelcome } from "./inbox-welcome";
 import { ChatSidebar } from "@/components/chat/chat-sidebar";
 import { ConversationView } from "./conversation-view";
 import { DraftsView } from "@/components/chat/drafts-view";
@@ -193,11 +195,24 @@ export function MessagesView() {
           "h-[calc(100dvh-4rem)]",
         )}
       >
-        <InboxChannelBar />
+        <InboxChannelBar
+          chips={kind === "embed" ? {
+            channel, onChannel: setChannel, health: channelHealth,
+            // Within the view picked in the sidebar.
+            count: (c) => embed.visitors.filter((x) => inChannel(x, c) && matchesView(x, view)).length,
+          } : undefined}
+        />
         <WidgetSetupDialog />
         <div className="flex min-h-0 flex-1">
         {kind === "embed" && (
-          <InboxNav visitors={embed.visitors} view={view} onView={setView} channel={channel} onChannel={setChannel} health={channelHealth} />
+          <InboxNav
+            visitors={embed.visitors}
+            view={view}
+            onView={setView}
+            channel={channel}
+            activeId={embedOpen?.id ?? null}
+            onOpen={(id) => setEmbedOpen(embed.visitors.find((v) => v.id === id) ?? null)}
+          />
         )}
         <div className={cn("w-full shrink-0 md:w-80 lg:w-[22rem]", mainOpen && "hidden md:block")}>
           {kind !== "enquiry" ? (
@@ -251,7 +266,7 @@ export function MessagesView() {
             embedSelected ? (
               <EmbedConversationView visitor={embedSelected} onBack={() => setEmbedOpen(null)} />
             ) : (
-              <ChatEmptyState threadCount={embed.visitors.length} embed />
+              <InboxWelcome visitors={embed.visitors} complete={!embed.search && embed.visitors.length >= embed.matched} health={channelHealth} onView={setView} onChannel={setChannel} />
             )
           ) : selected ? (
             <ConversationView thread={selected} highlightMessageId={highlightId} onBack={backToList} />

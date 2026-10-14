@@ -80,6 +80,11 @@ const envSchema = z.object({
   // production and accepts unsigned ones only outside it, so local development works before a
   // secret exists.
   ZERNIO_WEBHOOK_SECRET: z.string().optional(),
+  // Channel AI replies are debounced: a burst of messages from one customer ("Hello" … "List me
+  // some courses") gets ONE reply. Each message pushes the reply this far out; the burst's first
+  // message caps the total wait so someone who keeps typing is still answered.
+  CHANNEL_REPLY_DEBOUNCE_MS: z.coerce.number().int().min(0).default(6000),
+  CHANNEL_REPLY_MAX_WAIT_MS: z.coerce.number().int().min(0).default(20000),
 
   // AI / LLM
   GEMINI_API_KEY: z.string().optional(),

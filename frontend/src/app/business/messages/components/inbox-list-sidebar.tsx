@@ -17,6 +17,7 @@ import { inChannel, matchesView, needsAttention } from "../utils";
 import { ChannelGlyph } from "./channel-glyph";
 import { EmbedRow } from "./embed-row";
 import type { ChannelFilter } from "./channel-picker";
+import { INBOX_SEARCH_ID } from "./inbox-welcome";
 
 type Item =
   /** `messageId`: the newest loaded message matching the search, revealed on open. */
@@ -151,6 +152,7 @@ export function InboxListSidebar({
           <Input
             value={query}
             onChange={(e) => setQuery(e.target.value)}
+            id={INBOX_SEARCH_ID}
             placeholder="Search people, messages, handle"
             aria-label="Search conversations"
             className="h-9 w-full pl-9"

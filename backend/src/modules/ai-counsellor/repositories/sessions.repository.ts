@@ -94,6 +94,8 @@ export interface SessionRow {
   summary?: ChatSummaryJson | null;
   /** Newest visitor message a resume has claimed (20261002_004). Absent on a database behind it. */
   answered_through_message_id?: number | null;
+  /** Channels, suggest mode: newest customer message the waiting AI draft covers (20261013_003). */
+  drafted_through_message_id?: number | null;
   counselling_context: CounsellingContext;
   created_at: Date;
   updated_at: Date;
@@ -280,6 +282,25 @@ export async function claimAnsweredThrough(id: number, lastMessageId: number): P
     // A database behind 20261002_004: answer unclaimed rather than fail the visitor's reply.
     return true;
   }
+}
+
+/**
+ * Channels, suggest mode: claim the right to save a draft covering messages up to `lastMessageId`.
+ * One UPDATE that only moves forward (or re-covers the same messages), so a slow, older draft that
+ * finishes after a newer one gets `false` and must not overwrite it.
+ */
+export async function claimDraftedThrough(id: number, lastMessageId: number): Promise<boolean> {
+  const n = await masterKnex(TABLE)
+    .where({ id })
+    .where((q) => q.whereNull("drafted_through_message_id").orWhere("drafted_through_message_id", "<=", lastMessageId))
+    .update({ drafted_through_message_id: lastMessageId });
+  return n > 0;
+}
+
+/** Undo a draft claim whose draft never got saved — only while the marker is still this claim, so a
+ *  newer draft's claim is left alone. */
+export async function releaseDraftedThrough(id: number, claimed: number, previous: number | null): Promise<void> {
+  await masterKnex(TABLE).where({ id, drafted_through_message_id: claimed }).update({ drafted_through_message_id: previous });
 }
 
 /** Undo a claim whose reply never got saved, so the next resume answers those questions. Only

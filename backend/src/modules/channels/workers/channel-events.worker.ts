@@ -15,7 +15,9 @@ import { queueService } from "../../../shared/queue/queueService.js";
 import { createChildLogger } from "../../../shared/logger.js";
 import { masterKnex } from "../../../core/db/master-pool.js";
 import { CHANNEL_QUEUES } from "../consts.js";
-import { processEvent } from "../services/inbound.service.js";
+import { answerPending, processEvent } from "../services/inbound.service.js";
+import * as replyJobs from "../repositories/reply-jobs.repository.js";
+import { config } from "../../../config.js";
 
 const logger = createChildLogger("channel-events-worker");
 const SWEEP_MS = 60_000;
@@ -64,5 +66,60 @@ setInterval(async () => {
     sweeping = false;
   }
 }, SWEEP_MS);
+
+// ---------------------------------------------------------------- debounced AI replies
+//
+// Events only store messages and (re)schedule a reply (channel_reply_jobs); this loop sends them.
+// Replies run beside the event lane, not in it: a reply takes seconds, and a customer's next
+// message must be stored meanwhile so the reply can see it and stand down (answer's supersede
+// check). A job is LEASED while it's answered and deleted only when the reply is done, so a worker
+// that dies mid-reply leaves it for a later poll instead of losing it. Never two replies for one
+// conversation: a leased job can't be leased again until its lease runs out.
+
+const REPLY_POLL_MS = 1000;
+const MAX_CONCURRENT_REPLIES = 5;
+// Longer than any reply takes (the model plus a send). A reply still running past it may be
+// answered twice by two workers; answerPending's claim on the questions stops the second.
+const REPLY_LEASE_MS = 5 * 60_000;
+const replying = new Set<string>();
+const jobKey = (j: replyJobs.ReplyJob) => `${j.owner_kind}:${j.owner_id}:${j.visitor_id}`;
+
+async function reply(job: replyJobs.ReplyJob): Promise<void> {
+  const key = jobKey(job);
+  if (replying.has(key)) return replyJobs.retryReply(job, 2000);
+  replying.add(key);
+  try {
+    // The burst has waited as long as it may: send even if the customer is still typing.
+    const forced = Date.now() - new Date(job.first_message_at).getTime() >= config.CHANNEL_REPLY_MAX_WAIT_MS;
+    await answerPending({ kind: job.owner_kind, id: job.owner_id }, job.visitor_id, { forced });
+    await replyJobs.finishReply(job);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (job.attempts >= replyJobs.MAX_REPLY_ATTEMPTS) {
+      logger.error("AI reply failed; giving up", { key, attempt: job.attempts, err: message });
+      await replyJobs.finishReply(job);
+    } else {
+      logger.warn("AI reply failed; will retry", { key, attempt: job.attempts, err: message });
+      await replyJobs.retryReply(job, 30_000 * 2 ** (job.attempts - 1));
+    }
+  } finally {
+    replying.delete(key);
+  }
+}
+
+let polling = false;
+setInterval(async () => {
+  if (polling) return;
+  polling = true;
+  try {
+    const jobs = await replyJobs.claimDueReplies(MAX_CONCURRENT_REPLIES - replying.size, REPLY_LEASE_MS);
+    // Not awaited: one slow reply must not hold the others, or the next poll.
+    for (const job of jobs) void reply(job).catch((err) => logger.error("Reply loop crashed", { err: err instanceof Error ? err.message : String(err) }));
+  } catch (err) {
+    logger.warn("Reply poll failed", { err: err instanceof Error ? err.message : String(err) });
+  } finally {
+    polling = false;
+  }
+}, REPLY_POLL_MS);
 
 logger.info(`Channel events worker started — consuming "${CHANNEL_QUEUES.EVENTS}" queue`);

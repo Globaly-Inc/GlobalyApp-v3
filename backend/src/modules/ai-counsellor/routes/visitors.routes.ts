@@ -22,7 +22,7 @@ import { recipientFromRequest } from "../../enquiries/shared/recipient.js";
 import * as channelVisitors from "../../channels/repositories/channel-visitors.repository.js";
 import * as connections from "../../channels/repositories/connections.repository.js";
 import { assertTakeoverAllowed, sendToCustomer } from "../../channels/services/outbound.service.js";
-import { answerPending } from "../../channels/services/inbound.service.js";
+import * as replyJobs from "../../channels/repositories/reply-jobs.repository.js";
 import * as zernio from "../../channels/lib/zernio-client.js";
 import { CHANNEL_LABEL } from "../../channels/consts.js";
 import { createChildLogger } from "../../../shared/logger.js";
@@ -218,7 +218,9 @@ export async function visitorRoutes(app: FastifyInstance) {
       // next message. Not awaited — the model call must not hold the button.
       if (mode === "ai") {
         const owner = recipientFromRequest(req);
-        void answerPending(owner, id).catch((err) => logger.warn("Resume answer failed", { visitorId: id, err: err instanceof Error ? err.message : String(err) }));
+        // Through the worker's reply queue, due now: the one place that sends AI replies, so a
+        // resume can't race a debounced reply that was already pending for this conversation.
+        await replyJobs.scheduleReply(owner, id, 0, 0);
       }
     }
     return reply.send({ control: takeover.withMe(control, userId) });

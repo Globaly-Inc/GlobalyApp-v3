@@ -6,6 +6,7 @@ import { dateSeparatorLabel } from "@/components/chat/utils";
 import { visitorDisplayName, visitorInitials } from "@/app/business/ai-widget/utils";
 import type { VisitorMessage, VisitorNote, WidgetVisitor } from "@/app/business/ai-widget/apis/types";
 import { chatTitle } from "@/app/business/ai-widget/components/visitor-activity";
+import { AiTypingBubble } from "./ai-typing-bubble";
 import { NoteBubble } from "./note-bubble";
 import { DatePill, isGroupedWith, TranscriptBubble } from "./transcript-bubble";
 
@@ -157,6 +158,7 @@ export function EmbedTranscript({
             );
           })
         )}
+        {messages && <AiTypingBubble visitor={visitor} messages={messages} />}
       </div>
     </div>
   );

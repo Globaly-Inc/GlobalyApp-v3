@@ -11,6 +11,7 @@ const { windowOpen } = await import("../src/modules/channels/services/outbound.s
 const { aiConfigOf, DEFAULT_AI_CONFIG, channelVisitorKey, isChannel } = await import("../src/modules/channels/consts.js");
 const { formatForChannel, markdownToChannel } = await import("../src/modules/channels/lib/channel-format.js");
 const { isEventDue } = await import("../src/modules/channels/repositories/zernio.repository.js");
+const { unansweredTail, owedMessages } = await import("../src/modules/ai-counsellor/services/takeover.service.js");
 
 let passed = 0;
 let failed = 0;
@@ -72,6 +73,38 @@ check("a never-attempted event is due", isEventDue({ processed_at: null, next_at
 check("a failed event is not due before its backoff ends", !isEventDue({ processed_at: null, next_attempt_at: new Date(at + 60_000) }, at));
 check("and is due once it has", isEventDue({ processed_at: null, next_attempt_at: new Date(at - 1) }, at));
 check("a processed event is never due", !isEventDue({ processed_at: new Date(at - 1), next_attempt_at: null }, at));
+
+// --- a burst of messages is answered as ONE question, in the order it was sent
+const burst = [
+  { id: 1, role: "user", content: "What courses do you offer?" },
+  { id: 2, role: "assistant", content: "We offer…" },
+  { id: 3, role: "user", content: "Hello" },
+  { id: 4, role: "user", content: "List me some course" },
+];
+const tail = unansweredTail(burst, null);
+check("every message since the last answer joins the question, in order", tail.questions.join(" | ") === "Hello | List me some course");
+check("and the history the model reads stops before them", tail.cut === 2);
+check("nothing is owed once the last word is ours", unansweredTail(burst.slice(0, 2), null).questions.length === 0);
+
+// --- what a channel reply still owes (owedMessages), with answeredThrough recorded per AI reply
+const q = (ms: { id: number; role: string; content: string }[], through: number | null) => owedMessages(ms, through);
+const forcedFirst = [
+  { id: 1, role: "user", content: "Masters?" },
+  { id: 2, role: "user", content: "And fees?" }, // arrived while the forced reply to #1 was being written
+  { id: 3, role: "assistant", content: "Our Masters…" }, // answered through #1, stored after #2
+];
+check("a forced reply stored after a newer question leaves that question owed", q(forcedFirst, 1).questions.join("|") === "And fees?" && q(forcedFirst, 1).lastId === 2);
+check("…and the forced reply stays in the history the model reads", q(forcedFirst, 1).history.map((m) => m.id).join(",") === "1,3");
+check("once a reply records it answered #2, nothing is owed (no second reply)", q(forcedFirst, 2).lastId === null);
+check("the burst's clock is the OLDEST unanswered message (a mid-reply message can't restart it)", q([...forcedFirst, { id: 4, role: "user", content: "Hello?" }], 1).firstId === 2);
+check("a burst after our last reply is owed as one question, in order", q(burst, 2).questions.join(" | ") === "Hello | List me some course");
+// A suggest-mode draft doesn't move answeredThrough (staff haven't sent it), so the questions stay
+// owed: Resume AI answers them, and a newer message's draft covers them all, not just the new one.
+check("questions a waiting draft covers are still owed", q(burst, 2).lastId === 4);
+check("a newer message's draft covers every unanswered question", q([...burst, { id: 5, role: "user", content: "Any scholarships?" }], 2).questions.join("|") === "Hello|List me some course|Any scholarships?");
+check("a staff reply answers everything before it", q([...burst, { id: 5, role: "agent", content: "Here's our list" }], 2).lastId === null);
+check("messages after a staff reply are owed on Resume AI", q([...burst, { id: 5, role: "agent", content: "Hi" }, { id: 6, role: "user", content: "Thanks, and IELTS?" }], 2).lastId === 6);
+check("before any reply recorded answeredThrough, the latest reply counts", q(burst, null).lastId === 4 && q(burst.slice(0, 2), null).lastId === null);
 
 console.log(`\nchannels: ${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
