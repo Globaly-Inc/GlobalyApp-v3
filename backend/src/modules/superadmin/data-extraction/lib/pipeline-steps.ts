@@ -18,7 +18,7 @@ import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { NEXT_STEP, type PipelineStep } from "../schemas/step.schema.js";
 import { discoverUrlsForCrawl, scrapeFailureText, scrapeRenderedHtml } from "./scraper.js";
 import { chooseOverviewMedia, imageCandidates, metaImages } from "./gallery-images.js";
-import { SNAPSHOT_BATCH_SIZE, jobHalted } from "./site-snapshot.js";
+import { SNAPSHOT_BATCH_SIZE, jobHalted, runPool } from "./site-snapshot.js";
 import { CRAWL_BUDGET, crawlSeeds, crawlSite } from "./site-crawl.js";
 import { _urlClassifyDeps, jevCategorise, jevVerdicts } from "./jev-url-classify.js";
 import { getPage, normaliseUrl, readSnapshot } from "./page-store.js";
@@ -378,6 +378,10 @@ export async function runSiteAnalysis(jobId: string, job: JobRow): Promise<strin
 
 /** ponytail: 200 rather than the old 800 — each URL now carries a page excerpt in the prompt. */
 const CLASSIFIER_BATCH = 200;
+/** Fallback batches in flight. Gemini is a vendor API, not a site we are a guest on; the only
+ *  reason to keep this low is its own rate limit, and a 429 fails the batch, which the caller
+ *  already survives by filing those URLs as `other`. */
+const MODEL_CLASSIFY_CONCURRENCY = Math.max(1, Math.floor(Number(process.env.URL_CLASSIFY_CONCURRENCY) || 4));
 export const EXCERPT_CHARS = 300;
 const EXCERPT_CONCURRENCY = 8;
 const CLASSIFY_CAP_ENV = Number(process.env.EXTRACTION_CLASSIFY_CAP);
@@ -444,8 +448,11 @@ async function latestPatterns(jobId: string): Promise<string[]> {
 async function categoriseWithModel(jobId: string, candidates: string[], excerpts: Map<string, string>): Promise<Map<string, SiteUrlCategory>> {
   const out = new Map<string, SiteUrlCategory>();
   const known = new Set<string>(SITE_URL_CATEGORIES);
-  for (let i = 0; i < candidates.length; i += CLASSIFIER_BATCH) {
-    const batch = candidates.slice(i, i + CLASSIFIER_BATCH);
+  const batches = Math.ceil(candidates.length / CLASSIFIER_BATCH);
+  // This loop, not Jev's, was bu.edu's 16 minutes: Jev answered 0 of its 10,007 URLs, so 9,631 fell
+  // through to 48 sequential 200-URL Gemini batches. Same fix as jevCategorise, same pool.
+  await runPool(batches, MODEL_CLASSIFY_CONCURRENCY, async (n) => {
+    const batch = candidates.slice(n * CLASSIFIER_BATCH, (n + 1) * CLASSIFIER_BATCH);
     const inBatch = new Set(batch);
     const result = await extractJson<UrlCategoryResult>({
       system: SITE_ANALYSIS_SYSTEM,
@@ -461,7 +468,8 @@ async function categoriseWithModel(jobId: string, candidates: string[], excerpts
       }
     }
     await masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).update({ processing_heartbeat_at: masterKnex.fn.now() });
-  }
+    return true;
+  });
   return out;
 }
 

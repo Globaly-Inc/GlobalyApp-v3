@@ -1352,6 +1352,78 @@ dead-prefix knowledge has no premise. Hosts recur (724 rows); institutions do no
 
 **Workers load code once — restart the step worker after deploying this.**
 
+## Jev was answering nothing on half the runs, and nothing recorded it (2026-10-14)
+
+Measured, because "we use Jev" and "Jev is working" are different claims:
+
+| run | asked | Jev answered | fell through to Gemini |
+|---|---|---|---|
+| uq.edu.au (Oct 9) | 7,287 | 6,526 | 3 |
+| bu.edu (Oct 9) | 10,007 | **0** | 9,631 |
+| dartmouth (Oct 6) | 1,349 | **0** | 431 |
+
+Five of eleven recent `url_classify` runs got ZERO confident answers. **It is not latency** — a
+40-question batch carrying 300-char excerpts answers in 1,256ms with 34/40 above 0.6 (median
+confidence 0.84), measured against the live API. The reason those runs got nothing was never
+persisted: every Jev caller swallows a failure and falls back, with a `logger.warn` and no row
+anywhere. `extraction_llm_usage` held **zero** Jev rows — the one feature meant to cut the model
+bill was the only one whose own bill, answer rate and silent failures nothing recorded.
+
+- **Metered.** `_jevDeps.systemOne` records every call under model `jev-1.13.0` and kind
+  `jev:<ambient kind>` with the SDK's real `input_tokens`/`output_tokens`, so Jev's spend sits
+  beside the Gemini pass it is supposed to replace.
+- **One retry** (`RETRIES`), because a failure costs the fallback: ~1.47M prompt tokens a job for
+  the URL classifier, a full extraction for the page gate. A second 1.2s attempt is the cheapest
+  thing in this pipeline.
+- **Timeout 5s → 15s** (`JEV_TIMEOUT_MS`). 1.26s is comfortable for the classifier, but the page
+  GATE ships up to 40,000 characters of one page, and four batches now run concurrently.
+
+**The Gemini fallback was bu.edu's 16 minutes, not Jev.** `categoriseWithModel` was still the
+sequential loop — 48 batches of 200 URLs, one at a time — while Jev's loop had already been
+parallelised. It now runs through the same `runPool` at `URL_CLASSIFY_CONCURRENCY` (4).
+
+## Every gate verdict is recorded, so tuning stops costing money (2026-10-14)
+
+The page gate is the biggest cost lever in the pipeline — `course_extraction` is 1,926 calls and
+22.7M prompt tokens, and **39.1% of pages extracted since Oct 1 found zero courses** — and it fires
+on 37 of 536 pages (6.5%). Tuning it meant running `eval-jev-page-gate.ts`, which RE-ASKS Jev for
+every sampled page, because `extracted_data` kept the probability only when the gate SKIPPED. The
+one page class you could never learn from was the one it let through and should not have.
+
+`shouldSkipPage` now returns a `reason` (`scored` | `off` | `too_long` | `failed`) and the page
+worker writes `extracted_data.jev_gate = { p, threshold, reason }` on EVERY page it judges, beside
+that page's own `courses_found`. `eval-jev-page-gate.ts --stored` reads those pairs back: no Jev
+calls, no key, no sampling, every page the pipeline has ever run rather than a paid few hundred —
+and it sharpens with every extraction instead of costing money each time it is asked.
+
+`too_long` is why the offline eval disagrees with production: it calls `programmePageProbability`
+directly, while the live gate refuses to judge any page over `STATE_CHARS` (40,000) because a skip
+is final. The stored reasons make that gap countable for the first time.
+
+A live eval on 112 labelled pages, for the record (the threshold is the operator's call — the
+pages 0.10 costs are a Yale billing page and a faculty profile, plausibly bad extractions rather
+than real losses):
+
+```
+threshold | zero-yield skipped | productive lost | courses lost
+     0.05 |         30 (50.0%) |        1 (1.9%) | 2
+ →   0.10 |         41 (68.3%) |        4 (7.7%) | 8      ← current
+     0.15 |         42 (70.0%) |       6 (11.5%) | 16
+```
+
+**Measured and rejected — do not rebuild these:**
+- **A learned cross-site URL prior.** Train token→category on 22,029 paid labels over 164 hosts,
+  hold out the biggest jobs: 1.0% coverage at 86.5% accuracy, and it mislabels real course pages.
+  Universities share almost no path vocabulary.
+- **Within-run prefix learning.** uq.edu.au would place 82% of its URLs free after a 20-URL sample
+  per prefix — but bu.edu places **0%** (no prefix of its 10,007 is 98% pure), and bu.edu is where
+  the cost is. It helps exactly the run that was already cheap.
+- **Caching a site's classification across jobs.** 212 jobs over 204 distinct sites; an institution
+  is extracted once. Hosts recur, institutions do not — which is why learning landed on host pace
+  (above) and on recorded decisions here, not on content.
+
+**Workers load code once — restart the page and step workers after deploying this.**
+
 ## Stale queue-item reclaim (2026-09-15)
 
 Root cause of jobs found stuck at `status: "processing"` forever (seen live, both local and

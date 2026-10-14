@@ -4,6 +4,13 @@
 // pages would have skipped the model and how many productive pages would have been lost.
 //
 // Usage: TYPESAFE_API_KEY=… node --import tsx scripts/eval-jev-page-gate.ts [--per-class 150] [--days 60]
+//
+// `--stored` instead reads the verdicts the PIPELINE already recorded (extracted_data.jev_gate.p,
+// written on every page the gate scores since 2026-10-14) against that page's own courses_found.
+// No Jev calls, no sampling, no key needed — and it covers every page ever extracted rather than
+// a paid sample of a few hundred, so the answer gets sharper with every run instead of costing
+// money each time you ask. Use the live mode above only to judge a page class the gate has not
+// scored yet (it bypasses pages over 40,000 characters, which the live mode does not).
 import { masterKnex } from "../src/core/db/master-pool.js";
 import { config } from "../src/config.js";
 import { readSnapshot } from "../src/modules/superadmin/data-extraction/lib/page-store.js";
@@ -16,6 +23,42 @@ const arg = (name: string, def: number) => {
 };
 const PER_CLASS = arg("per-class", 150);
 const DAYS = arg("days", 60);
+const STORED = process.argv.includes("--stored");
+
+if (STORED) {
+  const { rows } = await masterKnex.raw(
+    `SELECT (extracted_data->'jev_gate'->>'p')::float AS p,
+            (extracted_data->>'courses_found')::int  AS found,
+            extracted_data->'jev_gate'->>'reason'    AS reason,
+            url
+     FROM superadmin.extraction_queue
+     WHERE status = 'completed' AND (extracted_data->>'courses_found') IS NOT NULL`);
+  const judged = (rows as { p: number | null; found: number; reason: string; url: string }[]);
+  const withP = judged.filter((r) => r.p != null);
+  const byReason = new Map<string, number>();
+  for (const r of judged) byReason.set(r.reason ?? "(not recorded)", (byReason.get(r.reason ?? "(not recorded)") ?? 0) + 1);
+  console.log(`${judged.length} completed pages with a known outcome; ${withP.length} carry a stored gate probability`);
+  console.log(`why the rest were never judged: ${[...byReason].map(([k, v]) => `${k}=${v}`).join(", ")}`);
+  if (!withP.length) {
+    console.log("\nNothing scored yet — this fills in as jobs run on the recording build. Use the live mode meanwhile.");
+    await masterKnex.destroy();
+    process.exit(0);
+  }
+  const pos = withP.filter((r) => r.found > 0);
+  const neg = withP.filter((r) => r.found === 0);
+  console.log(`\n${pos.length} productive pages, ${neg.length} zero-yield pages — free, from the pipeline's own record`);
+  console.log("threshold | zero-yield skipped | productive lost | courses lost");
+  for (const t of [0.02, 0.05, 0.1, 0.15, 0.2, 0.3, 0.4, 0.5]) {
+    const saved = neg.filter((r) => r.p! < t).length;
+    const lost = pos.filter((r) => r.p! < t);
+    const pct = (n: number, d: number) => (d ? `${((100 * n) / d).toFixed(1)}%` : "-");
+    console.log(`${t.toFixed(2).padStart(9)} | ${`${saved} (${pct(saved, neg.length)})`.padStart(18)} | ${`${lost.length} (${pct(lost.length, pos.length)})`.padStart(15)} | ${lost.reduce((a, r) => a + r.found, 0)}`);
+  }
+  console.log("\nLowest-scoring productive pages (what a threshold would cost):");
+  for (const r of pos.sort((a, b) => a.p! - b.p!).slice(0, 10)) console.log(`  p=${r.p!.toFixed(3)}  courses=${r.found}  ${r.url}`);
+  await masterKnex.destroy();
+  process.exit(0);
+}
 
 if (!config.TYPESAFE_API_KEY) {
   console.error("TYPESAFE_API_KEY is not set — nothing to evaluate.");
