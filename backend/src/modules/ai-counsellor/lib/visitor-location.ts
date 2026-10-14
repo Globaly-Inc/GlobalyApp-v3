@@ -230,7 +230,12 @@ export interface MapLocation {
   id: string;
   name: string;
   /** What the map resolves. City, state and country — the same `placeOf` the prompt section uses,
-   *  so the pin can never be more precise than the text already was. See the 2026-10-08 rule. */
+   *  so the pin can never be more precise than the text already was. See the 2026-10-08 rule.
+   *
+   *  The campus NAME is deliberately not in here. Google resolves "AIT Main Campus, Bangkok" to
+   *  the campus itself — its marker, its label, its street address in the info card — which is the
+   *  disclosure the whole rule removes, and a wide `zoom` only frames that pin from further away.
+   *  The name still rides along in `name` for the chip and the link text, where it is prose. */
   query: string;
   /** The campus chip above the map: the city alone, which is how a visitor names a campus. */
   label: string;
@@ -310,12 +315,16 @@ export function mapLocationsFor(reply: string, branches: readonly BranchLike[]):
     // A phrase made only of generic words names no place, so it can never match — not even in
     // full. Without this, a branch called "Main Campus" pinned itself on any reply containing the
     // words "main campus", which is most replies about a campus.
-    const words = text.split(" ").filter((w) => w.length >= 4 && !GENERIC_PLACE_WORDS.has(w));
+    const words = text.split(" ").filter((w) => !GENERIC_PLACE_WORDS.has(w));
     if (!words.length) return false;
     if (haystack.includes(` ${text} `)) return true;
     // Spacing differs on one side or the other: compare both with the spaces taken out.
     if (tokens.has(text.replace(/ /g, ""))) return true;
-    return words.some((w) => tokens.has(w));
+    // Only now the length floor, because it belongs to THIS test alone: one word out of a campus
+    // name standing in for the whole thing is a guess, and a short one ("new", "ait") coincides
+    // with ordinary prose. The two exact tests above need no such protection, which is why a
+    // three-letter city — Goa, Hue, Rio — still pins when the reply names it.
+    return words.filter((w) => w.length >= 4).some((w) => tokens.has(w));
   };
   const pins: MapLocation[] = [];
   // One pin per PLACE, not per row. An extracted catalogue routinely holds the same address three
@@ -333,7 +342,9 @@ export function mapLocationsFor(reply: string, branches: readonly BranchLike[]):
     if (seenPlace.has(normalizePlace(where))) return;
     seenPlace.add(normalizePlace(where));
     const name = clean(b.name) ?? place;
-    pins.push({ id: `b${i}`, name, query: `${name}, ${where}`, label: place });
+    // `where`, not `${name}, ${where}` — the query is the place and only the place. See MapLocation.
+    // The pins are one-per-place anyway, so naming the campus never disambiguated anything either.
+    pins.push({ id: `b${i}`, name, query: where, label: place });
   });
   return pins.slice(0, MAX_PINS);
 }

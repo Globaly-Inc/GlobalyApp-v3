@@ -137,7 +137,11 @@ export function EmbedChatView({ embedKey, initialConfig = null }: EmbedChatViewP
         },
       );
     } catch (e) {
-      setError((e as Error).message);
+      // Only the current turn may raise the banner, the same guard the late prompt events carry:
+      // once a turn settles the visitor can send another, and this connection is still open behind
+      // it. Its failure changes nothing on screen — but an unguarded banner would hang an error
+      // over a reply that arrived perfectly well.
+      if (turn === runSeq.current) setError((e as Error).message);
       // A stream that died before reply-done leaves a half-sentence; the banner is the whole
       // message. (A failure AFTER it lands on an already-settled turn and changes nothing.)
       text = ""; cards = []; chips = []; blocks = [];

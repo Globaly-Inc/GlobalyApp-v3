@@ -176,6 +176,16 @@ export async function generateVisitorReply(input: VisitorReplyInput) {
   // is a source the visitor should be able to see.
   if (briefing?.sources.length) input.onSources?.(briefing.sources);
 
+  // What the answer actually stood on, streamed AND stored. The two retrievals are separate calls
+  // and can return the same passage, so they are merged on `type:id` — the key chat.service's tool
+  // loop dedupes on. Returned instead of `ragOutput`: every caller stores this list, and leaving
+  // the half-list reachable is how the briefing fell out of the saved sources in the first place.
+  const seenSource = new Set(ragOutput.sources.map((s) => `${s.type}:${s.id}`));
+  const sources = [
+    ...ragOutput.sources,
+    ...(briefing?.sources ?? []).filter((s) => !seenSource.has(`${s.type}:${s.id}`)),
+  ];
+
   const withheldMoneyTopics = rag.askedMoneyTopics(asked).filter((topic) => !ragOutput.moneyTopics.includes(topic));
   if (withheldMoneyTopics.length) trace(`Money question, no evidence for ${withheldMoneyTopics.join("/")}: that part withheld`);
 
@@ -221,7 +231,7 @@ export async function generateVisitorReply(input: VisitorReplyInput) {
     : [];
   if (pins.length) blocks.push({ type: "map", locations: pins });
 
-  return { result, cleanText, cards, chips, blocks, ragOutput, memory, visitorLocation };
+  return { result, cleanText, cards, chips, blocks, sources, memory, visitorLocation };
 }
 
 /**

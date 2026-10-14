@@ -13,8 +13,6 @@
  *
  * Exits 1 on any mismatch, so it can gate a model change.
  */
-import { judgeWantsHuman, MIGHT_WANT_HUMAN } from "../src/modules/ai-counsellor/lib/handover-detect.js";
-import { config } from "../src/config.js";
 
 /** The prompt's own true/false examples, plus the near-misses it exists to get right. */
 const CASES: Array<[string, boolean]> = [
@@ -33,7 +31,15 @@ const CASES: Array<[string, boolean]> = [
 ];
 
 const full = process.argv.includes("--full");
-if (full) process.env.GEMINI_MODEL_LITE = config.GEMINI_MODEL;
+// Blank, not "the full model's name" — an empty GEMINI_MODEL_LITE is gemini.ts's own documented
+// opt-out: every `tier: "lite"` call then runs on GEMINI_MODEL. And it has to be set BEFORE the
+// imports below, which is why they are dynamic: config parses process.env once at import time, so
+// an assignment after it is read by nobody and --full silently measured lite a second time.
+// (dotenv leaves a key that already exists alone, so "" survives config's own `dotenv/config`.)
+if (full) process.env.GEMINI_MODEL_LITE = "";
+
+const { judgeWantsHuman, MIGHT_WANT_HUMAN } = await import("../src/modules/ai-counsellor/lib/handover-detect.js");
+const { config } = await import("../src/config.js");
 
 const model = full ? config.GEMINI_MODEL : config.GEMINI_MODEL_LITE;
 console.log(`Judging ${CASES.length} messages with ${model}\n`);

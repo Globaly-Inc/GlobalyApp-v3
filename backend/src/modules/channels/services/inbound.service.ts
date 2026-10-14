@@ -358,7 +358,7 @@ async function answer(
       db: t.db, visitor, sessionId: session.id, role: "assistant", content: text,
       idempotencyKey: `ai:${session.id}:${prevMessages[prevMessages.length - 1]?.id ?? 0}:${asked.length}`,
       extra: {
-        sources: reply.ragOutput.sources, memory_ids: reply.memory?.ids,
+        sources: reply.sources, memory_ids: reply.memory?.ids,
         prompt_tokens: reply.result.usage.promptTokens, completion_tokens: reply.result.usage.completionTokens, total_tokens: reply.result.usage.totalTokens,
       },
     });

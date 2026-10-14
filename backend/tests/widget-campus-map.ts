@@ -27,13 +27,16 @@ const both = mapLocationsFor(
 );
 assert.deepEqual(both.map((l) => l.label), ["Bangkok", "Hanoi"], "a reply naming two campuses pins both");
 
-// ── The pin is a place, never a street address ────────────────────────────────
-// This is the whole D1 decision in one assertion: the query is what Google resolves, so if the
-// street ever leaks into it the map becomes the address disclosure the data layer removed.
-assert.equal(both[0].query, "AIT Main Campus, Bangkok, Pathum Thani, Thailand");
+// ── The pin is a place, never a campus and never a street address ─────────────
+// This is the whole D1 decision in one assertion: the query is what Google resolves, so it is the
+// city text and nothing else. A street in it would be the address disclosure the data layer
+// removed — and so would the campus NAME, because Google resolves "AIT Main Campus, Bangkok" to
+// the campus itself, pin, label and address, however wide the zoom is set.
+assert.equal(both[0].query, "Bangkok, Pathum Thani, Thailand");
 for (const pin of both) {
   assert.ok(!/\d/.test(pin.query), `no street number reaches the map query: ${pin.query}`);
   assert.ok(!/Paholyothin|Luong The Vinh/.test(pin.query), `no street name reaches the map query: ${pin.query}`);
+  assert.ok(!/AIT|Campus/i.test(pin.query), `no campus name reaches the map query: ${pin.query}`);
 }
 
 // ── A campus with no city is skipped even when the reply names it ─────────────
@@ -78,7 +81,7 @@ const REAL = [
 const hanoi = mapLocationsFor("That program runs from our Hanoi campus.", REAL);
 assert.deepEqual(hanoi.map((l) => l.name), ["Vietnam (Hanoi) Campus"],
   "a distinctive word of the campus name is enough — the reply need not quote the row");
-assert.equal(hanoi[0].query, "Vietnam (Hanoi) Campus, Cau Giay Ward, Hanoi");
+assert.equal(hanoi[0].query, "Cau Giay Ward, Hanoi");
 assert.equal(hanoi[0].label, "Cau Giay Ward");
 
 assert.deepEqual(
@@ -92,6 +95,30 @@ assert.deepEqual(
   mapLocationsFor("Our main campus is lovely.", [{ name: "Main Campus", country: "Thailand", state: null, city: "Pathumthani", address: null }]),
   [],
   "a pinnable row is still not pinned until the reply names where it is",
+);
+
+// ── A short city name is still a place ───────────────────────────────────────
+// The 4-letter floor exists to stop a single short word of a campus name matching by coincidence.
+// It is not a statement about cities: Goa, Hue and Rio are exactly themselves, and a branch in one
+// of them must still pin when the reply names it.
+assert.deepEqual(
+  mapLocationsFor("Our main campus is in Goa.",
+    [{ name: "Main Campus", country: "India", state: null, city: "Goa", address: null }]).map((l) => l.label),
+  ["Goa"],
+  "a three-letter city still pins when the reply names it exactly",
+);
+// And the floor still holds where it was meant to: a short word is not a loose match.
+assert.deepEqual(
+  mapLocationsFor("Our students score well on the IELTS.",
+    [{ name: "Goa Centre", country: "India", state: null, city: "Goa", address: null }]),
+  [],
+  "a reply that names no place pins nothing, short city or not",
+);
+assert.deepEqual(
+  mapLocationsFor("That is our goal for the intake.",
+    [{ name: "Goa Centre", country: "India", state: null, city: "Goa", address: null }]),
+  [],
+  "'goal' is not the city Goa",
 );
 
 // ── Spacing differs between the row and the reply ────────────────────────────
@@ -154,4 +181,4 @@ for (const asked of [
   "what does the professional master's cover?",
 ]) assert.ok(!asksAboutPlace(asked), `an ordinary question carries no map: ${asked}`);
 
-console.log(`widget-campus-map: ok (${25} assertions)`);
+console.log(`widget-campus-map: ok (${28} assertions)`);
