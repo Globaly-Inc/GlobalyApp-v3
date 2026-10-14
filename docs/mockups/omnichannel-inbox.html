@@ -133,6 +133,13 @@ h1.title{font:700 clamp(28px,4vw,40px)/1.15 var(--head);letter-spacing:-.01em;ma
 .hchip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--card);border-radius:999px;padding:3px 9px 3px 4px;font-size:12px;color:var(--fg)}
 .hchip:hover{background:var(--muted)}
 .hchip .sub2{color:var(--mfg)}
+.hchip.chf{padding:3px 10px 3px 4px}
+.hchip.chf .n{font-size:11px;color:var(--mfg);font-variant-numeric:tabular-nums}
+.hchip.chf.on{border-color:var(--p20);background:var(--p5);color:var(--primary);font-weight:500}
+.hchip.chf.off{color:var(--mfg);border-style:dashed}
+.hchip .chav.xs{width:16px;height:16px;border-radius:4px}
+.hchip .chav.xs .ic{width:10px;height:10px}
+.bsep{width:1px;height:20px;background:var(--line);flex:none}
 .spacer{flex:1}
 .wsw{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:7px;padding:3px 10px;font-size:13px;background:var(--card)}
 .sw{width:34px;height:20px;border-radius:999px;background:#d5dbe5;position:relative;border:0;padding:0;flex:none}
@@ -370,6 +377,11 @@ h1.title{font:700 clamp(28px,4vw,40px)/1.15 var(--head);letter-spacing:-.01em;ma
 .isb.mini .isv .dot{position:absolute;bottom:7px;right:8px;box-shadow:0 0 0 2px var(--card)}
 .isep{width:28px;height:1px;background:var(--line);margin:8px 0;flex:none}
 .isb .isadd{margin-top:12px;padding:6px 9px;font-size:12.5px}
+.isb h6.ish{display:flex;align-items:center;gap:6px}
+.isb h6.ish .ic{width:12px;height:12px;color:var(--amber-500)}
+.isb h6.ish .lnk{margin-left:auto;font-size:11px;letter-spacing:0;text-transform:none}
+.isb .isstar .lbl{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.isb .isempty{margin:2px 9px;font-size:12px;color:var(--mfg)}
 .lhead{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .lhead b{font-size:16px;font-weight:600}
 .lhead .sort{margin-left:auto;font-size:12px;color:var(--mfg);display:inline-flex;align-items:center;gap:4px}
@@ -882,8 +894,8 @@ h1.title{font:700 clamp(28px,4vw,40px)/1.15 var(--head);letter-spacing:-.01em;ma
         </ul>
         <h3>Inbox list</h3>
         <ul>
-          <li><b>Inbox sidebar</b> (left of the list): views with counts — Needs attention (amber count), With team, AI handling, Unread, Starred, All conversations, Resolved — then Channels: All channels, AI Embed, WhatsApp, Instagram, Facebook, each with its connection dot and count, and “+ Connect a channel”. No “Assigned to me”: there is no assignment.</li>
-          <li><b>Collapse:</b> the button in the sidebar header shrinks it to an icon rail (counts become badges, channels keep their dots) and opens it again. The choice is remembered per person in the browser.</li>
+          <li><b>Inbox sidebar</b> (left of the list): views with counts — Needs attention (amber count), With team, AI handling, Unread, All conversations, Resolved — then <b>Starred</b>: the starred conversations themselves (avatar with channel badge, name, unread count), newest first; a click opens one, “See all” shows them in the list. No “Assigned to me”: there is no assignment.</li><li><b>Top bar channels</b>: after “Connect a channel”, one chip per channel (All channels, AI Embed, WhatsApp, Instagram, Facebook) with its connection dot and count. A chip filters the list; a channel that isn’t connected is dashed and opens Connect.</li>
+          <li><b>Collapse:</b> the button in the sidebar header shrinks it to an icon rail (counts become badges, starred conversations become avatars) and opens it again. The choice is remembered per person in the browser.</li>
           <li><b>List header</b> names the current view, says what it means (“Aly handed these over. Reply first.”) with the count, shows the channel as a removable chip when one is picked, then search.</li>
           <li><b>Sort order:</b> Needs attention first, then unread, then newest. Matches today's “waiting first” rule.</li>
           <li><b>Each row:</b> avatar with an owner badge (navy AI, amber attention, cyan person, green resolved), name, Lead badge, time, channel icon and last message (“AI:”, “You:”), a state chip (showing who handles it when a person does), a star, and an unread count.</li>
@@ -1737,15 +1749,22 @@ function inbox() {
     <button class="btn ghost sm" data-act="embed-on">or set up AI Embed on your website</button></div></div></main>`;
   return `<main class="inbox">${bar()}${banners()}<div class="panes">${sidebar()}${list()}${convPane()}${cur() ? panel() : ""}</div></main>`;
 }
+/* Top bar: widget switch, Connect a channel, then the channel filters (moved up from the sidebar):
+   each chip filters the list and shows its connection dot and count; a channel that isn't
+   connected opens Connect instead. */
 function bar() {
-  const chips = ["whatsapp", "instagram", "facebook"].filter(ch => S.integ[ch].status !== "disconnected").map(ch => {
-    const i = S.integ[ch], bad = i.status === "error";
-    return `<button class="hchip" data-act="connect-open" title="${CH[ch].label}: ${bad ? "connection lost" : "connected"}">${glyph(ch, "xs")} ${CH[ch].label} <span class="dot ${bad ? "bad" : "ok"}"></span><span class="sub2">${bad ? "Reconnect" : i.ai.mode === "auto" ? "AI active" : "Suggest only"}</span></button>`;
-  }).join("");
+  const chCount = k => S.convs.filter(c => (k === "all" || c.channel === k) && matchF(c, S.filter)).length;
+  const chip = k => {
+    if (k === "all") return `<button class="hchip chf ${S.chf === "all" ? "on" : ""}" data-act="chf" data-id="inbox" data-k="all" aria-pressed="${S.chf === "all"}"><span class="chav all xs">${ic("layers")}</span>All channels<span class="n">${chCount("all")}</span></button>`;
+    const st = S.integ[k].status, off = st === "disconnected";
+    const tip = off ? "Not connected — click to connect" : st === "error" ? "Connection lost" : k === "ai_embed" ? "Widget on your website" : "Connected · AI " + (S.integ[k].ai.mode === "auto" ? "active" : "suggests");
+    return `<button class="hchip chf ${S.chf === k ? "on" : ""} ${off ? "off" : ""}" data-act="${off ? "connect-open" : "chf"}" data-id="inbox" data-k="${k}" aria-pressed="${S.chf === k}" title="${CH[k].label}: ${tip}">${glyph(k, "xs")}${CH[k].label}<span class="dot ${st === "connected" ? "ok" : st === "error" ? "bad" : "off"}"></span>${off ? "" : `<span class="n">${chCount(k)}</span>`}</button>`;
+  };
   return `<div class="bar">
     ${connected("ai_embed") ? `<span class="wsw">${ic("message-square", "")}Widget · ${S.widgetOn ? "On" : "Off"} <button class="sw ${S.widgetOn ? "on" : ""}" data-act="widget" aria-label="AI chat widget"></button></span>` : `<button class="btn outline sm" data-act="embed-on">${ic("message-square")} Set up the chat widget</button>`}
     <button class="btn outline sm dashed" data-act="connect-open">${ic("radio-tower")} Connect a channel</button>
-    ${chips ? `<div class="health">${chips}</div>` : ""}
+    <span class="bsep"></span>
+    <div class="health" role="group" aria-label="Channels">${["all", "ai_embed", "whatsapp", "instagram", "facebook"].map(chip).join("")}</div>
     <span class="spacer"></span>
     <button class="btn outline sm" data-act="manage" data-ch="ai_embed">${ic("settings")} Widget</button>
   </div>`;
@@ -1756,20 +1775,22 @@ function banners() {
   if (connected("ai_embed") && !S.widgetOn) h += `<div class="banner warn">The chat widget is off. It's hidden on your website and visitors can't send messages. Past conversations stay here.</div>`;
   return h;
 }
-/* Views and channels. Collapses to an icon rail (counts as badges) and opens again. */
+/* Views, then the starred conversations themselves (channels moved to the top bar). Collapses to
+   an icon rail (counts as badges, starred as avatars) and opens again. */
 function sidebar() {
   const cnt = k => S.convs.filter(c => (S.chf === "all" || c.channel === S.chf) && matchF(c, k)).length;
-  const chCount = k => S.convs.filter(c => (k === "all" || c.channel === k) && matchF(c, S.filter)).length;
-  const dot = k => { const st = S.integ[k].status; return `<span class="dot ${st === "connected" ? "ok" : st === "error" ? "bad" : "off"}" title="${st === "connected" ? "Connected" : st === "error" ? "Connection lost" : "Not connected"}"></span>`; };
   const n = (k, v) => v || k === "all" ? `<span class="n ${k === "attention" && v ? "hot" : ""}">${v}</span>` : "";
   const mini = !S.sbOpen;
-  const views = VIEWS.map(([k, l, icon]) => `<button class="isv ${S.filter === k ? "on" : ""}" data-act="filter" data-k="${k}" title="${l}" aria-pressed="${S.filter === k}">${ic(icon)}${mini ? "" : `<span class="lbl">${l}</span>`}${n(k, cnt(k))}</button>`).join("");
-  const chs = ["all", "ai_embed", "whatsapp", "instagram", "facebook"].map(k => `<button class="isv ${S.chf === k ? "on" : ""}" data-act="chf" data-id="inbox" data-k="${k}" title="${k === "all" ? "All channels" : CH[k].label}" aria-pressed="${S.chf === k}">${k === "all" ? `<span class="chav all">${ic("layers")}</span>` : glyph(k)}${mini ? (k === "all" ? "" : dot(k)) : `<span class="lbl">${k === "all" ? "All channels" : CH[k].label}</span>${k === "all" ? "" : dot(k)}<span class="n">${chCount(k)}</span>`}</button>`).join("");
-  if (mini) return `<nav class="isb mini" aria-label="Inbox views"><button class="isbt" data-act="sb-toggle" aria-label="Open sidebar" title="Open sidebar">${ic("panel-left-open")}</button>${views}<span class="isep"></span>${chs}</nav>`;
+  const views = VIEWS.filter(([k]) => k !== "starred").map(([k, l, icon]) => `<button class="isv ${S.filter === k ? "on" : ""}" data-act="filter" data-k="${k}" title="${l}" aria-pressed="${S.filter === k}">${ic(icon)}${mini ? "" : `<span class="lbl">${l}</span>`}${n(k, cnt(k))}</button>`).join("");
+  const starred = S.convs.filter(c => c.starred).sort((a, b) => lastAt(b) - lastAt(a));
+  const av = c => `<span class="avw"><span class="av sm">${initials(contactOf(c).name)}</span><span class="chb gl gl-${c.channel} xs">${ic(CH[c.channel].icon)}</span></span>`;
+  const rows = starred.map(c => `<button class="isv isstar ${S.open === c.id ? "on" : ""}" data-act="open" data-id="${c.id}" title="${esc(contactOf(c).name)}">${av(c)}${mini ? "" : `<span class="lbl">${esc(contactOf(c).name)}</span>${c.unread ? `<span class="n">${c.unread}</span>` : ""}`}</button>`).join("");
+  if (mini) return `<nav class="isb mini" aria-label="Inbox views"><button class="isbt" data-act="sb-toggle" aria-label="Open sidebar" title="Open sidebar">${ic("panel-left-open")}</button>${views}<span class="isep"></span>${rows}</nav>`;
   return `<nav class="isb" aria-label="Inbox views">
     <div class="isbh"><b>Inbox</b><button class="isbt" data-act="sb-toggle" aria-label="Collapse sidebar" title="Collapse sidebar">${ic("panel-left-close")}</button></div>
-    ${views}<h6>Channels</h6>${chs}
-    <button class="lnk isadd" data-act="connect-open">+ Connect a channel</button>
+    ${views}
+    <h6 class="ish">${ic("star")}Starred${starred.length ? `<button class="lnk" data-act="filter" data-k="starred">See all</button>` : ""}</h6>
+    ${rows || `<p class="isempty">Star a conversation to keep it here.</p>`}
   </nav>`;
 }
 function list() {

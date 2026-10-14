@@ -1,14 +1,15 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import Link from "next/link";
-import { Layers, PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, Star, User } from "lucide-react";
 import { cn } from "@/lib/utils";
-import type { InboxChannel, WidgetVisitor } from "@/app/business/ai-widget/apis/types";
-import { CHANNELS_HREF, INBOX_CHANNELS, INBOX_CHANNEL_ORDER, INBOX_VIEWS, type InboxView } from "../const";
-import { inChannel, matchesView } from "../utils";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import type { WidgetVisitor } from "@/app/business/ai-widget/apis/types";
+import { visitorDisplayName, visitorInitials } from "@/app/business/ai-widget/utils";
+import { INBOX_VIEWS, type InboxView } from "../const";
+import { channelOf, inChannel, matchesView } from "../utils";
 import { ChannelGlyph } from "./channel-glyph";
-import { HEALTH_DOT, type ChannelFilter, type ChannelHealth } from "./channel-picker";
+import type { ChannelFilter } from "./channel-picker";
 
 // Collapsed or open is a per-viewer convenience: remembered in this browser when storage works,
 // and still toggles (for this visit) when it doesn't.
@@ -46,24 +47,29 @@ const ITEM = "relative flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5
 const ITEM_ON = "bg-primary/10 font-semibold text-primary hover:bg-primary/10";
 const ITEM_MINI = "size-10 justify-center px-0";
 
+/** Starred has its own section below, listing the conversations themselves. */
+const NAV_VIEWS = INBOX_VIEWS.filter((v) => v.value !== "starred");
+
 /**
- * The Inbox's own sidebar: views (Needs attention first) and channels, each with a count. It
- * collapses to an icon rail — counts become badges, channels keep their health dots — and opens again.
+ * The Inbox's own sidebar: views (Needs attention first), each with a count, then the starred
+ * conversations themselves (the channel filter lives in the bar above). It collapses to an icon
+ * rail — counts become badges, starred conversations become avatars — and opens again.
  */
 export function InboxNav({
-  visitors, view, onView, channel, onChannel, health,
+  visitors, view, onView, channel, activeId, onOpen,
 }: Readonly<{
   visitors: WidgetVisitor[];
   view: InboxView;
   onView: (view: InboxView) => void;
+  /** Views count within the channel picked in the bar. */
   channel: ChannelFilter;
-  onChannel: (channel: ChannelFilter) => void;
-  health: Partial<Record<InboxChannel, ChannelHealth>>;
+  activeId: number | null;
+  onOpen: (visitorId: number) => void;
 }>) {
   const mini = useNavCollapsed();
-  // Counts follow the other choice: views count within the channel, channels within the view.
   const viewCount = (v: InboxView) => visitors.filter((x) => inChannel(x, channel) && matchesView(x, v)).length;
-  const channelCount = (c: ChannelFilter) => visitors.filter((x) => inChannel(x, c) && matchesView(x, view)).length;
+  // ponytail: starred among the loaded list (the list's own page), newest first.
+  const starred = visitors.filter((v) => v.starred).sort((a, b) => Date.parse(b.last_activity_at) - Date.parse(a.last_activity_at));
   const Toggle = mini ? PanelLeftOpen : PanelLeftClose;
 
   return (
@@ -84,7 +90,7 @@ export function InboxNav({
         </button>
       </div>
 
-      {INBOX_VIEWS.map(({ value, label, icon: Icon }) => (
+      {NAV_VIEWS.map(({ value, label, icon: Icon }) => (
         <button key={value} type="button" title={label} aria-pressed={view === value} onClick={() => onView(value)} className={cn(ITEM, view === value && ITEM_ON, mini && ITEM_MINI)}>
           <Icon className={cn("size-4 shrink-0", view === value ? "text-primary" : "text-muted-foreground")} aria-hidden />
           {!mini && <span className="min-w-0 flex-1 truncate">{label}</span>}
@@ -92,30 +98,37 @@ export function InboxNav({
         </button>
       ))}
 
-      {mini ? <span className="my-2 h-px w-7 bg-border" /> : <p className="px-2.5 pb-1 pt-4 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Channels</p>}
+      {mini ? (
+        <span className="my-2 h-px w-7 bg-border" />
+      ) : (
+        <div className="flex items-center gap-1.5 px-2.5 pb-1 pt-4">
+          <Star className="size-3 fill-amber-400 text-amber-400" aria-hidden />
+          <p className="flex-1 text-xs font-semibold uppercase tracking-wider text-muted-foreground">Starred</p>
+          {starred.length > 0 && (
+            <button type="button" onClick={() => onView("starred")} className="text-xs font-medium text-primary hover:underline">See all</button>
+          )}
+        </div>
+      )}
 
-      {(["all", ...INBOX_CHANNEL_ORDER] as ChannelFilter[]).map((c) => {
-        const label = c === "all" ? "All channels" : INBOX_CHANNELS[c].label;
-        const dot = c === "all" ? null : HEALTH_DOT[health[c] ?? "off"];
+      {starred.map((v) => {
+        const name = visitorDisplayName(v);
+        const unread = v.unread_count ?? 0;
         return (
-          <button key={c} type="button" title={label} aria-pressed={channel === c} onClick={() => onChannel(c)} className={cn(ITEM, channel === c && ITEM_ON, mini && ITEM_MINI)}>
-            {c === "all" ? (
-              <span className="inline-flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground"><Layers className="size-3.5" aria-hidden /></span>
-            ) : (
-              <ChannelGlyph channel={c} size="md" />
-            )}
-            {!mini && <span className="min-w-0 flex-1 truncate">{label}</span>}
-            {dot && <span className={cn("size-1.5 shrink-0 rounded-full", dot.className, mini && "absolute bottom-2 right-2 ring-2 ring-card")} title={dot.title} />}
-            {!mini && <Count value={channelCount(c)} />}
+          <button key={v.id} type="button" title={name} onClick={() => onOpen(v.id)} className={cn(ITEM, activeId === v.id && ITEM_ON, mini && ITEM_MINI)}>
+            <span className="relative shrink-0">
+              <Avatar className="size-6">
+                <AvatarFallback className="bg-primary/10 text-[10px] font-medium text-primary">
+                  {v.name ? visitorInitials(v) : <User className="size-3" aria-hidden />}
+                </AvatarFallback>
+              </Avatar>
+              <ChannelGlyph channel={channelOf(v)} size="xs" className="absolute -bottom-1 -right-1 size-3 ring-1 ring-card [&_svg]:size-2" />
+            </span>
+            {!mini && <span className={cn("min-w-0 flex-1 truncate", !v.name && "italic")}>{name}</span>}
+            {unread > 0 && <Count value={unread} mini={mini} />}
           </button>
         );
       })}
-
-      {!mini && (
-        <Link href={CHANNELS_HREF} className="mt-3 px-2.5 text-xs font-medium text-primary hover:underline">
-          + Connect a channel
-        </Link>
-      )}
+      {!mini && starred.length === 0 && <p className="px-2.5 text-xs text-muted-foreground">Star a conversation to keep it here.</p>}
     </nav>
   );
 }
