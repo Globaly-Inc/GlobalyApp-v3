@@ -23,7 +23,9 @@ const rows = () => masterKnex("channel_reply_jobs").where({ owner_kind: owner.ki
 const row = async (visitorId: number) => rows().where({ visitor_id: visitorId }).first();
 /** Make a visitor's job due now (the waits are seconds; the test shouldn't be). */
 const dueNow = (visitorId: number) => rows().where({ visitor_id: visitorId }).update({ due_at: masterKnex.raw("now() - interval '1 second'") });
-const claimMine = async (leaseMs = 60_000) => (await jobs.claimDueReplies(50, leaseMs)).filter((j) => j.owner_id === owner.id);
+// Scoped to the test owner IN the claim: an unscoped claim would lease (and count an attempt on)
+// real pending replies in this database.
+const claimMine = (leaseMs = 60_000) => jobs.claimDueReplies(50, leaseMs, owner);
 
 await rows().del();
 try {

@@ -89,7 +89,7 @@ export function ChannelsView() {
 
       <section className="flex flex-col gap-3">
         <SectionLabel>Web widget</SectionLabel>
-        <div className="flex max-w-3xl flex-wrap items-center gap-4 rounded-lg border border-border bg-card p-4 shadow-sm">
+        <div className="flex flex-wrap items-center gap-4 rounded-lg border border-border bg-card p-4 shadow-sm">
           <span className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary-light text-primary">
             <Globe className="size-5" aria-hidden />
           </span>
@@ -134,7 +134,7 @@ export function ChannelsView() {
               : [<ChannelCard key={card.key} {...props} connection={undefined} />];
           })}
         </div>
-        <div className="flex max-w-3xl items-center gap-3 rounded-xl border border-border bg-muted/40 px-4 py-3">
+        <div className="flex items-center gap-3 rounded-xl border border-border bg-muted/40 px-4 py-3">
           <ZernioIcon className="size-8 shrink-0 rounded-md" aria-hidden />
           <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-foreground">Powered by Zernio</p>

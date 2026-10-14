@@ -297,6 +297,7 @@ async function answer(
   opts: { forced?: boolean } = {},
 ): Promise<void> {
   const cfg = aiConfigOf(t.conn.ai_config);
+  const started = Date.now();
   const summarise = () => void refreshChatSummary(session.id, t.config.display_name, { db: t.db, visitorId: visitor.id });
   const say = (content: string, key: string) => sendToCustomer({ db: t.db, visitor, sessionId: session.id, role: "assistant", content, idempotencyKey: key });
 
@@ -351,7 +352,9 @@ async function answer(
   await showTyping(t.db, visitor);
   const embed = await embedService.buildEmbedContext(t.config);
   const rules = await loadVisitorRules(embed);
+  const genStarted = Date.now();
   const reply = await generateVisitorReply({ embed, rules, tenantDb: t.db, visitor, prevMessages, history, asked, surfaceNote: surfaceNote(t.conn.channel, cfg) });
+  const generateMs = Date.now() - genStarted;
   // What the customer will see — and what is stored, so the Inbox shows the same message. Course
   // cards are recommendations of programmes, so they follow both of those switches.
   const showCards = cfg.capabilities.programs && cfg.capabilities.recommend;
@@ -375,8 +378,11 @@ async function answer(
   }
 
   if (t.conn.ai_mode === "suggest") {
-    // Suggest-only: a person reviews and sends it from the Inbox.
-    if (!(await respond(() => channelVisitors.setAttention(t.db, visitor.id, "suggest", text)))) return;
+    // Suggest-only: a person reviews and sends it from the Inbox. A draft answers nothing yet, so
+    // the questions stay owed (Resume AI, or a newer message, still covers all of them); only the
+    // draft marker moves, so a retried event doesn't regenerate the draft staff are reading.
+    await channelVisitors.setAttention(t.db, visitor.id, "suggest", text);
+    await sessionsRepo.setDraftedThrough(session.id, lastId);
   } else {
     const sent = await respond(() => sendToCustomer({
       db: t.db, visitor, sessionId: session.id, role: "assistant", content: text,
@@ -387,6 +393,14 @@ async function answer(
       },
     }));
     if (!sent) return;
+    // Where a slow reply's time went: the debounce + queue (customer's message → here), context,
+    // the model, and Zernio's send.
+    const asked_at = prevMessages.find((m) => m.id === lastId)?.created_at;
+    logger.info("AI reply sent", {
+      visitorId: visitor.id, channel: t.conn.channel,
+      sinceCustomerMs: asked_at ? Date.now() - new Date(asked_at).getTime() : null,
+      prepareMs: genStarted - started, generateMs, sendMs: Date.now() - genStarted - generateMs,
+    });
     if (visitor.attention_reason === "ai_unsure") await channelVisitors.clearAttention(t.db, visitor.id);
   }
 
@@ -413,7 +427,10 @@ export async function answerPending(owner: Recipient, visitorId: number, opts: {
   const prevMessages = await messagesRepo.findBySession(session.id, { limit: HISTORY_LIMIT });
   // Owed only while something the customer said is unanswered: an earlier reply (or a teammate)
   // may have answered already, which is also what keeps a duplicate job from replying twice.
-  if (takeover.owedMessages(prevMessages, session.answered_through_message_id ?? null).lastId == null) return;
+  const owed = takeover.owedMessages(prevMessages, session.answered_through_message_id ?? null).lastId;
+  if (owed == null) return;
+  // Suggest mode, and the draft waiting for staff already covers everything owed: nothing new to draft.
+  if (conn.ai_mode === "suggest" && visitor.attention_reason === "suggest" && visitor.ai_draft && (session.drafted_through_message_id ?? 0) >= owed) return;
   if (visitor.resolved_at || takeover.whoAnswers(visitor).answerer !== "ai" || visitor.attention_reason === "sensitive" || visitor.attention_reason === "other_app") return;
   await answer({ owner, db, config, conn }, visitor, session, prevMessages, opts);
 }

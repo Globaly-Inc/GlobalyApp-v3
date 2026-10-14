@@ -49,18 +49,24 @@ export async function scheduleReply(owner: Recipient, visitorId: number, waitMs:
  * Leases up to `limit` due replies, oldest first, for `leaseMs`. Two workers can't lease the same
  * job; a worker that dies leaves the lease to run out, and the reply is answered by a later poll.
  */
-export async function claimDueReplies(limit: number, leaseMs: number): Promise<ReplyJob[]> {
+export async function claimDueReplies(
+  limit: number,
+  leaseMs: number,
+  /** Only this owner's jobs (tests: never lease another owner's real replies). */
+  only?: Recipient,
+): Promise<ReplyJob[]> {
   if (limit <= 0) return [];
+  const scope = only ? "AND owner_kind = ? AND owner_id = CAST(? AS integer)" : "";
   const res = await masterKnex.raw(
     `UPDATE channel_reply_jobs SET claimed_until = now() + CAST(? AS interval), attempts = attempts + 1
      WHERE id IN (
        SELECT id FROM channel_reply_jobs
-       WHERE due_at <= now() AND (claimed_until IS NULL OR claimed_until <= now()) AND attempts < CAST(? AS integer)
+       WHERE due_at <= now() AND (claimed_until IS NULL OR claimed_until <= now()) AND attempts < CAST(? AS integer) ${scope}
        ORDER BY due_at ASC LIMIT CAST(? AS integer)
        FOR UPDATE SKIP LOCKED
      )
      RETURNING id, owner_kind, owner_id, visitor_id, first_message_at, attempts, version`,
-    [`${leaseMs} milliseconds`, MAX_REPLY_ATTEMPTS, limit],
+    [`${leaseMs} milliseconds`, MAX_REPLY_ATTEMPTS, ...(only ? [only.kind, only.id] : []), limit],
   );
   return res.rows as ReplyJob[];
 }

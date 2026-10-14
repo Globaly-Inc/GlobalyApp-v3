@@ -97,8 +97,10 @@ check("a forced reply stored after a newer question leaves that question owed", 
 check("…and the forced reply stays in the history the model reads", q(forcedFirst, 1).history.map((m) => m.id).join(",") === "1,3");
 check("once a reply records it answered #2, nothing is owed (no second reply)", q(forcedFirst, 2).lastId === null);
 check("a burst after our last reply is owed as one question, in order", q(burst, 2).questions.join(" | ") === "Hello | List me some course");
-check("a retry after a suggestion was drafted finds nothing owed (draft not regenerated)", q(burst, 4).lastId === null);
-check("a new message after that suggestion is owed again (draft refreshed)", q([...burst, { id: 5, role: "user", content: "Any scholarships?" }], 4).questions.join("|") === "Any scholarships?");
+// A suggest-mode draft doesn't move answeredThrough (staff haven't sent it), so the questions stay
+// owed: Resume AI answers them, and a newer message's draft covers them all, not just the new one.
+check("questions a waiting draft covers are still owed", q(burst, 2).lastId === 4);
+check("a newer message's draft covers every unanswered question", q([...burst, { id: 5, role: "user", content: "Any scholarships?" }], 2).questions.join("|") === "Hello|List me some course|Any scholarships?");
 check("a staff reply answers everything before it", q([...burst, { id: 5, role: "agent", content: "Here's our list" }], 2).lastId === null);
 check("messages after a staff reply are owed on Resume AI", q([...burst, { id: 5, role: "agent", content: "Hi" }, { id: 6, role: "user", content: "Thanks, and IELTS?" }], 2).lastId === 6);
 check("before any reply recorded answeredThrough, the latest reply counts", q(burst, null).lastId === 4 && q(burst.slice(0, 2), null).lastId === null);

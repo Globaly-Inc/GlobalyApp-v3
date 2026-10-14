@@ -94,6 +94,8 @@ export interface SessionRow {
   summary?: ChatSummaryJson | null;
   /** Newest visitor message a resume has claimed (20261002_004). Absent on a database behind it. */
   answered_through_message_id?: number | null;
+  /** Channels, suggest mode: newest customer message the waiting AI draft covers (20261013_003). */
+  drafted_through_message_id?: number | null;
   counselling_context: CounsellingContext;
   created_at: Date;
   updated_at: Date;
@@ -280,6 +282,11 @@ export async function claimAnsweredThrough(id: number, lastMessageId: number): P
     // A database behind 20261002_004: answer unclaimed rather than fail the visitor's reply.
     return true;
   }
+}
+
+/** Channels, suggest mode: record which customer messages the draft now waiting covers. */
+export async function setDraftedThrough(id: number, lastMessageId: number): Promise<void> {
+  await masterKnex(TABLE).where({ id }).update({ drafted_through_message_id: lastMessageId });
 }
 
 /** Undo a claim whose reply never got saved, so the next resume answers those questions. Only
