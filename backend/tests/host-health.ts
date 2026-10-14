@@ -49,7 +49,7 @@ async function main() {
   } = await import("../src/modules/superadmin/data-extraction/lib/host-health.js");
   const { isScraperInfraFailure } = await import("../src/modules/superadmin/data-extraction/lib/classify-failure.js");
   const { deadReasonOf } = await import("../src/modules/superadmin/data-extraction/lib/site-snapshot.js");
-  const { scrapeMarkdown } = await import("../src/modules/superadmin/data-extraction/lib/scraper.js");
+  const { scrapeMarkdown, __primeInternals, _hostPaceDeps } = await import("../src/modules/superadmin/data-extraction/lib/scraper.js");
 
   // ── §1 the gap adapts ─────────────────────────────────────────────────────
   resetHostHealth();
@@ -277,6 +277,29 @@ async function main() {
   before = { ...hostHealth("steady.edu")! };
   noteHostOutcome("steady.edu", "ok"); // the one that halves the gap
   assertEqual(hostStateChanged(before.gapMs, before.openUntil, hostHealth("steady.edu")!), true, "the fetch that changes the pace is written");
+
+  // A POOL of fetchers on one host is the ordinary case (SNAPSHOT_CONCURRENCY), and every one of
+  // them must wait for the stored pace. Marking the host "primed" before the read returned deduped
+  // the query and threw the answer away: the other seven ran on, called hostGapMs, and stateOf()
+  // minted default state — after which seedHost rightly refuses to overwrite live state, so the
+  // process lost both the stored gap and any stored open circuit.
+  resetHostHealth();
+  __primeInternals.clear();
+  let reads = 0;
+  const realRead = _hostPaceDeps.read;
+  _hostPaceDeps.read = async (host: string) => {
+    reads++;
+    await new Promise((r) => setTimeout(r, 20)); // a read is not instant; that is the whole bug
+    return { gapMs: FLOOR_GAP_MS, fails: 0, openUntil: null };
+  };
+  (Client.prototype as any).connect = async function () {};
+  (Client.prototype as any).callTool = async function () {
+    return { structuredContent: { status: 200, content: ["# page\n" + "x".repeat(400)] } };
+  };
+  await Promise.all(Array.from({ length: 8 }, (_, i) => scrapeMarkdown(`https://example.com/pool-${i}`)));
+  assertEqual(hostGapMs("example.com"), FLOOR_GAP_MS, "eight concurrent first-pages all inherit the stored pace");
+  assertEqual(reads, 1, "and share ONE read between them");
+  _hostPaceDeps.read = realRead;
 
   // ── §4 a tripped host must not mark its pages DEAD ────────────────────────
   const err = circuitOpenError("example.com");

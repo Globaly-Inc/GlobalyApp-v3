@@ -10,7 +10,7 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { isRegistrySuffix, isSameSite, siteOf } from "./html-utils.js";
 import { assertPublicUrl, safeFetch, UnsafeUrlError } from "../../../../shared/public-url.js";
-import { circuitOpenError, hostGapMs, hostHealth, hostOf, hostStateChanged, isHostCircuitOpen, noteHostOutcome, seedHost } from "./host-health.js";
+import { circuitOpenError, hostGapMs, hostHealth, hostOf, hostStateChanged, isHostCircuitOpen, noteHostOutcome, seedHost, type StoredHostState } from "./host-health.js";
 
 const logger = createChildLogger("scraper");
 
@@ -256,18 +256,38 @@ async function reserveSharedHostSlot(host: string, gapMs: number): Promise<numbe
  * 20261013_001 columns are not there yet, because that one fails open in the direction of
  * scraping FASTER and this one must not be able to take it down with it.
  */
-const primedHosts = new Set<string>();
-async function primeHostState(host: string): Promise<void> {
-  if (primedHosts.has(host)) return;
-  primedHosts.add(host); // claimed before the await, or every concurrent fetcher issues this query
-  try {
+// The PROMISE is cached, not a "someone is loading it" flag. Flagging the host as claimed before
+// the await deduped the query and lost the answer: the other fetchers returned immediately, called
+// hostGapMs, and stateOf() minted default state for the host — after which seedHost correctly
+// refuses to overwrite what this process is already holding. With a pool of 8 on one catalogue
+// host that is the ordinary case, not a race you have to be unlucky to hit, and it cost the whole
+// process both the stored pace and a stored open circuit.
+const primedHosts = new Map<string, Promise<void>>();
+function primeHostState(host: string): Promise<void> {
+  let pending = primedHosts.get(host);
+  if (!pending) {
+    pending = loadHostState(host);
+    primedHosts.set(host, pending);
+  }
+  return pending; // every caller awaits the same read, so none of them runs ahead of the seed
+}
+
+/** Test seam — the read is the slow half, and "did everyone wait for it?" is the whole question. */
+export const _hostPaceDeps = {
+  read: async (host: string): Promise<StoredHostState | null> => {
     const row = await masterKnex(`${S}.extraction_host_slots`).where({ host })
       .select("gap_ms", "fails", "open_until").first();
-    if (!row) return;
-    seedHost(host, {
-      gapMs: row.gap_ms, fails: row.fails,
-      openUntil: row.open_until ? new Date(row.open_until).getTime() : null,
-    });
+    return row
+      ? { gapMs: row.gap_ms, fails: row.fails, openUntil: row.open_until ? new Date(row.open_until).getTime() : null }
+      : null;
+  },
+};
+
+async function loadHostState(host: string): Promise<void> {
+  try {
+    const stored = await _hostPaceDeps.read(host);
+    if (!stored) return;
+    seedHost(host, stored);
     logger.info(`host pace restored for ${host}: ${hostGapMs(host)}ms gap`);
   } catch (err) {
     logger.warn("Host pace unavailable, learning from scratch this run", { host, error: String(err) });

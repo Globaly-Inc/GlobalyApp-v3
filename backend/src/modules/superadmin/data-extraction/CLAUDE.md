@@ -1257,7 +1257,12 @@ What changed here: `snapshotSite` ran fixed chunks of `SNAPSHOT_CONCURRENCY` thr
   The 800ms phase above ran 64/min against the 75/min that gap allowed — that difference is this.
 
 Now a continuous pool (`runPool`, exported and tested: every index once, never more than N in
-flight, nothing started after a stop, and a slow page must not finish last). `SNAPSHOT_CONCURRENCY`
+flight, nothing started after a stop, and a slow page must not finish last). **A task that THROWS
+stops the pool too** (review, 2026-10-14) and is re-thrown only once the in-flight workers have
+settled — rejecting straight out of `Promise.all` left the others looping detached, so the step
+reported failed while its pages went on being scraped and the classifier went on buying Jev calls
+for results nobody would read. Both the snapshot's halt check and the classifier's heartbeat touch
+the DB OUTSIDE their task's own try, so one blip is all it takes. `SNAPSHOT_CONCURRENCY`
 defaults to 8 and is NOT a politeness knob — the gap is. It decides how much of the gap gets used:
 a fetcher's cycle is gap-wait + scrape (~3s), so the pool needs roughly cycle ÷ gap pages in flight
 to keep the slot busy. **Raise it whenever `HOST_THROTTLE_MIN_MS` is lowered**, or the lower gap
@@ -1312,7 +1317,13 @@ booked at the BOOKING process's gap**: one cold worker writes 800ms gaps into th
 Migration `20261013_001` adds `gap_ms`, `fails`, `open_until` to the row that already paces the
 host. `primeHostState` (scraper.ts) loads them once per host per process — before the circuit
 check, so a host another worker proved down is skipped here too instead of costing TRIP_AFTER full
-ladders (~87s each) to re-discover. `persistHostState` writes back **only on a transition**
+ladders (~87s each) to re-discover. **It caches the PROMISE, not a "someone is loading it" flag**
+(review, 2026-10-14): flagging the host as claimed before the read returned deduped the query and
+threw the answer away, because the other fetchers returned immediately, called `hostGapMs`, and
+`stateOf()` minted default state — after which `seedHost` rightly refuses to overwrite what the
+process is already holding. With a pool of 8 on one catalogue host that is the ORDINARY case, and
+it cost the whole process both the stored gap and any stored open circuit. Pinned by a
+`_hostPaceDeps.read` stub in `test:host-health` §5 (verified red against the first version). `persistHostState` writes back **only on a transition**
 (`hostStateChanged`), so a steady host costs no write per page: roughly three writes per 10,000
 pages.
 

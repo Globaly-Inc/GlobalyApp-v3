@@ -152,14 +152,27 @@ const HALT_CHECK_EVERY = 25;
 export async function runPool(count: number, concurrency: number, task: (i: number) => Promise<boolean>): Promise<void> {
   let next = 0;
   let stop = false;
+  let failure: unknown;
+  let failed = false;
   const worker = async () => {
     while (!stop) {
       const i = next++;
       if (i >= count) return;
-      if (!(await task(i))) stop = true;
+      try {
+        if (!(await task(i))) stop = true;
+      } catch (err) {
+        // A throw stops the pool exactly like a false return, and is re-thrown only once every
+        // worker has settled. Letting it reject straight out of Promise.all left the other
+        // workers looping detached: the step reported failed while its pages went on being
+        // scraped and the classifier went on buying Jev calls, for results nobody would read.
+        stop = true;
+        if (!failed) { failed = true; failure = err; }
+        return;
+      }
     }
   };
   await Promise.all(Array.from({ length: Math.max(1, Math.min(concurrency, count)) }, worker));
+  if (failed) throw failure;
 }
 
 export async function jobHalted(jobId: string): Promise<boolean> {

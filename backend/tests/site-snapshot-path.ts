@@ -159,6 +159,37 @@ async function poolChecks() {
   if (started.length > 9) fail(`runPool started ${started.length} tasks after a stop at index 5, expected at most 9 (one in flight per worker)`);
   if (!started.includes(5)) fail("runPool never reached the stopping index");
 
+  // A THROW must stop the pool too. Rejecting straight out of Promise.all reported the step
+  // failed while the other workers kept pulling work — the snapshot's halt check and the
+  // classifier's heartbeat both touch the DB OUTSIDE their task's own try, so one blip left
+  // pages being scraped and paid Jev calls being made for a batch already written off.
+  let after = 0;
+  let thrown: unknown;
+  try {
+    await runPool(50, 4, async (i) => {
+      if (i === 3) throw new Error("db blip");
+      if (i > 3) after++;
+      return true;
+    });
+    fail("runPool swallowed a task's error instead of re-throwing it");
+  } catch (err) { thrown = err; }
+  if ((thrown as Error)?.message !== "db blip") fail(`runPool lost the original error: ${String(thrown)}`);
+  if (after > 4) fail(`runPool started ${after} tasks after a throw — the pool kept running detached`);
+
+  // ...and the workers already in flight must SETTLE before it throws, or the caller tears down
+  // state (writes the event, resolves the batch) while pages are still being fetched behind it.
+  let inFlightAtThrow = 0;
+  try {
+    await runPool(8, 4, async (i) => {
+      if (i === 0) { await sleep(1); throw new Error("first task fails"); }
+      inFlightAtThrow++;
+      await sleep(30);
+      inFlightAtThrow--;
+      return true;
+    });
+  } catch { /* expected */ }
+  if (inFlightAtThrow !== 0) fail(`runPool threw with ${inFlightAtThrow} task(s) still running`);
+
   // Degenerate inputs must not hang or spin.
   await runPool(0, 4, async () => true);
   let once = 0;

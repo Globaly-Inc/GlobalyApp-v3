@@ -67,7 +67,7 @@ console.log("\nURL classifier — share of pages Jev labels `course` at each con
 console.log("min conf | productive → course | zero-yield → course");
 const all = scored.map((s) => s.url);
 for (const t of [0.3, 0.5, 0.6, 0.7, 0.8]) {
-  const cats = await jevCategorise(all, excerpts, t);
+  const { verdicts: cats } = await jevCategorise(all, excerpts, t);
   const rate = (rows: typeof scored) => rows.length ? `${((100 * rows.filter((r) => cats.get(r.url) === "course").length) / rows.length).toFixed(1)}%` : "-";
   console.log(`${t.toFixed(2).padStart(8)} | ${rate(pos).padStart(19)} | ${rate(neg).padStart(20)}`);
 }
