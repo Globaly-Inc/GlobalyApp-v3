@@ -17,13 +17,15 @@ import { crawlSite } from "../lib/site-crawl.js";
 import { linkJobEntities } from "../lib/jev-linker.js";
 import { verifyFieldCoverage } from "../lib/field-coverage.js";
 import { sendAdminReviewEmail, sendCompletionEmail } from "../lib/completion-email.js";
+import { verifyDataShape } from "../lib/verification-rules.js";
+import { repairDataShape } from "../lib/data-repair.js";
 import { autoPublishOwnerRun } from "../services/promote.service.js";
 import { convertCampusesToBranches } from "../../platform/business-branches/services/business-branches.service.js";
 import { getPage, getDocument, isPdfUrl, mergeUrlLists } from "../lib/page-store.js";
 import { canonicalCourseUrl } from "../lib/course-name.js";
 import * as pageEdits from "../repositories/page-edits.repository.js";
 import { GUIDED_KEY_CATEGORY } from "../lib/url-categories.js";
-import { snapshotSite, snapshotRunOutcome } from "../lib/site-snapshot.js";
+import { snapshotSite, snapshotRunOutcome, jobHalted } from "../lib/site-snapshot.js";
 import type { SnapshotBatch } from "../lib/site-snapshot.js";
 import { truncateMarkdown, domainOf, extractSocialLinks, extractHrefsFromHtml, extractDomainEmails, fixMalformedAbsoluteUrl, COURSE_DATA_TEXT_CAP } from "../lib/html-utils.js";
 import { extractJson, setLlmContext } from "../lib/llm-client.js";
@@ -211,7 +213,23 @@ async function advanceSnapshotRunOnce(jobId: string, batch: SnapshotBatch) {
     });
     return true;
   });
-  if (first) await advance(jobId, "site_snapshot");
+  if (!first) return;
+  await advance(jobId, "site_snapshot");
+  // The head has done its job; the ARCHIVE now runs behind the advancing pipeline. The full list,
+  // not a remembered tail: head pages are cache hits (no host slot), so nothing is lost to a site
+  // list that changed while the head ran. split=false is the recursion guard — and this second
+  // run's own completion lands back here WITHOUT thenFull, advancing the chain once more, which is
+  // what re-classifies the tail's pages and queues any course URL the head could not see.
+  if (batch.thenFull && !(await jobHalted(jobId))) {
+    const job = await loadJob(jobId);
+    const urls = (await listActiveSiteUrls(jobId)).map((r) => r.url);
+    const n = await dispatchSnapshotBatches(jobId, urls, job?.page_cap ?? null, false, false);
+    await writeJobEvent(jobId, "snapshot_wave", {
+      phase: "site_mapping",
+      message: `Archive wave dispatched: ${urls.length} pages in ${n} batches behind the pipeline (head pages re-read from cache)`,
+      data: { pages: urls.length, batches: n },
+    });
+  }
 }
 
 async function handleSiteAnalysisStep(jobId: string) {
@@ -1950,6 +1968,8 @@ async function linkEntities(jobId: string) {
     data: { ...summary },
   });
   await verifyFieldCoverage(jobId).catch((err: unknown) => logger.warn("Field coverage report failed", { jobId, error: String(err) }));
+  await repairDataShape(jobId).catch((err: unknown) => logger.warn("Data repair failed", { jobId, error: String(err) }));
+  await verifyDataShape(jobId).catch((err: unknown) => logger.warn("Data shape report failed", { jobId, error: String(err) }));
 }
 
 // ── Main consumer ───────────────────────────────────────────────────────────

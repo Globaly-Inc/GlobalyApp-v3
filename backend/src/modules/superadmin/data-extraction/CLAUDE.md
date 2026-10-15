@@ -1441,6 +1441,142 @@ threshold | zero-yield skipped | productive lost | courses lost
 
 **Workers load code once — restart the page and step workers after deploying this.**
 
+## The snapshot is two waves: a time-budgeted head, then the archive (2026-10-15)
+
+The snapshot is gap-bound (wall-clock = pages × host gap), and on a host that taught us a slow
+pace the full fetch is HOURS while the pipeline needs only the ranked head: monmouth.edu put
+6,882 of 8,133 URLs on one host whose learned gap hit the 8s ceiling — 15h of snapshot — while
+every course-shaped URL sat in ranks 1–710. The chain was waiting on the alumni archive.
+
+`dispatchSnapshotBatches` now carves a HEAD sized by `SNAPSHOT_HEAD_BUDGET_MS` (30 min; "0"
+disables): `snapshotHead` (site-snapshot.ts, pure) walks the RANKED list spending each page's
+host gap from a PER-HOST budget — per host because hosts do not queue on each other, so a slow
+host exhausting its allowance must never evict a fast host's pages (pinned red-then-green against
+a global-budget implementation, which the first test fixture accidentally agreed with: 7×8s left
+exactly 20 fast pages of global budget — the numbers conspired, and only a 100-page fast host
+told the two apart). Planning gaps are the RAW stored `gap_ms` (`_stepDeps.storedHostGaps`),
+deliberately unclamped unlike `seedHost`: pacing must not inherit an 8s punishment, but a plan
+sizing a 7,000-page fetch wants exactly that signal. A host with no row plans at `FLOOR_GAP_MS`,
+so a healthy site (200ms = 9,000 pages per host per half hour) usually fits whole and never
+splits.
+
+When it splits, every head batch carries `thenFull: true` (on the MESSAGE, like `runId`, for the
+same reason — no stored marker), and the batch that completes the head run advances the chain as
+normal and then dispatches the FULL list as a second run with `split=false` (the recursion
+guard). **The archive wave is the full list, not a remembered tail**: head pages are cache hits
+(no host slot, ~130ms GCS read), so nothing is lost to a site list that shifted while the head
+ran — index arithmetic against `listActiveSiteUrls` would skip URLs whenever a dead-stamp
+shrank the list. The archive run's own completion lands in `advanceSnapshotRunOnce` WITHOUT
+`thenFull` and advances the chain once more — site_analysis and url_classify re-run with the
+tail's excerpts now present, and queue_pages queues only what is new (the insert dedupes). That
+second advance IS the re-classify; do not add a separate one.
+
+Notes: `fresh` never splits (the admin asked for a full re-fetch, and the archive wave's cache
+reads would be re-fetches); a job paused before the head completes dispatches no archive
+(`jobHalted` guard); a `review`-status job that gains new course pages from the archive's
+re-classify goes back through extraction, same as Resume; the snapshot chip reads "done" while
+archive batches still upload — the `snapshot_wave` timeline events are what say why. Tests:
+`test:site-snapshot-path` (budget maths) and `test:step-gate` §7 (dispatcher: head flagged,
+archive full and unflagged, fresh unsplit).
+
+## Data-shape verification runs after every extraction (2026-10-15)
+
+`lib/verification-rules.ts`: a table of invariants (`SHAPE_RULES`) the platform's readers assume,
+counted per job by `verifyDataShape(jobId)` from BOTH `verifyFieldCoverage` call sites (the verify
+worker and the step worker's link_entities tail), writing one `data_shape_verified` timeline event
+— warn when anything blocking tripped or any rule FAILED TO RUN. Measured before building: 636
+intakes with no year (invisible in every public read), 497 fees with no amount, 108 priced fees
+with no currency, 8 English requirements with no test name.
+
+- **Two rule kinds.** A `where` rule counts rows of one table; a `sql` rule brings its own count —
+  the "forked twin" detectors (one intake stored dated AND undated, one fee priced AND priceless)
+  group rows, which a row predicate cannot express. `:job` named bindings only — never a literal
+  `?` in these strings, which knex .raw eats as a binding marker (that mangling invented a fake
+  91% defect rate during the audit that produced these rules).
+- **Severity is a reporting label for now, deliberately.** `blocking` marks what promote should
+  eventually refuse on, but the backlog above is live, so a hard gate on day one freezes real
+  publishes. Watch the counts; wire the gate when the backlog is repaired.
+- **Every rule proves itself on fixtures** (`test:verification-rules`, DB integration, one
+  throwaway job cascade-deleted): a seed of known-bad beside known-good rows per table, and each
+  rule must count EXACTLY its bad rows — a rule counting zero is dead, a rule counting everything
+  is broken, and both fail the suite (verified red both ways with a TRUE and a FALSE predicate).
+  A rule that throws at runtime is reported as errored on the event, never counted as zero.
+- **The repair for today's backlog already exists — run it, don't rebuild it.** The
+  `eligibility:backfill` dry run (2026-10-15) would fix: 232 intakes gaining month/year derived
+  from their OWN names ("September 2026" stored with year NULL — `deriveIntakeMonthYear` at
+  scripts/eligibility-backfill.ts:196), 213 duplicate English rows across 45 course/test pairs
+  (the "IELTS ×9 on one course" shape — pre-dedupe rows pass 6 was built for), 3,057 duplicate
+  requirement rows, 2,867 intake rows linked or collapsed. A fresh backfill-intake script was
+  written and DELETED on discovering this — check that file before writing any intake repair.
+  The 543 intakes whose text states no year stay invisible until re-extraction, by design.
+
+**And the repair half** (`lib/data-repair.ts`, same date): `repairDataShape(jobId)` runs right
+BEFORE verifyDataShape at both call sites, so the shape report describes the residue a human
+actually needs. Three repairs, one safety contract — fill only NULLs from the row's OWN text
+(`deriveIntakeMonthYear`), merge a thin twin only when EXACTLY ONE full candidate exists (two
+candidates, contradicting `custom_dates`, or a non-null `updated_by_platform_user_id` all refuse
+and count as skipped), each merge one transaction (repoint assignments, carry milestones, delete
+the thin row). Deliberately narrower than `eligibility:backfill`, not a copy: the backfill keeps
+the all-jobs clustering judgement; this takes only what no judgement can get wrong, and what it
+skips the backfill or a reviewer still owns. Emits `data_repaired` on the timeline — a silent
+repair reads as data loss. `test:data-repair` (16 assertions; the exactly-one guard verified red
+with a pick-the-first implementation: it merged a Harvest twin into an arbitrary year).
+
+**The whole-database sweep** (`npm run repair:extracted-data`, same date): the identical
+detect→repair→report pass over every job — dry-run by default pricing exactly what `--apply` would
+do (`repairDataShape` gained `{ dryRun }`: same candidate logic, zero writes, zero events —
+pinned in `test:data-repair`, verified red with a dry run that wrote). Prints repair totals, the
+per-rule residue ranked, and the worst jobs by blocking count; defers English/requirement dupes
+and intake clustering to `eligibility:backfill` by name rather than growing a copy of its
+judgement. First real sweep (2026-10-15, AFTER the operator applied the backfill — intakes
+3,429 → 537): 9 intake twins mergeable, 0 fee twins — the strict exactly-one rule found that all
+91 currencyless fees have SEVERAL priced twins, i.e. the priced side itself is duplicated, so
+they are refusals for review, not merges. The residue report is the review queue: 121 yearless
+intakes (their text states no year — re-extraction or hand edit only), 684 amountless fees,
+174 level-unlinked courses, concentrated in mit.edu (353), harvard.edu (258), uky.edu (139).
+
+**Round 2 of the repair pass** (2026-10-15, review follow-ups): `data_repaired` fires only when
+rows CHANGED — keyed on skips it re-announced the same unresolved twins from both verification
+tails, every run, forever (refusals are the shape report's job). Two repairs added, same
+contract: **English family twins** ("IELTS" beside "IELTS Academic" on one course — exactly two
+rows of a family, merged only when no score contradicts; the survivor keeps its own name and gains
+the donor's blanks; this table has no updated_by, so score agreement is its only guard — verified
+red with the guard removed: it merged a TOEFL 88 into a TOEFL 79) and **binary-document hygiene**
+(80 .pptx/.docx stored ACTIVE with source=sitemap on the monmouth job while that run's own discard
+event counted 3 assets; today's filterUrls drops all 80 — the writer was stale worker code — but
+the LIST is durable and each row re-bought a browser-tier walk per snapshot, so
+`dispatchSnapshotBatches` now refuses asset URLs outright (`isSkippableAssetUrl`, same ASSET_EXTS
+set, PDFs kept for their own reader) and the repair excludes stored ones). `test:data-repair`,
+29 assertions.
+
+Still open from the review plan, in order: write-time null-agrees matching in the upsert helpers
+(a thin incoming row merges into an existing full row only when EXACTLY ONE candidate matches —
+never choose between two); the fee-currency / study-option merge pass; the review tabs grouping
+forked twins; the promote gate on blocking rules once the backlog is cleared.
+
+## Document extraction was failing twice and saying nothing (2026-10-15)
+
+Both halves of `document-extractor.ts` were broken at once, and each failure is swallowed as
+"no text", so PDFs silently yielded nothing. Found in the worker log, not from a report.
+
+- **The vision model was pinned and retired.** `getGenerativeModel({ model: "gemini-2.0-flash" })`
+  was hardcoded here while the rest of the pipeline moved to `config.GEMINI_MODEL`; Google now
+  answers `404 … this model is no longer available`. It reads the CONFIGURED model now — verified
+  live against a real PDF: `gemini-2.0-flash` fails, `gemini-3.5-flash` returns the page text.
+- **pdf-parse went v1 → v2 and is no longer callable.** It exports a `PDFParse` class, so the
+  `require("pdf-parse")(buf)` fallback threw `pdfParse is not a function` on every PDF. The
+  dependency is a `^` range, so the major arrived on its own (first appears in `ab9f7e68e`).
+  Now `new PDFParse({ data }).getText()`, with `destroy()` in a `finally` — v2 holds a worker per
+  document, so a PDF-heavy snapshot would leak one each.
+
+Both proven before fixing (`f is not a function`, and the live 404) and verified after against a
+generated PDF. **6,758 PDF URLs sit on site lists and `extraction_pages` holds zero PDF rows** —
+most linked PDFs are `excluded: true` by design and were never fetched, but nothing fetched has
+ever produced text. Expect fee schedules and prospectuses to start arriving once this ships.
+
+ponytail: no test. `extractPdfText` is module-private and the exported surface fetches a URL, so a
+test needs network or a new seam; the verification above ran the exact call sequence instead.
+
 ## Stale queue-item reclaim (2026-09-15)
 
 Root cause of jobs found stuck at `status: "processing"` forever (seen live, both local and
