@@ -13,7 +13,7 @@ const BRAND_TILE = "bg-white ring-1 ring-inset ring-border";
  * on a white tile. Colour lives only in these small tiles, never in large fills.
  */
 export const INBOX_CHANNELS: Record<InboxChannel, { label: string; icon: LucideIcon | typeof FacebookIcon; tint: string }> = {
-  ai_embed: { label: "AI Embed", icon: Globe, tint: "bg-primary/10 text-primary" },
+  ai_embed: { label: "Website widget", icon: Globe, tint: "bg-primary/10 text-primary" },
   whatsapp: { label: "WhatsApp", icon: WhatsAppIcon, tint: BRAND_TILE },
   instagram: { label: "Instagram", icon: InstagramIcon, tint: BRAND_TILE },
   facebook: { label: "Facebook", icon: FacebookIcon, tint: BRAND_TILE },

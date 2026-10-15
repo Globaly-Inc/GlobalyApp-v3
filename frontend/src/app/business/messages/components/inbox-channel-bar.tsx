@@ -10,9 +10,7 @@ import type { InboxChannel } from "@/app/business/ai-widget/apis/types";
 import { CHANNELS_HREF, INBOX_CHANNELS, INBOX_CHANNEL_ORDER } from "../const";
 import { ChannelGlyph } from "./channel-glyph";
 import { HEALTH_DOT, type ChannelFilter, type ChannelHealth } from "./channel-picker";
-import { WidgetSwitch } from "./widget-switch";
 
-const CHIP = "inline-flex items-center gap-1.5 rounded-full border py-0.5 pl-1 pr-2.5 text-xs transition-colors";
 
 /** The channel filter, one chip per channel with its connection dot and count. A channel that
  *  isn't connected (or the widget, when off) still filters while it has past conversations; with
@@ -23,6 +21,9 @@ export type ChannelChips = {
   count: (c: ChannelFilter) => number;
   health: Partial<Record<InboxChannel, ChannelHealth>>;
 };
+
+// The same size and shape as the Widget button on the right.
+const CHIP = cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5 pl-1.5");
 
 function Chips({ channel, onChannel, count, health }: Readonly<ChannelChips>) {
   return (
@@ -35,18 +36,18 @@ function Chips({ channel, onChannel, count, health }: Readonly<ChannelChips>) {
         const body = (
           <>
             {c === "all" ? (
-              <span className="inline-flex size-4 items-center justify-center rounded bg-muted text-muted-foreground"><Layers className="size-2.5" aria-hidden /></span>
+              <span className="inline-flex size-5 items-center justify-center rounded-md bg-muted text-muted-foreground"><Layers className="size-3" aria-hidden /></span>
             ) : (
-              <ChannelGlyph channel={c} size="xs" />
+              <ChannelGlyph channel={c} size="sm" />
             )}
             {label}
             {state && <span className={cn("size-1.5 rounded-full", HEALTH_DOT[state].className)} />}
-            {(state !== "off" || n > 0) && <span className="tabular-nums text-muted-foreground">{n}</span>}
+            {(state !== "off" || n > 0) && <span className="font-normal tabular-nums text-muted-foreground">{n}</span>}
           </>
         );
         if (state === "off" && n === 0) {
           return (
-            <Link key={c} href={c === "ai_embed" ? WIDGET_SETTINGS_HREF : CHANNELS_HREF} title={`${label}: not connected`} className={cn(CHIP, "border-dashed text-muted-foreground hover:bg-muted")}>
+            <Link key={c} href={c === "ai_embed" ? WIDGET_SETTINGS_HREF : CHANNELS_HREF} title={`${label}: not connected`} className={cn(CHIP, "border-dashed text-muted-foreground")}>
               {body}
             </Link>
           );
@@ -58,7 +59,7 @@ function Chips({ channel, onChannel, count, health }: Readonly<ChannelChips>) {
             aria-pressed={on}
             title={state ? `${label}: ${HEALTH_DOT[state].title.toLowerCase()}` : label}
             onClick={() => onChannel(c)}
-            className={cn(CHIP, on ? "border-primary/30 bg-primary/10 font-medium text-primary" : "border-border hover:bg-muted", state === "off" && !on && "border-dashed text-muted-foreground")}
+            className={cn(CHIP, on && "border-primary/30 bg-primary/10 text-primary hover:bg-primary/10 hover:text-primary", state === "off" && !on && "border-dashed text-muted-foreground")}
           >
             {body}
           </button>
@@ -69,9 +70,9 @@ function Chips({ channel, onChannel, count, health }: Readonly<ChannelChips>) {
 }
 
 /**
- * Above the Inbox, as in GlobalyOS's Support Inbox: the widget switch, Connect a channel, the
- * channel filter (with each channel's connection dot), and widget settings. A lost connection
- * also gets a banner, so it's visible from the Inbox, not only on the Channels page.
+ * Above the Inbox: the channel filter (each channel's connection dot and count), Connect a channel,
+ * and widget settings. The widget's on/off switch lives on its settings and the Channels page, not
+ * here. A lost connection also gets a banner, so it's visible from the Inbox, not only on Channels.
  */
 export function InboxChannelBar({ chips }: Readonly<{ chips?: ChannelChips }>) {
   const widgetOff = useAppSelector((s) => s.aiWidget.configs.length === 1 && s.aiWidget.configs[0]?.is_active === false);
@@ -80,17 +81,11 @@ export function InboxChannelBar({ chips }: Readonly<{ chips?: ChannelChips }>) {
   return (
     <div className="shrink-0 border-b border-border bg-card">
       <div className="flex flex-wrap items-center gap-2 px-3 py-2">
-        <WidgetSwitch />
+        {chips && <Chips {...chips} />}
         <Link href={CHANNELS_HREF} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "gap-1.5 border-dashed")}>
           <RadioTower className="size-3.5" aria-hidden />
           Connect a channel
         </Link>
-        {chips && (
-          <>
-            <span className="hidden h-5 w-px bg-border sm:block" aria-hidden />
-            <Chips {...chips} />
-          </>
-        )}
         {/* The only way to the widget's settings — "AI embed" left the Settings menu. */}
         <Link href={WIDGET_SETTINGS_HREF} className={cn(buttonVariants({ variant: "outline", size: "sm" }), "ml-auto gap-1.5")}>
           <Settings className="size-3.5" aria-hidden />
