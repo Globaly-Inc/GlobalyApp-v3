@@ -133,12 +133,12 @@ h1.title{font:700 clamp(28px,4vw,40px)/1.15 var(--head);letter-spacing:-.01em;ma
 .hchip{display:inline-flex;align-items:center;gap:6px;border:1px solid var(--line);background:var(--card);border-radius:999px;padding:3px 9px 3px 4px;font-size:12px;color:var(--fg)}
 .hchip:hover{background:var(--muted)}
 .hchip .sub2{color:var(--mfg)}
-.hchip.chf{padding:3px 10px 3px 4px}
-.hchip.chf .n{font-size:11px;color:var(--mfg);font-variant-numeric:tabular-nums}
-.hchip.chf.on{border-color:var(--p20);background:var(--p5);color:var(--primary);font-weight:500}
-.hchip.chf.off{color:var(--mfg);border-style:dashed}
-.hchip .chav.xs{width:16px;height:16px;border-radius:4px}
-.hchip .chav.xs .ic{width:10px;height:10px}
+.btn.chf{gap:6px;padding:0 10px 0 7px}
+.btn.chf .n{font-size:11.5px;color:var(--mfg);font-weight:400;font-variant-numeric:tabular-nums}
+.btn.chf.on{border-color:var(--p20);background:var(--p5);color:var(--primary)}
+.btn.chf.off{color:var(--mfg);border-style:dashed}
+.btn.chf .gl.xs,.btn.chf .chav.xs{width:20px;height:20px;border-radius:5px}
+.btn.chf .gl.xs .ic,.btn.chf .chav.xs .ic{width:13px;height:13px}
 .bsep{width:1px;height:20px;background:var(--line);flex:none}
 .spacer{flex:1}
 .wsw{display:inline-flex;align-items:center;gap:8px;border:1px solid var(--line);border-radius:7px;padding:3px 10px;font-size:13px;background:var(--card)}
@@ -704,7 +704,7 @@ h1.title{font:700 clamp(28px,4vw,40px)/1.15 var(--head);letter-spacing:-.01em;ma
   <header class="top">
     <div class="eyebrow">GlobalyApp · Business → Inbox · Prototype for review</div>
     <h1 class="title">Omnichannel AI Inbox</h1>
-    <p class="lede">AI Embed, WhatsApp, Instagram and Facebook in one inbox. Connect your channels. Let AI handle the conversations. Step in whenever you need to. Everything here runs on mock data: nothing talks to Zernio, Meta or the AI backend.</p>
+    <p class="lede">Website widget, WhatsApp, Instagram and Facebook in one inbox. Connect your channels. Let AI handle the conversations. Step in whenever you need to. Everything here runs on mock data: nothing talks to Zernio, Meta or the AI backend.</p>
     <div class="ptabs" role="tablist">
       <button role="tab" id="t-proto" aria-selected="true" data-tab="proto">Prototype</button>
       <button role="tab" id="t-plan" aria-selected="false" data-tab="plan">Implementation plan</button>
@@ -720,7 +720,7 @@ h1.title{font:700 clamp(28px,4vw,40px)/1.15 var(--head);letter-spacing:-.01em;ma
   <section id="tab-plan" role="tabpanel" aria-labelledby="t-plan" hidden>
     <div class="plan">
       <section>
-        <p class="lede">This is the build plan behind the prototype. It explains how the Inbox at <code>/business/messages</code> grows from one channel (AI Embed) into four: AI Embed, WhatsApp, Instagram and Facebook Messenger. It is written so a developer can start from it and a reviewer can check decisions before code exists. Anything not yet confirmed is marked <span class="tag-a">Assumption</span> or listed under Open questions.</p>
+        <p class="lede">This is the build plan behind the prototype. It explains how the Inbox at <code>/business/messages</code> grows from one channel (Website widget) into four: Website widget, WhatsApp, Instagram and Facebook Messenger. It is written so a developer can start from it and a reviewer can check decisions before code exists. Anything not yet confirmed is marked <span class="tag-a">Assumption</span> or listed under Open questions.</p>
         <nav class="toc" aria-label="Plan contents">
           <a href="#p-summary">Summary</a><a href="#p-principles">Principles</a><a href="#p-flow">Message flow</a><a href="#p-states">States</a><a href="#p-ui">UI walkthrough</a><a href="#p-ai">AI behaviour</a><a href="#p-channels">Channel rules</a><a href="#p-zernio">Zernio events</a><a href="#p-reuse">Reuse</a><a href="#p-data">Data model</a><a href="#p-api">API</a><a href="#p-fe">Frontend</a><a href="#p-be">Backend</a><a href="#p-phases">Phases</a><a href="#p-test">Testing</a><a href="#p-risks">Risks</a><a href="#p-q">Open questions</a><a href="#p-screens">Screens</a>
         </nav>
@@ -728,7 +728,7 @@ h1.title{font:700 clamp(28px,4vw,40px)/1.15 var(--head);letter-spacing:-.01em;ma
 
       <section id="p-summary">
         <h2>Summary</h2>
-        <p>Customers write to the business on WhatsApp, Instagram, Facebook Messenger or the website widget. Every message lands in one Inbox. AI answers first, on every channel, using the same knowledge and profile context AI Embed uses today. When AI can't or shouldn't answer, the conversation is flagged as <b>Needs attention</b> and moves to the top of the Inbox. A team member takes over, AI pauses, and the team member replies from the Inbox; the reply goes out on the customer's own channel. When they're done they click <b>Resume AI</b> and AI carries on.</p>
+        <p>Customers write to the business on WhatsApp, Instagram, Facebook Messenger or the website widget. Every message lands in one Inbox. AI answers first, on every channel, using the same knowledge and profile context Website widget uses today. When AI can't or shouldn't answer, the conversation is flagged as <b>Needs attention</b> and moves to the top of the Inbox. A team member takes over, AI pauses, and the team member replies from the Inbox; the reply goes out on the customer's own channel. When they're done they click <b>Resume AI</b> and AI carries on.</p>
         <div class="grid2">
           <div class="box"><h3>What changes</h3><ul>
             <li>The Inbox lists conversations from all four channels, with filters by status and by channel.</li>
@@ -739,12 +739,12 @@ h1.title{font:700 clamp(28px,4vw,40px)/1.15 var(--head);letter-spacing:-.01em;ma
             <li>Contacts → Visitors &amp; Leads lists everyone from every channel, one row per person, with a channel filter.</li>
           </ul></div>
           <div class="box"><h3>What stays the same</h3><ul>
-            <li>AI Embed keeps its tables, widget, settings page and API. It is read into the new Inbox, not migrated.</li>
+            <li>Website widget keeps its tables, widget, settings page and API. It is read into the new Inbox, not migrated.</li>
             <li>The look of the Inbox: same shell, rows, bubbles, Aly orb, notes and composer.</li>
             <li>The AI reply path (RAG + profile context) is reused for every channel.</li>
             <li>Nothing goes live per organisation until a feature flag is switched on.</li>
             <li>No assignment: whoever takes over handles the conversation, as today.</li>
-            <li>Notifications are out of scope for now. The team finds work through the Needs Attention filter, and AI Embed's existing handover email is unchanged.</li>
+            <li>Notifications are out of scope for now. The team finds work through the Needs Attention filter, and Website widget's existing handover email is unchanged.</li>
           </ul></div>
         </div>
       </section>
@@ -821,7 +821,7 @@ h1.title{font:700 clamp(28px,4vw,40px)/1.15 var(--head);letter-spacing:-.01em;ma
         <ol class="flowsteps">
           <li>The composer is only enabled when <code>mode = human</code> and the current user is the handler.</li>
           <li><code>POST /inbox/conversations/:id/messages</code> checks the same on the server, then checks the channel's reply window. A free-form message outside the window is refused with a clear error; the UI offers templates instead.</li>
-          <li>The message is stored as <code>queued</code> and sent through Zernio (or written straight to the transcript for AI Embed, as today).</li>
+          <li>The message is stored as <code>queued</code> and sent through Zernio (or written straight to the transcript for Website widget, as today).</li>
           <li>A failed send shows a red “Not delivered · Retry” under the bubble.</li>
         </ol>
       </section>
@@ -830,7 +830,7 @@ h1.title{font:700 clamp(28px,4vw,40px)/1.15 var(--head);letter-spacing:-.01em;ma
         <h2>Conversation states</h2>
         <p>Every conversation has two fields. <code>mode</code> says who answers. <code>status</code> says what the team should do. A third field, <code>attention_reason</code>, says why it needs attention.</p>
         <div class="tbox"><table>
-          <tr><th>Shown in the Inbox</th><th>mode</th><th>status</th><th>attention_reason</th><th>Does AI reply?</th><th>Today's AI Embed state</th></tr>
+          <tr><th>Shown in the Inbox</th><th>mode</th><th>status</th><th>attention_reason</th><th>Does AI reply?</th><th>Today's Website widget state</th></tr>
           <tr><td>🤖 AI handling</td><td>ai</td><td>active</td><td>—</td><td>Yes</td><td>ai</td></tr>
           <tr><td>🤖 Waiting for customer</td><td>ai</td><td>active</td><td>—</td><td>Yes, when the customer writes</td><td>ai</td></tr>
           <tr><td>⚠ AI needs attention</td><td>ai</td><td>needs_attention</td><td>ai_unsure</td><td>Yes, but flagged</td><td>new</td></tr>
@@ -894,7 +894,7 @@ h1.title{font:700 clamp(28px,4vw,40px)/1.15 var(--head);letter-spacing:-.01em;ma
         </ul>
         <h3>Inbox list</h3>
         <ul>
-          <li><b>Inbox sidebar</b> (left of the list): views with counts — Needs attention (amber count), With team, AI handling, Unread, All conversations, Resolved — then <b>Starred</b>: the starred conversations themselves (avatar with channel badge, name, unread count), newest first; a click opens one, “See all” shows them in the list. No “Assigned to me”: there is no assignment.</li><li><b>Top bar channels</b>: after “Connect a channel”, one chip per channel (All channels, AI Embed, WhatsApp, Instagram, Facebook) with its connection dot and count. A chip filters the list; a channel that isn’t connected is dashed and opens Connect.</li>
+          <li><b>Inbox sidebar</b> (left of the list): views with counts — Needs attention (amber count), With team, AI handling, Unread, All conversations, Resolved — then <b>Starred</b>: the starred conversations themselves (avatar with channel badge, name, unread count), newest first; a click opens one, “See all” shows them in the list. No “Assigned to me”: there is no assignment.</li><li><b>Top bar</b>: one button per channel — All channels, Website widget, WhatsApp, Instagram, Facebook — the same size as the Widget button, each with its connection dot and count; a click filters the list. A channel that isn’t connected is dashed: it still filters while it has past conversations, otherwise it opens Connect. Then “Connect a channel”, and Widget (settings) on the right. No widget on/off switch here: it lives on the widget’s settings and the Channels page.</li>
           <li><b>Collapse:</b> the button in the sidebar header shrinks it to an icon rail (counts become badges, starred conversations become avatars) and opens it again. The choice is remembered per person in the browser.</li>
           <li><b>List header</b> names the current view, says what it means (“Aly handed these over. Reply first.”) with the count, shows the channel as a removable chip when one is picked, then search.</li>
           <li><b>Sort order:</b> Needs attention first, then unread, then newest. Matches today's “waiting first” rule.</li>
@@ -952,7 +952,7 @@ h1.title{font:700 clamp(28px,4vw,40px)/1.15 var(--head);letter-spacing:-.01em;ma
       <section id="p-ai">
         <h2>AI behaviour</h2>
         <h3>Answering</h3>
-        <p>Every channel uses the AI Embed reply path: retrieval over the business's knowledge plus profile context. The difference is the context source. Today <code>lib/visitor-context.ts</code> maps the visitor row into the prompt; it will read the contact's facts instead, which include what the customer said on other channels. Channel formatting differs: WhatsApp, Instagram and Messenger get plain text with short paragraphs and no markdown tables or cards.</p>
+        <p>Every channel uses the Website widget reply path: retrieval over the business's knowledge plus profile context. The difference is the context source. Today <code>lib/visitor-context.ts</code> maps the visitor row into the prompt; it will read the contact's facts instead, which include what the customer said on other channels. Channel formatting differs: WhatsApp, Instagram and Messenger get plain text with short paragraphs and no markdown tables or cards.</p>
         <h3>Escalation detectors</h3>
         <div class="tbox"><table>
           <tr><th>Condition</th><th>How it's detected</th><th>What AI says</th></tr>
@@ -973,7 +973,7 @@ h1.title{font:700 clamp(28px,4vw,40px)/1.15 var(--head);letter-spacing:-.01em;ma
         <h2>Channel rules</h2>
         <div class="tbox"><table>
           <tr><th>Channel</th><th>Identity</th><th>Reply window</th><th>Specifics</th></tr>
-          <tr><td>AI Embed</td><td>Visitor key (existing)</td><td>None</td><td>Unchanged. Widget on/off, settings and visitors keep their pages. Doesn't go through Zernio.</td></tr>
+          <tr><td>Website widget</td><td>Visitor key (existing)</td><td>None</td><td>Unchanged. Widget on/off, settings and visitors keep their pages. Doesn't go through Zernio.</td></tr>
           <tr><td>WhatsApp</td><td>Phone number. If it changes, Zernio sends <code>whatsapp.contact.identity_changed</code> and we re-key the identity.</td><td>24 hours from the customer's last message. After that, only approved templates.</td><td>Templates come from <code>GET /v1/whatsapp/templates?accountId=</code> and are sent as <code>template</code> in the send call; <code>whatsapp.template.status_updated</code> keeps approvals current. A template doesn't reopen the window; the customer's reply does. With coexistence, staff can also reply from the phone app; those replies arrive as <code>message.sent</code> and pause AI.</td></tr>
           <tr><td>Instagram</td><td>Instagram-scoped user id (one per account)</td><td>Meta's 24-hour window; outside it only message tags, which Zernio's send call supports</td><td>Needs a Professional account linked to a Facebook Page. If the Page Inbox or another app takes the thread, we get <code>conversation.control_changed</code>.</td></tr>
           <tr><td>Facebook</td><td>Page-scoped user id (one per Page)</td><td>Same as Instagram</td><td>No phone number in the payload, so Messenger contacts stay separate until the customer shares a matching phone or email.</td></tr>
@@ -1006,7 +1006,7 @@ h1.title{font:700 clamp(28px,4vw,40px)/1.15 var(--head);letter-spacing:-.01em;ma
         <h2>What we reuse</h2>
         <div class="tbox"><table>
           <tr><th>Existing piece</th><th>File</th><th>Becomes</th></tr>
-          <tr><td>Channel bar: widget switch, “Connect a channel”, Widget button</td><td><code>messages/components/inbox-channel-bar.tsx</code>, <code>widget-switch.tsx</code></td><td>Same bar and order; a small status chip per connected channel</td></tr>
+          <tr><td>Channel bar: channel filter buttons, “Connect a channel”, Widget button</td><td><code>messages/components/inbox-channel-bar.tsx</code></td><td>Widget switch removed (it stays on widget settings and the Channels page); channel buttons sized like the Widget button</td></tr>
           <tr><td>Channels page</td><td><code>messages/channels/components/channels-view.tsx</code>, <code>channels/const/index.ts</code></td><td>Same page. Facebook joins <code>UPCOMING_CHANNELS</code> (lucide <code>Facebook</code>, blue tint). Coming soon becomes Connect; connected and lost card states added.</td></tr>
           <tr><td>Filter chips and list</td><td><code>inbox-list-sidebar.tsx</code></td><td>Renamed chips plus a channel segment</td></tr>
           <tr><td>Row with owner badge</td><td><code>embed-row.tsx</code></td><td>Adds channel icon and star</td></tr>
@@ -1068,7 +1068,7 @@ h1.title{font:700 clamp(28px,4vw,40px)/1.15 var(--head);letter-spacing:-.01em;ma
 
       <section id="p-fe">
         <h2>Frontend plan</h2>
-        <p>All under <code>frontend/src/app/business/messages/</code> unless noted. Phase 1 builds everything against a mock adapter, the way AI Embed's Inbox was built.</p>
+        <p>All under <code>frontend/src/app/business/messages/</code> unless noted. Phase 1 builds everything against a mock adapter, the way Website widget's Inbox was built.</p>
         <div class="tbox"><table>
           <tr><th>File</th><th>Change</th></tr>
           <tr><td><code>apis/inbox-mock.ts</code>, <code>apis/inbox-real.ts</code>, <code>apis/channels-*.ts</code></td><td>New, same interface for both, switched by the existing mock flag</td></tr>
@@ -1104,7 +1104,7 @@ h1.title{font:700 clamp(28px,4vw,40px)/1.15 var(--head);letter-spacing:-.01em;ma
               <li><code>channel:backfill</code> pages <code>GET /v1/inbox/conversations?profileId=…</code> every few minutes to pick up anything whose webhook never arrived.</li>
               <li><code>channel:health</code> runs a daily <code>GET /v1/accounts/health</code> as a safety net. Day to day, health comes from <code>account.disconnected</code> and the WhatsApp status events, so no polling.</li>
             </ul></li>
-          <li><b>AI Embed adapter:</b> reads <code>ai_widget_visitors</code> and its sessions into the conversation shape and writes mode and status back through <code>takeover.service.ts</code>. AI Embed never goes through Zernio.</li>
+          <li><b>Website widget adapter:</b> reads <code>ai_widget_visitors</code> and its sessions into the conversation shape and writes mode and status back through <code>takeover.service.ts</code>. Website widget never goes through Zernio.</li>
           <li><b>Takeover generalised:</b> the mode/status rules become one pure function, like <code>whoAnswers</code> today, so they can be unit-tested without a database.</li>
           <li><b>Reference:</b> Zernio docs (docs.zernio.com: multi-tenant, multi-tenant/inbox) and the OpenAPI spec (zernio.com/openapi.yaml).</li>
         </ul>
@@ -1112,9 +1112,9 @@ h1.title{font:700 clamp(28px,4vw,40px)/1.15 var(--head);letter-spacing:-.01em;ma
 
       <section id="p-phases">
         <h2>Phases</h2>
-        <div class="phase"><span class="n">1</span><b>Unified Inbox UI on mock data</b><span>Inbox slice, rows, filters, header, strip, composer looks, confirmations, summary card, suggestions, Customer 360, Channels page card states, wizard and AI configuration, all against the mock adapter. Behind a per-org flag.</span><span class="done">Done when: all four guided journeys from this prototype work in the real app on mock data, and with the flag off AI Embed behaves exactly as today.</span></div>
-        <div class="phase"><span class="n">2</span><b>Explicit takeover for AI Embed</b><span>Mode, status and reason on AI Embed chats; explicit Resume AI; stars; notes on the new table. Extend <code>tests/ai-takeover.ts</code>.</span><span class="done">Done when: AI Embed runs end to end on the new states with real data, and Needs Attention fills from real escalations.</span></div>
-        <div class="phase"><span class="n">3</span><b>Contacts and channel connections</b><span>Migrations, channels API, AI configuration saved per connection, contacts and identities, Customer 360 on real data. The Zernio connect step uses the fake adapter.</span><span class="done">Done when: the Channels page and AI configuration read and write real rows, and Visitors &amp; Leads lists AI Embed visitors as contacts with the Channels column and filter working.</span></div>
+        <div class="phase"><span class="n">1</span><b>Unified Inbox UI on mock data</b><span>Inbox slice, rows, filters, header, strip, composer looks, confirmations, summary card, suggestions, Customer 360, Channels page card states, wizard and AI configuration, all against the mock adapter. Behind a per-org flag.</span><span class="done">Done when: all four guided journeys from this prototype work in the real app on mock data, and with the flag off Website widget behaves exactly as today.</span></div>
+        <div class="phase"><span class="n">2</span><b>Explicit takeover for Website widget</b><span>Mode, status and reason on Website widget chats; explicit Resume AI; stars; notes on the new table. Extend <code>tests/ai-takeover.ts</code>.</span><span class="done">Done when: Website widget runs end to end on the new states with real data, and Needs Attention fills from real escalations.</span></div>
+        <div class="phase"><span class="n">3</span><b>Contacts and channel connections</b><span>Migrations, channels API, AI configuration saved per connection, contacts and identities, Customer 360 on real data. The Zernio connect step uses the fake adapter.</span><span class="done">Done when: the Channels page and AI configuration read and write real rows, and Visitors &amp; Leads lists Website widget visitors as contacts with the Channels column and filter working.</span></div>
         <div class="phase"><span class="n">4</span><b>Zernio: WhatsApp</b><span>Before starting: a Zernio team with the Inbox add-on, a sandbox profile and a test number. Then the webhook, the shared lookup tables, inbound worker, AI reply with typing, send worker, delivery status, 24-hour window, templates, coexistence replies from the phone app, health events and Reconnect.</span><span class="done">Done when: on a pilot number a real message gets an AI reply; a takeover, a team reply, a template after 24 hours and a resume all work.</span></div>
         <div class="phase"><span class="n">5</span><b>Zernio: Instagram and Facebook</b><span>Same adapter with Page login and Page selection, page-scoped identities, Meta's window and message tags, and the handover case where Page Inbox or another app owns the thread.</span><span class="done">Done when: the same pilot checks pass on an Instagram account and a Facebook Page.</span></div>
         <div class="phase"><span class="n">6</span><b>Cross-channel context</b><span>Exact-match linking, facts with their source channel, the context chip, and history across channels.</span><span class="done">Done when: a customer known on Instagram gets a WhatsApp answer that uses what they said there, and the chip shows it.</span></div>
@@ -1135,8 +1135,8 @@ h1.title{font:700 clamp(28px,4vw,40px)/1.15 var(--head);letter-spacing:-.01em;ma
         <div class="tbox"><table>
           <tr><th>Risk</th><th>Why it matters</th><th>Mitigation</th></tr>
           <tr><td>Wrong contact merges</td><td>One customer would see or be answered with another's details.</td><td>Exact phone or email only; never names; manual merge later.</td></tr>
-          <tr><td>AI spend and Zernio cost</td><td>AI Embed has no monthly cap today; three new channels add AI volume, and Zernio charges per connected account beyond two, plus its Inbox add-on.</td><td>Decide who pays before launch (open question 4); show usage per channel.</td></tr>
-          <tr><td>Escalations go unseen</td><td>With no notifications yet, a customer who asked for a person waits until someone opens the Inbox.</td><td>Needs Attention sorts first and shows a count; AI Embed keeps its handover email. Notifications are a later project.</td></tr>
+          <tr><td>AI spend and Zernio cost</td><td>Website widget has no monthly cap today; three new channels add AI volume, and Zernio charges per connected account beyond two, plus its Inbox add-on.</td><td>Decide who pays before launch (open question 4); show usage per channel.</td></tr>
+          <tr><td>Escalations go unseen</td><td>With no notifications yet, a customer who asked for a person waits until someone opens the Inbox.</td><td>Needs Attention sorts first and shows a count; Website widget keeps its handover email. Notifications are a later project.</td></tr>
           <tr><td>Escalation missed</td><td>A fallback model ignores instructions inside the reply prompt.</td><td>Detectors are separate calls; log every escalation decision.</td></tr>
           <tr><td>Double answers</td><td>AI and a person reply to the same message.</td><td>Re-check mode right before sending; a takeover cancels pending AI sends; a reply from the WhatsApp Business phone app pauses AI.</td></tr>
           <tr><td>Replies from the Instagram or Facebook apps</td><td>Zernio reports phone-app replies for WhatsApp coexistence numbers, but its docs say nothing similar for the Instagram and Facebook apps. If staff reply there, GlobalyApp may not see it and AI could answer too.</td><td>Ask teams to reply from the Inbox. Test in the sandbox in phase 5; if those replies do arrive, pause AI the same way as WhatsApp.</td></tr>
@@ -1179,7 +1179,7 @@ const MIN = 60000;
 const ME = "Rojan";
 const PHONE = "WhatsApp Business app";
 const CH = {
-  ai_embed: { label: "AI Embed", icon: "message-square-text" },
+  ai_embed: { label: "Website widget", icon: "message-square-text" },
   whatsapp: { label: "WhatsApp", icon: "message-circle" },
   instagram: { label: "Instagram", icon: "camera" },
   facebook: { label: "Facebook", icon: "facebook" },
@@ -1746,25 +1746,24 @@ function inbox() {
     <h3>Connect your channels</h3>
     <p>Let AI handle customer conversations across WhatsApp, Instagram and Facebook. Your team steps in only when it’s needed.</p>
     <div class="jbtns" style="justify-content:center"><button class="btn lg" data-act="wiz" data-ch="whatsapp">${ic("message-circle")} Connect WhatsApp</button><button class="btn lg" data-act="wiz" data-ch="instagram">${ic("camera")} Connect Instagram</button><button class="btn lg" data-act="wiz" data-ch="facebook">${ic("facebook")} Connect Facebook</button></div>
-    <button class="btn ghost sm" data-act="embed-on">or set up AI Embed on your website</button></div></div></main>`;
+    <button class="btn ghost sm" data-act="embed-on">or set up Website widget on your website</button></div></div></main>`;
   return `<main class="inbox">${bar()}${banners()}<div class="panes">${sidebar()}${list()}${convPane()}${cur() ? panel() : ""}</div></main>`;
 }
-/* Top bar: widget switch, Connect a channel, then the channel filters (moved up from the sidebar):
-   each chip filters the list and shows its connection dot and count; a channel that isn't
-   connected opens Connect instead. */
+/* Top bar: the channel filters (same size as the Widget button), then Connect a channel, then
+   Widget settings on the right. The widget on/off switch lives on the widget's settings and the
+   Channels page, not here. A channel that isn't connected opens Connect instead of filtering. */
 function bar() {
   const chCount = k => S.convs.filter(c => (k === "all" || c.channel === k) && matchF(c, S.filter)).length;
   const chip = k => {
-    if (k === "all") return `<button class="hchip chf ${S.chf === "all" ? "on" : ""}" data-act="chf" data-id="inbox" data-k="all" aria-pressed="${S.chf === "all"}"><span class="chav all xs">${ic("layers")}</span>All channels<span class="n">${chCount("all")}</span></button>`;
-    const st = S.integ[k].status, off = st === "disconnected";
-    const tip = off ? "Not connected — click to connect" : st === "error" ? "Connection lost" : k === "ai_embed" ? "Widget on your website" : "Connected · AI " + (S.integ[k].ai.mode === "auto" ? "active" : "suggests");
-    return `<button class="hchip chf ${S.chf === k ? "on" : ""} ${off ? "off" : ""}" data-act="${off ? "connect-open" : "chf"}" data-id="inbox" data-k="${k}" aria-pressed="${S.chf === k}" title="${CH[k].label}: ${tip}">${glyph(k, "xs")}${CH[k].label}<span class="dot ${st === "connected" ? "ok" : st === "error" ? "bad" : "off"}"></span>${off ? "" : `<span class="n">${chCount(k)}</span>`}</button>`;
+    if (k === "all") return `<button class="btn outline sm chf ${S.chf === "all" ? "on" : ""}" data-act="chf" data-id="inbox" data-k="all" aria-pressed="${S.chf === "all"}"><span class="chav all xs">${ic("layers")}</span>All channels<span class="n">${chCount("all")}</span></button>`;
+    const st = S.integ[k].status, off = st === "disconnected", n = chCount(k);
+    const tip = off ? "Not connected" : st === "error" ? "Connection lost" : k === "ai_embed" ? "Chat widget on your website" : "Connected · AI " + (S.integ[k].ai.mode === "auto" ? "active" : "suggests");
+    const filters = !off || n > 0;
+    return `<button class="btn outline sm chf ${S.chf === k ? "on" : ""} ${off ? "off" : ""}" data-act="${filters ? "chf" : "connect-open"}" data-id="inbox" data-k="${k}" aria-pressed="${S.chf === k}" title="${CH[k].label}: ${tip}">${glyph(k, "xs")}${CH[k].label}<span class="dot ${st === "connected" ? "ok" : st === "error" ? "bad" : "off"}"></span>${filters ? `<span class="n">${n}</span>` : ""}</button>`;
   };
   return `<div class="bar">
-    ${connected("ai_embed") ? `<span class="wsw">${ic("message-square", "")}Widget · ${S.widgetOn ? "On" : "Off"} <button class="sw ${S.widgetOn ? "on" : ""}" data-act="widget" aria-label="AI chat widget"></button></span>` : `<button class="btn outline sm" data-act="embed-on">${ic("message-square")} Set up the chat widget</button>`}
-    <button class="btn outline sm dashed" data-act="connect-open">${ic("radio-tower")} Connect a channel</button>
-    <span class="bsep"></span>
     <div class="health" role="group" aria-label="Channels">${["all", "ai_embed", "whatsapp", "instagram", "facebook"].map(chip).join("")}</div>
+    <button class="btn outline sm dashed" data-act="connect-open">${ic("radio-tower")} Connect a channel</button>
     <span class="spacer"></span>
     <button class="btn outline sm" data-act="manage" data-ch="ai_embed">${ic("settings")} Widget</button>
   </div>`;
@@ -2333,7 +2332,7 @@ const SCREENS = [
   ["Conversations", [
     ["s20", "WhatsApp AI conversation", () => go("full", s => { s.open = "c-sarah-wa"; })],
     ["s21", "Instagram AI conversation", () => go("full", s => { s.open = "c-sarah-ig"; })],
-    ["s22", "AI Embed conversation", () => go("full", s => { s.open = "c-john"; })],
+    ["s22", "Website widget conversation", () => go("full", s => { s.open = "c-john"; })],
     ["f6", "Facebook AI conversation", () => go("full", s => { s.open = "c-ritu"; })],
     ["f7", "Facebook needs attention", () => go("full", s => { s.open = "c-omar"; })],
     ["s23", "AI typing state", () => go("full", s => { s.open = "c-john"; setTimeout(() => customerSays(getConv("c-john"), "Yes please, I have 6.5."), 50); })],
@@ -2461,7 +2460,7 @@ function act(a, el, e) {
       emit("aicfg_" + c); break;
     }
     case "manage": toast(ch === "ai_embed" ? "Opens the existing widget settings page (/business/messages/widget)" : `Opens ${CH[ch].label} details: business profile, templates and number settings`); return;
-    case "embed-on": S.integ.ai_embed.status = "connected"; S.modal = null; toast("AI Embed widget is set up. Visitors can now chat with AI on your website."); break;
+    case "embed-on": S.integ.ai_embed.status = "connected"; S.modal = null; toast("Website widget widget is set up. Visitors can now chat with AI on your website."); break;
     case "disconnect-ask": S.modal = { kind: "disconnect", ch }; break;
     case "takeover-ask": S.modal = { kind: "takeover" }; break;
     case "resume-ask": S.modal = { kind: "resume" }; break;

@@ -6,9 +6,11 @@ import { Badge } from "@/components/ui/badge";
 import { SIDEBAR_ROW, SIDEBAR_ROW_ACTIVE } from "@/components/chat/const";
 import { listStamp } from "@/components/chat/utils";
 import { cn } from "@/lib/utils";
+import { useAppDispatch } from "@/lib/hooks";
 import { VISITOR_STATUS_BADGE } from "@/app/business/ai-widget/const";
 import { visitorDisplayName, visitorInitials } from "@/app/business/ai-widget/utils";
 import type { WidgetVisitor } from "@/app/business/ai-widget/apis/types";
+import { starEmbedChat } from "../store/embed-chats-slice";
 import { ATTENTION_LABEL, channelOf, embedChatState, handlerLabel, type EmbedChatState } from "../utils";
 import { ChannelGlyph } from "./channel-glyph";
 
@@ -28,14 +30,22 @@ export function EmbedRow({ visitor, isActive, onOpen }: Readonly<{ visitor: Widg
   const owner = OWNER_BADGE[state];
   const OwnerIcon = owner.icon;
   const unread = visitor.unread_count ?? 0;
+  const dispatch = useAppDispatch();
 
+  // A div, not a <button>: the row holds its own star button, and buttons can't nest.
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onOpen}
+      onKeyDown={(e) => {
+        if (e.target !== e.currentTarget || (e.key !== "Enter" && e.key !== " ")) return;
+        e.preventDefault();
+        onOpen();
+      }}
       className={cn(
         SIDEBAR_ROW,
-        "cursor-pointer items-start",
+        "group cursor-pointer items-start",
         isActive ? SIDEBAR_ROW_ACTIVE : "hover:bg-muted/60",
         // Waiting for a person: an amber edge, so the queue reads at a glance.
         !isActive && (state === "waiting" || state === "attention") && "border-l-2 border-warning",
@@ -70,7 +80,24 @@ export function EmbedRow({ visitor, isActive, onOpen }: Readonly<{ visitor: Widg
             {visitor.email ?? visitor.channel_handle ?? visitor.study_preference ?? `${visitor.message_count} message${visitor.message_count === 1 ? "" : "s"}`}
           </span>
           <span className="ml-auto flex shrink-0 items-center gap-1">
-            {visitor.starred && <Star className="size-3 fill-rating text-rating" aria-label="Starred" />}
+            {/* Starred: always shown. Not starred: appears on hover / keyboard focus. */}
+            <button
+              type="button"
+              aria-pressed={!!visitor.starred}
+              aria-label={visitor.starred ? "Unstar" : "Star"}
+              title={visitor.starred ? "Unstar" : "Star"}
+              onClick={(e) => {
+                e.stopPropagation();
+                dispatch(starEmbedChat({ visitorId: visitor.id, starred: !visitor.starred }));
+              }}
+              className={cn(
+                "rounded p-0.5 hover:bg-muted focus-visible:opacity-100",
+                // Touch screens have no hover: always shown there.
+                !visitor.starred && "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100",
+              )}
+            >
+              <Star className={cn("size-3.5", visitor.starred ? "fill-rating text-rating" : "text-muted-foreground")} aria-hidden />
+            </button>
             {state === "waiting" && (
               <Badge variant="warning" className="h-4 px-1.5">Wants a person</Badge>
             )}
@@ -91,6 +118,6 @@ export function EmbedRow({ visitor, isActive, onOpen }: Readonly<{ visitor: Widg
           </span>
         </span>
       </span>
-    </button>
+    </div>
   );
 }
