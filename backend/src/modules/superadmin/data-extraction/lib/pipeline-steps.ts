@@ -18,12 +18,13 @@ import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { NEXT_STEP, type PipelineStep } from "../schemas/step.schema.js";
 import { discoverUrlsForCrawl, scrapeFailureText, scrapeRenderedHtml } from "./scraper.js";
 import { chooseOverviewMedia, imageCandidates, metaImages } from "./gallery-images.js";
-import { SNAPSHOT_BATCH_SIZE, jobHalted, runPool } from "./site-snapshot.js";
+import { SNAPSHOT_BATCH_SIZE, jobHalted, runPool, snapshotHead } from "./site-snapshot.js";
+import { FLOOR_GAP_MS, hostOf } from "./host-health.js";
 import { CRAWL_BUDGET, crawlSeeds, crawlSite } from "./site-crawl.js";
 import { _urlClassifyDeps, jevCategorise, jevVerdicts } from "./jev-url-classify.js";
 import { getPage, normaliseUrl, readSnapshot } from "./page-store.js";
 import {
-  looksLikeCourseUrl, looksLikeVisaServiceUrl, filterUrls, filterUrlsDetailed, truncateMarkdown, collectGuidedUrls, compileBlocklist,
+  looksLikeCourseUrl, looksLikeVisaServiceUrl, filterUrls, filterUrlsDetailed, truncateMarkdown, collectGuidedUrls, compileBlocklist, isSkippableAssetUrl,
   classifierDistrusted, MIN_CLASSIFIER_KEEP_RATIO, sharedPrefix, pageExcerpt,
 } from "./html-utils.js";
 import { extractJson } from "./llm-client.js";
@@ -64,6 +65,17 @@ export const _stepDeps = {
   loadJob: async (jobId: string): Promise<JobRow | undefined> => masterKnex(`${S}.extraction_jobs`).where({ id: jobId }).first(),
   publish: async (queue: string, payload: Record<string, unknown>): Promise<void> => { await queueService.publish(queue, payload); },
   crawl: crawlSite,
+  /** RAW stored gaps for snapshot PLANNING — deliberately unclamped, unlike seedHost: pacing must
+   *  not inherit an 8s punishment, but a plan sizing a 7,000-page fetch wants exactly that signal.
+   *  Failure is an empty map (the floor is assumed), never an error — same fail-open direction as
+   *  every other read of this table. */
+  storedHostGaps: async (hosts: string[]): Promise<Map<string, number>> => {
+    try {
+      const rows = await masterKnex(`${S}.extraction_host_slots`).whereIn("host", hosts)
+        .whereNotNull("gap_ms").select("host", "gap_ms");
+      return new Map(rows.map((r: { host: string; gap_ms: number }) => [r.host, Number(r.gap_ms)]));
+    } catch { return new Map(); }
+  },
   /** The homepage's HTML, for og:image / twitter:image — the markdown snapshot drops <meta>. */
   renderedHtml: scrapeRenderedHtml,
   // ONE atomic jsonb merge, never read-modify-write: snapshot batches land concurrently and the
@@ -258,17 +270,57 @@ export async function runSiteMap(jobId: string, job: JobRow): Promise<{ total: n
  * carries the id of THIS dispatch; the last batch of a run to land is the one that advances the
  * chain (see site-snapshot.snapshotRunOutcome). Returns how many batches went out.
  */
-/** `fresh` re-fetches every page even if a snapshot within the window exists — the admin's
- *  "re-snapshot" after a scraper fix. Default false: a rerun on an unchanged site stays free. */
-export async function dispatchSnapshotBatches(jobId: string, urls: string[], pageCap: number | null, fresh = false): Promise<number> {
-  const capped = pageCap == null ? urls : urls.slice(0, pageCap);
-  const batches = Math.ceil(capped.length / SNAPSHOT_BATCH_SIZE);
+/** Wave-1 time budget per host. The snapshot is gap-bound (wall-clock = pages × host gap), so on
+ *  a host that taught us a slow pace the full fetch can be HOURS while the pipeline needs only the
+ *  ranked head to proceed — monmouth.edu: 6,882 pages at its stored 8s gap is 15h, of which the
+ *  course-shaped URLs were ranks 1–710. "0" disables splitting. */
+const HEAD_BUDGET_RAW = (process.env.SNAPSHOT_HEAD_BUDGET_MS ?? "").trim();
+const SNAPSHOT_HEAD_BUDGET_MS = HEAD_BUDGET_RAW !== "" && Number(HEAD_BUDGET_RAW) >= 0
+  ? Math.floor(Number(HEAD_BUDGET_RAW)) : 1_800_000;
+
+/**
+ * `fresh` re-fetches every page even if a snapshot within the window exists — the admin's
+ * "re-snapshot" after a scraper fix. Default false: a rerun on an unchanged site stays free.
+ *
+ * `split` carves the time-budgeted head (snapshotHead) off as its own run when the whole list
+ * would blow the budget at each host's STORED pace; the head's completion advances the chain and
+ * the worker then dispatches the FULL list as a second run with split=false (the recursion guard).
+ * That second run re-reads head pages from cache — no host slot, ~130ms each — and fetches only
+ * the tail, so no index arithmetic can lose a URL to a list that shifted under it. Its completion
+ * advances the chain AGAIN, which is the re-classify: url_classify reruns with the tail's excerpts
+ * now present and queue_pages queues only what is new (the insert dedupes). Never for `fresh`
+ * runs — the admin asked for a full re-fetch, and wave 2's cache reads would be re-fetches too.
+ */
+export async function dispatchSnapshotBatches(jobId: string, urls: string[], pageCap: number | null, fresh = false, split = true): Promise<number> {
+  // Belt at the chokepoint: a .pptx that leaks onto the site list costs a full browser-tier walk
+  // per snapshot (seen live on monmouth — 80 Office docs stored ACTIVE with source=sitemap while
+  // the run's own discard event counted 3 assets; today's filterUrls drops all 80, so the writer
+  // was stale code, but the list is durable and the cost repeats every run). PDFs stay: they have
+  // their own reader. Everything else binary is skipped here whatever upstream believed.
+  const fetchable = urls.filter((u) => !isSkippableAssetUrl(u));
+  const capped = pageCap == null ? fetchable : fetchable.slice(0, pageCap);
+  let wave = capped;
+  let thenFull = false;
+  if (split && !fresh && SNAPSHOT_HEAD_BUDGET_MS > 0 && capped.length) {
+    const gaps = await _stepDeps.storedHostGaps([...new Set(capped.map((u) => hostOf(u) ?? ""))]);
+    const head = snapshotHead(capped, (h) => gaps.get(h) ?? FLOOR_GAP_MS, SNAPSHOT_HEAD_BUDGET_MS);
+    if (head.length < capped.length) {
+      wave = head;
+      thenFull = true;
+      await _stepDeps.writeEvent(jobId, "snapshot_wave", {
+        phase: "site_mapping",
+        message: `Snapshot head: ${head.length} of ${capped.length} pages fit the ${Math.round(SNAPSHOT_HEAD_BUDGET_MS / 60000)}-minute budget at the hosts' learned pace — the pipeline advances on these; the remaining ${capped.length - head.length} follow behind`,
+        data: { head: head.length, total: capped.length, budget_ms: SNAPSHOT_HEAD_BUDGET_MS },
+      });
+    }
+  }
+  const batches = Math.ceil(wave.length / SNAPSHOT_BATCH_SIZE);
   const runId = randomUUID();
   for (let i = 0; i < batches; i++) {
     await _stepDeps.publish(EXTRACTION_QUEUES.STEPS, {
       jobId, step: "site_snapshot", fresh,
-      urls: capped.slice(i * SNAPSHOT_BATCH_SIZE, (i + 1) * SNAPSHOT_BATCH_SIZE),
-      batch: { runId, index: i + 1, total: batches },
+      urls: wave.slice(i * SNAPSHOT_BATCH_SIZE, (i + 1) * SNAPSHOT_BATCH_SIZE),
+      batch: { runId, index: i + 1, total: batches, ...(thenFull ? { thenFull: true } : {}) },
     });
   }
   return batches;

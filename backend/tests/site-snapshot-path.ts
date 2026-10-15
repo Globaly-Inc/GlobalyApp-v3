@@ -6,7 +6,7 @@
  * plus the property that lossiness would otherwise destroy: two different pages never share an
  * object path, because an upload overwrites and one page's snapshot would be silently lost.
  */
-import { deadReasonOf, fileLinksOf, runPool, snapshotPathFor, snapshotVerdict, tallySnapshotEvents } from "../src/modules/superadmin/data-extraction/lib/site-snapshot.js";
+import { deadReasonOf, fileLinksOf, runPool, snapshotHead, snapshotPathFor, snapshotVerdict, tallySnapshotEvents } from "../src/modules/superadmin/data-extraction/lib/site-snapshot.js";
 import type { SnapshotEventRow } from "../src/modules/superadmin/data-extraction/lib/site-snapshot.js";
 
 let failed = 0;
@@ -128,6 +128,34 @@ for (const [label, page, want] of [
 ] as const) {
   const got = deadReasonOf(page);
   if (got !== want) fail(`deadReasonOf ${label}: expected ${want}, got ${got}`);
+}
+
+// ── snapshotHead: the time-budgeted wave 1 ──
+// Per HOST, never a global budget: hosts do not queue on each other, so a slow host exhausting its
+// own allowance must not evict a fast host's pages — a global budget would hand monmouth's 8s gap
+// the power to shrink catalog.monmouth.edu's share, which runs 40x faster in parallel.
+{
+  const u = (h: string, n: number) => Array.from({ length: n }, (_, i) => `https://${h}/p${i}`);
+  const gap = (gaps: Record<string, number>) => (h: string) => gaps[h] ?? 200;
+
+  const all = snapshotHead(u("fast.edu", 50), gap({ "fast.edu": 200 }), 60_000);
+  if (all.length !== 50) fail(`a site that fits the budget must not split (got ${all.length}/50)`);
+
+  // 8s gap, 60s budget → 7 pages of the slow host; the fast host keeps all of its own.
+  // 100 fast pages need 20s of fast-host budget — far more than what a GLOBAL budget would have
+  // left after the slow host spent 56s of it. Only a per-host budget keeps all 100.
+  const mixed = [...u("slow.edu", 20), ...u("fast.edu", 100)];
+  const head = snapshotHead(mixed, gap({ "slow.edu": 8_000, "fast.edu": 200 }), 60_000);
+  const slow = head.filter((x) => x.includes("slow.edu")).length;
+  const fastKept = head.filter((x) => x.includes("fast.edu")).length;
+  if (slow !== 7) fail(`slow host should fit budget/gap = 7 pages, got ${slow}`);
+  if (fastKept !== 100) fail(`the fast host must be untouched by the slow host's exhaustion, got ${fastKept}/100`);
+  // Ranked order must survive: the head is a subsequence of the input, never re-sorted.
+  let last = -1;
+  for (const x of head) { const i = mixed.indexOf(x); if (i < last) { fail("snapshotHead re-ordered the ranked list"); break; } last = i; }
+
+  if (snapshotHead(u("x.edu", 9), gap({}), 0).length !== 9) fail("budget 0 disables splitting (everything is wave 1)");
+  if (snapshotHead(u("x.edu", 5), () => 0, 1_000).length !== 5) fail("a zero gap must not divide the budget by zero");
 }
 
 // ── runPool: the snapshot's fetcher pool ──
