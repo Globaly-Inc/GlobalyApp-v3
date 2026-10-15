@@ -180,6 +180,7 @@ jobs:
            sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/workers/worker-guide-email.yml"
            sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/workers/worker-seo-snapshot.yml"
            sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/workers/worker-referral-codes.yml"
+           sed -i "s|^\(\s*tag:\s*\).*|\1${IMAGE_TAG}|" "${VALUES_FILE_PATH}/workers/worker-channel-events.yml"                      
 
            echo "updating globalyapp-images..."
            ## git config user.name "devops-github-actions"
