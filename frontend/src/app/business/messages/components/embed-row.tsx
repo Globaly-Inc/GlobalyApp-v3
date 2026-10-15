@@ -92,7 +92,8 @@ export function EmbedRow({ visitor, isActive, onOpen }: Readonly<{ visitor: Widg
               }}
               className={cn(
                 "rounded p-0.5 hover:bg-muted focus-visible:opacity-100",
-                !visitor.starred && "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100",
+                // Touch screens have no hover: always shown there.
+                !visitor.starred && "opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100",
               )}
             >
               <Star className={cn("size-3.5", visitor.starred ? "fill-rating text-rating" : "text-muted-foreground")} aria-hidden />

@@ -1,9 +1,11 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import { Layers, RadioTower, Settings, WifiOff } from "lucide-react";
 import { buttonVariants } from "@/components/ui/button";
-import { useAppSelector } from "@/lib/hooks";
+import { useAppDispatch, useAppSelector } from "@/lib/hooks";
+import { fetchEmbedConfigs } from "@/app/business/ai-widget/store/ai-widget-slice";
 import { cn } from "@/lib/utils";
 import { WIDGET_SETTINGS_HREF } from "@/app/business/ai-widget/const";
 import type { InboxChannel } from "@/app/business/ai-widget/apis/types";
@@ -75,7 +77,17 @@ function Chips({ channel, onChannel, count, health }: Readonly<ChannelChips>) {
  * here. A lost connection also gets a banner, so it's visible from the Inbox, not only on Channels.
  */
 export function InboxChannelBar({ chips }: Readonly<{ chips?: ChannelChips }>) {
+  const dispatch = useAppDispatch();
+  const { loaded: widgetLoaded, status: widgetStatus } = useAppSelector((s) => s.aiWidget);
   const widgetOff = useAppSelector((s) => s.aiWidget.configs.length === 1 && s.aiWidget.configs[0]?.is_active === false);
+  // The Inbox needs the widget configs (its health dot, the paused-widget warning, the setup
+  // dialog), and nothing else here loads them now the switch has left this bar. Keyed on `loaded`,
+  // not a mount ref: switching org resets the slice under a mounted Inbox. The thunk's `condition`
+  // absorbs Strict Mode's double run; a failed fetch isn't retried in a loop.
+  useEffect(() => {
+    if (widgetLoaded || widgetStatus === "failed") return;
+    dispatch(fetchEmbedConfigs());
+  }, [dispatch, widgetLoaded, widgetStatus]);
   const connections = useAppSelector((s) => s.inboxChannels.connections);
   const lost = connections.filter((c) => c.status === "error");
   return (
