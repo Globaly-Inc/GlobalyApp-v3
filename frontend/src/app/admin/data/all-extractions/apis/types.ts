@@ -142,6 +142,15 @@ export type InstitutionOverview = ActorFields & {
   updated_at?: string | null;
 };
 
+/** Courses-tab filters beyond search/status — all server-side, so they span every page. */
+export type CourseFilters = {
+  /** degree_levels.slug, matched against extraction_courses.degree_level_code. */
+  degree_level?: string;
+  published?: "published" | "draft";
+  /** extracted = created by the pipeline; manual = added by an admin. */
+  origin?: "extracted" | "manual";
+};
+
 export type Paginated<T> = {
   data: T[];
   meta: { page: number; limit: number; total: number; totalPages: number };

@@ -13,7 +13,7 @@ export async function listCourses(
   limit: number,
   offset: number,
   pagination: PaginationInput,
-  filters: { search?: string; status?: string; sort?: repo.CourseSort; scope?: "in" | "out" },
+  filters: Pick<repo.CourseListFilters, "search" | "status" | "scope" | "degreeLevel" | "published" | "origin"> & { sort?: repo.CourseSort },
 ) {
 
   const excluded = filters.scope ? await jobExcludedLevels(jobId) : undefined;

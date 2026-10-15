@@ -18,7 +18,7 @@
 import { masterKnex } from "../../../../core/db/master-pool.js";
 import { config } from "../../../../config.js";
 import { createChildLogger } from "../../../../shared/logger.js";
-import { extractionCompleteEmail } from "../../../../shared/mail/templates.js";
+import { adminExtractionReviewEmail, extractionCompleteEmail } from "../../../../shared/mail/templates.js";
 import { ensureForOwner } from "../../../ai-counsellor/repositories/embed.repository.js";
 import { embedSnippet } from "../../../ai-counsellor/services/embed-handoff.service.js";
 import { queueEmail } from "../../../auth/auth.service.js";
@@ -102,27 +102,50 @@ async function entityFor(jobId: string, starterId: number | null): Promise<Entit
   return biz ?? null;
 }
 
+type MarkerKey = "completion_email" | "admin_review_email";
+
 /** Atomically move this run's marker from one of `from` (null = unset) to `value`. False = it was elsewhere. */
-async function mark(jobId: string, value: string, from: Array<string | null>): Promise<boolean> {
+async function mark(jobId: string, value: string, from: Array<string | null>, key: MarkerKey = "completion_email"): Promise<boolean> {
   const allowed = from.filter((v): v is string => v !== null);
   const n = await masterKnex(`${S}.extraction_jobs`)
     .where({ id: jobId })
     .where((q) => {
-      if (from.includes(null)) q.orWhereRaw("(pipeline_progress->>'completion_email') IS NULL");
-      if (allowed.length) q.orWhereRaw("(pipeline_progress->>'completion_email') = ANY(?)", [allowed]);
+      if (from.includes(null)) q.orWhereRaw("(pipeline_progress->>?) IS NULL", [key]);
+      if (allowed.length) q.orWhereRaw("(pipeline_progress->>?) = ANY(?)", [key, allowed]);
     })
-    .update({ pipeline_progress: masterKnex.raw("coalesce(pipeline_progress, '{}'::jsonb) || ?::jsonb", [JSON.stringify({ completion_email: value })]) });
+    .update({ pipeline_progress: masterKnex.raw("coalesce(pipeline_progress, '{}'::jsonb) || ?::jsonb", [JSON.stringify({ [key]: value })]) });
   return n > 0;
 }
 
 /** Give a failed send's slot back so the next verification of this run tries again. */
-async function release(jobId: string): Promise<void> {
+async function release(jobId: string, key: MarkerKey = "completion_email"): Promise<void> {
   await masterKnex(`${S}.extraction_jobs`).where({ id: jobId })
-    .whereRaw("(pipeline_progress->>'completion_email') = 'sent'")
-    .update({ pipeline_progress: masterKnex.raw("pipeline_progress - 'completion_email'") });
+    .whereRaw("(pipeline_progress->>?) = 'sent'", [key])
+    .update({ pipeline_progress: masterKnex.raw("pipeline_progress - ?::text", [key]) });
 }
 
 export const _completionDeps = { send: queueEmail };
+
+/** What a finished run found — the figures both completion mails report. */
+async function jobCoverage(jobId: string, isVisa: boolean) {
+  if (isVisa) {
+    const row = await masterKnex(`${S}.extraction_visa_services`).where({ job_id: jobId }).count({ n: "*" }).first();
+    return { itemCount: Number(row?.n ?? 0), coverage: [] as Array<{ label: string; count: number; of?: number }> };
+  }
+  const { total, counts } = await fieldCoverage(jobId);
+  const campuses = await masterKnex(`${S}.extraction_campuses`).where({ job_id: jobId }).count({ n: "*" }).first();
+  return {
+    itemCount: total,
+    coverage: [
+      // No `of`: campuses are a count in their own right, not a share of the course total.
+      { label: `campus${Number(campuses?.n) === 1 ? "" : "es"}`, count: Number(campuses?.n ?? 0) },
+      { label: "courses with fees", count: counts.fees ?? 0, of: total },
+      { label: "courses with intake dates", count: counts.intakes ?? 0, of: total },
+      { label: "courses with entry requirements", count: counts.eligibility ?? 0, of: total },
+      { label: "courses with study units", count: counts.units ?? 0, of: total },
+    ] as Array<{ label: string; count: number; of?: number }>,
+  };
+}
 
 /** Never throws: the job is already in review, and a mail problem must not undo that. */
 export async function sendCompletionEmail(jobId: string): Promise<"sent" | "skipped" | "already" | "failed"> {
@@ -152,24 +175,7 @@ export async function sendCompletionEmail(jobId: string): Promise<"sent" | "skip
     }
 
     const isVisa = job.source_type === "visa_service";
-    let itemCount: number;
-    let coverage: Array<{ label: string; count: number; of?: number }> = [];
-    if (isVisa) {
-      const row = await masterKnex(`${S}.extraction_visa_services`).where({ job_id: jobId }).count({ n: "*" }).first();
-      itemCount = Number(row?.n ?? 0);
-    } else {
-      const { total, counts } = await fieldCoverage(jobId);
-      const campuses = await masterKnex(`${S}.extraction_campuses`).where({ job_id: jobId }).count({ n: "*" }).first();
-      itemCount = total;
-      coverage = [
-        // No `of`: campuses are a count in their own right, not a share of the course total.
-        { label: `campus${Number(campuses?.n) === 1 ? "" : "es"}`, count: Number(campuses?.n ?? 0) },
-        { label: "courses with fees", count: counts.fees ?? 0, of: total },
-        { label: "courses with intake dates", count: counts.intakes ?? 0, of: total },
-        { label: "courses with entry requirements", count: counts.eligibility ?? 0, of: total },
-        { label: "courses with study units", count: counts.units ?? 0, of: total },
-      ];
-    }
+    const { itemCount, coverage } = await jobCoverage(jobId, isVisa);
 
     // The org's real tag, so the mail hands over something they can paste rather than a link to go
     // find it. Best-effort by design: this mail reports a finished crawl, and a widget problem must
@@ -209,6 +215,87 @@ export async function sendCompletionEmail(jobId: string): Promise<"sent" | "skip
     if (claimed) await release(jobId).catch(() => {});
     await writeJobEvent(jobId, "completion_email_failed", {
       level: "warn", phase: "verification", message: "Completion email could not be sent",
+      data: { error: err instanceof Error ? err.message : String(err) },
+    }).catch(() => {});
+    return "failed";
+  }
+}
+
+/** Same inbox, ignoring case and stray spaces — an admin account and an owner account are one person here. Pure. */
+export const isSamePerson = (a: string | null | undefined, b: string | null | undefined): boolean =>
+  !!a && !!b && a.trim().toLowerCase() === b.trim().toLowerCase();
+
+/** The admin who ran this extraction: whoever last started/continued it, else its creator. Pure. */
+export const adminReviewerId = (job: { created_by_platform_user_id: number | null; updated_by_platform_user_id: number | null }) =>
+  job.updated_by_platform_user_id ?? job.created_by_platform_user_id ?? null;
+
+/**
+ * "Ready for review" to the admin who ran the extraction — the admin-side counterpart of the owner's
+ * mail above, sent at the same moment. A run started by a business user (not an admin) has no admin
+ * reviewer and is skipped. Own marker, so once per run independently of the owner's. Never throws.
+ */
+export async function sendAdminReviewEmail(jobId: string): Promise<"sent" | "skipped" | "already" | "failed"> {
+  const KEY = "admin_review_email";
+  let claimed = false;
+  try {
+    const job = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId })
+      .first("source_type", "institution_name", "institution_url", "status", "created_by_platform_user_id", "updated_by_platform_user_id");
+    if (!job || job.status !== "review" || job.source_type === "self_service") return "skipped";
+
+    const reviewerId = adminReviewerId(job);
+    if (reviewerId == null) return "skipped";
+    const admin = await masterKnex("superadmin.admin_users as a")
+      .join("public.platform_users as u", "u.id", "a.platform_user_id")
+      .where({ "a.platform_user_id": reviewerId, "a.is_active": true }).whereNull("a.deleted_at")
+      .first("u.email", "u.first_name", "u.display_name");
+    if (!admin) return "skipped"; // a business user's own run — the owner's mail covers it
+    if (!valid(admin.email)) {
+      if (await mark(jobId, "skipped", [null], KEY)) {
+        await writeJobEvent(jobId, "admin_review_email_skipped", {
+          phase: "verification", message: "No review email: the admin who ran this extraction has no valid email",
+        });
+      }
+      return "skipped";
+    }
+
+    const entity = await entityFor(jobId, null);
+    // The admin owns this listing too: they are the business owner, not a reviewer of someone else's
+    // listing, so the admin review mail is not theirs to get.
+    if (isSamePerson(admin.email, entity?.ownerEmail)) {
+      if (await mark(jobId, "skipped", [null], KEY)) {
+        await writeJobEvent(jobId, "admin_review_email_skipped", {
+          phase: "verification", message: "No review email: the admin who ran this extraction is the listing's owner",
+        });
+      }
+      return "skipped";
+    }
+
+    const isVisa = job.source_type === "visa_service";
+    const { itemCount, coverage } = await jobCoverage(jobId, isVisa);
+    const mail = adminExtractionReviewEmail({
+      recipientName: admin.first_name?.trim() || admin.display_name?.trim() || null,
+      entityName: entity?.entityName || job.institution_name || "this institution",
+      website: job.institution_url ? job.institution_url.replace(/^https?:\/\//, "").replace(/\/$/, "") : null,
+      itemLabel: isVisa ? "services" : "courses",
+      itemCount,
+      coverage,
+      reviewUrl: `${config.WEB_APP_URL.replace(/\/$/, "")}/admin/data/all-extractions/${jobId}`,
+    });
+    if (!(await mark(jobId, "sent", [null, "skipped"], KEY))) return "already";
+    claimed = true;
+    await _completionDeps.send({ to: admin.email.trim(), ...mail });
+    claimed = false;
+    await writeJobEvent(jobId, "admin_review_email_sent", {
+      phase: "verification",
+      message: `Review email sent to the admin who ran this extraction (${maskEmail(admin.email.trim())})`,
+      data: { to: maskEmail(admin.email.trim()), items: itemCount },
+    });
+    return "sent";
+  } catch (err) {
+    logger.warn("Admin review email failed", { jobId, error: err instanceof Error ? err.message : String(err) });
+    if (claimed) await release(jobId, KEY).catch(() => {});
+    await writeJobEvent(jobId, "admin_review_email_failed", {
+      level: "warn", phase: "verification", message: "Admin review email could not be sent",
       data: { error: err instanceof Error ? err.message : String(err) },
     }).catch(() => {});
     return "failed";

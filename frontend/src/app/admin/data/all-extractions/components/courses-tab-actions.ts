@@ -5,13 +5,13 @@ import { pendingCourseLinks, runLimited } from "../utils";
 import type { CourseBulkLinkSelection, CourseBulkUpdatePatch } from "./course-bulk-update-form";
 import type { useConfirmDelete } from "./use-confirm-delete";
 import type { SortOrder } from "../const";
-import type { CourseFull, CourseLinks } from "../apis/types";
+import type { CourseFilters, CourseFull, CourseLinks } from "../apis/types";
 
 export const DEFAULT_PAGE_SIZE = 10;
 
 const BULK_UPDATE_CONCURRENCY = 6;
 
-type LoadOverrides = { page?: number; limit?: number; search?: string; status?: string; sort?: SortOrder };
+type LoadOverrides = { page?: number; limit?: number; search?: string; status?: string; sort?: SortOrder; filters?: CourseFilters };
 
 export type CourseActionDeps = {
   jobId: string;
@@ -42,7 +42,7 @@ export function createCourseActions({
       await allExtractionsApi.deleteCourse(id);
       toast.success("Course deleted");
       resetListState();
-      await load({ page: 1, limit: DEFAULT_PAGE_SIZE, search: "", status: "all", sort: "name_asc" });
+      await load({ page: 1, limit: DEFAULT_PAGE_SIZE, search: "", status: "all", sort: "name_asc", filters: {} });
       onReload();
     } catch (e) {
       toast.error("Delete failed", { description: (e as Error).message });
@@ -69,7 +69,7 @@ export function createCourseActions({
       setCourses((prev) => prev.filter((c) => !deletedIds.has(c.id)));
       setTotal((prev) => Math.max(0, prev - deletedIds.size));
       resetListState();
-      await load({ page: 1, limit: DEFAULT_PAGE_SIZE, search: "", status: "all", sort: "name_asc" });
+      await load({ page: 1, limit: DEFAULT_PAGE_SIZE, search: "", status: "all", sort: "name_asc", filters: {} });
       onReload();
     } catch (e) {
       toast.error("Delete failed", { description: (e as Error).message });

@@ -105,7 +105,7 @@ export function AgentcisImportView() {
   }, [dispatch]);
 
   return (
-    <PageBody>
+    <PageBody className="stagger-in card-hover">
       <PageHeader
         title={<><DatabaseZap /> AgentCIS Import</>}
         subtitle="Search AgentCIS and import institutions into the extraction queue."

@@ -31,7 +31,7 @@ import { BusinessInvitesView } from "@/app/admin/platform/business-invites/compo
 export function BusinessesView() {
   const router = useRouter();
   const dispatch = useAppDispatch();
-  const { businesses, total, status } = useAppSelector((state) => state.platformBusinesses);
+  const { businesses, total, status, error } = useAppSelector((state) => state.platformBusinesses);
   const canInvite = INVITE_ROLES.includes(useAppSelector((state) => state.admin.me?.role) ?? "");
   const listParams = useBusinessListParams();
   const {
@@ -180,10 +180,18 @@ export function BusinessesView() {
   };
 
   const list = (
+    <>
+    {/* With rows still on screen a failed search/page keeps showing them — say they're stale. */}
+    {status === "failed" && displayed.length > 0 && (
+      <p role="alert" className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">
+        Couldn&apos;t load businesses: {error}. Showing the last results.
+      </p>
+    )}
     <BusinessesTable
       loading={status === "loading"}
       empty={displayed.length === 0}
-      emptyTitle={tab === "claims" ? "No pending claim requests" : "No businesses found"}
+      // A failed load must not read as an empty platform.
+      emptyTitle={status === "failed" ? `Couldn't load businesses: ${error}` : tab === "claims" ? "No pending claim requests" : "No businesses found"}
       selectAll={tab === "businesses" ? { checked: allVisibleSelected, onToggle: toggleAllVisible } : undefined}
     >
       {displayed.map((b) => (
@@ -207,6 +215,7 @@ export function BusinessesView() {
         />
       ))}
     </BusinessesTable>
+    </>
   );
 
   return (

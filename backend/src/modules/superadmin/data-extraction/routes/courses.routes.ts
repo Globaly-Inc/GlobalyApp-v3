@@ -21,14 +21,20 @@ export async function coursesRoutes(app: FastifyInstance) {
   app.get("/jobs/:id/courses", async (req, reply) => {
     const { id } = UuidParamSchema.parse(req.params);
     const pagination = PaginationSchema.parse(req.query);
-    const { search, status, sort, scope } = z.object({
+    const { search, status, sort, scope, degree_level, published, origin } = z.object({
       search: z.string().optional(),
       status: z.string().optional(),
       sort: z.enum(["newest", "oldest", "name_asc", "name_desc"]).optional(),
       scope: z.enum(["in", "out"]).optional(),
+      degree_level: z.string().optional(),
+      published: z.enum(["published", "draft"]).optional(),
+      origin: z.enum(["extracted", "manual"]).optional(),
     }).parse(req.query);
     const { limit, offset } = paginationToOffset(pagination);
-    return reply.send(await service.listCourses(id, limit, offset, pagination, { search, status, sort, scope }));
+    return reply.send(await service.listCourses(id, limit, offset, pagination, {
+      search, status, sort, scope, degreeLevel: degree_level, origin,
+      published: published === undefined ? undefined : published === "published",
+    }));
   });
 
   // RC2: GET /jobs/:id/course-links

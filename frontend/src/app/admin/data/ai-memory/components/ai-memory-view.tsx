@@ -10,7 +10,7 @@ import { ListSkeleton } from "@/components/ui/list-skeleton";
 import { PageBody } from "@/components/ui/page-body";
 import { PageHeader } from "@/components/ui/page-header";
 import { Table, TableBody, TableCard, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Combobox } from "@/components/combobox";
 import {
   Dialog,
   DialogContent,
@@ -75,45 +75,18 @@ export function AiMemoryView() {
   };
 
   return (
-    <PageBody>
+    <PageBody className="stagger-in">
       <PageHeader
         title={<><Brain /> AI Memory</>}
         subtitle="Extraction lessons — rules the AI has learned from corrections and manual input."
       />
 
       <FilterBar>
-        <Select value={scopeFilter} onValueChange={(v) => v && setScopeFilter(v)}>
-          <SelectTrigger className="h-9 w-36 text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {SCOPE_OPTIONS.map((o) => (
-              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <Combobox options={SCOPE_OPTIONS} value={scopeFilter} onChange={(v) => v && setScopeFilter(v)} className="h-9 w-40 text-xs" />
 
-        <Select value={stepFilter} onValueChange={(v) => v && setStepFilter(v)}>
-          <SelectTrigger className="h-9 w-36 text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {stepOptions.map((o) => (
-              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <Combobox options={stepOptions} value={stepFilter} onChange={(v) => v && setStepFilter(v)} className="h-9 w-40 text-xs" />
 
-        <Select value={sourceFilter} onValueChange={(v) => v && setSourceFilter(v)}>
-          <SelectTrigger className="h-9 w-36 text-xs">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {SOURCE_OPTIONS.map((o) => (
-              <SelectItem key={o.value} value={o.value}>{o.label}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <Combobox options={SOURCE_OPTIONS} value={sourceFilter} onChange={(v) => v && setSourceFilter(v)} className="h-9 w-40 text-xs" />
 
         <span className="shrink-0 px-2 text-sm text-muted-foreground">
           {filtered.length} lesson{filtered.length === 1 ? "" : "s"}
@@ -142,9 +115,10 @@ export function AiMemoryView() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {filtered.map((lesson) => (
+              {filtered.map((lesson, i) => (
                 <LessonRow
                   key={lesson.id}
+                  index={i}
                   lesson={lesson}
                   onToggle={() => handleToggle(lesson.id, lesson.is_active)}
                   onDelete={() => setDeleteId(lesson.id)}

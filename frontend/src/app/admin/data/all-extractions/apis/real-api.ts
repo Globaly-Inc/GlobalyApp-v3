@@ -1,8 +1,9 @@
 import { httpDelete, httpGet, httpPatch, httpPost } from "@/lib/api/http";
-import { MODE_STATUS_FILTER, OWNED_JOB_SOURCE_TYPES, STATUS_CONFIG,statusesForFilterValue } from "../const";
+import { IMPORT_SOURCE_TYPES, MODE_STATUS_FILTER, OWNED_JOB_SOURCE_TYPES, STATUS_CONFIG,statusesForFilterValue } from "../const";
 import type { SortOrder } from "../const";
 import type {
   Accreditation,
+  CourseFilters,
   AgentFull,
   AgentRow,
   AgentRun,
@@ -71,13 +72,14 @@ export const allExtractionsRealApi = {
     // An admin-created institution ("manual") and a self-registered one ("self_service") each
     // own a synthetic job, status "done", purely so their courses have a job_id to hang off.
     // Neither is an extraction, so both stay out of every dashboard list unless asked for.
-    if (OWNED_JOB_SOURCE_TYPES.includes(params.sourceFilter ?? "")) {
-      query.source_type = params.sourceFilter!;
+    // "ai" = a crawl of the institution's own website: every import and owned job left out.
+    const source = params.mode !== "ai-ongoing" && params.sourceFilter && params.sourceFilter !== "all" ? params.sourceFilter : null;
+    if (source && source !== "ai") {
+      query.source_type = source;
+    } else if (source === "ai") {
+      query.exclude_source_type = [...IMPORT_SOURCE_TYPES, ...OWNED_JOB_SOURCE_TYPES].join(",");
     } else if (params.mode === "ai-ongoing") {
       query.exclude_source_type = ["agentcis", ...OWNED_JOB_SOURCE_TYPES].join(",");
-    } else if (params.mode === "completed" && params.sourceFilter && params.sourceFilter !== "all") {
-      if (params.sourceFilter === "agentcis") query.source_type = "agentcis";
-      else query.exclude_source_type = ["agentcis", ...OWNED_JOB_SOURCE_TYPES].join(",");
     } else {
       query.exclude_source_type = OWNED_JOB_SOURCE_TYPES.join(",");
     }
@@ -170,7 +172,7 @@ export const allExtractionsRealApi = {
 
   getCourses: (
     jobId: string,
-    params: { page?: number; limit?: number; search?: string; status?: string; sort?: SortOrder } = {},
+    params: { page?: number; limit?: number; search?: string; status?: string; sort?: SortOrder } & CourseFilters = {},
   ): Promise<Paginated<CourseFull>> => {
     const query = new URLSearchParams();
     if (params.page) query.set("page", String(params.page));
@@ -178,6 +180,9 @@ export const allExtractionsRealApi = {
     if (params.search) query.set("search", params.search);
     if (params.status) query.set("status", params.status);
     if (params.sort) query.set("sort", params.sort);
+    if (params.degree_level) query.set("degree_level", params.degree_level);
+    if (params.published) query.set("published", params.published);
+    if (params.origin) query.set("origin", params.origin);
     return httpGet<Paginated<CourseFull>>(`/admin/data-extraction/jobs/${jobId}/courses?${query}`);
   },
 

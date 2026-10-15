@@ -1,8 +1,8 @@
 /**
  * Extraction-complete email: who receives it and what it says. Pure. Run: npm run test:completion-email
  */
-import { isOwnerRun, maskEmail, pickRecipient } from "../src/modules/superadmin/data-extraction/lib/completion-email.js";
-import { extractionCompleteEmail } from "../src/shared/mail/templates.js";
+import { adminReviewerId, isOwnerRun, isSamePerson, maskEmail, pickRecipient } from "../src/modules/superadmin/data-extraction/lib/completion-email.js";
+import { adminExtractionReviewEmail, extractionCompleteEmail } from "../src/shared/mail/templates.js";
 
 let passed = 0;
 let failed = 0;
@@ -30,6 +30,21 @@ eq(isOwnerRun({ updated_by_platform_user_id: null }, { starterIsMember: false, s
 eq(isOwnerRun({ updated_by_platform_user_id: null }, { starterIsMember: true, starterIsAdmin: true }), false, "an admin who is also a member ran it → still an admin run");
 eq(isOwnerRun({ updated_by_platform_user_id: null }, { starterIsMember: false, starterIsAdmin: false }), false, "someone outside the listing started it → not the owner's run");
 eq(maskEmail("owner@csuohio.edu"), "ow***@csuohio.edu", "masked for the timeline");
+eq(adminReviewerId({ created_by_platform_user_id: 7, updated_by_platform_user_id: null }), 7, "admin review mail: the creator, when no admin re-ran it");
+eq(adminReviewerId({ created_by_platform_user_id: 7, updated_by_platform_user_id: 119 }), 119, "…else whoever last ran it");
+eq(adminReviewerId({ created_by_platform_user_id: null, updated_by_platform_user_id: null }), null, "…and nobody when neither is known");
+eq(isSamePerson(" Owner@CSUohio.edu", "owner@csuohio.edu"), true, "admin who is the listing's owner → no admin review mail");
+eq(isSamePerson("admin@globalyhub.com", "owner@csuohio.edu"), false, "a different admin still gets it");
+eq(isSamePerson("admin@globalyhub.com", null), false, "an ownerless listing never matches");
+const adminMail = adminExtractionReviewEmail({
+  recipientName: "Sam", entityName: "Cleveland <State> University", website: "www.csuohio.edu",
+  itemLabel: "courses", itemCount: 795, coverage: [{ label: "courses with fees", count: 412, of: 795 }],
+  reviewUrl: "https://app.globalyhub.com/admin/data/all-extractions/job-1",
+});
+eq(adminMail.subject, "Extraction ready for review: Cleveland <State> University", "admin mail subject names the institution");
+const adminHref = new URL(adminMail.html.match(/href="([^"]+)"/)?.[1] ?? "about:blank");
+eq(`${adminHref.origin}${adminHref.pathname}`, "https://app.globalyhub.com/admin/data/all-extractions/job-1", "admin mail's button links to the job, not the owner portal");
+eq(adminMail.html.includes("Cleveland &lt;State&gt; University"), true, "admin mail escapes the name in HTML");
 
 const PORTAL = "https://app.globalyhub.com/business/portal";
 const mail = extractionCompleteEmail({

@@ -14,6 +14,8 @@ import type { CourseLinks } from "../apis/types";
 export function CourseStudyUnitsSection({ links, jobId, busy, run, createAndLink, link, unlink, sharedWith, units }: Readonly<CourseSectionProps & { units: CourseLinks["study_units"] }>) {
   const [addingUnit, setAddingUnit] = useState(false);
   const [editingUnitId, setEditingUnitId] = useState<string | null>(null);
+  // Units with no credit points add nothing; the badge is hidden when none have any.
+  const totalCredits = units.reduce((sum, u) => sum + (u.credit_points ?? 0), 0);
 
   return (
     <LinkSection
@@ -23,7 +25,12 @@ export function CourseStudyUnitsSection({ links, jobId, busy, run, createAndLink
       descriptionOf={(u) => [u.unit_code, u.unit_type, u.credit_points ? `${u.credit_points} CP` : null].filter(Boolean).join(" · ")}
       emptyText="No study units" linkLabel="Link unit"
       busy={busy} onLink={link} onUnlink={unlink}
-      headerExtra={addButton(busy, () => setAddingUnit((v) => !v), "Add unit")}
+      headerExtra={
+        <span className="flex items-center gap-2">
+          {totalCredits > 0 && <Badge className="bg-primary/10 text-xs text-primary">Total {totalCredits} CP</Badge>}
+          {addButton(busy, () => setAddingUnit((v) => !v), "Add unit")}
+        </span>
+      }
       // Code chip before the name, credit points chip on the right.
       renderRows={(rows, unlinkRow) =>
         rows.length === 0 && !addingUnit ? (

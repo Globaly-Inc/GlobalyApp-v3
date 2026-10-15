@@ -68,9 +68,9 @@ export function ExtractionJobActions({
   return (
     <div className="flex items-center justify-end gap-1.5">
       {isPublishable && onPublish && (
-        <Button size="sm" className="gap-1.5" disabled={publishing} onClick={onPublish} aria-label={publishLabel}>
+        <Button size="sm" variant="outline" className="gap-1.5" disabled={publishing} onClick={onPublish} aria-label={publishLabel}>
           {publishing ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <ArrowUpRight className="h-3.5 w-3.5" />}
-          <span className="hidden sm:inline">{publishLabel}</span>
+          <span className="hidden sm:inline">{job.status === "exported" ? "Re-publish" : "Publish"}</span>
         </Button>
       )}
 
@@ -90,7 +90,7 @@ export function ExtractionJobActions({
       <DropdownMenu>
         <DropdownMenuTrigger
           aria-label={`More actions for ${name}`}
-          className="flex h-8 w-8 items-center justify-center rounded-md border border-input bg-background hover:bg-accent hover:text-accent-foreground"
+          className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-md text-muted-foreground hover:bg-accent hover:text-accent-foreground"
         >
           <MoreHorizontal className="h-4 w-4" />
         </DropdownMenuTrigger>

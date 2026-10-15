@@ -109,7 +109,7 @@ export function AiKnowledgeView() {
   const showSearch = tab === "visa" || tab === "faqs" || tab === "guides";
 
   return (
-    <PageBody className="pb-12">
+    <PageBody className="stagger-in card-hover pb-12">
       <PageHeader
         title={<><BrainCircuit /> AI Knowledge</>}
         subtitle="Manage the data that powers the GlobalyAI counsellor."
@@ -143,6 +143,7 @@ export function AiKnowledgeView() {
         </TabsList>
       </Tabs>
 
+      <div key={tab} className="stagger-in space-y-4 md:space-y-6">
       {showSearch && (
         <FilterBar>
           <SearchInput placeholder="Search…" value={search} onChange={(e) => setSearch(e.target.value)} />
@@ -183,6 +184,7 @@ export function AiKnowledgeView() {
           onReload={reload.queue}
         />
       )}
+      </div>
     </PageBody>
   );
 }

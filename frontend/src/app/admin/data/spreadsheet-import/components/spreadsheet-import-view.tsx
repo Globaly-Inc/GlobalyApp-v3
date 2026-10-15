@@ -47,7 +47,7 @@ export function SpreadsheetImportView() {
   };
 
   return (
-    <PageBody>
+    <PageBody className="stagger-in card-hover">
       <PageHeader
         title={<><FileSpreadsheet /> Spreadsheet Import</>}
         subtitle="Import a complete institution from one spreadsheet, then review it before anything goes public."

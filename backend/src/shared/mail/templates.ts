@@ -1291,6 +1291,47 @@ export function extractionCompleteEmail(options: {
   };
 }
 
+/**
+ * The admin twin of extractionCompleteEmail: the admin who started (or last ran) an extraction hears
+ * it is in review, with the same coverage figures, and a link to the job — not the owner's portal.
+ */
+export function adminExtractionReviewEmail(options: {
+  recipientName: string | null;
+  entityName: string;
+  website: string | null;
+  itemLabel: "courses" | "services";
+  itemCount: number;
+  coverage: Array<{ label: string; count: number; of?: number }>;
+  reviewUrl: string;
+}): { subject: string; html: string; text: string } {
+  const entityName = esc(options.entityName);
+  const greeting = options.recipientName ? `Hi ${esc(options.recipientName)},` : "Hi,";
+  const site = options.website ? ` from <strong>${esc(options.website)}</strong>` : "";
+  const found = options.coverage.filter((c) => c.count > 0);
+  const coverage = found.map((c) => `${c.count} ${c.label}`);
+
+  return {
+    subject: `Extraction ready for review: ${options.entityName}`,
+    text: [
+      options.recipientName ? `Hi ${options.recipientName},` : "Hi,",
+      `The extraction for ${options.entityName}${options.website ? ` from ${options.website}` : ""} has finished and is ready for your review.`,
+      `${options.itemCount} ${options.itemLabel} found${coverage.length ? ` — ${coverage.join(", ")}` : ""}.`,
+      `Review the extraction: ${options.reviewUrl}`,
+    ].join("\n\n"),
+    html: emailLayout({
+      heading: "Extraction ready for review",
+      body: `<p style="margin:0 0 12px">${greeting}</p>
+             <p style="margin:0 0 20px">The extraction for <strong>${entityName}</strong>${site} has finished and is
+             ready for your review.</p>
+             ${coverageBlock(options.itemCount, `${options.itemLabel} found`, found)}
+             ${reviewBlock(options.itemCount, options.coverage)}`,
+      size: "wide",
+      align: "left",
+      cta: { label: "Review extraction", href: options.reviewUrl },
+    }),
+  };
+}
+
 /** The "here's your guide" mail, sent by guide-email.worker.ts with a 7-day signed GCS link. */
 export function guideDeliveryEmail(options: {
   guideTitle: string;

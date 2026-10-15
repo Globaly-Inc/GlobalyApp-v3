@@ -13,8 +13,11 @@ export function AgentcisJobRow({
   onRetry,
   onDelete,
   onViewError,
+  index = 0,
 }: Readonly<{
   job: AgentcisJob;
+  /** Position in the list — staggers the row's rise-in. */
+  index?: number;
   onRetry: (job: AgentcisJob) => void;
   onDelete: (job: AgentcisJob) => void;
   onViewError: (job: AgentcisJob) => void;
@@ -24,7 +27,7 @@ export function AgentcisJobRow({
   const errorLine = job.status === "failed" ? firstErrorLine(job) : null;
 
   return (
-    <TableRow>
+    <TableRow className="animate-row-rise" style={{ animationDelay: `${Math.min(index, 10) * 35}ms` }}>
       <TableCell primary>
         <div className="truncate font-medium text-foreground">{job.institution_name ?? "—"}</div>
         {job.institution_url && (
