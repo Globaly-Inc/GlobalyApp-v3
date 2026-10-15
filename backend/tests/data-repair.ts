@@ -11,6 +11,7 @@ import "dotenv/config";
 import { masterKnex } from "../src/core/db/master-pool.js";
 import { SUPERADMIN_SCHEMA as S } from "../src/modules/superadmin/consts.js";
 import { repairDataShape } from "../src/modules/superadmin/data-extraction/lib/data-repair.js";
+import { reopenIfReviewing } from "../src/modules/superadmin/data-extraction/lib/site-snapshot.js";
 
 let passed = 0;
 let failed = 0;
@@ -32,8 +33,11 @@ async function main() {
     const ins = async (row: Record<string, unknown>) =>
       (await masterKnex(`${S}.extraction_intakes`).insert({ job_id: j, ...row }).returning("id"))[0].id as string;
     await ins({ intake_name: "September 2026", intake_month: null, intake_year: null });               // FILL from own name
-    const survivor = await ins({ intake_name: "Orientation week", intake_month: 2, intake_year: 2027 });
+    const survivor = await ins({ intake_name: "Orientation week", intake_month: 2, intake_year: 2027, end_date: "2027-06" });
+    // Thin in a way the FILL pass cannot cure: deriveIntakeMonthYear reads name + start_date, so a
+    // deadline/end_date-only row stays undated and must be MERGED, not filled.
     const thin = await ins({ intake_name: "Orientation week", intake_month: null, intake_year: null,
+      end_date: "2027-06-15", admission_deadline: "2027-01-10",
       custom_dates: JSON.stringify({ deposit: "2027-01" }) });                                          // MERGE into survivor
     await masterKnex(`${S}.extraction_course_intake_assignments`).insert({ job_id: j, course_id: course.id, intake_id: thin });
     await ins({ intake_name: "Harvest", intake_month: null, intake_year: null });                       // SKIP: two dated twins
@@ -41,6 +45,8 @@ async function main() {
     await ins({ intake_name: "Harvest", intake_month: 1, intake_year: 2027 });
     const adminThin = await ins({ intake_name: "Winter", intake_month: null, intake_year: null, updated_by_platform_user_id: 1 }); // SKIP: admin
     await ins({ intake_name: "Winter", intake_month: 12, intake_year: 2026 });
+    await ins({ intake_name: "Harmattan", intake_month: null, intake_year: null, admission_deadline: "2026-09-01" }); // SKIP: dates
+    await ins({ intake_name: "Harmattan", intake_month: 10, intake_year: 2026, admission_deadline: "2026-10-01" });  // disagree — two sittings
     const conflictThin = await ins({ intake_name: "Monsoon", intake_month: null, intake_year: null,
       custom_dates: JSON.stringify({ deadline: "2026-01" }) });                                         // SKIP: contradicting milestones
     await ins({ intake_name: "Monsoon", intake_month: 6, intake_year: 2026, custom_dates: JSON.stringify({ deadline: "2026-02" }) });
@@ -48,12 +54,15 @@ async function main() {
     // ── Fees ──
     const fee = async (row: Record<string, unknown>) =>
       (await masterKnex(`${S}.extraction_course_fees`).insert({ job_id: j, ...row }).returning("id"))[0].id as string;
-    const feeFull = await fee({ name: "Tuition", total_amount: 14000, currency: "GBP" });
-    const feeThin = await fee({ name: "Tuition", total_amount: 14000, currency: null });                // MERGE
+    const feeFull = await fee({ name: "Tuition", total_amount: 14000, currency: "GBP", student_type: "international" });
+    const feeThin = await fee({ name: "Tuition", total_amount: 14000, currency: null, student_type: "international",
+      description: "Per academic year" });                                                              // MERGE + carry description
     await masterKnex(`${S}.extraction_course_fee_assignments`).insert({ job_id: j, course_id: course.id, course_fee_id: feeThin });
     await fee({ name: "App Fee", total_amount: 500, currency: "GBP" });                                 // SKIP: two priced twins
     await fee({ name: "App Fee", total_amount: 500, currency: "USD" });
     await fee({ name: "App Fee", total_amount: 500, currency: null });
+    await fee({ name: "Lab Fee", total_amount: 300, currency: "AUD", student_type: "domestic" });        // NOT a candidate for…
+    const labThin = await fee({ name: "Lab Fee", total_amount: 300, currency: null, student_type: "international" }); // …a different payer
 
     // ── English family twins ──
     const eng = async (row: Record<string, unknown>) =>
@@ -65,6 +74,8 @@ async function main() {
     await eng({ test_type_name: "Duolingo", overall_score: "110" });                              // SKIP: three of a family
     await eng({ test_type_name: "Duolingo", overall_score: "110" });
     await eng({ test_type_name: "Duolingo", overall_score: "110" });
+    const c1 = await eng({ test_type_name: "Cambridge C1 Advanced", overall_score: "180" });      // DIFFERENT tests sharing a first
+    const c2 = await eng({ test_type_name: "Cambridge C2 Proficiency", listening_score: "190" }); // word — never merged, never skipped
 
     // ── Site-list hygiene: binary documents stored ACTIVE ──
     await masterKnex(`${S}.extraction_site_urls`).insert([
@@ -77,7 +88,7 @@ async function main() {
     // ── Dry run first: same verdicts, zero trace ──
     const dry = await repairDataShape(j, { dryRun: true });
     eq([dry.intake_fields_filled, dry.intake_twins_merged, dry.fee_twins_merged, dry.english_twins_merged, dry.assets_excluded, dry.skipped_ambiguous],
-      [1, 1, 1, 1, 1, 6], "a dry run prices the repair with the same candidate logic as the apply");
+      [1, 1, 1, 1, 1, 7], "a dry run prices the repair with the same candidate logic as the apply");
     eq(!!(await masterKnex(`${S}.extraction_english_requirements`).where({ id: engB }).first()), true, "dry run deletes no English row");
     const pptxDry = await masterKnex(`${S}.extraction_site_urls`).where({ job_id: j }).whereILike("url", "%poster.pptx").first();
     eq(pptxDry?.excluded, false, "dry run excludes nothing");
@@ -94,7 +105,7 @@ async function main() {
     eq(r.fee_twins_merged, 1, "exactly the one unambiguous fee twin merges");
     eq(r.english_twins_merged, 1, "the complementary IELTS spellings merge into one row");
     eq(r.assets_excluded, 1, "the leaked .pptx is excluded from the crawl list");
-    eq(r.skipped_ambiguous, 6, "ambiguous intake + admin + milestones + ambiguous fee + contradicting TOEFL + triple Duolingo all REFUSED");
+    eq(r.skipped_ambiguous, 7, "ambiguous intake + admin + milestones + DATE-CONFLICT intake + ambiguous fee + contradicting TOEFL + triple Duolingo all REFUSED");
 
     const sept = await masterKnex(`${S}.extraction_intakes`).where({ job_id: j, intake_name: "September 2026" }).first();
     eq([sept.intake_month, sept.intake_year], [9, 2026], "filled values are the name's own");
@@ -103,6 +114,10 @@ async function main() {
     eq(!!repointed, true, "the thin twin's course link now points at the survivor");
     const carried = await masterKnex(`${S}.extraction_intakes`).where({ id: survivor }).first();
     eq(carried.custom_dates, { deposit: "2027-01" }, "the thin twin's milestones ride across when the survivor had none");
+    eq(carried.admission_deadline, "2027-01-10", "the thin twin's DEADLINE is carried, never deleted with it");
+    eq(carried.end_date, "2027-06-15", "agreeing dates keep the SHARPER value");
+    eq(Number((await masterKnex(`${S}.extraction_intakes`).where({ job_id: j, intake_name: "Harmattan" }).count("* as n").first())!.n), 2,
+      "conflicting dates under one name are two sittings — both survive");
     eq(Number((await masterKnex(`${S}.extraction_intakes`).where({ job_id: j, intake_name: "Harvest" }).count("* as n").first())!.n), 3,
       "two dated candidates → all three Harvest rows survive");
     eq(!!(await masterKnex(`${S}.extraction_intakes`).where({ id: adminThin }).first()), true, "an admin-edited thin row is never touched");
@@ -111,6 +126,13 @@ async function main() {
     eq(await masterKnex(`${S}.extraction_course_fees`).where({ id: feeThin }).first(), undefined, "the merged thin fee is gone");
     eq(!!(await masterKnex(`${S}.extraction_course_fee_assignments`).where({ course_id: course.id, course_fee_id: feeFull }).first()), true,
       "the fee link now points at the priced twin");
+    eq((await masterKnex(`${S}.extraction_course_fees`).where({ id: feeFull }).first())?.description, "Per academic year",
+      "the thin fee's details ride across to the survivor");
+    eq(!!(await masterKnex(`${S}.extraction_course_fees`).where({ id: labThin }).first()), true,
+      "a same-priced fee for a DIFFERENT payer is not a candidate — the international Lab Fee survives");
+    eq(!!(await masterKnex(`${S}.extraction_english_requirements`).where({ id: c1 }).first())
+      && !!(await masterKnex(`${S}.extraction_english_requirements`).where({ id: c2 }).first()), true,
+      "Cambridge C1 and C2 are different tests — sameTest keeps them apart where a first-word grouping merged them");
     eq(Number((await masterKnex(`${S}.extraction_course_fees`).where({ job_id: j, name: "App Fee" }).count("* as n").first())!.n), 3,
       "two priced candidates → all App Fee rows survive");
     const mergedEng = await masterKnex(`${S}.extraction_english_requirements`).where({ id: engA }).first();
@@ -123,6 +145,21 @@ async function main() {
     eq([pptx?.excluded, pdf?.excluded], [true, false], "binary docs are excluded; PDFs keep their own reader");
     const ev = await masterKnex(`${S}.extraction_job_events`).where({ job_id: j, kind: "data_repaired" }).first();
     eq(!!ev, true, "the repair is visible on the timeline, never silent");
+
+    // ── A snapshot wave finishing after review must reopen the job — and ONLY review ──
+    const [rev] = await masterKnex(`${S}.extraction_jobs`)
+      .insert({ institution_url: "https://data-repair-reopen.invalid", source_type: "extraction", status: "review" }).returning("id");
+    const [paused] = await masterKnex(`${S}.extraction_jobs`)
+      .insert({ institution_url: "https://data-repair-paused.invalid", source_type: "extraction", status: "paused" }).returning("id");
+    try {
+      eq(await reopenIfReviewing(rev.id), true, "a review job reopens for the archive wave's new pages");
+      eq((await masterKnex(`${S}.extraction_jobs`).where({ id: rev.id }).first())?.status, "processing",
+        "…to processing, where checkAllPagesDone can advance it");
+      eq(await reopenIfReviewing(paused.id), false, "a PAUSED job is never resurrected");
+      eq((await masterKnex(`${S}.extraction_jobs`).where({ id: paused.id }).first())?.status, "paused", "pause stays a pause");
+    } finally {
+      await masterKnex(`${S}.extraction_jobs`).whereIn("id", [rev.id, paused.id]).delete();
+    }
 
     // Idempotent: a second pass finds nothing new to merge or fill.
     const r2 = await repairDataShape(j);

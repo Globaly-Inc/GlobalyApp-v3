@@ -208,6 +208,21 @@ export async function runPool(count: number, concurrency: number, task: (i: numb
   if (failed) throw failure;
 }
 
+/**
+ * A snapshot run can complete against a job already resting in `review` — the archive wave
+ * finishing after the head's extraction wrapped up. The chain it then advances re-classifies and
+ * queues NEW pages, but `checkAllPagesDone` only moves a `processing` job to `extracting`
+ * (queue-completion.ts), so those pages would extract and then never reach verification, repair
+ * or entity linking. Reopen EXACTLY `review` — a conditional update, so paused / stopped /
+ * failed / declined are never resurrected. Returns whether it flipped.
+ */
+export async function reopenIfReviewing(jobId: string): Promise<boolean> {
+  const n = await masterKnex(`${S}.extraction_jobs`)
+    .where({ id: jobId, status: "review" })
+    .update({ status: "processing", processing_heartbeat_at: masterKnex.fn.now() });
+  return n > 0;
+}
+
 export async function jobHalted(jobId: string): Promise<boolean> {
   const job = await masterKnex(`${S}.extraction_jobs`).where({ id: jobId })
     .select("status", "stop_requested").first();

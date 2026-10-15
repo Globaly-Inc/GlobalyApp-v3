@@ -25,7 +25,7 @@ import { getPage, getDocument, isPdfUrl, mergeUrlLists } from "../lib/page-store
 import { canonicalCourseUrl } from "../lib/course-name.js";
 import * as pageEdits from "../repositories/page-edits.repository.js";
 import { GUIDED_KEY_CATEGORY } from "../lib/url-categories.js";
-import { snapshotSite, snapshotRunOutcome, jobHalted } from "../lib/site-snapshot.js";
+import { snapshotSite, snapshotRunOutcome, jobHalted, reopenIfReviewing } from "../lib/site-snapshot.js";
 import type { SnapshotBatch } from "../lib/site-snapshot.js";
 import { truncateMarkdown, domainOf, extractSocialLinks, extractHrefsFromHtml, extractDomainEmails, fixMalformedAbsoluteUrl, COURSE_DATA_TEXT_CAP } from "../lib/html-utils.js";
 import { extractJson, setLlmContext } from "../lib/llm-client.js";
@@ -214,6 +214,17 @@ async function advanceSnapshotRunOnce(jobId: string, batch: SnapshotBatch) {
     return true;
   });
   if (!first) return;
+  // The archive wave can finish AFTER the head's extraction already parked the job in `review`.
+  // The chain advanced below queues new pages, and checkAllPagesDone only moves `processing` to
+  // `extracting` — so without this, the archive's courses extract and then stall before
+  // verification, repair and linking, forever. Flips review and nothing else.
+  if (await reopenIfReviewing(jobId)) {
+    await writeJobEvent(jobId, "job_reopened", {
+      phase: "site_mapping",
+      message: "Snapshot wave completed after review — job reopened so its new pages reach verification",
+      data: { runId: batch.runId },
+    });
+  }
   await advance(jobId, "site_snapshot");
   // The head has done its job; the ARCHIVE now runs behind the advancing pipeline. The full list,
   // not a remembered tail: head pages are cache hits (no host slot), so nothing is lost to a site

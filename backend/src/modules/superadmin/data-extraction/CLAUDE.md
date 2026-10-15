@@ -1549,6 +1549,28 @@ the LIST is durable and each row re-bought a browser-tier walk per snapshot, so
 set, PDFs kept for their own reader) and the repair excludes stored ones). `test:data-repair`,
 29 assertions.
 
+**Round 3, all five review findings real** (2026-10-15): identity for a merge now comes from the
+module's own authorities, never a convenient proxy. A fee twin must agree on student_type /
+period_type / fee_type_id (null agrees; stated-and-different means NOT A CANDIDATE — an
+international fee must never collapse into the same-priced domestic one) and carries its
+description/installments across, refusing when both state different ones. An intake twin must
+agree on intake_month and all four date columns via partialDatesAgree, and the survivor takes the
+SHARPER value via morePrecise plus any deadline the thin row alone held — the deleted twin's
+admission_deadline was previously destroyed. English identity is `sameTest` (exported from
+enquiries/shared/eligibility.ts — the same predicate the eligibility engine matches students
+with), replacing a first-word grouping that merged "Cambridge C1 Advanced" into "Cambridge C2
+Proficiency" whenever their scores didn't overlap; verified red by restoring the first-word
+version. Each repair pass guards its own errors so a fee-pass crash neither stops the English
+pass nor erases intake-merge counts already committed. And `reopenIfReviewing`
+(site-snapshot.ts): a snapshot wave completing against a job resting in `review` flips it back to
+`processing` (conditional update — paused/stopped/failed are never resurrected, `job_reopened`
+event), because `checkAllPagesDone` only moves `processing` to `extracting`
+(queue-completion.ts:100) and the archive wave's new course pages otherwise extracted and then
+stalled before verification, repair and linking, forever. `test:data-repair` is 39 assertions;
+one fixture lesson worth keeping: a "thin" intake fixture must be thin in a way the FILL pass
+cannot cure (deadline/end_date only), or deriveIntakeMonthYear dates it from its own start_date
+first — which is the designed behaviour, not a bug.
+
 Still open from the review plan, in order: write-time null-agrees matching in the upsert helpers
 (a thin incoming row merges into an existing full row only when EXACTLY ONE candidate matches —
 never choose between two); the fee-currency / study-option merge pass; the review tabs grouping
