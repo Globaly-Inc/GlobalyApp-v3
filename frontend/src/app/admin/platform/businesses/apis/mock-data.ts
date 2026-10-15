@@ -638,6 +638,18 @@ export const businessesMockApi = {
     await delay(150);
     mockBranches[id] = (mockBranches[id] ?? []).filter((b) => b.id !== branchId);
   },
+  getBranch: async (id: number, branchId: string): Promise<Branch> => {
+    await delay(100);
+    const found = (mockBranches[id] ?? []).find((b) => b.id === branchId);
+    if (!found) throw new Error("Branch not found");
+    return found;
+  },
+  getInstitutionBranch: async (id: number, branchId: string): Promise<Branch> => businessesMockApi.getBranch(id, branchId),
+  // Institution twins share the business mock store — enough for clicking through offline.
+  createInstitutionBranch: async (id: number, input: BranchInput): Promise<Branch> => businessesMockApi.createBranch(id, input),
+  updateInstitutionBranch: async (id: number, branchId: string, patch: BranchPatch): Promise<Branch> =>
+    businessesMockApi.updateBranch(id, branchId, patch),
+  deleteInstitutionBranch: async (id: number, branchId: string): Promise<void> => businessesMockApi.deleteBranch(id, branchId),
 
   getServices: async (id: number): Promise<BusinessService[]> => {
     await delay(150);
@@ -846,6 +858,17 @@ export const businessesMockApi = {
     updateContactMock(mockInstitutionContacts, id, contactId, patch),
   deleteInstitutionContact: async (id: number, contactId: string): Promise<void> => deleteContactMock(mockInstitutionContacts, id, contactId),
 
+  getService: async (id: number, serviceId: string): Promise<BusinessService> => {
+    const found = (await businessesMockApi.getServices(id)).find((s) => s.id === serviceId);
+    if (!found) throw new Error("Service not found");
+    return found;
+  },
+  getInstitutionService: async (id: number, serviceId: string): Promise<BusinessService> => {
+    const found = (await businessesMockApi.getInstitutionServices(id)).find((s) => s.id === serviceId);
+    if (!found) throw new Error("Service not found");
+    return found;
+  },
+  approveInstitutionServices: async (_id: number, ids: string[]): Promise<{ approved: number }> => ({ approved: ids.length }),
   getInstitutionServices: async (id: number): Promise<BusinessService[]> => {
     await delay(150);
     return mockInstitutionServices[id] ?? [];
@@ -1130,7 +1153,7 @@ export const businessesMockApi = {
     mockRelations[id] = (mockRelations[id] ?? []).filter((r) => r.id !== relationId);
   },
 
-  getActivity: async (id: number, params: ActivityListParams = {}): Promise<ActivityListResult> => {
+  getActivity: async (id: number, params: ActivityListParams = {}, _kind: "business" | "institution" = "business"): Promise<ActivityListResult> => {
     await delay(150);
     const items = mockActivity[id] ?? [];
     const limit = params.limit ?? 20;

@@ -8,13 +8,14 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { businessProfileDetailApi } from "../../../apis";
+import { useServiceEditor } from "../service-editor-context";
 
 export function ServiceAccreditationForm({
   saving,
   onCancel,
   onSave,
 }: Readonly<{ saving: boolean; onCancel: () => void; onSave: (accreditationId: number, proposedName?: string) => Promise<void> }>) {
+  const { api } = useServiceEditor();
   const [name, setName] = useState("");
   const [issuingOrg, setIssuingOrg] = useState("");
   const [website, setWebsite] = useState("");
@@ -32,11 +33,11 @@ export function ServiceAccreditationForm({
     try {
       let issuingOrgId: number | null = null;
       if (issuingOrg.trim()) {
-        const existing = await businessProfileDetailApi.getIssuingOrganizations({ search: issuingOrg.trim(), limit: 1 });
+        const existing = await api.getIssuingOrganizations({ search: issuingOrg.trim(), limit: 1 });
         const match = existing.data.find((o) => o.name.toLowerCase() === issuingOrg.trim().toLowerCase());
-        issuingOrgId = match ? match.id : (await businessProfileDetailApi.createIssuingOrganization(issuingOrg.trim())).id;
+        issuingOrgId = match ? match.id : (await api.createIssuingOrganization(issuingOrg.trim())).id;
       }
-      const created = await businessProfileDetailApi.createAccreditation({
+      const created = await api.createAccreditation({
         name: name.trim(),
         issuing_organization_id: issuingOrgId,
         website: website || null,

@@ -181,10 +181,29 @@ export async function getSelfServiceStatus(jobId: string) {
   };
 }
 
+/**
+ * Branches the owning org added in its portal by hand — they live in its tenant business_branches,
+ * not extraction_campuses, so the Branches tab would otherwise undercount against the portal.
+ * Converted campuses are skipped: their campus row is already listed here.
+ */
+export async function listPortalBranches(jobId: string): Promise<Record<string, unknown>[]> {
+  const inst = await masterKnex("institutions").where({ source_job_id: jobId }).whereNull("deleted_at").whereNot("account_status", 0).first("id");
+  const biz = inst ? undefined : await masterKnex("businesses").where({ source_job_id: jobId }).whereNull("deleted_at").whereNot("account_status", 0).first("id");
+  if (!inst && !biz) return [];
+  // Dynamic: the branch service imports businesses.service, which imports this file.
+  const branchService = await import("../../platform/business-branches/services/business-branches.service.js");
+  // ponytail: first 200 only; an org with more hand-added branches is not a real case yet.
+  const { rows } = inst
+    ? await branchService.listInstitutionBranches(Number(inst.id), 200, 0, "all")
+    : await branchService.listBranches(Number(biz.id), 200, 0, "all");
+  return (rows as Record<string, unknown>[]).filter((r) => r.origin === "manual");
+}
+
 export async function getTabCounts(jobId: string) {
-  const [branches, agents, courses, fees, intakes, eligibility, scholarships, units, studyOptions, accreditations, visaServices] =
+  const [branches, portalBranches, agents, courses, fees, intakes, eligibility, scholarships, units, studyOptions, accreditations, visaServices] =
     await Promise.all([
       reviewRepo.countCampusesByJob(jobId),
+      listPortalBranches(jobId).then((r) => r.length).catch(() => 0),
       reviewRepo.countAgentsByJob(jobId),
       coursesRepo.countCoursesByJob(jobId),
       coursesRepo.countCourseFeesByJob(jobId),
@@ -197,7 +216,7 @@ export async function getTabCounts(jobId: string) {
       visaRepo.countVisaServicesByJob(jobId),
     ]);
   return {
-    branches, agents, courses, fees, intakes, eligibility, scholarships, units,
+    branches: branches + portalBranches, agents, courses, fees, intakes, eligibility, scholarships, units,
     study_options: studyOptions, accreditations, visa_services: visaServices,
   };
 }

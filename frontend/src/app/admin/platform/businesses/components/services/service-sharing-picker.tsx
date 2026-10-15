@@ -18,8 +18,11 @@ export function ServiceSharingPicker({
   value,
   onChange,
   emptyText = "Head office has no services to share.",
+  kind = "business",
 }: Readonly<{
   businessId: number;
+  /** "institution": `businessId` is an institution id — lists its courses instead. */
+  kind?: "business" | "institution";
   value: SharedServices;
   onChange: (value: SharedServices) => void;
   emptyText?: string;
@@ -34,8 +37,8 @@ export function ServiceSharingPicker({
 
   const fetchPage = (p: number, q: string) => {
     setLoading(true);
-    businessesApi
-      .searchServices(businessId, { page: p, limit: PAGE_SIZE, search: q || undefined })
+    const params = { page: p, limit: PAGE_SIZE, search: q || undefined };
+    (kind === "institution" ? businessesApi.searchInstitutionServices(businessId, params) : businessesApi.searchServices(businessId, params))
       .then((res) => {
         setServices(res.data);
         setTotal(res.total);

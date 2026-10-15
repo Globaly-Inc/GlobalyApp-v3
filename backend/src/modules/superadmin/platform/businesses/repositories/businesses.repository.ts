@@ -4,7 +4,7 @@ import type { Knex } from "knex";
 import { masterKnex } from "../../../../../core/db/master-pool.js";
 import { getKnex } from "../../../../../core/db/pool-manager.js";
 // Services counts are approved courses only — the same set the public pages show.
-import { APPROVED_COURSE_STATUSES, SUPERADMIN_SCHEMA as S } from "../../../consts.js";
+import { SUPERADMIN_SCHEMA as S } from "../../../consts.js";
 
 const now = () => masterKnex.fn.now();
 
@@ -145,7 +145,7 @@ export async function listBusinesses(
   // courses would otherwise always read as 0.
   const [courseCounts, campusCounts] = borrowedJobIds.length
     ? await Promise.all([
-        masterKnex(`${S}.extraction_courses`).whereIn("job_id", borrowedJobIds).whereIn("verification_status", [...APPROVED_COURSE_STATUSES]).groupBy("job_id").select("job_id").count("id as count"),
+        masterKnex(`${S}.extraction_courses`).whereIn("job_id", borrowedJobIds).groupBy("job_id").select("job_id").count("id as count"),
         masterKnex(`${S}.extraction_campuses`).whereIn("job_id", borrowedJobIds).groupBy("job_id").select("job_id").count("id as count"),
       ])
     : [[], []];
@@ -257,7 +257,7 @@ export async function listInstitutions(
   const jobIds = rows.map((r: any) => r.source_job_id).filter(Boolean);
   const [courseCounts, campusCounts] = jobIds.length
     ? await Promise.all([
-        masterKnex(`${S}.extraction_courses`).whereIn("job_id", jobIds).whereIn("verification_status", [...APPROVED_COURSE_STATUSES]).groupBy("job_id").select("job_id").count("id as count"),
+        masterKnex(`${S}.extraction_courses`).whereIn("job_id", jobIds).groupBy("job_id").select("job_id").count("id as count"),
         masterKnex(`${S}.extraction_campuses`).whereIn("job_id", jobIds).groupBy("job_id").select("job_id").count("id as count"),
       ])
     : [[], []];
@@ -319,7 +319,7 @@ export async function findInstitutionDetail(id: number) {
   let service_count = 0;
   if (row.source_job_id) {
     const [[{ count: courseCount }], [{ count: campusCount }]] = await Promise.all([
-      masterKnex(`${S}.extraction_courses`).where({ job_id: row.source_job_id }).whereIn("verification_status", [...APPROVED_COURSE_STATUSES]).count("id as count"),
+      masterKnex(`${S}.extraction_courses`).where({ job_id: row.source_job_id }).count("id as count"),
       masterKnex(`${S}.extraction_campuses`).where({ job_id: row.source_job_id }).count("id as count"),
     ]);
     service_count = Number(courseCount) || 0;
@@ -409,7 +409,7 @@ export async function findBusinessDetail(id: number) {
   // Same rule as listBusinesses — see readsCountsFromJob.
   if (readsCountsFromJob(row)) {
     const [[{ count: courseCount }], [{ count: campusCount }]] = await Promise.all([
-      masterKnex(`${S}.extraction_courses`).where({ job_id: row.source_job_id }).whereIn("verification_status", [...APPROVED_COURSE_STATUSES]).count("id as count"),
+      masterKnex(`${S}.extraction_courses`).where({ job_id: row.source_job_id }).count("id as count"),
       masterKnex(`${S}.extraction_campuses`).where({ job_id: row.source_job_id }).count("id as count"),
     ]);
     row.branch_count = Number(campusCount) || 0;
@@ -487,16 +487,55 @@ export async function listBusinessMembers(
   return { rows: rows.map((r) => ({ ...r, user: byId.get(r.platform_user_id) ?? null })), total };
 }
 
-export async function listBusinessActivity(businessId: number, limit: number, offset: number) {
-  const base = () =>
-    masterKnex(`${S}.admin_audit_logs as l`).whereRaw("(l.details->>'business_id')::int = ?", [businessId]);
-  const [{ count }] = await base().count<{ count: string }[]>("l.id as count");
-  const rows = await base()
-    .leftJoin(`${S}.admin_users as au`, "au.id", "l.admin_id")
-    .leftJoin("platform_users as u", "u.id", "au.platform_user_id")
-    .select("l.id", "l.action", "l.details", "l.created_at", "u.first_name as admin_first_name", "u.last_name as admin_last_name")
-    .orderBy("l.created_at", "desc")
-    .limit(limit)
-    .offset(offset);
-  return { rows, total: Number(count) };
+/** The columns every Activity source selects (see listBusinessActivity). */
+type ActivityRow = {
+  id: string | number;
+  action: string;
+  details: Record<string, unknown> | string | null;
+  created_at: string | Date;
+  admin_first_name: string | null;
+  admin_last_name: string | null;
+};
+
+/**
+ * The Activity tab: what superadmins did (admin_audit_logs) merged with what the org's own people
+ * did in the portal — an institution's portal actions go to audit_logs (entity "institution"), a
+ * business's to its tenant business_activity_log. `key`: institution admin actions carry
+ * details.institution_id instead of business_id.
+ */
+export async function listBusinessActivity(
+  businessId: number, limit: number, offset: number, key: "business_id" | "institution_id" = "business_id", tenantDb?: Knex,
+) {
+  const sources: { base: () => Knex.QueryBuilder; select: (q: Knex.QueryBuilder) => Knex.QueryBuilder; source: "admin" | "portal" }[] = [{
+    base: () => masterKnex(`${S}.admin_audit_logs as l`).whereRaw(`(l.details->>'${key}')::int = ?`, [businessId]),
+    select: (q) => q.leftJoin(`${S}.admin_users as au`, "au.id", "l.admin_id").leftJoin("platform_users as u", "u.id", "au.platform_user_id")
+      .select("l.id", "l.action", "l.details", "l.created_at", "u.first_name as admin_first_name", "u.last_name as admin_last_name"),
+    source: "admin",
+  }];
+  if (key === "institution_id") {
+    sources.push({
+      base: () => masterKnex("audit_logs as l").where({ "l.entity_type": "institution", "l.entity_id": String(businessId) }),
+      select: (q) => q.leftJoin("platform_users as u", "u.id", "l.platform_user_id")
+        .select("l.id", "l.action", "l.details", "l.created_at", "u.first_name as admin_first_name", "u.last_name as admin_last_name"),
+      source: "portal",
+    });
+  } else if (tenantDb) {
+    sources.push({
+      base: () => tenantDb("business_activity_log as l"),
+      select: (q) => q.leftJoin("agents as a", "a.id", "l.agent_id")
+        .select("l.id", "l.action", "l.details", "l.created_at", "a.first_name as admin_first_name", "a.last_name as admin_last_name"),
+      source: "portal",
+    });
+  }
+  // ponytail: each source's top offset+limit rows merged in memory; fine for an audit trail's paging depth.
+  const results = await Promise.all(sources.map(async ({ base, select, source }) => {
+    const [{ count }] = await base().count<{ count: string }[]>("l.id as count");
+    const rows = await select(base()).orderBy("l.created_at", "desc").limit(offset + limit);
+    // Ids collide across tables (uuid vs serial), so prefix them.
+    return { total: Number(count), rows: (rows as ActivityRow[]).map((r) => ({ ...r, id: `${source}-${r.id}`, source })) };
+  }));
+  const rows = results.flatMap((r) => r.rows)
+    .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime())
+    .slice(offset, offset + limit);
+  return { rows, total: results.reduce((n, r) => n + r.total, 0) };
 }

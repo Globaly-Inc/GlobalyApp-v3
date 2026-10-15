@@ -95,7 +95,8 @@ export const ServiceEligibilityPatchInputSchema = ServiceEligibilityInputSchema.
 
 export const ServiceStudyOptionInputSchema = z.object({
   name: z.string().max(200).nullable().optional(),
-  study_mode: z.enum(["on_campus", "online", "blended"]).optional(),
+  // "hybrid" is what the shared course editor sends (portal schema); "blended" is the older admin value.
+  study_mode: z.enum(["on_campus", "online", "hybrid", "blended"]).optional(),
   study_load: z.enum(["full_time", "part_time"]).optional(),
   duration_value: z.number().int().positive().nullable().optional(),
   duration_unit: z.enum(["days", "weeks", "months", "years"]).optional(),

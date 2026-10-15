@@ -8,7 +8,7 @@ import { Combobox } from "@/components/combobox";
 import { ConfirmDeleteButton } from "@/components/confirm-delete-button";
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
-import { businessProfileDetailApi } from "../../../apis";
+import { useServiceEditor } from "../service-editor-context";
 import type { Accreditation } from "@/app/admin/platform/categories/apis/types";
 import { ServiceAccreditationForm } from "./service-accreditation-form";
 import { TabSection } from "./tab-section";
@@ -34,6 +34,7 @@ const SEAL_GRADIENT =
   "bg-[conic-gradient(from_0deg,var(--color-primary),color-mix(in_oklab,var(--color-primary)_55%,white),var(--color-primary))] text-primary-foreground shadow-[inset_0_0_0_3px_color-mix(in_oklab,var(--color-card)_40%,transparent)]";
 
 export function AccreditationsTab({ serviceId }: Readonly<{ serviceId: string }>) {
+  const { api } = useServiceEditor();
   const [rows, setRows] = useState<ServiceAccreditationLink[]>([]);
   const [details, setDetails] = useState<Record<number, Accreditation>>({});
   const [loading, setLoading] = useState(true);
@@ -47,11 +48,11 @@ export function AccreditationsTab({ serviceId }: Readonly<{ serviceId: string }>
   useEffect(() => {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
-    businessProfileDetailApi.getServiceAccreditations(serviceId)
+    api.getServiceAccreditations(serviceId)
       .then(async (data) => {
         setRows(data);
         if (data.length > 0) {
-          const res = await businessProfileDetailApi.getAccreditations({ limit: 100 });
+          const res = await api.getAccreditations({ limit: 100 });
           setDetails(Object.fromEntries(res.data.map((a) => [a.id, a])));
         }
       })
@@ -61,7 +62,7 @@ export function AccreditationsTab({ serviceId }: Readonly<{ serviceId: string }>
   const openAdd = async () => {
     setSelected("");
     setMode("existing");
-    const res = await businessProfileDetailApi.getAccreditations({ limit: 100 });
+    const res = await api.getAccreditations({ limit: 100 });
     setOptions(res.data.map((a) => ({ value: String(a.id), label: a.name })));
     setDetails((n) => ({ ...n, ...Object.fromEntries(res.data.map((a) => [a.id, a])) }));
     setDialogOpen(true);
@@ -69,7 +70,7 @@ export function AccreditationsTab({ serviceId }: Readonly<{ serviceId: string }>
 
   // A just-proposed accreditation isn't in the approved lookup yet, so carry its name/status here.
   const linkAccreditation = async (accreditationId: number, proposedName?: string) => {
-    const created = await businessProfileDetailApi.linkServiceAccreditation(serviceId, accreditationId);
+    const created = await api.linkServiceAccreditation(serviceId, accreditationId);
     const known = details[accreditationId];
     setRows((r) => [...r, {
       ...created,
@@ -94,7 +95,7 @@ export function AccreditationsTab({ serviceId }: Readonly<{ serviceId: string }>
 
   const handleDelete = async (rowId: number) => {
     try {
-      await businessProfileDetailApi.unlinkServiceAccreditation(serviceId, rowId);
+      await api.unlinkServiceAccreditation(serviceId, rowId);
       setRows((r) => r.filter((x) => x.id !== rowId));
       toast.success("Accreditation removed");
     } catch (e) {

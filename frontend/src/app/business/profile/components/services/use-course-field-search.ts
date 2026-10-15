@@ -2,13 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { Accreditation, Lookup } from "@/app/admin/platform/categories/apis/types";
-import { businessProfileDetailApi } from "../../apis";
+import type { ServiceEditorApi } from "./service-editor-context";
 
 type Option = { value: string; label: string };
 
 /** Debounced backend search behind the degree level / area of study / awarded by Comboboxes, shared by
  * both service forms. */
-export function useCourseFieldSearch({ degreeLevels, areasOfStudy, accreditations }: Readonly<{
+export function useCourseFieldSearch({ api, degreeLevels, areasOfStudy, accreditations }: Readonly<{
+  api: Pick<ServiceEditorApi, "getAccreditations" | "getLookups">;
   degreeLevels: Lookup[];
   areasOfStudy: Lookup[];
   accreditations: Accreditation[];
@@ -34,11 +35,11 @@ export function useCourseFieldSearch({ degreeLevels, areasOfStudy, accreditation
     setCourseSearchLoading((s) => ({ ...s, [key]: true }));
     try {
       if (key === "awarded_by") {
-        const res = await businessProfileDetailApi.getAccreditations({ search: query || undefined });
+        const res = await api.getAccreditations({ search: query || undefined });
         setCourseSearchResults((s) => ({ ...s, [key]: res.data.map((a) => ({ value: String(a.id), label: a.name })) }));
       } else {
         const kind = key === "degree_level" ? "degree-levels" : "areas-of-study";
-        const res = await businessProfileDetailApi.getLookups(kind, { search: query || undefined });
+        const res = await api.getLookups(kind, { search: query || undefined });
         setCourseSearchResults((s) => ({ ...s, [key]: res.data.map((l) => ({ value: String(l.id), label: l.name })) }));
       }
     } finally {

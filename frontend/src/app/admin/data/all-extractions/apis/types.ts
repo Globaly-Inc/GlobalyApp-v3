@@ -690,3 +690,13 @@ export type LibraryAccreditationInput = {
   website?: string | null;
   description?: string | null;
 };
+
+/** A branch the owning org added by hand in its portal (tenant business_branches), read-only here. */
+export type PortalBranch = {
+  id: string;
+  name: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
+  branch_type: string | null;
+};

@@ -1,5 +1,6 @@
 "use client";
 
+import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Building2, GitBranch, Link2, Loader2, Pencil, Plus, Search, Trash2 } from "lucide-react";
@@ -11,7 +12,6 @@ import { Pagination } from "@/components/ui/pagination";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchBranches, deleteBranch } from "../../store/businesses-slice";
 import type { Branch, BranchFilter } from "../../apis/types";
-import { CreateBranchDialog } from "../branches/create-branch-dialog";
 import { LinkBranchDialog } from "../branches/link-branch-dialog";
 import { DeleteBranchDialog } from "../branches/delete-branch-dialog";
 
@@ -27,10 +27,9 @@ export function BranchesTab({
   businessId,
   readOnly = false,
 }: Readonly<{ businessId: number; readOnly?: boolean }>) {
+  const router = useRouter();
   const dispatch = useAppDispatch();
   const { items: branches, status, total: branchesTotal } = useAppSelector((state) => state.platformBusinesses.branches);
-  const [createOpen, setCreateOpen] = useState(false);
-  const [editingBranch, setEditingBranch] = useState<Branch | null>(null);
   const [editingLinkedBranch, setEditingLinkedBranch] = useState<Branch | null>(null);
   const [deletingBranch, setDeletingBranch] = useState<Branch | null>(null);
   const [deleting, setDeleting] = useState(false);
@@ -114,8 +113,7 @@ export function BranchesTab({
                       setEditingLinkedBranch(b);
                       setLinkOpen(true);
                     } else {
-                      setEditingBranch(b);
-                      setCreateOpen(true);
+                      router.push(`/admin/platform/businesses/${businessId}/branches/${b.id}/edit`);
                     }
                   }}
                   aria-label="Edit branch"
@@ -148,7 +146,7 @@ export function BranchesTab({
             <Button className="h-10" variant="outline" onClick={() => { setEditingLinkedBranch(null); setLinkOpen(true); }}>
               <Link2 className="mr-1.5 h-3.5 w-3.5" /> Link existing
             </Button>
-            <Button className="h-10" onClick={() => { setEditingBranch(null); setCreateOpen(true); }}>
+            <Button className="h-10" onClick={() => router.push(`/admin/platform/businesses/${businessId}/branches/add`)}>
               <Plus className="mr-1.5 h-3.5 w-3.5" /> Create branch
             </Button>
           </div>
@@ -180,7 +178,6 @@ export function BranchesTab({
         <Pagination page={page} total={branchesTotal} limit={PAGE_SIZE} onPageChange={handlePageChange} />
       )}
 
-      <CreateBranchDialog open={createOpen} onOpenChange={setCreateOpen} businessId={businessId} editBranch={editingBranch} />
       <LinkBranchDialog open={linkOpen} onOpenChange={setLinkOpen} businessId={businessId} editBranch={editingLinkedBranch} />
       <DeleteBranchDialog
         branch={deletingBranch}

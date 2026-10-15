@@ -3,16 +3,12 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import type { Accreditation, Category, Lookup } from "@/app/admin/platform/categories/apis/types";
-import { businessProfileDetailApi } from "../../apis";
-import {
-  createService, updateService, updateServiceFieldValues,
-} from "../../store/business-profile-detail-slice";
 import { ApiError } from "@/lib/api/http";
 import type { ServiceInput } from "../../apis/types";
 import { useCourseFieldSearch } from "./use-course-field-search";
 import { useServicePublishing } from "./use-service-publishing";
+import { useServiceEditor } from "./service-editor-context";
 
 export type InstitutionServiceTab = "summary" | "fees" | "intakes" | "eligibility" | "study-options" | "study-units" | "accreditations";
 type FormState = { name: string; service_category_id: number | null; description: string };
@@ -21,11 +17,9 @@ const EMPTY_FORM: FormState = { name: "", service_category_id: null, description
 /** State and handlers of InstitutionServiceFormView. */
 export function useInstitutionServiceForm(businessId: number, serviceId?: string) {
   const router = useRouter();
-  const dispatch = useAppDispatch();
   const isEdit = !!serviceId;
 
-  const profile = useAppSelector((state) => state.businessOnboarding.profile);
-  const services = useAppSelector((state) => state.businessProfileDetail.services.items);
+  const { api, org: profile, services, servicesHref, readOnly, coursePreviewHref } = useServiceEditor(businessId);
   const [serviceCategories, setServiceCategories] = useState<Category[]>([]);
   const [degreeLevels, setDegreeLevels] = useState<Lookup[]>([]);
   const [areasOfStudy, setAreasOfStudy] = useState<Lookup[]>([]);
@@ -52,7 +46,7 @@ export function useInstitutionServiceForm(businessId: number, serviceId?: string
   const [savingDescription, setSavingDescription] = useState(false);
   const savedNameRef = useRef(form.name);
 
-  const { courseSearchLoading, debouncedSearchCourseField, courseFieldOptions } = useCourseFieldSearch({ degreeLevels, areasOfStudy, accreditations });
+  const { courseSearchLoading, debouncedSearchCourseField, courseFieldOptions } = useCourseFieldSearch({ api, degreeLevels, areasOfStudy, accreditations });
 
   const fetchedRef = useRef(false);
   useEffect(() => {
@@ -61,21 +55,21 @@ export function useInstitutionServiceForm(businessId: number, serviceId?: string
     // The default page is only 10 categories — also fetch "Courses" by name so the default-category
     // effect below can always find it, however many categories sit ahead of it.
     Promise.all([
-      businessProfileDetailApi.getServiceCategories(),
-      businessProfileDetailApi.getServiceCategories({ search: "courses" }),
+      api.getServiceCategories({ limit: 100 }),
+      api.getServiceCategories({ search: "courses" }),
     ]).then(([page, courses]) => {
       const byId = new Map([...page.data, ...courses.data].map((c) => [c.id, c]));
       setServiceCategories([...byId.values()]);
     });
-    businessProfileDetailApi.getLookups("degree-levels").then((res) => setDegreeLevels(res.data));
-    businessProfileDetailApi.getLookups("areas-of-study").then((res) => setAreasOfStudy(res.data));
-    businessProfileDetailApi.getAccreditations().then((res) => setAccreditations(res.data));
+    api.getLookups("degree-levels").then((res) => setDegreeLevels(res.data));
+    api.getLookups("areas-of-study").then((res) => setAreasOfStudy(res.data));
+    api.getAccreditations().then((res) => setAccreditations(res.data));
     if (isEdit && serviceId) {
       if (!services.some((s) => s.id === serviceId)) {
         // The list/search page load only covers the first 100 services — a catalog bigger than
         // that would leave this course unfound and the editor blank, so fall back to a direct
         // single-service lookup instead of assuming "not on this page" means "doesn't exist".
-        businessProfileDetailApi.getService(serviceId).then((found) => {
+        api.getService(serviceId).then((found) => {
           const loaded = toForm(found);
           // Without this the ref stays "" and merely blurring the untouched name field would PATCH it.
           savedNameRef.current = loaded.name;
@@ -84,7 +78,7 @@ export function useInstitutionServiceForm(businessId: number, serviceId?: string
           setIsPublished(found.is_published);
         });
       }
-      businessProfileDetailApi.getServiceFieldValues(serviceId).then((values) => {
+      api.getServiceFieldValues(serviceId).then((values) => {
         const map: Record<number, unknown> = {};
         for (const v of values) map[v.schema_field_id] = v.value;
         setFieldValues(map);
@@ -141,7 +135,7 @@ export function useInstitutionServiceForm(businessId: number, serviceId?: string
     if (!isEdit || !serviceId || !categoryId) return;
     setSavingCategory(true);
     try {
-      await dispatch(updateService({ id: businessId, serviceId, patch: { service_category_id: categoryId } })).unwrap();
+      await api.updateService(serviceId, { service_category_id: categoryId });
     } catch (e) {
       if (categorySaveSeqRef.current === seq) {
         set("service_category_id", previousCategoryId);
@@ -160,7 +154,7 @@ export function useInstitutionServiceForm(businessId: number, serviceId?: string
     // failure must not roll back the category change above, which the server already committed.
     if (categorySaveSeqRef.current === seq && nextIsCourse) {
       try {
-        const values = await businessProfileDetailApi.getServiceFieldValues(serviceId);
+        const values = await api.getServiceFieldValues(serviceId);
         if (categorySaveSeqRef.current === seq) {
           const map: Record<number, unknown> = {};
           for (const v of values) map[v.schema_field_id] = v.value;
@@ -201,7 +195,7 @@ export function useInstitutionServiceForm(businessId: number, serviceId?: string
     setGeneratingDescription(true);
     try {
       const categoryName = serviceCategories.find((c) => c.id === form.service_category_id)?.name;
-      const { text } = await businessProfileDetailApi.generateServiceDescription({
+      const { text } = await api.generateServiceDescription({
         name: form.name,
         category_name: categoryName,
         hint: form.description || undefined,
@@ -226,18 +220,18 @@ export function useInstitutionServiceForm(businessId: number, serviceId?: string
         service_category_id: form.service_category_id,
         description: form.description || null,
       };
-      const result = await dispatch(createService({ id: businessId, input })).unwrap();
+      const result = await api.createService(input);
 
       const values = Object.entries(fieldValues).map(([schema_field_id, value]) => ({
         schema_field_id: Number(schema_field_id),
         value,
       }));
       if (values.length > 0) {
-        await dispatch(updateServiceFieldValues({ id: businessId, serviceId: result.id, values })).unwrap();
+        await api.updateServiceFieldValues(result.id, values);
       }
 
       toast.success("Service created");
-      router.push(`/business/profile/${businessId}?tab=services`);
+      router.push(servicesHref);
     } catch (e) {
       const err = e as ApiError;
       toast.error("Couldn't create service", { description: err.message });
@@ -250,7 +244,7 @@ export function useInstitutionServiceForm(businessId: number, serviceId?: string
     if (!isEdit || !serviceId || form.name === savedNameRef.current || !form.name.trim()) return;
     savedNameRef.current = form.name;
     try {
-      await dispatch(updateService({ id: businessId, serviceId, patch: { name: form.name } })).unwrap();
+      await api.updateService(serviceId, { name: form.name });
     } catch (e) {
       toast.error("Couldn't update name", { description: (e as ApiError).message });
     }
@@ -260,7 +254,7 @@ export function useInstitutionServiceForm(businessId: number, serviceId?: string
     if (!serviceId) { setEditingDescription(false); return; }
     setSavingDescription(true);
     try {
-      await dispatch(updateService({ id: businessId, serviceId, patch: { description: form.description || null } })).unwrap();
+      await api.updateService(serviceId, { description: form.description || null });
       setEditingDescription(false);
     } catch (e) {
       toast.error("Couldn't update description", { description: (e as ApiError).message });
@@ -274,7 +268,7 @@ export function useInstitutionServiceForm(businessId: number, serviceId?: string
     const values = Object.entries(fieldValues).map(([schema_field_id, value]) => ({ schema_field_id: Number(schema_field_id), value }));
     if (values.length === 0) return;
     try {
-      await dispatch(updateServiceFieldValues({ id: businessId, serviceId, values })).unwrap();
+      await api.updateServiceFieldValues(serviceId, values);
       toast.success("Course details updated");
     } catch (e) {
       toast.error("Couldn't update course details", { description: (e as ApiError).message });
@@ -282,7 +276,7 @@ export function useInstitutionServiceForm(businessId: number, serviceId?: string
   };
 
   return {
-    isEdit, profile, serviceCategories, degreeLevels, areasOfStudy, accreditations, form, set, fieldValues, setFieldValue,
+    isEdit, profile, servicesHref, readOnly, coursePreviewHref, serviceCategories, degreeLevels, areasOfStudy, accreditations, form, set, fieldValues, setFieldValue,
     ...publishingState, tab, setTab, saving, generatingDescription, editingDescription, setEditingDescription, savingDescription,
     savingCategory, handleCategoryChange, canSave, selectedCategory, isCourse, schemaFieldIdByKey,
     courseSearchLoading, debouncedSearchCourseField, courseFieldOptions,

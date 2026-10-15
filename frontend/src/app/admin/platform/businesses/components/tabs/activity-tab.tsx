@@ -5,26 +5,24 @@ import { Activity, Loader2 } from "lucide-react";
 import { Pagination } from "@/components/ui/pagination";
 import { useAppDispatch, useAppSelector } from "@/lib/hooks";
 import { fetchActivity } from "../../store/businesses-slice";
+import { dayLabel } from "../../utils/activity-format";
+import { ActivityRow } from "./activity-row";
 
 const PAGE_SIZE = 10;
 
-function formatAction(action: string): string {
-  return action.replaceAll("BUSINESS_", "").replaceAll("_", " ").toLowerCase();
-}
-
-export function ActivityTab({ businessId }: Readonly<{ businessId: number }>) {
+export function ActivityTab({ businessId, kind = "business" }: Readonly<{ businessId: number; kind?: "business" | "institution" }>) {
   const dispatch = useAppDispatch();
   const { items: activity, status, total } = useAppSelector((state) => state.platformBusinesses.activity);
   const [page, setPage] = useState(1);
 
   useEffect(() => {
     setPage(1);
-    dispatch(fetchActivity({ id: businessId, params: { page: 1, limit: PAGE_SIZE } }));
-  }, [dispatch, businessId]);
+    dispatch(fetchActivity({ id: businessId, params: { page: 1, limit: PAGE_SIZE }, kind }));
+  }, [dispatch, businessId, kind]);
 
   const handlePageChange = (p: number) => {
     setPage(p);
-    dispatch(fetchActivity({ id: businessId, params: { page: p, limit: PAGE_SIZE } }));
+    dispatch(fetchActivity({ id: businessId, params: { page: p, limit: PAGE_SIZE }, kind }));
   };
 
   let body: React.ReactNode;
@@ -42,17 +40,16 @@ export function ActivityTab({ businessId }: Readonly<{ businessId: number }>) {
       </div>
     );
   } else {
+    // Day headers between groups — the list is already newest first.
     body = (
       <div className="space-y-2">
-        {activity.map((a) => {
-          const admin = `${a.admin_first_name ?? ""} ${a.admin_last_name ?? ""}`.trim() || "Admin";
+        {activity.map((a, i) => {
+          const day = dayLabel(a.created_at);
+          const header = i === 0 || day !== dayLabel(activity[i - 1]!.created_at);
           return (
-            <div key={a.id} className="flex items-center justify-between rounded-lg border p-3">
-              <p className="text-sm capitalize">{formatAction(a.action)}</p>
-              <div className="text-right">
-                <p className="text-xs text-muted-foreground">{admin}</p>
-                <p className="text-xs text-muted-foreground">{new Date(a.created_at).toLocaleString()}</p>
-              </div>
+            <div key={a.id}>
+              {header && <p className="mb-2 mt-4 text-xs font-medium uppercase tracking-wide text-muted-foreground first:mt-0">{day}</p>}
+              <ActivityRow entry={a} />
             </div>
           );
         })}

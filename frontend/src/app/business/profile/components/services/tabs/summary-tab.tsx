@@ -1,17 +1,18 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type ReactNode } from "react";
 import type { LucideIcon } from "lucide-react";
-import { Award, BookOpen, CalendarDays, DollarSign, GraduationCap, Image as ImageIcon, ShieldCheck } from "lucide-react";
+import { Award, BookOpen, CalendarDays, DollarSign, GraduationCap, ShieldCheck } from "lucide-react";
 import { Combobox } from "@/components/combobox";
 import { FormSection } from "@/components/ui/form-section";
 import { FormField } from "@/components/ui/form-field";
-import { businessProfileDetailApi } from "../../../apis";
+import { useServiceEditor } from "../service-editor-context";
 import { SectionSummaryCard } from "../section-summary-card";
 import { ServiceSetupChecklist } from "../service-setup-checklist";
 import { PublicBadge } from "../public-badge";
 import { SummaryCardLink } from "../summary-card-link";
 import { DescriptionCard } from "./description-card";
+import { ServiceMediaCard } from "../service-media-card";
 import type { DetailTab } from "../service-form-view";
 
 const COURSE_FIELDS = [
@@ -32,6 +33,7 @@ export function SummaryTab({
   courseSearchLoading,
   onWriteWithAi,
   generatingDescription,
+  extraFields,
 }: Readonly<{
   serviceId: string | null;
   onNavigateTab: (tab: DetailTab) => void;
@@ -45,21 +47,24 @@ export function SummaryTab({
   courseSearchLoading: Record<string, boolean>;
   onWriteWithAi: () => void;
   generatingDescription: boolean;
+  /** The category's own fields beyond degree level / area of study (CategoryExtraFields). */
+  extraFields?: ReactNode;
 }>) {
+  const { api } = useServiceEditor();
   const [counts, setCounts] = useState({ fees: 0, intakes: 0, eligibility: 0, studyUnits: 0, accreditations: 0 });
 
   useEffect(() => {
     if (!serviceId) return;
     Promise.all([
-      businessProfileDetailApi.serviceFees.list(serviceId),
-      businessProfileDetailApi.serviceIntakes.list(serviceId),
-      businessProfileDetailApi.serviceEligibility.list(serviceId),
-      businessProfileDetailApi.serviceStudyUnits.list(serviceId),
-      businessProfileDetailApi.getServiceAccreditations(serviceId),
+      api.serviceFees.list(serviceId),
+      api.serviceIntakes.list(serviceId),
+      api.serviceEligibility.list(serviceId),
+      api.serviceStudyUnits.list(serviceId),
+      api.getServiceAccreditations(serviceId),
     ]).then(([fees, intakes, eligibility, studyUnits, accreditations]) => {
       setCounts({ fees: fees.length, intakes: intakes.length, eligibility: eligibility.length, studyUnits: studyUnits.length, accreditations: accreditations.length });
     });
-  }, [serviceId]);
+  }, [api, serviceId]);
 
   const section = (icon: LucideIcon, title: string, count: number, emptyText: string, tab: DetailTab, addLabel = "Add") => (
     <SectionSummaryCard
@@ -89,7 +94,7 @@ export function SummaryTab({
             {section(BookOpen, "Study units", counts.studyUnits, "No study units assigned yet.", "study-units", "Add unit")}
             {section(Award, "Accreditations", counts.accreditations, "No accreditations linked yet.", "accreditations")}
             {section(ShieldCheck, "Eligibility", counts.eligibility, "No eligibility requirements configured yet.", "eligibility")}
-            <SectionSummaryCard icon={ImageIcon} title="Media" count={0} badge={<PublicBadge />} emptyText="No media uploaded yet." />
+            <ServiceMediaCard serviceId={serviceId} badge={<PublicBadge />} />
           </>
         )}
       </div>
@@ -133,6 +138,7 @@ export function SummaryTab({
             );
           })}
         </FormSection>
+        {extraFields}
 
         {serviceId && (
           <>

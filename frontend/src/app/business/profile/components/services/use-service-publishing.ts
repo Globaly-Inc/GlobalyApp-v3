@@ -2,15 +2,13 @@
 
 import { useState } from "react";
 import { toast } from "sonner";
-import { useAppDispatch, useAppSelector } from "@/lib/hooks";
-import { updateService } from "../../store/business-profile-detail-slice";
 import { ApiError } from "@/lib/api/http";
 import type { SectionVisibility } from "./visibility-toggle";
+import { useServiceEditor } from "./service-editor-context";
 
 /** Publish switch and per-section public visibility of an institution service; both save immediately. */
 export function useServicePublishing(businessId: number, serviceId?: string) {
-  const dispatch = useAppDispatch();
-  const services = useAppSelector((state) => state.businessProfileDetail.services.items);
+  const { api, services } = useServiceEditor(businessId);
 
   const [publicVisibility, setPublicVisibility] = useState<Record<string, boolean>>(() => {
     const existing = serviceId ? services.find((s) => s.id === serviceId) : undefined;
@@ -33,7 +31,7 @@ export function useServicePublishing(businessId: number, serviceId?: string) {
     setPublicVisibility(next);
     setSavingVisibility(true);
     try {
-      await dispatch(updateService({ id: businessId, serviceId, patch: { public_visibility: next } })).unwrap();
+      await api.updateService(serviceId, { public_visibility: next });
     } catch (e) {
       setPublicVisibility(previous);
       toast.error("Couldn't update visibility", { description: (e as ApiError).message });
@@ -47,7 +45,7 @@ export function useServicePublishing(businessId: number, serviceId?: string) {
     if (!serviceId) return;
     setPublishing(true);
     try {
-      await dispatch(updateService({ id: businessId, serviceId, patch: { is_published: next } })).unwrap();
+      await api.updateService(serviceId, { is_published: next });
       setIsPublished(next);
       toast.success(next ? "Service published" : "Service unpublished");
     } catch (e) {

@@ -179,6 +179,12 @@ export const businessesRealApi = {
   linkExistingBranch: (id: number, input: LinkExistingBranchInput): Promise<LinkExistingBranchResult> =>
     httpPost(`${BASE}/${id}/branches/link-existing`, input),
   deleteBranch: (id: number, branchId: string): Promise<void> => httpDelete(`${BASE}/${id}/branches/${branchId}`),
+  getBranch: (id: number, branchId: string): Promise<Branch> => httpGet(`${BASE}/${id}/branches/${branchId}`),
+  getInstitutionBranch: (id: number, branchId: string): Promise<Branch> => httpGet(`/admin/platform/institutions/${id}/branches/${branchId}`),
+  createInstitutionBranch: (id: number, input: BranchInput): Promise<Branch> => httpPost(`/admin/platform/institutions/${id}/branches`, input),
+  updateInstitutionBranch: (id: number, branchId: string, patch: BranchPatch): Promise<Branch> =>
+    httpPatch(`/admin/platform/institutions/${id}/branches/${branchId}`, patch),
+  deleteInstitutionBranch: (id: number, branchId: string): Promise<void> => httpDelete(`/admin/platform/institutions/${id}/branches/${branchId}`),
 
   getServices: (id: number): Promise<BusinessService[]> => httpGet(`${BASE}/${id}/services`),
   searchServices: async (id: number, params: ServiceSearchParams = {}): Promise<ServiceSearchResult> => {
@@ -283,6 +289,11 @@ export const businessesRealApi = {
   // Institution twins — same business_services tenant table, own /admin/platform/institutions prefix
   // (ids collide with businesses, so they can't share the /businesses path — see listingBase above).
   getInstitutionServices: (id: number): Promise<BusinessService[]> => httpGet(`/admin/platform/institutions/${id}/services`),
+  getService: (id: number, serviceId: string): Promise<BusinessService> => httpGet(`${BASE}/${id}/services/${serviceId}`),
+  getInstitutionService: (id: number, serviceId: string): Promise<BusinessService> =>
+    httpGet(`/admin/platform/institutions/${id}/services/${serviceId}`),
+  approveInstitutionServices: (id: number, ids: string[]): Promise<{ approved: number }> =>
+    httpPost(`/admin/platform/institutions/${id}/services/approve`, { ids }),
   searchInstitutionServices: async (id: number, params: ServiceSearchParams = {}): Promise<ServiceSearchResult> => {
     const { data, meta } = await httpGet<{ data: BusinessService[]; meta: { total: number } }>(
       `/admin/platform/institutions/${id}/services/search${toServiceSearchQuery(params)}`,
@@ -382,8 +393,9 @@ export const businessesRealApi = {
     httpPatch(`${BASE}/${id}/relations/${relationId}`, patch),
   deleteRelation: (id: number, relationId: string): Promise<void> => httpDelete(`${BASE}/${id}/relations/${relationId}`),
 
-  getActivity: async (id: number, params: ActivityListParams = {}): Promise<ActivityListResult> => {
-    const { data, meta } = await httpGet<{ data: ActivityLogEntry[]; meta: { total: number } }>(`${BASE}/${id}/activity${toPageLimitQuery(params)}`);
+  getActivity: async (id: number, params: ActivityListParams = {}, kind: "business" | "institution" = "business"): Promise<ActivityListResult> => {
+    const base = kind === "institution" ? "/admin/platform/institutions" : BASE;
+    const { data, meta } = await httpGet<{ data: ActivityLogEntry[]; meta: { total: number } }>(`${base}/${id}/activity${toPageLimitQuery(params)}`);
     return { data, total: meta.total };
   },
 };

@@ -1,12 +1,13 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { businessProfileDetailApi } from "../../apis";
+import { useServiceEditor } from "./service-editor-context";
 import type { Accreditation } from "@/app/admin/platform/categories/apis/types";
 import type { ServiceEligibility, ServiceFee, ServiceIntake, ServiceStudyUnit } from "../../apis/types";
 
 /** Everything the summary cards preview, fetched together; re-fetched when `refreshKey` changes. */
 export function useServiceSummaryData(serviceId: string, refreshKey: string | number) {
+  const { api } = useServiceEditor();
   const [fees, setFees] = useState<ServiceFee[]>([]);
   const [intakes, setIntakes] = useState<ServiceIntake[]>([]);
   const [eligibility, setEligibility] = useState<ServiceEligibility[]>([]);
@@ -23,15 +24,15 @@ export function useServiceSummaryData(serviceId: string, refreshKey: string | nu
     if (fetchedForRef.current === refreshKey) return;
     fetchedForRef.current = refreshKey;
     Promise.all([
-      businessProfileDetailApi.serviceFees.list(serviceId),
-      businessProfileDetailApi.serviceIntakes.list(serviceId),
-      businessProfileDetailApi.serviceEligibility.list(serviceId),
-      businessProfileDetailApi.serviceStudyUnits.list(serviceId),
-      businessProfileDetailApi.getServiceAccreditations(serviceId),
+      api.serviceFees.list(serviceId),
+      api.serviceIntakes.list(serviceId),
+      api.serviceEligibility.list(serviceId),
+      api.serviceStudyUnits.list(serviceId),
+      api.getServiceAccreditations(serviceId),
     ]).then(async ([f, i, e, u, a]) => {
       setFees(f); setIntakes(i); setEligibility(e); setStudyUnits(u);
       if (a.length > 0) {
-        const catalog = await businessProfileDetailApi.getAccreditations({ limit: 100 });
+        const catalog = await api.getAccreditations({ limit: 100 });
         const byId = new Map(catalog.data.map((c) => [c.id, c]));
         setAccreditations(a.map((row) => byId.get(row.accreditation_id)).filter((x): x is Accreditation => Boolean(x)));
       }

@@ -189,6 +189,8 @@ export type InstitutionBranch = {
   phone: string | null;
   email: string | null;
   source_url: string | null;
+  /** A scraped campus not yet turned into a branch — read-only here. Own branches omit it. */
+  extracted?: boolean;
 };
 
 /** A subset of `extraction_agents` columns — same provenance rule as InstitutionCourse. */
@@ -357,6 +359,8 @@ export type BusinessService = {
   price: string | null;
   is_published: boolean;
   created_at: string;
+  /** Institution courses only: found by extraction, or added by hand (admin or portal). */
+  origin?: "extracted" | "manual";
 };
 
 export type ServiceInput = {
@@ -649,8 +653,12 @@ export type ActivityLogEntry = {
   action: string;
   details: Record<string, unknown>;
   created_at: string;
+  /** The person who did it — a superadmin, or (source "portal") the org's own member. */
   admin_first_name: string | null;
   admin_last_name: string | null;
+  source?: "admin" | "portal";
+  /** Name of the course/service or branch the entry is about, resolved by the server. */
+  target?: string | null;
 };
 
 export type ActivityListParams = { page?: number; limit?: number };

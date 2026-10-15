@@ -1,11 +1,8 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { Award, BookOpen, Image as ImageIcon, Pencil, ShieldCheck } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { businessProfileDetailApi } from "../../apis";
+import { Award, BookOpen, ShieldCheck } from "lucide-react";
 import type { Lookup } from "@/app/admin/platform/categories/apis/types";
-import { ServiceMediaUploader } from "./service-media-uploader";
+import { ServiceMediaCard } from "./service-media-card";
 import { EligibilityRequirementCard } from "./eligibility-requirement-card";
 import { SectionSummaryCard } from "./section-summary-card";
 import { SummaryCardLink } from "./summary-card-link";
@@ -13,7 +10,6 @@ import { UnitCodeChip } from "./unit-code-chip";
 import { UnitCredits } from "./unit-credits";
 import { VisibilityToggle, type SectionVisibility } from "./visibility-toggle";
 import { useServiceSummaryData } from "./use-service-summary-data";
-import type { ServiceMediaFile } from "../../apis/types";
 
 const UNIT_PREVIEW = 4;
 
@@ -27,26 +23,6 @@ export function ServiceSummaryBodyExtras({
   // This card only exists while tab === "summary" (its parent unmounts it otherwise), so a plain
   // mount-once fetch is enough — it's naturally refreshed every time the caller returns here.
   const { eligibility, studyUnits, accreditations, loading } = useServiceSummaryData(serviceId, "summary");
-  const [media, setMedia] = useState<ServiceMediaFile[]>([]);
-  const [editingMedia, setEditingMedia] = useState(false);
-
-  const mediaFetchedRef = useRef(false);
-  useEffect(() => {
-    if (mediaFetchedRef.current) return;
-    mediaFetchedRef.current = true;
-    businessProfileDetailApi.getServiceMedia(serviceId).then((res) => setMedia(res.files));
-  }, [serviceId]);
-
-  const handleUpload = async (file: File) => {
-    const created = await businessProfileDetailApi.uploadServiceMedia(serviceId, file);
-    setMedia((m) => [...m, created]);
-  };
-
-  const handleDeleteMedia = async (fileId: number) => {
-    await businessProfileDetailApi.deleteServiceMedia(serviceId, fileId);
-    setMedia((m) => m.filter((f) => f.id !== fileId));
-  };
-
   if (loading) return null;
 
   return (
@@ -115,25 +91,7 @@ export function ServiceSummaryBodyExtras({
         </SectionSummaryCard>
       )}
 
-      <SectionSummaryCard
-        icon={ImageIcon}
-        title="Media"
-        count={media.length}
-        badge={<VisibilityToggle section="media" visibility={visibility} />}
-        action={
-          <Button
-            variant={editingMedia ? "secondary" : "ghost"}
-            size="icon-sm"
-            onClick={() => setEditingMedia((v) => !v)}
-            aria-label="Edit media"
-            aria-pressed={editingMedia}
-          >
-            <Pencil className="h-3.5 w-3.5" />
-          </Button>
-        }
-      >
-        <ServiceMediaUploader files={media} onUpload={handleUpload} onDelete={handleDeleteMedia} showDropzone={editingMedia} />
-      </SectionSummaryCard>
+      <ServiceMediaCard serviceId={serviceId} badge={<VisibilityToggle section="media" visibility={visibility} />} />
     </>
   );
 }

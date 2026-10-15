@@ -3,8 +3,10 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { Eye, EyeOff, Loader2, Package, Pencil, Plus, Search, Trash2 } from "lucide-react";
+import { Loader2, Package, Plus, Search } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { ServiceRowActions } from "../services/service-row-actions";
+import { OriginChip } from "@/app/business/profile/components/origin-chip";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Pagination } from "@/components/ui/pagination";
@@ -13,7 +15,6 @@ import {
   deleteInstitutionServiceThunk, fetchInstitutionServices, toggleInstitutionServicePublished,
 } from "../../store/institution-detail-slice";
 import type { BusinessService } from "../../apis/types";
-import { CourseDetailsLinkButton } from "../services/course-details-link-button";
 import { DeleteServiceDialog } from "../services/delete-service-dialog";
 
 const PAGE_SIZE = 10;
@@ -103,6 +104,7 @@ export function InstitutionServicesTab({
                   <Badge variant={s.is_published ? "default" : "secondary"} className="text-xs">
                     {s.is_published ? "Published" : "Draft"}
                   </Badge>
+                  {s.origin && <OriginChip origin={s.origin} />}
                 </div>
                 <p className="text-xs text-muted-foreground">
                   {s.category_name ?? "Uncategorised"}
@@ -110,32 +112,13 @@ export function InstitutionServicesTab({
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-1">
-              <Button
-                size="icon-sm"
-                variant="ghost"
-                onClick={() => handleTogglePublish(s.id, !s.is_published)}
-                aria-label={s.is_published ? "Unpublish service" : "Publish service"}
-              >
-                {s.is_published ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
-              </Button>
-              {!readOnly && (
-                <>
-                  <Button
-                    size="icon-sm"
-                    variant="ghost"
-                    onClick={() => router.push(`/admin/platform/institutions/${institutionId}/services/${s.id}/edit`)}
-                    aria-label="Edit service"
-                  >
-                    <Pencil className="h-4 w-4" />
-                  </Button>
-                  <CourseDetailsLinkButton onClick={() => router.push(`/admin/platform/institutions/${institutionId}/services/${s.id}/edit`)} />
-                  <Button size="icon-sm" variant="ghost" className="text-destructive" onClick={() => setDeletingService(s)} aria-label="Delete service">
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </>
-              )}
-            </div>
+            <ServiceRowActions
+              editHref={`/admin/platform/institutions/${institutionId}/services/${s.id}/edit`}
+              isPublished={s.is_published}
+              readOnly={readOnly}
+              onTogglePublish={() => handleTogglePublish(s.id, !s.is_published)}
+              onDelete={() => setDeletingService(s)}
+            />
           </div>
         ))}
       </div>

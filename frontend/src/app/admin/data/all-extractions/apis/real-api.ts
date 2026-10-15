@@ -9,6 +9,7 @@ import type {
   AgentRun,
   CreateAgentParams,
   CampusFull,
+  PortalBranch,
   CampusRow,
   CourseFee,
   CourseFeeParams,
@@ -227,6 +228,9 @@ export const allExtractionsRealApi = {
     const { campuses } = await httpGet<{ campuses: CampusFull[] }>(`/admin/data-extraction/jobs/${jobId}/campuses`);
     return campuses;
   },
+
+  getPortalBranches: async (jobId: string): Promise<PortalBranch[]> =>
+    (await httpGet<{ branches: PortalBranch[] }>(`/admin/data-extraction/jobs/${jobId}/portal-branches`)).branches,
 
   // Paginated + searchable, unlike getCampuses' full dump (used elsewhere for campus-linking pickers).
   getCampusesFiltered: (
