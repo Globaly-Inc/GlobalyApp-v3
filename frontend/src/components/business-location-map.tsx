@@ -27,24 +27,41 @@ export type MapLocation = {
   longitude: number | null;
 };
 
-/** `undefined` while in flight, `null` once it has failed — a failure stays cached so a dead
- *  address is not re-queried on every render. The promise itself is the cache entry, so two cards
- *  pointing at the same city share one request. */
+/** The promise itself is the cache entry, so two cards pointing at the same city share one request.
+ *  Only an answer is kept (coordinates, or `null` for "Nominatim knows no such place"); a network
+ *  error or a refused request evicts itself so the next mount retries instead of losing that city
+ *  until reload. */
 const geocoded = new Map<string, Promise<[number, number] | null>>();
+
+// ponytail: one request per 1.1s, globally, by handing each lookup the next free timestamp —
+// Nominatim's limit is 1 req/s and a thread with several campus maps mounts them all at once.
+let nextSlot = 0;
+function waitForSlot(): Promise<void> {
+  const at = Math.max(Date.now(), nextSlot);
+  nextSlot = at + 1100;
+  return new Promise((resolve) => setTimeout(resolve, at - Date.now()));
+}
 
 function geocode(query: string): Promise<[number, number] | null> {
   const key = query.trim().toLowerCase();
   let hit = geocoded.get(key);
   if (!hit) {
-    hit = fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(query)}`)
-      .then((r) => (r.ok ? r.json() : null))
+    hit = waitForSlot()
+      .then(() => fetch(`https://nominatim.openstreetmap.org/search?format=jsonv2&limit=1&q=${encodeURIComponent(query)}`))
+      .then((r) => {
+        if (!r.ok) throw new Error(`nominatim ${r.status}`);
+        return r.json();
+      })
       .then((j) => {
         const first = Array.isArray(j) ? j[0] : null;
         const lat = Number(first?.lat);
         const lon = Number(first?.lon);
         return Number.isFinite(lat) && Number.isFinite(lon) ? ([lat, lon] as [number, number]) : null;
       })
-      .catch(() => null);
+      .catch(() => {
+        geocoded.delete(key);
+        return null;
+      });
     geocoded.set(key, hit);
   }
   return hit;
