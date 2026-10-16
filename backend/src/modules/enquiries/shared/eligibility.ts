@@ -157,7 +157,7 @@ export function normalizeKey(text: string | null | undefined): string {
  * `public.tests.name` if this ever has to tell "Cambridge C1" from "Cambridge C2", which it
  * currently declines to do (neither contains the other, so they simply do not match).
  */
-function sameTest(a: string | null | undefined, b: string | null | undefined): boolean {
+export function sameTest(a: string | null | undefined, b: string | null | undefined): boolean {
   const x = normalizeKey(a);
   const y = normalizeKey(b);
   if (!x || !y) return false;

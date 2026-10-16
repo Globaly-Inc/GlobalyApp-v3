@@ -10,6 +10,8 @@ import { masterKnex } from "../../../../core/db/master-pool.js";
 import { EXTRACTION_QUEUES } from "../shared/queues.js";
 import { verifyFieldCoverage } from "../lib/field-coverage.js";
 import { sendAdminReviewEmail, sendCompletionEmail } from "../lib/completion-email.js";
+import { verifyDataShape } from "../lib/verification-rules.js";
+import { repairDataShape } from "../lib/data-repair.js";
 import { autoPublishOwnerRun } from "../services/promote.service.js";
 import { convertCampusesToBranches } from "../../platform/business-branches/services/business-branches.service.js";
 import { _linkerDeps } from "../lib/jev-linker.js";
@@ -286,6 +288,8 @@ await queueService.consume(EXTRACTION_QUEUES.VERIFY, async (msg) => {
 
     await verifyLookupLinks(jobId);
     await verifyFieldCoverage(jobId).catch((err) => logger.warn("Field coverage report failed", { jobId, error: String(err) }));
+  await repairDataShape(jobId).catch((err: unknown) => logger.warn("Data repair failed", { jobId, error: String(err) }));
+  await verifyDataShape(jobId).catch((err: unknown) => logger.warn("Data shape report failed", { jobId, error: String(err) }));
     // Linking reads every course's page and is Jev-only; the link step reports coverage again when done.
     // The completion email reports linked counts, so it goes out after linking when linking runs.
     const linking = _linkerDeps.minLink() != null && await queueService.publish(EXTRACTION_QUEUES.STEPS, { jobId, step: "link_entities" })

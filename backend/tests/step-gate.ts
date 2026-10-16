@@ -15,7 +15,7 @@
  */
 
 import "dotenv/config";
-import { _stepDeps, advance, gate, mergeClassifierBatch } from "../src/modules/superadmin/data-extraction/lib/pipeline-steps.js";
+import { _stepDeps, advance, dispatchSnapshotBatches, gate, mergeClassifierBatch } from "../src/modules/superadmin/data-extraction/lib/pipeline-steps.js";
 import { categoriesFor, guidedUrlCategories, heuristicCategory } from "../src/modules/superadmin/data-extraction/lib/url-categories.js";
 
 let passed = 0;
@@ -148,6 +148,43 @@ console.log("\n6. URL categories");
   // A catalogue host makes looksLikeCourseUrl pick EVERY URL, scholarships included.
   const sch = categoriesFor(["https://catalog.x.edu/scholarships"], new Set(["https://catalog.x.edu/scholarships"]), new Map(), "heuristic");
   assert(sch.get("https://catalog.x.edu/scholarships")?.category === "scholarships", "a scholarship path beats the course pick", [...sch]);
+}
+
+// ── §7 the snapshot splits on the time budget, and the tail dispatch never re-splits ──────────
+// Pure budget maths is pinned in test:site-snapshot-path; THIS checks the dispatcher honours it:
+// a run over the head must mark every batch thenFull (the worker's cue to chain the archive wave),
+// and the archive dispatch (split=false) must cover everything and mark nothing, or the two runs
+// would hand off to each other forever.
+{
+  reset();
+  const saveGaps = _stepDeps.storedHostGaps;
+  _stepDeps.storedHostGaps = async () => new Map([["slow.edu", 8_000]]);
+  const urls = Array.from({ length: 250 }, (_, i) => `https://slow.edu/p${i}`);
+
+  // 30-min budget at 8s = 225 pages of head → 3 batches, each flagged thenFull.
+  const headBatches = await dispatchSnapshotBatches("job-1", urls, null);
+  const headMsgs = published.filter((p) => (p.payload as { step?: string }).step === "site_snapshot");
+  const headUrls = headMsgs.reduce((n, m) => n + ((m.payload as { urls: string[] }).urls?.length ?? 0), 0);
+  assert(headBatches === 3 && headMsgs.length === 3, "a slow host's head is budget ÷ gap pages, batched", headBatches);
+  assert(headUrls === 225, "the head holds exactly budget ÷ gap pages", headUrls);
+  assert(headMsgs.every((m) => (m.payload as { batch: { thenFull?: boolean } }).batch.thenFull === true),
+    "every head batch carries thenFull — any one of them can be the run's completer");
+  assert(events.includes("snapshot_wave"), "the split is announced on the timeline");
+
+  // The archive wave: same list, split=false — everything ships, nothing marked.
+  reset();
+  await dispatchSnapshotBatches("job-1", urls, null, false, false);
+  const tailUrls = published.reduce((n, m) => n + ((m.payload as { urls: string[] }).urls?.length ?? 0), 0);
+  assert(tailUrls === 250, "the archive wave ships the FULL list (head pages are cache hits)", tailUrls);
+  assert(!published.some((m) => (m.payload as { batch: { thenFull?: boolean } }).batch.thenFull),
+    "the archive wave marks nothing — or it would chain another wave forever");
+
+  // fresh bypasses splitting: the admin asked for a full re-fetch.
+  reset();
+  await dispatchSnapshotBatches("job-1", urls, null, true);
+  const freshUrls = published.reduce((n, m) => n + ((m.payload as { urls: string[] }).urls?.length ?? 0), 0);
+  assert(freshUrls === 250, "a fresh re-snapshot never splits", freshUrls);
+  _stepDeps.storedHostGaps = saveGaps;
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

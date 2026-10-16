@@ -6,7 +6,10 @@
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { Storage } from "@google-cloud/storage";
 import { createRequire } from "node:module";
-const pdfParse = createRequire(import.meta.url)("pdf-parse") as (buf: Buffer) => Promise<{ text: string }>;
+
+const { PDFParse } = createRequire(import.meta.url)("pdf-parse") as {
+  PDFParse: new (opts: { data: Buffer }) => { getText(): Promise<{ text: string }>; destroy(): Promise<void> };
+};
 import { config } from "../../../../config.js";
 import { createChildLogger } from "../../../../shared/logger.js";
 import { safeFetch } from "../../../../shared/public-url.js";
@@ -118,8 +121,7 @@ async function extractPdfWithGemini(
   if (!config.GEMINI_API_KEY) return null;
 
   const ai = new GoogleGenerativeAI(config.GEMINI_API_KEY);
-  // ponytail: gemini-2.0-flash for vision, not the default text model
-  const model = ai.getGenerativeModel({ model: "gemini-2.0-flash" });
+  const model = ai.getGenerativeModel({ model: config.GEMINI_MODEL });
 
   const b64 = pdfBuffer.toString("base64");
 
@@ -138,7 +140,7 @@ async function extractPdfWithGemini(
 
     // Vision is the most expensive call in the pipeline and, until the page store lands,
     // the one most often repeated for the same PDF — so it is metered under its own kind.
-    recordUsage("gemini-2.0-flash", result.response.usageMetadata, { kind: "pdf_vision" });
+    recordUsage(config.GEMINI_MODEL, result.response.usageMetadata, { kind: "pdf_vision" });
     const content = result.response.text();
     if (!content || content.trim().length < 20) return null;
     return truncate(content, maxChars);
@@ -156,14 +158,17 @@ async function extractPdfText(
   pdfBuffer: Buffer,
   maxChars: number = MAX_RETURN_CHARS,
 ): Promise<string | null> {
+  let parser: { getText(): Promise<{ text: string }>; destroy(): Promise<void> } | null = null;
   try {
-    const data = await pdfParse(pdfBuffer);
-    const text = data.text?.trim();
+    parser = new PDFParse({ data: pdfBuffer });
+    const text = (await parser.getText()).text?.trim();
     if (!text || text.length < 20) return null;
     return truncate(text, maxChars);
   } catch (err) {
     logger.warn(`pdf-parse text extraction failed: ${err}`);
     return null;
+  } finally {
+    await parser?.destroy().catch(() => {});
   }
 }
 

@@ -335,6 +335,18 @@ const ASSET_EXTS = new Set([
   ".ico", ".woff", ".woff2", ".ttf", ".eot",
 ]);
 
+/** A URL the page pipeline must never hand to an HTML scraper — same list discovery filters by,
+ *  exposed for the snapshot's belt-and-braces check (a leaked .pptx costs a browser-tier walk per
+ *  run). PDFs are excluded from "skippable": they have their own Vision reader. */
+export function isSkippableAssetUrl(url: string): boolean {
+  try {
+    const path = new URL(url).pathname;
+    const ext = path.slice(path.lastIndexOf(".")).toLowerCase();
+    return ext !== ".pdf" && ASSET_EXTS.has(ext);
+  } catch { return false; }
+}
+
+
 // Registrable domains come from the real Public Suffix List (tldts, data bundled — no runtime
 // fetch). This replaced a hand-kept list of "suffixes we actually meet", which was wrong twice in
 // review: a suffix missing from it (ac.id, edu.pl, co.uk) collapsed an institution to the REGISTRY

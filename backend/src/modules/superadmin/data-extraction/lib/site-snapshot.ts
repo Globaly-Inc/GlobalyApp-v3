@@ -17,6 +17,7 @@ import { SUPERADMIN_SCHEMA as S } from "../../consts.js";
 import { getPage, getDocument, isPdfUrl, fileLinksOf, SNAPSHOT_PREFIX } from "./page-store.js";
 import { upsertSiteUrls, setSiteUrlLiveness, type DeadReason } from "../repositories/site-urls.repository.js";
 import { throttleForHost } from "./scraper.js";
+import { hostOf } from "./host-health.js";
 import { siteOf } from "./html-utils.js";
 import { writeJobEvent } from "./staging-writer.js";
 import { isScraperInfraFailure } from "./classify-failure.js";
@@ -48,7 +49,39 @@ const logger = createChildLogger("site-snapshot");
  * timestamp window, and two runs' batch 3 no longer collapse onto one key. A constraint on the
  * marker would have fixed the duplicate rows and NOT that collision.
  */
-export interface SnapshotBatch { runId: string; index: number; total: number }
+export interface SnapshotBatch {
+  runId: string;
+  index: number;
+  total: number;
+  /** This run is the time-budgeted HEAD of the site: when it completes, the worker advances the
+   *  chain as usual and then dispatches the FULL list as a second run (which re-reads the head
+   *  from cache and fetches only the tail). Carried on the message like runId, for the same
+   *  reason — a stored marker is what the run-identity lesson above exists to prevent. */
+  thenFull?: boolean;
+}
+
+/**
+ * The URLs wave 1 fetches: walk the RANKED list spending each page's host gap from a per-host
+ * time budget, and stop admitting a host's URLs once its budget is spent. Pure.
+ *
+ * Per host, not global, because hosts don't queue on each other — a 30-minute budget admits
+ * budget ÷ gap pages of EACH host, so a healthy site (200ms = 9,000 pages) usually fits whole
+ * and never splits, while a host that taught us an 8s gap gets 225 pages of head and the rest
+ * behind the advancing pipeline. The list arrives ranked (course URLs first), so the head is
+ * the useful part by construction.
+ */
+export function snapshotHead(urls: string[], gapOf: (host: string) => number, budgetMs: number): string[] {
+  if (budgetMs <= 0) return urls;
+  const left = new Map<string, number>();
+  const head: string[] = [];
+  for (const url of urls) {
+    const host = hostOf(url) ?? "";
+    const ms = left.get(host) ?? budgetMs;
+    const gap = Math.max(1, gapOf(host));
+    if (ms >= gap) { head.push(url); left.set(host, ms - gap); }
+  }
+  return head;
+}
 
 export interface SnapshotEventRow { id: string; kind: string; phase: string | null; data: unknown }
 
@@ -173,6 +206,21 @@ export async function runPool(count: number, concurrency: number, task: (i: numb
   };
   await Promise.all(Array.from({ length: Math.max(1, Math.min(concurrency, count)) }, worker));
   if (failed) throw failure;
+}
+
+/**
+ * A snapshot run can complete against a job already resting in `review` — the archive wave
+ * finishing after the head's extraction wrapped up. The chain it then advances re-classifies and
+ * queues NEW pages, but `checkAllPagesDone` only moves a `processing` job to `extracting`
+ * (queue-completion.ts), so those pages would extract and then never reach verification, repair
+ * or entity linking. Reopen EXACTLY `review` — a conditional update, so paused / stopped /
+ * failed / declined are never resurrected. Returns whether it flipped.
+ */
+export async function reopenIfReviewing(jobId: string): Promise<boolean> {
+  const n = await masterKnex(`${S}.extraction_jobs`)
+    .where({ id: jobId, status: "review" })
+    .update({ status: "processing", processing_heartbeat_at: masterKnex.fn.now() });
+  return n > 0;
 }
 
 export async function jobHalted(jobId: string): Promise<boolean> {
