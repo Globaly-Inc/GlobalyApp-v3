@@ -232,7 +232,7 @@ export interface MapLocation {
   /** What the map resolves. City, state and country — the same `placeOf` the prompt section uses,
    *  so the pin can never be more precise than the text already was. See the 2026-10-08 rule.
    *
-   *  The campus NAME is deliberately not in here. Google resolves "AIT Main Campus, Bangkok" to
+   *  The campus NAME is deliberately not in here. A geocoder resolves "AIT Main Campus, Bangkok" to
    *  the campus itself — its marker, its label, its street address in the info card — which is the
    *  disclosure the whole rule removes, and a wide `zoom` only frames that pin from further away.
    *  The name still rides along in `name` for the chip and the link text, where it is prose. */
@@ -302,7 +302,7 @@ const GENERIC_PLACE_WORDS = new Set([
  * places, so this is a breadth the prose does not promise rather than a wrong pin; narrow it by
  * resolving country words out of names if it ever reads badly.
  *
- * A branch with no city or no country is skipped even when named. Google resolves whatever string
+ * A branch with no city or no country is skipped even when named. A geocoder resolves whatever string
  * it is handed, so a thin row would produce a confident pin in the wrong place — worse than no
  * map, because it looks authoritative. Absent rather than wrong, the same rule branchInvite follows.
  */

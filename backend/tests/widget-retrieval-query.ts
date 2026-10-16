@@ -262,6 +262,45 @@ async function main() {
       "", "the verb leaves the level to browse");
   }
 
+  console.log("\ncourseKeywordsFor — a debounced burst must not carry an acknowledgement into the query");
+  {
+    // The omnichannel debouncer folds every message a customer sent since the last answer into
+    // ONE `asked` (inbound.service: pending.questions.join). On the widget "yes" arrived alone,
+    // had no subject, and borrowed the counsellor's question. Folded together with the next
+    // message it is no longer alone: "masters" IS a subject, so the borrow is skipped and "yes"
+    // rode into the course query — which then looked for a course NAMED "yes" and found none,
+    // with no widen (the fallback only fires when the whole query is a named qualification).
+    const burst = (asked: string, prior: string | null) =>
+      courseKeywordsFor(retrievalKeywords(asked, prior).keywords, detectDegreeLevel(resolveQuery(asked, prior)));
+    const levelQ = "Which study level are you looking at?";
+
+    assertEqual(burst("masters", levelQ), "", "a level alone browses that level");
+    assertEqual(burst("yes\n\nmasters", levelQ), "", "…and so does the same answer sent as two messages");
+    assertEqual(burst("ok\n\nmasters please", levelQ), "", "whatever filler the burst collected");
+    assertEqual(burst("yes\n\nnursing", levelQ), "nursing", "a real subject survives the burst alone");
+    assertEqual(burst("the second one\n\nnursing", levelQ), "nursing", "a pointer word is not a subject either");
+    assertEqual(burst("yeah sure\n\nbusiness", null), "business", "no prior question to borrow from, same rule");
+  }
+
+  console.log("\ncourseKeywordsFor — asking for a LIST is a browse, not a course named 'list'");
+  {
+    // A Messenger customer's first turn (2026-10-15): "Can you list me some courses" + "Masters"
+    // searched for a course NAMED "list some" under the Master filter, found none, and the
+    // counsellor said it had no master's listings — three turns running, until the customer named
+    // a field. The widget never saw it: its first turn is a discovery turn (courses skipped) and
+    // its starter chip is phrased "what courses do you offer", every word of which is filler.
+    const burst = (asked: string, prior: string | null) =>
+      courseKeywordsFor(retrievalKeywords(asked, prior).keywords, detectDegreeLevel(resolveQuery(asked, prior)));
+    const fieldQ = "What field or subject area are you looking to study?";
+
+    assertEqual(burst("Can you list me some courses\n\nMasters", null), "", "list + level browses that level");
+    assertEqual(burst("List me some masters course", fieldQ), "", "…and again as one message");
+    assertEqual(burst("List me some course", fieldQ), "", "no level: browse everything");
+    assertEqual(burst("give me some courses", null), "", "give / some are how you ask, not what for");
+    assertEqual(burst("name a few master's programs", null), "", "name / few too");
+    assertEqual(burst("list all your nursing courses", null), "nursing", "the subject still survives");
+  }
+
   console.log("\nwithoutContactDetails — a widget reply hands out no way to contact anybody");
 {
   const red = (t: string) => withoutContactDetails(t);

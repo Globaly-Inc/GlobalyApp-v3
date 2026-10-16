@@ -11,13 +11,12 @@ type MapBlockProps = { block: Extract<ResponseBlock, { type: "map" }> };
 /**
  * The campuses a reply just mentioned, on a map.
  *
- * Reuses the portal's `BusinessLocationMap` — a keyless Google `output=embed` iframe, so no API
- * key, no billing and no SDK script, and it resolves the place text itself with no geocoding.
- * Zoom 11 frames a city: the server only ever sends city/state/country, so a tighter zoom would
- * promise a precision the query does not carry (owner decision, 2026-10-08 — a widget reply names
- * a place, never a street address).
+ * Reuses the portal's `BusinessLocationMap` — a keyless OpenStreetMap `export/embed.html` iframe,
+ * so no API key, no billing and no SDK script. Zoom 11 frames a city: the server only ever sends
+ * city/state/country, so a tighter zoom would promise a precision the query does not carry (owner
+ * decision, 2026-10-08 — a widget reply names a place, never a street address).
  *
- * The "Open in Google Maps" link sits OUTSIDE the iframe on purpose. Our widget is itself an
+ * The OpenStreetMap link sits OUTSIDE the iframe on purpose. Our widget is itself an
  * iframe on someone else's site, so this is a nested one: a host page with `frame-src 'self'`
  * kills it silently — no error, no event, just an empty box. The link is what survives that.
  *
@@ -61,13 +60,13 @@ export function MapBlock({ block }: MapBlockProps) {
       />
 
       <a
-        href={`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(selected.query)}`}
+        href={`https://www.openstreetmap.org/search?query=${encodeURIComponent(selected.query)}`}
         target="_blank"
         rel="noopener noreferrer"
         className="inline-flex items-center gap-1 text-xs font-medium text-primary hover:underline"
       >
         <MapPin className="size-3.5" />
-        {selected.name} on Google Maps
+        {selected.name} on OpenStreetMap
       </a>
     </div>
   );

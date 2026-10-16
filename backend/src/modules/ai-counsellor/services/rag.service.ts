@@ -87,6 +87,23 @@ export function lastAssistantQuestion(
 }
 
 /**
+ * Does this word name a SUBJECT, or is it only the shape of a reply?
+ *
+ * Shared by the two places that need the same answer, because they drifted apart once already and
+ * the second drift was worse than the first. `retrievalKeywords` asks it to decide whether a turn
+ * has a topic of its own; `courseKeywordsFor` asks it to keep the course query clean.
+ *
+ * What broke: the omnichannel debouncer folds every message a customer sent since the last answer
+ * into one turn (inbound.service). "yes" alone had no subject and borrowed the counsellor's
+ * question; "yes" folded with "masters" does have one, so nothing borrowed and "yes" went into the
+ * course query — which searched for a course NAMED yes, found none, and skipped the widen (it only
+ * fires when the whole query is a named qualification). The widget never saw it because a widget
+ * visitor sends one message per turn.
+ */
+const namesSubject = (w: string) =>
+  !POINTER_RE.test(w) && !ACK_RE.test(w) && !AFFIRM_RE.test(w) && !ANSWER_RE.test(w) && !FOLLOW_UP.has(w);
+
+/**
  * What this turn should actually search for.
  *
  * Two turns searched badly before this existed, both because `extractKeywords` keeps any word
@@ -114,9 +131,7 @@ export function retrievalKeywords(
   // "would you like details about our nursing diploma?" names no topic, so counting it as a
   // subject suppressed the borrow and left courseKeywordsFor an empty query, which browsed
   // unrelated courses (Greptile). It is a filter, not a count — see below.
-  const subject = own.filter((w) =>
-    !POINTER_RE.test(w) && !ACK_RE.test(w) && !AFFIRM_RE.test(w) && !ANSWER_RE.test(w)
-    && !FOLLOW_UP.has(w));
+  const subject = own.filter(namesSubject);
   // ONE surviving subject word is still a subject (Greptile): "show engineering" loses "show" to
   // AFFIRM_RE, and borrowing on a count of one meant an engineering request also searched the
   // nursing question before it. Borrow only when nothing of the visitor's own names a topic.
@@ -196,6 +211,11 @@ const FOLLOW_UP = new Set([
   "tell", "know", "explain", "describe", "show", "find", "learn", "help", "like", "more",
   "available", "options", "option", "details", "detail", "info", "please",
   "recommend", "recommendation", "recommendations", "suggest", "suggestion", "suggestions",
+  // Asking for a LIST. "Can you list me some courses" reached searchCourses as "list some" — a
+  // course NAMED that — matched nothing, and a Messenger customer was told three turns running
+  // that we hold no master's listings. The widget never hit it: its first turn skips courses and
+  // its starter chip says "what courses do you offer", which is all filler already.
+  "list", "give", "name", "some", "few", "any", "all", "several", "provide", "share", "mention",
 ]);
 
 /**
@@ -243,7 +263,7 @@ export function detectDegreeLevel(query: string): string | null {
 export function courseKeywordsFor(keywords: string[], degreeLevel: string | null): string {
   return keywords
     .filter((w) => NAMED_QUALIFICATION.test(w)
-      || (!FILLER.has(w) && !(degreeLevel && DEGREE_LEVELS.some(([re]) => re.test(w)))))
+      || (!FILLER.has(w) && namesSubject(w) && !(degreeLevel && DEGREE_LEVELS.some(([re]) => re.test(w)))))
     .join(" ");
 }
 
