@@ -218,14 +218,18 @@ async function advanceSnapshotRunOnce(jobId: string, batch: SnapshotBatch) {
   // The chain advanced below queues new pages, and checkAllPagesDone only moves `processing` to
   // `extracting` — so without this, the archive's courses extract and then stall before
   // verification, repair and linking, forever. Flips review and nothing else.
-  if (await reopenIfReviewing(jobId)) {
+  const advanced = await advance(jobId, "site_snapshot");
+  // Reopen ONLY when the chain actually continued: done unconditionally before the advance, an
+  // admin re-running the snapshot on a finished MANUAL-mode job flipped it to `processing` and the
+  // gate then published nothing — a done job stuck reading "processing" forever. Timing is safe
+  // this way round too: queue_pages sits three steps downstream of the publish above.
+  if (advanced === "published" && (await reopenIfReviewing(jobId))) {
     await writeJobEvent(jobId, "job_reopened", {
       phase: "site_mapping",
       message: "Snapshot wave completed after review — job reopened so its new pages reach verification",
       data: { runId: batch.runId },
     });
   }
-  await advance(jobId, "site_snapshot");
   // The head has done its job; the ARCHIVE now runs behind the advancing pipeline. The full list,
   // not a remembered tail: head pages are cache hits (no host slot), so nothing is lost to a site
   // list that changed while the head ran. split=false is the recursion guard — and this second

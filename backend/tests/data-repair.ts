@@ -47,6 +47,9 @@ async function main() {
     await ins({ intake_name: "Winter", intake_month: 12, intake_year: 2026 });
     await ins({ intake_name: "Harmattan", intake_month: null, intake_year: null, admission_deadline: "2026-09-01" }); // SKIP: dates
     await ins({ intake_name: "Harmattan", intake_month: 10, intake_year: 2026, admission_deadline: "2026-10-01" });  // disagree — two sittings
+    const solsticeThin = await ins({ intake_name: "Solstice", intake_month: null, intake_year: null,
+      admission_deadline: "2026-05-01" });                                                              // SKIP: the SURVIVOR is
+    await ins({ intake_name: "Solstice", intake_month: 6, intake_year: 2026, updated_by_platform_user_id: 1 }); // admin-edited
     const conflictThin = await ins({ intake_name: "Monsoon", intake_month: null, intake_year: null,
       custom_dates: JSON.stringify({ deadline: "2026-01" }) });                                         // SKIP: contradicting milestones
     await ins({ intake_name: "Monsoon", intake_month: 6, intake_year: 2026, custom_dates: JSON.stringify({ deadline: "2026-02" }) });
@@ -63,6 +66,8 @@ async function main() {
     await fee({ name: "App Fee", total_amount: 500, currency: null });
     await fee({ name: "Lab Fee", total_amount: 300, currency: "AUD", student_type: "domestic" });        // NOT a candidate for…
     const labThin = await fee({ name: "Lab Fee", total_amount: 300, currency: null, student_type: "international" }); // …a different payer
+    const gymThin = await fee({ name: "Gym Fee", total_amount: 200, currency: null });                   // SKIP: its priced twin…
+    await fee({ name: "Gym Fee", total_amount: 200, currency: "NZD", updated_by_platform_user_id: 1 });  // …is admin-edited
 
     // ── English family twins ──
     const eng = async (row: Record<string, unknown>) =>
@@ -88,7 +93,7 @@ async function main() {
     // ── Dry run first: same verdicts, zero trace ──
     const dry = await repairDataShape(j, { dryRun: true });
     eq([dry.intake_fields_filled, dry.intake_twins_merged, dry.fee_twins_merged, dry.english_twins_merged, dry.assets_excluded, dry.skipped_ambiguous],
-      [1, 1, 1, 1, 1, 7], "a dry run prices the repair with the same candidate logic as the apply");
+      [1, 1, 1, 1, 1, 9], "a dry run prices the repair with the same candidate logic as the apply");
     eq(!!(await masterKnex(`${S}.extraction_english_requirements`).where({ id: engB }).first()), true, "dry run deletes no English row");
     const pptxDry = await masterKnex(`${S}.extraction_site_urls`).where({ job_id: j }).whereILike("url", "%poster.pptx").first();
     eq(pptxDry?.excluded, false, "dry run excludes nothing");
@@ -105,7 +110,7 @@ async function main() {
     eq(r.fee_twins_merged, 1, "exactly the one unambiguous fee twin merges");
     eq(r.english_twins_merged, 1, "the complementary IELTS spellings merge into one row");
     eq(r.assets_excluded, 1, "the leaked .pptx is excluded from the crawl list");
-    eq(r.skipped_ambiguous, 7, "ambiguous intake + admin + milestones + DATE-CONFLICT intake + ambiguous fee + contradicting TOEFL + triple Duolingo all REFUSED");
+    eq(r.skipped_ambiguous, 9, "ambiguous/admin/milestone/date-conflict intakes + ADMIN-EDITED SURVIVORS (intake and fee) + ambiguous fee + contradicting TOEFL + triple Duolingo all REFUSED");
 
     const sept = await masterKnex(`${S}.extraction_intakes`).where({ job_id: j, intake_name: "September 2026" }).first();
     eq([sept.intake_month, sept.intake_year], [9, 2026], "filled values are the name's own");
@@ -130,6 +135,9 @@ async function main() {
       "the thin fee's details ride across to the survivor");
     eq(!!(await masterKnex(`${S}.extraction_course_fees`).where({ id: labThin }).first()), true,
       "a same-priced fee for a DIFFERENT payer is not a candidate — the international Lab Fee survives");
+    eq(!!(await masterKnex(`${S}.extraction_intakes`).where({ id: solsticeThin }).first())
+      && !!(await masterKnex(`${S}.extraction_course_fees`).where({ id: gymThin }).first()), true,
+      "an ADMIN-EDITED SURVIVOR refuses the merge — the thin twin survives rather than patch a reviewed row");
     eq(!!(await masterKnex(`${S}.extraction_english_requirements`).where({ id: c1 }).first())
       && !!(await masterKnex(`${S}.extraction_english_requirements`).where({ id: c2 }).first()), true,
       "Cambridge C1 and C2 are different tests — sameTest keeps them apart where a first-word grouping merged them");

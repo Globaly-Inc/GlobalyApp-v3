@@ -87,6 +87,10 @@ async function mergeThinIntakeTwins(jobId: string, dryRun: boolean): Promise<[nu
       .select(INTAKE_COLS);
     if (candidates.length !== 1) { if (candidates.length > 1) skipped++; continue; }
     const full = candidates[0];
+    // The SURVIVOR gets patched (dates sharpened, deadlines carried), so an admin-edited survivor
+    // is as off-limits as an admin-edited thin row — the merge would write fields onto a reviewed
+    // shared row, including values the admin may have deliberately cleared.
+    if (full.updated_by_platform_user_id != null) { skipped++; continue; }
     // Everything BOTH rows state must agree, or this is two sittings sharing a label, not one row
     // stored twice. A month conflict, any date conflict (partialDatesAgree: null is unknown, two
     // precisions of one date agree), or two different milestone sets all refuse the merge — the
@@ -144,6 +148,8 @@ async function mergeThinFeeTwins(jobId: string, dryRun: boolean): Promise<[numbe
       FEE_IDENTITY_COLS.every((col) => thin[col] == null || c[col] == null || String(thin[col]) === String(c[col])));
     if (candidates.length !== 1) { if (candidates.length > 1) skipped++; continue; }
     const full = candidates[0];
+    // Same rule as intakes: the survivor gets patched, so an admin-edited survivor is off-limits.
+    if (full.updated_by_platform_user_id != null) { skipped++; continue; }
     // Details both rows state differently are a human's call, not a coin toss.
     const detailConflict =
       (!isEmpty(thin.installments) && !isEmpty(full.installments) && !sameJson(thin.installments, full.installments)) ||

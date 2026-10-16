@@ -146,8 +146,8 @@ for (const [label, page, want] of [
   // left after the slow host spent 56s of it. Only a per-host budget keeps all 100.
   const mixed = [...u("slow.edu", 20), ...u("fast.edu", 100)];
   const head = snapshotHead(mixed, gap({ "slow.edu": 8_000, "fast.edu": 200 }), 60_000);
-  const slow = head.filter((x) => x.includes("slow.edu")).length;
-  const fastKept = head.filter((x) => x.includes("fast.edu")).length;
+  const slow = head.filter((x) => new URL(x).hostname === "slow.edu").length;
+  const fastKept = head.filter((x) => new URL(x).hostname === "fast.edu").length;
   if (slow !== 7) fail(`slow host should fit budget/gap = 7 pages, got ${slow}`);
   if (fastKept !== 100) fail(`the fast host must be untouched by the slow host's exhaustion, got ${fastKept}/100`);
   // Ranked order must survive: the head is a subsequence of the input, never re-sorted.
